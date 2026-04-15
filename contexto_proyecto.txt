@@ -1,0 +1,610 @@
+FILE: ./middleware.ts
+import { createServerClient } from '@supabase/ssr'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            request.cookies.set(name, value)
+          )
+          supabaseResponse = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user && request.nextUrl.pathname.startsWith('/admin')) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  if (!user && request.nextUrl.pathname.startsWith('/doctor')) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  if (!user && request.nextUrl.pathname.startsWith('/patient')) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  return supabaseResponse
+}
+
+export const config = {
+  matcher: ['/admin/:path*', '/doctor/:path*', '/patient/:path*'],
+}-e \n---\n
+FILE: ./app/admin/layout.tsx
+'use client'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity } from 'lucide-react'
+import { clsx } from 'clsx'
+
+const navigation = [
+  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { name: 'Médicos', href: '/admin/doctors', icon: Users },
+  { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
+  { name: 'Recordatorios', href: '/admin/reminders', icon: Bell },
+  { name: 'Configuración', href: '/admin/settings', icon: Settings },
+]
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+
+  return (
+    <div className="flex min-h-screen bg-slate-50 text-slate-900">
+      {/* Sidebar */}
+      <aside className="fixed inset-y-0 left-0 w-[220px] flex flex-col border-r border-slate-200 bg-white z-50">
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-teal-500 flex items-center justify-center">
+            <Activity className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-900">MedSaaS VE</p>
+            <p className="text-[10px] text-slate-400">Super Admin</p>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {navigation.map((item) => {
+            const active = pathname === item.href
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={clsx(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
+                  active
+                    ? 'bg-teal-50 text-teal-600 font-medium'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                )}
+              >
+                <item.icon className="w-4 h-4 shrink-0" />
+                {item.name}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Footer */}
+        <div className="px-3 py-4 border-t border-slate-100">
+          <button className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-red-500 hover:bg-red-50 w-full transition-all">
+            <LogOut className="w-4 h-4" />
+            Cerrar sesión
+          </button>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <div className="flex-1 ml-[220px] flex flex-col min-h-screen">
+        {/* Top bar */}
+        <header className="sticky top-0 z-40 flex items-center justify-between px-8 py-4 border-b border-slate-200 bg-white">
+          <h1 className="text-sm font-medium text-slate-700">
+            {navigation.find(n => n.href === pathname)?.name ?? 'Admin'}
+          </h1>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-teal-500" />
+            <span className="text-xs text-slate-400">Sistema operativo</span>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 px-8 py-8">
+          {children}
+        </main>
+      </div>
+    </div>
+  )
+}-e \n---\n
+FILE: ./app/admin/page.tsx
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import { Users, Calendar, CreditCard, Activity, ArrowUpRight, TrendingUp, Bell } from 'lucide-react'
+
+export default async function AdminDashboard() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: kpis } = await supabase.rpc('bi_platform_kpis')
+
+  const stats = [
+    {
+      label: 'Médicos activos',
+      value: kpis?.total_doctors ?? 0,
+      icon: Users,
+      change: '+3 este mes',
+      color: 'text-teal-600',
+      bg: 'bg-teal-50',
+      border: 'border-teal-100',
+    },
+    {
+      label: 'Citas hoy',
+      value: kpis?.appts_today ?? 0,
+      icon: Calendar,
+      change: 'Tiempo real',
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      border: 'border-blue-100',
+    },
+    {
+      label: 'Citas este mes',
+      value: kpis?.appts_this_month ?? 0,
+      icon: TrendingUp,
+      change: 'Acumulado',
+      color: 'text-violet-600',
+      bg: 'bg-violet-50',
+      border: 'border-violet-100',
+    },
+    {
+      label: 'Suscripciones activas',
+      value: kpis?.active_subscriptions ?? 0,
+      icon: CreditCard,
+      change: `${kpis?.trial_subscriptions ?? 0} en trial`,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+      border: 'border-amber-100',
+    },
+  ]
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-semibold text-slate-900">Bienvenido de nuevo 👋</h2>
+        <p className="text-slate-400 text-sm mt-1">Resumen general de la plataforma</p>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className={`rounded-xl border ${stat.border} bg-white p-5 hover:shadow-sm transition-all`}>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs text-slate-400 uppercase tracking-wider">{stat.label}</span>
+              <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center`}>
+                <stat.icon className={`w-4 h-4 ${stat.color}`} />
+              </div>
+            </div>
+            <p className="text-3xl font-semibold text-slate-900">{stat.value}</p>
+            <p className="text-xs text-slate-400 mt-1">{stat.change}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Segunda fila */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-slate-600">Leads calientes</h3>
+            <span className="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-full border border-red-100">Hot</span>
+          </div>
+          <p className="text-3xl font-semibold text-slate-900">{kpis?.hot_leads_total ?? 0}</p>
+          <p className="text-xs text-slate-400 mt-1">En toda la plataforma</p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-slate-600">Recordatorios pendientes</h3>
+            <span className="text-xs bg-amber-50 text-amber-500 px-2 py-1 rounded-full border border-amber-100">Cola</span>
+          </div>
+          <p className="text-3xl font-semibold text-slate-900">{kpis?.pending_reminders ?? 0}</p>
+          <p className="text-xs text-slate-400 mt-1">Próxima hora</p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-slate-600">Ingresos del mes</h3>
+            <span className="text-xs bg-teal-50 text-teal-500 px-2 py-1 rounded-full border border-teal-100">USD</span>
+          </div>
+          <p className="text-3xl font-semibold text-slate-900">${kpis?.revenue_this_month ?? 0}</p>
+          <p className="text-xs text-slate-400 mt-1">Pagos verificados</p>
+        </div>
+      </div>
+
+      {/* Accesos rápidos */}
+      <div>
+        <h3 className="text-sm font-medium text-slate-400 mb-4 uppercase tracking-wider">Acciones rápidas</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <a href="/admin/doctors" className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white hover:border-teal-200 hover:shadow-sm transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+                <Users className="w-4 h-4 text-teal-600" />
+              </div>
+              <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">Gestionar médicos</span>
+            </div>
+            <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-teal-500 transition-colors" />
+          </a>
+          <a href="/admin/subscriptions" className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white hover:border-teal-200 hover:shadow-sm transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <CreditCard className="w-4 h-4 text-blue-600" />
+              </div>
+              <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">Ver suscripciones</span>
+            </div>
+            <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-teal-500 transition-colors" />
+          </a>
+          <a href="/admin/reminders" className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white hover:border-teal-200 hover:shadow-sm transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                <Bell className="w-4 h-4 text-amber-600" />
+              </div>
+              <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">Monitor recordatorios</span>
+            </div>
+            <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-teal-500 transition-colors" />
+          </a>
+          <a href="/admin/settings" className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white hover:border-teal-200 hover:shadow-sm transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center">
+                <Activity className="w-4 h-4 text-slate-600" />
+              </div>
+              <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">Configuración</span>
+            </div>
+            <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-teal-500 transition-colors" />
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}-e \n---\n
+FILE: ./app/layout.tsx
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
+-e \n---\n
+FILE: ./app/page.tsx
+import Image from "next/image";
+
+export default function Home() {
+  return (
+    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
+      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+        <Image
+          className="dark:invert"
+          src="/next.svg"
+          alt="Next.js logo"
+          width={100}
+          height={20}
+          priority
+        />
+        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
+          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
+            To get started, edit the page.tsx file.
+          </h1>
+          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+            Looking for a starting point or more instructions? Head over to{" "}
+            <a
+              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+              className="font-medium text-zinc-950 dark:text-zinc-50"
+            >
+              Templates
+            </a>{" "}
+            or the{" "}
+            <a
+              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+              className="font-medium text-zinc-950 dark:text-zinc-50"
+            >
+              Learning
+            </a>{" "}
+            center.
+          </p>
+        </div>
+        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+          <a
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
+            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Image
+              className="dark:invert"
+              src="/vercel.svg"
+              alt="Vercel logomark"
+              width={16}
+              height={16}
+            />
+            Deploy Now
+          </a>
+          <a
+            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
+            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Documentation
+          </a>
+        </div>
+      </main>
+    </div>
+  );
+}
+-e \n---\n
+FILE: ./app/login/page.tsx
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+
+export default async function AdminPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const { data: kpis } = await supabase.rpc('bi_platform_kpis')
+
+  return (
+    <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
+      <h1 style={{ fontSize: '24px', fontWeight: '600', marginBottom: '0.5rem' }}>
+        MedSaaS Venezuela
+      </h1>
+      <p style={{ color: '#666', marginBottom: '2rem' }}>Panel Super Admin</p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ background: '#f5f5f5', padding: '1.5rem', borderRadius: '12px' }}>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>MÉDICOS ACTIVOS</p>
+          <p style={{ fontSize: '28px', fontWeight: '600' }}>{kpis?.total_doctors ?? 0}</p>
+        </div>
+        <div style={{ background: '#f5f5f5', padding: '1.5rem', borderRadius: '12px' }}>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>CITAS HOY</p>
+          <p style={{ fontSize: '28px', fontWeight: '600' }}>{kpis?.appts_today ?? 0}</p>
+        </div>
+        <div style={{ background: '#f5f5f5', padding: '1.5rem', borderRadius: '12px' }}>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>CITAS ESTE MES</p>
+          <p style={{ fontSize: '28px', fontWeight: '600' }}>{kpis?.appts_this_month ?? 0}</p>
+        </div>
+        <div style={{ background: '#f5f5f5', padding: '1.5rem', borderRadius: '12px' }}>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>SUSCRIPCIONES ACTIVAS</p>
+          <p style={{ fontSize: '28px', fontWeight: '600' }}>{kpis?.active_subscriptions ?? 0}</p>
+        </div>
+      </div>
+
+      <p style={{ color: '#666', fontSize: '14px' }}>Bienvenido, {user.email}</p>
+    </div>
+  )
+}-e \n---\n
+FILE: ./next-env.d.ts
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+import "./.next/dev/types/routes.d.ts";
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+-e \n---\n
+FILE: ./components/ui/button.tsx
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
+
+import { cn } from "@/lib/utils"
+
+const buttonVariants = cva(
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        outline:
+          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+        ghost:
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        destructive:
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default:
+          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        icon: "size-8",
+        "icon-xs":
+          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm":
+          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
+        "icon-lg": "size-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot.Root : "button"
+
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+-e \n---\n
+FILE: ./package.json
+{
+  "name": "medsaas-venezuela",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.103.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.8.0",
+    "next": "16.2.3",
+    "radix-ui": "^1.4.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
+    "shadcn": "^4.2.0",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+-e \n---\n
+FILE: ./lib/utils.ts
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+-e \n---\n
+FILE: ./lib/supabase/admin.ts
+import { createClient } from '@supabase/supabase-js'
+
+export function createAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  )
+}
+-e \n---\n
+FILE: ./lib/supabase/client.ts
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}-e \n---\n
+FILE: ./lib/supabase/server.ts
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function createClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {}
+        },
+      },
+    }
+  )
+}-e \n---\n
+FILE: ./next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+-e \n---\n

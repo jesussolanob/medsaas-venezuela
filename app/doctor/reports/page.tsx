@@ -1,0 +1,270 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Download, Loader2, BarChart3, Calendar, User, FileBarChart } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+
+type ConsultationRecord = {
+  id: string
+  consultation_code: string
+  patient_name: string
+  patient_cedula?: string
+  chief_complaint: string
+  payment_method: string
+  amount: number
+  consultation_date: string
+}
+
+export default function ReportsPage() {
+  const [consultations, setConsultations] = useState<ConsultationRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+
+      const { data } = await supabase
+        .from('consultations')
+        .select('id, consultation_code, chief_complaint, payment_method, amount, consultation_date, patients(full_name, id_number)')
+        .eq('doctor_id', user.id)
+        .order('consultation_date', { ascending: false })
+
+      const records: ConsultationRecord[] = (data ?? []).map(c => ({
+        id: c.id,
+        consultation_code: c.consultation_code,
+        patient_name: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).full_name : 'Paciente desconocido',
+        patient_cedula: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).id_number : undefined,
+        chief_complaint: c.chief_complaint || '',
+        payment_method: c.payment_method || 'No especificado',
+        amount: c.amount || 0,
+        consultation_date: c.consultation_date,
+      }))
+      setConsultations(records)
+      setLoading(false)
+    })
+  }, [])
+
+  function exportToCSV() {
+    if (consultations.length === 0) return
+
+    setExporting(true)
+
+    // Filtrar por fechas si están especificadas
+    let filtered = consultations
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom)
+      filtered = filtered.filter(c => new Date(c.consultation_date) >= fromDate)
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo)
+      toDate.setHours(23, 59, 59)
+      filtered = filtered.filter(c => new Date(c.consultation_date) <= toDate)
+    }
+
+    // Encabezados
+    const headers = [
+      'ID Consulta',
+      'Paciente',
+      'Cédula',
+      'Motivo',
+      'Forma de pago',
+      'Monto (USD)',
+      'Fecha'
+    ]
+
+    // Filas
+    const rows = filtered.map(c => [
+      c.consultation_code,
+      c.patient_name,
+      c.patient_cedula || '—',
+      c.chief_complaint,
+      c.payment_method,
+      c.amount.toFixed(2),
+      new Date(c.consultation_date).toLocaleDateString('es-VE')
+    ])
+
+    // Crear CSV
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n')
+
+    // Descargar
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `Reporte_Consultas_${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    setExporting(false)
+  }
+
+  const filteredCount = consultations.filter(c => {
+    let match = true
+    if (dateFrom) match = match && new Date(c.consultation_date) >= new Date(dateFrom)
+    if (dateTo) {
+      const toDate = new Date(dateTo)
+      toDate.setHours(23, 59, 59)
+      match = match && new Date(c.consultation_date) <= toDate
+    }
+    return match
+  }).length
+
+  const totalAmount = consultations
+    .filter(c => {
+      let match = true
+      if (dateFrom) match = match && new Date(c.consultation_date) >= new Date(dateFrom)
+      if (dateTo) {
+        const toDate = new Date(dateTo)
+        toDate.setHours(23, 59, 59)
+        match = match && new Date(c.consultation_date) <= toDate
+      }
+      return match
+    })
+    .reduce((sum, c) => sum + c.amount, 0)
+
+  return (
+    <>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+
+      <div className="max-w-4xl space-y-5">
+        {/* Header */}
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <FileBarChart className="w-5 h-5 text-teal-500" /> Reportería de Consultas
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">Exporta datos de tus consultas a CSV para análisis en Excel</p>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+                <BarChart3 className="w-5 h-5 text-teal-600" />
+              </div>
+              <span className="text-xs font-bold text-slate-400 uppercase">Total</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{consultations.length}</p>
+            <p className="text-xs text-slate-500 mt-1">Consultas registradas</p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                <User className="w-5 h-5 text-emerald-600" />
+              </div>
+              <span className="text-xs font-bold text-slate-400 uppercase">Filtrados</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{filteredCount}</p>
+            <p className="text-xs text-slate-500 mt-1">En el rango seleccionado</p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-amber-600" />
+              </div>
+              <span className="text-xs font-bold text-slate-400 uppercase">Ingresos</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">${totalAmount.toFixed(0)}</p>
+            <p className="text-xs text-slate-500 mt-1">USD en consultas</p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+          <p className="text-sm font-semibold text-slate-700">Rango de fechas (opcional)</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-2">Desde</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-2">Hasta</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Export Button */}
+        <button
+          onClick={exportToCSV}
+          disabled={loading || exporting || consultations.length === 0}
+          className="w-full g-bg text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {exporting ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Exportando...
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4" /> Exportar a CSV
+            </>
+          )}
+        </button>
+
+        {/* Consultations Table */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-slate-400">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" /> Cargando consultas...
+          </div>
+        ) : consultations.length === 0 ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl py-12 text-center">
+            <BarChart3 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+            <p className="text-slate-500 font-semibold">Sin consultas registradas</p>
+          </div>
+        ) : (
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="px-5 py-3 text-left font-semibold text-slate-700">ID Consulta</th>
+                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Paciente</th>
+                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Cédula</th>
+                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Motivo</th>
+                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Pago</th>
+                    <th className="px-5 py-3 text-right font-semibold text-slate-700">Monto</th>
+                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {consultations.map((c, i) => (
+                    <tr key={c.id} className={`border-b border-slate-100 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                      <td className="px-5 py-3 font-mono text-teal-600">{c.consultation_code}</td>
+                      <td className="px-5 py-3 font-medium text-slate-900">{c.patient_name}</td>
+                      <td className="px-5 py-3 text-slate-600">{c.patient_cedula || '—'}</td>
+                      <td className="px-5 py-3 text-slate-600">{c.chief_complaint}</td>
+                      <td className="px-5 py-3 text-xs bg-slate-100 rounded px-2 py-1 inline-block text-slate-700 font-semibold">{c.payment_method}</td>
+                      <td className="px-5 py-3 text-right font-semibold text-emerald-600">${c.amount.toFixed(2)}</td>
+                      <td className="px-5 py-3 text-slate-600">{new Date(c.consultation_date).toLocaleDateString('es-VE')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}

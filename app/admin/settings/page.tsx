@@ -1,0 +1,469 @@
+'use client'
+
+import { useState, useTransition, useEffect } from 'react'
+import {
+  Settings, Shield, Bell, Database, Save,
+  CreditCard, Plus, Trash2, CheckCircle2,
+  XCircle, Loader2, Eye, ExternalLink, AlertCircle, Banknote,
+} from 'lucide-react'
+
+// ─── Tipos ───────────────────────────────────────────────────────────────────
+
+type PaymentAccount = {
+  id: string
+  type: 'pago_movil' | 'bank_transfer' | 'zelle' | 'otro'
+  bank_name: string
+  account_holder: string
+  phone: string
+  rif: string
+  notes: string
+}
+
+type PendingPayment = {
+  id: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  plan: string
+  amount_usd: number
+  payment_method: string
+  receipt_url: string | null
+  submitted_at: string
+  status: string
+}
+
+// ─── Mock data para preview (se reemplaza con Supabase queries) ───────────────
+
+const MOCK_PENDING: PendingPayment[] = [
+  { id: '1', doctor_id: 'abc', doctor_name: 'Dr. José Rodríguez', doctor_email: 'jose@gmail.com', plan: 'pro', amount_usd: 20, payment_method: 'pago_movil', receipt_url: null, submitted_at: new Date().toISOString(), status: 'pending' },
+  { id: '2', doctor_id: 'def', doctor_name: 'Dra. Laura Pérez', doctor_email: 'laura@gmail.com', plan: 'pro', amount_usd: 20, payment_method: 'bank_transfer', receipt_url: null, submitted_at: new Date(Date.now() - 3600000).toISOString(), status: 'pending' },
+]
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
+  return (
+    <button onClick={onChange} className={`relative w-11 h-6 rounded-full transition-colors ${enabled ? 'bg-teal-500' : 'bg-slate-200'}`}>
+      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${enabled ? 'left-6' : 'left-1'}`} />
+    </button>
+  )
+}
+
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  pago_movil: 'Pago Móvil',
+  bank_transfer: 'Transferencia Bancaria',
+  zelle: 'Zelle',
+  otro: 'Otro',
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
+
+export default function SettingsPage() {
+  // Toggles generales
+  const [twoFA, setTwoFA]   = useState(true)
+  const [rls, setRls]       = useState(true)
+  const [audit, setAudit]   = useState(false)
+  const [rem7d, setRem7d]   = useState(true)
+  const [rem24h, setRem24h] = useState(true)
+  const [rem3h, setRem3h]   = useState(true)
+  const [rem1h, setRem1h]   = useState(false)
+
+  // Cuentas de cobro
+  const [accounts, setAccounts] = useState<PaymentAccount[]>([])
+  const [showAddAccount, setShowAddAccount] = useState(false)
+  const [newAccount, setNewAccount] = useState<Omit<PaymentAccount, 'id'>>({
+    type: 'pago_movil', bank_name: '', account_holder: '', phone: '', rif: '', notes: '',
+  })
+  const [savingAccount, setSavingAccount] = useState(false)
+
+  // Pagos pendientes
+  const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>(MOCK_PENDING)
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [receiptModal, setReceiptModal] = useState<string | null>(null)
+
+  function addAccount() {
+    if (!newAccount.account_holder) return
+    setSavingAccount(true)
+    setTimeout(() => {
+      setAccounts(prev => [...prev, { ...newAccount, id: Date.now().toString() }])
+      setNewAccount({ type: 'pago_movil', bank_name: '', account_holder: '', phone: '', rif: '', notes: '' })
+      setShowAddAccount(false)
+      setSavingAccount(false)
+    }, 600)
+  }
+
+  function removeAccount(id: string) {
+    setAccounts(prev => prev.filter(a => a.id !== id))
+  }
+
+  function handleApprove(paymentId: string) {
+    setApprovingId(paymentId)
+    // En producción: llamar a Server Action que activa la suscripción
+    setTimeout(() => {
+      setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
+      setApprovingId(null)
+    }, 1000)
+  }
+
+  function handleReject(paymentId: string) {
+    setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
+  }
+
+  const timeAgo = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime()
+    const h = Math.floor(diff / 3600000)
+    if (h < 1) return 'Hace menos de 1 hora'
+    if (h < 24) return `Hace ${h} hora${h > 1 ? 's' : ''}`
+    return `Hace ${Math.floor(h / 24)} día(s)`
+  }
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div>
+        <h2 className="text-2xl font-semibold text-slate-900">Configuración</h2>
+        <p className="text-slate-400 text-sm mt-1">Ajustes generales de la plataforma</p>
+      </div>
+
+      {/* ── Fila superior: General + Seguridad ── */}
+      <div className="grid grid-cols-2 gap-4">
+
+        {/* General */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0"><Settings className="w-4 h-4 text-teal-600" /></div>
+            <h3 className="text-sm font-semibold text-slate-900">General</h3>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Nombre de la plataforma</label>
+              <input type="text" defaultValue="Delta Medical CRM" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Email de soporte</label>
+              <input type="email" defaultValue="soporte@delta.ve" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Moneda por defecto</label>
+              <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                <option>USD — Dólar americano</option>
+                <option>VES — Bolívar</option>
+              </select>
+            </div>
+            <button className="w-full flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white py-2 rounded-lg text-sm font-medium transition-colors">
+              <Save className="w-4 h-4" /> Guardar cambios
+            </button>
+          </div>
+        </div>
+
+        {/* Seguridad */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0"><Shield className="w-4 h-4 text-blue-600" /></div>
+            <h3 className="text-sm font-semibold text-slate-900">Seguridad</h3>
+          </div>
+          <div className="space-y-1">
+            {[
+              { label: 'Autenticación 2FA', desc: 'Requerida para todos los médicos', val: twoFA, set: () => setTwoFA(!twoFA) },
+              { label: 'RLS activado', desc: 'Aislamiento de datos por tenant', val: rls, set: () => setRls(!rls) },
+              { label: 'Logs de auditoría', desc: 'Registro de todas las acciones', val: audit, set: () => setAudit(!audit) },
+            ].map(item => (
+              <div key={item.label} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
+                <div><p className="text-sm font-medium text-slate-700">{item.label}</p><p className="text-xs text-slate-400">{item.desc}</p></div>
+                <Toggle enabled={item.val} onChange={item.set} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recordatorios */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0"><Bell className="w-4 h-4 text-amber-600" /></div>
+            <h3 className="text-sm font-semibold text-slate-900">Recordatorios globales</h3>
+          </div>
+          <div className="space-y-1">
+            {[
+              { label: '7 días antes', desc: 'Recordatorio temprano', val: rem7d, set: () => setRem7d(!rem7d) },
+              { label: '24 horas antes', desc: 'Mayor tasa de confirmación', val: rem24h, set: () => setRem24h(!rem24h) },
+              { label: '3 horas antes', desc: 'Confirmación inminente', val: rem3h, set: () => setRem3h(!rem3h) },
+              { label: '1 hora antes', desc: 'Opcional · alta demanda', val: rem1h, set: () => setRem1h(!rem1h) },
+            ].map(item => (
+              <div key={item.label} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
+                <div><p className="text-sm font-medium text-slate-700">{item.label}</p><p className="text-xs text-slate-400">{item.desc}</p></div>
+                <Toggle enabled={item.val} onChange={item.set} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Base de datos */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center shrink-0"><Database className="w-4 h-4 text-violet-600" /></div>
+            <h3 className="text-sm font-semibold text-slate-900">Base de datos</h3>
+          </div>
+          <div className="space-y-1">
+            {[
+              { label: 'Tablas creadas', val: '12' },
+              { label: 'RLS policies', val: <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full font-medium">Activas</span> },
+              { label: 'Región', val: 'West US (Oregon)' },
+              { label: 'Proveedor', val: 'Supabase' },
+              { label: 'Estado', val: <span className="flex items-center gap-1.5 text-teal-600 text-xs font-medium"><span className="w-2 h-2 rounded-full bg-teal-500" />Healthy</span> },
+            ].map(row => (
+              <div key={row.label} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
+                <p className="text-sm text-slate-600">{row.label}</p>
+                <span className="text-sm font-semibold text-slate-900">{row.val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Cuentas de Cobro ── */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
+              <Banknote className="w-4 h-4 text-teal-600" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Cuentas de Cobro</h3>
+              <p className="text-xs text-slate-400">Los médicos verán estas cuentas al registrarse con Plan Pro</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowAddAccount(!showAddAccount)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Agregar cuenta
+          </button>
+        </div>
+
+        {/* Lista de cuentas */}
+        {accounts.length === 0 && !showAddAccount && (
+          <div className="text-center py-8">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+              <CreditCard className="w-5 h-5 text-slate-400" />
+            </div>
+            <p className="text-sm text-slate-400">No hay cuentas configuradas todavía</p>
+            <p className="text-xs text-slate-300 mt-1">Agrega Pago Móvil, transferencias o Zelle</p>
+          </div>
+        )}
+
+        {accounts.map(acc => (
+          <div key={acc.id} className="flex items-start justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">{ACCOUNT_TYPE_LABELS[acc.type] ?? acc.type}</span>
+                {acc.bank_name && <span className="text-xs text-slate-500">{acc.bank_name}</span>}
+              </div>
+              <p className="text-sm font-semibold text-slate-800">{acc.account_holder}</p>
+              {acc.phone && <p className="text-xs text-slate-500 font-mono">{acc.phone}</p>}
+              {acc.rif && <p className="text-xs text-slate-400">RIF/CI: {acc.rif}</p>}
+              {acc.notes && <p className="text-xs text-slate-400 italic">{acc.notes}</p>}
+            </div>
+            <button onClick={() => removeAccount(acc.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+
+        {/* Formulario agregar cuenta */}
+        {showAddAccount && (
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nueva cuenta</p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Tipo</label>
+                <select
+                  value={newAccount.type}
+                  onChange={e => setNewAccount(p => ({ ...p, type: e.target.value as PaymentAccount['type'] }))}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                >
+                  <option value="pago_movil">Pago Móvil</option>
+                  <option value="bank_transfer">Transferencia Bancaria</option>
+                  <option value="zelle">Zelle</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Banco</label>
+                <input
+                  type="text"
+                  value={newAccount.bank_name}
+                  onChange={e => setNewAccount(p => ({ ...p, bank_name: e.target.value }))}
+                  placeholder="Ej. Banesco"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Titular <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  value={newAccount.account_holder}
+                  onChange={e => setNewAccount(p => ({ ...p, account_holder: e.target.value }))}
+                  placeholder="Nombre completo"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Teléfono / Número de cuenta</label>
+                <input
+                  type="text"
+                  value={newAccount.phone}
+                  onChange={e => setNewAccount(p => ({ ...p, phone: e.target.value }))}
+                  placeholder="+58 412 000 0000"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">RIF / Cédula</label>
+                <input
+                  type="text"
+                  value={newAccount.rif}
+                  onChange={e => setNewAccount(p => ({ ...p, rif: e.target.value }))}
+                  placeholder="J-12345678-9 / V-12345678"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Notas adicionales</label>
+                <input
+                  type="text"
+                  value={newAccount.notes}
+                  onChange={e => setNewAccount(p => ({ ...p, notes: e.target.value }))}
+                  placeholder="Ej. Solo USD"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button onClick={() => setShowAddAccount(false)} className="flex-1 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors">
+                Cancelar
+              </button>
+              <button onClick={addAccount} disabled={savingAccount || !newAccount.account_holder} className="flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium text-white bg-teal-500 hover:bg-teal-600 rounded-lg transition-colors disabled:opacity-60">
+                {savingAccount ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando...</> : <><Save className="w-4 h-4" />Guardar cuenta</>}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Solicitudes de Pago Pendientes ── */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+              <CreditCard className="w-4 h-4 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Aprobaciones Pendientes</h3>
+              <p className="text-xs text-slate-400">Médicos que pagaron el Plan Pro y esperan activación</p>
+            </div>
+          </div>
+          {pendingPayments.length > 0 && (
+            <span className="text-xs font-bold text-white bg-amber-500 w-6 h-6 rounded-full flex items-center justify-center">
+              {pendingPayments.length}
+            </span>
+          )}
+        </div>
+
+        {pendingPayments.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+              <CheckCircle2 className="w-5 h-5 text-slate-400" />
+            </div>
+            <p className="text-sm text-slate-400">No hay solicitudes pendientes</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingPayments.map(payment => (
+              <div key={payment.id} className="flex items-start justify-between p-4 bg-amber-50/50 rounded-xl border border-amber-100">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold">
+                      {payment.doctor_name.split(' ').slice(0, 2).map(n => n[0]).join('')}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{payment.doctor_name}</p>
+                      <p className="text-xs text-slate-400">{payment.doctor_email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full capitalize">
+                      {ACCOUNT_TYPE_LABELS[payment.payment_method] ?? payment.payment_method}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-600">${payment.amount_usd} USD</span>
+                    <span className="text-xs text-slate-400">{timeAgo(payment.submitted_at)}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {payment.receipt_url && (
+                    <button
+                      onClick={() => setReceiptModal(payment.receipt_url)}
+                      className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-teal-300 transition-colors bg-white"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Ver comprobante
+                    </button>
+                  )}
+                  {!payment.receipt_url && (
+                    <span className="flex items-center gap-1 text-xs text-slate-400">
+                      <AlertCircle className="w-3.5 h-3.5" /> Sin comprobante
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleReject(payment.id)}
+                    className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> Rechazar
+                  </button>
+                  <button
+                    onClick={() => handleApprove(payment.id)}
+                    disabled={approvingId === payment.id}
+                    className="flex items-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+                  >
+                    {approvingId === payment.id ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" />Activando...</>
+                    ) : (
+                      <><CheckCircle2 className="w-3.5 h-3.5" />Aprobar</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal comprobante */}
+      {receiptModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setReceiptModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h4 className="text-sm font-semibold text-slate-900">Comprobante de pago</h4>
+              <button onClick={() => setReceiptModal(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+            <div className="p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={receiptModal} alt="Comprobante" className="w-full rounded-xl" />
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
+              <a href={receiptModal} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-teal-600 font-semibold hover:text-teal-700">
+                <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
