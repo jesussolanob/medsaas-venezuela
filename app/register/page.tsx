@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useTransition, useRef, useEffect } from 'react'
+export const dynamic = 'force-dynamic'
+
+import { useState, useTransition, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -33,6 +35,14 @@ const defaultForm: FormData = {
 }
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+      <RegisterInner />
+    </Suspense>
+  )
+}
+
+function RegisterInner() {
   const searchParams = useSearchParams()
   const planParam = searchParams.get('plan') as 'free' | 'pro' | null
 
