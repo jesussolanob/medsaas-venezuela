@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Receipt, Plus, X, Printer, Send, FileText, DollarSign, Search, User, Calendar, Trash2, ArrowLeft, CheckCircle, Stethoscope, Pill } from 'lucide-react'
+import { Receipt, Plus, X, Printer, Send, FileText, DollarSign, Search, User, Calendar, Trash2, ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type LineItem = { id: string; description: string; qty: number; unit_price: number }
 type Consultation = { id: string; consultation_code: string; consultation_date: string; patient_name: string; patient_phone: string | null; patient_email: string | null }
-type DocType = 'receipt' | 'estimate' | 'report' | 'prescription'
+type DocType = 'receipt' | 'estimate'
 type DoctorProfile = { full_name: string; specialty: string; phone: string; email: string; logo_url: string | null }
 type GenericPatient = { name: string; phone: string; email: string }
 
@@ -195,13 +195,11 @@ export default function BillingPage() {
             <h1 className="text-xl font-bold text-slate-900">
               {docType === 'receipt' && 'Emitir nueva factura'}
               {docType === 'estimate' && 'Generar presupuesto'}
-              {docType === 'report' && 'Redactar informe médico'}
-              {docType === 'prescription' && 'Escribir receta médica'}
             </h1>
           </div>
 
           {/* Doc type selector with CTA buttons */}
-          <div className="no-print grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="no-print grid grid-cols-2 gap-3">
             <button
               onClick={() => setDocType('receipt')}
               className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
@@ -223,28 +221,6 @@ export default function BillingPage() {
             >
               <FileText className="w-5 h-5" />
               <span>Presupuesto</span>
-            </button>
-            <button
-              onClick={() => setDocType('report')}
-              className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
-                docType === 'report'
-                  ? 'cta-btn border-transparent'
-                  : 'border-slate-200 text-slate-600 bg-white hover:border-teal-300 hover:shadow-lg'
-              }`}
-            >
-              <Stethoscope className="w-5 h-5" />
-              <span>Informe</span>
-            </button>
-            <button
-              onClick={() => setDocType('prescription')}
-              className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
-                docType === 'prescription'
-                  ? 'cta-btn border-transparent'
-                  : 'border-slate-200 text-slate-600 bg-white hover:border-teal-300 hover:shadow-lg'
-              }`}
-            >
-              <Pill className="w-5 h-5" />
-              <span>Receta</span>
             </button>
           </div>
 
@@ -330,13 +306,9 @@ export default function BillingPage() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     {docType === 'estimate' && <div style={{ background: '#fef3c7', color: '#92400e', padding: '4px 12px', borderRadius: 20, fontSize: 10, fontWeight: 700, display: 'inline-block', marginBottom: 6 }}>PRESUPUESTO</div>}
-                    {docType === 'report' && <div style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 12px', borderRadius: 20, fontSize: 10, fontWeight: 700, display: 'inline-block', marginBottom: 6 }}>INFORME MÉDICO</div>}
-                    {docType === 'prescription' && <div style={{ background: '#fce7f3', color: '#be185d', padding: '4px 12px', borderRadius: 20, fontSize: 10, fontWeight: 700, display: 'inline-block', marginBottom: 6 }}>RECETA MÉDICA</div>}
                     <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase' }}>
                       {docType === 'receipt' && 'Factura'}
                       {docType === 'estimate' && 'Presupuesto'}
-                      {docType === 'report' && 'Informe'}
-                      {docType === 'prescription' && 'Receta'}
                     </div>
                     <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, fontFamily: 'monospace' }}>{currentDocNumber}</div>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Fecha: {today}</div>
@@ -518,8 +490,8 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* CTA Buttons - Recibo/Factura y documentos específicos */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* CTA Buttons - Factura y Presupuesto */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => { setDocType('receipt'); setView('new'); }}
             className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-teal-300"
@@ -536,24 +508,6 @@ export default function BillingPage() {
             <div className="cta-btn w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-lg"><FileText className="w-6 h-6 text-white" /></div>
             <p className="font-bold text-slate-900 text-sm">Generar presupuesto</p>
             <p className="text-xs text-slate-500 mt-2">Cotización válida por 30 días</p>
-          </button>
-
-          <button
-            onClick={() => { setDocType('report'); setView('new'); }}
-            className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-sky-300"
-          >
-            <div className="cta-btn w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-lg"><Stethoscope className="w-6 h-6 text-white" /></div>
-            <p className="font-bold text-slate-900 text-sm">Redactar informe médico</p>
-            <p className="text-xs text-slate-500 mt-2">Informe clínico detallado</p>
-          </button>
-
-          <button
-            onClick={() => { setDocType('prescription'); setView('new'); }}
-            className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-pink-300"
-          >
-            <div className="cta-btn w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-lg"><Pill className="w-6 h-6 text-white" /></div>
-            <p className="font-bold text-slate-900 text-sm">Escribir receta médica</p>
-            <p className="text-xs text-slate-500 mt-2">Prescripción de medicamentos</p>
           </button>
         </div>
 

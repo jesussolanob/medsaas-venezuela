@@ -87,7 +87,10 @@ export default function LandingPage() {
 
           <div className="hidden md:flex items-center gap-3">
             <Link href="/login" className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg hover:bg-slate-100 transition-all">
-              Iniciar sesión
+              Soy doctor
+            </Link>
+            <Link href="/patient/login" className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg hover:bg-slate-100 transition-all">
+              Soy paciente
             </Link>
             <Link href="/register?plan=free" className="text-sm font-semibold text-white px-5 py-2.5 rounded-xl transition-all hover:opacity-90 active:scale-95 shadow-lg shadow-cyan-500/25 g-bg">
               Prueba gratis
@@ -105,7 +108,8 @@ export default function LandingPage() {
               <a key={l.label} href={l.href} onClick={() => setMenuOpen(false)} className="block text-sm font-medium text-slate-600 py-2">{l.label}</a>
             ))}
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2 mt-2">
-              <Link href="/login" className="text-center text-sm font-semibold text-slate-600 py-2.5 border border-slate-200 rounded-xl">Iniciar sesión</Link>
+              <Link href="/login" className="text-center text-sm font-semibold text-slate-600 py-2.5 border border-slate-200 rounded-xl">Soy doctor</Link>
+              <Link href="/patient/login" className="text-center text-sm font-semibold text-slate-600 py-2.5 border border-slate-200 rounded-xl">Soy paciente</Link>
               <Link href="/register?plan=free" className="text-center text-sm font-semibold text-white py-2.5 rounded-xl g-bg">Prueba gratis — 30 días</Link>
             </div>
           </div>
@@ -140,6 +144,8 @@ export default function LandingPage() {
                 Ver Plan Pro · $20/mes <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
+
+            <p className="text-sm text-slate-500">¿Eres paciente? <Link href="/patient/login" className="font-semibold text-teal-500 hover:text-teal-600 transition-colors">Ver mis citas y recetas →</Link></p>
 
             <div className="flex items-center gap-4">
               <div className="flex -space-x-2">

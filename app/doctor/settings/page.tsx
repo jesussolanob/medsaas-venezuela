@@ -704,17 +704,18 @@ function SettingsPageInner() {
                           value={insuranceSearch}
                           onChange={e => { setInsuranceSearch(e.target.value); setNewInsurance(p => ({ ...p, name: e.target.value })); setShowInsDropdown(true) }}
                           onFocus={() => setShowInsDropdown(true)}
+                          onBlur={() => setTimeout(() => setShowInsDropdown(false), 150)}
                           placeholder="Escribe para buscar (ej: Mercantil, Mapfre, Seguros Caracas…)"
                           className={fi + ' pl-10'}
                         />
                         {showInsDropdown && insFiltered.length > 0 && (
-                          <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg">
+                          <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg">
                             {insFiltered.slice(0, 50).map(name => (
                               <button
                                 type="button"
                                 key={name}
                                 onClick={() => selectInsuranceFromList(name)}
-                                className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 border-b border-slate-50 last:border-0"
+                                className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
                               >
                                 {name}
                               </button>
@@ -724,14 +725,18 @@ function SettingsPageInner() {
                       </div>
                       <p className="text-[10px] text-slate-400 mt-1">Lista completa de compañías de seguros de Venezuela — o escribe uno personalizado</p>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Copago (USD, opcional)</label>
+                        <input type="number" min="0" step="0.01" placeholder="0.00" className={fi} />
+                      </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Días de crédito</label>
                         <input type="number" min="0" value={newInsurance.credit_days} onChange={e => setNewInsurance(p => ({ ...p, credit_days: parseInt(e.target.value) || 0 }))} className={fi} />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Notas (opcional)</label>
-                        <input value={newInsurance.notes} onChange={e => setNewInsurance(p => ({ ...p, notes: e.target.value }))} placeholder="Requiere autorización previa" className={fi} />
+                        <input value={newInsurance.notes} onChange={e => setNewInsurance(p => ({ ...p, notes: e.target.value }))} placeholder="Autorización previa" className={fi} />
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -758,7 +763,7 @@ function SettingsPageInner() {
                         <p className="text-xs text-slate-500 mt-1">Plazo: {ins.credit_days} días</p>
                         {ins.notes && <p className="text-xs text-slate-600 mt-1 italic">{ins.notes}</p>}
                       </div>
-                      <button onClick={() => removeInsurance(idx)} className="p-2 hover:bg-red-50 rounded-lg transition-colors">
+                      <button onClick={() => removeInsurance(idx)} className="p-2 hover:bg-red-50 rounded-lg transition-colors shrink-0">
                         <Trash2 className="w-4 h-4 text-red-400" />
                       </button>
                     </div>

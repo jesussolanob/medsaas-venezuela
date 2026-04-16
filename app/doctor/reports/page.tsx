@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Download, Loader2, BarChart3, Calendar, User, FileBarChart, ArrowRight, X } from 'lucide-react'
+import { Download, Loader2, BarChart3, Calendar, User, FileBarChart, ArrowRight, X, Clock, UserX, Repeat } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 
@@ -14,6 +14,10 @@ type ConsultationRecord = {
   payment_method: string
   amount: number
   consultation_date: string
+  status?: string
+  payment_status?: string
+  duration_minutes?: number
+  patient_id?: string
 }
 
 export default function ReportsPage() {
@@ -25,6 +29,9 @@ export default function ReportsPage() {
   const [filterError, setFilterError] = useState('')
   const [appliedFrom, setAppliedFrom] = useState('')
   const [appliedTo, setAppliedTo] = useState('')
+  const [hoursPerWeek, setHoursPerWeek] = useState<string>('—')
+  const [noShowRate, setNoShowRate] = useState<string>('—')
+  const [retention, setRetention] = useState<{ patients: number; percentage: string }>({ patients: 0, percentage: '—' })
 
   useEffect(() => {
     const supabase = createClient()
@@ -33,7 +40,7 @@ export default function ReportsPage() {
 
       const { data } = await supabase
         .from('consultations')
-        .select('id, consultation_code, chief_complaint, payment_method, amount, consultation_date, patients(full_name, id_number)')
+        .select('id, consultation_code, chief_complaint, payment_method, amount, consultation_date, status, payment_status, duration_minutes, patient_id, patients(full_name, id_number)')
         .eq('doctor_id', user.id)
         .order('consultation_date', { ascending: false })
 
@@ -46,11 +53,76 @@ export default function ReportsPage() {
         payment_method: c.payment_method || 'No especificado',
         amount: c.amount || 0,
         consultation_date: c.consultation_date,
+        status: c.status,
+        payment_status: c.payment_status,
+        duration_minutes: c.duration_minutes,
+        patient_id: c.patient_id,
       }))
       setConsultations(records)
+
+      // Calcular estadísticas
+      calculateStats(records, user.id, supabase)
       setLoading(false)
     })
   }, [])
+
+  const calculateStats = async (records: ConsultationRecord[], userId: string, supabase: any) => {
+    // 1. Horas de consulta por semana
+    try {
+      if (records.length > 0) {
+        const totalMinutes = records.reduce((sum, c) => sum + (c.duration_minutes || 30), 0)
+        const totalHours = totalMinutes / 60
+        const weeks = new Set<string>()
+        records.forEach(c => {
+          const date = new Date(c.consultation_date)
+          const weekStart = new Date(date)
+          weekStart.setDate(date.getDate() - date.getDay())
+          weeks.add(weekStart.toISOString().split('T')[0])
+        })
+        const avgHoursPerWeek = weeks.size > 0 ? totalHours / weeks.size : 0
+        setHoursPerWeek(avgHoursPerWeek.toFixed(1))
+      }
+    } catch (err) {
+      console.error('Error calculating hours:', err)
+    }
+
+    // 2. Tasa de no-show
+    try {
+      const total = records.length
+      let noShow = records.filter(c => {
+        if (c.status) return c.status === 'cancelled' || c.status === 'no_show'
+        return c.payment_status !== 'paid' && new Date(c.consultation_date) < new Date()
+      }).length
+      const rate = total > 0 ? ((noShow / total) * 100).toFixed(1) : '0.0'
+      setNoShowRate(rate)
+    } catch (err) {
+      console.error('Error calculating no-show rate:', err)
+    }
+
+    // 3. Retención de pacientes
+    try {
+      const { data: allConsultations } = await supabase
+        .from('consultations')
+        .select('patient_id')
+        .eq('doctor_id', userId)
+
+      if (allConsultations && allConsultations.length > 0) {
+        const patientCounts = {} as Record<string, number>
+        allConsultations.forEach((c: any) => {
+          if (c.patient_id) {
+            patientCounts[c.patient_id] = (patientCounts[c.patient_id] || 0) + 1
+          }
+        })
+
+        const totalPatients = Object.keys(patientCounts).length
+        const returning = Object.values(patientCounts).filter(count => count >= 2).length
+        const pct = totalPatients > 0 ? ((returning / totalPatients) * 100).toFixed(0) : '0'
+        setRetention({ patients: returning, percentage: pct })
+      }
+    } catch (err) {
+      console.error('Error calculating retention:', err)
+    }
+  }
 
   const applyFilter = () => {
     setFilterError('')
@@ -202,6 +274,48 @@ export default function ReportsPage() {
             <FileBarChart className="w-5 h-5 text-teal-500" /> Reportería de Consultas
           </h1>
           <p className="text-sm text-slate-500 mt-1">Exporta datos de tus consultas a CSV para análisis en Excel</p>
+        </div>
+
+        {/* New KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-5 h-5 text-teal-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-slate-500 uppercase">Horas de consulta</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">{hoursPerWeek}</p>
+                <p className="text-xs text-slate-500 mt-1">hrs/semana</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                <UserX className="w-5 h-5 text-teal-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-slate-500 uppercase">Tasa de no-show</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">{noShowRate}</p>
+                <p className="text-xs text-slate-500 mt-1">% de consultas</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                <Repeat className="w-5 h-5 text-teal-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-slate-500 uppercase">Retención de pacientes</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">{retention.patients}</p>
+                <p className="text-xs text-slate-500 mt-1">pacientes · {retention.percentage}%</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* KPI Cards */}

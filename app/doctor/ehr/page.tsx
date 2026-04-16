@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FileText, Search, User, Calendar, ChevronRight, ArrowLeft, Stethoscope, Pill, ClipboardList, DollarSign, AlertCircle } from 'lucide-react'
+import { FileText, Search, User, Calendar, ChevronRight, ArrowLeft, Stethoscope, Pill, ClipboardList, DollarSign, AlertCircle, Image as ImageIcon } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type Patient = {
@@ -25,15 +25,29 @@ type Consultation = {
   payment_status: string
 }
 
+type Prescription = {
+  id: string
+  patient_id: string
+  medication: string
+  dosage: string
+  frequency: string
+  duration: string
+  created_at: string
+}
+
+type EHRTab = 'consultations' | 'reports' | 'prescriptions' | 'photos'
+
 export default function EHRPage() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation | null>(null)
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingConsults, setLoadingConsults] = useState(false)
   const [doctorId, setDoctorId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<EHRTab>('consultations')
 
   useEffect(() => {
     const supabase = createClient()
@@ -65,14 +79,28 @@ export default function EHRPage() {
   async function loadConsultations(patient: Patient) {
     setSelectedPatient(patient)
     setSelectedConsultation(null)
+    setActiveTab('consultations')
     setLoadingConsults(true)
     const supabase = createClient()
-    const { data } = await supabase
-      .from('consultations')
-      .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status')
-      .eq('patient_id', patient.id)
-      .order('consultation_date', { ascending: false })
-    setConsultations((data ?? []) as Consultation[])
+    try {
+      const { data } = await supabase
+        .from('consultations')
+        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status')
+        .eq('patient_id', patient.id)
+        .order('consultation_date', { ascending: false })
+      setConsultations((data ?? []) as Consultation[])
+    } catch { /* ignore */ }
+
+    // Load prescriptions
+    try {
+      const { data } = await supabase
+        .from('prescriptions')
+        .select('*')
+        .eq('patient_id', patient.id)
+        .order('created_at', { ascending: false })
+      setPrescriptions((data ?? []) as Prescription[])
+    } catch { /* ignore */ }
+
     setLoadingConsults(false)
   }
 
@@ -144,7 +172,7 @@ export default function EHRPage() {
     return (
       <>
         <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
-        <div className="max-w-2xl space-y-5">
+        <div className="max-w-3xl space-y-5">
           <div className="flex items-center gap-3">
             <button onClick={() => setSelectedPatient(null)} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800">
               <ArrowLeft className="w-4 h-4" /> Volver a pacientes
@@ -169,38 +197,106 @@ export default function EHRPage() {
             </div>
           </div>
 
-          <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Historial clínico</h3>
+          {/* Tabs */}
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-wrap">
+            {(['consultations', 'reports', 'prescriptions', 'photos'] as EHRTab[]).map(tab => {
+              const labels: Record<EHRTab, string> = {
+                consultations: 'Consultas',
+                reports: 'Informes',
+                prescriptions: 'Recetas',
+                photos: 'Fotos'
+              }
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${activeTab === tab ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {labels[tab]}
+                </button>
+              )
+            })}
+          </div>
 
           {loadingConsults ? (
             <div className="py-12 text-center text-slate-400 text-sm">Cargando historial...</div>
-          ) : consultations.length === 0 ? (
-            <div className="bg-white border border-dashed border-slate-200 rounded-xl py-12 text-center">
-              <FileText className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">Sin consultas registradas</p>
-            </div>
           ) : (
-            <div className="space-y-2">
-              {consultations.map(c => (
-                <button key={c.id} onClick={() => setSelectedConsultation(c)}
-                  className="w-full bg-white border border-slate-200 rounded-xl p-4 text-left hover:border-teal-300 hover:shadow-sm transition-all flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5 text-teal-500" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-sm font-semibold text-slate-800 font-mono">{c.consultation_code}</p>
-                      {statusBadge(c.payment_status)}
+            <>
+              {/* CONSULTAS TAB */}
+              {activeTab === 'consultations' && (
+                <div className="space-y-2">
+                  {consultations.length === 0 ? (
+                    <div className="bg-white border border-dashed border-slate-200 rounded-xl py-12 text-center">
+                      <FileText className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                      <p className="text-slate-400 text-sm">Sin consultas registradas</p>
                     </div>
-                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {new Date(c.consultation_date).toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </p>
-                    {c.chief_complaint && <p className="text-xs text-slate-500 mt-1 truncate">{c.chief_complaint}</p>}
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-300" />
-                </button>
-              ))}
-            </div>
+                  ) : (
+                    consultations.map(c => (
+                      <button key={c.id} onClick={() => setSelectedConsultation(c)}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-4 text-left hover:border-teal-300 hover:shadow-sm transition-all flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
+                          <FileText className="w-5 h-5 text-teal-500" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-semibold text-slate-800 font-mono">{c.consultation_code}</p>
+                            {statusBadge(c.payment_status)}
+                          </div>
+                          <p className="text-xs text-slate-400 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(c.consultation_date).toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </p>
+                          {c.chief_complaint && <p className="text-xs text-slate-500 mt-1 truncate">{c.chief_complaint}</p>}
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* INFORMES TAB */}
+              {activeTab === 'reports' && (
+                <div className="bg-white border border-dashed border-slate-200 rounded-xl py-12 text-center">
+                  <FileText className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-slate-400 text-sm">Sin informes registrados</p>
+                  <p className="text-slate-300 text-xs mt-1">Los informes se crean desde Facturación</p>
+                </div>
+              )}
+
+              {/* RECETAS TAB */}
+              {activeTab === 'prescriptions' && (
+                <div className="space-y-2">
+                  {prescriptions.length === 0 ? (
+                    <div className="bg-white border border-dashed border-slate-200 rounded-xl py-12 text-center">
+                      <Pill className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                      <p className="text-slate-400 text-sm">Sin recetas registradas</p>
+                    </div>
+                  ) : (
+                    prescriptions.map(rx => (
+                      <div key={rx.id} className="bg-white border border-slate-200 rounded-xl p-4">
+                        <p className="text-sm font-semibold text-slate-800">{rx.medication}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {rx.dosage} · {rx.frequency} · {rx.duration}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-2">
+                          {new Date(rx.created_at).toLocaleDateString('es-VE')}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* FOTOS TAB */}
+              {activeTab === 'photos' && (
+                <div className="bg-white border border-dashed border-slate-200 rounded-xl py-12 text-center">
+                  <FileText className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-slate-400 text-sm">Sin fotos registradas</p>
+                  <p className="text-slate-300 text-xs mt-1">Las fotos se adjuntan en consultas</p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </>

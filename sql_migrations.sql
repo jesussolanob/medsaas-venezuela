@@ -117,7 +117,28 @@ CREATE POLICY "Público puede ver planes activos" ON pricing_plans
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS email TEXT;
 
--- 8. Bucket de Supabase Storage para comprobantes de pago
+-- 8. Tabla prescriptions (recetas médicas)
+CREATE TABLE IF NOT EXISTS prescriptions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  doctor_id       UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  patient_id      UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  consultation_id UUID NOT NULL REFERENCES consultations(id) ON DELETE CASCADE,
+  medications     JSONB NOT NULL,  -- Array de {name, dose, frequency, duration, indications}
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_prescriptions_doctor ON prescriptions(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_patient ON prescriptions(patient_id);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_consultation ON prescriptions(consultation_id);
+
+-- RLS para prescriptions
+ALTER TABLE prescriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Médico ve sus recetas" ON prescriptions
+  FOR ALL USING (doctor_id = auth.uid());
+
+-- 9. Bucket de Supabase Storage para comprobantes de pago
 -- Crear manualmente en Supabase Dashboard:
 -- Storage → New Bucket → Name: "payment-receipts" → Public: true
 

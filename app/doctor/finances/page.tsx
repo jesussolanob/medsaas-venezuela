@@ -244,10 +244,38 @@ export default function DoctorFinancesPage() {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
 
       <div className="max-w-6xl space-y-5">
-        {/* BCV Banner - Simple single line */}
-        <div className="g-bg rounded-xl px-5 py-3.5 flex items-center gap-3">
-          <TrendingUp className="w-4 h-4 text-white shrink-0" />
-          <p className="text-white font-medium text-sm">1 USD = Bs.S {bcvLoading ? '...' : (bcvRate?.toLocaleString('es-VE', { minimumFractionDigits: 2 }) ?? '36.50')}</p>
+        {/* Page Header with BCV Chip */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Finanzas</h1>
+            <p className="text-sm text-slate-500">Gestiona ingresos, gastos, seguros y estado de pagos</p>
+          </div>
+          <button
+            onClick={() => {
+              const getBCVRate = async () => {
+                try {
+                  const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial')
+                  const data = await res.json()
+                  const rate = data.promedio ?? data.precio ?? data.price ?? null
+                  if (rate) {
+                    setBcvRate(parseFloat(rate))
+                  }
+                } catch {
+                  try {
+                    const res = await fetch('https://pydolarve.org/api/v1/dollar?page=bcv')
+                    const data = await res.json()
+                    if (data.price) setBcvRate(parseFloat(data.price))
+                  } catch { /* silently fail */ }
+                }
+              }
+              getBCVRate()
+            }}
+            className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200 transition-colors"
+          >
+            <TrendingUp className="w-3 h-3" />
+            <span>BCV · Bs.S {bcvLoading ? '...' : (bcvRate?.toLocaleString('es-VE', { minimumFractionDigits: 2 }) ?? '36.50')}</span>
+            <RefreshCw className="w-3 h-3 opacity-60" />
+          </button>
         </div>
 
         {/* KPI Cards - 6 in responsive grid */}

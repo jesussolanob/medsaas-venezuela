@@ -39,6 +39,7 @@ const groups: NavGroup[] = [
     items: [
       { name: 'CRM Leads', href: '/doctor/crm', icon: BarChart2 },
       { name: 'Recordatorios', href: '/doctor/reminders', icon: Bell },
+      { name: 'Mensajes', href: '/doctor/messages', icon: Send },
     ],
   },
 ]
@@ -308,9 +309,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             </div>
           </header>
 
-          {/* Page content — responsive container */}
-          <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 lg:py-8 w-full">
-            <div className="max-w-[1600px] mx-auto w-full">
+          {/* Page content — responsive centered container */}
+          <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 w-full">
+            <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">
               {children}
             </div>
           </main>

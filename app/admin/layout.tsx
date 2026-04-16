@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity, BarChart2, CheckSquare } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
+import AdminNotifications from './AdminNotifications'
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -99,7 +100,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {navigation.find(n => n.href === pathname)?.name ?? 'Admin'}
               </h1>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <AdminNotifications />
               <span className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full font-medium">
                 Delta Medical CRM
               </span>
