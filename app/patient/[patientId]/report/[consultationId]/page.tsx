@@ -20,7 +20,7 @@ export default async function ConsultationReportPage({
 }: {
   params: { patientId: string; consultationId: string }
 }) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const { data: consultation } = await supabase
     .from('consultations')

@@ -501,7 +501,6 @@ export default function ReportsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
           </div>
         )}
       </div>

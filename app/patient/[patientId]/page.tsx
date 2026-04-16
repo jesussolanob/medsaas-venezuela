@@ -28,7 +28,7 @@ type Consultation = {
 }
 
 export default async function PatientPage({ params }: { params: { patientId: string } }) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const patientId = params.patientId
 
   // Get patient info

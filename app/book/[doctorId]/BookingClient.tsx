@@ -8,7 +8,7 @@ type DoctorProfile = { id: string; full_name: string; specialty: string; phone: 
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count?: number }
 type Slot = { date: string; time: string; label: string }
 type PaymentMethod = 'pago_movil' | 'transferencia' | 'zelle' | 'binance' | 'cash_usd' | 'cash_bs' | 'pos'
-type PaymentDetails = Record<PaymentMethod, { account?: string; number?: string; holder?: string }>
+type PaymentDetails = Partial<Record<PaymentMethod, { account?: string; number?: string; holder?: string }>>
 type BookedSlot = { scheduled_at: string; plan_name: string }
 
 function generateSlots(): Slot[] {
@@ -42,8 +42,8 @@ export default function BookingClient({
 }: {
   doctor: DoctorProfile
   plans: PricingPlan[]
-  paymentMethods?: PaymentMethod[]
-  paymentDetails?: PaymentDetails
+  paymentMethods?: string[]
+  paymentDetails?: Record<string, any>
   bookedSlots?: string[]
 }) {
   const [step, setStep] = useState(0)
@@ -688,29 +688,29 @@ export default function BookingClient({
                     <div className="grid grid-cols-1 gap-2">
                       {(paymentMethods.length > 0
                         ? paymentMethods
-                        : ['pago_movil', 'transferencia', 'zelle', 'cash_usd'] as PaymentMethod[]
+                        : ['pago_movil', 'transferencia', 'zelle', 'cash_usd']
                       ).map(method => (
                         <button
                           key={method}
                           type="button"
-                          onClick={() => setSelectedPaymentMethod(method)}
+                          onClick={() => setSelectedPaymentMethod(method as PaymentMethod)}
                           className={`p-3 rounded-lg border-2 text-left text-sm font-semibold transition-all ${
                             selectedPaymentMethod === method
                               ? 'border-teal-600 bg-white'
                               : 'border-slate-200 bg-white hover:border-teal-300'
                           }`}
                         >
-                          {paymentMethodLabels[method]}
+                          {paymentMethodLabels[method as PaymentMethod] || method}
                         </button>
                       ))}
                     </div>
 
                     {/* Show payment details if selected method needs them */}
-                    {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && paymentDetails[selectedPaymentMethod as PaymentMethod] && (
+                    {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && paymentDetails?.[selectedPaymentMethod] && (
                       <div className="bg-white rounded-lg p-3 border border-slate-200 space-y-2 text-xs">
                         <p className="font-bold text-slate-700">Datos para transferencia:</p>
-                        {Object.entries(paymentDetails[selectedPaymentMethod as PaymentMethod] || {}).map(([key, val]) => (
-                          val && <p key={key} className="text-slate-600"><span className="font-semibold capitalize">{key}:</span> {val}</p>
+                        {Object.entries(paymentDetails[selectedPaymentMethod] || {}).map(([key, val]) => (
+                          val ? <p key={key} className="text-slate-600"><span className="font-semibold capitalize">{key}:</span> {String(val)}</p> : null
                         ))}
                       </div>
                     )}

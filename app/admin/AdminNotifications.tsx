@@ -78,46 +78,46 @@ export default function AdminNotifications() {
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg border border-slate-200 shadow-lg z-50">
-          <div className="p-4 border-b border-slate-200">
-            <h3 className="font-semibold text-slate-900">Médicos nuevos</h3>
+        <div className="absolute right-0 mt-2 w-screen sm:w-80 sm:max-w-xs bg-white rounded-lg border border-slate-200 shadow-lg z-50 max-h-[60vh] sm:max-h-96 overflow-y-auto -mr-4 sm:mr-0">
+          <div className="p-3 sm:p-4 border-b border-slate-200 sticky top-0 bg-white">
+            <h3 className="font-semibold text-slate-900 text-sm">Médicos nuevos</h3>
             <p className="text-xs text-slate-500 mt-1">{newDoctorsCount} sin revisar</p>
           </div>
 
           {newDoctorsCount === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-sm">
+            <div className="p-6 sm:p-8 text-center text-slate-400 text-sm">
               No hay médicos nuevos
             </div>
           ) : (
-            <div className="max-h-96 overflow-y-auto">
+            <>
               {newDoctors.map((doctor) => (
                 <div
                   key={doctor.id}
-                  className="px-4 py-3 border-b border-slate-100 last:border-b-0 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                  className="px-3 sm:px-4 py-3 border-b border-slate-100 last:border-b-0 flex items-center justify-between hover:bg-slate-50 transition-colors gap-2"
                 >
-                  <div className="flex items-center gap-3 flex-1">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-medium text-xs flex-shrink-0">
                       {doctor.full_name?.charAt(0) ?? '?'}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900 truncate">{doctor.full_name}</p>
+                      <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{doctor.full_name}</p>
                       <p className="text-xs text-slate-400 truncate">{doctor.email}</p>
                     </div>
                   </div>
                   <Link
                     href={`/admin/doctors?focus=${doctor.id}`}
-                    className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium ml-2"
+                    className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium flex-shrink-0 whitespace-nowrap"
                     onClick={() => {
                       setIsOpen(false)
                       markAsReviewed(doctor.id)
                     }}
                   >
                     Ver
-                    <ChevronRight className="w-3 h-3" />
+                    <ChevronRight className="w-3 h-3 hidden sm:inline" />
                   </Link>
                 </div>
               ))}
-            </div>
+            </>
           )}
         </div>
       )}
