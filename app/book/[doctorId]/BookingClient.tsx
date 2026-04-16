@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, ChevronLeft, ChevronRight, Upload } from 'lucide-react'
+import { getProfessionalTitle } from '@/lib/professional-title'
 
 type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null; professional_title?: string }
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count?: number }
@@ -299,6 +300,39 @@ export default function BookingClient({
         return
       }
 
+      // Create patient_packages if plan has multiple sessions
+      if (selectedPlan && selectedPlan.sessions_count && selectedPlan.sessions_count > 1) {
+        try {
+          const { data: packageData, error: pkgErr } = await supabase
+            .from('patient_packages')
+            .insert({
+              doctor_id: doctor.id,
+              patient_id: patientId,
+              auth_user_id: user.id,
+              plan_name: selectedPlan.name,
+              total_sessions: selectedPlan.sessions_count,
+              used_sessions: 1,
+              price_usd: selectedPlan.price_usd,
+              status: 'active'
+            })
+            .select('id')
+            .single()
+
+          if (pkgErr) {
+            console.error('[BOOKING] createPackage error:', pkgErr)
+          } else if (packageData) {
+            // Update appointment with package_id
+            await supabase
+              .from('appointments')
+              .update({ package_id: packageData.id, session_number: 1 })
+              .eq('auth_user_id', user.id)
+              .eq('scheduled_at', dateTime.toISOString())
+          }
+        } catch (err) {
+          console.error('[BOOKING] package creation failed:', err)
+        }
+      }
+
       setDone(true)
     } catch (err: any) {
       const errorMsg = err?.message || err?.error_description || 'Error: ' + JSON.stringify(err)
@@ -317,7 +351,7 @@ export default function BookingClient({
         </div>
         <h2 className="text-xl font-bold text-slate-900 mb-2">¡Cita agendada!</h2>
         <p className="text-sm text-slate-500 mb-4">
-          Tu consulta con <strong>{doctor.professional_title ?? 'Dr.'} {doctor.full_name}</strong> fue registrada para el <strong>{selectedSlot?.label}</strong> a las <strong>{selectedSlot?.time}</strong>.
+          Tu consulta con <strong>{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</strong> fue registrada para el <strong>{selectedSlot?.label}</strong> a las <strong>{selectedSlot?.time}</strong>.
         </p>
         <div className="bg-slate-50 rounded-xl p-4 text-left space-y-1.5 mb-5">
           <p className="text-xs text-slate-500"><span className="font-semibold">Paciente:</span> {form.full_name}</p>
@@ -349,7 +383,7 @@ export default function BookingClient({
                   <Activity className="w-10 h-10 text-white" />
                 )}
               </div>
-              <h1 className="text-3xl font-bold">{doctor.professional_title ?? 'Dr.'} {doctor.full_name}</h1>
+              <h1 className="text-3xl font-bold">{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</h1>
               <p className="text-base text-white/80 mt-1">{doctor.specialty || 'Médico especialista'}</p>
             </div>
 

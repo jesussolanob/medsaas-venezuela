@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { getProfessionalTitle } from '@/lib/professional-title'
 import {
   User, Users2, Shield, Plus, X, CheckCircle, ToggleLeft, ToggleRight,
   Link2, Copy, Check, ExternalLink, Save as SaveIcon, Camera, Loader2,

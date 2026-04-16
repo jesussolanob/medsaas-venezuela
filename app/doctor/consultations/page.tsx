@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type Consultation = {
@@ -22,6 +22,9 @@ type Patient = {
   id: string
   full_name: string
   phone: string | null
+  blood_type?: string | null
+  allergies?: string | null
+  chronic_conditions?: string | null
 }
 
 type Medication = {
@@ -84,10 +87,10 @@ export default function ConsultationsPage() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       try {
-        // Cargar pacientes
+        // Cargar pacientes con datos médicos
         const { data: patientsData } = await supabase
           .from('patients')
-          .select('id, full_name, phone')
+          .select('id, full_name, phone, blood_type, allergies, chronic_conditions')
           .eq('doctor_id', user.id)
         setPatients(patientsData ?? [])
 
@@ -317,6 +320,42 @@ export default function ConsultationsPage() {
               </div>
             </div>
           </div>
+
+          {/* Patient Medical Info Card */}
+          {patients.find(p => p.id === selected.patient_id) && (() => {
+            const patientData = patients.find(p => p.id === selected.patient_id)
+            const hasInfo = patientData && (patientData.blood_type || patientData.allergies || patientData.chronic_conditions)
+            return hasInfo ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <Heart className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Información médica relevante del paciente</p>
+                    <div className="space-y-1.5">
+                      {patientData.blood_type && (
+                        <div className="flex items-center gap-2 text-xs text-amber-800">
+                          <Droplet className="w-3 h-3 shrink-0" />
+                          <span><strong>Tipo de sangre:</strong> {patientData.blood_type}</span>
+                        </div>
+                      )}
+                      {patientData.allergies && (
+                        <div className="flex items-start gap-2 text-xs text-amber-800">
+                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                          <span><strong>Alergias:</strong> {patientData.allergies}</span>
+                        </div>
+                      )}
+                      {patientData.chronic_conditions && (
+                        <div className="flex items-start gap-2 text-xs text-amber-800">
+                          <Clock className="w-3 h-3 shrink-0 mt-0.5" />
+                          <span><strong>Condiciones crónicas:</strong> {patientData.chronic_conditions}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null
+          })()}
 
           {/* Action Buttons */}
           <div className="flex gap-3">

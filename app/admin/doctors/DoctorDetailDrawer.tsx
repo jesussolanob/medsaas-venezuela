@@ -7,12 +7,14 @@ interface DoctorDetailDrawerProps {
   doctor: any
   isOpen: boolean
   onClose: () => void
+  onDoctorUpdated?: () => void
 }
 
-export default function DoctorDetailDrawer({ doctor, isOpen, onClose }: DoctorDetailDrawerProps) {
+export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUpdated }: DoctorDetailDrawerProps) {
   const [details, setDetails] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [suspending, setSuspending] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -80,6 +82,37 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose }: DoctorDe
 
     loadDetails()
   }, [isOpen, doctor?.id])
+
+  const handleToggleStatus = async () => {
+    if (!details?.profile) return
+
+    try {
+      setSuspending(true)
+      const newStatus = !details.profile.is_active
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_active: newStatus })
+        .eq('id', details.profile.id)
+
+      if (error) throw error
+
+      setDetails({
+        ...details,
+        profile: {
+          ...details.profile,
+          is_active: newStatus,
+        },
+      })
+
+      onDoctorUpdated?.()
+    } catch (err) {
+      console.error('Error updating doctor status:', err)
+      setError('Error al actualizar el estado')
+    } finally {
+      setSuspending(false)
+    }
+  }
 
   if (!isOpen) return null
 
@@ -233,8 +266,12 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose }: DoctorDe
         {/* Actions */}
         {!loading && (
           <div className="border-t border-slate-200 p-6 space-y-2">
-            <button className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors">
-              {profile?.is_active ? 'Suspender' : 'Activar'}
+            <button
+              onClick={handleToggleStatus}
+              disabled={suspending}
+              className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 disabled:opacity-60 transition-colors"
+            >
+              {suspending ? 'Actualizando...' : (profile?.is_active ? 'Suspender' : 'Activar')}
             </button>
             <button className="w-full bg-slate-100 text-slate-700 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
               Cambiar a PRO

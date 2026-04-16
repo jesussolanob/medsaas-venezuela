@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from 'react'
 import {
   Settings, Shield, Bell, Database, Save,
   CreditCard, Plus, Trash2, CheckCircle2,
-  XCircle, Loader2, Eye, ExternalLink, AlertCircle, Banknote,
+  Loader2, Banknote,
 } from 'lucide-react'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -18,26 +18,6 @@ type PaymentAccount = {
   rif: string
   notes: string
 }
-
-type PendingPayment = {
-  id: string
-  doctor_id: string
-  doctor_name: string
-  doctor_email: string
-  plan: string
-  amount_usd: number
-  payment_method: string
-  receipt_url: string | null
-  submitted_at: string
-  status: string
-}
-
-// ─── Mock data para preview (se reemplaza con Supabase queries) ───────────────
-
-const MOCK_PENDING: PendingPayment[] = [
-  { id: '1', doctor_id: 'abc', doctor_name: 'Dr. José Rodríguez', doctor_email: 'jose@gmail.com', plan: 'pro', amount_usd: 20, payment_method: 'pago_movil', receipt_url: null, submitted_at: new Date().toISOString(), status: 'pending' },
-  { id: '2', doctor_id: 'def', doctor_name: 'Dra. Laura Pérez', doctor_email: 'laura@gmail.com', plan: 'pro', amount_usd: 20, payment_method: 'bank_transfer', receipt_url: null, submitted_at: new Date(Date.now() - 3600000).toISOString(), status: 'pending' },
-]
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -76,11 +56,6 @@ export default function SettingsPage() {
   })
   const [savingAccount, setSavingAccount] = useState(false)
 
-  // Pagos pendientes
-  const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>(MOCK_PENDING)
-  const [approvingId, setApprovingId] = useState<string | null>(null)
-  const [receiptModal, setReceiptModal] = useState<string | null>(null)
-
   function addAccount() {
     if (!newAccount.account_holder) return
     setSavingAccount(true)
@@ -94,27 +69,6 @@ export default function SettingsPage() {
 
   function removeAccount(id: string) {
     setAccounts(prev => prev.filter(a => a.id !== id))
-  }
-
-  function handleApprove(paymentId: string) {
-    setApprovingId(paymentId)
-    // En producción: llamar a Server Action que activa la suscripción
-    setTimeout(() => {
-      setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
-      setApprovingId(null)
-    }, 1000)
-  }
-
-  function handleReject(paymentId: string) {
-    setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
-  }
-
-  const timeAgo = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime()
-    const h = Math.floor(diff / 3600000)
-    if (h < 1) return 'Hace menos de 1 hora'
-    if (h < 24) return `Hace ${h} hora${h > 1 ? 's' : ''}`
-    return `Hace ${Math.floor(h / 24)} día(s)`
   }
 
   return (
@@ -357,113 +311,6 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* ── Solicitudes de Pago Pendientes ── */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
-              <CreditCard className="w-4 h-4 text-amber-600" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-slate-900">Aprobaciones Pendientes</h3>
-              <p className="text-xs text-slate-400">Médicos que pagaron el Plan Pro y esperan activación</p>
-            </div>
-          </div>
-          {pendingPayments.length > 0 && (
-            <span className="text-xs font-bold text-white bg-amber-500 w-6 h-6 rounded-full flex items-center justify-center shrink-0">
-              {pendingPayments.length}
-            </span>
-          )}
-        </div>
-
-        {pendingPayments.length === 0 ? (
-          <div className="text-center py-6 sm:py-8">
-            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-              <CheckCircle2 className="w-5 h-5 text-slate-400" />
-            </div>
-            <p className="text-sm text-slate-400">No hay solicitudes pendientes</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {pendingPayments.map(payment => (
-              <div key={payment.id} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-3 sm:p-4 bg-amber-50/50 rounded-xl border border-amber-100">
-                <div className="space-y-1.5 min-w-0 flex-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                      {payment.doctor_name.split(' ').slice(0, 2).map(n => n[0]).join('')}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{payment.doctor_name}</p>
-                      <p className="text-xs text-slate-400 truncate">{payment.doctor_email}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full capitalize whitespace-nowrap">
-                      {ACCOUNT_TYPE_LABELS[payment.payment_method] ?? payment.payment_method}
-                    </span>
-                    <span className="text-xs font-bold text-emerald-600 whitespace-nowrap">${payment.amount_usd} USD</span>
-                    <span className="text-xs text-slate-400">{timeAgo(payment.submitted_at)}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
-                  {payment.receipt_url && (
-                    <button
-                      onClick={() => setReceiptModal(payment.receipt_url)}
-                      className="flex items-center justify-center sm:justify-start gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-teal-300 transition-colors bg-white whitespace-nowrap"
-                    >
-                      <Eye className="w-3.5 h-3.5" /> Ver comprobante
-                    </button>
-                  )}
-                  {!payment.receipt_url && (
-                    <span className="flex items-center justify-center gap-1 text-xs text-slate-400">
-                      <AlertCircle className="w-3.5 h-3.5" /> Sin comprobante
-                    </span>
-                  )}
-                  <button
-                    onClick={() => handleReject(payment.id)}
-                    className="flex items-center justify-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors whitespace-nowrap"
-                  >
-                    <XCircle className="w-3.5 h-3.5" /> Rechazar
-                  </button>
-                  <button
-                    onClick={() => handleApprove(payment.id)}
-                    disabled={approvingId === payment.id}
-                    className="flex items-center justify-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap"
-                  >
-                    {approvingId === payment.id ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" />Activando...</>
-                    ) : (
-                      <><CheckCircle2 className="w-3.5 h-3.5" />Aprobar</>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Modal comprobante */}
-      {receiptModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setReceiptModal(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 flex-shrink-0">
-              <h4 className="text-sm font-semibold text-slate-900">Comprobante de pago</h4>
-              <button onClick={() => setReceiptModal(null)} className="text-slate-400 hover:text-slate-700">✕</button>
-            </div>
-            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={receiptModal} alt="Comprobante" className="w-full rounded-xl" />
-            </div>
-            <div className="px-4 sm:px-5 py-3 border-t border-slate-100 flex justify-end flex-shrink-0">
-              <a href={receiptModal} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-teal-600 font-semibold hover:text-teal-700">
-                <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

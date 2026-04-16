@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useTransition, useRef, useEffect, Suspense } from 'react'
+import { getProfessionalTitle } from '@/lib/professional-title'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {

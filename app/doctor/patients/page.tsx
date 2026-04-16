@@ -4,9 +4,15 @@ import { useState, useEffect, useTransition } from 'react'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X, ChevronRight,
   ArrowLeft, Save, CheckCircle, Clock, AlertCircle, MessageCircle,
-  Filter, User, Edit3, Hash
+  Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon
 } from 'lucide-react'
 import { getPatients, addPatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
+import { createClient } from '@/lib/supabase/client'
+
+interface PatientPackageInfo {
+  patientId: string
+  pendingSessions: number
+}
 
 const PAYMENT_STATUS = {
   unpaid: { label: 'Sin pagar', color: 'bg-slate-100 text-slate-600', icon: <AlertCircle className="w-3 h-3" /> },
@@ -38,14 +44,43 @@ export default function PatientsPage() {
   const [newConsult, setNewConsult] = useState<{ chief_complaint: string; notes: string; diagnosis: string; treatment: string; payment_status: 'unpaid' | 'pending_approval' | 'approved' }>({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid' })
   const [consultError, setConsultError] = useState('')
   const [consultSuccess, setConsultSuccess] = useState('')
+  const [packageInfo, setPackageInfo] = useState<Record<string, PatientPackageInfo>>({})
 
   useEffect(() => {
     getDoctorId().then(id => {
       if (!id) return
       setDoctorId(id)
       getPatients(id).then(p => { setPatients(p); setLoading(false) })
+
+      // Load package info
+      loadPackageInfo(id)
     })
   }, [])
+
+  async function loadPackageInfo(docId: string) {
+    try {
+      const supabase = createClient()
+      const { data: pkgs } = await supabase
+        .from('patient_packages')
+        .select('patient_id, total_sessions, used_sessions')
+        .eq('doctor_id', docId)
+        .eq('status', 'active')
+
+      const pkgMap: Record<string, PatientPackageInfo> = {}
+      if (pkgs) {
+        pkgs.forEach(pkg => {
+          const pending = pkg.total_sessions - pkg.used_sessions
+          pkgMap[pkg.patient_id] = {
+            patientId: pkg.patient_id,
+            pendingSessions: pending
+          }
+        })
+      }
+      setPackageInfo(pkgMap)
+    } catch (err) {
+      console.error('Error loading package info:', err)
+    }
+  }
 
   function openPatient(p: Patient) {
     setSelected(p)
@@ -169,7 +204,9 @@ export default function PatientsPage() {
             </div>
           ) : (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              {filtered.map((p, i) => (
+              {filtered.map((p, i) => {
+                const pkg = packageInfo[p.id]
+                return (
                 <button key={p.id} onClick={() => openPatient(p)} className={`w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors text-left ${i < filtered.length - 1 ? 'border-b border-slate-100' : ''}`}>
                   <div className="w-9 h-9 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
                     <span className="text-teal-600 font-bold text-sm">{p.full_name.charAt(0).toUpperCase()}</span>
@@ -180,6 +217,12 @@ export default function PatientsPage() {
                       {p.source && p.source !== 'manual' && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-600">{SOURCE_LABELS[p.source] ?? p.source}</span>
                       )}
+                      {pkg && pkg.pendingSessions > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 shrink-0">
+                          <Zap className="w-2.5 h-2.5" />
+                          {pkg.pendingSessions} cita{pkg.pendingSessions !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
                       {p.phone && <span className="text-xs text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3" />{p.phone}</span>}
@@ -189,7 +232,9 @@ export default function PatientsPage() {
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                 </button>
-              ))}
+              )
+              })}
+
             </div>
           )}
         </div>
@@ -204,29 +249,126 @@ export default function PatientsPage() {
             </button>
           </div>
 
-          {/* Patient card */}
-          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
-                <span className="text-teal-600 font-bold text-lg">{selected.full_name.charAt(0).toUpperCase()}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-bold text-slate-900 break-words">{selected.full_name}</h2>
-                <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4 mt-2 text-sm text-slate-500">
-                  {selected.age && <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{selected.age} años · {selected.sex === 'female' ? 'Femenino' : selected.sex === 'male' ? 'Masculino' : ''}</span>}
-                  {selected.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{selected.phone}</span>}
-                  {selected.email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{selected.email}</span>}
-                  {selected.cedula && <span className="flex items-center gap-1"><Hash className="w-3.5 h-3.5" />{selected.cedula}</span>}
+          {/* Patient card with profile info */}
+          <div className="space-y-4">
+            {/* Main patient header */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start gap-4">
+                <div className="w-16 h-16 rounded-xl bg-teal-50 flex items-center justify-center shrink-0 overflow-hidden">
+                  {selected.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={selected.avatar_url} alt={selected.full_name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-teal-600 font-bold text-2xl">{selected.full_name.charAt(0).toUpperCase()}</span>
+                  )}
                 </div>
-                {selected.notes && <p className="text-sm text-slate-400 mt-2 italic">{selected.notes}</p>}
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-bold text-slate-900 break-words">{selected.full_name}</h2>
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4 mt-2 text-sm text-slate-500">
+                    {selected.age && <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{selected.age} años · {selected.sex === 'female' ? 'Femenino' : selected.sex === 'male' ? 'Masculino' : ''}</span>}
+                    {selected.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{selected.phone}</span>}
+                    {selected.email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{selected.email}</span>}
+                    {selected.cedula && <span className="flex items-center gap-1"><Hash className="w-3.5 h-3.5" />{selected.cedula}</span>}
+                  </div>
+                  {selected.notes && <p className="text-sm text-slate-400 mt-2 italic">{selected.notes}</p>}
+                </div>
+                <button
+                  onClick={() => { setView('new-consultation'); setConsultSuccess(''); setConsultError('') }}
+                  className="g-bg flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 sm:whitespace-nowrap shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
+                </button>
               </div>
-              <button
-                onClick={() => { setView('new-consultation'); setConsultSuccess(''); setConsultError('') }}
-                className="g-bg flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 sm:whitespace-nowrap shrink-0"
-              >
-                <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
-              </button>
             </div>
+
+            {/* Personal data section */}
+            {(selected.birth_date || selected.address || selected.city) && (
+              <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <UserCheck className="w-4 h-4 text-slate-600" />
+                  <h3 className="text-sm font-semibold text-slate-700">Datos personales</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {selected.birth_date && (
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium uppercase mb-1">Fecha de nacimiento</p>
+                      <p className="text-sm text-slate-800">{new Date(selected.birth_date).toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    </div>
+                  )}
+                  {selected.address && (
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium uppercase mb-1">Dirección</p>
+                      <p className="text-sm text-slate-800">{selected.address}</p>
+                    </div>
+                  )}
+                  {selected.city && (
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium uppercase mb-1">Ciudad</p>
+                      <p className="text-sm text-slate-800">{selected.city}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Medical data section */}
+            {(selected.blood_type || selected.allergies || selected.chronic_conditions) && (
+              <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Heart className="w-4 h-4 text-red-500" />
+                  <h3 className="text-sm font-semibold text-slate-700">Datos médicos</h3>
+                </div>
+                <div className="space-y-3">
+                  {selected.blood_type && (
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Droplet className="w-4 h-4 text-red-400" />
+                        <div>
+                          <p className="text-xs text-slate-500 font-medium uppercase">Tipo de sangre</p>
+                          <p className="text-sm font-semibold text-slate-800">{selected.blood_type}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {selected.allergies && (
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-xs text-slate-500 font-medium uppercase mb-1">Alergias</p>
+                        <p className="text-sm text-slate-800">{selected.allergies}</p>
+                      </div>
+                    </div>
+                  )}
+                  {selected.chronic_conditions && (
+                    <div className="flex items-start gap-2">
+                      <Clock className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-xs text-slate-500 font-medium uppercase mb-1">Condiciones crónicas</p>
+                        <p className="text-sm text-slate-800">{selected.chronic_conditions}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Emergency contact section */}
+            {(selected.emergency_contact_name || selected.emergency_contact_phone) && (
+              <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertCircle className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-slate-700">Contacto de emergencia</h3>
+                </div>
+                <div className="space-y-2">
+                  {selected.emergency_contact_name && (
+                    <p className="text-sm text-slate-800"><span className="font-medium">Nombre:</span> {selected.emergency_contact_name}</p>
+                  )}
+                  {selected.emergency_contact_phone && (
+                    <p className="text-sm text-slate-800 flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-500" /><span className="font-medium">Teléfono:</span> {selected.emergency_contact_phone}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Consultations */}

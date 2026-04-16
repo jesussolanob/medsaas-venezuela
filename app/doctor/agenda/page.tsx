@@ -334,7 +334,7 @@ export default function AgendaPage() {
                     const isToday = date.toDateString() === today.toDateString()
                     const dayAppts = getApptsByDate(date)
                     return (
-                      <div key={idx} className={`rounded-lg sm:rounded-xl border p-2 sm:p-3 min-h-[100px] sm:min-h-[120px] shrink-0 ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
+                      <button key={idx} onClick={() => { setCalView('day'); setSelectedDate(date) }} className={`rounded-lg sm:rounded-xl border p-2 sm:p-3 min-h-[100px] sm:min-h-[120px] shrink-0 cursor-pointer hover:text-teal-600 hover:underline transition-colors text-left ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
                         <div className="mb-2">
                           <p className={`text-xs font-semibold ${isToday ? 'text-teal-600' : 'text-slate-400'}`}>{DAYS_SHORT[idx]}</p>
                           <p className={`text-lg font-bold ${isToday ? 'text-teal-700' : 'text-slate-800'}`}>{date.getDate()}</p>
@@ -346,7 +346,7 @@ export default function AgendaPage() {
                           </div>
                         ))}
                         {dayAppts.length === 0 && <p className="text-xs text-slate-300 mt-1">Sin citas</p>}
-                      </div>
+                      </button>
                     )
                   })}
                 </div>

@@ -25,6 +25,9 @@ function isPathActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + '/')
 }
 
+// Public routes that don't need auth or sidebar
+const publicRoutes = ['/patient/login', '/patient/register']
+
 export default function PatientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -32,8 +35,15 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   const [user, setUser] = useState<any>(null)
   const [doctorName, setDoctorName] = useState('')
   const [loading, setLoading] = useState(true)
+  const isPublicRoute = publicRoutes.some(r => pathname.startsWith(r))
 
   useEffect(() => {
+    // Skip auth check for public routes
+    if (isPublicRoute) {
+      setLoading(false)
+      return
+    }
+
     const checkAuth = async () => {
       try {
         const supabase = createClient()
@@ -51,16 +61,15 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           .from('patients')
           .select('id')
           .eq('auth_user_id', authUser.id)
-          .single()
+          .maybeSingle()
 
         if (patients?.id) {
-          // Get first doctor's name for display
           const { data: appointments } = await supabase
             .from('appointments')
             .select('doctor_id')
             .eq('auth_user_id', authUser.id)
             .limit(1)
-            .single()
+            .maybeSingle()
 
           if (appointments?.doctor_id) {
             const { data: doctor } = await supabase
@@ -83,7 +92,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
     }
 
     checkAuth()
-  }, [router])
+  }, [router, isPublicRoute])
 
   async function handleLogout() {
     const supabase = createClient()
@@ -160,6 +169,11 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
       </div>
     </>
   )
+
+  // Public routes: render just children, no sidebar
+  if (isPublicRoute) {
+    return <>{children}</>
+  }
 
   if (loading) {
     return (

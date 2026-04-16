@@ -17,6 +17,15 @@ export type Patient = {
   sex: string | null
   notes: string | null
   source: string | null          // 'manual' | 'invitation' | 'whatsapp'
+  birth_date?: string | null
+  address?: string | null
+  city?: string | null
+  blood_type?: string | null
+  allergies?: string | null
+  chronic_conditions?: string | null
+  emergency_contact_name?: string | null
+  emergency_contact_phone?: string | null
+  avatar_url?: string | null
   created_at: string
 }
 

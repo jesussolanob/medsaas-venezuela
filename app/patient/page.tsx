@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Calendar, FileText, MessageCircle, ArrowRight
+  Calendar, FileText, MessageCircle, ArrowRight, Zap
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -20,6 +20,14 @@ interface Patient {
   full_name: string
 }
 
+interface PatientPackage {
+  id: string
+  plan_name: string
+  total_sessions: number
+  used_sessions: number
+  doctor_id: string
+}
+
 export default function PatientHome() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
@@ -27,6 +35,7 @@ export default function PatientHome() {
   const [nextAppointment, setNextAppointment] = useState<Appointment | null>(null)
   const [totalAppointments, setTotalAppointments] = useState(0)
   const [unreadMessages, setUnreadMessages] = useState(0)
+  const [packages, setPackages] = useState<PatientPackage[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -88,6 +97,15 @@ export default function PatientHome() {
             setUnreadMessages(msgCount || 0)
           }
         }
+
+        // Get active patient packages
+        const { data: pkgData } = await supabase
+          .from('patient_packages')
+          .select('id, plan_name, total_sessions, used_sessions, doctor_id')
+          .eq('auth_user_id', authUser.id)
+          .eq('status', 'active')
+
+        if (pkgData) setPackages(pkgData as PatientPackage[])
 
         setLoading(false)
       } catch (err) {
@@ -191,6 +209,43 @@ export default function PatientHome() {
           </div>
         </Link>
       </div>
+
+      {/* Active Packages */}
+      {packages.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-violet-500" />
+            Paquetes activos
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
+            {packages.map((pkg) => {
+              const remaining = pkg.total_sessions - pkg.used_sessions
+              const percentage = (pkg.used_sessions / pkg.total_sessions) * 100
+              return (
+                <div key={pkg.id} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-violet-300 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1 flex-1">
+                      <p className="text-xs font-semibold text-slate-500 uppercase">{pkg.plan_name}</p>
+                      <p className="text-sm font-semibold text-slate-900">Te quedan {remaining} {remaining === 1 ? 'cita' : 'citas'}</p>
+                    </div>
+                    <div className="px-3 py-1 rounded-full bg-violet-50 text-xs font-bold text-violet-600">
+                      {pkg.used_sessions}/{pkg.total_sessions}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="w-full bg-slate-200 rounded-full h-2">
+                      <div className="bg-violet-500 h-2 rounded-full transition-all" style={{ width: `${percentage}%` }}></div>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {pkg.used_sessions} de {pkg.total_sessions} usadas
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-6">

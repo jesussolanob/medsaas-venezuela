@@ -11,21 +11,22 @@ export default function DoctorsPage() {
   const [selectedDoctor, setSelectedDoctor] = useState<any>(null)
   const supabase = createClient()
 
-  useEffect(() => {
-    async function loadDoctors() {
-      try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*, subscriptions(plan, status)')
-          .eq('role', 'doctor')
-          .order('created_at', { ascending: false })
-        setDoctors(data || [])
-      } catch (err) {
-        console.error('Error loading doctors:', err)
-      } finally {
-        setLoading(false)
-      }
+  const loadDoctors = async () => {
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*, subscriptions(plan, status)')
+        .eq('role', 'doctor')
+        .order('created_at', { ascending: false })
+      setDoctors(data || [])
+    } catch (err) {
+      console.error('Error loading doctors:', err)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     loadDoctors()
   }, [])
 
@@ -129,6 +130,7 @@ export default function DoctorsPage() {
         doctor={selectedDoctor}
         isOpen={selectedDoctor !== null}
         onClose={() => setSelectedDoctor(null)}
+        onDoctorUpdated={loadDoctors}
       />
     </>
   )
