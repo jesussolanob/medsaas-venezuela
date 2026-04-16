@@ -31,36 +31,38 @@ export default function DoctorsPage() {
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">Médicos</h2>
-            <p className="text-slate-500 text-sm mt-1">{doctors?.length ?? 0} médicos registrados</p>
+            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Médicos</h2>
+            <p className="text-slate-500 text-xs sm:text-sm mt-1">{doctors?.length ?? 0} médicos registrados</p>
           </div>
-          <NewDoctorModal />
+          <div className="flex-shrink-0">
+            <NewDoctorModal />
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto -mx-4 sm:mx-0 sm:overflow-hidden">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Médico</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Especialidad</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Plan</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Estado</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
+                <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Médico</th>
+                <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Especialidad</th>
+                <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Plan</th>
+                <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden md:table-cell">Estado</th>
+                <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400 text-sm">
+                  <td colSpan={5} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                     Cargando médicos...
                   </td>
                 </tr>
               ) : !doctors || doctors.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-16 text-center">
+                  <td colSpan={5} className="px-4 sm:px-6 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
                         <UserCheck className="w-6 h-6 text-slate-400" />
@@ -73,24 +75,24 @@ export default function DoctorsPage() {
               ) : (
                 doctors.map((doctor) => (
                   <tr key={doctor.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-medium text-sm">
+                    <td className="px-4 sm:px-6 py-4">
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-medium text-xs sm:text-sm flex-shrink-0">
                           {doctor.full_name?.charAt(0) ?? '?'}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{doctor.full_name}</p>
-                          <p className="text-xs text-slate-400">{doctor.email}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{doctor.full_name}</p>
+                          <p className="text-xs text-slate-400 truncate">{doctor.email}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{doctor.specialty ?? '—'}</td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full capitalize">
+                    <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600 hidden sm:table-cell">{doctor.specialty ?? '—'}</td>
+                    <td className="px-4 sm:px-6 py-4">
+                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full capitalize whitespace-nowrap">
                         {doctor.subscriptions?.[0]?.plan ?? 'Sin plan'}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
                       {doctor.is_active ? (
                         <span className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full w-fit">
                           <UserCheck className="w-3 h-3" /> Activo
@@ -101,16 +103,16 @@ export default function DoctorsPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
+                    <td className="px-4 sm:px-6 py-4">
+                      <div className="flex items-center gap-1 sm:gap-2">
                         <button
                           onClick={() => setSelectedDoctor(doctor)}
                           className="text-xs text-teal-600 hover:text-teal-700 font-medium"
                         >
                           Ver
                         </button>
-                        <span className="text-slate-200">|</span>
-                        <button className="text-xs text-slate-400 hover:text-red-500 font-medium">
+                        <span className="text-slate-200 hidden sm:inline">|</span>
+                        <button className="text-xs text-slate-400 hover:text-red-500 font-medium hidden sm:block">
                           {doctor.is_active ? 'Suspender' : 'Activar'}
                         </button>
                       </div>

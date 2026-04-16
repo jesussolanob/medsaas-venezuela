@@ -113,18 +113,18 @@ export default function PatientHome() {
   const firstName = patient?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Paciente'
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Welcome banner */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 space-y-2">
-        <h2 className="text-2xl font-bold text-slate-900">Hola, {firstName}</h2>
-        <p className="text-slate-600">Bienvenido a tu portal de paciente. Aquí puedes ver tus citas, recetas y mensajes.</p>
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 lg:p-8 space-y-2">
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Hola, {firstName}</h2>
+        <p className="text-sm sm:text-base text-slate-600">Bienvenido a tu portal de paciente. Aquí puedes ver tus citas, recetas y mensajes.</p>
       </div>
 
       {/* Summary cards */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
         {/* Next appointment */}
         <Link href="/patient/appointments">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase">Próxima cita</p>
@@ -157,7 +157,7 @@ export default function PatientHome() {
 
         {/* Total appointments */}
         <Link href="/patient/appointments">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase">Total de citas</p>
@@ -175,7 +175,7 @@ export default function PatientHome() {
 
         {/* Unread messages */}
         <Link href="/patient/messages">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase">Mensajes</p>
@@ -193,9 +193,9 @@ export default function PatientHome() {
       </div>
 
       {/* Quick links */}
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
         <Link href="/patient/reports">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3 hover:border-teal-300 transition-colors cursor-pointer">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-3 hover:border-teal-300 transition-colors cursor-pointer">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-orange-50">
                 <FileText className="w-5 h-5 text-orange-600" />
@@ -209,7 +209,7 @@ export default function PatientHome() {
         </Link>
 
         <Link href="/patient/profile">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3 hover:border-teal-300 transition-colors cursor-pointer">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-3 hover:border-teal-300 transition-colors cursor-pointer">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-indigo-50">
                 <Calendar className="w-5 h-5 text-indigo-600" />

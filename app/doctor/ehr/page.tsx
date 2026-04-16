@@ -179,26 +179,26 @@ export default function EHRPage() {
             </button>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div className="w-12 h-12 rounded-full g-bg flex items-center justify-center text-white font-bold text-lg shrink-0">
               {selectedPatient.full_name.charAt(0).toUpperCase()}
             </div>
-            <div>
-              <p className="font-bold text-slate-900">{selectedPatient.full_name}</p>
-              <div className="flex items-center gap-3 mt-0.5">
-                {selectedPatient.age && <span className="text-xs text-slate-400">{selectedPatient.age} años</span>}
-                {selectedPatient.sex && <span className="text-xs text-slate-400 capitalize">{selectedPatient.sex === 'male' ? 'Masculino' : 'Femenino'}</span>}
-                {selectedPatient.phone && <span className="text-xs text-slate-400">{selectedPatient.phone}</span>}
+            <div className="flex-1">
+              <p className="font-bold text-slate-900 break-words">{selectedPatient.full_name}</p>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-0.5 text-xs text-slate-400">
+                {selectedPatient.age && <span>{selectedPatient.age} años</span>}
+                {selectedPatient.sex && <><span className="hidden sm:inline">·</span><span className="capitalize">{selectedPatient.sex === 'male' ? 'Masculino' : 'Femenino'}</span></>}
+                {selectedPatient.phone && <><span className="hidden sm:inline">·</span><span>{selectedPatient.phone}</span></>}
               </div>
             </div>
-            <div className="ml-auto text-right">
+            <div className="text-right shrink-0">
               <p className="text-2xl font-bold text-teal-600">{consultations.length}</p>
               <p className="text-xs text-slate-400">consultas</p>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-wrap">
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-wrap overflow-x-auto">
             {(['consultations', 'reports', 'prescriptions', 'photos'] as EHRTab[]).map(tab => {
               const labels: Record<EHRTab, string> = {
                 consultations: 'Consultas',
@@ -210,7 +210,7 @@ export default function EHRPage() {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${activeTab === tab ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${activeTab === tab ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   {labels[tab]}
                 </button>
@@ -308,11 +308,11 @@ export default function EHRPage() {
     <>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
 
-      <div className="max-w-2xl space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Historial Clínico</h1>
-            <p className="text-sm text-slate-500">Consulta el expediente médico de tus pacientes</p>
+      <div className="max-w-4xl space-y-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Historial Clínico</h1>
+            <p className="text-sm text-slate-500 mt-1">Consulta el expediente médico de tus pacientes</p>
           </div>
         </div>
 

@@ -118,17 +118,17 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-5xl px-4 sm:px-0">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Configuración</h2>
-        <p className="text-slate-400 text-sm mt-1">Ajustes generales de la plataforma</p>
+        <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Configuración</h2>
+        <p className="text-slate-400 text-xs sm:text-sm mt-1">Ajustes generales de la plataforma</p>
       </div>
 
       {/* ── Fila superior: General + Seguridad ── */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
 
         {/* General */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-3">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0"><Settings className="w-4 h-4 text-teal-600" /></div>
             <h3 className="text-sm font-semibold text-slate-900">General</h3>
@@ -156,12 +156,12 @@ export default function SettingsPage() {
         </div>
 
         {/* Seguridad */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-3">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0"><Shield className="w-4 h-4 text-blue-600" /></div>
             <h3 className="text-sm font-semibold text-slate-900">Seguridad</h3>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             {[
               { label: 'Autenticación 2FA', desc: 'Requerida para todos los médicos', val: twoFA, set: () => setTwoFA(!twoFA) },
               { label: 'RLS activado', desc: 'Aislamiento de datos por tenant', val: rls, set: () => setRls(!rls) },
@@ -176,12 +176,12 @@ export default function SettingsPage() {
         </div>
 
         {/* Recordatorios */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-3">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0"><Bell className="w-4 h-4 text-amber-600" /></div>
             <h3 className="text-sm font-semibold text-slate-900">Recordatorios globales</h3>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             {[
               { label: '7 días antes', desc: 'Recordatorio temprano', val: rem7d, set: () => setRem7d(!rem7d) },
               { label: '24 horas antes', desc: 'Mayor tasa de confirmación', val: rem24h, set: () => setRem24h(!rem24h) },
@@ -197,12 +197,12 @@ export default function SettingsPage() {
         </div>
 
         {/* Base de datos */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-3">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center shrink-0"><Database className="w-4 h-4 text-violet-600" /></div>
             <h3 className="text-sm font-semibold text-slate-900">Base de datos</h3>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             {[
               { label: 'Tablas creadas', val: '12' },
               { label: 'RLS policies', val: <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full font-medium">Activas</span> },
@@ -220,20 +220,20 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Cuentas de Cobro ── */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-3">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-3 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
               <Banknote className="w-4 h-4 text-teal-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold text-slate-900">Cuentas de Cobro</h3>
-              <p className="text-xs text-slate-400">Los médicos verán estas cuentas al registrarse con Plan Pro</p>
+              <p className="text-xs text-slate-400 truncate">Los médicos verán estas cuentas al registrarse con Plan Pro</p>
             </div>
           </div>
           <button
             onClick={() => setShowAddAccount(!showAddAccount)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors"
+            className="flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap shrink-0"
           >
             <Plus className="w-3.5 h-3.5" /> Agregar cuenta
           </button>
@@ -251,18 +251,18 @@ export default function SettingsPage() {
         )}
 
         {accounts.map(acc => (
-          <div key={acc.id} className="flex items-start justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">{ACCOUNT_TYPE_LABELS[acc.type] ?? acc.type}</span>
+          <div key={acc.id} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="space-y-1 min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full whitespace-nowrap">{ACCOUNT_TYPE_LABELS[acc.type] ?? acc.type}</span>
                 {acc.bank_name && <span className="text-xs text-slate-500">{acc.bank_name}</span>}
               </div>
-              <p className="text-sm font-semibold text-slate-800">{acc.account_holder}</p>
-              {acc.phone && <p className="text-xs text-slate-500 font-mono">{acc.phone}</p>}
+              <p className="text-sm font-semibold text-slate-800 truncate">{acc.account_holder}</p>
+              {acc.phone && <p className="text-xs text-slate-500 font-mono truncate">{acc.phone}</p>}
               {acc.rif && <p className="text-xs text-slate-400">RIF/CI: {acc.rif}</p>}
               {acc.notes && <p className="text-xs text-slate-400 italic">{acc.notes}</p>}
             </div>
-            <button onClick={() => removeAccount(acc.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1">
+            <button onClick={() => removeAccount(acc.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1 shrink-0">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
@@ -270,10 +270,10 @@ export default function SettingsPage() {
 
         {/* Formulario agregar cuenta */}
         {showAddAccount && (
-          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 sm:p-5 space-y-3">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nueva cuenta</p>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="text-xs font-medium text-slate-500 block mb-1">Tipo</label>
                 <select
@@ -299,7 +299,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="text-xs font-medium text-slate-500 block mb-1">Titular <span className="text-red-400">*</span></label>
                 <input
@@ -322,7 +322,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="text-xs font-medium text-slate-500 block mb-1">RIF / Cédula</label>
                 <input
@@ -345,11 +345,11 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 pt-1">
-              <button onClick={() => setShowAddAccount(false)} className="flex-1 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+              <button onClick={() => setShowAddAccount(false)} className="py-2 px-4 text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors">
                 Cancelar
               </button>
-              <button onClick={addAccount} disabled={savingAccount || !newAccount.account_holder} className="flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium text-white bg-teal-500 hover:bg-teal-600 rounded-lg transition-colors disabled:opacity-60">
+              <button onClick={addAccount} disabled={savingAccount || !newAccount.account_holder} className="py-2 px-4 flex items-center justify-center gap-2 text-sm font-medium text-white bg-teal-500 hover:bg-teal-600 rounded-lg transition-colors disabled:opacity-60">
                 {savingAccount ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando...</> : <><Save className="w-4 h-4" />Guardar cuenta</>}
               </button>
             </div>
@@ -358,26 +358,26 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Solicitudes de Pago Pendientes ── */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-3">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
               <CreditCard className="w-4 h-4 text-amber-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold text-slate-900">Aprobaciones Pendientes</h3>
               <p className="text-xs text-slate-400">Médicos que pagaron el Plan Pro y esperan activación</p>
             </div>
           </div>
           {pendingPayments.length > 0 && (
-            <span className="text-xs font-bold text-white bg-amber-500 w-6 h-6 rounded-full flex items-center justify-center">
+            <span className="text-xs font-bold text-white bg-amber-500 w-6 h-6 rounded-full flex items-center justify-center shrink-0">
               {pendingPayments.length}
             </span>
           )}
         </div>
 
         {pendingPayments.length === 0 ? (
-          <div className="text-center py-8">
+          <div className="text-center py-6 sm:py-8">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
               <CheckCircle2 className="w-5 h-5 text-slate-400" />
             </div>
@@ -386,50 +386,50 @@ export default function SettingsPage() {
         ) : (
           <div className="space-y-3">
             {pendingPayments.map(payment => (
-              <div key={payment.id} className="flex items-start justify-between p-4 bg-amber-50/50 rounded-xl border border-amber-100">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold">
+              <div key={payment.id} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-3 sm:p-4 bg-amber-50/50 rounded-xl border border-amber-100">
+                <div className="space-y-1.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
                       {payment.doctor_name.split(' ').slice(0, 2).map(n => n[0]).join('')}
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{payment.doctor_name}</p>
-                      <p className="text-xs text-slate-400">{payment.doctor_email}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 truncate">{payment.doctor_name}</p>
+                      <p className="text-xs text-slate-400 truncate">{payment.doctor_email}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full capitalize">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full capitalize whitespace-nowrap">
                       {ACCOUNT_TYPE_LABELS[payment.payment_method] ?? payment.payment_method}
                     </span>
-                    <span className="text-xs font-bold text-emerald-600">${payment.amount_usd} USD</span>
+                    <span className="text-xs font-bold text-emerald-600 whitespace-nowrap">${payment.amount_usd} USD</span>
                     <span className="text-xs text-slate-400">{timeAgo(payment.submitted_at)}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
                   {payment.receipt_url && (
                     <button
                       onClick={() => setReceiptModal(payment.receipt_url)}
-                      className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-teal-300 transition-colors bg-white"
+                      className="flex items-center justify-center sm:justify-start gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-teal-300 transition-colors bg-white whitespace-nowrap"
                     >
                       <Eye className="w-3.5 h-3.5" /> Ver comprobante
                     </button>
                   )}
                   {!payment.receipt_url && (
-                    <span className="flex items-center gap-1 text-xs text-slate-400">
+                    <span className="flex items-center justify-center gap-1 text-xs text-slate-400">
                       <AlertCircle className="w-3.5 h-3.5" /> Sin comprobante
                     </span>
                   )}
                   <button
                     onClick={() => handleReject(payment.id)}
-                    className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                    className="flex items-center justify-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors whitespace-nowrap"
                   >
                     <XCircle className="w-3.5 h-3.5" /> Rechazar
                   </button>
                   <button
                     onClick={() => handleApprove(payment.id)}
                     disabled={approvingId === payment.id}
-                    className="flex items-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+                    className="flex items-center justify-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap"
                   >
                     {approvingId === payment.id ? (
                       <><Loader2 className="w-3.5 h-3.5 animate-spin" />Activando...</>
@@ -447,16 +447,16 @@ export default function SettingsPage() {
       {/* Modal comprobante */}
       {receiptModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setReceiptModal(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 flex-shrink-0">
               <h4 className="text-sm font-semibold text-slate-900">Comprobante de pago</h4>
               <button onClick={() => setReceiptModal(null)} className="text-slate-400 hover:text-slate-700">✕</button>
             </div>
-            <div className="p-4">
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={receiptModal} alt="Comprobante" className="w-full rounded-xl" />
             </div>
-            <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
+            <div className="px-4 sm:px-5 py-3 border-t border-slate-100 flex justify-end flex-shrink-0">
               <a href={receiptModal} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-teal-600 font-semibold hover:text-teal-700">
                 <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
               </a>

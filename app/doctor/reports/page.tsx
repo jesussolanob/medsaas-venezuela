@@ -270,14 +270,14 @@ export default function ReportsPage() {
       <div className="max-w-4xl space-y-5">
         {/* Header */}
         <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <FileBarChart className="w-5 h-5 text-teal-500" /> Reportería de Consultas
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <FileBarChart className="w-5 h-5 text-teal-500" /> <span>Reportería de Consultas</span>
           </h1>
           <p className="text-sm text-slate-500 mt-1">Exporta datos de tus consultas a CSV para análisis en Excel</p>
         </div>
 
         {/* New KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-5">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
@@ -319,7 +319,7 @@ export default function ReportsPage() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
             <div className="flex items-center justify-between mb-3">
               <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
@@ -368,7 +368,7 @@ export default function ReportsPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-2">Desde</label>
               <input
@@ -467,9 +467,8 @@ export default function ReportsPage() {
             <p className="text-slate-500 font-semibold">Sin consultas registradas</p>
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
+            <table className="w-full text-xs sm:text-sm min-w-[600px]">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="px-5 py-3 text-left font-semibold text-slate-700">ID Consulta</th>

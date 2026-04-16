@@ -101,7 +101,7 @@ export default function DoctorDashboard() {
       <div className="max-w-5xl mx-auto space-y-8">
         {/* Subscription banner */}
         {subscription && daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && (
-          <div className={`rounded-xl px-5 py-4 flex items-center gap-3 border ${daysLeft <= 3 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+          <div className={`rounded-xl px-4 sm:px-5 py-3 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 border ${daysLeft <= 3 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
             <AlertCircle className={`w-5 h-5 shrink-0 ${daysLeft <= 3 ? 'text-red-500' : 'text-amber-500'}`} />
             <div className="flex-1">
               <p className={`text-sm font-semibold ${daysLeft <= 3 ? 'text-red-700' : 'text-amber-700'}`}>
@@ -113,7 +113,7 @@ export default function DoctorDashboard() {
             </div>
             <Link
               href="/register?plan=pro"
-              className="text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-4 py-1.5 rounded-lg transition-colors"
+              className="text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 sm:px-4 py-1.5 rounded-lg transition-colors shrink-0"
             >
               Renovar
             </Link>
@@ -121,10 +121,10 @@ export default function DoctorDashboard() {
         )}
 
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+          <div className="flex-1">
             <p className="text-slate-500 text-sm">{greeting()},</p>
-            <h1 className="text-2xl font-bold text-slate-900 mt-0.5">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">
               {profile?.full_name ? `Dr. ${profile.full_name}` : 'Bienvenido'}
             </h1>
             {profile?.specialty && (
@@ -134,7 +134,7 @@ export default function DoctorDashboard() {
 
           {/* Subscription badge */}
           {subscription && (
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5">
+            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 shrink-0">
               {subscription.status === 'trial' || subscription.status === 'active' ? (
                 <CheckCircle className="w-4 h-4 text-emerald-500" />
               ) : (
@@ -169,20 +169,20 @@ export default function DoctorDashboard() {
             <p className="text-white/70 text-sm max-w-lg">
               Gestiona pacientes, agenda citas, lleva historial clínico y controla tus finanzas, todo desde un solo lugar.
             </p>
-            <div className="flex flex-wrap gap-3 mt-5">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 mt-5">
               <Link
                 href="/doctor/patients"
-                className="flex items-center gap-2 bg-white text-teal-600 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/90 transition-colors"
+                className="flex items-center justify-center sm:justify-start gap-2 bg-white text-teal-600 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/90 transition-colors"
               >
                 <Users className="w-4 h-4" />
-                Ver Pacientes
+                <span>Ver Pacientes</span>
               </Link>
               <Link
                 href="/doctor/agenda"
-                className="flex items-center gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
+                className="flex items-center justify-center sm:justify-start gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
               >
                 <Calendar className="w-4 h-4" />
-                Ver Agenda
+                <span>Ver Agenda</span>
               </Link>
             </div>
           </div>
@@ -193,7 +193,7 @@ export default function DoctorDashboard() {
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
             Acceso rápido
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {quickLinks.map((item) => (
               <Link
                 key={item.label}

@@ -199,7 +199,7 @@ export default function BillingPage() {
           </div>
 
           {/* Doc type selector with CTA buttons */}
-          <div className="no-print grid grid-cols-2 gap-3">
+          <div className="no-print grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               onClick={() => setDocType('receipt')}
               className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
@@ -228,7 +228,7 @@ export default function BillingPage() {
           {!selectedConsult && !genericMode && (
             <div className="no-print bg-white border border-slate-200 rounded-xl p-5 space-y-4">
               <p className="text-sm font-semibold text-slate-700">¿Para quién es el documento?</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button onClick={() => setGenericMode(true)}
                   className="flex items-center gap-3 p-4 border-2 border-slate-200 hover:border-teal-400 rounded-xl text-left transition-all hover:shadow-sm group">
                   <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-teal-500" /></div>
@@ -264,11 +264,11 @@ export default function BillingPage() {
           {/* Generic mode: enter patient manually */}
           {genericMode && !selectedConsult && (
             <div className="no-print bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-slate-700">Datos del destinatario</p>
-                <button onClick={() => setGenericMode(false)} className="text-xs text-slate-400 hover:text-slate-600">← Volver</button>
+                <button onClick={() => setGenericMode(false)} className="text-xs text-slate-400 hover:text-slate-600 whitespace-nowrap">← Volver</button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Nombre <span className="text-red-400">*</span></label>
                   <input value={genericPatient.name} onChange={e => setGenericPatient(p => ({ ...p, name: e.target.value }))} placeholder="Nombre completo" className={fi} />
@@ -390,16 +390,16 @@ export default function BillingPage() {
 
               {/* Edit items (no-print) */}
               <div className="no-print bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-700">Ítems del documento</p>
-                  <button onClick={addItem} className="g-bg flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:opacity-90"><Plus className="w-3.5 h-3.5" />Agregar ítem</button>
+                  <button onClick={addItem} className="g-bg flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:opacity-90 shrink-0"><Plus className="w-3.5 h-3.5" /><span>Agregar ítem</span></button>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-x-auto">
                   {items.map(item => (
-                    <div key={item.id} className="flex items-center gap-2">
-                      <input value={item.description} onChange={e => updateItem(item.id, 'description', e.target.value)} placeholder="Descripción" className={fi + ' flex-[3]'} />
-                      <input type="number" min="1" value={item.qty} onChange={e => updateItem(item.id, 'qty', parseInt(e.target.value) || 1)} className={fi + ' flex-[1] text-center'} />
-                      <input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updateItem(item.id, 'unit_price', parseFloat(e.target.value) || 0)} className={fi + ' flex-[1] text-right'} />
+                    <div key={item.id} className="flex items-center gap-1 sm:gap-2 flex-col sm:flex-row min-w-min sm:min-w-0">
+                      <input value={item.description} onChange={e => updateItem(item.id, 'description', e.target.value)} placeholder="Descripción" className={fi + ' flex-[3] min-w-[150px]'} />
+                      <input type="number" min="1" value={item.qty} onChange={e => updateItem(item.id, 'qty', parseInt(e.target.value) || 1)} className={fi + ' flex-[1] text-center w-20'} />
+                      <input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updateItem(item.id, 'unit_price', parseFloat(e.target.value) || 0)} className={fi + ' flex-[1] text-right w-20'} />
                       <span className="text-sm font-bold text-slate-600 w-20 text-right shrink-0">${(item.qty * item.unit_price).toFixed(2)}</span>
                       <button onClick={() => removeItem(item.id)} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center shrink-0 transition-colors"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
                     </div>
@@ -412,25 +412,25 @@ export default function BillingPage() {
               </div>
 
               {/* Actions */}
-              <div className="no-print flex gap-3">
+              <div className="no-print flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   onClick={() => { setSelectedConsult(null); setGenericMode(false); setGenericPatient({ name: '', phone: '', email: '' }) }}
-                  className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:shadow-lg hover:scale-[1.02] transition-all"
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:shadow-lg hover:scale-[1.02] transition-all"
                 >
-                  Cambiar destinatario
+                  <span>Cambiar destinatario</span>
                 </button>
                 <button
                   onClick={sendViaWhatsApp}
                   disabled={!effectivePatient?.phone}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 hover:shadow-lg hover:scale-[1.02] text-white rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none"
+                  className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 hover:shadow-lg hover:scale-[1.02] text-white rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:scale-100 disabled:shadow-none"
                 >
-                  <Send className="w-4 h-4" /> Enviar por WhatsApp
+                  <Send className="w-4 h-4" /> <span>Enviar por WhatsApp</span>
                 </button>
                 <button
                   onClick={printDocument}
-                  className="flex items-center gap-2 g-bg px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 hover:shadow-lg hover:scale-[1.02] ml-auto transition-all"
+                  className="flex items-center justify-center gap-2 g-bg px-4 sm:px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 hover:shadow-lg hover:scale-[1.02] transition-all sm:ml-auto"
                 >
-                  <Printer className="w-4 h-4" /> Imprimir / Guardar PDF
+                  <Printer className="w-4 h-4" /> <span>Imprimir / PDF</span>
                 </button>
               </div>
             </>
@@ -453,15 +453,15 @@ export default function BillingPage() {
 
       <div className="max-w-4xl space-y-5">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Facturación</h1>
-            <p className="text-sm text-slate-500">Genera facturas, presupuestos, informes y recetas en PDF</p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Facturación</h1>
+            <p className="text-sm text-slate-500 mt-1">Genera facturas, presupuestos, informes y recetas en PDF</p>
           </div>
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
             <div className="flex items-center justify-between mb-3">
               <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center"><Receipt className="w-5 h-5 text-teal-600" /></div>
@@ -491,7 +491,7 @@ export default function BillingPage() {
         </div>
 
         {/* CTA Buttons - Factura y Presupuesto */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <button
             onClick={() => { setDocType('receipt'); setView('new'); }}
             className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-teal-300"

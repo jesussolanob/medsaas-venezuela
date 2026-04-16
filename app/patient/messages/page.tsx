@@ -109,12 +109,12 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Mensajes</h1>
+    <div className="space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mensajes</h1>
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col h-96">
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4">
           {messages.length === 0 ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
@@ -131,13 +131,13 @@ export default function MessagesPage() {
                   className={`flex ${msg.direction === 'patient_to_doctor' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-xs px-4 py-3 rounded-2xl text-sm ${
+                    className={`max-w-xs px-3 sm:px-4 py-3 rounded-2xl text-xs sm:text-sm break-words ${
                       msg.direction === 'patient_to_doctor'
                         ? 'bg-teal-500 text-white rounded-br-sm'
                         : 'bg-slate-100 text-slate-900 rounded-bl-sm'
                     }`}
                   >
-                    <p>{msg.body}</p>
+                    <p className="break-words">{msg.body}</p>
                     <p className={`text-xs mt-1 ${
                       msg.direction === 'patient_to_doctor'
                         ? 'text-teal-100'
@@ -154,19 +154,19 @@ export default function MessagesPage() {
         </div>
 
         {/* Input */}
-        <form onSubmit={handleSendMessage} className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex gap-3">
+        <form onSubmit={handleSendMessage} className="px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-200 bg-slate-50 flex gap-2 sm:gap-3">
           <input
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Escribe tu mensaje..."
+            placeholder="Tu mensaje..."
             disabled={sending}
-            className="flex-1 px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm disabled:opacity-50"
+            className="flex-1 px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={sending || !newMessage.trim()}
-            className="px-4 py-2 rounded-xl bg-teal-500 text-white font-medium hover:bg-teal-600 disabled:opacity-50 transition-colors flex items-center gap-2"
+            className="px-3 sm:px-4 py-2 rounded-xl bg-teal-500 text-white font-medium hover:bg-teal-600 disabled:opacity-50 transition-colors flex items-center gap-2 shrink-0"
           >
             <Send className="w-4 h-4" />
             <span className="hidden sm:inline">Enviar</span>

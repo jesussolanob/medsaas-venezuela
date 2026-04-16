@@ -174,9 +174,25 @@ export default function BookingClient({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.full_name.trim() || !form.phone.trim() || !selectedSlot) return
-    setSubmitting(true)
     setError('')
+
+    if (!selectedSlot) {
+      setError('Selecciona una fecha y hora para tu cita')
+      return
+    }
+
+    if (useInsurance && !selectedInsurance) {
+      setError('Selecciona tu compañía de seguros')
+      return
+    }
+
+    if (!useInsurance && !selectedPaymentMethod) {
+      setError('Selecciona un método de pago')
+      return
+    }
+
+    setSubmitting(true)
+
     try {
       const supabase = createClient()
 
@@ -188,6 +204,11 @@ export default function BookingClient({
         return
       }
 
+      // Get patient name/phone: prefer form input, then auth metadata, then email
+      const patientName = (form.full_name.trim() || authUser?.user_metadata?.full_name || user.email?.split('@')[0] || 'Paciente').trim()
+      const patientPhone = (form.phone.trim() || authUser?.user_metadata?.phone || '').trim()
+      const patientCedula = (form.cedula.trim() || authUser?.user_metadata?.cedula || '').trim()
+
       // Upload payment receipt if required
       let receiptUrl = null
       if (!useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod)) {
@@ -197,18 +218,17 @@ export default function BookingClient({
           return
         }
         try {
-          await supabase.storage.createBucket('payment-receipts', { public: true }).catch(() => {})
           const ext = paymentFile.name.split('.').pop()
           const path = `${doctor.id}/${user.id}/${Date.now()}.${ext}`
-          const { data: uploadData, error: uploadErr } = await supabase.storage
+          const { error: uploadErr } = await supabase.storage
             .from('payment-receipts')
-            .upload(path, paymentFile)
+            .upload(path, paymentFile, { upsert: false })
 
           if (uploadErr) throw uploadErr
           const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
           receiptUrl = publicUrl.publicUrl
         } catch (err: any) {
-          const errorMsg = `Error al subir comprobante: ${err?.message || JSON.stringify(err)}`
+          const errorMsg = `Error al subir comprobante: ${err?.message || 'El bucket payment-receipts puede no existir. Contacta al doctor.'}`
           setError(errorMsg)
           console.error('[BOOKING] uploadReceipt', err)
           setSubmitting(false)
@@ -231,9 +251,9 @@ export default function BookingClient({
           .insert({
             doctor_id: doctor.id,
             auth_user_id: user.id,
-            full_name: form.full_name.trim(),
-            cedula: form.cedula.trim() || null,
-            phone: form.phone.trim(),
+            full_name: patientName,
+            cedula: patientCedula || null,
+            phone: patientPhone || null,
             email: user.email,
             source: 'booking',
           })
@@ -256,10 +276,10 @@ export default function BookingClient({
         doctor_id: doctor.id,
         patient_id: patientId,
         auth_user_id: user.id,
-        patient_name: form.full_name.trim(),
-        patient_phone: form.phone.trim(),
+        patient_name: patientName,
+        patient_phone: patientPhone || null,
         patient_email: user.email,
-        patient_cedula: form.cedula.trim() || null,
+        patient_cedula: patientCedula || null,
         scheduled_at: dateTime.toISOString(),
         chief_complaint: form.notes.trim() || null,
         plan_name: selectedPlan?.name ?? 'Consulta General',
@@ -661,12 +681,15 @@ export default function BookingClient({
                   </div>
                 </div>
 
-                {/* Payment methods for direct payment */}
-                {!useInsurance && paymentMethods.length > 0 && (
+                {/* Payment methods for direct payment — with fallback */}
+                {!useInsurance && (
                   <div className="space-y-4 p-4 bg-teal-50 border border-teal-200 rounded-lg">
                     <p className="text-sm font-medium text-slate-700">Selecciona método de pago:</p>
                     <div className="grid grid-cols-1 gap-2">
-                      {paymentMethods.map(method => (
+                      {(paymentMethods.length > 0
+                        ? paymentMethods
+                        : ['pago_movil', 'transferencia', 'zelle', 'cash_usd'] as PaymentMethod[]
+                      ).map(method => (
                         <button
                           key={method}
                           type="button"
@@ -690,6 +713,12 @@ export default function BookingClient({
                           val && <p key={key} className="text-slate-600"><span className="font-semibold capitalize">{key}:</span> {val}</p>
                         ))}
                       </div>
+                    )}
+
+                    {paymentMethods.length === 0 && (
+                      <p className="text-xs text-slate-500 italic">
+                        El doctor aún no ha configurado sus datos de pago. Sube tu comprobante y él te contactará.
+                      </p>
                     )}
                   </div>
                 )}
@@ -757,7 +786,7 @@ export default function BookingClient({
 
                 <button
                   type="submit"
-                  disabled={submitting || (!useInsurance && !selectedPaymentMethod) || (!useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && !paymentFile)}
+                  disabled={submitting}
                   className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {submitting ? 'Confirmando...' : <><CheckCircle className="w-4 h-4" />Confirmar cita</>}

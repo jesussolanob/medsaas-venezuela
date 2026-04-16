@@ -109,16 +109,16 @@ export default function AppointmentsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header with filters */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Mis citas</h1>
-        <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mis citas</h1>
+        <div className="flex flex-wrap gap-2">
           {(['all', 'future', 'past'] as FilterStatus[]).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                 filter === f
                   ? 'bg-teal-500 text-white'
                   : 'bg-white text-slate-600 border border-slate-200 hover:border-teal-300'
@@ -145,22 +145,22 @@ export default function AppointmentsPage() {
             const isPast = aptDate < now
 
             return (
-              <div key={apt.id} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-                <div className="flex items-start justify-between">
+              <div key={apt.id} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
                   <div className="space-y-1">
-                    <p className="font-semibold text-slate-900">{apt.plan_name}</p>
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <User className="w-4 h-4" />
-                      {apt.doctor_name || 'Doctor'}
-                      {apt.doctor_specialty && <span className="text-slate-400">· {apt.doctor_specialty}</span>}
+                    <p className="font-semibold text-slate-900 text-sm sm:text-base">{apt.plan_name}</p>
+                    <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600">
+                      <User className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{apt.doctor_name || 'Doctor'}</span>
+                      {apt.doctor_specialty && <span className="text-slate-400 hidden sm:inline">· {apt.doctor_specialty}</span>}
                     </div>
                   </div>
-                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${getStatusColor(apt.status)}`}>
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full w-fit ${getStatusColor(apt.status)}`}>
                     {getStatusLabel(apt.status)}
                   </span>
                 </div>
 
-                <div className="flex flex-wrap gap-6 text-sm text-slate-600">
+                <div className="flex flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm text-slate-600">
                   <span className="flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
                     {aptDate.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}

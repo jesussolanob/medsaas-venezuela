@@ -117,31 +117,31 @@ export default function PatientsPage() {
       {view === 'list' && (
         <div className="max-w-5xl space-y-5">
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">Pacientes</h1>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Pacientes</h1>
               <p className="text-sm text-slate-500">{patients.length} paciente{patients.length !== 1 ? 's' : ''} registrado{patients.length !== 1 ? 's' : ''}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <a href="https://wa.me" target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <a href="https://wa.me" target="_blank" rel="noreferrer" className="flex items-center justify-center sm:justify-start gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
                 <MessageCircle className="w-4 h-4 text-emerald-500" />
-                WhatsApp
+                <span>WhatsApp</span>
               </a>
-              <button onClick={() => setShowAddModal(true)} className="g-bg flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity">
-                <Plus className="w-4 h-4" /> Nuevo paciente
+              <button onClick={() => setShowAddModal(true)} className="g-bg flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity">
+                <Plus className="w-4 h-4" /> <span>Nuevo paciente</span>
               </button>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre, teléfono o cédula..." className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white" />
             </div>
-            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3">
-              <Filter className="w-4 h-4 text-slate-400" />
-              <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="text-sm text-slate-600 outline-none bg-transparent py-2.5 pr-2">
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 shrink-0">
+              <Filter className="w-4 h-4 text-slate-400 hidden sm:block" />
+              <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="text-sm text-slate-600 outline-none bg-transparent py-2.5 pr-2 flex-1 sm:flex-none">
                 <option value="all">Todos los orígenes</option>
                 <option value="manual">Manual</option>
                 <option value="invitation">Invitación</option>
@@ -205,14 +205,14 @@ export default function PatientsPage() {
           </div>
 
           {/* Patient card */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6">
-            <div className="flex items-start gap-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-start gap-4">
               <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
                 <span className="text-teal-600 font-bold text-lg">{selected.full_name.charAt(0).toUpperCase()}</span>
               </div>
-              <div className="flex-1">
-                <h2 className="text-lg font-bold text-slate-900">{selected.full_name}</h2>
-                <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-500">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-bold text-slate-900 break-words">{selected.full_name}</h2>
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4 mt-2 text-sm text-slate-500">
                   {selected.age && <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{selected.age} años · {selected.sex === 'female' ? 'Femenino' : selected.sex === 'male' ? 'Masculino' : ''}</span>}
                   {selected.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{selected.phone}</span>}
                   {selected.email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{selected.email}</span>}
@@ -222,9 +222,9 @@ export default function PatientsPage() {
               </div>
               <button
                 onClick={() => { setView('new-consultation'); setConsultSuccess(''); setConsultError('') }}
-                className="g-bg flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90"
+                className="g-bg flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 sm:whitespace-nowrap shrink-0"
               >
-                <Plus className="w-4 h-4" /> Nueva consulta
+                <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
               </button>
             </div>
           </div>
@@ -315,7 +315,7 @@ export default function PatientsPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Notas de la consulta</label>
                 <textarea value={newConsult.notes} onChange={e => setNewConsult(p => ({ ...p, notes: e.target.value }))} rows={4} placeholder="Anamnesis, síntomas, observaciones..." className={fi + ' resize-none'} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Diagnóstico</label>
                   <input value={newConsult.diagnosis} onChange={e => setNewConsult(p => ({ ...p, diagnosis: e.target.value }))} placeholder="Ej: Hipertensión arterial..." className={fi} />
@@ -327,7 +327,7 @@ export default function PatientsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Estado del pago</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {(Object.entries(PAYMENT_STATUS) as [string, typeof PAYMENT_STATUS['unpaid']][]).map(([k, v]) => (
                     <button
                       key={k} type="button"
@@ -366,7 +366,7 @@ export default function PatientsPage() {
                 <input value={newPat.full_name} onChange={e => setNewPat(p => ({ ...p, full_name: e.target.value }))} placeholder="María González" className={fi} />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Edad</label>
                   <input type="number" min="0" max="150" value={newPat.age} onChange={e => setNewPat(p => ({ ...p, age: e.target.value }))} placeholder="35" className={fi} />
@@ -386,7 +386,7 @@ export default function PatientsPage() {
                 <input type="tel" value={newPat.phone} onChange={e => setNewPat(p => ({ ...p, phone: e.target.value }))} placeholder="+58 412 000 0000" className={fi} />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Cédula</label>
                   <input value={newPat.cedula} onChange={e => setNewPat(p => ({ ...p, cedula: e.target.value }))} placeholder="V-12345678" className={fi} />

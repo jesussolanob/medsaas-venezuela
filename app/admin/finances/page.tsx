@@ -23,17 +23,17 @@ export default function AdminFinancesPage() {
     <>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.recharts-tooltip-wrapper{font-family:'Inter',sans-serif;font-size:12px}`}</style>
 
-      <div className="space-y-6 max-w-6xl">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-6xl px-4 sm:px-0">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Finanzas & Analíticas</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Seguimiento de registros, ingresos y distribución por especialidad</p>
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900">Finanzas & Analíticas</h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Seguimiento de registros, ingresos y distribución por especialidad</p>
           </div>
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-shrink-0">
             {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${period === p ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${period === p ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {PERIOD_LABELS[p]}
               </button>
@@ -42,7 +42,7 @@ export default function AdminFinancesPage() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
           <KPICard icon={<Users className="w-5 h-5 text-teal-500" />} label="Nuevos médicos" value={loading ? '…' : String(data?.totalDoctors ?? 0)} sub={`últimos registros`} color="teal" />
           <KPICard icon={<DollarSign className="w-5 h-5 text-emerald-500" />} label="Ingresos USD" value={loading ? '…' : `$${(data?.totalIncome ?? 0).toLocaleString()}`} sub={`${data?.totalPayments ?? 0} pagos aprobados`} color="emerald" />
           <KPICard icon={<Activity className="w-5 h-5 text-violet-500" />} label="Especialidades" value={loading ? '…' : String(data?.specialties.length ?? 0)} sub="distintas activas" color="violet" />
@@ -56,13 +56,13 @@ export default function AdminFinancesPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Registros de médicos */}
             <ChartCard title="Nuevos registros de médicos" subtitle={`Agrupado por ${PERIOD_LABELS[period].toLowerCase()}`} icon={<Users className="w-4 h-4 text-teal-500" />}>
               {(data?.registrations.length ?? 0) === 0 ? (
                 <EmptyChart label="Sin registros en este período" />
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={180} className="sm:h-[220px]">
                   <AreaChart data={data?.registrations} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
@@ -85,7 +85,7 @@ export default function AdminFinancesPage() {
               {(data?.income.length ?? 0) === 0 ? (
                 <EmptyChart label="Sin ingresos aprobados en este período" />
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={180} className="sm:h-[220px]">
                   <AreaChart data={data?.income} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
@@ -108,7 +108,7 @@ export default function AdminFinancesPage() {
               {(data?.specialties.length ?? 0) === 0 ? (
                 <EmptyChart label="Sin datos de especialidades" />
               ) : (
-                <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={220} className="sm:h-[260px]">
                   <BarChart data={data?.specialties} layout="vertical" margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="g3" x1="0" y1="0" x2="1" y2="0">
@@ -135,12 +135,12 @@ export default function AdminFinancesPage() {
 function KPICard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub: string; color: string }) {
   const bg: Record<string, string> = { teal: 'bg-teal-50', emerald: 'bg-emerald-50', violet: 'bg-violet-50' }
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-start gap-4">
-      <div className={`w-10 h-10 rounded-xl ${bg[color]} flex items-center justify-center shrink-0`}>{icon}</div>
-      <div>
-        <p className="text-xs text-slate-500 font-medium">{label}</p>
-        <p className="text-2xl font-bold text-slate-900 mt-0.5">{value}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
+    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex items-start gap-3 sm:gap-4 min-w-0">
+      <div className={`w-10 h-10 rounded-xl ${bg[color]} flex items-center justify-center flex-shrink-0`}>{icon}</div>
+      <div className="min-w-0">
+        <p className="text-xs text-slate-500 font-medium truncate">{label}</p>
+        <p className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">{value}</p>
+        <p className="text-xs text-slate-400 mt-0.5 truncate">{sub}</p>
       </div>
     </div>
   )
@@ -148,12 +148,12 @@ function KPICard({ icon, label, value, sub, color }: { icon: React.ReactNode; la
 
 function ChartCard({ title, subtitle, icon, children }: { title: string; subtitle: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-6">
-      <div className="flex items-start gap-2 mb-5">
+    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
+      <div className="flex items-start gap-2 mb-4 sm:mb-5">
         {icon}
-        <div>
-          <p className="text-sm font-semibold text-slate-900">{title}</p>
-          <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900 truncate">{title}</p>
+          <p className="text-xs text-slate-400 mt-0.5 truncate">{subtitle}</p>
         </div>
       </div>
       {children}

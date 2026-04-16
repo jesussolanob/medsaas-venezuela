@@ -92,8 +92,8 @@ export default function PrescriptionsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Mis Recetas</h1>
+    <div className="space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mis Recetas</h1>
 
       {prescriptions.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
@@ -104,16 +104,16 @@ export default function PrescriptionsPage() {
       ) : (
         <div className="space-y-3">
           {prescriptions.map(presc => (
-            <div key={presc.id} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+            <div key={presc.id} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
               <div className="flex items-start justify-between">
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0 flex-1">
                   <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-teal-50 mt-0.5">
+                    <div className="p-2 rounded-lg bg-teal-50 shrink-0">
                       <Pill className="w-5 h-5 text-teal-600" />
                     </div>
-                    <div>
-                      <p className="font-semibold text-slate-900">{presc.medication_name}</p>
-                      <p className="text-xs text-slate-500 mt-1">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 text-sm sm:text-base truncate">{presc.medication_name}</p>
+                      <p className="text-xs text-slate-500 mt-1 truncate">
                         Prescrito por Dr(a). {presc.doctor_name || 'Doctor'} · {new Date(presc.prescribed_date).toLocaleDateString('es-VE')}
                       </p>
                     </div>
@@ -121,7 +121,7 @@ export default function PrescriptionsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 text-xs sm:text-sm">
                 {presc.dosage && (
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Dosis</p>

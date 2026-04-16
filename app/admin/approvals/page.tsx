@@ -58,21 +58,21 @@ export default function ApprovalsPage() {
     <>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }`}</style>
 
-      <div className="space-y-6 max-w-3xl">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-3xl px-4 sm:px-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">Aprobaciones</h2>
-            <p className="text-slate-400 text-sm mt-1">Médicos que subieron comprobante de pago y esperan activación</p>
+            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Aprobaciones</h2>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1">Médicos que subieron comprobante de pago y esperan activación</p>
           </div>
           {pendingPayments.length > 0 && (
-            <span className="text-sm font-bold text-white bg-amber-500 px-3 py-1 rounded-full">
+            <span className="text-xs sm:text-sm font-bold text-white bg-amber-500 px-3 py-1 rounded-full whitespace-nowrap">
               {pendingPayments.length} pendiente{pendingPayments.length > 1 ? 's' : ''}
             </span>
           )}
         </div>
 
         {pendingPayments.length === 0 ? (
-          <div className="bg-white rounded-xl border border-slate-200 py-16 text-center">
+          <div className="bg-white rounded-xl border border-slate-200 py-12 sm:py-16 px-4 text-center">
             <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-7 h-7 text-emerald-400" />
             </div>
@@ -82,48 +82,48 @@ export default function ApprovalsPage() {
         ) : (
           <div className="space-y-3">
             {pendingPayments.map(payment => (
-              <div key={payment.id} className="bg-white rounded-xl border border-amber-100 p-5">
-                <div className="flex items-start gap-4">
+              <div key={payment.id} className="bg-white rounded-xl border border-amber-100 p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row items-start gap-4">
                   <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold shrink-0">
                     {payment.doctor_name.split(' ').slice(0, 2).map(n => n[0]).join('')}
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-semibold text-slate-900">{payment.doctor_name}</p>
-                      <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Pendiente</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-0.5">
+                      <p className="font-semibold text-slate-900 truncate">{payment.doctor_name}</p>
+                      <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full w-fit">Pendiente</span>
                     </div>
-                    <p className="text-xs text-slate-400">{payment.doctor_email}</p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                    <p className="text-xs text-slate-400 truncate">{payment.doctor_email}</p>
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
+                      <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full whitespace-nowrap">
                         {ACCOUNT_TYPE_LABELS[payment.payment_method] ?? payment.payment_method}
                       </span>
                       <span className="text-xs font-bold text-emerald-600">${payment.amount_usd} USD</span>
                       <span className="text-xs text-slate-400">{timeAgo(payment.submitted_at)}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
                     {payment.receipt_url ? (
                       <button
                         onClick={() => setReceiptModal(payment.receipt_url)}
-                        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-teal-300 transition-colors bg-white"
+                        className="flex items-center justify-center sm:justify-start gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-teal-300 transition-colors bg-white whitespace-nowrap"
                       >
                         <Eye className="w-3.5 h-3.5" /> Comprobante
                       </button>
                     ) : (
-                      <span className="flex items-center gap-1 text-xs text-slate-400 mr-1">
+                      <span className="flex items-center justify-center gap-1 text-xs text-slate-400">
                         <AlertCircle className="w-3.5 h-3.5" /> Sin comprobante
                       </span>
                     )}
                     <button
                       onClick={() => handleReject(payment.id)}
-                      className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                      className="flex items-center justify-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors whitespace-nowrap"
                     >
                       <XCircle className="w-3.5 h-3.5" /> Rechazar
                     </button>
                     <button
                       onClick={() => handleApprove(payment.id)}
                       disabled={approvingId === payment.id}
-                      className="flex items-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+                      className="flex items-center justify-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap"
                     >
                       {approvingId === payment.id ? (
                         <><Loader2 className="w-3.5 h-3.5 animate-spin" />Activando...</>
@@ -141,16 +141,16 @@ export default function ApprovalsPage() {
         {/* Modal comprobante */}
         {receiptModal && (
           <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setReceiptModal(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 flex-shrink-0">
                 <h4 className="text-sm font-semibold text-slate-900">Comprobante de pago</h4>
                 <button onClick={() => setReceiptModal(null)} className="text-slate-400 hover:text-slate-700">✕</button>
               </div>
-              <div className="p-4">
+              <div className="p-3 sm:p-4 overflow-y-auto flex-1">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={receiptModal} alt="Comprobante" className="w-full rounded-xl" />
               </div>
-              <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
+              <div className="px-4 sm:px-5 py-3 border-t border-slate-100 flex justify-end flex-shrink-0">
                 <a href={receiptModal} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-teal-600 font-semibold hover:text-teal-700">
                   <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
                 </a>

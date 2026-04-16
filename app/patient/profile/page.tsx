@@ -184,74 +184,74 @@ export default function ProfilePage() {
   const age = calculateAge(formData.birth_date)
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold text-slate-900">Mi Perfil</h1>
+    <div className="space-y-4 sm:space-y-6 max-w-2xl">
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mi Perfil</h1>
 
       {message && (
-        <div className={`px-4 py-3 rounded-lg flex items-start gap-3 ${
+        <div className={`px-3 sm:px-4 py-3 rounded-lg flex items-start gap-3 text-xs sm:text-sm ${
           message.type === 'success'
             ? 'bg-green-50 text-green-700 border border-green-200'
             : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
           <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <p className="text-sm font-medium">{message.text}</p>
+          <p className="font-medium">{message.text}</p>
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-6">
+      <form onSubmit={handleSave} className="space-y-4 sm:space-y-6">
         {/* Información personal */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Información Personal</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900">Información Personal</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Nombre Completo *</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Nombre Completo *</label>
               <input
                 type="text"
                 name="full_name"
                 value={formData.full_name}
                 onChange={handleInputChange}
                 required
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Cédula</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Cédula</label>
               <input
                 type="text"
                 name="cedula"
                 value={formData.cedula}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Fecha de Nacimiento</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Fecha de Nacimiento</label>
               <input
                 type="date"
                 name="birth_date"
                 value={formData.birth_date}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">
                 Edad {age !== null ? `(${age} años)` : ''}
               </label>
               <input
                 type="text"
                 value={age !== null ? `${age} años` : 'N/A'}
                 disabled
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Sexo</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Sexo</label>
               <select
                 name="sex"
                 value={formData.sex}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               >
                 <option value="">Seleccionar</option>
                 <option value="M">Masculino</option>
@@ -260,127 +260,127 @@ export default function ProfilePage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Tipo de Sangre</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Tipo de Sangre</label>
               <input
                 type="text"
                 name="blood_type"
                 value={formData.blood_type}
                 onChange={handleInputChange}
                 placeholder="O+, A-, etc."
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
           </div>
         </div>
 
         {/* Información de contacto */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Información de Contacto</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900">Información de Contacto</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Email</label>
               <input
                 type="email"
                 value={formData.email}
                 disabled
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Teléfono</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Teléfono</label>
               <input
                 type="tel"
                 name="phone"
                 value={formData.phone}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Dirección</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Dirección</label>
               <input
                 type="text"
                 name="address"
                 value={formData.address}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Ciudad</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Ciudad</label>
               <input
                 type="text"
                 name="city"
                 value={formData.city}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
           </div>
         </div>
 
         {/* Información médica */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Información Médica</h2>
-          <div className="space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900">Información Médica</h2>
+          <div className="space-y-3 sm:space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Alergias</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Alergias</label>
               <textarea
                 name="allergies"
                 value={formData.allergies}
                 onChange={handleInputChange}
                 placeholder="Describe tus alergias (medicamentos, alimentos, etc.)"
                 rows={3}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Condiciones Crónicas</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Condiciones Crónicas</label>
               <textarea
                 name="chronic_conditions"
                 value={formData.chronic_conditions}
                 onChange={handleInputChange}
                 placeholder="Describe tus condiciones crónicas (diabetes, hipertensión, etc.)"
                 rows={3}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
           </div>
         </div>
 
         {/* Contacto de emergencia */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Contacto de Emergencia</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900">Contacto de Emergencia</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Nombre</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Nombre</label>
               <input
                 type="text"
                 name="emergency_contact_name"
                 value={formData.emergency_contact_name}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Teléfono</label>
+              <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Teléfono</label>
               <input
                 type="tel"
                 name="emergency_contact_phone"
                 value={formData.emergency_contact_phone}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
               />
             </div>
           </div>
         </div>
 
         {/* Submit button */}
-        <div className="flex gap-3 pt-4">
+        <div className="flex gap-3 pt-2 sm:pt-4">
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-teal-500 text-white font-medium hover:bg-teal-600 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-3 rounded-xl bg-teal-500 text-white font-medium hover:bg-teal-600 disabled:opacity-50 transition-colors text-sm sm:text-base"
           >
             <Save className="w-4 h-4" />
             {saving ? 'Guardando...' : 'Guardar Cambios'}

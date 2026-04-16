@@ -249,14 +249,14 @@ export default function AgendaPage() {
 
       <div className="max-w-5xl space-y-5">
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Agenda</h1>
-            <p className="text-sm text-slate-500">Consultas programadas y disponibilidad</p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Agenda</h1>
+            <p className="text-sm text-slate-500 mt-1">Consultas programadas y disponibilidad</p>
           </div>
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
             {(['calendar', 'availability'] as AgendaTab[]).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === t ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              <button key={t} onClick={() => setTab(t)} className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${tab === t ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 {t === 'calendar' ? 'Calendario' : 'Disponibilidad'}
               </button>
             ))}
@@ -286,24 +286,24 @@ export default function AgendaPage() {
         {tab === 'calendar' && (
           <div className="space-y-4">
             {/* View toggle + nav */}
-            <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3">
               {/* View switcher */}
-              <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5">
-                <button onClick={() => { setCalView('week'); setSelectedDate(today) }} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'week' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Semana</button>
-                <button onClick={() => { setCalView('month'); setSelectedDate(today) }} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'month' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Mes</button>
-                <button onClick={() => { setCalView('day'); setSelectedDate(today) }} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'day' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Día</button>
+              <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5 shrink-0">
+                <button onClick={() => { setCalView('week'); setSelectedDate(today) }} className={`px-2 sm:px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'week' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Semana</button>
+                <button onClick={() => { setCalView('month'); setSelectedDate(today) }} className={`px-2 sm:px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'month' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Mes</button>
+                <button onClick={() => { setCalView('day'); setSelectedDate(today) }} className={`px-2 sm:px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'day' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Día</button>
               </div>
 
               {/* Navigation */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
                 <button onClick={() => {
                   if (calView === 'week') setWeekOffset(v => v - 1)
                   else if (calView === 'month') prevMonth()
                   else setSelectedDate(d => new Date(d.getTime() - 86400000))
-                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors">
+                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors shrink-0">
                   <ChevronLeft className="w-4 h-4 text-slate-500" />
                 </button>
-                <p className="text-sm font-semibold text-slate-700 min-w-[220px] text-center">
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 min-w-[180px] sm:min-w-[220px] text-center flex-1 sm:flex-none">
                   {calView === 'week'
                     ? `${weekDates[0].toLocaleDateString('es-VE', { day: '2-digit', month: 'long' })} – ${weekDates[6].toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })}`
                     : calView === 'month'
@@ -315,13 +315,13 @@ export default function AgendaPage() {
                   if (calView === 'week') setWeekOffset(v => v + 1)
                   else if (calView === 'month') nextMonth()
                   else setSelectedDate(d => new Date(d.getTime() + 86400000))
-                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors">
+                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors shrink-0">
                   <ChevronRight className="w-4 h-4 text-slate-500" />
                 </button>
               </div>
 
               <button onClick={() => { setWeekOffset(0); setMonthYear({ year: today.getFullYear(), month: today.getMonth() }) }}
-                className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 transition-colors">
+                className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 transition-colors shrink-0">
                 Hoy
               </button>
             </div>
@@ -329,20 +329,20 @@ export default function AgendaPage() {
             {/* WEEK VIEW */}
             {calView === 'week' && (
               <>
-                <div className="grid grid-cols-7 gap-2">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 overflow-x-auto pb-2">
                   {weekDates.map((date, idx) => {
                     const isToday = date.toDateString() === today.toDateString()
                     const dayAppts = getApptsByDate(date)
                     return (
-                      <div key={idx} className={`rounded-xl border p-3 min-h-[120px] ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
+                      <div key={idx} className={`rounded-lg sm:rounded-xl border p-2 sm:p-3 min-h-[100px] sm:min-h-[120px] shrink-0 ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
                         <div className="mb-2">
                           <p className={`text-xs font-semibold ${isToday ? 'text-teal-600' : 'text-slate-400'}`}>{DAYS_SHORT[idx]}</p>
                           <p className={`text-lg font-bold ${isToday ? 'text-teal-700' : 'text-slate-800'}`}>{date.getDate()}</p>
                         </div>
                         {dayAppts.map(a => (
-                          <div key={a.id} className="mb-1.5 bg-teal-500 rounded-lg px-2 py-1">
-                            <p className="text-white text-[10px] font-bold">{a.time}</p>
-                            <p className="text-white/90 text-[10px] truncate">{a.patient_name}</p>
+                          <div key={a.id} className="mb-1 bg-teal-500 rounded px-1.5 py-0.5">
+                            <p className="text-white text-[9px] font-bold">{a.time}</p>
+                            <p className="text-white/90 text-[9px] truncate">{a.patient_name}</p>
                           </div>
                         ))}
                         {dayAppts.length === 0 && <p className="text-xs text-slate-300 mt-1">Sin citas</p>}
@@ -545,31 +545,33 @@ export default function AgendaPage() {
               const daySlots = slots.filter(s => s.day === dayIdx)
               return (
                 <div key={dayIdx} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 sm:px-5 py-3 border-b border-slate-100">
                     <p className="text-sm font-semibold text-slate-700">{dayName}</p>
-                    <button onClick={() => addSlot(dayIdx)} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold">
-                      <Plus className="w-3.5 h-3.5" />Agregar horario
+                    <button onClick={() => addSlot(dayIdx)} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold whitespace-nowrap">
+                      <Plus className="w-3.5 h-3.5" /><span>Agregar horario</span>
                     </button>
                   </div>
-                  <div className="p-4 space-y-2">
+                  <div className="p-3 sm:p-4 space-y-2">
                     {daySlots.length === 0 ? (
                       <p className="text-xs text-slate-400 py-1">Sin horarios — día libre</p>
                     ) : daySlots.map((slot) => {
                       const globalIdx = slots.indexOf(slot)
                       return (
-                        <div key={globalIdx} className={`flex items-center gap-3 px-3 py-2 rounded-xl border transition-all ${slot.enabled ? 'border-teal-200 bg-teal-50/50' : 'border-slate-200 bg-slate-50 opacity-50'}`}>
-                          <Clock className={`w-3.5 h-3.5 shrink-0 ${slot.enabled ? 'text-teal-500' : 'text-slate-400'}`} />
-                          <div className="flex items-center gap-2 flex-1">
+                        <div key={globalIdx} className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 px-3 py-2 rounded-xl border transition-all ${slot.enabled ? 'border-teal-200 bg-teal-50/50' : 'border-slate-200 bg-slate-50 opacity-50'}`}>
+                          <Clock className={`w-3.5 h-3.5 shrink-0 hidden sm:block ${slot.enabled ? 'text-teal-500' : 'text-slate-400'}`} />
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 sm:gap-2 flex-1">
                             <input type="time" value={slot.start} onChange={e => setSlots(p => p.map((s, i) => i === globalIdx ? { ...s, start: e.target.value } : s))} className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 bg-white" />
-                            <span className="text-xs text-slate-400">—</span>
+                            <span className="text-xs text-slate-400 hidden sm:inline">—</span>
                             <input type="time" value={slot.end} onChange={e => setSlots(p => p.map((s, i) => i === globalIdx ? { ...s, end: e.target.value } : s))} className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 bg-white" />
                           </div>
-                          <button onClick={() => toggleSlot(globalIdx)} className={`text-xs px-2.5 py-1 rounded-full font-semibold transition-all ${slot.enabled ? 'bg-teal-100 text-teal-600 hover:bg-teal-200' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>
-                            {slot.enabled ? 'Activo' : 'Inactivo'}
-                          </button>
-                          <button onClick={() => removeSlot(globalIdx)} className="w-6 h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors">
-                            <Trash2 className="w-3 h-3 text-red-400" />
-                          </button>
+                          <div className="flex gap-1 sm:gap-2">
+                            <button onClick={() => toggleSlot(globalIdx)} className={`text-xs px-2 sm:px-2.5 py-1 rounded-full font-semibold transition-all flex-1 ${slot.enabled ? 'bg-teal-100 text-teal-600 hover:bg-teal-200' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>
+                              {slot.enabled ? 'Activo' : 'Inactivo'}
+                            </button>
+                            <button onClick={() => removeSlot(globalIdx)} className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors shrink-0">
+                              <Trash2 className="w-3 h-3 text-red-400" />
+                            </button>
+                          </div>
                         </div>
                       )
                     })}

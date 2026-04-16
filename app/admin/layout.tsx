@@ -1,7 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity, BarChart2, CheckSquare } from 'lucide-react'
+import { useState } from 'react'
+import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity, BarChart2, CheckSquare, Menu } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import AdminNotifications from './AdminNotifications'
@@ -19,6 +20,7 @@ const navigation = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   async function handleLogout() {
     const supabase = createClient()
@@ -38,8 +40,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       `}</style>
 
       <div className="admin-layout flex min-h-screen bg-slate-50 text-slate-900">
+        {/* Mobile overlay */}
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
-        <aside className="fixed inset-y-0 left-0 w-[230px] flex flex-col border-r border-slate-200 bg-white z-50">
+        <aside
+          className={clsx(
+            'fixed inset-y-0 left-0 w-[230px] flex flex-col border-r border-slate-200 bg-white z-50 transition-transform',
+            mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          )}
+        >
           {/* Logo */}
           <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
             <div className="w-9 h-9 rounded-xl g-logo flex items-center justify-center shadow-md shadow-cyan-200">
@@ -52,13 +67,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 px-3 py-4 space-y-0.5">
+          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
             {navigation.map((item) => {
               const active = pathname === item.href
               return (
                 <Link
                   key={item.name}
                   href={item.href}
+                  onClick={() => setMobileOpen(false)}
                   className={clsx(
                     'nav-item flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm transition-all',
                     active
@@ -92,25 +108,34 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </aside>
 
         {/* Main content */}
-        <div className="flex-1 ml-[230px] flex flex-col min-h-screen">
+        <div className="flex-1 lg:ml-[230px] flex flex-col min-h-screen w-full">
           {/* Top bar */}
-          <header className="sticky top-0 z-40 flex items-center justify-between px-8 py-4 border-b border-slate-200 bg-white/80 backdrop-blur">
-            <div className="flex items-center gap-2">
+          <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 lg:px-8 py-4 border-b border-slate-200 bg-white/80 backdrop-blur">
+            <div className="flex items-center gap-3">
+              <button
+                className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-slate-100"
+                onClick={() => setMobileOpen(true)}
+                aria-label="Abrir menú"
+              >
+                <Menu className="w-5 h-5 text-slate-600" />
+              </button>
               <h1 className="text-sm font-semibold text-slate-700">
                 {navigation.find(n => n.href === pathname)?.name ?? 'Admin'}
               </h1>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <AdminNotifications />
-              <span className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full font-medium">
+              <span className="hidden sm:inline-flex text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full font-medium">
                 Delta Medical CRM
               </span>
             </div>
           </header>
 
           {/* Page content */}
-          <main className="flex-1 px-8 py-8">
-            {children}
+          <main className="flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full">
+            <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">
+              {children}
+            </div>
           </main>
         </div>
       </div>

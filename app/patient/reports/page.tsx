@@ -101,8 +101,8 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Mis Informes Médicos</h1>
+    <div className="space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mis Informes Médicos</h1>
 
       {reports.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
@@ -113,18 +113,18 @@ export default function ReportsPage() {
       ) : (
         <div className="space-y-3">
           {reports.map(report => (
-            <div key={report.id} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-              <div className="flex items-start justify-between">
+            <div key={report.id} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
                 <div className="space-y-1 flex-1">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-orange-50">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-orange-50 shrink-0">
                       <FileText className="w-5 h-5 text-orange-600" />
                     </div>
-                    <div>
-                      <p className="font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 text-sm sm:text-base">
                         Informe del {new Date(report.created_at).toLocaleDateString('es-VE')}
                       </p>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-xs sm:text-sm text-slate-500 truncate">
                         Por Dr(a). {report.doctor_name || 'Doctor'}
                       </p>
                     </div>
@@ -132,7 +132,7 @@ export default function ReportsPage() {
                 </div>
                 <Link
                   href={`/patient/reports/${report.id}`}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors text-sm font-medium"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition-colors text-xs sm:text-sm font-medium w-fit"
                 >
                   <Eye className="w-4 h-4" />
                   Ver
@@ -142,14 +142,14 @@ export default function ReportsPage() {
               {report.diagnosis && (
                 <div className="pt-3 border-t border-slate-100">
                   <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Diagnóstico</p>
-                  <p className="text-sm text-slate-700">{report.diagnosis}</p>
+                  <p className="text-xs sm:text-sm text-slate-700">{report.diagnosis}</p>
                 </div>
               )}
 
               {report.treatment_plan && (
                 <div className="pt-2">
                   <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Plan de Tratamiento</p>
-                  <p className="text-sm text-slate-700">{report.treatment_plan}</p>
+                  <p className="text-xs sm:text-sm text-slate-700">{report.treatment_plan}</p>
                 </div>
               )}
             </div>
