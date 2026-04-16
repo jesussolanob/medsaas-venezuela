@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { Receipt, Plus, X, Printer, Send, FileText, DollarSign, Search, User, Calendar, Trash2, ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getProfessionalTitle } from '@/lib/professional-title'
 
 type LineItem = { id: string; description: string; qty: number; unit_price: number }
 type Consultation = { id: string; consultation_code: string; consultation_date: string; patient_name: string; patient_phone: string | null; patient_email: string | null }
 type DocType = 'receipt' | 'estimate'
-type DoctorProfile = { full_name: string; specialty: string; phone: string; email: string; logo_url: string | null }
+type DoctorProfile = { full_name: string; specialty: string; phone: string; email: string; logo_url: string | null; professional_title?: string | null }
 type GenericPatient = { name: string; phone: string; email: string }
 
 function genDocNumber(type: DocType): string {
@@ -42,7 +43,7 @@ export default function BillingPage() {
       if (!user) return
 
       // Get doctor profile with logo
-      const { data: profile } = await supabase.from('profiles').select('full_name, specialty, phone, email, logo_url').eq('id', user.id).single()
+      const { data: profile } = await supabase.from('profiles').select('full_name, specialty, phone, email, logo_url, professional_title').eq('id', user.id).single()
       if (profile) setDoctorProfile(profile as DoctorProfile)
 
       // Get consultations with patient info
@@ -299,7 +300,7 @@ export default function BillingPage() {
                       <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,#00C4CC,#0891b2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: 18 }}>Δ</div>
                     )}
                     <div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#00C4CC' }}>Dr. {doctorProfile?.full_name || 'Médico'}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#00C4CC' }}>{getProfessionalTitle(doctorProfile?.professional_title, doctorProfile?.specialty)} {doctorProfile?.full_name || 'Médico'}</div>
                       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{doctorProfile?.specialty || 'Consulta Médica'}</div>
                       {doctorProfile?.phone && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{doctorProfile.phone}</div>}
                     </div>
@@ -319,7 +320,7 @@ export default function BillingPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 28 }}>
                   <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, opacity: 0.8 }}>
                     <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#94a3b8', marginBottom: 8 }}>Médico (Emisor)</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>Dr. {doctorProfile?.full_name || '—'}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{getProfessionalTitle(doctorProfile?.professional_title, doctorProfile?.specialty)} {doctorProfile?.full_name || '—'}</div>
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{doctorProfile?.specialty}</div>
                     {doctorProfile?.phone && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{doctorProfile.phone}</div>}
                   </div>

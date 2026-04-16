@@ -93,7 +93,7 @@ function SettingsPageInner() {
   const initialTab = (searchParams.get('tab') as TabId) || 'profile'
 
   // Profile
-  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.', country: 'Venezuela', state: '', city: '' })
+  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.', country: 'Venezuela', state: '', city: '', office_address: '', allows_online: true })
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -158,11 +158,11 @@ function SettingsPageInner() {
       // profile
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications, state, city, country')
+        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications, state, city, country, office_address, allows_online')
         .eq('id', user.id).single()
 
       if (data) {
-        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.', country: data.country ?? 'Venezuela', state: data.state ?? '', city: data.city ?? '' })
+        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.', country: data.country ?? 'Venezuela', state: data.state ?? '', city: data.city ?? '', office_address: data.office_address ?? '', allows_online: data.allows_online !== false })
         setAvatarUrl(data.avatar_url ?? null)
         setLogoUrl(data.logo_url ?? null)
         setWhatsappToken(data.whatsapp_token ?? '')
@@ -209,6 +209,8 @@ function SettingsPageInner() {
       country: profile.country,
       state: profile.state,
       city: profile.city,
+      office_address: profile.office_address || null,
+      allows_online: profile.allows_online,
     }).eq('id', user.id)
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
@@ -531,6 +533,40 @@ function SettingsPageInner() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Office address */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <p className="text-sm font-semibold text-slate-700 mb-3">Dirección del consultorio</p>
+                    <input
+                      value={profile.office_address}
+                      onChange={e => setProfile(p => ({ ...p, office_address: e.target.value }))}
+                      placeholder="Ej: Torre Médica El Ávila, Piso 8, Consultorio 803, Caracas"
+                      className={fi}
+                    />
+                    <p className="text-xs text-slate-400 mt-1.5">Se mostrará al paciente cuando reserve cita presencial</p>
+                  </div>
+
+                  {/* Online consultations toggle */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-700">Consultas online</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Permitir que pacientes agenden videoconsultas</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setProfile(p => ({ ...p, allows_online: !p.allows_online }))}
+                        className="flex items-center gap-2"
+                      >
+                        {profile.allows_online ? (
+                          <ToggleRight className="w-8 h-8 text-teal-500" />
+                        ) : (
+                          <ToggleLeft className="w-8 h-8 text-slate-300" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
                   <button onClick={saveProfile} className="flex items-center gap-2 g-bg px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
                     {saved ? <><CheckCircle className="w-4 h-4" />Guardado</> : <><SaveIcon className="w-4 h-4" />Guardar cambios</>}
                   </button>

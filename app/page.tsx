@@ -34,6 +34,7 @@ const TESTIMONIALS = [
 
 const FREE_FEATURES = ['30 días de prueba completa','Hasta 50 pacientes','Agenda básica','Recordatorios automáticos','CRM de leads (limitado)','Soporte por email']
 const PRO_FEATURES = ['Pacientes ilimitados','CRM Kanban dinámico','EHR con IA integrada','Google Calendar sync','Gestión financiera completa','Campañas de marketing masivo','Recordatorios personalizados','Paquetes de consulta','Soporte prioritario WhatsApp']
+const CLINIC_FEATURES = ['Todo del Plan Pro incluido','Hasta 10 doctores por clínica','Panel de administración centralizado','Agenda de todos los doctores','Paciente elige doctor disponible','Reportes financieros consolidados','Roles: admin clínica + doctores','Marca personalizada (logo, colores)','Booking público multi-doctor','Soporte VIP dedicado']
 
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -292,7 +293,7 @@ export default function LandingPage() {
 
             {[
               { icon: CalendarDays, tag: 'Agenda', title: 'Agenda + Google Calendar', desc: 'Sincronización bidireccional. Bloqueos automáticos según tu horario de atención configurado.' },
-              { icon: Bell, tag: 'Automatización', title: 'Recordatorios 7-24-3h', desc: 'WhatsApp automáticos. Reduce el no-show hasta un 80% sin hacer nada.' },
+              { icon: Bell, tag: 'Automatización', title: 'Recordatorios Inteligentes', desc: 'WhatsApp y email automáticos a las 24h, 3h y 1h antes. Reduce el no-show hasta un 80%.' },
               { icon: Banknote, tag: 'Finanzas', title: 'Gestión Financiera', desc: 'Cobros en USD, Bs. y Pago Móvil. Paquetes de consulta e informes de ingresos.' },
             ].map(f => (
               <div key={f.title} className="bg-white rounded-3xl p-7 flex flex-col justify-between lift cursor-pointer border border-slate-200 hover:border-cyan-200" style={{ minHeight: 200 }}>
@@ -325,6 +326,26 @@ export default function LandingPage() {
                 ))}
               </div>
             </div>
+
+            {/* NexHealth-inspired features row */}
+            {[
+              { icon: Users, tag: 'Nuevo', title: 'Consultas Online y Presencial', desc: 'El paciente elige entre videoconsulta o asistir al consultorio. Tú configuras la dirección y disponibilidad.' },
+              { icon: Clock, tag: 'Waitlist', title: 'Lista de Espera Inteligente', desc: 'Cuando la agenda está llena, los pacientes se unen a la lista de espera. Al cancelar alguien, se notifica automáticamente.' },
+              { icon: Building2, tag: 'Clínicas', title: 'Multi-Doctor para Clínicas', desc: 'Plan Centro de Salud: registra tu clínica, agrega doctores, y permite a pacientes elegir disponibilidad entre todos.' },
+            ].map(f => (
+              <div key={f.title} className="bg-white rounded-3xl p-7 flex flex-col justify-between lift cursor-pointer border border-slate-200 hover:border-cyan-200" style={{ minHeight: 200 }}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0,196,204,0.1)' }}>
+                    <f.icon className="w-5 h-5" style={{ color: '#00C4CC' }} />
+                  </div>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 uppercase tracking-widest">{f.tag}</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 mt-1 mb-1.5">{f.title}</h3>
+                  <p className="text-sm text-slate-500 leading-relaxed">{f.desc}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -522,52 +543,78 @@ export default function LandingPage() {
             <p className="text-lg text-slate-500 font-medium">Comienza gratis, escala cuando estés listo.</p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-3 gap-5">
             {/* Free */}
-            <div className="bg-white rounded-3xl border-2 border-slate-200 p-8 flex flex-col gap-6">
+            <div className="bg-white rounded-3xl border-2 border-slate-200 p-7 flex flex-col gap-5">
               <div>
                 <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Free</p>
                 <div className="flex items-end gap-2">
-                  <span className="text-5xl font-extrabold text-slate-900">$0</span>
-                  <span className="text-slate-400 font-medium mb-2">/ 30 días</span>
+                  <span className="text-4xl font-extrabold text-slate-900">$0</span>
+                  <span className="text-slate-400 font-medium mb-1.5 text-sm">/ 30 días</span>
                 </div>
-                <p className="text-sm text-slate-500 mt-2">30 días de prueba completa. Sin tarjeta de crédito.</p>
+                <p className="text-sm text-slate-500 mt-2">Prueba completa. Sin tarjeta.</p>
               </div>
-              <ul className="space-y-3 flex-1">
+              <ul className="space-y-2.5 flex-1">
                 {FREE_FEATURES.map(f=>(
-                  <li key={f} className="flex items-center gap-3 text-sm text-slate-600">
+                  <li key={f} className="flex items-center gap-2.5 text-sm text-slate-600">
                     <Check className="w-4 h-4 text-slate-400 shrink-0" />{f}
                   </li>
                 ))}
               </ul>
-              <Link href="/register?plan=free" className="block text-center font-semibold py-3.5 rounded-2xl border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700 text-sm">
+              <Link href="/register?plan=free" className="block text-center font-semibold py-3 rounded-2xl border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700 text-sm">
                 Comenzar gratis →
               </Link>
             </div>
 
             {/* Pro */}
-            <div className="rounded-3xl p-8 flex flex-col gap-6 relative overflow-hidden" style={{ background: 'linear-gradient(145deg,#0f172a 0%,#1e293b 100%)' }}>
+            <div className="rounded-3xl p-7 flex flex-col gap-5 relative overflow-hidden" style={{ background: 'linear-gradient(145deg,#0f172a 0%,#1e293b 100%)' }}>
               <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full opacity-10" style={{ background: '#00C4CC' }} />
-              <div className="absolute top-6 right-6">
-                <span className="text-xs font-bold px-3 py-1.5 rounded-full text-white" style={{ background: '#00C4CC' }}>Recomendado</span>
+              <div className="absolute top-5 right-5">
+                <span className="text-xs font-bold px-3 py-1 rounded-full text-white" style={{ background: '#00C4CC' }}>Popular</span>
               </div>
               <div>
                 <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#00C4CC' }}>Pro</p>
                 <div className="flex items-end gap-2">
-                  <span className="text-5xl font-extrabold text-white">$20</span>
-                  <span className="text-slate-400 font-medium mb-2">USD / mes</span>
+                  <span className="text-4xl font-extrabold text-white">$20</span>
+                  <span className="text-slate-400 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
-                <p className="text-sm text-slate-400 mt-2">Pago por Pago Móvil o Transferencia bancaria.</p>
+                <p className="text-sm text-slate-400 mt-2">Para el especialista independiente.</p>
               </div>
-              <ul className="space-y-3 flex-1">
+              <ul className="space-y-2.5 flex-1">
                 {PRO_FEATURES.map(f=>(
-                  <li key={f} className="flex items-center gap-3 text-sm text-white">
+                  <li key={f} className="flex items-center gap-2.5 text-sm text-white">
                     <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: '#00C4CC' }} />{f}
                   </li>
                 ))}
               </ul>
-              <Link href="/register?plan=pro" className="block text-center font-bold py-3.5 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-95 shadow-xl" style={{ background: '#00C4CC' }}>
+              <Link href="/register?plan=pro" className="block text-center font-bold py-3 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-95 shadow-xl" style={{ background: '#00C4CC' }}>
                 Obtener Plan Pro →
+              </Link>
+            </div>
+
+            {/* Centro de Salud */}
+            <div className="rounded-3xl p-7 flex flex-col gap-5 relative overflow-hidden border-2 border-violet-300" style={{ background: 'linear-gradient(145deg,#1e1b4b 0%,#312e81 100%)' }}>
+              <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full opacity-10" style={{ background: '#8b5cf6' }} />
+              <div className="absolute top-5 right-5">
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-violet-500 text-white">Clínicas</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-widest mb-3 text-violet-400">Centro de Salud</p>
+                <div className="flex items-end gap-2">
+                  <span className="text-4xl font-extrabold text-white">$100</span>
+                  <span className="text-violet-300 font-medium mb-1.5 text-sm">USD / mes</span>
+                </div>
+                <p className="text-sm text-violet-300 mt-2">Para clínicas con múltiples doctores.</p>
+              </div>
+              <ul className="space-y-2.5 flex-1">
+                {CLINIC_FEATURES.map(f=>(
+                  <li key={f} className="flex items-center gap-2.5 text-sm text-white">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-violet-400" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register?plan=clinic" className="block text-center font-bold py-3 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-95 shadow-xl bg-violet-500">
+                Registrar mi clínica →
               </Link>
             </div>
           </div>
@@ -594,8 +641,8 @@ export default function LandingPage() {
                 <Link href="/register?plan=free" className="group flex items-center justify-center gap-2 font-bold px-8 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl text-white g-bg">
                   Prueba gratis — 30 días <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <Link href="/register?plan=pro" className="flex items-center justify-center gap-2 font-semibold px-8 py-4 rounded-2xl text-base border border-white/20 text-white hover:bg-white/10 transition-all">
-                  Ver Plan Pro · $20/mes
+                <Link href="/register?plan=clinic" className="flex items-center justify-center gap-2 font-semibold px-8 py-4 rounded-2xl text-base border border-violet-400/40 text-white hover:bg-violet-500/20 transition-all">
+                  <Building2 className="w-4 h-4" /> Plan Clínicas · $100/mes
                 </Link>
               </div>
             </div>

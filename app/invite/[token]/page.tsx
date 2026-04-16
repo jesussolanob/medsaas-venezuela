@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Activity, Calendar, Clock, User, Phone, Mail, CheckCircle2, ArrowRight, AlertCircle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import { getProfessionalTitle } from '@/lib/professional-title'
 
 type Invitation = {
   id: string
@@ -19,6 +20,7 @@ type DoctorProfile = {
   full_name: string
   specialty: string | null
   phone: string | null
+  professional_title?: string | null
 }
 
 type AvailableSlot = { date: string; time: string; label: string }
@@ -83,7 +85,7 @@ export default function InviteBookingPage() {
         // Fetch doctor profile
         const { data: prof } = await supabase
           .from('profiles')
-          .select('full_name, specialty, phone')
+          .select('full_name, specialty, phone, professional_title')
           .eq('id', data.doctor_id)
           .single()
 
@@ -208,7 +210,7 @@ export default function InviteBookingPage() {
           <div className="g-bg rounded-2xl p-5 text-white relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
             <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-2">Tu médico</p>
-            <h1 className="text-xl font-bold text-white">Dr. {doctor.full_name}</h1>
+            <h1 className="text-xl font-bold text-white">{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</h1>
             {doctor.specialty && <p className="text-white/70 text-sm mt-0.5">{doctor.specialty}</p>}
             <p className="text-white/60 text-xs mt-3">Hola, <strong className="text-white/90">{invitation?.patient_name}</strong> — selecciona el horario de tu consulta</p>
           </div>
@@ -314,7 +316,7 @@ export default function InviteBookingPage() {
               {doctor && (
                 <div className="flex items-center gap-2 text-sm">
                   <Activity className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-600">Dr. {doctor.full_name}{doctor.specialty ? ` · ${doctor.specialty}` : ''}</span>
+                  <span className="text-slate-600">{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}{doctor.specialty ? ` · ${doctor.specialty}` : ''}</span>
                 </div>
               )}
             </div>

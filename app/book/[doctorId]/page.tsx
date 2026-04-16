@@ -9,7 +9,7 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
 
   const { data: doctor } = await admin
     .from('profiles')
-    .select('id, full_name, specialty, phone, avatar_url, professional_title, state, city, country')
+    .select('id, full_name, specialty, phone, avatar_url, professional_title, state, city, country, office_address, allows_online')
     .eq('id', doctorId)
     .maybeSingle()
 
@@ -71,6 +71,8 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
         state: doctor.state ?? null,
         city: doctor.city ?? null,
         country: doctor.country ?? 'Venezuela',
+        office_address: doctor.office_address ?? null,
+        allows_online: doctor.allows_online ?? true,
       }}
       plans={activePlans}
       paymentMethods={paymentMethods}

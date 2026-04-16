@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, ChevronLeft, ChevronRight, Upload } from 'lucide-react'
+import { Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, ChevronLeft, ChevronRight, Upload, Video, MapPin, Bell } from 'lucide-react'
 import { getProfessionalTitle } from '@/lib/professional-title'
 
-type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null; professional_title?: string; state?: string | null; city?: string | null; country?: string }
+type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null; professional_title?: string; state?: string | null; city?: string | null; country?: string; office_address?: string | null; allows_online?: boolean }
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count?: number }
 type Slot = { date: string; time: string; label: string }
 type PaymentMethod = 'pago_movil' | 'transferencia' | 'zelle' | 'binance' | 'cash_usd' | 'cash_bs' | 'pos'
@@ -56,6 +56,7 @@ export default function BookingClient({
   const [useInsurance, setUseInsurance] = useState(false)
   const [selectedInsurance, setSelectedInsurance] = useState('')
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | ''>('')
+  const [appointmentMode, setAppointmentMode] = useState<'presencial' | 'online' | ''>('')
   const [form, setForm] = useState({ full_name: '', phone: '', email: '', cedula: '', notes: '', password: '', passwordConfirm: '' })
   const [paymentFile, setPaymentFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -197,16 +198,16 @@ export default function BookingClient({
     try {
       const supabase = createClient()
 
-      // Verify auth
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
+      // Get session for access token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
         setError('Sesión expirada. Por favor, inicia sesión de nuevo.')
         setSubmitting(false)
         return
       }
 
       // Get patient name/phone: prefer form input, then auth metadata, then email
-      const patientName = (form.full_name.trim() || authUser?.user_metadata?.full_name || user.email?.split('@')[0] || 'Paciente').trim()
+      const patientName = (form.full_name.trim() || authUser?.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Paciente').trim()
       const patientPhone = (form.phone.trim() || authUser?.user_metadata?.phone || '').trim()
       const patientCedula = (form.cedula.trim() || authUser?.user_metadata?.cedula || '').trim()
 
@@ -220,7 +221,7 @@ export default function BookingClient({
         }
         try {
           const ext = paymentFile.name.split('.').pop()
-          const path = `${doctor.id}/${user.id}/${Date.now()}.${ext}`
+          const path = `${doctor.id}/${session.user.id}/${Date.now()}.${ext}`
           const { error: uploadErr } = await supabase.storage
             .from('payment-receipts')
             .upload(path, paymentFile, { upsert: false })
@@ -237,100 +238,36 @@ export default function BookingClient({
         }
       }
 
-      // Get or create patient
-      const { data: existingPatient } = await supabase
-        .from('patients')
-        .select('id')
-        .eq('doctor_id', doctor.id)
-        .eq('auth_user_id', user.id)
-        .maybeSingle()
-
-      let patientId = existingPatient?.id
-      if (!patientId) {
-        const { data: newPatient, error: pErr } = await supabase
-          .from('patients')
-          .insert({
-            doctor_id: doctor.id,
-            auth_user_id: user.id,
-            full_name: patientName,
-            cedula: patientCedula || null,
-            phone: patientPhone || null,
-            email: user.email,
-            source: 'booking',
-          })
-          .select('id')
-          .single()
-
-        if (pErr) {
-          const errorMsg = `Error al registrar paciente: ${pErr?.message || JSON.stringify(pErr)}`
-          setError(errorMsg)
-          console.error('[BOOKING] createPatient', pErr)
-          setSubmitting(false)
-          return
-        }
-        patientId = newPatient.id
-      }
-
-      // Create appointment
+      // Call the server API route (uses admin client, bypasses RLS)
       const dateTime = new Date(`${selectedSlot.date}T${selectedSlot.time}:00`)
-      const { error: apptErr } = await supabase.from('appointments').insert({
-        doctor_id: doctor.id,
-        patient_id: patientId,
-        auth_user_id: user.id,
-        patient_name: patientName,
-        patient_phone: patientPhone || null,
-        patient_email: user.email,
-        patient_cedula: patientCedula || null,
-        scheduled_at: dateTime.toISOString(),
-        chief_complaint: form.notes.trim() || null,
-        plan_name: selectedPlan?.name ?? 'Consulta General',
-        plan_price: selectedPlan?.price_usd ?? 20,
-        status: 'scheduled',
-        source: 'booking',
-        payment_method: useInsurance ? 'insurance' : selectedPaymentMethod,
-        insurance_name: useInsurance ? selectedInsurance : null,
-        payment_receipt_url: receiptUrl,
+      const res = await fetch('/api/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doctorId: doctor.id,
+          accessToken: session.access_token,
+          patientName,
+          patientPhone: patientPhone || null,
+          patientEmail: session.user.email,
+          patientCedula: patientCedula || null,
+          scheduledAt: dateTime.toISOString(),
+          chiefComplaint: form.notes.trim() || null,
+          planName: selectedPlan?.name ?? 'Consulta General',
+          planPrice: selectedPlan?.price_usd ?? 20,
+          sessionsCount: selectedPlan?.sessions_count || 1,
+          paymentMethod: useInsurance ? 'insurance' : selectedPaymentMethod,
+          insuranceName: useInsurance ? selectedInsurance : null,
+          receiptUrl,
+          appointmentMode: appointmentMode || 'presencial',
+        }),
       })
 
-      if (apptErr) {
-        const errorMsg = `Error al guardar cita: ${apptErr?.message || JSON.stringify(apptErr)}`
-        setError(errorMsg)
-        console.error('[BOOKING] createAppointment', apptErr)
+      const result = await res.json()
+
+      if (!res.ok || result.error) {
+        setError(result.error || 'Error al agendar cita')
         setSubmitting(false)
         return
-      }
-
-      // Create patient_packages if plan has multiple sessions
-      if (selectedPlan && selectedPlan.sessions_count && selectedPlan.sessions_count > 1) {
-        try {
-          const { data: packageData, error: pkgErr } = await supabase
-            .from('patient_packages')
-            .insert({
-              doctor_id: doctor.id,
-              patient_id: patientId,
-              auth_user_id: user.id,
-              plan_name: selectedPlan.name,
-              total_sessions: selectedPlan.sessions_count,
-              used_sessions: 1,
-              price_usd: selectedPlan.price_usd,
-              status: 'active'
-            })
-            .select('id')
-            .single()
-
-          if (pkgErr) {
-            console.error('[BOOKING] createPackage error:', pkgErr)
-          } else if (packageData) {
-            // Update appointment with package_id
-            await supabase
-              .from('appointments')
-              .update({ package_id: packageData.id, session_number: 1 })
-              .eq('auth_user_id', user.id)
-              .eq('scheduled_at', dateTime.toISOString())
-          }
-        } catch (err) {
-          console.error('[BOOKING] package creation failed:', err)
-        }
       }
 
       setDone(true)
@@ -357,6 +294,13 @@ export default function BookingClient({
           <p className="text-xs text-slate-500"><span className="font-semibold">Paciente:</span> {form.full_name}</p>
           <p className="text-xs text-slate-500"><span className="font-semibold">Teléfono:</span> {form.phone}</p>
           {selectedPlan && <p className="text-xs text-slate-500"><span className="font-semibold">Consulta:</span> {selectedPlan.name} — ${selectedPlan.price_usd} USD</p>}
+          <p className="text-xs text-slate-500"><span className="font-semibold">Modalidad:</span> {appointmentMode === 'online' ? 'Videoconsulta (online)' : 'Presencial'}</p>
+          {appointmentMode === 'presencial' && doctor.office_address && (
+            <p className="text-xs text-slate-500"><span className="font-semibold">Dirección:</span> {doctor.office_address}</p>
+          )}
+          {appointmentMode === 'online' && (
+            <p className="text-xs text-blue-600"><span className="font-semibold">Enlace:</span> Se enviará por email antes de la cita</p>
+          )}
         </div>
         <p className="text-xs text-slate-400 mb-4">El médico confirmará tu cita y se pondrá en contacto contigo.</p>
         <a href="/patient/dashboard" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
@@ -403,13 +347,13 @@ export default function BookingClient({
 
             {/* Steps */}
             <div className="flex items-center gap-2 mt-6">
-              {step > 0 && ['Tipo de consulta', 'Seleccionar fecha', 'Tus datos'].map((s, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${step > i + 1 ? 'bg-emerald-500 text-white' : step === i + 1 ? 'bg-white text-teal-600' : 'bg-white/20 text-white/60'}`}>
+              {step > 0 && ['Plan', 'Modalidad', 'Fecha', 'Confirmar'].map((s, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${step > i + 1 ? 'bg-emerald-500 text-white' : step === i + 1 ? 'bg-white text-teal-600' : 'bg-white/20 text-white/60'}`}>
                     <span>{i + 1}</span>
                     <span className="hidden sm:inline">{s}</span>
                   </div>
-                  {i < 2 && <div className={`w-6 h-0.5 ${step > i + 1 ? 'bg-white' : 'bg-white/30'}`} />}
+                  {i < 3 && <div className={`w-4 h-0.5 ${step > i + 1 ? 'bg-white' : 'bg-white/30'}`} />}
                 </div>
               ))}
             </div>
@@ -564,7 +508,7 @@ export default function BookingClient({
                   return (
                     <button
                       key={plan.id}
-                      onClick={() => { setSelectedPlan(plan); setStep(2) }}
+                      onClick={() => { setSelectedPlan(plan); setAppointmentMode(''); setStep(2) }}
                       className={`relative bg-white rounded-xl p-6 text-left transition-all group ${isSelected ? 'border-2 border-teal-500 shadow-lg' : isMiddle ? 'border-2 border-teal-300 shadow-md' : 'border-2 border-slate-200 hover:border-teal-300'}`}
                     >
                       {isMiddle && <span className="absolute -top-3 left-4 text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full">Más elegido</span>}
@@ -604,12 +548,87 @@ export default function BookingClient({
             </div>
           )}
 
-          {/* Step 2: Select slot */}
+          {/* Step 2: Select appointment mode (online/presencial) */}
           {step === 2 && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex items-center gap-3">
                 <button onClick={() => setStep(1)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+                <h2 className="text-lg font-bold text-slate-900">¿Cómo será tu consulta?</h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Presencial */}
+                <button
+                  onClick={() => { setAppointmentMode('presencial'); setStep(3) }}
+                  className={`relative bg-white rounded-2xl p-6 text-left transition-all border-2 hover:shadow-lg ${
+                    appointmentMode === 'presencial' ? 'border-teal-500 shadow-lg' : 'border-slate-200 hover:border-teal-300'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center mb-4">
+                    <MapPin className="w-6 h-6 text-teal-600" />
+                  </div>
+                  <p className="font-bold text-lg text-slate-900 mb-1">Presencial</p>
+                  <p className="text-sm text-slate-500">Asiste al consultorio del especialista</p>
+                  {doctor.office_address && (
+                    <div className="mt-3 p-3 bg-slate-50 rounded-lg">
+                      <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+                        <MapPin className="w-3 h-3 text-slate-400" />
+                        {doctor.office_address}
+                      </p>
+                    </div>
+                  )}
+                  {(doctor.city || doctor.state) && !doctor.office_address && (
+                    <div className="mt-3 p-3 bg-slate-50 rounded-lg">
+                      <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+                        <MapPin className="w-3 h-3 text-slate-400" />
+                        {[doctor.city, doctor.state].filter(Boolean).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </button>
+
+                {/* Online */}
+                {(doctor.allows_online !== false) && (
+                  <button
+                    onClick={() => { setAppointmentMode('online'); setStep(3) }}
+                    className={`relative bg-white rounded-2xl p-6 text-left transition-all border-2 hover:shadow-lg ${
+                      appointmentMode === 'online' ? 'border-teal-500 shadow-lg' : 'border-slate-200 hover:border-teal-300'
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4">
+                      <Video className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <p className="font-bold text-lg text-slate-900 mb-1">Online</p>
+                    <p className="text-sm text-slate-500">Videoconsulta desde tu casa</p>
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                      <p className="text-xs text-blue-600 font-medium flex items-center gap-1.5">
+                        <Video className="w-3 h-3" />
+                        Recibirás el enlace por email antes de la cita
+                      </p>
+                    </div>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Select slot */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setStep(2)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
                 <h2 className="text-lg font-bold text-slate-900">Elige fecha y hora</h2>
+              </div>
+
+              {/* Mode badge */}
+              <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${
+                appointmentMode === 'online' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-teal-50 text-teal-700 border border-teal-200'
+              }`}>
+                {appointmentMode === 'online' ? <Video className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                {appointmentMode === 'online' ? 'Consulta Online (Videollamada)' : 'Consulta Presencial'}
+                {appointmentMode === 'presencial' && doctor.office_address && (
+                  <span className="text-xs font-normal ml-1">· {doctor.office_address}</span>
+                )}
               </div>
 
               <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3">
@@ -654,7 +673,7 @@ export default function BookingClient({
                 </div>
               ))}
 
-              <button onClick={() => setStep(3)} disabled={!selectedSlot}
+              <button onClick={() => setStep(4)} disabled={!selectedSlot}
                 className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 <Clock className="w-4 h-4" />
                 Continuar {selectedSlot ? `— ${selectedSlot.label} ${selectedSlot.time}` : ''}
@@ -662,19 +681,28 @@ export default function BookingClient({
             </div>
           )}
 
-          {/* Step 3: Patient data */}
-          {step === 3 && (
+          {/* Step 4: Patient data */}
+          {step === 4 && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <button onClick={() => setStep(2)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+                <button onClick={() => setStep(3)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
                 <h2 className="text-lg font-bold text-slate-900">Tus datos</h2>
               </div>
 
-              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-center gap-3">
-                <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-teal-800">{selectedSlot?.label} a las {selectedSlot?.time}</p>
-                  <p className="text-xs text-teal-600">{selectedPlan?.name} — ${selectedPlan?.price_usd} USD</p>
+              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-teal-800">{selectedSlot?.label} a las {selectedSlot?.time}</p>
+                    <p className="text-xs text-teal-600">{selectedPlan?.name} — ${selectedPlan?.price_usd} USD</p>
+                  </div>
+                </div>
+                <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg w-fit ${
+                  appointmentMode === 'online' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'
+                }`}>
+                  {appointmentMode === 'online' ? <Video className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
+                  {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}
+                  {appointmentMode === 'presencial' && doctor.office_address && ` · ${doctor.office_address}`}
                 </div>
               </div>
 
