@@ -20,18 +20,28 @@ const ESPECIALIDADES = [
   'Reumatología','Urología','Otra',
 ]
 
+const PROFESSIONAL_TITLES = [
+  { value: 'Dr.',  label: 'Doctor (Dr.)',       gender: 'M' },
+  { value: 'Dra.', label: 'Doctora (Dra.)',     gender: 'F' },
+  { value: 'Lic.', label: 'Licenciado/a (Lic.)', gender: 'N' },
+  { value: 'Psic.', label: 'Psicólogo/a (Psic.)', gender: 'N' },
+  { value: 'Odont.', label: 'Odontólogo/a (Odont.)', gender: 'N' },
+  { value: 'Nutr.', label: 'Nutricionista (Nutr.)', gender: 'N' },
+  { value: 'Fisio.', label: 'Fisioterapeuta (Fisio.)', gender: 'N' },
+]
+
 type FormData = {
   full_name: string; cedula: string; email: string
   password: string; confirmPassword: string
   specialty: string; phone: string; plan: 'free' | 'pro'
-  sex: string
+  sex: string; professional_title: string
 }
 type FormErrors = Partial<Record<keyof FormData, string>>
 
 const defaultForm: FormData = {
   full_name: '', cedula: '', email: '',
   password: '', confirmPassword: '',
-  specialty: '', phone: '', plan: 'free', sex: '',
+  specialty: '', phone: '', plan: 'free', sex: '', professional_title: 'Dr.',
 }
 
 export default function RegisterPage() {
@@ -256,9 +266,15 @@ function RegisterInner() {
                   </div>
                 )}
 
+                <Field label="Título profesional" required>
+                  <select value={form.professional_title} onChange={e => change('professional_title', e.target.value)} className={inp(false)}>
+                    {PROFESSIONAL_TITLES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </Field>
+
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Nombre completo" required error={errors.full_name}>
-                    <input type="text" value={form.full_name} onChange={e => change('full_name', e.target.value)} placeholder="Dr. Carlos Ramírez" className={inp(!!errors.full_name)} />
+                    <input type="text" value={form.full_name} onChange={e => change('full_name', e.target.value)} placeholder="Carlos Ramírez" className={inp(!!errors.full_name)} />
                   </Field>
                   <Field label="Cédula" required error={errors.cedula}>
                     <input type="text" value={form.cedula} onChange={e => change('cedula', e.target.value)} placeholder="V-12345678" className={inp(!!errors.cedula)} />

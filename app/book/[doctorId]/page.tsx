@@ -9,7 +9,7 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
 
   const { data: doctor } = await admin
     .from('profiles')
-    .select('id, full_name, specialty, phone, avatar_url')
+    .select('id, full_name, specialty, phone, avatar_url, professional_title')
     .eq('id', doctorId)
     .maybeSingle()
 
@@ -40,6 +40,25 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
     ? plans
     : [{ id: 'default', name: 'Consulta General', price_usd: 20, duration_minutes: 30, sessions_count: 1 }]
 
+  // Fetch payment methods and details
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('payment_methods, payment_details')
+    .eq('id', doctorId)
+    .maybeSingle()
+
+  // Fetch booked slots (confirmed/scheduled appointments in the future)
+  const { data: bookedAppointments } = await admin
+    .from('appointments')
+    .select('scheduled_at, plan_name')
+    .eq('doctor_id', doctorId)
+    .in('status', ['scheduled', 'confirmed'])
+    .gte('scheduled_at', new Date().toISOString())
+
+  const bookedSlots = bookedAppointments?.map(apt => apt.scheduled_at) ?? []
+  const paymentMethods = (profile?.payment_methods as string[] | null) ?? []
+  const paymentDetails = (profile?.payment_details as Record<string, any> | null) ?? {}
+
   return (
     <BookingClient
       doctor={{
@@ -48,8 +67,12 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
         specialty: doctor.specialty ?? '',
         phone: doctor.phone ?? '',
         avatar_url: doctor.avatar_url ?? null,
+        professional_title: doctor.professional_title ?? 'Dr.',
       }}
       plans={activePlans}
+      paymentMethods={paymentMethods}
+      paymentDetails={paymentDetails}
+      bookedSlots={bookedSlots}
     />
   )
 }

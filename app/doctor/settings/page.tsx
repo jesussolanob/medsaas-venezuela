@@ -31,6 +31,16 @@ const ESPECIALIDADES = [
   'Cirugía General','Cirugía Plástica','Medicina de Emergencia','Radiología','Otra',
 ]
 
+const PROFESSIONAL_TITLES = [
+  { value: 'Dr.',  label: 'Doctor (Dr.)',       gender: 'M' },
+  { value: 'Dra.', label: 'Doctora (Dra.)',     gender: 'F' },
+  { value: 'Lic.', label: 'Licenciado/a (Lic.)', gender: 'N' },
+  { value: 'Psic.', label: 'Psicólogo/a (Psic.)', gender: 'N' },
+  { value: 'Odont.', label: 'Odontólogo/a (Odont.)', gender: 'N' },
+  { value: 'Nutr.', label: 'Nutricionista (Nutr.)', gender: 'N' },
+  { value: 'Fisio.', label: 'Fisioterapeuta (Fisio.)', gender: 'N' },
+]
+
 const ALL_MODULES: Module[] = [
   { id: 'patients', label: 'Pacientes', description: 'Ver y gestionar pacientes', enabled: true },
   { id: 'agenda', label: 'Agenda', description: 'Ver y editar citas', enabled: true },
@@ -82,7 +92,7 @@ function SettingsPageInner() {
   const initialTab = (searchParams.get('tab') as TabId) || 'profile'
 
   // Profile
-  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '' })
+  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.' })
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -147,11 +157,11 @@ function SettingsPageInner() {
       // profile
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, email, phone, specialty, avatar_url, logo_url, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications')
+        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications')
         .eq('id', user.id).single()
 
       if (data) {
-        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '' })
+        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.' })
         setAvatarUrl(data.avatar_url ?? null)
         setLogoUrl(data.logo_url ?? null)
         setWhatsappToken(data.whatsapp_token ?? '')
@@ -194,6 +204,7 @@ function SettingsPageInner() {
       full_name: profile.full_name,
       phone: profile.phone,
       specialty: profile.specialty,
+      professional_title: profile.professional_title,
     }).eq('id', user.id)
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
@@ -472,26 +483,32 @@ function SettingsPageInner() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre completo</label>
-                      <input value={profile.full_name} onChange={e => setProfile(p => ({ ...p, full_name: e.target.value }))} className={fi} />
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">Título profesional</label>
+                      <select value={profile.professional_title} onChange={e => setProfile(p => ({ ...p, professional_title: e.target.value }))} className={fi}>
+                        {PROFESSIONAL_TITLES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
-                      <input value={profile.email} disabled className={fi + ' opacity-50 cursor-not-allowed'} />
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre completo</label>
+                      <input value={profile.full_name} onChange={e => setProfile(p => ({ ...p, full_name: e.target.value }))} className={fi} />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+                      <input value={profile.email} disabled className={fi + ' opacity-50 cursor-not-allowed'} />
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">Teléfono</label>
                       <input value={profile.phone} onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))} placeholder="+58 412 000 0000" className={fi} />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1.5">Especialidad</label>
-                      <select value={profile.specialty} onChange={e => setProfile(p => ({ ...p, specialty: e.target.value }))} className={fi}>
-                        <option value="">Seleccionar especialidad…</option>
-                        {ESPECIALIDADES.map(esp => <option key={esp} value={esp}>{esp}</option>)}
-                      </select>
-                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Especialidad</label>
+                    <select value={profile.specialty} onChange={e => setProfile(p => ({ ...p, specialty: e.target.value }))} className={fi}>
+                      <option value="">Seleccionar especialidad…</option>
+                      {ESPECIALIDADES.map(esp => <option key={esp} value={esp}>{esp}</option>)}
+                    </select>
                   </div>
                   <button onClick={saveProfile} className="flex items-center gap-2 g-bg px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
                     {saved ? <><CheckCircle className="w-4 h-4" />Guardado</> : <><SaveIcon className="w-4 h-4" />Guardar cambios</>}

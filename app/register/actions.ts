@@ -12,6 +12,7 @@ export type RegisterInput = {
   phone: string
   plan: 'free' | 'pro'
   sex?: string
+  professional_title?: string
 }
 
 export type RegisterResult =
@@ -45,6 +46,7 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     specialty: input.specialty || null,
     phone: input.phone || null,
     sex: input.sex || null,
+    professional_title: input.professional_title || 'Dr.',
     role: 'doctor',
     is_active: true,
   })

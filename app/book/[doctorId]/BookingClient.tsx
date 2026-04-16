@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 
-type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null }
+type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null; professional_title?: string }
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count?: number }
 type Slot = { date: string; time: string; label: string }
+type PaymentMethod = 'pago_movil' | 'transferencia' | 'zelle' | 'binance' | 'cash_usd' | 'cash_bs' | 'pos'
+type PaymentDetails = Record<PaymentMethod, { account?: string; number?: string; holder?: string }>
+type BookedSlot = { scheduled_at: string; plan_name: string }
 
 function generateSlots(): Slot[] {
   const slots: Slot[] = []
@@ -30,7 +33,19 @@ function groupByDate(slots: Slot[]) {
   return map
 }
 
-export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile; plans: PricingPlan[] }) {
+export default function BookingClient({
+  doctor,
+  plans,
+  paymentMethods = [],
+  paymentDetails = {},
+  bookedSlots = []
+}: {
+  doctor: DoctorProfile
+  plans: PricingPlan[]
+  paymentMethods?: PaymentMethod[]
+  paymentDetails?: PaymentDetails
+  bookedSlots?: string[]
+}) {
   const [step, setStep] = useState(0)
   const [authUser, setAuthUser] = useState<any>(null)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
@@ -39,12 +54,36 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
   const [weekOffset, setWeekOffset] = useState(0)
   const [useInsurance, setUseInsurance] = useState(false)
   const [selectedInsurance, setSelectedInsurance] = useState('')
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | ''>('')
   const [form, setForm] = useState({ full_name: '', phone: '', email: '', cedula: '', notes: '', password: '', passwordConfirm: '' })
   const [paymentFile, setPaymentFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
   const mockInsurances = ['Seguros Mercantil', 'Mapfre', 'La Previsora', 'ABA Seguros']
+
+  const paymentMethodLabels: Record<PaymentMethod, string> = {
+    pago_movil: '📱 Pago Móvil',
+    transferencia: '🏦 Transferencia',
+    zelle: '💳 Zelle',
+    binance: '₿ Binance',
+    cash_usd: '💵 Pago en consultorio (USD)',
+    cash_bs: '💵 Pago en consultorio (Bs)',
+    pos: '🛒 Punto de venta'
+  }
+
+  const requiresReceipt = (method: PaymentMethod) => !['cash_usd', 'cash_bs', 'pos'].includes(method)
+
+  const isSlotBooked = (date: string, time: string): boolean => {
+    const slotISO = new Date(`${date}T${time}:00`).toISOString()
+    const slotTime = new Date(slotISO).getTime()
+    const bufferMs = 30 * 60 * 1000 // 30 min buffer
+
+    return bookedSlots.some(bookedISO => {
+      const bookedTime = new Date(bookedISO).getTime()
+      return Math.abs(bookedTime - slotTime) < bufferMs
+    })
+  }
 
   const allSlots = generateSlots()
   const grouped = groupByDate(allSlots)
@@ -89,7 +128,9 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
       setAuthUser(data.user)
       setStep(1)
     } catch (err: any) {
-      setError(err?.message || 'Error al iniciar sesión')
+      const errorMsg = err?.message || err?.error_description || 'Error al iniciar sesión'
+      setError(errorMsg)
+      console.error('[BOOKING] handleAuthLogin', err)
     }
     setSubmitting(false)
   }
@@ -124,7 +165,9 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
       setAuthUser(data.user)
       setStep(1)
     } catch (err: any) {
-      setError(err?.message || 'Error al registrarse')
+      const errorMsg = err?.message || err?.error_description || 'Error al registrarse'
+      setError(errorMsg)
+      console.error('[BOOKING] handleAuthRegister', err)
     }
     setSubmitting(false)
   }
@@ -145,13 +188,16 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
         return
       }
 
-      // Upload payment receipt if direct payment
+      // Upload payment receipt if required
       let receiptUrl = null
-      if (!useInsurance && paymentFile) {
+      if (!useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod)) {
+        if (!paymentFile) {
+          setError(`Comprobante requerido para ${paymentMethodLabels[selectedPaymentMethod as PaymentMethod]}`)
+          setSubmitting(false)
+          return
+        }
         try {
-          // Ensure bucket exists
           await supabase.storage.createBucket('payment-receipts', { public: true }).catch(() => {})
-
           const ext = paymentFile.name.split('.').pop()
           const path = `${doctor.id}/${user.id}/${Date.now()}.${ext}`
           const { data: uploadData, error: uploadErr } = await supabase.storage
@@ -159,13 +205,14 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
             .upload(path, paymentFile)
 
           if (uploadErr) throw uploadErr
-
-          const { data: publicUrl } = supabase.storage
-            .from('payment-receipts')
-            .getPublicUrl(path)
+          const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
           receiptUrl = publicUrl.publicUrl
-        } catch (err) {
-          console.warn('Receipt upload warning:', err)
+        } catch (err: any) {
+          const errorMsg = `Error al subir comprobante: ${err?.message || JSON.stringify(err)}`
+          setError(errorMsg)
+          console.error('[BOOKING] uploadReceipt', err)
+          setSubmitting(false)
+          return
         }
       }
 
@@ -194,7 +241,9 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
           .single()
 
         if (pErr) {
-          setError('Error al registrar paciente. Por favor intenta de nuevo.')
+          const errorMsg = `Error al registrar paciente: ${pErr?.message || JSON.stringify(pErr)}`
+          setError(errorMsg)
+          console.error('[BOOKING] createPatient', pErr)
           setSubmitting(false)
           return
         }
@@ -217,20 +266,24 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
         plan_price: selectedPlan?.price_usd ?? 20,
         status: 'scheduled',
         source: 'booking',
-        payment_method: useInsurance ? 'insurance' : 'direct',
+        payment_method: useInsurance ? 'insurance' : selectedPaymentMethod,
         insurance_name: useInsurance ? selectedInsurance : null,
         payment_receipt_url: receiptUrl,
       })
 
       if (apptErr) {
-        setError('Error al crear la cita. Por favor intenta de nuevo.')
+        const errorMsg = `Error al guardar cita: ${apptErr?.message || JSON.stringify(apptErr)}`
+        setError(errorMsg)
+        console.error('[BOOKING] createAppointment', apptErr)
         setSubmitting(false)
         return
       }
 
       setDone(true)
     } catch (err: any) {
-      setError(err?.message || 'Error inesperado. Por favor intenta de nuevo.')
+      const errorMsg = err?.message || err?.error_description || 'Error: ' + JSON.stringify(err)
+      setError(errorMsg)
+      console.error('[BOOKING] handleSubmit', err)
     }
     setSubmitting(false)
   }
@@ -244,7 +297,7 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
         </div>
         <h2 className="text-xl font-bold text-slate-900 mb-2">¡Cita agendada!</h2>
         <p className="text-sm text-slate-500 mb-4">
-          Tu consulta con <strong>Dr. {doctor.full_name}</strong> fue registrada para el <strong>{selectedSlot?.label}</strong> a las <strong>{selectedSlot?.time}</strong>.
+          Tu consulta con <strong>{doctor.professional_title ?? 'Dr.'} {doctor.full_name}</strong> fue registrada para el <strong>{selectedSlot?.label}</strong> a las <strong>{selectedSlot?.time}</strong>.
         </p>
         <div className="bg-slate-50 rounded-xl p-4 text-left space-y-1.5 mb-5">
           <p className="text-xs text-slate-500"><span className="font-semibold">Paciente:</span> {form.full_name}</p>
@@ -276,7 +329,7 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
                   <Activity className="w-10 h-10 text-white" />
                 )}
               </div>
-              <h1 className="text-3xl font-bold">Dr(a). {doctor.full_name}</h1>
+              <h1 className="text-3xl font-bold">{doctor.professional_title ?? 'Dr.'} {doctor.full_name}</h1>
               <p className="text-base text-white/80 mt-1">{doctor.specialty || 'Médico especialista'}</p>
             </div>
 
@@ -518,12 +571,26 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
                     </p>
                   </div>
                   <div className="p-3 flex flex-wrap gap-2">
-                    {grouped[date]?.map(slot => (
-                      <button key={slot.time} onClick={() => setSelectedSlot(slot)}
-                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${selectedSlot?.date === slot.date && selectedSlot?.time === slot.time ? 'g-bg text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-700'}`}>
-                        {slot.time}
-                      </button>
-                    ))}
+                    {grouped[date]?.map(slot => {
+                      const booked = isSlotBooked(slot.date, slot.time)
+                      const isSelected = selectedSlot?.date === slot.date && selectedSlot?.time === slot.time
+                      return (
+                        <button
+                          key={slot.time}
+                          onClick={() => !booked && setSelectedSlot(slot)}
+                          disabled={booked}
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                            booked
+                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              : isSelected
+                              ? 'g-bg text-white shadow-md'
+                              : 'bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-700'
+                          }`}
+                        >
+                          {booked ? 'Ocupado' : slot.time}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -573,20 +640,20 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
                   </div>
                 )}
 
-                {/* Insurance selection */}
+                {/* Payment method selection */}
                 <div className="border-b pb-5">
                   <p className="text-sm font-bold text-slate-700 mb-3">¿Cómo pagarás la consulta?</p>
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setUseInsurance(false)}
+                      onClick={() => { setUseInsurance(false); setSelectedPaymentMethod('') }}
                       className={`p-3 rounded-lg border-2 text-sm font-semibold transition-all ${!useInsurance ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
                     >
                       💵 Pago directo
                     </button>
                     <button
                       type="button"
-                      onClick={() => setUseInsurance(true)}
+                      onClick={() => { setUseInsurance(true); setSelectedPaymentMethod('') }}
                       className={`p-3 rounded-lg border-2 text-sm font-semibold transition-all ${useInsurance ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
                     >
                       🏥 Pago con Seguro
@@ -594,34 +661,73 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
                   </div>
                 </div>
 
-                {/* Payment receipt for direct payment */}
-                {!useInsurance && (
+                {/* Payment methods for direct payment */}
+                {!useInsurance && paymentMethods.length > 0 && (
+                  <div className="space-y-4 p-4 bg-teal-50 border border-teal-200 rounded-lg">
+                    <p className="text-sm font-medium text-slate-700">Selecciona método de pago:</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {paymentMethods.map(method => (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => setSelectedPaymentMethod(method)}
+                          className={`p-3 rounded-lg border-2 text-left text-sm font-semibold transition-all ${
+                            selectedPaymentMethod === method
+                              ? 'border-teal-600 bg-white'
+                              : 'border-slate-200 bg-white hover:border-teal-300'
+                          }`}
+                        >
+                          {paymentMethodLabels[method]}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Show payment details if selected method needs them */}
+                    {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && paymentDetails[selectedPaymentMethod as PaymentMethod] && (
+                      <div className="bg-white rounded-lg p-3 border border-slate-200 space-y-2 text-xs">
+                        <p className="font-bold text-slate-700">Datos para transferencia:</p>
+                        {Object.entries(paymentDetails[selectedPaymentMethod as PaymentMethod] || {}).map(([key, val]) => (
+                          val && <p key={key} className="text-slate-600"><span className="font-semibold capitalize">{key}:</span> {val}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Payment receipt upload for methods that require it */}
+                {!useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
                   <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg space-y-3">
                     <label className="block text-sm font-medium text-slate-700">
                       Comprobante de pago <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex items-center gap-3">
-                      <label className="flex-1 flex items-center justify-center border-2 border-dashed border-orange-300 rounded-lg p-4 cursor-pointer hover:bg-orange-100 transition-colors">
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          onChange={e => setPaymentFile(e.target.files?.[0] || null)}
-                          className="hidden"
-                          required={!useInsurance}
-                        />
-                        <div className="text-center">
-                          <Upload className="w-5 h-5 text-orange-600 mx-auto mb-1" />
-                          <p className="text-sm font-medium text-slate-700">
-                            {paymentFile ? paymentFile.name : 'Sube comprobante (JPG, PNG, PDF)'}
-                          </p>
-                        </div>
-                      </label>
-                    </div>
+                    <label className="flex-1 flex items-center justify-center border-2 border-dashed border-orange-300 rounded-lg p-4 cursor-pointer hover:bg-orange-100 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={e => setPaymentFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                      />
+                      <div className="text-center">
+                        <Upload className="w-5 h-5 text-orange-600 mx-auto mb-1" />
+                        <p className="text-sm font-medium text-slate-700">
+                          {paymentFile ? paymentFile.name : 'Sube comprobante (JPG, PNG, PDF)'}
+                        </p>
+                      </div>
+                    </label>
                     {paymentFile && (
                       <div className="text-xs text-slate-500">
                         Archivo: {paymentFile.name} ({(paymentFile.size / 1024 / 1024).toFixed(2)} MB)
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Cash/POS note (no receipt needed) */}
+                {!useInsurance && selectedPaymentMethod && !requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-800">
+                      <span className="font-semibold">Nota:</span> Llevarás el pago ({paymentMethodLabels[selectedPaymentMethod as PaymentMethod]}) el día de la consulta.
+                    </p>
                   </div>
                 )}
 
@@ -649,7 +755,11 @@ export default function BookingClient({ doctor, plans }: { doctor: DoctorProfile
                   <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Describe brevemente por qué necesitas la consulta..." className={fi + ' resize-none'} />
                 </div>
 
-                <button type="submit" disabled={submitting || (!useInsurance && !paymentFile)} className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+                <button
+                  type="submit"
+                  disabled={submitting || (!useInsurance && !selectedPaymentMethod) || (!useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && !paymentFile)}
+                  className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
+                >
                   {submitting ? 'Confirmando...' : <><CheckCircle className="w-4 h-4" />Confirmar cita</>}
                 </button>
               </form>
