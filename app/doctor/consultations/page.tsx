@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useTransition, useRef } from 'react'
 import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -389,24 +389,24 @@ export default function ConsultationsPage() {
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                   <FileText className="w-3.5 h-3.5 text-slate-400" /> Notas de la consulta
                 </label>
-                <textarea value={report.notes} onChange={e => setReport(p => ({ ...p, notes: e.target.value }))}
-                  rows={4} placeholder="Anamnesis, examen físico, hallazgos relevantes..." className={fi + ' resize-none'} />
+                <RichTextEditor value={report.notes} onChange={html => setReport(p => ({ ...p, notes: html }))}
+                  placeholder="Anamnesis, examen físico, hallazgos relevantes..." />
               </div>
 
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                   <Stethoscope className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
                 </label>
-                <textarea value={report.diagnosis} onChange={e => setReport(p => ({ ...p, diagnosis: e.target.value }))}
-                  rows={2} placeholder="Diagnóstico principal y diagnósticos diferenciales..." className={fi + ' resize-none'} />
+                <RichTextEditor value={report.diagnosis} onChange={html => setReport(p => ({ ...p, diagnosis: html }))}
+                  placeholder="Diagnóstico principal y diagnósticos diferenciales..." />
               </div>
 
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                   <Pill className="w-3.5 h-3.5 text-slate-400" /> Plan de tratamiento
                 </label>
-                <textarea value={report.treatment} onChange={e => setReport(p => ({ ...p, treatment: e.target.value }))}
-                  rows={3} placeholder="Medicamentos, dosis, indicaciones, próxima cita..." className={fi + ' resize-none'} />
+                <RichTextEditor value={report.treatment} onChange={html => setReport(p => ({ ...p, treatment: html }))}
+                  placeholder="Medicamentos, dosis, indicaciones, próxima cita..." />
               </div>
 
               {/* Payment status */}
@@ -498,8 +498,8 @@ export default function ConsultationsPage() {
 
               <div>
                 <label className="text-sm font-medium text-slate-700 mb-1.5 block">Notas adicionales</label>
-                <textarea value={recipe.notes} onChange={e => setRecipe(p => ({ ...p, notes: e.target.value }))}
-                  rows={3} placeholder="Ej: Tomar con comida, evitar sol..." className={fi + ' resize-none'} />
+                <RichTextEditor value={recipe.notes} onChange={html => setRecipe(p => ({ ...p, notes: html }))}
+                  placeholder="Ej: Tomar con comida, evitar sol..." />
               </div>
 
               <div className="flex gap-3">
@@ -697,6 +697,49 @@ export default function ConsultationsPage() {
         )}
       </div>
     </>
+  )
+}
+
+function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (html: string) => void; placeholder?: string }) {
+  const editorRef = useRef<HTMLDivElement>(null)
+  const [isActive, setIsActive] = useState(false)
+
+  const execCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value)
+    if (editorRef.current) onChange(editorRef.current.innerHTML)
+  }
+
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-200 bg-slate-50 flex-wrap">
+        <button type="button" onClick={() => execCommand('bold')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center font-bold text-sm transition-colors" title="Negrita (Ctrl+B)">B</button>
+        <button type="button" onClick={() => execCommand('italic')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center italic text-sm transition-colors" title="Cursiva (Ctrl+I)">I</button>
+        <button type="button" onClick={() => execCommand('underline')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center underline text-sm transition-colors" title="Subrayado (Ctrl+U)">U</button>
+        <div className="w-px h-5 bg-slate-200 mx-1" />
+        <button type="button" onClick={() => execCommand('insertUnorderedList')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-sm transition-colors" title="Lista de puntos">•</button>
+        <button type="button" onClick={() => execCommand('insertOrderedList')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-sm transition-colors" title="Lista numerada">1.</button>
+        <div className="w-px h-5 bg-slate-200 mx-1" />
+        <label className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center cursor-pointer transition-colors" title="Color de texto">
+          <span className="text-sm font-semibold text-slate-600">A</span>
+          <input type="color" className="w-0 h-0 opacity-0" onChange={e => execCommand('foreColor', e.target.value)} />
+        </label>
+        <button type="button" onClick={() => execCommand('removeFormat')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-xs text-slate-400 transition-colors" title="Limpiar formato">✕</button>
+      </div>
+      {/* Editor area */}
+      <div
+        ref={editorRef}
+        contentEditable
+        className="min-h-[120px] px-4 py-3 text-sm text-slate-800 outline-none"
+        style={{ touchAction: 'auto' }}
+        onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
+        onFocus={() => setIsActive(true)}
+        onBlur={() => setIsActive(false)}
+        suppressContentEditableWarning={true}
+      >
+        {!value && <span className="text-slate-400">{placeholder}</span>}
+      </div>
+    </div>
   )
 }
 

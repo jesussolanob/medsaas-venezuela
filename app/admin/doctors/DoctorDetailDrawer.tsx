@@ -193,6 +193,21 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                     </div>
                   </div>
                 )}
+
+                {/* Location */}
+                {(profile?.city || profile?.state || profile?.country) && (
+                  <div className="flex items-start gap-3">
+                    <FileText className="w-4 h-4 text-slate-400 mt-1 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-slate-500 uppercase">Ubicación</p>
+                      <p className="text-sm text-slate-900">
+                        {[profile?.city, profile?.state, profile?.country]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Plan y estado */}

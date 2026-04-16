@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import { getProfessionalTitle } from '@/lib/professional-title'
 
-type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null; professional_title?: string }
+type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null; professional_title?: string; state?: string | null; city?: string | null; country?: string }
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count?: number }
 type Slot = { date: string; time: string; label: string }
 type PaymentMethod = 'pago_movil' | 'transferencia' | 'zelle' | 'binance' | 'cash_usd' | 'cash_bs' | 'pos'
@@ -385,6 +385,11 @@ export default function BookingClient({
               </div>
               <h1 className="text-3xl font-bold">{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</h1>
               <p className="text-base text-white/80 mt-1">{doctor.specialty || 'Médico especialista'}</p>
+              {(doctor.city || doctor.state) && (
+                <p className="text-sm text-white/70 mt-2">
+                  📍 {[doctor.city, doctor.state].filter(Boolean).join(', ')}
+                </p>
+              )}
             </div>
 
             {/* Trust bar */}

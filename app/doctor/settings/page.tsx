@@ -93,7 +93,7 @@ function SettingsPageInner() {
   const initialTab = (searchParams.get('tab') as TabId) || 'profile'
 
   // Profile
-  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.' })
+  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.', country: 'Venezuela', state: '', city: '' })
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -158,11 +158,11 @@ function SettingsPageInner() {
       // profile
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications')
+        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications, state, city, country')
         .eq('id', user.id).single()
 
       if (data) {
-        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.' })
+        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.', country: data.country ?? 'Venezuela', state: data.state ?? '', city: data.city ?? '' })
         setAvatarUrl(data.avatar_url ?? null)
         setLogoUrl(data.logo_url ?? null)
         setWhatsappToken(data.whatsapp_token ?? '')
@@ -206,6 +206,9 @@ function SettingsPageInner() {
       phone: profile.phone,
       specialty: profile.specialty,
       professional_title: profile.professional_title,
+      country: profile.country,
+      state: profile.state,
+      city: profile.city,
     }).eq('id', user.id)
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
@@ -510,6 +513,23 @@ function SettingsPageInner() {
                       <option value="">Seleccionar especialidad…</option>
                       {ESPECIALIDADES.map(esp => <option key={esp} value={esp}>{esp}</option>)}
                     </select>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100">
+                    <p className="text-sm font-semibold text-slate-700 mb-3">Ubicación del consultorio</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">País</label>
+                        <input value={profile.country} onChange={e => setProfile(p => ({ ...p, country: e.target.value }))} className={fi} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Estado</label>
+                        <input value={profile.state} onChange={e => setProfile(p => ({ ...p, state: e.target.value }))} placeholder="Ej: Distrito Capital, Zulia, Carabobo" className={fi} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Ciudad</label>
+                        <input value={profile.city} onChange={e => setProfile(p => ({ ...p, city: e.target.value }))} placeholder="Ej: Caracas, Maracaibo, Valencia" className={fi} />
+                      </div>
+                    </div>
                   </div>
                   <button onClick={saveProfile} className="flex items-center gap-2 g-bg px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
                     {saved ? <><CheckCircle className="w-4 h-4" />Guardado</> : <><SaveIcon className="w-4 h-4" />Guardar cambios</>}

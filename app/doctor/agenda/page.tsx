@@ -94,6 +94,11 @@ export default function AgendaPage() {
   const [searchText, setSearchText] = useState('')
   const [rescheduling, setRescheduling] = useState<PendingAppointment | null>(null)
   const [newDateTime, setNewDateTime] = useState('')
+  const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkSelected, setBulkSelected] = useState<string[]>([])
+  const [bulkReschedule, setBulkReschedule] = useState(false)
+  const [bulkNewDateTime, setBulkNewDateTime] = useState('')
   const weekDates = getWeekDates(weekOffset)
   const monthCells = getMonthDates(monthYear.year, monthYear.month)
 
@@ -220,6 +225,34 @@ export default function AgendaPage() {
     }
   }
 
+  async function confirmBulkReschedule() {
+    if (bulkSelected.length === 0 || !bulkNewDateTime) return
+    const supabase = createClient()
+    try {
+      const rescheduledDate = new Date(bulkNewDateTime).toISOString()
+
+      for (const apptId of bulkSelected) {
+        await supabase
+          .from('appointments')
+          .update({ scheduled_at: rescheduledDate, appointment_date: rescheduledDate })
+          .eq('id', apptId)
+      }
+
+      setPendingAppointments(prev => prev.map(a =>
+        bulkSelected.includes(a.id) ? { ...a, scheduled_at: rescheduledDate } : a
+      ))
+
+      toast.success(`${bulkSelected.length} cita(s) reagendada(s) para ${new Date(rescheduledDate).toLocaleDateString('es-VE')} a las ${new Date(rescheduledDate).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}`)
+      setBulkReschedule(false)
+      setBulkSelected([])
+      setBulkNewDateTime('')
+      setBulkMode(false)
+    } catch (e) {
+      console.error(e)
+      toast.error('Error al reagendar citas')
+    }
+  }
+
   // Filter for week view
   useEffect(() => {
     const start = weekDates[0]
@@ -233,7 +266,19 @@ export default function AgendaPage() {
 
   function getApptsByDate(d: Date): Appointment[] {
     const dateStr = d.toLocaleDateString('es-VE')
-    return allAppointments.filter(a => a.date === dateStr)
+    const combinedAppts = [
+      ...allAppointments,
+      ...pendingAppointments.map(p => ({
+        id: p.id,
+        patient_name: p.patient_name,
+        date: new Date(p.scheduled_at).toLocaleDateString('es-VE'),
+        isoDate: p.scheduled_at,
+        time: new Date(p.scheduled_at).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
+        chief_complaint: p.chief_complaint ?? undefined,
+        status: 'scheduled' as const,
+      }))
+    ]
+    return combinedAppts.filter(a => a.date === dateStr)
   }
 
   function toggleSlot(idx: number) { setSlots(prev => prev.map((s, i) => i === idx ? { ...s, enabled: !s.enabled } : s)) }
@@ -340,10 +385,14 @@ export default function AgendaPage() {
                           <p className={`text-lg font-bold ${isToday ? 'text-teal-700' : 'text-slate-800'}`}>{date.getDate()}</p>
                         </div>
                         {dayAppts.map(a => (
-                          <div key={a.id} className="mb-1 bg-teal-500 rounded px-1.5 py-0.5">
+                          <button
+                            key={a.id}
+                            onClick={(e) => { e.stopPropagation(); setDetailAppt(a) }}
+                            className="mb-1 bg-teal-500 rounded px-1.5 py-0.5 hover:bg-teal-600 transition-colors text-left cursor-pointer"
+                          >
                             <p className="text-white text-[9px] font-bold">{a.time}</p>
                             <p className="text-white/90 text-[9px] truncate">{a.patient_name}</p>
-                          </div>
+                          </button>
                         ))}
                         {dayAppts.length === 0 && <p className="text-xs text-slate-300 mt-1">Sin citas</p>}
                       </button>
@@ -388,17 +437,25 @@ export default function AgendaPage() {
                     const dayAppts = getApptsByDate(date)
                     const isCurrentMonth = date.getMonth() === monthYear.month
                     return (
-                      <div key={idx} className={`min-h-[90px] border-b border-r border-slate-100 p-2 transition-colors ${isToday ? 'bg-teal-50' : 'hover:bg-slate-50'} ${!isCurrentMonth ? 'opacity-40' : ''}`}>
+                      <button
+                        key={idx}
+                        onClick={() => { setCalView('day'); setSelectedDate(date) }}
+                        className={`min-h-[90px] border-b border-r border-slate-100 p-2 transition-colors cursor-pointer ${isToday ? 'bg-teal-50' : 'hover:bg-slate-50'} ${!isCurrentMonth ? 'opacity-40' : ''} text-left`}
+                      >
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 ${isToday ? 'g-bg text-white' : 'text-slate-700'}`}>
                           {date.getDate()}
                         </div>
                         {dayAppts.slice(0, 2).map(a => (
-                          <div key={a.id} className="mb-0.5 bg-teal-500 rounded px-1.5 py-0.5">
+                          <button
+                            key={a.id}
+                            onClick={(e) => { e.stopPropagation(); setDetailAppt(a) }}
+                            className="mb-0.5 bg-teal-500 rounded px-1.5 py-0.5 hover:bg-teal-600 transition-colors w-full text-left"
+                          >
                             <p className="text-white text-[9px] font-bold truncate">{a.time} {a.patient_name}</p>
-                          </div>
+                          </button>
                         ))}
                         {dayAppts.length > 2 && <p className="text-[9px] text-slate-400 font-semibold">+{dayAppts.length - 2} más</p>}
-                      </div>
+                      </button>
                     )
                   })}
                 </div>
@@ -426,10 +483,14 @@ export default function AgendaPage() {
                             </div>
                             <div className="flex-1 space-y-2">
                               {hourAppts.length > 0 ? hourAppts.map(a => (
-                                <div key={a.id} className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                                <button
+                                  key={a.id}
+                                  onClick={() => setDetailAppt(a)}
+                                  className="bg-teal-50 border border-teal-200 rounded-lg p-3 hover:bg-teal-100 transition-colors text-left w-full"
+                                >
                                   <p className="text-sm font-semibold text-teal-700">{a.patient_name}</p>
                                   <p className="text-xs text-teal-600 mt-0.5">{a.time}{a.chief_complaint ? ` · ${a.chief_complaint}` : ''}</p>
-                                </div>
+                                </button>
                               )) : (
                                 <p className="text-xs text-slate-300">Libre</p>
                               )}
@@ -456,6 +517,14 @@ export default function AgendaPage() {
                   </p>
                   <p className="text-xs text-slate-400 mt-1">{pendingAppointments.length} citas pendientes</p>
                 </div>
+                {pendingAppointments.length > 0 && !bulkMode && (
+                  <button
+                    onClick={() => setBulkMode(true)}
+                    className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors"
+                  >
+                    Reagendar múltiples
+                  </button>
+                )}
               </div>
 
               {/* Search bar */}
@@ -485,12 +554,28 @@ export default function AgendaPage() {
                   ).map((appt, i) => (
                     <div key={appt.id} className={`p-5 hover:bg-slate-50 transition-colors ${i < pendingAppointments.length - 1 ? 'border-b border-slate-100' : ''}`}>
                       <div className="flex items-start justify-between gap-4 mb-3">
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-slate-800">{appt.patient_name}</p>
-                          <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                            {appt.patient_cedula && <span>Cédula: {appt.patient_cedula}</span>}
-                            {appt.patient_phone && <span>·</span>}
-                            {appt.patient_phone && <span>{appt.patient_phone}</span>}
+                        <div className="flex items-start gap-3 flex-1">
+                          {bulkMode && (
+                            <input
+                              type="checkbox"
+                              checked={bulkSelected.includes(appt.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setBulkSelected(prev => [...prev, appt.id])
+                                } else {
+                                  setBulkSelected(prev => prev.filter(id => id !== appt.id))
+                                }
+                              }}
+                              className="mt-1 cursor-pointer w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                            />
+                          )}
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">{appt.patient_name}</p>
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
+                              {appt.patient_cedula && <span>Cédula: {appt.patient_cedula}</span>}
+                              {appt.patient_phone && <span>·</span>}
+                              {appt.patient_phone && <span>{appt.patient_phone}</span>}
+                            </div>
                           </div>
                         </div>
                         <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">Pendiente</span>
@@ -504,29 +589,52 @@ export default function AgendaPage() {
                         <span className="text-xs text-slate-500">{appt.plan_name}</span>
                         <span className="text-xs font-bold text-emerald-600">${appt.plan_price ?? 20}</span>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => acceptAppointment(appt)}
-                          disabled={accepting === appt.id}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
-                        >
-                          <Check className="w-4 h-4" /> {accepting === appt.id ? 'Aprobando...' : 'Aprobar'}
-                        </button>
-                        <button
-                          onClick={() => setRescheduling(appt)}
-                          className="flex items-center justify-center gap-2 px-3 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition-colors"
-                        >
-                          <Calendar className="w-4 h-4" /> Reagendar
-                        </button>
-                        <button
-                          onClick={() => rejectAppointment(appt.id)}
-                          className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors"
-                        >
-                          <X className="w-4 h-4" /> Rechazar
-                        </button>
-                      </div>
+                      {!bulkMode && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => acceptAppointment(appt)}
+                            disabled={accepting === appt.id}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
+                          >
+                            <Check className="w-4 h-4" /> {accepting === appt.id ? 'Aprobando...' : 'Aprobar'}
+                          </button>
+                          <button
+                            onClick={() => setRescheduling(appt)}
+                            className="flex items-center justify-center gap-2 px-3 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition-colors"
+                          >
+                            <Calendar className="w-4 h-4" /> Reagendar
+                          </button>
+                          <button
+                            onClick={() => rejectAppointment(appt.id)}
+                            className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors"
+                          >
+                            <X className="w-4 h-4" /> Rechazar
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {bulkMode && (
+                <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white p-4 flex items-center gap-3 justify-between">
+                  <p className="text-sm font-semibold text-slate-700">{bulkSelected.length} seleccionada(s)</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setBulkMode(false); setBulkSelected([]) }}
+                      className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => setBulkReschedule(true)}
+                      disabled={bulkSelected.length === 0}
+                      className="px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      Reagendar seleccionadas
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -585,6 +693,82 @@ export default function AgendaPage() {
           </div>
         )}
 
+        {/* APPOINTMENT DETAIL MODAL */}
+        {detailAppt && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-900">Detalles de cita</h2>
+                <button onClick={() => setDetailAppt(null)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Paciente</p>
+                  <p className="text-lg font-bold text-slate-900 mt-1">{detailAppt.patient_name}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Fecha</p>
+                    <p className="text-sm font-semibold text-slate-700 mt-1">{detailAppt.date}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Hora</p>
+                    <p className="text-sm font-semibold text-slate-700 mt-1">{detailAppt.time}</p>
+                  </div>
+                </div>
+
+                {detailAppt.chief_complaint && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Motivo</p>
+                    <p className="text-sm text-slate-700 mt-1">{detailAppt.chief_complaint}</p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Estado</p>
+                  <div className="mt-1">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      detailAppt.status === 'scheduled'
+                        ? 'bg-teal-50 text-teal-600'
+                        : detailAppt.status === 'completed'
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'bg-red-50 text-red-600'
+                    }`}>
+                      {detailAppt.status === 'scheduled' ? 'Programada' : detailAppt.status === 'completed' ? 'Completada' : 'Cancelada'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <button
+                  onClick={() => setDetailAppt(null)}
+                  className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cerrar
+                </button>
+                <button
+                  onClick={() => {
+                    setDetailAppt(null);
+                    // For pending appointments, allow reschedule
+                    const pending = pendingAppointments.find(p => p.id === detailAppt.id);
+                    if (pending) {
+                      setRescheduling(pending);
+                    }
+                  }}
+                  className="flex-1 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 transition-colors"
+                >
+                  Reagendar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RESCHEDULE MODAL */}
         {rescheduling && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -621,6 +805,50 @@ export default function AgendaPage() {
                 <button
                   onClick={confirmReschedule}
                   disabled={!newDateTime}
+                  className="flex-1 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* BULK RESCHEDULE MODAL */}
+        {bulkReschedule && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-900">Reagendar citas seleccionadas</h2>
+                <button onClick={() => { setBulkReschedule(false); setBulkNewDateTime('') }} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-slate-50 rounded-lg p-4">
+                <p className="text-sm text-slate-600"><span className="font-semibold">Total de citas:</span> {bulkSelected.length}</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700">Nueva fecha y hora (se aplicará a todas)</label>
+                <input
+                  type="datetime-local"
+                  value={bulkNewDateTime}
+                  onChange={e => setBulkNewDateTime(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => { setBulkReschedule(false); setBulkNewDateTime('') }}
+                  className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmBulkReschedule}
+                  disabled={!bulkNewDateTime}
                   className="flex-1 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Confirmar

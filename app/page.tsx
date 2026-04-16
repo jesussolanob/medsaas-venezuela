@@ -7,7 +7,7 @@ import {
   MessageCircle, Brain, Banknote, Bell, BarChart3, ChevronRight,
   Shield, Zap, Heart, Menu, X, Activity, Target, Clock,
   UserCheck, RefreshCcw, ThumbsUp, CheckCircle2, Sparkles,
-  Building2, PhoneCall, Mail,
+  Building2, PhoneCall, Mail, FileText,
 } from 'lucide-react'
 
 const NAV_LINKS = [
@@ -364,6 +364,119 @@ export default function LandingPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* COMPARACIÓN */}
+      <section className="py-24 px-6" id="comparison">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16 space-y-4">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest" style={{ background: 'rgba(0,196,204,0.1)', color: '#00C4CC' }}>
+              <BarChart3 className="w-3.5 h-3.5" /> Comparación
+            </div>
+            <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight">
+              ¿Por qué <span className="g-text">Delta</span>?
+            </h2>
+            <p className="text-lg text-slate-500 max-w-2xl mx-auto font-medium">Compara cómo Delta transforma tu consulta frente a las herramientas que probablemente estés usando hoy.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden min-w-full">
+              {/* Header */}
+              <div className="grid grid-cols-4 gap-0">
+                <div className="p-6 bg-slate-50 border-r border-slate-200 col-span-1">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Característica</p>
+                </div>
+                <div className="p-6 border-r border-slate-200 flex flex-col items-center justify-center bg-white hover:bg-slate-50 transition-colors">
+                  <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center mb-2 shrink-0">
+                    <Activity className="w-5 h-5 text-white" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-900 text-center">Delta Medical CRM</p>
+                  <p className="text-xs text-teal-600 font-semibold mt-1">$20/mes</p>
+                </div>
+                <div className="p-6 border-r border-slate-200 flex flex-col items-center justify-center bg-white hover:bg-slate-50 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center mb-2 shrink-0">
+                    <BarChart3 className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-900 text-center">Excel en consultorio</p>
+                  <p className="text-xs text-slate-500 font-semibold mt-1">Gratis</p>
+                </div>
+                <div className="p-6 flex flex-col items-center justify-center bg-white hover:bg-slate-50 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center mb-2 shrink-0">
+                    <FileText className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-900 text-center">Registro manual</p>
+                  <p className="text-xs text-slate-500 font-semibold mt-1">Cuaderno</p>
+                </div>
+              </div>
+
+              {/* Rows */}
+              <div className="divide-y divide-slate-200">
+                {[
+                  { feature: 'Agenda inteligente con bloqueo automático', delta: true, excel: false, manual: false },
+                  { feature: 'Recordatorios automáticos por WhatsApp', delta: true, excel: false, manual: false },
+                  { feature: 'Historial clínico digital seguro', delta: true, excel: 'partial', manual: false },
+                  { feature: 'Control financiero en USD y Bs', delta: true, excel: 'partial', manual: false },
+                  { feature: 'Portal del paciente', delta: true, excel: false, manual: false },
+                  { feature: 'Acceso desde cualquier dispositivo', delta: true, excel: false, manual: false },
+                  { feature: 'CRM de leads y seguimiento', delta: true, excel: false, manual: false },
+                  { feature: 'Recetas e informes digitales', delta: true, excel: false, manual: false },
+                  { feature: 'Económico (desde $20/mes)', delta: true, excel: true, manual: true },
+                  { feature: 'Sin instalación, en la nube', delta: true, excel: false, manual: false },
+                ].map((row, idx) => (
+                  <div key={idx} className="grid grid-cols-4 gap-0">
+                    <div className="p-6 bg-slate-50 border-r border-slate-200 col-span-1 flex items-center">
+                      <p className="text-sm font-medium text-slate-700">{row.feature}</p>
+                    </div>
+                    <div className="p-6 border-r border-slate-200 flex items-center justify-center">
+                      {row.delta ? (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-teal-100">
+                          <Check className="w-5 h-5 text-teal-600" strokeWidth={3} />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
+                          <span className="text-slate-400 text-lg font-bold">−</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-6 border-r border-slate-200 flex items-center justify-center">
+                      {row.excel === true ? (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-teal-100">
+                          <Check className="w-5 h-5 text-teal-600" strokeWidth={3} />
+                        </div>
+                      ) : row.excel === 'partial' ? (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100">
+                          <span className="text-amber-600 text-lg font-bold">~</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
+                          <span className="text-slate-400 text-lg font-bold">−</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-6 flex items-center justify-center">
+                      {row.manual ? (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-teal-100">
+                          <Check className="w-5 h-5 text-teal-600" strokeWidth={3} />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200">
+                          <span className="text-slate-400 text-lg font-bold">−</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-12 text-center">
+            <p className="text-slate-600 text-sm mb-4">Delta está diseñado específicamente para médicos especialistas. Comienza en 5 minutos.</p>
+            <Link href="/register?plan=free" className="inline-flex items-center justify-center gap-2 font-bold px-8 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl text-white g-bg">
+              Prueba gratis — 30 días <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>
