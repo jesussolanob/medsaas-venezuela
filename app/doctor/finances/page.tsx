@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { DollarSign, TrendingUp, TrendingDown, Plus, X, Calendar, Building, Users2, Receipt, BarChart2, Trash2, Check, RefreshCw, CreditCard, Smartphone, ArrowRightLeft } from 'lucide-react'
+import { DollarSign, TrendingUp, TrendingDown, Plus, X, Calendar, Building, Users2, Receipt, BarChart2, Trash2, Check, RefreshCw, CreditCard, Smartphone, ArrowRightLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
@@ -9,6 +9,7 @@ type IncomeEntry = { id: string; description: string; amount_usd: number; date: 
 type ExpenseEntry = { id: string; description: string; amount_usd: number; category: string; recurring: boolean; day_of_month?: number }
 type PaymentEntry = { id: string; consultation_code: string; patient_name: string; date: string; amount_usd: number; payment_status: string; payment_method?: string }
 type InsurancePayment = { consultation_code: string; patient_name: string; amount_usd: number; consultation_date: string; insurance_name: string; credit_days: number; due_date: string; status: 'vigente' | 'vencido' }
+type AccountPayable = { id: string; vendor_name: string; concept: string; amount: number; due_date: string; paid: boolean }
 
 const EXPENSE_CATEGORIES = [
   { value: 'rent', label: 'Alquiler', icon: <Building className="w-3.5 h-3.5" /> },
@@ -27,7 +28,7 @@ const PAYMENT_METHODS = [
   { value: 'other', label: 'Otro', icon: <Receipt className="w-3.5 h-3.5" /> },
 ]
 
-type Tab = 'income' | 'expenses' | 'pl' | 'payments' | 'insurance'
+type Tab = 'overview' | 'income' | 'expenses' | 'pl' | 'payments' | 'insurance'
 
 function getMonthOptions() {
   const now = new Date()
@@ -56,11 +57,10 @@ function buildDailyData(income: IncomeEntry[], expenses: ExpenseEntry[], month: 
 }
 
 export default function DoctorFinancesPage() {
-  const [tab, setTab] = useState<Tab>('income')
+  const [tab, setTab] = useState<Tab>('overview')
 
   // BCV rate
   const [bcvRate, setBcvRate] = useState<number | null>(null)
-  const [bcvUpdated, setBcvUpdated] = useState<string | null>(null)
   const [bcvLoading, setBcvLoading] = useState(true)
 
   const [income, setIncome] = useState<IncomeEntry[]>([])
@@ -74,57 +74,114 @@ export default function DoctorFinancesPage() {
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [newExp, setNewExp] = useState({ description: '', amount_usd: '', category: 'rent', recurring: true, day_of_month: '1' })
 
+  // Accounts Payable
+  const [accountsPayable, setAccountsPayable] = useState<AccountPayable[]>([])
+
+  // Insurance filter & expansion
+  const [selectedInsurance, setSelectedInsurance] = useState<string>('all')
+  const [expandedInsurances, setExpandedInsurances] = useState<Set<string>>(new Set())
+
+  // Doctor insurances
+  const [doctorInsurances, setDoctorInsurances] = useState<Array<{ id: string; name: string }>>([])
+
   // Balance filter
   const MONTHS = getMonthOptions()
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0].value)
 
   const totalIncome = income.reduce((s, i) => s + i.amount_usd, 0)
   const totalExpenses = expenses.reduce((s, e) => s + e.amount_usd, 0)
+  const totalAccountsPayable = accountsPayable.reduce((s, ap) => s + ap.amount, 0)
   const netPL = totalIncome - totalExpenses
   const chartData = buildDailyData(income, expenses, selectedMonth)
 
+  // CxC: unpaid + pending_approval consultations
+  const totalCxC = allPayments
+    .filter(p => p.payment_status === 'unpaid' || p.payment_status === 'pending_approval')
+    .reduce((s, p) => s + p.amount_usd, 0)
+
   useEffect(() => {
     // Fetch BCV rate
-    fetch('https://ve.dolarapi.com/v1/dolares/oficial')
-      .then(r => r.json())
-      .then(d => {
-        const rate = d.promedio ?? d.precio ?? d.price ?? null
-        if (rate) { setBcvRate(parseFloat(rate)); setBcvUpdated(d.fechaActualizacion ?? null) }
-      })
-      .catch(() => {
-        fetch('https://pydolarve.org/api/v1/dollar?page=bcv')
-          .then(r => r.json())
-          .then(d => { if (d.price) setBcvRate(parseFloat(d.price)) })
-          .catch(() => {})
-      })
-      .finally(() => setBcvLoading(false))
+    const getBCVRate = async () => {
+      try {
+        const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial')
+        const data = await res.json()
+        const rate = data.promedio ?? data.precio ?? data.price ?? null
+        if (rate) {
+          setBcvRate(parseFloat(rate))
+        } else {
+          throw new Error('No rate found')
+        }
+      } catch {
+        try {
+          const res = await fetch('https://pydolarve.org/api/v1/dollar?page=bcv')
+          const data = await res.json()
+          if (data.price) {
+            setBcvRate(parseFloat(data.price))
+          } else {
+            // TODO: conectar BCV real
+            setBcvRate(36.50)
+          }
+        } catch {
+          // TODO: conectar BCV real
+          setBcvRate(36.50)
+        }
+      } finally {
+        setBcvLoading(false)
+      }
+    }
+    getBCVRate()
 
-    // Fetch consultations data
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    // Fetch consultations data & doctor insurances
+    const loadData = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      supabase
-        .from('consultations')
-        .select('id, consultation_code, consultation_date, payment_status, patients(full_name)')
-        .eq('doctor_id', user.id)
-        .order('consultation_date', { ascending: false })
-        .then(({ data }) => {
-          const all: PaymentEntry[] = (data ?? []).map(c => ({
-            id: c.id,
-            consultation_code: c.consultation_code,
-            patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
-            date: c.consultation_date,
-            amount_usd: 20,
-            payment_status: c.payment_status,
-            payment_method: undefined,
-          }))
-          setAllPayments(all)
-          setIncome(all.filter(p => p.payment_status === 'approved').map(p => ({
-            id: p.id, description: `Consulta ${p.consultation_code}`, amount_usd: p.amount_usd, date: p.date, source: p.patient_name,
-          })))
-          setLoadingIncome(false)
-        })
-    })
+
+      // Consultations
+      try {
+        const { data } = await supabase
+          .from('consultations')
+          .select('id, consultation_code, consultation_date, payment_status, amount, patients(full_name)')
+          .eq('doctor_id', user.id)
+          .order('consultation_date', { ascending: false })
+        const all: PaymentEntry[] = (data ?? []).map((c: any) => ({
+          id: c.id,
+          consultation_code: c.consultation_code,
+          patient_name: !Array.isArray(c.patients) && c.patients ? c.patients.full_name : 'Paciente',
+          date: c.consultation_date,
+          amount_usd: Number(c.amount) || 20,
+          payment_status: c.payment_status,
+          payment_method: undefined,
+        }))
+        setAllPayments(all)
+        setIncome(all.filter(p => p.payment_status === 'approved').map(p => ({
+          id: p.id, description: `Consulta ${p.consultation_code}`, amount_usd: p.amount_usd, date: p.date, source: p.patient_name,
+        })))
+      } catch { /* ignore */ }
+      setLoadingIncome(false)
+
+      // Doctor insurances
+      try {
+        const { data } = await supabase
+          .from('doctor_insurances')
+          .select('id, name')
+          .eq('doctor_id', user.id)
+        setDoctorInsurances((data ?? []).map((d: any) => ({ id: d.id, name: d.name })))
+      } catch { /* ignore */ }
+
+      // Accounts payable (tabla opcional)
+      try {
+        const { data: ap } = await supabase
+          .from('accounts_payable')
+          .select('id, vendor_name, concept, amount, due_date, paid')
+          .eq('doctor_id', user.id)
+        setAccountsPayable((ap ?? []).map((d: any) => ({
+          id: d.id, vendor_name: d.vendor_name, concept: d.concept,
+          amount: Number(d.amount), due_date: d.due_date, paid: d.paid,
+        })))
+      } catch { /* tabla puede no existir aún */ }
+    }
+    loadData()
   }, [])
 
   function addExpense(e: React.FormEvent) {
@@ -137,6 +194,40 @@ export default function DoctorFinancesPage() {
 
   async function updatePaymentMethod(id: string, method: string) {
     setAllPayments(prev => prev.map(p => p.id === id ? { ...p, payment_method: method } : p))
+  }
+
+  function toggleInsuranceExpanded(insuranceName: string) {
+    setExpandedInsurances(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(insuranceName)) {
+        newSet.delete(insuranceName)
+      } else {
+        newSet.add(insuranceName)
+      }
+      return newSet
+    })
+  }
+
+  async function markInsurancePaid(consultationId: string) {
+    try {
+      const supabase = createClient()
+      await supabase
+        .from('consultations')
+        .update({ payment_status: 'approved', insurance_paid_at: new Date().toISOString() })
+        .eq('id', consultationId)
+
+      // Update local state
+      setAllPayments(prev => prev.map(p => p.id === consultationId ? { ...p, payment_status: 'approved' } : p))
+      setIncome(prev => {
+        const p = allPayments.find(x => x.id === consultationId)
+        if (p) {
+          return [...prev, { id: p.id, description: `Consulta ${p.consultation_code}`, amount_usd: p.amount_usd, date: p.date, source: p.patient_name }]
+        }
+        return prev
+      })
+    } catch (error) {
+      // Column might not exist, ignore silently
+    }
   }
 
   const filteredPayments = paymentFilter === 'all' ? allPayments : allPayments.filter(p => p.payment_status === paymentFilter)
@@ -152,58 +243,89 @@ export default function DoctorFinancesPage() {
     <>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
 
-      <div className="max-w-4xl space-y-5">
-        {/* BCV Banner */}
-        <div className="g-bg rounded-xl px-5 py-3.5 flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-              <DollarSign className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <p className="text-xs text-white/70 font-medium">Tasa BCV oficial del día</p>
-              {bcvLoading ? (
-                <div className="flex items-center gap-1.5 text-white"><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span className="text-sm">Cargando...</span></div>
-              ) : bcvRate ? (
-                <p className="text-xl font-bold text-white">Bs. {bcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2 })} <span className="text-sm font-normal text-white/70">/ USD</span></p>
-              ) : (
-                <p className="text-sm text-white/70">No disponible</p>
-              )}
-            </div>
-          </div>
-          {bcvRate && (
-            <div className="ml-4 pl-4 border-l border-white/20 flex gap-4">
-              <div><p className="text-xs text-white/60">$20 USD =</p><p className="text-sm font-bold text-white">Bs. {(20 * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })}</p></div>
-              <div><p className="text-xs text-white/60">$50 USD =</p><p className="text-sm font-bold text-white">Bs. {(50 * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })}</p></div>
-            </div>
-          )}
-          {bcvUpdated && <p className="ml-auto text-xs text-white/50">Actualizado: {bcvUpdated}</p>}
+      <div className="max-w-6xl space-y-5">
+        {/* BCV Banner - Simple single line */}
+        <div className="g-bg rounded-xl px-5 py-3.5 flex items-center gap-3">
+          <TrendingUp className="w-4 h-4 text-white shrink-0" />
+          <p className="text-white font-medium text-sm">1 USD = Bs.S {bcvLoading ? '...' : (bcvRate?.toLocaleString('es-VE', { minimumFractionDigits: 2 }) ?? '36.50')}</p>
         </div>
 
-        {/* KPIs */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
+        {/* KPI Cards - 6 in responsive grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {/* Ingresos - Green */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2"><TrendingUp className="w-4 h-4 text-emerald-600" /><span className="text-xs font-semibold text-emerald-600 uppercase tracking-widest">Ingresos</span></div>
-            <p className="text-2xl font-bold text-emerald-700">${totalIncome.toLocaleString()}</p>
-            <p className="text-xs text-emerald-500 mt-0.5">{income.length} consultas pagadas</p>
+            <p className="text-xl font-bold text-emerald-700">${totalIncome.toLocaleString()}</p>
           </div>
-          <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+
+          {/* Gastos - Red */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2"><TrendingDown className="w-4 h-4 text-red-500" /><span className="text-xs font-semibold text-red-500 uppercase tracking-widest">Gastos</span></div>
-            <p className="text-2xl font-bold text-red-600">${totalExpenses.toLocaleString()}</p>
-            <p className="text-xs text-red-400 mt-0.5">{expenses.length} rubros de gasto</p>
+            <p className="text-xl font-bold text-red-600">${totalExpenses.toLocaleString()}</p>
           </div>
-          <div className={`border rounded-xl p-5 ${netPL >= 0 ? 'bg-teal-50 border-teal-200' : 'bg-orange-50 border-orange-200'}`}>
-            <div className="flex items-center gap-2 mb-2"><BarChart2 className={`w-4 h-4 ${netPL >= 0 ? 'text-teal-600' : 'text-orange-500'}`} /><span className={`text-xs font-semibold uppercase tracking-widest ${netPL >= 0 ? 'text-teal-600' : 'text-orange-500'}`}>Resultado neto</span></div>
-            <p className={`text-2xl font-bold ${netPL >= 0 ? 'text-teal-700' : 'text-orange-600'}`}>{netPL >= 0 ? '+' : ''}${netPL.toLocaleString()}</p>
-            <p className={`text-xs mt-0.5 ${netPL >= 0 ? 'text-teal-500' : 'text-orange-400'}`}>{netPL >= 0 ? 'Ganancia' : 'Pérdida'} neta</p>
+
+          {/* CxC - Amber */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2"><Receipt className="w-4 h-4 text-amber-600" /><span className="text-xs font-semibold text-amber-600 uppercase tracking-widest">CxC</span></div>
+            <p className="text-xl font-bold text-amber-700">${totalCxC.toLocaleString()}</p>
+          </div>
+
+          {/* CxP - Violet */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2"><DollarSign className="w-4 h-4 text-violet-600" /><span className="text-xs font-semibold text-violet-600 uppercase tracking-widest">CxP</span></div>
+            <p className="text-xl font-bold text-violet-700">${totalAccountsPayable.toLocaleString()}</p>
+          </div>
+
+          {/* Estado de Pagos - Slate */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2"><CreditCard className="w-4 h-4 text-slate-600" /><span className="text-xs font-semibold text-slate-600 uppercase tracking-widest">Estado</span></div>
+            <p className="text-xl font-bold text-slate-700">{allPayments.filter(p => p.payment_status === 'approved').length}/{allPayments.length}</p>
+          </div>
+
+          {/* P&L - Teal */}
+          <div className={`bg-white border rounded-xl p-4 ${netPL >= 0 ? 'border-teal-200' : 'border-red-200'}`}>
+            <div className="flex items-center gap-2 mb-2"><BarChart2 className={`w-4 h-4 ${netPL >= 0 ? 'text-teal-600' : 'text-red-600'}`} /><span className={`text-xs font-semibold uppercase tracking-widest ${netPL >= 0 ? 'text-teal-600' : 'text-red-600'}`}>P&L</span></div>
+            <p className={`text-xl font-bold ${netPL >= 0 ? 'text-teal-700' : 'text-red-600'}`}>{netPL >= 0 ? '+' : ''}${netPL.toLocaleString()}</p>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-wrap">
-          {([['income', 'Ingresos'], ['insurance', 'Por cobrar'], ['expenses', 'Gastos'], ['pl', 'Balance P&L'], ['payments', 'Estado de Pagos']] as [Tab | 'insurance', string][]).map(([t, label]) => (
-            <button key={t} onClick={() => setTab(t as Tab)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{label}</button>
+          {([['overview', 'Resumen'], ['income', 'Ingresos'], ['insurance', 'Seguros'], ['expenses', 'Gastos'], ['pl', 'Balance P&L'], ['payments', 'Estado Pagos']] as [Tab | 'insurance', string][]).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t as Tab)} className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab === t ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{label}</button>
           ))}
         </div>
+
+        {/* OVERVIEW TAB */}
+        {tab === 'overview' && (
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-5">
+              <p className="text-sm font-semibold text-slate-700 mb-4">Resumen financiero</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-600">Ingresos verificados</span>
+                  <span className="font-bold text-emerald-600">+${totalIncome.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-600">Gastos totales</span>
+                  <span className="font-bold text-red-600">-${totalExpenses.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-600">Cuentas por cobrar (CxC)</span>
+                  <span className="font-bold text-amber-600">${totalCxC.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span className="text-sm text-slate-600">Cuentas por pagar (CxP)</span>
+                  <span className="font-bold text-violet-600">${totalAccountsPayable.toLocaleString()}</span>
+                </div>
+                <div className={`flex items-center justify-between py-3 px-4 rounded-xl ${netPL >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                  <span className={`font-bold ${netPL >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>Balance P&L</span>
+                  <span className={`text-lg font-extrabold ${netPL >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{netPL >= 0 ? '+' : ''}${netPL.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* INCOME TAB */}
         {tab === 'income' && (
@@ -234,75 +356,91 @@ export default function DoctorFinancesPage() {
           </div>
         )}
 
-        {/* INSURANCE PAYMENTS TAB */}
+        {/* INSURANCE PAYMENTS TAB - Accordion Style */}
         {tab === 'insurance' && (
           <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-700">Por cobrar a aseguradoras</p>
-                <span className="text-xs text-slate-400">Consultas con pago vía seguro</span>
-              </div>
-
-              <div className="p-5 space-y-4">
-                {/* Mock insurance data for demo */}
-                {[
-                  { insurer: 'Seguros Mercantil', consultations: 3, total: 60, items: [
-                    { code: 'CON-20260401-1234', patient: 'María González', amount: 20, date: '2026-04-01', due: '2026-04-11', status: 'vigente' },
-                    { code: 'CON-20260402-5678', patient: 'Juan Pérez', amount: 20, date: '2026-04-02', due: '2026-04-12', status: 'vigente' },
-                    { code: 'CON-20260405-9012', patient: 'Carlos López', amount: 20, date: '2026-04-05', due: '2026-04-15', status: 'vigente' }
-                  ]},
-                  { insurer: 'Mapfre', consultations: 2, total: 40, items: [
-                    { code: 'CON-20260330-3456', patient: 'Ana Rodríguez', amount: 20, date: '2026-03-30', due: '2026-04-14', status: 'vigente' },
-                    { code: 'CON-20260325-7890', patient: 'Isabel García', amount: 20, date: '2026-03-25', due: '2026-04-09', status: 'vencido' }
-                  ]},
-                ].map((group) => (
-                  <div key={group.insurer} className="border border-slate-200 rounded-lg overflow-hidden">
-                    <div className="bg-slate-50 px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-800">{group.insurer}</p>
-                        <p className="text-xs text-slate-500">{group.consultations} consultas · Total: ${group.total} USD</p>
-                      </div>
-                      <span className="text-lg font-bold text-teal-600">${group.total}</span>
-                    </div>
-
-                    <div className="divide-y divide-slate-100">
-                      {group.items.map((item: any) => (
-                        <div key={item.code} className="px-4 py-3 flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-800">{item.code}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{item.patient} · {new Date(item.date).toLocaleDateString('es-VE')}</p>
-                            <p className="text-xs text-slate-400 mt-1">Vencimiento: {new Date(item.due).toLocaleDateString('es-VE')}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-sm font-bold text-teal-600">${item.amount}</p>
-                            <span className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-full mt-1 ${item.status === 'vigente' ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
-                              {item.status === 'vigente' ? 'Vigente' : 'Vencido'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+            {/* Insurance Filter Dropdown */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4">
+              <label className="block text-xs font-medium text-slate-600 mb-2">Filtrar por asegurador</label>
+              <select
+                value={selectedInsurance}
+                onChange={(e) => setSelectedInsurance(e.target.value)}
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 text-slate-700"
+              >
+                <option value="all">Todos los aseguradores</option>
+                {doctorInsurances.map(ins => (
+                  <option key={ins.id} value={ins.name}>{ins.name}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
-                <p className="text-xs font-semibold text-teal-600 uppercase">Total por cobrar</p>
-                <p className="text-2xl font-bold text-teal-700 mt-1">$100</p>
-                <p className="text-xs text-teal-600 mt-1">5 consultas</p>
-              </div>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                <p className="text-xs font-semibold text-emerald-600 uppercase">Vigente</p>
-                <p className="text-2xl font-bold text-emerald-700 mt-1">$80</p>
-                <p className="text-xs text-emerald-600 mt-1">4 consultas</p>
-              </div>
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <p className="text-xs font-semibold text-red-600 uppercase">Vencido</p>
-                <p className="text-2xl font-bold text-red-600 mt-1">$20</p>
-                <p className="text-xs text-red-600 mt-1">1 consulta</p>
-              </div>
+            {/* Accordion List */}
+            <div className="space-y-3">
+              {doctorInsurances.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-6 text-center">
+                  <p className="text-slate-500 text-sm">No hay aseguradores registrados</p>
+                </div>
+              ) : doctorInsurances.map((insurance) => {
+                const insurancePayments = allPayments.filter(p => p.patient_name === insurance.name)
+                const totalByInsurance = insurancePayments.reduce((s, p) => s + p.amount_usd, 0)
+
+                if (selectedInsurance !== 'all' && selectedInsurance !== insurance.name) return null
+
+                return (
+                  <div key={insurance.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    {/* Accordion Header */}
+                    <button
+                      onClick={() => toggleInsuranceExpanded(insurance.name)}
+                      className="w-full px-5 py-4 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition-colors"
+                    >
+                      <div className="text-left">
+                        <p className="font-semibold text-slate-800">{insurance.name}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{insurancePayments.length} consultas · Total: ${totalByInsurance.toLocaleString()}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-bold text-teal-600">${totalByInsurance.toLocaleString()}</span>
+                        {expandedInsurances.has(insurance.name) ? (
+                          <ChevronUp className="w-4 h-4 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        )}
+                      </div>
+                    </button>
+
+                    {/* Accordion Content */}
+                    {expandedInsurances.has(insurance.name) && (
+                      <div className="divide-y divide-slate-100">
+                        {insurancePayments.length === 0 ? (
+                          <div className="px-5 py-4 text-center text-slate-400 text-sm">
+                            Sin consultas para este asegurador
+                          </div>
+                        ) : insurancePayments.map((payment) => (
+                          <div key={payment.id} className="px-5 py-4 flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-800">{payment.consultation_code}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{payment.patient_name} · {new Date(payment.date).toLocaleDateString('es-VE')}</p>
+                              <span className={`inline-block text-[10px] font-bold px-2.5 py-1 rounded-full mt-1.5 ${payment.payment_status === 'approved' ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'}`}>
+                                {payment.payment_status === 'approved' ? 'Pagado' : 'Pendiente'}
+                              </span>
+                            </div>
+                            <div className="text-right shrink-0 flex flex-col items-end gap-2">
+                              <p className="text-sm font-bold text-teal-600">${payment.amount_usd}</p>
+                              {payment.payment_status !== 'approved' && (
+                                <button
+                                  onClick={() => markInsurancePaid(payment.id)}
+                                  className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-teal-400 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors flex items-center gap-1"
+                                >
+                                  <Check className="w-3 h-3" /> Pagado
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}

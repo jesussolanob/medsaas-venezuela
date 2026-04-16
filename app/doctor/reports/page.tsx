@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Download, Loader2, BarChart3, Calendar, User, FileBarChart } from 'lucide-react'
+import { Download, Loader2, BarChart3, Calendar, User, FileBarChart, ArrowRight, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
 
 type ConsultationRecord = {
   id: string
@@ -21,6 +22,9 @@ export default function ReportsPage() {
   const [exporting, setExporting] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [filterError, setFilterError] = useState('')
+  const [appliedFrom, setAppliedFrom] = useState('')
+  const [appliedTo, setAppliedTo] = useState('')
 
   useEffect(() => {
     const supabase = createClient()
@@ -48,19 +52,75 @@ export default function ReportsPage() {
     })
   }, [])
 
+  const applyFilter = () => {
+    setFilterError('')
+    if (dateFrom && dateTo) {
+      const from = new Date(dateFrom)
+      const to = new Date(dateTo)
+      if (from > to) {
+        setFilterError('La fecha "Desde" no puede ser mayor que "Hasta"')
+        return
+      }
+    }
+    setAppliedFrom(dateFrom)
+    setAppliedTo(dateTo)
+  }
+
+  const clearFilter = () => {
+    setDateFrom('')
+    setDateTo('')
+    setAppliedFrom('')
+    setAppliedTo('')
+    setFilterError('')
+  }
+
+  const setPreset = (preset: string) => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    let from: Date, to: Date
+
+    switch (preset) {
+      case 'today':
+        from = new Date(today)
+        to = new Date(today)
+        break
+      case 'last7':
+        from = new Date(today)
+        from.setDate(from.getDate() - 7)
+        to = new Date(today)
+        break
+      case 'thisMonth':
+        from = new Date(today.getFullYear(), today.getMonth(), 1)
+        to = new Date(today)
+        break
+      case 'last30':
+        from = new Date(today)
+        from.setDate(from.getDate() - 30)
+        to = new Date(today)
+        break
+      default:
+        return
+    }
+
+    const formatDate = (d: Date) => d.toISOString().split('T')[0]
+    setDateFrom(formatDate(from))
+    setDateTo(formatDate(to))
+  }
+
   function exportToCSV() {
     if (consultations.length === 0) return
 
     setExporting(true)
 
-    // Filtrar por fechas si están especificadas
+    // Filtrar por fechas aplicadas
     let filtered = consultations
-    if (dateFrom) {
-      const fromDate = new Date(dateFrom)
+    if (appliedFrom) {
+      const fromDate = new Date(appliedFrom)
       filtered = filtered.filter(c => new Date(c.consultation_date) >= fromDate)
     }
-    if (dateTo) {
-      const toDate = new Date(dateTo)
+    if (appliedTo) {
+      const toDate = new Date(appliedTo)
       toDate.setHours(23, 59, 59)
       filtered = filtered.filter(c => new Date(c.consultation_date) <= toDate)
     }
@@ -109,9 +169,9 @@ export default function ReportsPage() {
 
   const filteredCount = consultations.filter(c => {
     let match = true
-    if (dateFrom) match = match && new Date(c.consultation_date) >= new Date(dateFrom)
-    if (dateTo) {
-      const toDate = new Date(dateTo)
+    if (appliedFrom) match = match && new Date(c.consultation_date) >= new Date(appliedFrom)
+    if (appliedTo) {
+      const toDate = new Date(appliedTo)
       toDate.setHours(23, 59, 59)
       match = match && new Date(c.consultation_date) <= toDate
     }
@@ -121,9 +181,9 @@ export default function ReportsPage() {
   const totalAmount = consultations
     .filter(c => {
       let match = true
-      if (dateFrom) match = match && new Date(c.consultation_date) >= new Date(dateFrom)
-      if (dateTo) {
-        const toDate = new Date(dateTo)
+      if (appliedFrom) match = match && new Date(c.consultation_date) >= new Date(appliedFrom)
+      if (appliedTo) {
+        const toDate = new Date(appliedTo)
         toDate.setHours(23, 59, 59)
         match = match && new Date(c.consultation_date) <= toDate
       }
@@ -182,7 +242,18 @@ export default function ReportsPage() {
 
         {/* Filters */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-          <p className="text-sm font-semibold text-slate-700">Rango de fechas (opcional)</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-700">Rango de fechas (opcional)</p>
+            {(appliedFrom || appliedTo) && (
+              <button
+                onClick={clearFilter}
+                className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 transition-colors"
+              >
+                <X className="w-3 h-3" /> Limpiar filtro
+              </button>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-2">Desde</label>
@@ -203,6 +274,55 @@ export default function ReportsPage() {
               />
             </div>
           </div>
+
+          {filterError && (
+            <p className="text-xs text-red-600 font-medium">{filterError}</p>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={applyFilter}
+              className="g-bg text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 hover:opacity-90 transition-all"
+            >
+              <ArrowRight className="w-4 h-4" /> Aplicar
+            </button>
+
+            <button
+              onClick={() => setPreset('today')}
+              className="px-3 py-1 text-xs font-medium border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-all"
+            >
+              Hoy
+            </button>
+
+            <button
+              onClick={() => setPreset('last7')}
+              className="px-3 py-1 text-xs font-medium border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-all"
+            >
+              Últimos 7 días
+            </button>
+
+            <button
+              onClick={() => setPreset('thisMonth')}
+              className="px-3 py-1 text-xs font-medium border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-all"
+            >
+              Este mes
+            </button>
+
+            <button
+              onClick={() => setPreset('last30')}
+              className="px-3 py-1 text-xs font-medium border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-all"
+            >
+              Últimos 30 días
+            </button>
+          </div>
+
+          {(appliedFrom || appliedTo) && (
+            <p className="text-xs text-slate-600 bg-teal-50 px-3 py-2 rounded-lg border border-teal-200">
+              Filtro activo: {appliedFrom && `desde ${new Date(appliedFrom).toLocaleDateString('es-VE')}`}
+              {appliedFrom && appliedTo && ' '}
+              {appliedTo && `hasta ${new Date(appliedTo).toLocaleDateString('es-VE')}`}
+            </p>
+          )}
         </div>
 
         {/* Export Button */}
@@ -250,7 +370,14 @@ export default function ReportsPage() {
                 <tbody>
                   {consultations.map((c, i) => (
                     <tr key={c.id} className={`border-b border-slate-100 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                      <td className="px-5 py-3 font-mono text-teal-600">{c.consultation_code}</td>
+                      <td className="px-5 py-3">
+                        <Link
+                          href={`/doctor/consultations?id=${c.id}`}
+                          className="font-mono text-teal-600 hover:text-teal-700 underline transition-colors"
+                        >
+                          {c.consultation_code}
+                        </Link>
+                      </td>
                       <td className="px-5 py-3 font-medium text-slate-900">{c.patient_name}</td>
                       <td className="px-5 py-3 text-slate-600">{c.patient_cedula || '—'}</td>
                       <td className="px-5 py-3 text-slate-600">{c.chief_complaint}</td>

@@ -1,11 +1,27 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { User, Users2, Shield, Plus, X, CheckCircle, ToggleLeft, ToggleRight, Link2, Copy, Check, ExternalLink, Save as SaveIcon, Camera, Loader2, Building, Trash2 } from 'lucide-react'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
+import {
+  User, Users2, Shield, Plus, X, CheckCircle, ToggleLeft, ToggleRight,
+  Link2, Copy, Check, ExternalLink, Save as SaveIcon, Camera, Loader2,
+  Building, Trash2, Search, Tag, DollarSign, Bell, Volume2, VolumeX,
+  Image as ImageIcon, FileBadge, Smartphone,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { VENEZUELA_INSURANCES } from './insurances'
+import AvatarUploader from './avatar-uploader'
 
+type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count: number; is_active: boolean }
 type Module = { id: string; label: string; description: string; enabled: boolean }
 type Assistant = { id: string; name: string; email: string; modules: Record<string, boolean>; created_at: string }
+type Insurance = { id?: string; name: string; credit_days: number; notes: string }
+type PaymentMethodData = {
+  id: string
+  label: string
+  emoji: string
+  fields: { key: string; label: string; placeholder?: string; type?: string }[]
+}
 
 const ESPECIALIDADES = [
   'Medicina General','Cardiología','Dermatología','Endocrinología','Gastroenterología',
@@ -27,116 +43,329 @@ const ALL_MODULES: Module[] = [
   { id: 'billing', label: 'Facturación', description: 'Emitir recibos y presupuestos', enabled: true },
 ]
 
-export default function DoctorSettingsPage() {
+const PAYMENT_METHODS: PaymentMethodData[] = [
+  { id: 'pago_movil', label: 'Pago Móvil', emoji: '📱', fields: [
+    { key: 'bank', label: 'Banco', placeholder: 'Ej: Banesco' },
+    { key: 'phone', label: 'Teléfono', placeholder: '0412-1234567' },
+    { key: 'id_number', label: 'Cédula/RIF', placeholder: 'V-12345678' },
+    { key: 'holder', label: 'Titular', placeholder: 'Dr. Carlos Ramírez' },
+  ]},
+  { id: 'transferencia', label: 'Transferencia', emoji: '🏦', fields: [
+    { key: 'bank', label: 'Banco', placeholder: 'Ej: Banco de Venezuela' },
+    { key: 'account', label: 'N° de cuenta', placeholder: '0102-xxxx-xx-xxxxxxxxxx' },
+    { key: 'account_type', label: 'Tipo', placeholder: 'Corriente / Ahorro' },
+    { key: 'id_number', label: 'Cédula/RIF', placeholder: 'V-12345678' },
+    { key: 'holder', label: 'Titular', placeholder: 'Nombre del titular' },
+  ]},
+  { id: 'zelle', label: 'Zelle', emoji: '💳', fields: [
+    { key: 'email', label: 'Email Zelle', placeholder: 'doctor@email.com', type: 'email' },
+    { key: 'holder', label: 'Nombre del titular', placeholder: 'Carlos Ramirez' },
+    { key: 'bank', label: 'Banco (opcional)', placeholder: 'Chase, Bank of America…' },
+  ]},
+  { id: 'binance', label: 'Binance Pay', emoji: '₿', fields: [
+    { key: 'binance_id', label: 'Binance ID', placeholder: '123456789' },
+    { key: 'email', label: 'Email', placeholder: 'doctor@email.com' },
+  ]},
+  { id: 'cash_usd', label: 'Efectivo USD', emoji: '💵', fields: [] },
+  { id: 'cash_bs', label: 'Efectivo Bs', emoji: '💵', fields: [] },
+  { id: 'pos', label: 'Punto de venta', emoji: '🛒', fields: [
+    { key: 'bank', label: 'Banco del POS', placeholder: 'Ej: Mercantil' },
+  ]},
+]
+
+const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors'
+
+type TabId = 'profile' | 'plans' | 'booking' | 'payment' | 'insurance' | 'assistants' | 'notifications' | 'integrations'
+
+function SettingsPageInner() {
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams.get('tab') as TabId) || 'profile'
+
+  // Profile
   const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '' })
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
-  const [tab, setTab] = useState<'profile' | 'assistants' | 'booking' | 'payment' | 'insurance' | 'integrations'>('profile')
+  const [tab, setTab] = useState<TabId>(initialTab)
   const [doctorId, setDoctorId] = useState<string | null>(null)
-  const [uploadingPhoto, setUploadingPhoto] = useState(false)
-  const [uploadError, setUploadError] = useState('')
-  const [whatsappToken, setWhatsappToken] = useState('')
-  const [whatsappPhoneId, setWhatsappPhoneId] = useState('')
-  const [googleToken, setGoogleToken] = useState('')
-  const [integrationsLoading, setIntegrationsLoading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Payment methods state
-  const [paymentMethods, setPaymentMethods] = useState<string[]>(['pago_movil', 'transferencia'])
+  // Logo upload
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoError, setLogoError] = useState('')
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
-  // Insurance state
-  const [insurances, setInsurances] = useState<{ name: string; credit_days: number; notes: string }[]>([])
+  // Plans
+  const [plans, setPlans] = useState<PricingPlan[]>([])
+  const [showNewPlan, setShowNewPlan] = useState(false)
+  const [newPlan, setNewPlan] = useState({ name: '', price_usd: '', duration_minutes: '30', sessions_count: '1' })
+  const [planError, setPlanError] = useState('')
+  const [plansSaving, setPlansSaving] = useState(false)
+
+  // Payment
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([])
+  const [paymentDetails, setPaymentDetails] = useState<Record<string, Record<string, string>>>({})
+  const [paymentSaved, setPaymentSaved] = useState(false)
+
+  // Insurance
+  const [insurances, setInsurances] = useState<Insurance[]>([])
   const [showNewInsurance, setShowNewInsurance] = useState(false)
+  const [insuranceSearch, setInsuranceSearch] = useState('')
   const [newInsurance, setNewInsurance] = useState({ name: '', credit_days: 30, notes: '' })
+  const [showInsDropdown, setShowInsDropdown] = useState(false)
 
-  // Assistant state
+  // Assistants
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [showNewAssistant, setShowNewAssistant] = useState(false)
   const [newAss, setNewAss] = useState({ name: '', email: '' })
   const [selectedAssistant, setSelectedAssistant] = useState<Assistant | null>(null)
   const [assError, setAssError] = useState('')
 
-  // Booking link copy
+  // Notifications
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [browserNotif, setBrowserNotif] = useState(false)
+
+  // Integrations
+  const [whatsappToken, setWhatsappToken] = useState('')
+  const [whatsappPhoneId, setWhatsappPhoneId] = useState('')
+  const [googleToken, setGoogleToken] = useState('')
+  const [integrationsLoading, setIntegrationsLoading] = useState(false)
+
+  // Booking link
   const [copied, setCopied] = useState(false)
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
   const publicLink = doctorId ? `${baseUrl}/book/${doctorId}` : ''
 
+  // Load all data
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setDoctorId(user.id)
-      const { data } = await supabase.from('profiles').select('full_name, email, phone, specialty, avatar_url, whatsapp_token, whatsapp_phone_id, google_refresh_token').eq('id', user.id).single()
+
+      // profile
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name, email, phone, specialty, avatar_url, logo_url, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications')
+        .eq('id', user.id).single()
+
       if (data) {
         setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '' })
         setAvatarUrl(data.avatar_url ?? null)
+        setLogoUrl(data.logo_url ?? null)
         setWhatsappToken(data.whatsapp_token ?? '')
         setWhatsappPhoneId(data.whatsapp_phone_id ?? '')
         setGoogleToken(data.google_refresh_token ? '••••••••••' : '')
+        setPaymentMethods(data.payment_methods ?? ['pago_movil', 'transferencia'])
+        setPaymentDetails(data.payment_details ?? {})
+        setSoundEnabled(data.sound_notifications !== false)
       }
+
+      // plans
+      const { data: p } = await supabase.from('pricing_plans').select('*').eq('doctor_id', user.id).order('price_usd')
+      if (p) setPlans(p as PricingPlan[])
+
+      // insurances
+      try {
+        const { data: ins } = await supabase.from('doctor_insurances').select('*').eq('doctor_id', user.id).order('name')
+        if (ins) setInsurances(ins.map(i => ({ id: i.id, name: i.name, credit_days: i.credit_days ?? 30, notes: i.notes ?? '' })))
+      } catch { /* tabla puede no existir */ }
+
       setLoading(false)
-    })
+    }
+    load()
+
+    // notifications permission
+    if ('Notification' in window) {
+      setBrowserNotif(Notification.permission === 'granted')
+    }
+    const ls = localStorage.getItem('appt_sound_enabled')
+    if (ls !== null) setSoundEnabled(ls === 'true')
   }, [])
 
-  async function uploadPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !doctorId) return
-    setUploadingPhoto(true)
-    setUploadError('')
-    const supabase = createClient()
-    const ext = file.name.split('.').pop()
-    const path = `avatars/${doctorId}.${ext}`
-    let { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
-
-    // Si falla por bucket inexistente, intentar crear el bucket
-    if (uploadErr && uploadErr.message?.toLowerCase().includes('bucket')) {
-      try {
-        await supabase.storage.createBucket('avatars', { public: true })
-        const retry = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
-        uploadErr = retry.error
-      } catch (createErr) {
-        uploadErr = { message: 'No se pudo crear el bucket avatars. Contacta al administrador.' } as any
-      }
-    }
-
-    if (uploadErr) {
-      setUploadError('No se pudo subir la foto. Intenta de nuevo o contacta al administrador.')
-    } else {
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-      const url = urlData.publicUrl
-      await supabase.from('profiles').update({ avatar_url: url }).eq('id', doctorId)
-      setAvatarUrl(url + '?t=' + Date.now())
-    }
-    setUploadingPhoto(false)
-  }
-
-  function togglePaymentMethod(method: string) {
-    setPaymentMethods(prev =>
-      prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method]
-    )
-  }
-
-  function addInsurance(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newInsurance.name.trim()) return
-    setInsurances(prev => [...prev, { ...newInsurance }])
-    setNewInsurance({ name: '', credit_days: 30, notes: '' })
-    setShowNewInsurance(false)
-  }
-
-  function removeInsurance(idx: number) {
-    setInsurances(prev => prev.filter((_, i) => i !== idx))
-  }
+  /* ---------------- PROFILE ---------------- */
 
   async function saveProfile() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    await supabase.from('profiles').update({ full_name: profile.full_name, phone: profile.phone, specialty: profile.specialty }).eq('id', user.id)
+    await supabase.from('profiles').update({
+      full_name: profile.full_name,
+      phone: profile.phone,
+      specialty: profile.specialty,
+    }).eq('id', user.id)
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
   }
+
+  /* ---------------- LOGO ---------------- */
+
+  async function uploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !doctorId) return
+    setUploadingLogo(true); setLogoError('')
+    const supabase = createClient()
+    const ext = file.name.split('.').pop()
+    const path = `logos/${doctorId}.${ext}`
+    let { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (upErr && upErr.message?.toLowerCase().includes('bucket')) {
+      try {
+        await supabase.storage.createBucket('avatars', { public: true })
+        const retry = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+        upErr = retry.error
+      } catch { upErr = { message: 'No se pudo crear el bucket' } as any }
+    }
+    if (upErr) {
+      setLogoError('No se pudo subir el logo. Intenta de nuevo.')
+    } else {
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+      const url = urlData.publicUrl
+      await supabase.from('profiles').update({ logo_url: url }).eq('id', doctorId)
+      setLogoUrl(url + '?t=' + Date.now())
+    }
+    setUploadingLogo(false)
+  }
+
+  /* ---------------- PLANS ---------------- */
+
+  async function savePlan(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newPlan.name.trim()) { setPlanError('El nombre es obligatorio'); return }
+    if (!newPlan.price_usd || isNaN(parseFloat(newPlan.price_usd))) { setPlanError('Precio inválido'); return }
+    if (!doctorId) return
+    setPlansSaving(true); setPlanError('')
+    const supabase = createClient()
+    const { data, error } = await supabase.from('pricing_plans').insert({
+      doctor_id: doctorId,
+      name: newPlan.name,
+      price_usd: parseFloat(newPlan.price_usd),
+      duration_minutes: parseInt(newPlan.duration_minutes) || 30,
+      sessions_count: parseInt(newPlan.sessions_count) || 1,
+      is_active: true,
+    }).select().single()
+    if (error) {
+      setPlanError('Error al guardar: ' + error.message)
+    } else if (data) {
+      setPlans(prev => [...prev, data as PricingPlan])
+    }
+    setNewPlan({ name: '', price_usd: '', duration_minutes: '30', sessions_count: '1' })
+    setShowNewPlan(false); setPlansSaving(false)
+  }
+
+  async function togglePlan(id: string) {
+    const plan = plans.find(p => p.id === id)
+    setPlans(prev => prev.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p))
+    if (plan) { const supabase = createClient(); await supabase.from('pricing_plans').update({ is_active: !plan.is_active }).eq('id', id) }
+  }
+
+  async function deletePlan(id: string) {
+    setPlans(prev => prev.filter(p => p.id !== id))
+    const supabase = createClient(); await supabase.from('pricing_plans').delete().eq('id', id)
+  }
+
+  /* ---------------- PAYMENT METHODS ---------------- */
+
+  function togglePaymentMethod(id: string) {
+    setPaymentMethods(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id])
+  }
+
+  function updatePaymentField(methodId: string, field: string, value: string) {
+    setPaymentDetails(prev => ({
+      ...prev,
+      [methodId]: { ...(prev[methodId] ?? {}), [field]: value },
+    }))
+  }
+
+  async function savePaymentMethods() {
+    if (!doctorId) return
+    const supabase = createClient()
+    try {
+      await supabase.from('profiles').update({
+        payment_methods: paymentMethods,
+        payment_details: paymentDetails,
+      }).eq('id', doctorId)
+      setPaymentSaved(true)
+      setTimeout(() => setPaymentSaved(false), 2500)
+    } catch (err: any) {
+      alert('No se pudo guardar (posiblemente falta columna payment_details en DB). ' + err.message)
+    }
+  }
+
+  /* ---------------- INSURANCE ---------------- */
+
+  const insFiltered = insuranceSearch.trim().length > 0
+    ? VENEZUELA_INSURANCES.filter(n => n.toLowerCase().includes(insuranceSearch.toLowerCase()))
+    : VENEZUELA_INSURANCES
+
+  async function addInsurance(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newInsurance.name.trim() || !doctorId) return
+    const supabase = createClient()
+    try {
+      const { data } = await supabase.from('doctor_insurances').insert({
+        doctor_id: doctorId,
+        name: newInsurance.name.trim(),
+        credit_days: newInsurance.credit_days,
+        notes: newInsurance.notes,
+      }).select().single()
+      if (data) setInsurances(prev => [...prev, { id: data.id, name: data.name, credit_days: data.credit_days, notes: data.notes ?? '' }])
+    } catch {
+      setInsurances(prev => [...prev, { ...newInsurance }])
+    }
+    setNewInsurance({ name: '', credit_days: 30, notes: '' })
+    setShowNewInsurance(false); setInsuranceSearch(''); setShowInsDropdown(false)
+  }
+
+  async function removeInsurance(idx: number) {
+    const item = insurances[idx]
+    setInsurances(prev => prev.filter((_, i) => i !== idx))
+    if (item.id) { const supabase = createClient(); await supabase.from('doctor_insurances').delete().eq('id', item.id) }
+  }
+
+  function selectInsuranceFromList(name: string) {
+    setNewInsurance(p => ({ ...p, name }))
+    setInsuranceSearch(name); setShowInsDropdown(false)
+  }
+
+  /* ---------------- ASSISTANTS ---------------- */
+
+  function createAssistant(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newAss.name.trim() || !newAss.email.trim()) { setAssError('Nombre y email son obligatorios'); return }
+    const defaultModules: Record<string, boolean> = {}
+    ALL_MODULES.forEach(m => { defaultModules[m.id] = m.enabled })
+    const assistant: Assistant = { id: Date.now().toString(), name: newAss.name, email: newAss.email, modules: defaultModules, created_at: new Date().toISOString() }
+    setAssistants(prev => [...prev, assistant])
+    setNewAss({ name: '', email: '' }); setShowNewAssistant(false); setAssError('')
+  }
+
+  function toggleAssistantModule(assId: string, moduleId: string) {
+    setAssistants(prev => prev.map(a => a.id === assId ? { ...a, modules: { ...a.modules, [moduleId]: !a.modules[moduleId] } } : a))
+    if (selectedAssistant?.id === assId) setSelectedAssistant(prev => prev ? { ...prev, modules: { ...prev.modules, [moduleId]: !prev.modules[moduleId] } } : null)
+  }
+
+  /* ---------------- NOTIFICATIONS ---------------- */
+
+  async function toggleSound() {
+    const next = !soundEnabled
+    setSoundEnabled(next)
+    localStorage.setItem('appt_sound_enabled', String(next))
+    if (doctorId) {
+      try {
+        const supabase = createClient()
+        await supabase.from('profiles').update({ sound_notifications: next }).eq('id', doctorId)
+      } catch { /* columna puede no existir */ }
+    }
+  }
+
+  async function requestBrowserNotif() {
+    if (!('Notification' in window)) return
+    const perm = await Notification.requestPermission()
+    setBrowserNotif(perm === 'granted')
+  }
+
+  /* ---------------- INTEGRATIONS ---------------- */
 
   async function saveIntegrations() {
     const supabase = createClient()
@@ -148,98 +377,86 @@ export default function DoctorSettingsPage() {
       whatsapp_phone_id: whatsappPhoneId || null,
     }).eq('id', user.id)
     setIntegrationsLoading(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+    setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
 
-  function createAssistant(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newAss.name.trim() || !newAss.email.trim()) { setAssError('Nombre y email son obligatorios'); return }
-    const defaultModules: Record<string, boolean> = {}
-    ALL_MODULES.forEach(m => { defaultModules[m.id] = m.enabled })
-    const assistant: Assistant = { id: Date.now().toString(), name: newAss.name, email: newAss.email, modules: defaultModules, created_at: new Date().toISOString() }
-    setAssistants(prev => [...prev, assistant])
-    setNewAss({ name: '', email: '' })
-    setShowNewAssistant(false)
-    setAssError('')
-  }
-
-  function toggleAssistantModule(assId: string, moduleId: string) {
-    setAssistants(prev => prev.map(a => a.id === assId ? { ...a, modules: { ...a.modules, [moduleId]: !a.modules[moduleId] } } : a))
-    if (selectedAssistant?.id === assId) setSelectedAssistant(prev => prev ? { ...prev, modules: { ...prev.modules, [moduleId]: !prev.modules[moduleId] } } : null)
-  }
-
-  const tabs: { id: typeof tab; label: string }[] = [
-    { id: 'profile', label: 'Mi perfil' },
-    { id: 'booking', label: 'Link público' },
-    { id: 'payment', label: 'Métodos de pago' },
-    { id: 'insurance', label: 'Seguros' },
-    { id: 'assistants', label: 'Asistentes' },
+  const tabs: { id: TabId; label: string; icon: any }[] = [
+    { id: 'profile', label: 'Mi perfil', icon: User },
+    { id: 'plans', label: 'Planes de consulta', icon: Tag },
+    { id: 'booking', label: 'Link público', icon: Link2 },
+    { id: 'payment', label: 'Métodos de pago', icon: DollarSign },
+    { id: 'insurance', label: 'Seguros', icon: Shield },
+    { id: 'notifications', label: 'Notificaciones', icon: Bell },
+    { id: 'assistants', label: 'Asistentes', icon: Users2 },
+    { id: 'integrations', label: 'Integraciones', icon: ExternalLink },
   ]
 
   return (
     <>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+      <style>{`* { font-family: 'Inter', sans-serif; } .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
 
-      <div className="max-w-3xl space-y-5">
+      <div className="max-w-4xl space-y-5">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Configuración</h1>
-          <p className="text-sm text-slate-500">Perfil, planes de consulta, link de booking y asistentes</p>
+          <p className="text-sm text-slate-500">Perfil, planes, métodos de pago, seguros, notificaciones y más</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-wrap">
-          {[
-            { id: 'profile', label: 'Mi perfil' },
-            { id: 'booking', label: 'Link público' },
-            { id: 'payment', label: 'Métodos de pago' },
-            { id: 'insurance', label: 'Seguros' },
-            { id: 'assistants', label: 'Asistentes' },
-          ].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id as any)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t.id ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              {t.label}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t.id ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <t.icon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t.label}</span>
+              <span className="sm:hidden">{t.label.split(' ')[0]}</span>
             </button>
           ))}
         </div>
 
-        {/* PROFILE TAB */}
+        {/* ---------------- PROFILE ---------------- */}
         {tab === 'profile' && (
           <div className="space-y-4">
-            {/* Foto de perfil */}
+            {/* Foto de perfil con crop */}
             <div className="bg-white border border-slate-200 rounded-xl p-6">
-              <p className="text-sm font-semibold text-slate-700 mb-4">Foto de perfil</p>
+              <p className="text-sm font-semibold text-slate-700 mb-1">Foto de perfil</p>
+              <p className="text-xs text-slate-500 mb-4">Esta foto aparece en tu página pública y en el portal. Puedes recortarla y hacer zoom.</p>
+              <AvatarUploader
+                doctorId={doctorId}
+                currentUrl={avatarUrl}
+                onUploaded={(url) => setAvatarUrl(url)}
+              />
+            </div>
+
+            {/* Logo del consultorio */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <p className="text-sm font-semibold text-slate-700 mb-1">Logo del consultorio</p>
+              <p className="text-xs text-slate-500 mb-4">Aparece en facturas, presupuestos, informes médicos y recetas.</p>
               <div className="flex items-center gap-5">
-                <div className="relative">
-                  <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 flex items-center justify-center">
-                    {avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      <User className="w-8 h-8 text-slate-300" />
-                    )}
-                  </div>
-                  {uploadingPhoto && (
-                    <div className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center">
-                      <Loader2 className="w-5 h-5 text-white animate-spin" />
-                    </div>
+                <div className="w-24 h-24 rounded-xl border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
+                  {logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                  ) : (
+                    <FileBadge className="w-7 h-7 text-slate-300" />
                   )}
                 </div>
                 <div className="space-y-2">
-                  <p className="text-xs text-slate-500">Esta foto aparece en tu página pública de booking.</p>
-                  <input ref={fileInputRef} type="file" accept="image/*" onChange={uploadPhoto} className="hidden" />
-                  <button onClick={() => fileInputRef.current?.click()} disabled={uploadingPhoto}
-                    className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
-                    <Camera className="w-3.5 h-3.5" />{uploadingPhoto ? 'Subiendo...' : 'Cambiar foto'}
+                  <input ref={logoInputRef} type="file" accept="image/*" onChange={uploadLogo} className="hidden" />
+                  <button
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={uploadingLogo}
+                    className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    {uploadingLogo ? 'Subiendo…' : (logoUrl ? 'Cambiar logo' : 'Subir logo')}
                   </button>
-                  <p className="text-[10px] text-slate-400">JPG, PNG o WEBP · Máx. 2MB</p>
+                  <p className="text-[10px] text-slate-400">PNG o SVG con fondo transparente · Máx. 2MB</p>
                 </div>
               </div>
-              {uploadError && (
-                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  <p className="text-xs text-red-700">{uploadError}</p>
-                </div>
-              )}
+              {logoError && <p className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{logoError}</p>}
             </div>
 
             {/* Datos del perfil */}
@@ -251,9 +468,9 @@ export default function DoctorSettingsPage() {
                   <p className="text-xs text-slate-400">{profile.email}</p>
                 </div>
               </div>
-              {loading ? <div className="text-slate-400 text-sm py-4">Cargando...</div> : (
+              {loading ? <div className="text-slate-400 text-sm py-4">Cargando…</div> : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre completo</label>
                       <input value={profile.full_name} onChange={e => setProfile(p => ({ ...p, full_name: e.target.value }))} className={fi} />
@@ -263,7 +480,7 @@ export default function DoctorSettingsPage() {
                       <input value={profile.email} disabled className={fi + ' opacity-50 cursor-not-allowed'} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">Teléfono</label>
                       <input value={profile.phone} onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))} placeholder="+58 412 000 0000" className={fi} />
@@ -271,7 +488,7 @@ export default function DoctorSettingsPage() {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">Especialidad</label>
                       <select value={profile.specialty} onChange={e => setProfile(p => ({ ...p, specialty: e.target.value }))} className={fi}>
-                        <option value="">Seleccionar especialidad...</option>
+                        <option value="">Seleccionar especialidad…</option>
                         {ESPECIALIDADES.map(esp => <option key={esp} value={esp}>{esp}</option>)}
                       </select>
                     </div>
@@ -285,17 +502,108 @@ export default function DoctorSettingsPage() {
           </div>
         )}
 
-        {/* BOOKING LINK TAB */}
+        {/* ---------------- PLANS ---------------- */}
+        {tab === 'plans' && (
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-sm font-bold text-slate-800">Planes de consulta</p>
+                <p className="text-xs text-slate-500">Define tus tipos de consulta y precios. Aparecen en tu página pública de booking.</p>
+              </div>
+              <button onClick={() => setShowNewPlan(true)} className="g-bg flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90">
+                <Plus className="w-4 h-4" /> Nuevo plan
+              </button>
+            </div>
+
+            {showNewPlan && (
+              <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-700">Nuevo plan de consulta</p>
+                  <button onClick={() => { setShowNewPlan(false); setPlanError('') }} className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center"><X className="w-4 h-4 text-slate-500" /></button>
+                </div>
+                {planError && <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{planError}</p>}
+                <form onSubmit={savePlan} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Nombre del plan</label>
+                    <input value={newPlan.name} onChange={e => setNewPlan(p => ({ ...p, name: e.target.value }))} placeholder="Consulta inicial, Control, Urgencia…" className={fi} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Precio total (USD)</label>
+                      <input type="number" min="0" step="0.01" value={newPlan.price_usd} onChange={e => setNewPlan(p => ({ ...p, price_usd: e.target.value }))} placeholder="20" className={fi} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">N° de consultas</label>
+                      <input type="number" min="1" max="100" value={newPlan.sessions_count} onChange={e => setNewPlan(p => ({ ...p, sessions_count: e.target.value }))} placeholder="1" className={fi} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Duración (min)</label>
+                      <select value={newPlan.duration_minutes} onChange={e => setNewPlan(p => ({ ...p, duration_minutes: e.target.value }))} className={fi}>
+                        {[15,20,30,45,60,90,120].map(d => <option key={d} value={d}>{d} min</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  {parseInt(newPlan.sessions_count) > 1 && parseFloat(newPlan.price_usd) > 0 && (
+                    <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 text-xs text-violet-700">
+                      💡 Paquete de <strong>{newPlan.sessions_count} consultas</strong> por <strong>${newPlan.price_usd} USD</strong> — equivale a <strong>${(parseFloat(newPlan.price_usd) / parseInt(newPlan.sessions_count)).toFixed(2)}</strong> por consulta
+                    </div>
+                  )}
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => setShowNewPlan(false)} className="flex-1 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500">Cancelar</button>
+                    <button type="submit" disabled={plansSaving} className="flex-1 g-bg py-2 rounded-xl text-xs font-bold text-white disabled:opacity-60">{plansSaving ? 'Guardando…' : 'Guardar plan'}</button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {plans.length === 0 ? (
+              <div className="bg-white border border-dashed border-slate-200 rounded-xl py-12 text-center">
+                <Tag className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                <p className="text-slate-500 font-semibold text-sm">Sin planes creados</p>
+                <p className="text-slate-400 text-xs mt-1">Crea tu primer tipo de consulta.</p>
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                {plans.map((plan, i) => (
+                  <div key={plan.id} className={`flex items-center gap-4 px-5 py-4 flex-wrap ${i < plans.length - 1 ? 'border-b border-slate-100' : ''}`}>
+                    <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center shrink-0"><DollarSign className="w-5 h-5 text-white" /></div>
+                    <div className="flex-1 min-w-[120px]">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-slate-800">{plan.name}</p>
+                        {plan.sessions_count > 1 && (
+                          <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">
+                            {plan.sessions_count} consultas
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {plan.duration_minutes} min/sesión
+                        {plan.sessions_count > 1 && ` · $${(plan.price_usd / plan.sessions_count).toFixed(2)} c/u`}
+                      </p>
+                    </div>
+                    <p className="text-lg font-bold text-teal-600">${plan.price_usd} <span className="text-xs text-slate-400 font-normal">USD</span></p>
+                    <button onClick={() => togglePlan(plan.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${plan.is_active ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                      {plan.is_active ? <><ToggleRight className="w-4 h-4" />Activo</> : <><ToggleLeft className="w-4 h-4" />Inactivo</>}
+                    </button>
+                    <button onClick={() => deletePlan(plan.id)} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors"><Trash2 className="w-4 h-4 text-red-400" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---------------- BOOKING ---------------- */}
         {tab === 'booking' && (
           <div className="space-y-4">
             <div className="g-bg rounded-xl p-6 text-white">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><Link2 className="w-6 h-6 text-white" /></div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <p className="font-bold text-lg">Tu link público de booking</p>
                   <p className="text-sm text-white/70 mt-0.5">Compártelo en redes, tarjetas de presentación o por WhatsApp. Nunca vence.</p>
-                  <div className="mt-4 bg-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
-                    <p className="text-sm font-mono flex-1 truncate text-white/90">{publicLink || 'Cargando...'}</p>
+                  <div className="mt-4 bg-white/10 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
+                    <p className="text-sm font-mono flex-1 truncate text-white/90">{publicLink || 'Cargando…'}</p>
                     <button onClick={() => { navigator.clipboard.writeText(publicLink); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
                       className="shrink-0 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
                       {copied ? <><Check className="w-3.5 h-3.5" />Copiado</> : <><Copy className="w-3.5 h-3.5" />Copiar</>}
@@ -304,8 +612,7 @@ export default function DoctorSettingsPage() {
                 </div>
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button onClick={() => window.open(publicLink, '_blank')}
                 className="bg-white border border-slate-200 rounded-xl p-4 text-left hover:border-teal-300 hover:shadow-sm transition-all flex items-center gap-3">
                 <ExternalLink className="w-5 h-5 text-teal-500 shrink-0" />
@@ -317,62 +624,69 @@ export default function DoctorSettingsPage() {
                 <div><p className="text-sm font-semibold text-slate-800">Compartir por WhatsApp</p><p className="text-xs text-slate-400">Enviar a cualquier contacto</p></div>
               </button>
             </div>
-
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">¿Qué ve el paciente?</p>
-              <div className="space-y-2">
-                {['Tu nombre y especialidad', 'Los planes de consulta con precios', 'Calendario de disponibilidad (3 semanas)', 'Formulario para registrar sus datos'].map(item => (
-                  <div key={item} className="flex items-center gap-2 text-sm text-slate-600"><CheckCircle className="w-4 h-4 text-teal-500 shrink-0" />{item}</div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
-        {/* PAYMENT METHODS TAB */}
+        {/* ---------------- PAYMENT METHODS ---------------- */}
         {tab === 'payment' && (
           <div className="space-y-4">
             <div className="bg-white border border-slate-200 rounded-xl p-6">
-              <p className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-4">Métodos de pago aceptados</p>
-              <p className="text-xs text-slate-500 mb-4">Los pacientes verán estas opciones al agendar</p>
+              <p className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-1">Métodos de pago aceptados</p>
+              <p className="text-xs text-slate-500 mb-4">Configura los datos para recibir pagos. Los pacientes verán esta información al agendar o pagar.</p>
 
               <div className="space-y-3">
-                {[
-                  { id: 'cash_usd', label: '💵 Efectivo USD' },
-                  { id: 'cash_bs', label: '💵 Efectivo Bs' },
-                  { id: 'pago_movil', label: '📱 Pago Móvil' },
-                  { id: 'transferencia', label: '🏦 Transferencia' },
-                  { id: 'zelle', label: '💳 Zelle' },
-                  { id: 'binance', label: '₿ Binance' },
-                  { id: 'pos', label: '🛒 Punto de venta' },
-                ].map(method => (
-                  <label key={method.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={paymentMethods.includes(method.id)}
-                      onChange={() => togglePaymentMethod(method.id)}
-                      className="w-5 h-5 rounded border-slate-300 text-teal-500 cursor-pointer"
-                    />
-                    <span className="text-sm font-medium text-slate-700">{method.label}</span>
-                  </label>
-                ))}
+                {PAYMENT_METHODS.map(method => {
+                  const active = paymentMethods.includes(method.id)
+                  return (
+                    <div key={method.id} className={`border rounded-xl overflow-hidden transition-all ${active ? 'border-teal-300 bg-teal-50/30' : 'border-slate-200 bg-white'}`}>
+                      <button
+                        type="button"
+                        onClick={() => togglePaymentMethod(method.id)}
+                        className="w-full flex items-center gap-3 p-3 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <input type="checkbox" readOnly checked={active} className="w-5 h-5 rounded border-slate-300 text-teal-500 pointer-events-none" />
+                        <span className="text-xl">{method.emoji}</span>
+                        <span className="text-sm font-medium text-slate-700 flex-1">{method.label}</span>
+                        {active && method.fields.length > 0 && (
+                          <span className="text-[10px] font-bold text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">Configurable</span>
+                        )}
+                      </button>
+                      {active && method.fields.length > 0 && (
+                        <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {method.fields.map(f => (
+                            <div key={f.key}>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">{f.label}</label>
+                              <input
+                                type={f.type ?? 'text'}
+                                value={paymentDetails[method.id]?.[f.key] ?? ''}
+                                onChange={e => updatePaymentField(method.id, f.key, e.target.value)}
+                                placeholder={f.placeholder}
+                                className={fi}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
 
-              <button onClick={() => console.log('Save payment methods:', paymentMethods)} className="mt-6 flex items-center gap-2 g-bg px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
-                <SaveIcon className="w-4 h-4" /> Guardar
+              <button onClick={savePaymentMethods} className="mt-6 flex items-center gap-2 g-bg px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
+                {paymentSaved ? <><CheckCircle className="w-4 h-4" />Guardado</> : <><SaveIcon className="w-4 h-4" />Guardar métodos y datos</>}
               </button>
             </div>
           </div>
         )}
 
-        {/* INSURANCE TAB */}
+        {/* ---------------- INSURANCE ---------------- */}
         {tab === 'insurance' && (
           <div className="space-y-4">
             <div className="bg-white border border-slate-200 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <div>
                   <p className="text-sm font-bold text-slate-700 uppercase tracking-widest">Seguros aceptados</p>
-                  <p className="text-xs text-slate-500 mt-1">Configurar tarifa de crédito por asegurador</p>
+                  <p className="text-xs text-slate-500 mt-1">Busca de la lista de Venezuela o agrega uno personalizado</p>
                 </div>
                 <button onClick={() => setShowNewInsurance(true)} className="g-bg flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:opacity-90">
                   <Plus className="w-3.5 h-3.5" /> Agregar seguro
@@ -380,45 +694,51 @@ export default function DoctorSettingsPage() {
               </div>
 
               {showNewInsurance && (
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4 space-y-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
                   <form onSubmit={addInsurance} className="space-y-3">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Nombre del seguro</label>
-                      <input
-                        value={newInsurance.name}
-                        onChange={e => setNewInsurance(p => ({ ...p, name: e.target.value }))}
-                        placeholder="Ej: Seguros Mercantil"
-                        className={fi}
-                        required
-                      />
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Buscar seguro</label>
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          value={insuranceSearch}
+                          onChange={e => { setInsuranceSearch(e.target.value); setNewInsurance(p => ({ ...p, name: e.target.value })); setShowInsDropdown(true) }}
+                          onFocus={() => setShowInsDropdown(true)}
+                          placeholder="Escribe para buscar (ej: Mercantil, Mapfre, Seguros Caracas…)"
+                          className={fi + ' pl-10'}
+                        />
+                        {showInsDropdown && insFiltered.length > 0 && (
+                          <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg">
+                            {insFiltered.slice(0, 50).map(name => (
+                              <button
+                                type="button"
+                                key={name}
+                                onClick={() => selectInsuranceFromList(name)}
+                                className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 border-b border-slate-50 last:border-0"
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Lista completa de compañías de seguros de Venezuela — o escribe uno personalizado</p>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Días de crédito</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={newInsurance.credit_days}
-                        onChange={e => setNewInsurance(p => ({ ...p, credit_days: parseInt(e.target.value) || 0 }))}
-                        className={fi}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Notas</label>
-                      <textarea
-                        value={newInsurance.notes}
-                        onChange={e => setNewInsurance(p => ({ ...p, notes: e.target.value }))}
-                        placeholder="Ej: Requiere autorización previa"
-                        rows={2}
-                        className={fi + ' resize-none'}
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Días de crédito</label>
+                        <input type="number" min="0" value={newInsurance.credit_days} onChange={e => setNewInsurance(p => ({ ...p, credit_days: parseInt(e.target.value) || 0 }))} className={fi} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Notas (opcional)</label>
+                        <input value={newInsurance.notes} onChange={e => setNewInsurance(p => ({ ...p, notes: e.target.value }))} placeholder="Requiere autorización previa" className={fi} />
+                      </div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => setShowNewInsurance(false)} className="flex-1 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">
+                      <button type="button" onClick={() => { setShowNewInsurance(false); setInsuranceSearch(''); setShowInsDropdown(false) }} className="flex-1 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">
                         Cancelar
                       </button>
-                      <button type="submit" className="flex-1 g-bg py-2 rounded-lg text-xs font-bold text-white">
-                        Agregar
-                      </button>
+                      <button type="submit" className="flex-1 g-bg py-2 rounded-lg text-xs font-bold text-white">Agregar</button>
                     </div>
                   </form>
                 </div>
@@ -438,10 +758,7 @@ export default function DoctorSettingsPage() {
                         <p className="text-xs text-slate-500 mt-1">Plazo: {ins.credit_days} días</p>
                         {ins.notes && <p className="text-xs text-slate-600 mt-1 italic">{ins.notes}</p>}
                       </div>
-                      <button
-                        onClick={() => removeInsurance(idx)}
-                        className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                      >
+                      <button onClick={() => removeInsurance(idx)} className="p-2 hover:bg-red-50 rounded-lg transition-colors">
                         <Trash2 className="w-4 h-4 text-red-400" />
                       </button>
                     </div>
@@ -452,7 +769,54 @@ export default function DoctorSettingsPage() {
           </div>
         )}
 
-        {/* ASSISTANTS TAB */}
+        {/* ---------------- NOTIFICATIONS ---------------- */}
+        {tab === 'notifications' && (
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
+              <p className="text-sm font-bold text-slate-700 uppercase tracking-widest">Notificaciones del panel</p>
+
+              <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl bg-slate-50">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {soundEnabled ? <Volume2 className="w-5 h-5 text-teal-500 shrink-0" /> : <VolumeX className="w-5 h-5 text-slate-400 shrink-0" />}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Sonido al recibir una cita</p>
+                    <p className="text-xs text-slate-500">Reproduce un beep cuando se agenda una cita nueva</p>
+                  </div>
+                </div>
+                <button
+                  onClick={toggleSound}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${soundEnabled ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-500'}`}
+                >
+                  {soundEnabled ? <><ToggleRight className="w-4 h-4" />Activo</> : <><ToggleLeft className="w-4 h-4" />Inactivo</>}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl bg-slate-50">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <Bell className={`w-5 h-5 shrink-0 ${browserNotif ? 'text-teal-500' : 'text-slate-400'}`} />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Notificaciones del navegador</p>
+                    <p className="text-xs text-slate-500">Recibe alertas del sistema cuando haya una cita nueva</p>
+                  </div>
+                </div>
+                {browserNotif ? (
+                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full shrink-0">Permitido</span>
+                ) : (
+                  <button onClick={requestBrowserNotif} className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-500 text-white hover:opacity-90">
+                    Permitir
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                <Smartphone className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-blue-700">El panel revisa nuevas citas cada 30 segundos. Mantén esta pestaña abierta para recibirlas.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------- ASSISTANTS ---------------- */}
         {tab === 'assistants' && (
           <div className="space-y-4">
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-start gap-3">
@@ -473,7 +837,7 @@ export default function DoctorSettingsPage() {
                 </div>
                 {assError && <p className="text-sm text-red-600">{assError}</p>}
                 <form onSubmit={createAssistant} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><label className="block text-xs font-medium text-slate-600 mb-1">Nombre</label><input value={newAss.name} onChange={e => setNewAss(p => ({ ...p, name: e.target.value }))} placeholder="Ana González" className={fi} /></div>
                     <div><label className="block text-xs font-medium text-slate-600 mb-1">Email</label><input type="email" value={newAss.email} onChange={e => setNewAss(p => ({ ...p, email: e.target.value }))} placeholder="asistente@email.com" className={fi} /></div>
                   </div>
@@ -496,17 +860,17 @@ export default function DoctorSettingsPage() {
                   <div className="flex items-center gap-4 px-5 py-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50"
                     onClick={() => setSelectedAssistant(selectedAssistant?.id === ass.id ? null : ass)}>
                     <div className="w-9 h-9 rounded-full bg-violet-50 flex items-center justify-center"><span className="text-violet-600 font-bold text-sm">{ass.name.charAt(0)}</span></div>
-                    <div className="flex-1"><p className="text-sm font-semibold text-slate-800">{ass.name}</p><p className="text-xs text-slate-400">{ass.email}</p></div>
-                    <span className="text-xs font-semibold text-violet-600 bg-violet-50 px-2.5 py-1 rounded-full">Asistente</span>
+                    <div className="flex-1 min-w-0"><p className="text-sm font-semibold text-slate-800 truncate">{ass.name}</p><p className="text-xs text-slate-400 truncate">{ass.email}</p></div>
+                    <span className="text-xs font-semibold text-violet-600 bg-violet-50 px-2.5 py-1 rounded-full shrink-0">Asistente</span>
                   </div>
                   {selectedAssistant?.id === ass.id && (
                     <div className="p-5 space-y-2">
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Módulos activos</p>
                       {ALL_MODULES.map(mod => (
-                        <div key={mod.id} className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
-                          <div><p className="text-sm font-semibold text-slate-800">{mod.label}</p><p className="text-xs text-slate-400">{mod.description}</p></div>
+                        <div key={mod.id} className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0 gap-3">
+                          <div className="min-w-0"><p className="text-sm font-semibold text-slate-800">{mod.label}</p><p className="text-xs text-slate-400">{mod.description}</p></div>
                           <button onClick={() => toggleAssistantModule(ass.id, mod.id)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${ass.modules[mod.id] ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${ass.modules[mod.id] ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
                             {ass.modules[mod.id] ? <><ToggleRight className="w-4 h-4" />Activo</> : <><ToggleLeft className="w-4 h-4" />Inactivo</>}
                           </button>
                         </div>
@@ -519,7 +883,7 @@ export default function DoctorSettingsPage() {
           </div>
         )}
 
-        {/* INTEGRATIONS TAB */}
+        {/* ---------------- INTEGRATIONS ---------------- */}
         {tab === 'integrations' && (
           <div className="space-y-4">
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-start gap-3">
@@ -527,18 +891,15 @@ export default function DoctorSettingsPage() {
               <p className="text-sm text-teal-700">Conecta herramientas externas para sincronizar tu agenda y enviar mensajes automáticos.</p>
             </div>
 
-            {/* Google Calendar */}
             <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <span className="text-blue-600 text-sm font-bold">GC</span>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-900">Google Calendar</p>
-                      <p className="text-xs text-slate-500">Sincroniza tus citas con Google Calendar</p>
-                    </div>
+              <div className="flex items-start justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <span className="text-blue-600 text-sm font-bold">GC</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-900">Google Calendar</p>
+                    <p className="text-xs text-slate-500">Sincroniza tus citas con Google Calendar</p>
                   </div>
                 </div>
                 {googleToken ? (
@@ -547,29 +908,20 @@ export default function DoctorSettingsPage() {
                   <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">No conectado</span>
                 )}
               </div>
-              {googleToken && (
-                <p className="text-xs text-slate-500 italic">Tu Google Calendar está conectado. Las citas se sincronizarán automáticamente.</p>
-              )}
-              <button
-                onClick={() => window.open('/api/integrations/google/auth', '_blank')}
-                className="w-full px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-colors"
-              >
+              <button onClick={() => window.open('/api/integrations/google/auth', '_blank')} className="w-full px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-colors">
                 {googleToken ? 'Reconectar Google Calendar' : 'Conectar Google Calendar'}
               </button>
             </div>
 
-            {/* WhatsApp Business */}
             <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                      <span className="text-emerald-600 text-sm font-bold">WA</span>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-900">WhatsApp Business API</p>
-                      <p className="text-xs text-slate-500">Envía confirmaciones y recordatorios de citas</p>
-                    </div>
+              <div className="flex items-start justify-between mb-2 flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                    <span className="text-emerald-600 text-sm font-bold">WA</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-900">WhatsApp Business API</p>
+                    <p className="text-xs text-slate-500">Envía confirmaciones y recordatorios</p>
                   </div>
                 </div>
                 {whatsappToken ? (
@@ -578,57 +930,19 @@ export default function DoctorSettingsPage() {
                   <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">No conectado</span>
                 )}
               </div>
-
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">Token de API de Meta</label>
-                  <input
-                    type="password"
-                    value={whatsappToken}
-                    onChange={e => setWhatsappToken(e.target.value)}
-                    placeholder="Obtén tu token en https://developers.facebook.com"
-                    className={fi}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Mantén esto seguro. No lo compartas con nadie.</p>
+                  <input type="password" value={whatsappToken} onChange={e => setWhatsappToken(e.target.value)} placeholder="Obtén tu token en developers.facebook.com" className={fi} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">ID del Número de Teléfono</label>
-                  <input
-                    type="text"
-                    value={whatsappPhoneId}
-                    onChange={e => setWhatsappPhoneId(e.target.value)}
-                    placeholder="Ej: 123456789012345"
-                    className={fi}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">ID del número de WhatsApp Business asociado</p>
+                  <input value={whatsappPhoneId} onChange={e => setWhatsappPhoneId(e.target.value)} placeholder="Ej: 123456789012345" className={fi} />
                 </div>
               </div>
-
-              <button
-                onClick={saveIntegrations}
-                disabled={integrationsLoading || (!whatsappToken && !whatsappPhoneId)}
-                className="w-full px-4 py-2.5 g-bg text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {integrationsLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Guardando...
-                  </>
-                ) : (
-                  <>
-                    <SaveIcon className="w-4 h-4" /> Guardar credenciales
-                  </>
-                )}
+              <button onClick={saveIntegrations} disabled={integrationsLoading} className="w-full px-4 py-2.5 g-bg text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
+                {integrationsLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</> : <><SaveIcon className="w-4 h-4" /> Guardar credenciales</>}
               </button>
-            </div>
-
-            {/* Info Card */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
-              <p className="text-sm text-blue-700">
-                <strong>¿Necesitas ayuda?</strong> Consulta nuestra documentación sobre cómo integrar WhatsApp Business API en{' '}
-                <a href="https://developers.facebook.com/docs/whatsapp/cloud-api" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
-                  Meta Developers
-                </a>.
-              </p>
             </div>
           </div>
         )}
@@ -637,4 +951,10 @@ export default function DoctorSettingsPage() {
   )
 }
 
-const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors'
+export default function DoctorSettingsPage() {
+  return (
+    <Suspense fallback={<div className="py-12 text-center text-slate-400 text-sm">Cargando…</div>}>
+      <SettingsPageInner />
+    </Suspense>
+  )
+}

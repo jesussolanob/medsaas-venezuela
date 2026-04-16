@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Receipt, Plus, X, Printer, Send, FileText, DollarSign, Search, User, Calendar, Trash2, ArrowLeft, CheckCircle } from 'lucide-react'
+import { Receipt, Plus, X, Printer, Send, FileText, DollarSign, Search, User, Calendar, Trash2, ArrowLeft, CheckCircle, Stethoscope, Pill } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type LineItem = { id: string; description: string; qty: number; unit_price: number }
 type Consultation = { id: string; consultation_code: string; consultation_date: string; patient_name: string; patient_phone: string | null; patient_email: string | null }
-type DocType = 'receipt' | 'estimate'
-type DoctorProfile = { full_name: string; specialty: string; phone: string; email: string }
+type DocType = 'receipt' | 'estimate' | 'report' | 'prescription'
+type DoctorProfile = { full_name: string; specialty: string; phone: string; email: string; logo_url: string | null }
 type GenericPatient = { name: string; phone: string; email: string }
 
 function genDocNumber(type: DocType): string {
@@ -41,8 +41,8 @@ export default function BillingPage() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
 
-      // Get doctor profile
-      const { data: profile } = await supabase.from('profiles').select('full_name, specialty, phone, email').eq('id', user.id).single()
+      // Get doctor profile with logo
+      const { data: profile } = await supabase.from('profiles').select('full_name, specialty, phone, email, logo_url').eq('id', user.id).single()
       if (profile) setDoctorProfile(profile as DoctorProfile)
 
       // Get consultations with patient info
@@ -182,6 +182,8 @@ export default function BillingPage() {
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
           * { font-family: 'Inter', sans-serif; }
           .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}
+          .cta-btn { background: linear-gradient(135deg,#00C4CC 0%,#0891b2 100%); color: white; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 196, 204, 0.3); }
+          .cta-btn:hover { opacity: 0.95; box-shadow: 0 6px 16px rgba(0, 196, 204, 0.4); }
           @media print { .no-print { display: none !important; } }
         `}</style>
 
@@ -190,30 +192,59 @@ export default function BillingPage() {
             <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
               <ArrowLeft className="w-4 h-4" /> Volver
             </button>
-            <h1 className="text-xl font-bold text-slate-900">{docType === 'receipt' ? 'Nuevo recibo' : 'Nuevo presupuesto'}</h1>
+            <h1 className="text-xl font-bold text-slate-900">
+              {docType === 'receipt' && 'Emitir nueva factura'}
+              {docType === 'estimate' && 'Generar presupuesto'}
+              {docType === 'report' && 'Redactar informe médico'}
+              {docType === 'prescription' && 'Escribir receta médica'}
+            </h1>
           </div>
 
-          {/* Doc type selector with hover effects */}
-          <div className="no-print flex gap-3">
+          {/* Doc type selector with CTA buttons */}
+          <div className="no-print grid grid-cols-2 md:grid-cols-4 gap-3">
             <button
               onClick={() => setDocType('receipt')}
-              className={`flex-1 py-3 rounded-xl border-2 text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+              className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
                 docType === 'receipt'
-                  ? 'border-teal-400 bg-teal-50 text-teal-700 shadow-md'
-                  : 'border-slate-200 text-slate-500 bg-white hover:shadow-lg hover:border-teal-300 hover:scale-[1.02]'
+                  ? 'cta-btn border-transparent'
+                  : 'border-slate-200 text-slate-600 bg-white hover:border-teal-300 hover:shadow-lg'
               }`}
             >
-              <Receipt className="w-4 h-4" /> Recibo
+              <Receipt className="w-5 h-5" />
+              <span>Factura</span>
             </button>
             <button
               onClick={() => setDocType('estimate')}
-              className={`flex-1 py-3 rounded-xl border-2 text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+              className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
                 docType === 'estimate'
-                  ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-md'
-                  : 'border-slate-200 text-slate-500 bg-white hover:shadow-lg hover:border-amber-300 hover:scale-[1.02]'
+                  ? 'cta-btn border-transparent'
+                  : 'border-slate-200 text-slate-600 bg-white hover:border-teal-300 hover:shadow-lg'
               }`}
             >
-              <FileText className="w-4 h-4" /> Presupuesto
+              <FileText className="w-5 h-5" />
+              <span>Presupuesto</span>
+            </button>
+            <button
+              onClick={() => setDocType('report')}
+              className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
+                docType === 'report'
+                  ? 'cta-btn border-transparent'
+                  : 'border-slate-200 text-slate-600 bg-white hover:border-teal-300 hover:shadow-lg'
+              }`}
+            >
+              <Stethoscope className="w-5 h-5" />
+              <span>Informe</span>
+            </button>
+            <button
+              onClick={() => setDocType('prescription')}
+              className={`py-4 px-3 rounded-xl border-2 text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 ${
+                docType === 'prescription'
+                  ? 'cta-btn border-transparent'
+                  : 'border-slate-200 text-slate-600 bg-white hover:border-teal-300 hover:shadow-lg'
+              }`}
+            >
+              <Pill className="w-5 h-5" />
+              <span>Receta</span>
             </button>
           </div>
 
@@ -283,27 +314,39 @@ export default function BillingPage() {
             <>
               {/* DOCUMENT PREVIEW */}
               <div ref={printRef} className="bg-white border border-slate-200 rounded-xl p-8">
-                {/* Header */}
+                {/* Header with Doctor Logo */}
                 <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', paddingBottom: '24px', borderBottom: '2px solid #e2e8f0' }}>
                   <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,#00C4CC,#0891b2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: 18 }}>Δ</div>
+                    {doctorProfile?.logo_url ? (
+                      <img src={doctorProfile.logo_url} alt="Logo" style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,#00C4CC,#0891b2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: 18 }}>Δ</div>
+                    )}
                     <div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#00C4CC' }}>Delta Medical CRM</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#00C4CC' }}>Dr. {doctorProfile?.full_name || 'Médico'}</div>
                       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{doctorProfile?.specialty || 'Consulta Médica'}</div>
+                      {doctorProfile?.phone && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{doctorProfile.phone}</div>}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     {docType === 'estimate' && <div style={{ background: '#fef3c7', color: '#92400e', padding: '4px 12px', borderRadius: 20, fontSize: 10, fontWeight: 700, display: 'inline-block', marginBottom: 6 }}>PRESUPUESTO</div>}
-                    <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase' }}>{docType === 'receipt' ? 'Recibo' : 'Presupuesto'}</div>
+                    {docType === 'report' && <div style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 12px', borderRadius: 20, fontSize: 10, fontWeight: 700, display: 'inline-block', marginBottom: 6 }}>INFORME MÉDICO</div>}
+                    {docType === 'prescription' && <div style={{ background: '#fce7f3', color: '#be185d', padding: '4px 12px', borderRadius: 20, fontSize: 10, fontWeight: 700, display: 'inline-block', marginBottom: 6 }}>RECETA MÉDICA</div>}
+                    <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', textTransform: 'uppercase' }}>
+                      {docType === 'receipt' && 'Factura'}
+                      {docType === 'estimate' && 'Presupuesto'}
+                      {docType === 'report' && 'Informe'}
+                      {docType === 'prescription' && 'Receta'}
+                    </div>
                     <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, fontFamily: 'monospace' }}>{currentDocNumber}</div>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Fecha: {today}</div>
                   </div>
                 </div>
 
-                {/* Parties */}
+                {/* Parties - Médico no editable, Paciente sí */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 28 }}>
-                  <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#94a3b8', marginBottom: 8 }}>Médico</div>
+                  <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, opacity: 0.8 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#94a3b8', marginBottom: 8 }}>Médico (Emisor)</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>Dr. {doctorProfile?.full_name || '—'}</div>
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{doctorProfile?.specialty}</div>
                     {doctorProfile?.phone && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{doctorProfile.phone}</div>}
@@ -428,18 +471,21 @@ export default function BillingPage() {
   // LIST VIEW
   return (
     <>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}
+        .cta-btn { background: linear-gradient(135deg,#00C4CC 0%,#0891b2 100%); color: white; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 196, 204, 0.3); }
+        .cta-btn:hover { opacity: 0.95; box-shadow: 0 6px 16px rgba(0, 196, 204, 0.4); }
+      `}</style>
 
       <div className="max-w-4xl space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Facturación</h1>
-            <p className="text-sm text-slate-500">Genera recibos y presupuestos en PDF para tus pacientes</p>
+            <h1 className="text-2xl font-bold text-slate-900">Facturación</h1>
+            <p className="text-sm text-slate-500">Genera facturas, presupuestos, informes y recetas en PDF</p>
           </div>
-          <button onClick={() => setView('new')} className="g-bg flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90">
-            <Plus className="w-4 h-4" /> Nuevo documento
-          </button>
         </div>
 
         {/* KPI Cards */}
@@ -472,17 +518,42 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* Type cards */}
-        <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => setView('new')} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-teal-300 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer">
-            <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center mb-3"><Receipt className="w-5 h-5 text-white" /></div>
-            <p className="font-bold text-slate-900">Recibo / Factura</p>
-            <p className="text-xs text-slate-500 mt-1">Comprobante de pago de consulta con datos del médico, paciente, ítems y total en USD + Bs.</p>
+        {/* CTA Buttons - Recibo/Factura y documentos específicos */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <button
+            onClick={() => { setDocType('receipt'); setView('new'); }}
+            className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-teal-300"
+          >
+            <div className="cta-btn w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-lg"><Receipt className="w-6 h-6 text-white" /></div>
+            <p className="font-bold text-slate-900 text-sm">Emitir nueva factura</p>
+            <p className="text-xs text-slate-500 mt-2">Comprobante de pago de consulta</p>
           </button>
-          <button onClick={() => setView('new')} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-amber-300 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center mb-3"><FileText className="w-5 h-5 text-amber-600" /></div>
-            <p className="font-bold text-slate-900">Presupuesto</p>
-            <p className="text-xs text-slate-500 mt-1">Cotización previa con procedimientos o tratamientos. Válido por 30 días.</p>
+
+          <button
+            onClick={() => { setDocType('estimate'); setView('new'); }}
+            className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-amber-300"
+          >
+            <div className="cta-btn w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-lg"><FileText className="w-6 h-6 text-white" /></div>
+            <p className="font-bold text-slate-900 text-sm">Generar presupuesto</p>
+            <p className="text-xs text-slate-500 mt-2">Cotización válida por 30 días</p>
+          </button>
+
+          <button
+            onClick={() => { setDocType('report'); setView('new'); }}
+            className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-sky-300"
+          >
+            <div className="cta-btn w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-lg"><Stethoscope className="w-6 h-6 text-white" /></div>
+            <p className="font-bold text-slate-900 text-sm">Redactar informe médico</p>
+            <p className="text-xs text-slate-500 mt-2">Informe clínico detallado</p>
+          </button>
+
+          <button
+            onClick={() => { setDocType('prescription'); setView('new'); }}
+            className="bg-white border-2 border-slate-200 rounded-xl p-6 hover:shadow-lg hover:scale-[1.02] transition-all text-left cursor-pointer group hover:border-pink-300"
+          >
+            <div className="cta-btn w-12 h-12 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-lg"><Pill className="w-6 h-6 text-white" /></div>
+            <p className="font-bold text-slate-900 text-sm">Escribir receta médica</p>
+            <p className="text-xs text-slate-500 mt-2">Prescripción de medicamentos</p>
           </button>
         </div>
 
