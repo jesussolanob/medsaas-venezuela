@@ -5,32 +5,26 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Activity, LogOut, Calendar, FileText, Pill, MessageCircle,
-  AlertCircle, Plus, ArrowRight, Clock, User,
+  AlertCircle, Clock, User,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase-client'
-
-interface PatientSession {
-  patient_id: string
-  doctor_id: string
-  full_name: string
-  phone: string
-}
+import { createClient } from '@/lib/supabase/client'
 
 interface Appointment {
   id: string
-  appointment_date: string
-  appointment_time: string
-  appointment_type: string
+  scheduled_at: string
+  patient_name: string
+  chief_complaint?: string
   status: string
-  notes?: string
+  plan_name: string
+  plan_price: number
+  doctor_id: string
 }
 
-interface Consultation {
+interface Doctor {
   id: string
-  consultation_date: string
-  chief_complaint?: string
-  diagnosis?: string
-  notes?: string
+  full_name: string
+  specialty?: string
+  avatar_url?: string
 }
 
 interface Prescription {
@@ -47,133 +41,161 @@ interface Message {
   body: string
   direction: string
   created_at: string
-  read_at?: string
-}
-
-interface Doctor {
-  id: string
-  full_name: string
-  specialty?: string
-  avatar_url?: string
 }
 
 export default function PatientDashboard() {
   const router = useRouter()
-  const [session, setSession] = useState<PatientSession | null>(null)
-  const [activeTab, setActiveTab] = useState<'citas' | 'informes' | 'recetas' | 'mensajes'>('citas')
+  const [user, setUser] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState<'citas' | 'recetas' | 'mensajes'>('citas')
   const [loading, setLoading] = useState(true)
   const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [consultations, setConsultations] = useState<Consultation[]>([])
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [messages, setMessages] = useState<Message[]>([])
-  const [doctor, setDoctor] = useState<Doctor | null>(null)
+  const [doctors, setDoctors] = useState<Record<string, Doctor>>({})
   const [newMessage, setNewMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [patientIds, setPatientIds] = useState<string[]>([])
 
   useEffect(() => {
-    // Leer sesión de localStorage
-    const stored = localStorage.getItem('patient_session')
-    if (!stored) {
-      router.push('/patient/login')
-      return
+    const checkAuth = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { user: authUser }, error: userErr } = await supabase.auth.getUser()
+
+        if (userErr || !authUser) {
+          router.push('/patient/login')
+          return
+        }
+
+        setUser(authUser)
+        loadData(authUser.id)
+      } catch (err) {
+        console.error('Auth check error:', err)
+        router.push('/patient/login')
+      }
     }
 
-    const sess = JSON.parse(stored) as PatientSession
-    setSession(sess)
-
-    // Cargar datos
-    loadData(sess)
+    checkAuth()
   }, [router])
 
-  const loadData = async (sess: PatientSession) => {
+  const loadData = async (userId: string) => {
     try {
       setLoading(true)
+      const supabase = createClient()
 
-      // Cargar doctor
-      const { data: doctorData } = await supabase
-        .from('profiles')
-        .select('id, full_name, specialty, avatar_url')
-        .eq('id', sess.doctor_id)
-        .single()
+      // Get all patient IDs for this user
+      const { data: patientsData, error: pErr } = await supabase
+        .from('patients')
+        .select('id, doctor_id')
+        .eq('auth_user_id', userId)
 
-      if (doctorData) setDoctor(doctorData)
+      if (pErr) {
+        console.error('Error loading patients:', pErr)
+        setLoading(false)
+        return
+      }
 
-      // Cargar citas futuras
-      const { data: apptData } = await supabase
-        .from('appointments')
-        .select('id, appointment_date, appointment_time, appointment_type, status, notes')
-        .eq('patient_id', sess.patient_id)
-        .gte('appointment_date', new Date().toISOString().split('T')[0])
-        .order('appointment_date', { ascending: true })
+      const patIds = patientsData?.map(p => p.id) || []
+      setPatientIds(patIds)
 
-      if (apptData) setAppointments(apptData)
+      // Load appointments
+      if (patIds.length > 0) {
+        const { data: apptData, error: apptErr } = await supabase
+          .from('appointments')
+          .select('*')
+          .eq('auth_user_id', userId)
+          .order('scheduled_at', { ascending: true })
 
-      // Cargar consultas pasadas
-      const { data: consData } = await supabase
-        .from('consultations')
-        .select('id, consultation_date, chief_complaint, diagnosis, notes')
-        .eq('patient_id', sess.patient_id)
-        .lt('consultation_date', new Date().toISOString().split('T')[0])
-        .order('consultation_date', { ascending: false })
+        if (!apptErr && apptData) {
+          setAppointments(apptData)
 
-      if (consData) setConsultations(consData)
+          // Load doctor info for each unique doctor_id
+          const doctorIds = [...new Set(apptData.map(a => a.doctor_id))]
+          const doctorsMap: Record<string, Doctor> = {}
 
-      // Cargar recetas
-      const { data: prescData } = await supabase
-        .from('prescriptions')
-        .select('id, medication_name, dosage, frequency, duration, prescribed_date')
-        .eq('patient_id', sess.patient_id)
-        .order('prescribed_date', { ascending: false })
+          for (const docId of doctorIds) {
+            const { data: docData } = await supabase
+              .from('profiles')
+              .select('id, full_name, specialty, avatar_url')
+              .eq('id', docId)
+              .single()
 
-      if (prescData) setPrescriptions(prescData)
+            if (docData) {
+              doctorsMap[docId] = docData
+            }
+          }
 
-      // Cargar mensajes
-      const { data: msgData } = await supabase
-        .from('patient_messages')
-        .select('id, body, direction, created_at, read_at')
-        .eq('patient_id', sess.patient_id)
-        .order('created_at', { ascending: true })
+          setDoctors(doctorsMap)
+        }
 
-      if (msgData) setMessages(msgData)
+        // Load prescriptions
+        const { data: prescData, error: prescErr } = await supabase
+          .from('prescriptions')
+          .select('*')
+          .in('patient_id', patIds)
+          .order('prescribed_date', { ascending: false })
+
+        if (!prescErr && prescData) {
+          setPrescriptions(prescData)
+        }
+
+        // Load messages - use first patient_id
+        if (patIds.length > 0) {
+          const { data: msgData, error: msgErr } = await supabase
+            .from('patient_messages')
+            .select('*')
+            .eq('patient_id', patIds[0])
+            .order('created_at', { ascending: true })
+
+          if (!msgErr && msgData) {
+            setMessages(msgData)
+          }
+        }
+      }
 
       setLoading(false)
     } catch (err) {
-      console.error('Error cargando datos:', err)
+      console.error('Error loading data:', err)
       setLoading(false)
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('patient_session')
-    router.push('/patient/login')
+  const handleLogout = async () => {
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      router.push('/patient/login')
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
   }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim() || !session) return
+    if (!newMessage.trim() || !user || patientIds.length === 0) return
 
     setSendingMessage(true)
     try {
+      const supabase = createClient()
       const { error } = await supabase.from('patient_messages').insert({
-        patient_id: session.patient_id,
-        doctor_id: session.doctor_id,
+        patient_id: patientIds[0],
         body: newMessage.trim(),
         direction: 'patient_to_doctor',
       })
 
       if (!error) {
         setNewMessage('')
-        // Recargar mensajes
+        // Reload messages
         const { data: msgData } = await supabase
           .from('patient_messages')
-          .select('id, body, direction, created_at, read_at')
-          .eq('patient_id', session.patient_id)
+          .select('*')
+          .eq('patient_id', patientIds[0])
           .order('created_at', { ascending: true })
 
         if (msgData) setMessages(msgData)
       }
     } catch (err) {
-      console.error('Error enviando mensaje:', err)
+      console.error('Error sending message:', err)
     }
     setSendingMessage(false)
   }
@@ -191,7 +213,7 @@ export default function PatientDashboard() {
     )
   }
 
-  if (!session) return null
+  if (!user) return null
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -207,7 +229,7 @@ export default function PatientDashboard() {
 
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm font-semibold text-slate-900">{session.full_name}</p>
+              <p className="text-sm font-semibold text-slate-900">{user.user_metadata?.full_name || user.email}</p>
               <p className="text-xs text-slate-500">Paciente</p>
             </div>
             <button
@@ -226,7 +248,6 @@ export default function PatientDashboard() {
         <div className="flex gap-4 mb-8 border-b border-slate-200">
           {[
             { key: 'citas', label: 'Mis citas', icon: Calendar },
-            { key: 'informes', label: 'Mis informes', icon: FileText },
             { key: 'recetas', label: 'Mis recetas', icon: Pill },
             { key: 'mensajes', label: 'Mensajes', icon: MessageCircle },
           ].map((tab) => (
@@ -254,78 +275,48 @@ export default function PatientDashboard() {
                 <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
                   <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                   <p className="text-slate-500 font-medium">No tienes citas agendadas</p>
-                  <p className="text-sm text-slate-400 mt-1">Contáctate con {doctor?.full_name || 'tu doctor'} para agendar</p>
+                  <p className="text-sm text-slate-400 mt-1">Pide un link de booking a tu doctor</p>
                 </div>
               ) : (
-                appointments.map((apt) => (
-                  <div key={apt.id} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-900">{apt.appointment_type || 'Cita'}</p>
-                        <p className="text-sm text-slate-500 mt-1">
-                          Con: <span className="font-medium text-slate-900">{doctor?.full_name}</span>
-                          {doctor?.specialty && <span className="text-slate-400"> · {doctor.specialty}</span>}
-                        </p>
-                      </div>
-                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-teal-50 text-teal-600">
-                        {apt.status || 'Agendada'}
-                      </span>
-                    </div>
-                    <div className="flex gap-6 text-sm text-slate-600">
-                      <span className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(apt.appointment_date).toLocaleDateString('es-VE')}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        {apt.appointment_time}
-                      </span>
-                    </div>
-                    {apt.notes && <p className="text-sm text-slate-600 pt-2 border-t border-slate-100">{apt.notes}</p>}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+                appointments.map((apt) => {
+                  const doctor = doctors[apt.doctor_id]
+                  const apptDate = new Date(apt.scheduled_at)
+                  const isPast = apptDate < new Date()
+                  const statusColor = apt.status === 'scheduled' ? 'teal' : apt.status === 'confirmed' ? 'green' : 'slate'
 
-          {/* MIS INFORMES */}
-          {activeTab === 'informes' && (
-            <div className="space-y-4">
-              {consultations.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
-                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-500 font-medium">No tienes informes registrados</p>
-                  <p className="text-sm text-slate-400 mt-1">Aquí aparecerán tus diagnósticos y reportes</p>
-                </div>
-              ) : (
-                consultations.map((cons) => (
-                  <div key={cons.id} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <p className="font-semibold text-slate-900">Consulta</p>
-                      <span className="text-xs text-slate-400">
-                        {new Date(cons.consultation_date).toLocaleDateString('es-VE')}
-                      </span>
+                  return (
+                    <div key={apt.id} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-900">{apt.plan_name}</p>
+                          <p className="text-sm text-slate-500 mt-1">
+                            Con: <span className="font-medium text-slate-900">{doctor?.full_name || 'Doctor'}</span>
+                            {doctor?.specialty && <span className="text-slate-400"> · {doctor.specialty}</span>}
+                          </p>
+                        </div>
+                        <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                          statusColor === 'teal' ? 'bg-teal-50 text-teal-600' :
+                          statusColor === 'green' ? 'bg-green-50 text-green-600' :
+                          'bg-slate-50 text-slate-600'
+                        }`}>
+                          {apt.status === 'scheduled' ? 'Agendada' : apt.status === 'confirmed' ? 'Confirmada' : apt.status}
+                        </span>
+                      </div>
+                      <div className="flex gap-6 text-sm text-slate-600">
+                        <span className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4" />
+                          {apptDate.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          {apptDate.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className="text-teal-600 font-semibold">${apt.plan_price} USD</span>
+                      </div>
+                      {apt.chief_complaint && <p className="text-sm text-slate-600 pt-2 border-t border-slate-100">{apt.chief_complaint}</p>}
                     </div>
-                    {cons.chief_complaint && (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase">Motivo</p>
-                        <p className="text-sm text-slate-900">{cons.chief_complaint}</p>
-                      </div>
-                    )}
-                    {cons.diagnosis && (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase">Diagnóstico</p>
-                        <p className="text-sm text-slate-900">{cons.diagnosis}</p>
-                      </div>
-                    )}
-                    {cons.notes && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Notas</p>
-                        <p className="text-sm text-slate-600">{cons.notes}</p>
-                      </div>
-                    )}
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           )}
@@ -392,7 +383,7 @@ export default function PatientDashboard() {
                       <div className="text-center">
                         <MessageCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                         <p className="text-slate-500 font-medium">Sin mensajes aún</p>
-                        <p className="text-sm text-slate-400 mt-1">Inicia una conversación con {doctor?.full_name}</p>
+                        <p className="text-sm text-slate-400 mt-1">Inicia una conversación</p>
                       </div>
                     </div>
                   ) : (

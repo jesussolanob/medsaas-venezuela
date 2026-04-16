@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Activity, ArrowRight, AlertCircle } from 'lucide-react'
-import { supabase } from '@/lib/supabase-client'
+import { createClient } from '@/lib/supabase/client'
 
 export default function PatientLoginPage() {
-  const [cedula, setCedula] = useState('')
-  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -19,29 +19,18 @@ export default function PatientLoginPage() {
     setLoading(true)
 
     try {
-      // Buscar paciente por cédula y teléfono
-      const { data, error: fetchError } = await supabase
-        .from('patients')
-        .select('id, doctor_id, full_name, phone')
-        .eq('cedula', cedula.trim())
-        .eq('phone', phone.trim())
-        .single()
+      const supabase = createClient()
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      })
 
-      if (fetchError || !data) {
-        setError('Cédula o teléfono no válidos. Verifica tus datos.')
+      if (authErr || !data.user) {
+        setError(authErr?.message || 'Email o contraseña no válidos')
         setLoading(false)
         return
       }
 
-      // Guardar en localStorage
-      localStorage.setItem('patient_session', JSON.stringify({
-        patient_id: data.id,
-        doctor_id: data.doctor_id,
-        full_name: data.full_name,
-        phone: data.phone,
-      }))
-
-      // Redirigir a dashboard
       router.push('/patient/dashboard')
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión')
@@ -79,13 +68,13 @@ export default function PatientLoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-900 mb-2">
-                Cédula de Identidad
+                Email
               </label>
               <input
-                type="text"
-                value={cedula}
-                onChange={(e) => setCedula(e.target.value)}
-                placeholder="Ej: V-12345678"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@email.com"
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               />
@@ -93,13 +82,13 @@ export default function PatientLoginPage() {
 
             <div>
               <label className="block text-sm font-semibold text-slate-900 mb-2">
-                Teléfono
+                Contraseña
               </label>
               <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Ej: +58 412 1234567"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               />
@@ -115,7 +104,13 @@ export default function PatientLoginPage() {
             </button>
           </form>
 
-          <div className="pt-6 border-t border-slate-100">
+          <div className="pt-6 border-t border-slate-100 space-y-4">
+            <p className="text-center text-sm text-slate-500">
+              ¿No tienes cuenta?{' '}
+              <Link href="/patient/register" className="font-semibold text-teal-500 hover:text-teal-600 transition-colors">
+                Regístrate aquí
+              </Link>
+            </p>
             <p className="text-center text-sm text-slate-500">
               ¿Eres doctor?{' '}
               <Link href="/login" className="font-semibold text-teal-500 hover:text-teal-600 transition-colors">
@@ -127,7 +122,7 @@ export default function PatientLoginPage() {
 
         {/* Footer note */}
         <p className="text-center text-xs text-slate-400">
-          Los datos se verifican contra tu registro en la consulta de tu doctor
+          Para agendar citas, necesitas un link de booking de tu doctor
         </p>
       </div>
     </div>
