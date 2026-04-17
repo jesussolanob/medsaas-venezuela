@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// POST /api/seed-clinic — Create test clinic "Metropolitana" with test doctors
+// GET+POST /api/seed-clinic — Create test clinic "Metropolitana" with test doctors
 // REMOVE THIS ROUTE IN PRODUCTION
-export async function POST() {
+export async function GET() { return handler() }
+export async function POST() { return handler() }
+async function handler() {
   const supabase = createAdminClient()
 
   // 1. Create clinic admin user
