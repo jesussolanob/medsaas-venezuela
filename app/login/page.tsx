@@ -23,13 +23,7 @@ export default function LoginPage() {
         setError(result.error)
         return
       }
-      if (result.role === 'super_admin' || result.role === 'admin') {
-        router.push('/admin')
-      } else if (result.hasClinic && result.clinicRole === 'admin') {
-        router.push('/clinic/admin')
-      } else {
-        router.push('/doctor')
-      }
+      router.push(result.destination)
     })
   }
 

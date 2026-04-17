@@ -13,6 +13,7 @@ type Clinic = {
   id: string
   name: string
   slug: string | null
+  logo_url: string | null
   address: string | null
   city: string | null
   state: string | null
@@ -52,10 +53,29 @@ export default function ClinicAdminPage() {
   const [inviteSuccess, setInviteSuccess] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tab, setTab] = useState<'dashboard' | 'doctors' | 'agenda' | 'settings'>('dashboard')
+  const [inviteRole, setInviteRole] = useState<'doctor' | 'asistente'>('doctor')
+  const [editingSettings, setEditingSettings] = useState(false)
+  const [settingsForm, setSettingsForm] = useState({ name: '', address: '', city: '', state: '', phone: '', email: '' })
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(null)
 
   useEffect(() => {
     loadClinic()
   }, [])
+
+  useEffect(() => {
+    if (clinic) {
+      setSettingsForm({
+        name: clinic.name,
+        address: clinic.address || '',
+        city: clinic.city || '',
+        state: clinic.state || '',
+        phone: clinic.phone || '',
+        email: clinic.email || ''
+      })
+      setCurrentLogoUrl(clinic.logo_url || null)
+    }
+  }, [clinic])
 
   async function loadClinic() {
     const supabase = createClient()
@@ -137,17 +157,90 @@ export default function ClinicAdminPage() {
     const { error } = await supabase.from('clinic_invitations').insert({
       clinic_id: clinic.id,
       email: inviteEmail.trim(),
-      role: 'doctor',
+      role: inviteRole,
       invited_by: user.id,
     })
 
     if (error) {
       setInviteSuccess('Error: ' + error.message)
     } else {
-      setInviteSuccess(`Invitación enviada a ${inviteEmail}`)
+      setInviteSuccess(`Invitación enviada a ${inviteEmail} como ${inviteRole}`)
       setInviteEmail('')
+      setInviteRole('doctor')
     }
     setInviting(false)
+  }
+
+  async function handleRemoveDoctor(docId: string) {
+    if (!confirm('¿Estás seguro de que deseas remover este doctor? Se perderá su asociación con la clínica.')) return
+
+    const supabase = createClient()
+    const { error } = await supabase.from('profiles').update({ clinic_id: null, clinic_role: 'doctor' }).eq('id', docId)
+
+    if (!error) {
+      setDoctors(doctors.filter(d => d.id !== docId))
+      setStats(prev => ({ ...prev, totalDoctors: Math.max(0, prev.totalDoctors - 1) }))
+    }
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !clinic) return
+
+    setUploadingLogo(true)
+    const supabase = createClient()
+
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `clinic-logos/${clinic.id}.${ext}`
+
+      // Upload to clinic-logos bucket
+      const { error: uploadErr } = await supabase.storage.from('clinic-logos').upload(path, file, { upsert: true })
+      if (uploadErr) throw uploadErr
+
+      // Get public URL
+      const { data: publicUrl } = supabase.storage.from('clinic-logos').getPublicUrl(path)
+      const logoUrl = publicUrl.publicUrl
+
+      // Update clinic record
+      const { error: updateErr } = await supabase.from('clinics').update({ logo_url: logoUrl }).eq('id', clinic.id)
+      if (updateErr) throw updateErr
+
+      setCurrentLogoUrl(logoUrl)
+      setClinic({ ...clinic, logo_url: logoUrl })
+      setInviteSuccess('Logo actualizado exitosamente')
+    } catch (err: any) {
+      setInviteSuccess('Error al subir logo: ' + err?.message)
+    }
+    setUploadingLogo(false)
+  }
+
+  async function handleSaveSettings(e: React.FormEvent) {
+    e.preventDefault()
+    if (!clinic) return
+
+    setUploadingLogo(true)
+    const supabase = createClient()
+
+    try {
+      const { error } = await supabase.from('clinics').update({
+        name: settingsForm.name.trim(),
+        address: settingsForm.address.trim() || null,
+        city: settingsForm.city.trim() || null,
+        state: settingsForm.state.trim() || null,
+        phone: settingsForm.phone.trim() || null,
+        email: settingsForm.email.trim() || null,
+      }).eq('id', clinic.id)
+
+      if (error) throw error
+
+      setClinic({ ...clinic, ...settingsForm })
+      setEditingSettings(false)
+      setInviteSuccess('Configuración actualizada exitosamente')
+    } catch (err: any) {
+      setInviteSuccess('Error: ' + err?.message)
+    }
+    setUploadingLogo(false)
   }
 
   async function handleLogout() {
@@ -308,8 +401,8 @@ export default function ClinicAdminPage() {
                   {/* Invite doctor */}
                   <div className="bg-white border border-slate-200 rounded-xl p-5">
                     <p className="text-sm font-bold text-slate-800 mb-3">Invitar doctor a la clínica</p>
-                    <form onSubmit={handleInviteDoctor} className="flex gap-3 items-end">
-                      <div className="flex-1">
+                    <form onSubmit={handleInviteDoctor} className="flex gap-3 items-end flex-wrap">
+                      <div className="flex-1 min-w-[200px]">
                         <input
                           type="email"
                           value={inviteEmail}
@@ -319,6 +412,14 @@ export default function ClinicAdminPage() {
                           required
                         />
                       </div>
+                      <select
+                        value={inviteRole}
+                        onChange={e => setInviteRole(e.target.value as 'doctor' | 'asistente')}
+                        className={fi + ' min-w-[140px]'}
+                      >
+                        <option value="doctor">Doctor</option>
+                        <option value="asistente">Asistente</option>
+                      </select>
                       <button type="submit" disabled={inviting} className="g-clinic px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center gap-2 shrink-0">
                         <UserPlus className="w-4 h-4" /> {inviting ? 'Enviando...' : 'Invitar'}
                       </button>
@@ -326,7 +427,7 @@ export default function ClinicAdminPage() {
                     {inviteSuccess && (
                       <p className={`text-xs mt-2 ${inviteSuccess.startsWith('Error') ? 'text-red-500' : 'text-emerald-600'}`}>{inviteSuccess}</p>
                     )}
-                    <p className="text-xs text-slate-400 mt-2">El doctor recibirá un email para unirse a tu clínica. Máximo {clinic.max_doctors} doctores.</p>
+                    <p className="text-xs text-slate-400 mt-2">El doctor/asistente recibirá un email para unirse a tu clínica. Máximo {clinic.max_doctors} doctores.</p>
                   </div>
 
                   {/* Doctor list */}
@@ -347,11 +448,17 @@ export default function ClinicAdminPage() {
                           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
                             doc.clinic_role === 'admin' ? 'bg-violet-50 text-violet-600' : 'bg-slate-50 text-slate-600'
                           }`}>
-                            {doc.clinic_role === 'admin' ? 'Admin' : 'Doctor'}
+                            {doc.clinic_role === 'admin' ? 'Admin' : doc.clinic_role === 'asistente' ? 'Asistente' : 'Doctor'}
                           </span>
                           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${doc.is_active ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
                             {doc.is_active ? 'Activo' : 'Inactivo'}
                           </span>
+                          <button
+                            onClick={() => handleRemoveDoctor(doc.id)}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                          >
+                            Remover
+                          </button>
                         </div>
                       ))}
                       {doctors.length === 0 && (
@@ -382,38 +489,166 @@ export default function ClinicAdminPage() {
               {/* Settings tab */}
               {tab === 'settings' && (
                 <div className="space-y-6">
-                  <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-                    <p className="text-sm font-bold text-slate-800">Información de la clínica</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Nombre</label>
-                        <p className="text-sm font-semibold text-slate-900">{clinic.name}</p>
+                  {/* Logo upload */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5">
+                    <p className="text-sm font-bold text-slate-800 mb-4">Logo de la clínica</p>
+                    <div className="flex items-center gap-6">
+                      <div className="w-24 h-24 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
+                        {currentLogoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={currentLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+                        ) : (
+                          <Building2 className="w-8 h-8 text-slate-400" />
+                        )}
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Plan</label>
-                        <span className="text-xs font-bold px-3 py-1 rounded-full bg-violet-50 text-violet-600">Centro de Salud · $100/mes</span>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Dirección</label>
-                        <p className="text-sm text-slate-600">{clinic.address || 'No configurada'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Ubicación</label>
-                        <p className="text-sm text-slate-600">{[clinic.city, clinic.state].filter(Boolean).join(', ') || 'No configurada'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Teléfono</label>
-                        <p className="text-sm text-slate-600">{clinic.phone || 'No configurado'}</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Estado suscripción</label>
-                        <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                          clinic.subscription_status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                        }`}>
-                          {clinic.subscription_status === 'active' ? 'Activa' : clinic.subscription_status === 'trial' ? 'Trial' : 'Suspendida'}
-                        </span>
+                      <div className="flex-1">
+                        <label className="block px-4 py-2.5 rounded-lg border-2 border-dashed border-slate-300 text-center cursor-pointer hover:border-violet-400 transition-colors">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            disabled={uploadingLogo}
+                            className="hidden"
+                          />
+                          <p className="text-sm font-semibold text-slate-600">{uploadingLogo ? 'Subiendo...' : 'Cambiar logo'}</p>
+                          <p className="text-xs text-slate-400 mt-1">PNG, JPG o GIF</p>
+                        </label>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Settings form */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm font-bold text-slate-800">Información de la clínica</p>
+                      {!editingSettings && (
+                        <button
+                          onClick={() => setEditingSettings(true)}
+                          className="text-xs font-semibold text-violet-600 hover:text-violet-700"
+                        >
+                          Editar
+                        </button>
+                      )}
+                    </div>
+
+                    {editingSettings ? (
+                      <form onSubmit={handleSaveSettings} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1.5">Nombre *</label>
+                          <input
+                            type="text"
+                            value={settingsForm.name}
+                            onChange={e => setSettingsForm(p => ({ ...p, name: e.target.value }))}
+                            className={fi}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1.5">Dirección</label>
+                          <input
+                            type="text"
+                            value={settingsForm.address}
+                            onChange={e => setSettingsForm(p => ({ ...p, address: e.target.value }))}
+                            placeholder="Torre Médica, Piso 3, Local 301"
+                            className={fi}
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1.5">Ciudad</label>
+                            <input
+                              type="text"
+                              value={settingsForm.city}
+                              onChange={e => setSettingsForm(p => ({ ...p, city: e.target.value }))}
+                              placeholder="Caracas"
+                              className={fi}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1.5">Estado</label>
+                            <input
+                              type="text"
+                              value={settingsForm.state}
+                              onChange={e => setSettingsForm(p => ({ ...p, state: e.target.value }))}
+                              placeholder="Distrito Capital"
+                              className={fi}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1.5">Teléfono</label>
+                            <input
+                              type="tel"
+                              value={settingsForm.phone}
+                              onChange={e => setSettingsForm(p => ({ ...p, phone: e.target.value }))}
+                              placeholder="+58 212 1234567"
+                              className={fi}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1.5">Email</label>
+                            <input
+                              type="email"
+                              value={settingsForm.email}
+                              onChange={e => setSettingsForm(p => ({ ...p, email: e.target.value }))}
+                              placeholder="contacto@clinica.com"
+                              className={fi}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={uploadingLogo}
+                            className="flex-1 g-clinic px-4 py-2.5 rounded-lg text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                          >
+                            {uploadingLogo ? 'Guardando...' : 'Guardar'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingSettings(false)}
+                            className="flex-1 px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 bg-slate-50 hover:bg-slate-100"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                        {inviteSuccess && (
+                          <p className={`text-xs ${inviteSuccess.startsWith('Error') ? 'text-red-500' : 'text-emerald-600'}`}>{inviteSuccess}</p>
+                        )}
+                      </form>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Nombre</label>
+                          <p className="text-sm font-semibold text-slate-900">{clinic.name}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Plan</label>
+                          <span className="text-xs font-bold px-3 py-1 rounded-full bg-violet-50 text-violet-600">Centro de Salud · $100/mes</span>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Dirección</label>
+                          <p className="text-sm text-slate-600">{clinic.address || 'No configurada'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Ubicación</label>
+                          <p className="text-sm text-slate-600">{[clinic.city, clinic.state].filter(Boolean).join(', ') || 'No configurada'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Teléfono</label>
+                          <p className="text-sm text-slate-600">{clinic.phone || 'No configurado'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Estado suscripción</label>
+                          <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                            clinic.subscription_status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                          }`}>
+                            {clinic.subscription_status === 'active' ? 'Activa' : clinic.subscription_status === 'trial' ? 'Trial' : 'Suspendida'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="bg-white border border-slate-200 rounded-xl p-5">
@@ -424,7 +659,7 @@ export default function ClinicAdminPage() {
                         {typeof window !== 'undefined' ? window.location.origin : ''}/clinic/{clinic.slug || clinic.id}
                       </code>
                       <button
-                        onClick={() => navigator.clipboard.writeText(`${window.location.origin}/clinic/${clinic.slug || clinic.id}`)}
+                        onClick={() => navigator.clipboard.writeText(`${typeof window !== 'undefined' ? window.location.origin : ''}/clinic/${clinic.slug || clinic.id}`)}
                         className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
                       >
                         <Copy className="w-4 h-4 text-slate-500" />

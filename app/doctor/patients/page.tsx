@@ -25,6 +25,7 @@ const PAYMENT_STATUS = {
 const SOURCE_LABELS: Record<string, string> = { manual: 'Manual', invitation: 'Invitación', whatsapp: 'WhatsApp' }
 
 type View = 'list' | 'detail' | 'new-consultation'
+type DetailTab = 'consultas' | 'historial'
 
 export default function PatientsPage() {
   const [doctorId, setDoctorId] = useState<string | null>(null)
@@ -36,6 +37,7 @@ export default function PatientsPage() {
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [filterSource, setFilterSource] = useState<string>('all')
+  const [detailTab, setDetailTab] = useState<DetailTab>('consultas')
   const [isPending, startTransition] = useTransition()
 
   // New patient form
@@ -402,55 +404,156 @@ export default function PatientsPage() {
             )}
           </div>
 
-          {/* Consultations */}
+          {/* Consultations with Tabs */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <FileText className="w-4 h-4 text-slate-500" />
-              <h3 className="text-sm font-semibold text-slate-700">Historial de consultas</h3>
-              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{consultations.length}</span>
+            {/* Tab buttons */}
+            <div className="flex gap-0 mb-4 border-b-2 border-slate-200">
+              <button
+                onClick={() => setDetailTab('consultas')}
+                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                  detailTab === 'consultas'
+                    ? 'border-b-2 border-teal-500 text-teal-600 -mb-0.5'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Historial de Consultas
+              </button>
+              <button
+                onClick={() => setDetailTab('historial')}
+                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                  detailTab === 'historial'
+                    ? 'border-b-2 border-teal-500 text-teal-600 -mb-0.5'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Historial Médico
+              </button>
             </div>
 
-            {consultations.length === 0 ? (
-              <div className="bg-white border border-dashed border-slate-200 rounded-xl py-10 text-center">
-                <p className="text-slate-400 text-sm">No hay consultas registradas para este paciente.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {consultations.map(c => {
-                  const st = PAYMENT_STATUS[c.payment_status]
-                  return (
-                    <div key={c.id} className="bg-white border border-slate-200 rounded-xl p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{c.consultation_code}</span>
-                            <span className="text-xs text-slate-400">{new Date(c.consultation_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+            {/* Consultas Tab */}
+            {detailTab === 'consultas' && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-4 h-4 text-slate-500" />
+                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{consultations.length}</span>
+                </div>
+
+                {consultations.length === 0 ? (
+                  <div className="bg-white border border-dashed border-slate-200 rounded-xl py-10 text-center">
+                    <p className="text-slate-400 text-sm">No hay consultas registradas para este paciente.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {consultations.map(c => {
+                      const st = PAYMENT_STATUS[c.payment_status]
+                      return (
+                        <div key={c.id} className="bg-white border border-slate-200 rounded-xl p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{c.consultation_code}</span>
+                                <span className="text-xs text-slate-400">{new Date(c.consultation_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                              </div>
+                              {c.chief_complaint && <p className="text-sm font-semibold text-slate-800">{c.chief_complaint}</p>}
+                              {c.notes && <p className="text-xs text-slate-500 mt-1 leading-relaxed">{c.notes}</p>}
+                              {c.diagnosis && <p className="text-xs text-slate-600 mt-1"><strong>Dx:</strong> {c.diagnosis}</p>}
+                              {c.treatment && <p className="text-xs text-slate-600"><strong>Tx:</strong> {c.treatment}</p>}
+                            </div>
+                            <div className="shrink-0 flex flex-col items-end gap-2">
+                              <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${st.color}`}>
+                                {st.icon} {st.label}
+                              </span>
+                              {/* Status change */}
+                              <select
+                                value={c.payment_status}
+                                onChange={e => handleStatusChange(c.id, e.target.value as 'unpaid' | 'pending_approval' | 'approved')}
+                                disabled={isPending}
+                                className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 text-slate-600 cursor-pointer"
+                              >
+                                <option value="unpaid">Sin pagar</option>
+                                <option value="pending_approval">Pago por aprobar</option>
+                                <option value="approved">Pago verificado</option>
+                              </select>
+                            </div>
                           </div>
-                          {c.chief_complaint && <p className="text-sm font-semibold text-slate-800">{c.chief_complaint}</p>}
-                          {c.notes && <p className="text-xs text-slate-500 mt-1 leading-relaxed">{c.notes}</p>}
-                          {c.diagnosis && <p className="text-xs text-slate-600 mt-1"><strong>Dx:</strong> {c.diagnosis}</p>}
-                          {c.treatment && <p className="text-xs text-slate-600"><strong>Tx:</strong> {c.treatment}</p>}
                         </div>
-                        <div className="shrink-0 flex flex-col items-end gap-2">
-                          <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${st.color}`}>
-                            {st.icon} {st.label}
-                          </span>
-                          {/* Status change */}
-                          <select
-                            value={c.payment_status}
-                            onChange={e => handleStatusChange(c.id, e.target.value as 'unpaid' | 'pending_approval' | 'approved')}
-                            disabled={isPending}
-                            className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 text-slate-600 cursor-pointer"
-                          >
-                            <option value="unpaid">Sin pagar</option>
-                            <option value="pending_approval">Pago por aprobar</option>
-                            <option value="approved">Pago verificado</option>
-                          </select>
-                        </div>
-                      </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Historial Médico Tab */}
+            {detailTab === 'historial' && (
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                {/* Left sidebar with dates */}
+                <div className="sm:col-span-3 bg-white border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+                  {consultations.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      No hay consultas
                     </div>
-                  )
-                })}
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {consultations.map(c => (
+                        <button
+                          key={c.id}
+                          className="w-full text-left px-4 py-3 hover:bg-teal-50 transition-colors text-sm"
+                        >
+                          <p className="font-semibold text-slate-700 text-xs">{new Date(c.consultation_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: '2-digit' })}</p>
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">{c.chief_complaint || 'Consulta'}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side with full consultation content */}
+                <div className="sm:col-span-9">
+                  {consultations.length === 0 ? (
+                    <div className="bg-white border border-dashed border-slate-200 rounded-xl py-10 text-center">
+                      <p className="text-slate-400 text-sm">Selecciona una consulta para ver el historial médico.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                      {consultations.length > 0 && (() => {
+                        const c = consultations[0]
+                        const st = PAYMENT_STATUS[c.payment_status]
+                        return (
+                          <>
+                            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">{c.chief_complaint || 'Consulta'}</p>
+                                <p className="text-xs text-slate-500 mt-1">{new Date(c.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                              </div>
+                              <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${st.color}`}>
+                                {st.icon} {st.label}
+                              </span>
+                            </div>
+                            {c.notes && (
+                              <div>
+                                <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Notas</p>
+                                <p className="text-sm text-slate-700 leading-relaxed">{c.notes}</p>
+                              </div>
+                            )}
+                            {c.diagnosis && (
+                              <div>
+                                <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Diagnóstico</p>
+                                <p className="text-sm text-slate-700">{c.diagnosis}</p>
+                              </div>
+                            )}
+                            {c.treatment && (
+                              <div>
+                                <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Tratamiento</p>
+                                <p className="text-sm text-slate-700">{c.treatment}</p>
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

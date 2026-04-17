@@ -48,6 +48,7 @@ const PAYMENT_STATUS = {
 
 type ViewMode = 'list' | 'consultation'
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today'
+type ConsultationTab = 'informe' | 'notas' | 'diagnostico' | 'tratamiento' | 'pago' | 'perfil'
 
 export default function ConsultationsPage() {
   const [view, setView] = useState<ViewMode>('list')
@@ -58,6 +59,7 @@ export default function ConsultationsPage() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
+  const [consultationTab, setConsultationTab] = useState<ConsultationTab>('informe')
 
   // Report fields (editable during consultation)
   const [report, setReport] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid' as Consultation['payment_status'] })
@@ -288,7 +290,7 @@ export default function ConsultationsPage() {
 
     return (
       <>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.safari-tab { border-radius: 8px 8px 0 0; padding: 8px 16px; } .safari-tab.active { background: white; border: 1px solid #e2e8f0; border-bottom: none; box-shadow: 0 -2px 8px rgba(0,0,0,0.03); }`}</style>
         <div className="max-w-3xl space-y-5">
           {/* Back */}
           <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
@@ -369,61 +371,145 @@ export default function ConsultationsPage() {
             </button>
           </div>
 
-          {/* Medical Report Form */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-slate-400" />
-              <p className="text-sm font-bold text-slate-800">Informe médico</p>
+          {/* Medical Report Form with Safari-style Tabs */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            {/* Safari-style Tab Navigation */}
+            <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200">
+              {(['informe', 'notas', 'diagnostico', 'tratamiento', 'pago', 'perfil'] as ConsultationTab[]).map(tab => {
+                const labels: Record<ConsultationTab, string> = {
+                  informe: 'Informe',
+                  notas: 'Notas',
+                  diagnostico: 'Diagnóstico',
+                  tratamiento: 'Plan de Tratamiento',
+                  pago: 'Pago',
+                  perfil: 'Perfil'
+                }
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setConsultationTab(tab)}
+                    className={`safari-tab text-sm font-semibold transition-all whitespace-nowrap ${
+                      consultationTab === tab
+                        ? 'active border-t border-l border-r border-slate-200 text-slate-900'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {labels[tab]}
+                  </button>
+                )
+              })}
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-slate-400" /> Motivo de consulta
-                </label>
-                <input value={report.chief_complaint} onChange={e => setReport(p => ({ ...p, chief_complaint: e.target.value }))}
-                  placeholder="¿Por qué consulta el paciente hoy?" className={fi} />
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                  <FileText className="w-3.5 h-3.5 text-slate-400" /> Notas de la consulta
-                </label>
-                <RichTextEditor value={report.notes} onChange={html => setReport(p => ({ ...p, notes: html }))}
-                  placeholder="Anamnesis, examen físico, hallazgos relevantes..." />
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                  <Stethoscope className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
-                </label>
-                <RichTextEditor value={report.diagnosis} onChange={html => setReport(p => ({ ...p, diagnosis: html }))}
-                  placeholder="Diagnóstico principal y diagnósticos diferenciales..." />
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                  <Pill className="w-3.5 h-3.5 text-slate-400" /> Plan de tratamiento
-                </label>
-                <RichTextEditor value={report.treatment} onChange={html => setReport(p => ({ ...p, treatment: html }))}
-                  placeholder="Medicamentos, dosis, indicaciones, próxima cita..." />
-              </div>
-
-              {/* Payment status */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <DollarSign className="w-3.5 h-3.5 text-slate-400" /> Estado del pago
-                </label>
-                <div className="flex gap-2">
-                  {(Object.entries(PAYMENT_STATUS) as [Consultation['payment_status'], typeof PAYMENT_STATUS.unpaid][]).map(([key, val]) => (
-                    <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key }))}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${report.payment_status === key ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
-                      <span className={`w-2 h-2 rounded-full ${report.payment_status === key ? val.dot : 'bg-slate-300'}`} />
-                      {val.label}
-                    </button>
-                  ))}
+            {/* Tab Content */}
+            <div className="p-6 space-y-4">
+              {/* Informe Tab */}
+              {consultationTab === 'informe' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Informe médico</p>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-slate-400" /> Motivo de consulta
+                    </label>
+                    <input value={report.chief_complaint} onChange={e => setReport(p => ({ ...p, chief_complaint: e.target.value }))}
+                      placeholder="¿Por qué consulta el paciente hoy?" className={fi} />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Notas Tab */}
+              {consultationTab === 'notas' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Notas de la consulta</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" /> Anotaciones
+                  </label>
+                  <RichTextEditor value={report.notes} onChange={html => setReport(p => ({ ...p, notes: html }))}
+                    placeholder="Anamnesis, examen físico, hallazgos relevantes..." />
+                </div>
+              )}
+
+              {/* Diagnóstico Tab */}
+              {consultationTab === 'diagnostico' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <Stethoscope className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Diagnóstico</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                    <Stethoscope className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
+                  </label>
+                  <RichTextEditor value={report.diagnosis} onChange={html => setReport(p => ({ ...p, diagnosis: html }))}
+                    placeholder="Diagnóstico principal y diagnósticos diferenciales..." />
+                </div>
+              )}
+
+              {/* Plan de Tratamiento Tab */}
+              {consultationTab === 'tratamiento' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <Pill className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Plan de tratamiento</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                    <Pill className="w-3.5 h-3.5 text-slate-400" /> Plan de tratamiento
+                  </label>
+                  <RichTextEditor value={report.treatment} onChange={html => setReport(p => ({ ...p, treatment: html }))}
+                    placeholder="Medicamentos, dosis, indicaciones, próxima cita..." />
+                </div>
+              )}
+
+              {/* Pago Tab */}
+              {consultationTab === 'pago' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <DollarSign className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Estado del pago</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                    <DollarSign className="w-3.5 h-3.5 text-slate-400" /> Estado del pago
+                  </label>
+                  <div className="flex gap-2">
+                    {(Object.entries(PAYMENT_STATUS) as [Consultation['payment_status'], typeof PAYMENT_STATUS.unpaid][]).map(([key, val]) => (
+                      <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key }))}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${report.payment_status === key ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
+                        <span className={`w-2 h-2 rounded-full ${report.payment_status === key ? val.dot : 'bg-slate-300'}`} />
+                        {val.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Perfil Tab */}
+              {consultationTab === 'perfil' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <User className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Perfil del paciente</p>
+                  </div>
+                  {selected && (
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Nombre</p>
+                        <p className="text-sm text-slate-800">{selected.patient_name}</p>
+                      </div>
+                      {selected.patient_phone && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Teléfono</p>
+                          <p className="text-sm text-slate-800">{selected.patient_phone}</p>
+                        </div>
+                      )}
+                      <p className="text-xs text-slate-500 italic">Información adicional del paciente disponible en el módulo de pacientes.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -730,7 +816,7 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
       <div
         ref={editorRef}
         contentEditable
-        className="min-h-[120px] px-4 py-3 text-sm text-slate-800 outline-none"
+        className="min-h-[300px] px-4 py-3 text-sm text-slate-800 outline-none"
         style={{ touchAction: 'auto' }}
         onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
         onFocus={() => setIsActive(true)}

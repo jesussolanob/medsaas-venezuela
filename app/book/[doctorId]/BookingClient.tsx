@@ -347,7 +347,7 @@ export default function BookingClient({
 
             {/* Steps */}
             <div className="flex items-center gap-2 mt-6">
-              {step > 0 && ['Plan', 'Modalidad', 'Fecha', 'Confirmar'].map((s, i) => (
+              {step > 0 && ['Plan', 'Fecha', 'Pago', 'Confirmar'].map((s, i) => (
                 <div key={i} className="flex items-center gap-1.5">
                   <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${step > i + 1 ? 'bg-emerald-500 text-white' : step === i + 1 ? 'bg-white text-teal-600' : 'bg-white/20 text-white/60'}`}>
                     <span>{i + 1}</span>
@@ -508,7 +508,7 @@ export default function BookingClient({
                   return (
                     <button
                       key={plan.id}
-                      onClick={() => { setSelectedPlan(plan); setAppointmentMode(''); setStep(2) }}
+                      onClick={() => { setSelectedPlan(plan); setStep(2) }}
                       className={`relative bg-white rounded-xl p-6 text-left transition-all group ${isSelected ? 'border-2 border-teal-500 shadow-lg' : isMiddle ? 'border-2 border-teal-300 shadow-md' : 'border-2 border-slate-200 hover:border-teal-300'}`}
                     >
                       {isMiddle && <span className="absolute -top-3 left-4 text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full">Más elegido</span>}
@@ -548,88 +548,64 @@ export default function BookingClient({
             </div>
           )}
 
-          {/* Step 2: Select appointment mode (online/presencial) */}
+          {/* Step 2: Select slot and appointment mode */}
           {step === 2 && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <button onClick={() => setStep(1)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
-                <h2 className="text-lg font-bold text-slate-900">¿Cómo será tu consulta?</h2>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Presencial */}
-                <button
-                  onClick={() => { setAppointmentMode('presencial'); setStep(3) }}
-                  className={`relative bg-white rounded-2xl p-6 text-left transition-all border-2 hover:shadow-lg ${
-                    appointmentMode === 'presencial' ? 'border-teal-500 shadow-lg' : 'border-slate-200 hover:border-teal-300'
-                  }`}
-                >
-                  <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center mb-4">
-                    <MapPin className="w-6 h-6 text-teal-600" />
-                  </div>
-                  <p className="font-bold text-lg text-slate-900 mb-1">Presencial</p>
-                  <p className="text-sm text-slate-500">Asiste al consultorio del especialista</p>
-                  {doctor.office_address && (
-                    <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-                      <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-                        <MapPin className="w-3 h-3 text-slate-400" />
-                        {doctor.office_address}
-                      </p>
-                    </div>
-                  )}
-                  {(doctor.city || doctor.state) && !doctor.office_address && (
-                    <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-                      <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-                        <MapPin className="w-3 h-3 text-slate-400" />
-                        {[doctor.city, doctor.state].filter(Boolean).join(', ')}
-                      </p>
-                    </div>
-                  )}
-                </button>
-
-                {/* Online */}
-                {(doctor.allows_online !== false) && (
-                  <button
-                    onClick={() => { setAppointmentMode('online'); setStep(3) }}
-                    className={`relative bg-white rounded-2xl p-6 text-left transition-all border-2 hover:shadow-lg ${
-                      appointmentMode === 'online' ? 'border-teal-500 shadow-lg' : 'border-slate-200 hover:border-teal-300'
-                    }`}
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4">
-                      <Video className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <p className="font-bold text-lg text-slate-900 mb-1">Online</p>
-                    <p className="text-sm text-slate-500">Videoconsulta desde tu casa</p>
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                      <p className="text-xs text-blue-600 font-medium flex items-center gap-1.5">
-                        <Video className="w-3 h-3" />
-                        Recibirás el enlace por email antes de la cita
-                      </p>
-                    </div>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Select slot */}
-          {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <button onClick={() => setStep(2)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
-                <h2 className="text-lg font-bold text-slate-900">Elige fecha y hora</h2>
+                <button onClick={() => setStep(1)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+                <h2 className="text-lg font-bold text-slate-900">Elige fecha y modalidad</h2>
               </div>
 
-              {/* Mode badge */}
-              <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${
-                appointmentMode === 'online' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-teal-50 text-teal-700 border border-teal-200'
-              }`}>
-                {appointmentMode === 'online' ? <Video className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
-                {appointmentMode === 'online' ? 'Consulta Online (Videollamada)' : 'Consulta Presencial'}
-                {appointmentMode === 'presencial' && doctor.office_address && (
-                  <span className="text-xs font-normal ml-1">· {doctor.office_address}</span>
-                )}
-              </div>
+              {/* Appointment mode selection */}
+              {!appointmentMode && (
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-semibold text-slate-700">¿Cómo será tu consulta?</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Presencial */}
+                    <button
+                      onClick={() => setAppointmentMode('presencial')}
+                      className="p-3 rounded-lg border-2 border-teal-200 bg-white hover:border-teal-500 transition-colors text-left"
+                    >
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-4 h-4 text-teal-600 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">Presencial</p>
+                          <p className="text-xs text-slate-500">En el consultorio</p>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Online */}
+                    {doctor.allows_online !== false && (
+                      <button
+                        onClick={() => setAppointmentMode('online')}
+                        className="p-3 rounded-lg border-2 border-teal-200 bg-white hover:border-blue-500 transition-colors text-left"
+                      >
+                        <div className="flex items-start gap-2">
+                          <Video className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">Online</p>
+                            <p className="text-xs text-slate-500">Videollamada</p>
+                          </div>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Mode badge when selected */}
+              {appointmentMode && (
+                <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${
+                  appointmentMode === 'online' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-teal-50 text-teal-700 border border-teal-200'
+                }`}>
+                  {appointmentMode === 'online' ? <Video className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                  {appointmentMode === 'online' ? 'Consulta Online (Videollamada)' : 'Consulta Presencial'}
+                  {appointmentMode === 'presencial' && doctor.office_address && (
+                    <span className="text-xs font-normal ml-1">· {doctor.office_address}</span>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3">
                 <button onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))} disabled={weekOffset === 0}
@@ -673,7 +649,7 @@ export default function BookingClient({
                 </div>
               ))}
 
-              <button onClick={() => setStep(4)} disabled={!selectedSlot}
+              <button onClick={() => setStep(3)} disabled={!selectedSlot || !appointmentMode}
                 className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 <Clock className="w-4 h-4" />
                 Continuar {selectedSlot ? `— ${selectedSlot.label} ${selectedSlot.time}` : ''}
@@ -681,12 +657,12 @@ export default function BookingClient({
             </div>
           )}
 
-          {/* Step 4: Patient data */}
-          {step === 4 && (
+          {/* Step 3: Select payment method */}
+          {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <button onClick={() => setStep(3)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
-                <h2 className="text-lg font-bold text-slate-900">Tus datos</h2>
+                <button onClick={() => setStep(2)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+                <h2 className="text-lg font-bold text-slate-900">Método de pago</h2>
               </div>
 
               <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-2">
@@ -708,25 +684,8 @@ export default function BookingClient({
 
               {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</p>}
 
-              <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
-                {/* Pre-filled info (readonly) */}
-                {authUser && (
-                  <div className="p-4 bg-slate-50 rounded-lg space-y-3">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase">Nombre</label>
-                      <p className="text-slate-900 font-medium mt-1">{authUser.user_metadata?.full_name || form.full_name}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase">Email</label>
-                      <p className="text-slate-900 font-medium mt-1">{authUser.email}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase">Teléfono</label>
-                      <p className="text-slate-900 font-medium mt-1">{authUser.user_metadata?.phone || form.phone}</p>
-                    </div>
-                  </div>
-                )}
-
+              {/* Payment method selection form */}
+              <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
                 {/* Payment method selection */}
                 <div className="border-b pb-5">
                   <p className="text-sm font-bold text-slate-700 mb-3">¿Cómo pagarás la consulta?</p>
@@ -841,6 +800,60 @@ export default function BookingClient({
                         <option value="">-- Seleccionar seguro --</option>
                         {mockInsurances.map(ins => <option key={ins} value={ins}>{ins}</option>)}
                       </select>
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={() => setStep(4)} disabled={!selectedPaymentMethod && !useInsurance}
+                  className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">
+                  Continuar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Patient data and confirmation */}
+          {step === 4 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setStep(3)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+                <h2 className="text-lg font-bold text-slate-900">Resumen y confirmación</h2>
+              </div>
+
+              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-teal-800">{selectedSlot?.label} a las {selectedSlot?.time}</p>
+                    <p className="text-xs text-teal-600">{selectedPlan?.name} — ${selectedPlan?.price_usd} USD</p>
+                  </div>
+                </div>
+                <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg w-fit ${
+                  appointmentMode === 'online' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'
+                }`}>
+                  {appointmentMode === 'online' ? <Video className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
+                  {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}
+                  {appointmentMode === 'presencial' && doctor.office_address && ` · ${doctor.office_address}`}
+                </div>
+              </div>
+
+              {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</p>}
+
+              <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
+                {/* Pre-filled info (readonly) */}
+                {authUser && (
+                  <div className="p-4 bg-slate-50 rounded-lg space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase">Nombre</label>
+                      <p className="text-slate-900 font-medium mt-1">{authUser.user_metadata?.full_name || form.full_name}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase">Email</label>
+                      <p className="text-slate-900 font-medium mt-1">{authUser.email}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase">Teléfono</label>
+                      <p className="text-slate-900 font-medium mt-1">{authUser.user_metadata?.phone || form.phone}</p>
                     </div>
                   </div>
                 )}

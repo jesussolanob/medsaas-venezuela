@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 
 export type LoginResult =
-  | { success: true; role: string; clinicRole: string | null; hasClinic: boolean }
+  | { success: true; role: string; clinicRole: string | null; hasClinic: boolean; destination: string }
   | { success: false; error: string }
 
 export async function loginUser(email: string, password: string): Promise<LoginResult> {
@@ -34,7 +34,17 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   const clinicRole = profile?.clinic_role ?? null
   const hasClinic = !!profile?.clinic_id
 
-  return { success: true, role, clinicRole, hasClinic }
+  // Determine destination based on clear role hierarchy
+  let destination = '/doctor'
+  if (role === 'super_admin' || role === 'admin') {
+    destination = '/admin'
+  } else if (hasClinic && clinicRole === 'admin') {
+    destination = '/clinic/admin'
+  } else if (role === 'patient') {
+    destination = '/patient/dashboard'
+  }
+
+  return { success: true, role, clinicRole, hasClinic, destination }
 }
 
 export async function logoutUser() {

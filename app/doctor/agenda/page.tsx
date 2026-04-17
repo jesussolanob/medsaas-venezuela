@@ -290,7 +290,7 @@ export default function AgendaPage() {
 
   return (
     <>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.day-hover:hover { background: rgba(0,196,204,0.06); transition: background 0.2s; }`}</style>
 
       <div className="max-w-5xl space-y-5">
         {/* Header */}
@@ -379,7 +379,7 @@ export default function AgendaPage() {
                     const isToday = date.toDateString() === today.toDateString()
                     const dayAppts = getApptsByDate(date)
                     return (
-                      <button key={idx} onClick={() => { setCalView('day'); setSelectedDate(date) }} className={`rounded-lg sm:rounded-xl border p-2 sm:p-3 min-h-[100px] sm:min-h-[120px] shrink-0 cursor-pointer hover:text-teal-600 hover:underline transition-colors text-left ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
+                      <button key={idx} onClick={() => { setCalView('day'); setSelectedDate(date) }} className={`rounded-lg sm:rounded-xl border p-2 sm:p-3 min-h-[100px] sm:min-h-[120px] shrink-0 cursor-pointer hover:text-teal-600 hover:underline transition-colors text-left day-hover ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
                         <div className="mb-2">
                           <p className={`text-xs font-semibold ${isToday ? 'text-teal-600' : 'text-slate-400'}`}>{DAYS_SHORT[idx]}</p>
                           <p className={`text-lg font-bold ${isToday ? 'text-teal-700' : 'text-slate-800'}`}>{date.getDate()}</p>
@@ -440,7 +440,7 @@ export default function AgendaPage() {
                       <button
                         key={idx}
                         onClick={() => { setCalView('day'); setSelectedDate(date) }}
-                        className={`min-h-[90px] border-b border-r border-slate-100 p-2 transition-colors cursor-pointer ${isToday ? 'bg-teal-50' : 'hover:bg-slate-50'} ${!isCurrentMonth ? 'opacity-40' : ''} text-left`}
+                        className={`min-h-[90px] border-b border-r border-slate-100 p-2 transition-colors cursor-pointer day-hover ${isToday ? 'bg-teal-50' : 'hover:bg-slate-50'} ${!isCurrentMonth ? 'opacity-40' : ''} text-left`}
                       >
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 ${isToday ? 'g-bg text-white' : 'text-slate-700'}`}>
                           {date.getDate()}

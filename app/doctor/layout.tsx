@@ -6,10 +6,16 @@ import {
   LayoutDashboard, Users, Calendar, FileText, Bell,
   DollarSign, Settings, LogOut, Activity, BarChart2, Send,
   ClipboardList, Receipt, FileBarChart, ChevronDown, Menu, X,
-  Stethoscope, Briefcase, MessageSquare
+  Stethoscope, Briefcase, MessageSquare, ListTodo, Plus, Trash2, Check
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
+
+type Task = {
+  id: string
+  text: string
+  completed: boolean
+}
 
 type NavItem = { name: string; href: string; icon: any }
 type NavGroup = { name: string; icon: any; items: NavItem[] }
@@ -72,6 +78,10 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [tasksOpen, setTasksOpen] = useState(false)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [newTaskText, setNewTaskText] = useState('')
+  const tasksDropdownRef = useRef<HTMLDivElement>(null)
   const lastCheckRef = useRef<number>(Date.now())
   const audioCtxRef = useRef<AudioContext | null>(null)
 
@@ -87,11 +97,59 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     return o
   })
 
-  // Load sound preference
+  // Load sound preference and tasks
   useEffect(() => {
     const v = localStorage.getItem('appt_sound_enabled')
     if (v !== null) setSoundEnabled(v === 'true')
+
+    const savedTasks = localStorage.getItem('doctor_tasks')
+    if (savedTasks) {
+      try {
+        setTasks(JSON.parse(savedTasks))
+      } catch (e) {
+        setTasks([])
+      }
+    }
   }, [])
+
+  // Save tasks to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('doctor_tasks', JSON.stringify(tasks))
+  }, [tasks])
+
+  // Close tasks dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (tasksDropdownRef.current && !tasksDropdownRef.current.contains(event.target as Node)) {
+        setTasksOpen(false)
+      }
+    }
+
+    if (tasksOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [tasksOpen])
+
+  const addTask = () => {
+    if (newTaskText.trim()) {
+      const newTask: Task = {
+        id: Date.now().toString(),
+        text: newTaskText.trim(),
+        completed: false,
+      }
+      setTasks([...tasks, newTask])
+      setNewTaskText('')
+    }
+  }
+
+  const toggleTaskComplete = (id: string) => {
+    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
+  }
+
+  const deleteTask = (id: string) => {
+    setTasks(tasks.filter(t => t.id !== id))
+  }
 
   // Poll for new appointments every 30s
   useEffect(() => {
@@ -306,6 +364,102 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               <span className="hidden sm:inline-flex text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full font-medium">
                 Delta Medical CRM
               </span>
+
+              {/* Tasks Dropdown */}
+              <div className="relative" ref={tasksDropdownRef}>
+                <button
+                  onClick={() => setTasksOpen(!tasksOpen)}
+                  className="p-2 rounded-lg hover:bg-slate-100 transition-colors relative text-slate-600"
+                  aria-label="Tareas"
+                  title="Tareas"
+                >
+                  <ListTodo className="w-5 h-5" />
+                  {tasks.filter(t => !t.completed).length > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-teal-500 rounded-full" />
+                  )}
+                </button>
+
+                {/* Dropdown Panel */}
+                {tasksOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-lg z-50">
+                    <div className="p-4 border-b border-slate-100">
+                      <h3 className="text-sm font-semibold text-slate-900">Mis Tareas</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {tasks.filter(t => !t.completed).length} pendientes
+                      </p>
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto">
+                      {tasks.length === 0 ? (
+                        <div className="p-6 text-center">
+                          <ListTodo className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-sm text-slate-400">No hay tareas</p>
+                          <p className="text-xs text-slate-400 mt-1">Agrega una tarea para comenzar</p>
+                        </div>
+                      ) : (
+                        <div className="p-3 space-y-2">
+                          {tasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className={clsx(
+                                'flex items-start gap-2 p-3 rounded-lg border transition-colors',
+                                task.completed
+                                  ? 'bg-slate-50 border-slate-100'
+                                  : 'bg-white border-slate-200 hover:border-teal-200'
+                              )}
+                            >
+                              <button
+                                onClick={() => toggleTaskComplete(task.id)}
+                                className={clsx(
+                                  'mt-0.5 p-1 rounded transition-colors shrink-0',
+                                  task.completed
+                                    ? 'text-teal-500'
+                                    : 'text-slate-300 hover:text-slate-400'
+                                )}
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <span
+                                className={clsx(
+                                  'text-sm flex-1 break-words',
+                                  task.completed
+                                    ? 'text-slate-400 line-through'
+                                    : 'text-slate-700'
+                                )}
+                              >
+                                {task.text}
+                              </span>
+                              <button
+                                onClick={() => deleteTask(task.id)}
+                                className="text-slate-300 hover:text-red-500 transition-colors shrink-0 p-1"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-3 border-t border-slate-100 flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nueva tarea..."
+                        value={newTaskText}
+                        onChange={(e) => setNewTaskText(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addTask()}
+                        className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      />
+                      <button
+                        onClick={addTask}
+                        className="p-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </header>
 

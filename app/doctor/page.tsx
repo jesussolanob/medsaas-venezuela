@@ -13,6 +13,7 @@ type Profile = {
   full_name: string
   specialty: string | null
   email: string
+  professional_title: string | null
 }
 
 type Subscription = {
@@ -21,9 +22,23 @@ type Subscription = {
   expires_at: string | null
 }
 
+type Appointment = {
+  id: string
+  patient_name: string
+  scheduled_at: string
+  status: string
+}
+
+type FinancialData = {
+  total_revenue: number
+  appointment_count: number
+}
+
 export default function DoctorDashboard() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
+  const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -34,7 +49,7 @@ export default function DoctorDashboard() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('full_name, specialty, email')
+        .select('full_name, specialty, email, professional_title')
         .eq('id', user.id)
         .single()
 
@@ -46,8 +61,40 @@ export default function DoctorDashboard() {
         .limit(1)
         .single()
 
+      // Get today's appointments
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+
+      const { data: appointments } = await supabase
+        .from('appointments')
+        .select('id, patient_name, scheduled_at, status')
+        .eq('doctor_id', user.id)
+        .gte('scheduled_at', today.toISOString())
+        .lt('scheduled_at', tomorrow.toISOString())
+        .order('scheduled_at', { ascending: true })
+
+      // Get this month's financial data
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      monthEnd.setHours(23, 59, 59, 999)
+
+      const { data: monthlyAppointments } = await supabase
+        .from('appointments')
+        .select('plan_price')
+        .eq('doctor_id', user.id)
+        .eq('status', 'completed')
+        .gte('scheduled_at', monthStart.toISOString())
+        .lte('scheduled_at', monthEnd.toISOString())
+
+      const totalRevenue = monthlyAppointments?.reduce((sum, apt) => sum + (apt.plan_price || 0), 0) || 0
+      const appointmentCount = monthlyAppointments?.length || 0
+
       setProfile(prof)
       setSubscription(sub)
+      setTodayAppointments(appointments || [])
+      setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount })
       setLoading(false)
     }
     fetchData()
@@ -64,14 +111,25 @@ export default function DoctorDashboard() {
     return 'Buenas noches'
   }
 
-  const quickLinks = [
-    { label: 'Mis Pacientes', icon: Users, href: '/doctor/patients', color: 'bg-teal-50 text-teal-600', desc: 'Gestiona tu lista de pacientes' },
-    { label: 'Agenda', icon: Calendar, href: '/doctor/agenda', color: 'bg-blue-50 text-blue-600', desc: 'Citas del día y semana' },
-    { label: 'CRM Leads', icon: TrendingUp, href: '/doctor/crm', color: 'bg-violet-50 text-violet-600', desc: 'Leads de WhatsApp e Instagram' },
-    { label: 'Historial Clínico', icon: FileText, href: '/doctor/patients', color: 'bg-emerald-50 text-emerald-600', desc: 'Expedientes y prescripciones' },
-    { label: 'Recordatorios', icon: Bell, href: '/doctor/reminders', color: 'bg-amber-50 text-amber-600', desc: 'Notificaciones a pacientes' },
-    { label: 'Finanzas', icon: DollarSign, href: '/doctor/finances', color: 'bg-rose-50 text-rose-600', desc: 'Ingresos y cobros' },
-  ]
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true })
+  }
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+      case 'confirmed':
+        return 'bg-blue-50 text-blue-700 border border-blue-200'
+      case 'pending':
+        return 'bg-amber-50 text-amber-700 border border-amber-200'
+      case 'cancelled':
+        return 'bg-slate-50 text-slate-700 border border-slate-200'
+      default:
+        return 'bg-slate-50 text-slate-700 border border-slate-200'
+    }
+  }
 
   if (loading) {
     return (
@@ -125,7 +183,7 @@ export default function DoctorDashboard() {
           <div className="flex-1">
             <p className="text-slate-500 text-sm">{greeting()},</p>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">
-              {profile?.full_name ? `Dr. ${profile.full_name}` : 'Bienvenido'}
+              {profile?.full_name ? `${profile.professional_title || 'Dr.'} ${profile.full_name}` : 'Bienvenido'}
             </h1>
             {profile?.specialty && (
               <p className="text-slate-400 text-sm mt-1">{profile.specialty}</p>
@@ -188,44 +246,86 @@ export default function DoctorDashboard() {
           </div>
         </div>
 
-        {/* Quick access grid */}
-        <div>
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            Acceso rápido
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {quickLinks.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="card-hover bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-3"
-              >
-                <div className={`w-10 h-10 rounded-xl ${item.color} flex items-center justify-center`}>
-                  <item.icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-slate-400">
-                  <span>Abrir</span>
-                  <ArrowRight className="w-3 h-3" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
+        {/* Widgets Grid - Bento style */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Citas del Día Widget */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="w-5 h-5 text-teal-500" />
+              <h2 className="text-sm font-semibold text-slate-900">Citas del Día</h2>
+              <span className="ml-auto text-xs font-medium text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full">
+                {todayAppointments.length}
+              </span>
+            </div>
 
-        {/* Coming soon notice */}
-        <div className="bg-slate-100 border border-slate-200 rounded-xl px-5 py-4 flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-teal-500 flex items-center justify-center shrink-0 mt-0.5">
-            <Activity className="w-4 h-4 text-white" />
+            {todayAppointments.length === 0 ? (
+              <p className="text-sm text-slate-400 py-8 text-center">No hay citas programadas para hoy</p>
+            ) : (
+              <div className="space-y-3">
+                {todayAppointments.slice(0, 3).map((apt) => (
+                  <div key={apt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 transition-colors">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-900">{apt.patient_name || 'Paciente sin nombre'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{formatTime(apt.scheduled_at)}</p>
+                    </div>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${getStatusBadgeColor(apt.status)}`}>
+                      {apt.status === 'completed' ? 'Completada' :
+                       apt.status === 'confirmed' ? 'Confirmada' :
+                       apt.status === 'pending' ? 'Pendiente' :
+                       apt.status === 'cancelled' ? 'Cancelada' : apt.status}
+                    </span>
+                  </div>
+                ))}
+                {todayAppointments.length > 3 && (
+                  <Link
+                    href="/doctor/agenda"
+                    className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
+                  >
+                    Ver todas ({todayAppointments.length})
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-700">Estamos construyendo tu portal</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Las secciones de CRM, Historial Clínico, Finanzas y más están en desarrollo activo. Pronto tendrás acceso completo a todas las funcionalidades de Delta Medical CRM.
-            </p>
+
+          {/* Finanzas del Mes Widget */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign className="w-5 h-5 text-teal-500" />
+              <h2 className="text-sm font-semibold text-slate-900">Finanzas del Mes</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg p-4 border border-teal-100">
+                <p className="text-xs text-slate-500 font-medium mb-1">Ingresos Totales</p>
+                <p className="text-2xl font-bold text-teal-600">
+                  ${financialData.total_revenue.toFixed(2)}
+                </p>
+                <p className="text-xs text-slate-400 mt-2">USD</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500 font-medium">Citas Completadas</p>
+                  <p className="text-xl font-bold text-slate-900 mt-1">{financialData.appointment_count}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-xs text-slate-500 font-medium">Promedio por Cita</p>
+                  <p className="text-xl font-bold text-slate-900 mt-1">
+                    ${financialData.appointment_count > 0 ? (financialData.total_revenue / financialData.appointment_count).toFixed(2) : '0.00'}
+                  </p>
+                </div>
+              </div>
+
+              <Link
+                href="/doctor/finances"
+                className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
+              >
+                Ver más detalles
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
           </div>
         </div>
       </div>

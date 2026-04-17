@@ -10,6 +10,7 @@ type Consultation = { id: string; consultation_code: string; consultation_date: 
 type DocType = 'receipt' | 'estimate'
 type DoctorProfile = { full_name: string; specialty: string; phone: string; email: string; logo_url: string | null; professional_title?: string | null }
 type GenericPatient = { name: string; phone: string; email: string }
+type Service = { id: string; name: string; price_usd: number; description: string; is_active: boolean }
 
 function genDocNumber(type: DocType): string {
   const prefix = type === 'receipt' ? 'REC' : 'PRE'
@@ -30,6 +31,7 @@ export default function BillingPage() {
   const [notes, setNotes] = useState('')
   const [bcvRate, setBcvRate] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [services, setServices] = useState<Service[]>([])
   const [docStats, setDocStats] = useState({ facturas: 0, recibos: 0, presupuestos: 0, totalFacturas: 0, totalRecibos: 0, totalPresupuestos: 0 })
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -62,6 +64,12 @@ export default function BillingPage() {
         patient_email: (!Array.isArray(c.patients) && c.patients) ? (c.patients as { email: string | null }).email : null,
       })))
 
+      // Get services
+      try {
+        const { data: svcs } = await supabase.from('doctor_services').select('*').eq('doctor_id', user.id).eq('is_active', true).order('name')
+        if (svcs) setServices(svcs as Service[])
+      } catch { /* tabla puede no existir */ }
+
       // Load billing document stats
       const { data: docs } = await supabase
         .from('billing_documents')
@@ -86,8 +94,12 @@ export default function BillingPage() {
       .catch(() => {})
   }, [])
 
-  function addItem() {
-    setItems(prev => [...prev, { id: Date.now().toString(), description: '', qty: 1, unit_price: 0 }])
+  function addItem(service?: Service) {
+    if (service) {
+      setItems(prev => [...prev, { id: Date.now().toString(), description: service.name, qty: 1, unit_price: service.price_usd }])
+    } else {
+      setItems(prev => [...prev, { id: Date.now().toString(), description: '', qty: 1, unit_price: 0 }])
+    }
   }
 
   function removeItem(id: string) {
@@ -363,15 +375,17 @@ export default function BillingPage() {
 
                 {/* Totals */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <div style={{ width: 280 }}>
+                  <div style={{ width: 320 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 12, color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>
                       <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'linear-gradient(135deg,#00C4CC,#0891b2)', borderRadius: 10, color: 'white', marginTop: 8 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>Total USD</span>
-                      <span style={{ fontWeight: 800, fontSize: 18 }}>${subtotal.toFixed(2)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'linear-gradient(135deg,#00C4CC,#0891b2)', borderRadius: 10, color: 'white', marginTop: 8, flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>Total</span>
+                        <span style={{ fontWeight: 800, fontSize: 18 }}>${subtotal.toFixed(2)} USD</span>
+                      </div>
+                      {bcvRate && <div style={{ fontSize: 12, fontWeight: 600, borderTop: '1px solid rgba(255,255,255,0.3)', paddingTop: 6 }}>Bs. {(subtotal * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })} (Tasa BCV: {bcvRate.toFixed(2)})</div>}
                     </div>
-                    {bcvRate && <div style={{ fontSize: 10, color: '#94a3b8', textAlign: 'right', marginTop: 4 }}>Equivalente: Bs. {(subtotal * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })} (Tasa BCV)</div>}
                   </div>
                 </div>
 
@@ -393,7 +407,21 @@ export default function BillingPage() {
               <div className="no-print bg-white border border-slate-200 rounded-xl p-5 space-y-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-700">Ítems del documento</p>
-                  <button onClick={addItem} className="g-bg flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:opacity-90 shrink-0"><Plus className="w-3.5 h-3.5" /><span>Agregar ítem</span></button>
+                  <div className="flex gap-2 flex-wrap">
+                    {services.length > 0 && (
+                      <select onChange={e => {
+                        const service = services.find(s => s.id === e.target.value);
+                        if (service) addItem(service);
+                        e.target.value = '';
+                      }} className="g-bg text-white rounded-lg text-xs font-bold hover:opacity-90 shrink-0 px-3 py-1.5 outline-none border-none cursor-pointer">
+                        <option value="">+ Agregar servicio</option>
+                        {services.map(s => (
+                          <option key={s.id} value={s.id}>{s.name} (${s.price_usd.toFixed(2)})</option>
+                        ))}
+                      </select>
+                    )}
+                    <button onClick={() => addItem()} className="g-bg flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:opacity-90 shrink-0"><Plus className="w-3.5 h-3.5" /><span>Agregar ítem</span></button>
+                  </div>
                 </div>
                 <div className="space-y-2 overflow-x-auto">
                   {items.map(item => (
