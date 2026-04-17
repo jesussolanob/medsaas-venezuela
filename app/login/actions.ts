@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 
 export type LoginResult =
-  | { success: true; role: string }
+  | { success: true; role: string; clinicRole: string | null; hasClinic: boolean }
   | { success: false; error: string }
 
 export async function loginUser(email: string, password: string): Promise<LoginResult> {
@@ -26,13 +26,15 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   const adminClient = createAdminClient()
   const { data: profile } = await adminClient
     .from('profiles')
-    .select('role')
+    .select('role, clinic_id, clinic_role')
     .eq('id', userId)
     .single()
 
   const role = profile?.role ?? 'doctor'
+  const clinicRole = profile?.clinic_role ?? null
+  const hasClinic = !!profile?.clinic_id
 
-  return { success: true, role }
+  return { success: true, role, clinicRole, hasClinic }
 }
 
 export async function logoutUser() {

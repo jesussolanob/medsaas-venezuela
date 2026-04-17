@@ -1,7 +1,7 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
-import { X, Phone, Mail, FileText, Calendar, Users, TrendingUp } from 'lucide-react'
+import { X, Phone, Mail, FileText, Calendar, Users, TrendingUp, MapPin, Building2 } from 'lucide-react'
 
 interface DoctorDetailDrawerProps {
   doctor: any
@@ -28,53 +28,15 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
         setLoading(true)
         setError('')
 
-        // Get doctor full profile
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', doctor.id)
-          .single()
+        const res = await fetch(`/api/admin/doctor-details?id=${doctor.id}`)
+        const data = await res.json()
 
-        if (profileError) throw profileError
+        if (!res.ok) throw new Error(data.error || 'Error al cargar detalles')
 
-        // Get patient count
-        const { count: patientCount, error: patientError } = await supabase
-          .from('doctor_patient_links')
-          .select('*', { count: 'exact' })
-          .eq('doctor_id', doctor.id)
-
-        if (patientError) throw patientError
-
-        // Get consultation count this month
-        const { data: consultations, error: consultError } = await supabase
-          .from('appointments')
-          .select('id, amount')
-          .eq('doctor_id', doctor.id)
-          .gte('created_at', new Date(new Date().setDate(1)).toISOString())
-
-        if (consultError) throw consultError
-
-        // Get subscription details
-        const { data: subscriptionData, error: subError } = await supabase
-          .from('subscriptions')
-          .select('*')
-          .eq('doctor_id', doctor.id)
-          .single()
-
-        if (subError && subError.code !== 'PGRST116') throw subError
-
-        const monthlyRevenue = (consultations || []).reduce((sum, c) => sum + (c.amount || 0), 0)
-
-        setDetails({
-          profile: profileData,
-          patientCount: patientCount || 0,
-          consultationCount: consultations?.length || 0,
-          monthlyRevenue,
-          subscription: subscriptionData,
-        })
-      } catch (err) {
+        setDetails(data)
+      } catch (err: any) {
         console.error('Error loading doctor details:', err)
-        setError('Error al cargar detalles')
+        setError(err.message || 'Error al cargar detalles')
       } finally {
         setLoading(false)
       }
@@ -159,6 +121,11 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900">{profile?.full_name}</h3>
                 <p className="text-sm text-slate-500 mt-1">{profile?.specialty || '—'}</p>
+                {profile?.clinic_id && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 bg-violet-50 px-2.5 py-0.5 rounded-full mt-2">
+                    <Building2 className="w-3 h-3" /> Clínica
+                  </span>
+                )}
               </div>
 
               {/* Info grid */}
@@ -184,12 +151,12 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 )}
 
                 {/* Cédula */}
-                {profile?.id_number && (
+                {profile?.cedula && (
                   <div className="flex items-start gap-3">
                     <FileText className="w-4 h-4 text-slate-400 mt-1 flex-shrink-0" />
                     <div>
                       <p className="text-xs text-slate-500 uppercase">Cédula</p>
-                      <p className="text-sm text-slate-900">{profile.id_number}</p>
+                      <p className="text-sm text-slate-900">{profile.cedula}</p>
                     </div>
                   </div>
                 )}
@@ -197,7 +164,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 {/* Location */}
                 {(profile?.city || profile?.state || profile?.country) && (
                   <div className="flex items-start gap-3">
-                    <FileText className="w-4 h-4 text-slate-400 mt-1 flex-shrink-0" />
+                    <MapPin className="w-4 h-4 text-slate-400 mt-1 flex-shrink-0" />
                     <div>
                       <p className="text-xs text-slate-500 uppercase">Ubicación</p>
                       <p className="text-sm text-slate-900">
@@ -220,7 +187,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg">
                   <p className="text-xs text-slate-500 uppercase mb-1">Estado</p>
-                  <p className="text-sm font-semibold text-slate-900 capitalize">
+                  <p className="text-sm font-semibold">
                     {profile?.is_active ? (
                       <span className="text-emerald-600">Activo</span>
                     ) : (
@@ -234,9 +201,11 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               {subscription && (
                 <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
                   <p className="text-xs text-amber-700 uppercase font-medium mb-1">Suscripción</p>
-                  <p className="text-xs text-amber-600">
-                    Vencimiento: {new Date(subscription.expires_at).toLocaleDateString('es-VE')}
-                  </p>
+                  {subscription.expires_at && (
+                    <p className="text-xs text-amber-600">
+                      Vencimiento: {new Date(subscription.expires_at).toLocaleDateString('es-VE')}
+                    </p>
+                  )}
                   {subscription.status === 'trial' && trialDaysLeft > 0 && (
                     <p className="text-xs text-amber-600 mt-1">
                       {trialDaysLeft} días restantes de prueba
@@ -246,12 +215,14 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               )}
 
               {/* Registro */}
-              <div className="flex items-center gap-3 text-sm text-slate-500">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  Registrado: {new Date(profile?.created_at).toLocaleDateString('es-VE')}
-                </span>
-              </div>
+              {profile?.created_at && (
+                <div className="flex items-center gap-3 text-sm text-slate-500">
+                  <Calendar className="w-4 h-4" />
+                  <span>
+                    Registrado: {new Date(profile.created_at).toLocaleDateString('es-VE')}
+                  </span>
+                </div>
+              )}
 
               {/* Estadísticas */}
               <div className="bg-slate-50 p-4 rounded-lg space-y-2">
@@ -271,7 +242,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">Ingresos (mes)</span>
-                  <span className="font-semibold text-slate-900">${details?.monthlyRevenue.toFixed(2) || '0.00'}</span>
+                  <span className="font-semibold text-slate-900">${(details?.monthlyRevenue || 0).toFixed(2)}</span>
                 </div>
               </div>
             </>
@@ -279,16 +250,20 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
         </div>
 
         {/* Actions */}
-        {!loading && (
+        {!loading && !error && (
           <div className="border-t border-slate-200 p-6 space-y-2">
             <button
               onClick={handleToggleStatus}
               disabled={suspending}
-              className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 disabled:opacity-60 transition-colors"
+              className={`w-full py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-60 ${
+                profile?.is_active
+                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  : 'bg-emerald-500 text-white hover:bg-emerald-600'
+              }`}
             >
               {suspending ? 'Actualizando...' : (profile?.is_active ? 'Suspender' : 'Activar')}
             </button>
-            <button className="w-full bg-slate-100 text-slate-700 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
+            <button className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors">
               Cambiar a PRO
             </button>
             <button

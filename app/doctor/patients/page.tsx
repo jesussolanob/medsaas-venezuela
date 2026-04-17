@@ -12,6 +12,8 @@ import { createClient } from '@/lib/supabase/client'
 interface PatientPackageInfo {
   patientId: string
   pendingSessions: number
+  totalSessions: number
+  usedSessions: number
 }
 
 const PAYMENT_STATUS = {
@@ -72,7 +74,9 @@ export default function PatientsPage() {
           const pending = pkg.total_sessions - pkg.used_sessions
           pkgMap[pkg.patient_id] = {
             patientId: pkg.patient_id,
-            pendingSessions: pending
+            pendingSessions: pending,
+            totalSessions: pkg.total_sessions,
+            usedSessions: pkg.used_sessions
           }
         })
       }
@@ -280,6 +284,33 @@ export default function PatientsPage() {
                 </button>
               </div>
             </div>
+
+            {/* Active packages / sessions card */}
+            {packageInfo[selected.id] && packageInfo[selected.id].pendingSessions > 0 && (
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap className="w-4 h-4 text-violet-600" />
+                  <h3 className="text-sm font-semibold text-violet-800">Paquete de sesiones activo</h3>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div>
+                    <p className="text-3xl font-extrabold text-violet-700">{packageInfo[selected.id].pendingSessions}</p>
+                    <p className="text-xs text-violet-500 font-medium mt-0.5">sesiones pagadas sin agendar</p>
+                  </div>
+                  <div className="flex-1">
+                    <div className="w-full h-3 bg-violet-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-violet-500 rounded-full transition-all"
+                        style={{ width: `${Math.max(5, ((packageInfo[selected.id].totalSessions - packageInfo[selected.id].pendingSessions) / packageInfo[selected.id].totalSessions) * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-violet-400 mt-1">
+                      {packageInfo[selected.id].totalSessions - packageInfo[selected.id].pendingSessions} de {packageInfo[selected.id].totalSessions} usadas
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Personal data section */}
             {(selected.birth_date || selected.address || selected.city) && (

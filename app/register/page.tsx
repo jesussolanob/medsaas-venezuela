@@ -9,9 +9,9 @@ import Link from 'next/link'
 import {
   Activity, ArrowRight, Eye, EyeOff, Upload, CheckCircle2,
   Loader2, X, Stethoscope, Zap, ChevronLeft, Image, AlertCircle,
-  TrendingUp, RefreshCw,
+  TrendingUp, RefreshCw, Building2,
 } from 'lucide-react'
-import { registerDoctor, uploadPaymentReceipt, getPaymentAccounts, getBCVRate, type PaymentAccount, type BCVRateResult } from './actions'
+import { registerDoctor, registerClinic, uploadPaymentReceipt, getPaymentAccounts, getBCVRate, type PaymentAccount, type BCVRateResult } from './actions'
 
 const ESPECIALIDADES = [
   'Cardiología','Dermatología','Endocrinología','Gastroenterología',
@@ -31,11 +31,17 @@ const PROFESSIONAL_TITLES = [
   { value: 'Fisio.', label: 'Fisioterapeuta (Fisio.)', gender: 'N' },
 ]
 
+type PlanType = 'free' | 'pro' | 'clinic'
+
 type FormData = {
   full_name: string; cedula: string; email: string
   password: string; confirmPassword: string
-  specialty: string; phone: string; plan: 'free' | 'pro'
+  specialty: string; phone: string; plan: PlanType
   sex: string; professional_title: string
+  // Clinic-specific fields
+  clinic_name: string; clinic_address: string; clinic_city: string
+  clinic_state: string; clinic_phone: string; clinic_email: string
+  clinic_specialty: string
 }
 type FormErrors = Partial<Record<keyof FormData, string>>
 
@@ -43,6 +49,8 @@ const defaultForm: FormData = {
   full_name: '', cedula: '', email: '',
   password: '', confirmPassword: '',
   specialty: '', phone: '', plan: 'free', sex: '', professional_title: 'Dr.',
+  clinic_name: '', clinic_address: '', clinic_city: '', clinic_state: '',
+  clinic_phone: '', clinic_email: '', clinic_specialty: '',
 }
 
 export default function RegisterPage() {
@@ -55,7 +63,7 @@ export default function RegisterPage() {
 
 function RegisterInner() {
   const searchParams = useSearchParams()
-  const planParam = searchParams.get('plan') as 'free' | 'pro' | null
+  const planParam = searchParams.get('plan') as PlanType | null
 
   const [step, setStep] = useState(planParam ? 1 : 0)
   const [form, setForm] = useState<FormData>({ ...defaultForm, plan: planParam ?? 'free' })
@@ -73,9 +81,14 @@ function RegisterInner() {
   const [loadingBCV, setLoadingBCV] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const isClinic = form.plan === 'clinic'
+  const isPro = form.plan === 'pro'
+  const needsPayment = isPro || isClinic
+  const planPrice = isClinic ? 100 : 20
+
   // Fetch BCV rate when on payment step
   useEffect(() => {
-    if (step === 2) {
+    if (step === (isClinic ? 3 : 2)) {
       setLoadingBCV(true)
       getBCVRate().then(r => { setBcvRate(r); setLoadingBCV(false) })
     }
@@ -86,7 +99,7 @@ function RegisterInner() {
     if (errors[field]) setErrors(p => ({ ...p, [field]: undefined }))
   }
 
-  function selectPlan(plan: 'free' | 'pro') {
+  function selectPlan(plan: PlanType) {
     setForm(p => ({ ...p, plan })); setStep(1)
   }
 
@@ -106,10 +119,24 @@ function RegisterInner() {
     return Object.keys(e).length === 0
   }
 
+  function validateClinicStep(): boolean {
+    const e: FormErrors = {}
+    if (!form.clinic_name.trim()) e.clinic_name = 'El nombre de la clínica es obligatorio'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
   function handleSubmitData(e: React.FormEvent) {
     e.preventDefault()
     if (!validateStep1()) return
     setServerError(null)
+
+    if (isClinic) {
+      // Go to clinic details step
+      setStep(2)
+      return
+    }
+
     startTransition(async () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { confirmPassword, ...input } = form
@@ -125,6 +152,40 @@ function RegisterInner() {
         setLoadingAccounts(false)
         setStep(2)
       }
+    })
+  }
+
+  function handleSubmitClinicDetails(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validateClinicStep()) return
+    setServerError(null)
+
+    startTransition(async () => {
+      const result = await registerClinic({
+        full_name: form.full_name,
+        cedula: form.cedula,
+        email: form.email,
+        password: form.password,
+        specialty: form.specialty,
+        phone: form.phone,
+        sex: form.sex,
+        professional_title: form.professional_title,
+        clinic_name: form.clinic_name,
+        clinic_address: form.clinic_address,
+        clinic_city: form.clinic_city,
+        clinic_state: form.clinic_state,
+        clinic_phone: form.clinic_phone,
+        clinic_email: form.clinic_email || form.email,
+        clinic_specialty: form.clinic_specialty,
+      })
+      if (!result.success) { setServerError(result.error); return }
+      setDoctorId(result.doctorId)
+      // Go to payment step
+      setLoadingAccounts(true)
+      const accounts = await getPaymentAccounts()
+      setPaymentAccounts(accounts)
+      setLoadingAccounts(false)
+      setStep(3)
     })
   }
 
@@ -146,20 +207,24 @@ function RegisterInner() {
       const reader = new FileReader()
       reader.onload = async (ev) => {
         const base64 = (ev.target?.result as string).split(',')[1]
-        const result = await uploadPaymentReceipt(doctorId, base64, receiptFile.name, receiptFile.type)
+        const result = await uploadPaymentReceipt(doctorId, base64, receiptFile.name, receiptFile.type, planPrice)
         if (!result.success) { setServerError(result.error); return }
-        setStep(3)
+        setStep(isClinic ? 4 : 3)
       }
       reader.readAsDataURL(receiptFile)
     })
   }
 
-  const progress = step === 0 ? 0 : step === 1 ? 40 : step === 2 ? 75 : 100
-  const bsAmount = bcvRate ? (20 * bcvRate.rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null
+  const totalSteps = isClinic ? 4 : (isPro ? 3 : 2)
+  const progress = step === 0 ? 0 : Math.round((step / totalSteps) * 100)
+  const bsAmount = bcvRate ? (planPrice * bcvRate.rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null
+
+  const successStep = isClinic ? 4 : 3
+  const paymentStep = isClinic ? 3 : 2
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.g-text{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.sex-btn{transition:all .15s}.sex-btn.active{border-color:#00C4CC;background:rgba(0,196,204,0.06);color:#0891b2}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.g-text{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.sex-btn{transition:all .15s}.sex-btn.active{border-color:#00C4CC;background:rgba(0,196,204,0.06);color:#0891b2}.g-clinic{background:linear-gradient(135deg,#8b5cf6 0%,#6d28d9 100%)}`}</style>
 
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
@@ -180,11 +245,11 @@ function RegisterInner() {
         <div className="bg-white border-b border-slate-100 px-6 py-3">
           <div className="max-w-lg mx-auto space-y-2">
             <div className="flex items-center justify-between text-xs font-medium text-slate-400">
-              <span>Paso {step} de {form.plan === 'pro' ? 3 : 2}</span>
+              <span>Paso {step} de {totalSteps}</span>
               <span>{progress}% completado</span>
             </div>
             <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500 g-bg" style={{ width: `${progress}%` }} />
+              <div className={`h-full rounded-full transition-all duration-500 ${isClinic ? 'g-clinic' : 'g-bg'}`} style={{ width: `${progress}%` }} />
             </div>
           </div>
         </div>
@@ -198,9 +263,10 @@ function RegisterInner() {
             <div className="space-y-8">
               <div className="text-center space-y-2">
                 <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Elige tu plan</h1>
-                <p className="text-slate-500 font-medium">Comienza gratis o activa el plan Pro desde el primer día.</p>
+                <p className="text-slate-500 font-medium">Comienza gratis, activa Pro o registra tu centro de salud.</p>
               </div>
               <div className="grid gap-4">
+                {/* Free */}
                 <button onClick={() => selectPlan('free')} className="group w-full bg-white rounded-2xl border-2 border-slate-200 hover:border-cyan-300 p-6 text-left transition-all hover:shadow-lg hover:shadow-cyan-500/10 active:scale-[.99]">
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center group-hover:bg-cyan-50 transition-colors">
@@ -219,6 +285,7 @@ function RegisterInner() {
                   </div>
                 </button>
 
+                {/* Pro */}
                 <button onClick={() => selectPlan('pro')} className="group w-full rounded-2xl border-2 border-transparent p-6 text-left transition-all hover:shadow-xl hover:shadow-cyan-500/20 active:scale-[.99] relative overflow-hidden" style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)' }}>
                   <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full opacity-10" style={{ background: '#00C4CC' }} />
                   <div className="absolute top-4 right-4">
@@ -239,6 +306,28 @@ function RegisterInner() {
                     Activar Plan Pro <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
+
+                {/* Centro de Salud */}
+                <button onClick={() => selectPlan('clinic')} className="group w-full rounded-2xl border-2 border-transparent p-6 text-left transition-all hover:shadow-xl hover:shadow-violet-500/20 active:scale-[.99] relative overflow-hidden" style={{ background: 'linear-gradient(145deg,#2e1065,#4c1d95)' }}>
+                  <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full opacity-15 bg-violet-400" />
+                  <div className="absolute top-4 right-4">
+                    <span className="text-xs font-bold px-3 py-1.5 rounded-full text-white bg-violet-500">Multi-Doctor</span>
+                  </div>
+                  <div className="flex items-start mb-4">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-violet-500/20">
+                      <Building2 className="w-5 h-5 text-violet-300" />
+                    </div>
+                  </div>
+                  <p className="text-sm font-bold text-violet-300 uppercase tracking-widest mb-1">Centro de Salud</p>
+                  <div className="flex items-end gap-1.5 mb-2">
+                    <span className="text-4xl font-extrabold text-white">$100</span>
+                    <span className="text-violet-300 font-medium mb-1">USD / mes</span>
+                  </div>
+                  <p className="text-sm text-violet-300/80">Para clínicas con múltiples doctores. Panel administrativo, agendas individuales y vista consolidada.</p>
+                  <div className="mt-4 flex items-center gap-2 text-sm font-bold text-white">
+                    Registrar mi clínica <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
               </div>
               <p className="text-center text-xs text-slate-400">
                 Al registrarte aceptas nuestros <a href="#" className="underline hover:text-slate-600">Términos de Servicio</a> y <a href="#" className="underline hover:text-slate-600">Política de Privacidad</a>
@@ -246,17 +335,24 @@ function RegisterInner() {
             </div>
           )}
 
-          {/* ── STEP 1: Datos ── */}
+          {/* ── STEP 1: Datos personales (admin/doctor) ── */}
           {step === 1 && (
             <div className="space-y-6">
               <div className="space-y-1">
                 <button onClick={() => setStep(0)} className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-700 mb-4 transition-colors">
                   <ChevronLeft className="w-4 h-4" /> Cambiar plan
                 </button>
-                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Crea tu cuenta</h1>
+                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                  {isClinic ? 'Datos del administrador' : 'Crea tu cuenta'}
+                </h1>
                 <p className="text-sm text-slate-500 font-medium">
-                  Plan <span className="font-bold" style={{ color: '#00C4CC' }}>{form.plan === 'pro' ? 'Pro · $20 USD/mes' : 'Free · 30 días'}</span>
+                  Plan <span className="font-bold" style={{ color: isClinic ? '#8b5cf6' : '#00C4CC' }}>
+                    {isClinic ? 'Centro de Salud · $100 USD/mes' : isPro ? 'Pro · $20 USD/mes' : 'Free · 30 días'}
+                  </span>
                 </p>
+                {isClinic && (
+                  <p className="text-xs text-slate-400 mt-1">Ingresa los datos de quien será el administrador de la clínica.</p>
+                )}
               </div>
 
               <form onSubmit={handleSubmitData} className="space-y-4">
@@ -332,23 +428,94 @@ function RegisterInner() {
                   </Field>
                 </div>
 
-                <button type="submit" disabled={isPending} className="w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-[.99] disabled:opacity-60 g-bg shadow-lg shadow-cyan-500/25">
-                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Creando cuenta...</> : form.plan === 'pro' ? <>Continuar al pago <ArrowRight className="w-4 h-4" /></> : <>Crear mi cuenta <ArrowRight className="w-4 h-4" /></>}
+                <button type="submit" disabled={isPending} className={`w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-[.99] disabled:opacity-60 shadow-lg ${isClinic ? 'g-clinic shadow-violet-500/25' : 'g-bg shadow-cyan-500/25'}`}>
+                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Creando cuenta...</> :
+                    isClinic ? <>Continuar: datos de la clínica <ArrowRight className="w-4 h-4" /></> :
+                    isPro ? <>Continuar al pago <ArrowRight className="w-4 h-4" /></> :
+                    <>Crear mi cuenta <ArrowRight className="w-4 h-4" /></>}
                 </button>
               </form>
             </div>
           )}
 
-          {/* ── STEP 2: Pago Pro ── */}
-          {step === 2 && (
+          {/* ── STEP 2 (Clinic only): Datos de la clínica ── */}
+          {step === 2 && isClinic && (
+            <div className="space-y-6">
+              <div className="space-y-1">
+                <button onClick={() => setStep(1)} className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-700 mb-4 transition-colors">
+                  <ChevronLeft className="w-4 h-4" /> Volver a datos personales
+                </button>
+                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Datos de tu Centro de Salud</h1>
+                <p className="text-sm text-slate-500 font-medium">Configura la información de tu clínica. Podrás editarla después.</p>
+              </div>
+
+              <form onSubmit={handleSubmitClinicDetails} className="space-y-4">
+                {serverError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-sm text-red-600">{serverError}</p>
+                  </div>
+                )}
+
+                <Field label="Nombre de la clínica" required error={errors.clinic_name}>
+                  <input type="text" value={form.clinic_name} onChange={e => change('clinic_name', e.target.value)} placeholder="Centro Médico Metropolitano" className={inp(!!errors.clinic_name)} />
+                </Field>
+
+                <Field label="Especialidad principal">
+                  <input type="text" value={form.clinic_specialty} onChange={e => change('clinic_specialty', e.target.value)} placeholder="Ej: Odontología, Multiespecialidad" className={inp(false)} />
+                </Field>
+
+                <Field label="Dirección">
+                  <input type="text" value={form.clinic_address} onChange={e => change('clinic_address', e.target.value)} placeholder="Torre Médica, Piso 3, Local 301" className={inp(false)} />
+                </Field>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Ciudad">
+                    <input type="text" value={form.clinic_city} onChange={e => change('clinic_city', e.target.value)} placeholder="Caracas" className={inp(false)} />
+                  </Field>
+                  <Field label="Estado">
+                    <input type="text" value={form.clinic_state} onChange={e => change('clinic_state', e.target.value)} placeholder="Distrito Capital" className={inp(false)} />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Teléfono de la clínica">
+                    <input type="tel" value={form.clinic_phone} onChange={e => change('clinic_phone', e.target.value)} placeholder="+58 212 1234567" className={inp(false)} />
+                  </Field>
+                  <Field label="Email de la clínica">
+                    <input type="email" value={form.clinic_email} onChange={e => change('clinic_email', e.target.value)} placeholder="contacto@clinica.com" className={inp(false)} />
+                  </Field>
+                </div>
+
+                {/* Features preview */}
+                <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-2">
+                  <p className="text-xs font-bold text-violet-700 uppercase tracking-widest">Tu plan incluye</p>
+                  <ul className="text-xs text-violet-600 space-y-1">
+                    <li>Hasta 10 doctores con agendas independientes</li>
+                    <li>Panel administrativo con vista consolidada</li>
+                    <li>Invitaciones por email para agregar doctores</li>
+                    <li>Booking público donde pacientes eligen doctor</li>
+                    <li>30 días de prueba gratis</li>
+                  </ul>
+                </div>
+
+                <button type="submit" disabled={isPending} className="w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-[.99] disabled:opacity-60 g-clinic shadow-lg shadow-violet-500/25">
+                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Registrando clínica...</> : <>Continuar al pago <ArrowRight className="w-4 h-4" /></>}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* ── PAYMENT STEP: Pago (Pro step 2 / Clinic step 3) ── */}
+          {step === paymentStep && needsPayment && !(isClinic && step === 2) && (
             <div className="space-y-6">
               <div className="space-y-1">
                 <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Adjunta el comprobante</h1>
-                <p className="text-sm text-slate-500 font-medium">Realiza el pago de $20 USD y sube el comprobante para activar tu Plan Pro.</p>
+                <p className="text-sm text-slate-500 font-medium">Realiza el pago de ${planPrice} USD y sube el comprobante para activar tu {isClinic ? 'Centro de Salud' : 'Plan Pro'}.</p>
               </div>
 
               {/* BCV Rate Box */}
-              <div className="g-bg rounded-2xl p-5 text-white relative overflow-hidden">
+              <div className={`${isClinic ? 'g-clinic' : 'g-bg'} rounded-2xl p-5 text-white relative overflow-hidden`}>
                 <div className="absolute -right-6 -top-6 w-28 h-28 rounded-full bg-white/10 blur-xl pointer-events-none" />
                 <div className="flex items-start justify-between relative z-10">
                   <div>
@@ -370,13 +537,13 @@ function RegisterInner() {
                           <div className="pb-1 text-white/50 text-lg font-light">→</div>
                           <div>
                             <p className="text-2xl font-extrabold text-cyan-200">Bs.S {bsAmount}</p>
-                            <p className="text-white/60 text-xs">equivalente a $20 USD</p>
+                            <p className="text-white/60 text-xs">equivalente a ${planPrice} USD</p>
                           </div>
                         </div>
                         <p className="text-white/50 text-xs mt-2">Actualizado: {bcvRate.updated}</p>
                       </>
                     ) : (
-                      <p className="text-white/70 text-sm">$20 USD · equivalente en Bs. al cambio del día BCV</p>
+                      <p className="text-white/70 text-sm">${planPrice} USD equivalente en Bs. al cambio del día BCV</p>
                     )}
                   </div>
                 </div>
@@ -410,7 +577,7 @@ function RegisterInner() {
                 )}
                 <div className="pt-1 bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-xs font-semibold text-slate-600">
-                    💵 Monto a pagar: <strong className="text-slate-800">$20 USD</strong>
+                    Monto a pagar: <strong className="text-slate-800">${planPrice} USD</strong>
                     {bsAmount && <span className="text-teal-600"> = Bs.S {bsAmount} (tasa BCV)</span>}
                   </p>
                 </div>
@@ -455,7 +622,7 @@ function RegisterInner() {
                   <input ref={fileInputRef} type="file" accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
                 </div>
 
-                <button type="submit" disabled={isPending || !receiptFile} className="w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-[.99] disabled:opacity-60 g-bg shadow-lg shadow-cyan-500/25">
+                <button type="submit" disabled={isPending || !receiptFile} className={`w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-[.99] disabled:opacity-60 shadow-lg ${isClinic ? 'g-clinic shadow-violet-500/25' : 'g-bg shadow-cyan-500/25'}`}>
                   {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Enviando...</> : <>Enviar comprobante <ArrowRight className="w-4 h-4" /></>}
                 </button>
                 <p className="text-xs text-slate-400 text-center leading-relaxed">
@@ -465,20 +632,23 @@ function RegisterInner() {
             </div>
           )}
 
-          {/* ── STEP 3: Éxito ── */}
-          {step === 3 && (
+          {/* ── SUCCESS STEP ── */}
+          {step === successStep && (
             <div className="bg-white rounded-3xl border border-slate-200 p-10 text-center space-y-6 shadow-sm">
-              <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto ${isClinic ? 'bg-violet-50' : 'bg-emerald-50'}`}>
+                {isClinic ? <Building2 className="w-8 h-8 text-violet-500" /> : <CheckCircle2 className="w-8 h-8 text-emerald-500" />}
               </div>
               <div className="space-y-2">
                 <h1 className="text-2xl font-extrabold text-slate-900">
-                  {form.plan === 'free' ? '¡Bienvenido a Delta!' : '¡Solicitud enviada!'}
+                  {form.plan === 'free' ? '¡Bienvenido a Delta!' :
+                    isClinic ? '¡Centro de Salud registrado!' : '¡Solicitud enviada!'}
                 </h1>
                 <p className="text-slate-500 font-medium">
                   {form.plan === 'free'
                     ? 'Tu cuenta está lista. Tienes 30 días de acceso completo.'
-                    : 'Hemos recibido tu comprobante. El equipo lo verificará y activará tu Plan Pro en máximo 24 horas.'}
+                    : isClinic
+                      ? 'Tu clínica ha sido creada. El equipo verificará tu pago y activará el plan completo en máximo 24 horas.'
+                      : 'Hemos recibido tu comprobante. El equipo lo verificará y activará tu Plan Pro en máximo 24 horas.'}
                 </p>
               </div>
               <div className="bg-slate-50 rounded-2xl p-4 text-left space-y-3">
@@ -487,7 +657,20 @@ function RegisterInner() {
                   <span className="text-slate-400">Email</span>
                   <span className="font-medium text-slate-700 text-right truncate">{form.email}</span>
                   <span className="text-slate-400">Plan</span>
-                  <span className="text-right"><span className="text-xs font-bold px-2 py-1 rounded-full" style={{ background: 'rgba(0,196,204,0.1)', color: '#00C4CC' }}>{form.plan === 'pro' ? 'Pro · $20 USD/mes' : 'Free · 30 días'}</span></span>
+                  <span className="text-right">
+                    <span className="text-xs font-bold px-2 py-1 rounded-full" style={{
+                      background: isClinic ? 'rgba(139,92,246,0.1)' : 'rgba(0,196,204,0.1)',
+                      color: isClinic ? '#8b5cf6' : '#00C4CC'
+                    }}>
+                      {isClinic ? 'Centro de Salud · $100/mes' : isPro ? 'Pro · $20 USD/mes' : 'Free · 30 días'}
+                    </span>
+                  </span>
+                  {isClinic && (
+                    <>
+                      <span className="text-slate-400">Clínica</span>
+                      <span className="font-medium text-slate-700 text-right truncate">{form.clinic_name}</span>
+                    </>
+                  )}
                   <span className="text-slate-400">Estado</span>
                   <span className="text-right">
                     {form.plan === 'free' ? <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">Activo</span> : <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">Pendiente</span>}
@@ -500,11 +683,11 @@ function RegisterInner() {
                     Ir a mi panel <ArrowRight className="w-4 h-4" />
                   </Link>
                 )}
-                {form.plan === 'pro' && (
+                {needsPayment && (
                   <>
                     <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-700 flex items-start gap-2">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                      <p>Recibirás un email de confirmación cuando tu cuenta Pro esté activa. Mientras tanto, puedes explorar el panel con acceso limitado.</p>
+                      <p>Recibirás un email de confirmación cuando tu cuenta esté activa. Mientras tanto, puedes explorar el panel con acceso limitado.</p>
                     </div>
                     <Link href="/login" className="w-full flex items-center justify-center gap-2 font-semibold py-3 rounded-2xl text-sm border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all">
                       Ir al panel →

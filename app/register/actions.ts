@@ -10,7 +10,7 @@ export type RegisterInput = {
   password: string
   specialty: string
   phone: string
-  plan: 'free' | 'pro'
+  plan: 'free' | 'pro' | 'clinic'
   sex?: string
   professional_title?: string
 }
@@ -78,12 +78,116 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
   return { success: true, doctorId: userId }
 }
 
+// ── Register Clinic (Centro de Salud) ──────────────────────────────────────────
+export type RegisterClinicInput = {
+  full_name: string
+  cedula: string
+  email: string
+  password: string
+  specialty: string
+  phone: string
+  sex?: string
+  professional_title?: string
+  clinic_name: string
+  clinic_address: string
+  clinic_city: string
+  clinic_state: string
+  clinic_phone: string
+  clinic_email: string
+  clinic_specialty: string
+}
+
+export async function registerClinic(input: RegisterClinicInput): Promise<RegisterResult> {
+  const supabase = createAdminClient()
+
+  // 1. Create auth user
+  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { full_name: input.full_name, role: 'doctor' },
+  })
+
+  if (authError) {
+    if (authError.message.includes('already registered')) {
+      return { success: false, error: 'Este email ya está registrado. ¿Ya tienes cuenta? Inicia sesión.' }
+    }
+    return { success: false, error: authError.message }
+  }
+
+  const userId = authData.user.id
+
+  // 2. Create clinic
+  const slug = input.clinic_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+
+  const { data: clinic, error: clinicError } = await supabase
+    .from('clinics')
+    .insert({
+      name: input.clinic_name.trim(),
+      slug,
+      owner_id: userId,
+      address: input.clinic_address || null,
+      city: input.clinic_city || null,
+      state: input.clinic_state || null,
+      phone: input.clinic_phone || null,
+      email: input.clinic_email || input.email,
+      specialty: input.clinic_specialty || null,
+      subscription_plan: 'centro_salud',
+      subscription_status: 'trial',
+    })
+    .select('id')
+    .single()
+
+  if (clinicError || !clinic) {
+    await supabase.auth.admin.deleteUser(userId)
+    return { success: false, error: clinicError?.message || 'Error al crear la clínica' }
+  }
+
+  // 3. Create profile linked to clinic as admin
+  const { error: profileError } = await supabase.from('profiles').upsert({
+    id: userId,
+    full_name: input.full_name,
+    cedula: input.cedula || null,
+    email: input.email,
+    specialty: input.specialty || null,
+    phone: input.phone || null,
+    sex: input.sex || null,
+    professional_title: input.professional_title || 'Dr.',
+    role: 'doctor',
+    is_active: true,
+    clinic_id: clinic.id,
+    clinic_role: 'admin',
+  })
+
+  if (profileError) {
+    await supabase.auth.admin.deleteUser(userId)
+    return { success: false, error: profileError.message }
+  }
+
+  // 4. Create subscription
+  const now = new Date()
+  const expiresAt = new Date(now)
+  expiresAt.setDate(expiresAt.getDate() + 30)
+
+  await supabase.from('subscriptions').insert({
+    doctor_id: userId,
+    plan: 'centro_salud',
+    status: 'trial',
+    started_at: now.toISOString(),
+    expires_at: expiresAt.toISOString(),
+  })
+
+  revalidatePath('/admin/doctors')
+  revalidatePath('/admin/subscriptions')
+
+  return { success: true, doctorId: userId }
+}
+
 // ── Tasa BCV ──────────────────────────────────────────────────────────────────
 export type BCVRateResult = { rate: number; updated: string } | null
 
 export async function getBCVRate(): Promise<BCVRateResult> {
   try {
-    // API gratuita con tasa oficial BCV
     const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
       next: { revalidate: 3600 },
     })
@@ -97,7 +201,6 @@ export async function getBCVRate(): Promise<BCVRateResult> {
     }
   } catch {
     try {
-      // Fallback: pydolarve.org
       const res2 = await fetch('https://pydolarve.org/api/v1/dollar?page=bcv&monitor=usd', {
         next: { revalidate: 3600 },
       })
@@ -121,7 +224,8 @@ export async function uploadPaymentReceipt(
   doctorId: string,
   base64Data: string,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  amount: number = 20
 ): Promise<UploadReceiptResult> {
   const supabase = createAdminClient()
 
@@ -142,7 +246,7 @@ export async function uploadPaymentReceipt(
 
   const { error: paymentError } = await supabase.from('subscription_payments').insert({
     doctor_id: doctorId,
-    amount_usd: 20,
+    amount_usd: amount,
     payment_method: 'pago_movil',
     receipt_url: receiptUrl,
     status: 'pending',
