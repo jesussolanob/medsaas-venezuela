@@ -10,6 +10,39 @@ export default async function AdminDashboard() {
 
   const { data: kpis } = await supabase.rpc('bi_platform_kpis')
 
+  // Fetch recent doctors from database
+  const { data: recentDoctors } = await supabase
+    .from('profiles')
+    .select('id, full_name, specialty, email, created_at')
+    .eq('role', 'doctor')
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  // Fetch active clinics from database
+  const { data: activeClinics } = await supabase
+    .from('clinics')
+    .select('id, name, city, subscription_status, is_active')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  // Get doctor count per clinic
+  const clinicIds = (activeClinics || []).map(c => c.id)
+  const { data: clinicDoctorCounts } = clinicIds.length > 0
+    ? await supabase
+      .from('profiles')
+      .select('clinic_id')
+      .in('clinic_id', clinicIds)
+    : { data: [] }
+
+  // Count doctors per clinic
+  const doctorCountByClinic: Record<string, number> = {}
+  ;(clinicDoctorCounts || []).forEach(record => {
+    if (record.clinic_id) {
+      doctorCountByClinic[record.clinic_id] = (doctorCountByClinic[record.clinic_id] || 0) + 1
+    }
+  })
+
   const stats = [
     {
       label: 'Médicos activos',
@@ -107,26 +140,19 @@ export default async function AdminDashboard() {
             <a href="/admin/doctors" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todos</a>
           </div>
           <div className="space-y-2">
-            {/* Sample doctors - in production, this would come from the database */}
-            {[
-              { id: '1', name: 'Dr. Carlos Ramírez', specialty: 'Cardiología', email: 'carlos@email.com', createdAt: '2024-04-15' },
-              { id: '2', name: 'Dra. María López', specialty: 'Dermatología', email: 'maria@email.com', createdAt: '2024-04-14' },
-              { id: '3', name: 'Dr. Juan Pérez', specialty: 'Pediatría', email: 'juan@email.com', createdAt: '2024-04-13' },
-              { id: '4', name: 'Dra. Ana González', specialty: 'Ginecología', email: 'ana@email.com', createdAt: '2024-04-12' },
-              { id: '5', name: 'Dr. Roberto Silva', specialty: 'Neurología', email: 'roberto@email.com', createdAt: '2024-04-11' },
-            ].map((doctor) => (
+            {(recentDoctors || []).map((doctor) => (
               <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-xs flex-shrink-0">
-                    {doctor.name.charAt(0)}
+                    {doctor.full_name?.charAt(0) || '?'}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{doctor.name}</p>
+                    <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{doctor.full_name}</p>
                     <p className="text-[10px] text-slate-400 truncate">{doctor.specialty}</p>
                   </div>
                 </div>
                 <span className="text-[10px] text-slate-400 flex-shrink-0 ml-2 whitespace-nowrap">
-                  {new Date(doctor.createdAt).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
+                  {new Date(doctor.created_at).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
                 </span>
               </div>
             ))}
@@ -140,29 +166,26 @@ export default async function AdminDashboard() {
             <a href="/admin/clinics" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todas</a>
           </div>
           <div className="space-y-2">
-            {/* Sample clinics - in production, this would come from the database */}
-            {[
-              { id: '1', name: 'Centro Médico Ávila', city: 'Caracas', doctors: 3, status: 'active' },
-              { id: '2', name: 'Clínica San Cristóbal', city: 'Caracas', doctors: 2, status: 'active' },
-              { id: '3', name: 'Centro de Salud Metropolitano', city: 'Valencia', doctors: 5, status: 'active' },
-              { id: '4', name: 'Clínica Integral Plus', city: 'Maracaibo', doctors: 4, status: 'active' },
-              { id: '5', name: 'Centro Médico del Este', city: 'Caracas', doctors: 2, status: 'trial' },
-            ].map((clinic) => (
-              <div key={clinic.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-semibold text-xs flex-shrink-0">
-                    {clinic.name.charAt(0)}
+            {(activeClinics || []).map((clinic) => {
+              const doctorCount = doctorCountByClinic[clinic.id] || 0
+              const statusIsTrial = clinic.subscription_status === 'trial'
+              return (
+                <div key={clinic.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-semibold text-xs flex-shrink-0">
+                      {clinic.name?.charAt(0) || '?'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{clinic.name}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{doctorCount} médico{doctorCount !== 1 ? 's' : ''} • {clinic.city}</p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{clinic.name}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{clinic.doctors} médico{clinic.doctors !== 1 ? 's' : ''} • {clinic.city}</p>
-                  </div>
+                  <span className={`text-[10px] font-semibold px-2 py-1 rounded-full flex-shrink-0 ml-2 whitespace-nowrap ${!statusIsTrial ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                    {!statusIsTrial ? 'Activa' : 'Trial'}
+                  </span>
                 </div>
-                <span className={`text-[10px] font-semibold px-2 py-1 rounded-full flex-shrink-0 ml-2 whitespace-nowrap ${clinic.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {clinic.status === 'active' ? 'Activa' : 'Trial'}
-                </span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>

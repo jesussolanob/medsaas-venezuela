@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react'
+import SubscriptionActionButtons from './SubscriptionActionButtons'
 
 export default async function SubscriptionsPage() {
   const supabase = await createClient()
@@ -106,11 +107,15 @@ export default async function SubscriptionsPage() {
                     <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600 hidden lg:table-cell whitespace-nowrap">${sub.price_usd} USD</td>
                     <td className="px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-1 sm:gap-2">
-                        <button className="text-xs text-teal-600 hover:text-teal-700 font-medium">Editar</button>
+                        <span className="text-xs text-slate-400 font-medium">Ver</span>
                         <span className="text-slate-200 hidden sm:inline">|</span>
-                        <button className="text-xs text-slate-400 hover:text-red-500 font-medium hidden sm:block">
-                          {sub.status === 'active' ? 'Suspender' : 'Activar'}
-                        </button>
+                        <div className="hidden sm:block">
+                          <SubscriptionActionButtons
+                            subscriptionId={sub.id}
+                            subscriptionStatus={sub.status}
+                            doctorId={sub.doctor_id}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>

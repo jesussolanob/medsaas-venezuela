@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { UserCheck, UserX } from 'lucide-react'
 import NewDoctorModal from './NewDoctorModal'
 import DoctorDetailDrawer from './DoctorDetailDrawer'
+import DoctorActionButton from './DoctorActionButton'
 
 export default function DoctorsPage() {
   const [doctors, setDoctors] = useState<any[]>([])
@@ -113,9 +114,13 @@ export default function DoctorsPage() {
                           Ver
                         </button>
                         <span className="text-slate-200 hidden sm:inline">|</span>
-                        <button className="text-xs text-slate-400 hover:text-red-500 font-medium hidden sm:block">
-                          {doctor.is_active ? 'Suspender' : 'Activar'}
-                        </button>
+                        <div className="hidden sm:block">
+                          <DoctorActionButton
+                            doctorId={doctor.id}
+                            isActive={doctor.is_active}
+                            onSuccess={loadDoctors}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>

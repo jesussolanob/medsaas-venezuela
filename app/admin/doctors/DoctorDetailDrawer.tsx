@@ -15,6 +15,8 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [suspending, setSuspending] = useState(false)
+  const [changingPlan, setChangingPlan] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
   const supabase = createClient()
 
   useEffect(() => {
@@ -48,31 +50,92 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
   const handleToggleStatus = async () => {
     if (!details?.profile) return
 
+    const action = details.profile.is_active ? 'suspend' : 'activate'
+    const message = details.profile.is_active
+      ? '¿Estás seguro de que deseas suspender este médico?'
+      : '¿Estás seguro de que deseas activar este médico?'
+
+    if (!confirm(message)) return
+
     try {
       setSuspending(true)
-      const newStatus = !details.profile.is_active
+      setError('')
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_active: newStatus })
-        .eq('id', details.profile.id)
+      const response = await fetch('/api/admin/toggle-doctor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctorId: details.profile.id, action }),
+      })
 
-      if (error) throw error
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al actualizar el estado')
+      }
 
       setDetails({
         ...details,
         profile: {
           ...details.profile,
-          is_active: newStatus,
+          is_active: action === 'activate',
         },
       })
 
+      setSuccessMessage(`Médico ${action === 'activate' ? 'activado' : 'suspendido'} exitosamente`)
+      setTimeout(() => setSuccessMessage(''), 3000)
       onDoctorUpdated?.()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating doctor status:', err)
-      setError('Error al actualizar el estado')
+      setError(err.message || 'Error al actualizar el estado')
     } finally {
       setSuspending(false)
+    }
+  }
+
+  const handleChangeToPro = async () => {
+    if (!details?.profile || !details?.subscription) return
+
+    if (details.subscription.plan === 'pro') {
+      setError('Este médico ya está en plan PRO')
+      return
+    }
+
+    if (!confirm('¿Cambiar a médico a plan PRO? Se le asignarán 30 días de acceso.')) return
+
+    try {
+      setChangingPlan(true)
+      setError('')
+
+      const response = await fetch('/api/admin/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctorId: details.profile.id, plan: 'pro' }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cambiar plan')
+      }
+
+      setDetails({
+        ...details,
+        subscription: {
+          ...details.subscription,
+          plan: 'pro',
+          status: 'active',
+          current_period_end: data.expiresAt,
+        },
+      })
+
+      setSuccessMessage('Plan cambiado a PRO exitosamente')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      onDoctorUpdated?.()
+    } catch (err: any) {
+      console.error('Error changing plan:', err)
+      setError(err.message || 'Error al cambiar plan')
+    } finally {
+      setChangingPlan(false)
     }
   }
 
@@ -111,6 +174,10 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
           ) : error ? (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
+            </div>
+          ) : successMessage ? (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm">
+              {successMessage}
             </div>
           ) : (
             <>
@@ -250,7 +317,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
         </div>
 
         {/* Actions */}
-        {!loading && !error && (
+        {!loading && (
           <div className="border-t border-slate-200 p-6 space-y-2">
             <button
               onClick={handleToggleStatus}
@@ -263,8 +330,12 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
             >
               {suspending ? 'Actualizando...' : (profile?.is_active ? 'Suspender' : 'Activar')}
             </button>
-            <button className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors">
-              Cambiar a PRO
+            <button
+              onClick={handleChangeToPro}
+              disabled={changingPlan}
+              className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60"
+            >
+              {changingPlan ? 'Cambiando...' : 'Cambiar a PRO'}
             </button>
             <button
               onClick={onClose}
