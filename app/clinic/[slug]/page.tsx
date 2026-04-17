@@ -1,5 +1,3 @@
-'use server'
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Building2, Users, ArrowRight, MapPin, Award } from 'lucide-react'
 import Link from 'next/link'
