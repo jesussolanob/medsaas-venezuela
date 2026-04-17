@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { Users, Calendar, CreditCard, TrendingUp } from 'lucide-react'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
@@ -42,6 +43,54 @@ export default async function AdminDashboard() {
       doctorCountByClinic[record.clinic_id] = (doctorCountByClinic[record.clinic_id] || 0) + 1
     }
   })
+
+  // Fetch subscription stats for MoM calculation
+  let momGrowth = 0
+  let newThisMonth = 0
+
+  try {
+    const admin = createAdminClient()
+    const { data: subscriptions } = await admin
+      .from('subscriptions')
+      .select('id, created_at')
+      .order('created_at', { ascending: true })
+
+    if (subscriptions) {
+      const now = new Date()
+      const monthCounts: Record<string, number> = {}
+      const months = []
+
+      // Initialize last 6 months
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+        const monthKey = date.toISOString().slice(0, 7)
+        monthCounts[monthKey] = 0
+        months.push(monthKey)
+      }
+
+      // Count subscriptions created in each month
+      subscriptions.forEach((sub) => {
+        const createdDate = new Date(sub.created_at)
+        const monthKey = createdDate.toISOString().slice(0, 7)
+        if (monthKey in monthCounts) {
+          monthCounts[monthKey]++
+        }
+      })
+
+      const currentMonthCount = monthCounts[months[months.length - 1]] || 0
+      const previousMonthCount = monthCounts[months[months.length - 2]] || 0
+
+      if (previousMonthCount > 0) {
+        momGrowth = parseFloat((((currentMonthCount - previousMonthCount) / previousMonthCount) * 100).toFixed(1))
+      } else if (currentMonthCount > 0) {
+        momGrowth = 100
+      }
+
+      newThisMonth = currentMonthCount
+    }
+  } catch (err) {
+    console.error('Error fetching subscription stats:', err)
+  }
 
   const stats = [
     {
@@ -125,9 +174,9 @@ export default async function AdminDashboard() {
               <TrendingUp className="w-4 h-4 text-emerald-600" />
             </div>
           </div>
-          <p className="text-2xl sm:text-3xl font-semibold text-slate-900">+18.4%</p>
+          <p className="text-2xl sm:text-3xl font-semibold text-slate-900">{momGrowth >= 0 ? '+' : ''}{momGrowth}%</p>
           <p className="text-xs text-slate-400 mt-1">Vs. mes anterior</p>
-          <p className="text-xs text-emerald-600 font-semibold mt-3">7 nuevas suscripciones</p>
+          <p className="text-xs text-emerald-600 font-semibold mt-3">{newThisMonth} nueva{newThisMonth !== 1 ? 's' : ''} suscripción{newThisMonth !== 1 ? 'es' : ''}</p>
         </div>
       </div>
 

@@ -10,8 +10,18 @@ type AdminRole = {
   email: string
   role: 'super_admin' | 'vendedor'
   is_active: boolean
+  permissions?: string[]
   created_at: string
 }
+
+const AVAILABLE_PERMISSIONS = [
+  { id: 'dashboard', label: 'Dashboard (vista general)' },
+  { id: 'usuarios', label: 'Usuarios (médicos y clínicas)' },
+  { id: 'suscripciones', label: 'Suscripciones' },
+  { id: 'aprobaciones', label: 'Aprobaciones' },
+  { id: 'finanzas', label: 'Finanzas' },
+  { id: 'configuracion', label: 'Configuración' },
+] as const
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<AdminRole[]>([])
@@ -28,6 +38,7 @@ export default function RolesPage() {
     email: '',
     role: 'vendedor' as 'super_admin' | 'vendedor',
     is_active: true,
+    permissions: [] as string[],
   })
 
   useEffect(() => {
@@ -63,6 +74,11 @@ export default function RolesPage() {
       setError('')
       setSuccess('')
 
+      // For super_admin, grant all permissions automatically
+      const permissions = formData.role === 'super_admin'
+        ? AVAILABLE_PERMISSIONS.map(p => p.id)
+        : formData.permissions
+
       if (editingId) {
         const { error: err } = await supabase
           .from('admin_roles')
@@ -71,6 +87,7 @@ export default function RolesPage() {
             email: formData.email,
             role: formData.role,
             is_active: formData.is_active,
+            permissions: permissions,
           })
           .eq('id', editingId)
 
@@ -84,13 +101,14 @@ export default function RolesPage() {
             email: formData.email,
             role: formData.role,
             is_active: formData.is_active,
+            permissions: permissions,
           })
 
         if (err) throw err
         setSuccess('Rol creado correctamente')
       }
 
-      setFormData({ full_name: '', email: '', role: 'vendedor', is_active: true })
+      setFormData({ full_name: '', email: '', role: 'vendedor', is_active: true, permissions: [] })
       setEditingId(null)
       setShowForm(false)
       await loadRoles()
@@ -126,16 +144,26 @@ export default function RolesPage() {
       email: role.email,
       role: role.role,
       is_active: role.is_active,
+      permissions: role.permissions || [],
     })
     setEditingId(role.id)
     setShowForm(true)
   }
 
   function handleCancel() {
-    setFormData({ full_name: '', email: '', role: 'vendedor', is_active: true })
+    setFormData({ full_name: '', email: '', role: 'vendedor', is_active: true, permissions: [] })
     setEditingId(null)
     setShowForm(false)
     setError('')
+  }
+
+  function togglePermission(permissionId: string) {
+    setFormData(prev => ({
+      ...prev,
+      permissions: prev.permissions.includes(permissionId)
+        ? prev.permissions.filter(p => p !== permissionId)
+        : [...prev.permissions, permissionId]
+    }))
   }
 
   return (
@@ -201,7 +229,15 @@ export default function RolesPage() {
               <label className="text-xs font-medium text-slate-500 block mb-1">Rol</label>
               <select
                 value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value as 'super_admin' | 'vendedor' })}
+                onChange={(e) => {
+                  const newRole = e.target.value as 'super_admin' | 'vendedor'
+                  setFormData({
+                    ...formData,
+                    role: newRole,
+                    // Reset permissions when changing role
+                    permissions: newRole === 'super_admin' ? AVAILABLE_PERMISSIONS.map(p => p.id) : []
+                  })
+                }}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent"
               >
                 <option value="vendedor">Vendedor</option>
@@ -220,6 +256,45 @@ export default function RolesPage() {
               </label>
             </div>
           </div>
+
+          {formData.role === 'vendedor' && (
+            <div className="pt-2 border-t border-slate-200">
+              <label className="text-xs font-medium text-slate-500 block mb-3">Permisos de acceso a secciones</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {AVAILABLE_PERMISSIONS.map((permission) => (
+                  <label key={permission.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.permissions.includes(permission.id)}
+                      onChange={() => togglePermission(permission.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-teal-500 focus:ring-teal-500"
+                    />
+                    <span className="text-sm font-medium text-slate-700">{permission.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {formData.role === 'super_admin' && (
+            <div className="pt-2 border-t border-slate-200">
+              <label className="text-xs font-medium text-slate-500 block mb-3">Permisos de acceso a secciones</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {AVAILABLE_PERMISSIONS.map((permission) => (
+                  <label key={permission.id} className="flex items-center gap-2 cursor-pointer opacity-60">
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      disabled
+                      className="w-4 h-4 rounded border-slate-300 text-teal-500 focus:ring-teal-500 cursor-not-allowed"
+                    />
+                    <span className="text-sm font-medium text-slate-700">{permission.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Los Super Administradores tienen acceso a todas las secciones automáticamente</p>
+            </div>
+          )}
 
           <div className="flex items-center gap-2 pt-2">
             <button
@@ -252,8 +327,9 @@ export default function RolesPage() {
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
               <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Nombre</th>
-              <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
-              <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Rol</th>
+              <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Email</th>
+              <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden lg:table-cell">Rol</th>
+              <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden lg:table-cell">Permisos</th>
               <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Estado</th>
               <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
             </tr>
@@ -261,13 +337,13 @@ export default function RolesPage() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
+                <td colSpan={6} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
                   Cargando roles...
                 </td>
               </tr>
             ) : !roles || roles.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 sm:px-6 py-16 text-center">
+                <td colSpan={6} className="px-4 sm:px-6 py-16 text-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
                       <Shield className="w-6 h-6 text-slate-400" />
@@ -284,11 +360,14 @@ export default function RolesPage() {
                       <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-medium text-xs sm:text-sm flex-shrink-0">
                         {role.full_name?.charAt(0) ?? '?'}
                       </div>
-                      <p className="text-xs sm:text-sm font-medium text-slate-900">{role.full_name}</p>
+                      <div>
+                        <p className="text-xs sm:text-sm font-medium text-slate-900">{role.full_name}</p>
+                        <p className="text-xs text-slate-500 sm:hidden">{role.email}</p>
+                      </div>
                     </div>
                   </td>
-                  <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600">{role.email}</td>
-                  <td className="px-4 sm:px-6 py-4 hidden sm:table-cell">
+                  <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600 hidden sm:table-cell">{role.email}</td>
+                  <td className="px-4 sm:px-6 py-4 hidden lg:table-cell">
                     <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${
                       role.role === 'super_admin'
                         ? 'bg-purple-50 text-purple-700'
@@ -296,6 +375,33 @@ export default function RolesPage() {
                     }`}>
                       {role.role === 'super_admin' ? 'Super Admin' : 'Vendedor'}
                     </span>
+                  </td>
+                  <td className="px-4 sm:px-6 py-4 hidden lg:table-cell">
+                    <div className="flex flex-wrap gap-1">
+                      {role.role === 'super_admin' ? (
+                        <span className="inline-block px-2 py-1 text-xs rounded-full bg-teal-50 text-teal-700 font-medium">
+                          Todas las secciones
+                        </span>
+                      ) : role.permissions && role.permissions.length > 0 ? (
+                        role.permissions.slice(0, 2).map((perm) => {
+                          const permission = AVAILABLE_PERMISSIONS.find(p => p.id === perm)
+                          return (
+                            <span key={perm} className="inline-block px-2 py-1 text-xs rounded-full bg-teal-50 text-teal-700 font-medium whitespace-nowrap">
+                              {permission?.label.split('(')[0].trim()}
+                            </span>
+                          )
+                        })
+                      ) : (
+                        <span className="inline-block px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-600 font-medium">
+                          Sin permisos
+                        </span>
+                      )}
+                      {role.permissions && role.permissions.length > 2 && (
+                        <span className="inline-block px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-600 font-medium">
+                          +{role.permissions.length - 2}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 sm:px-6 py-4">
                     <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${

@@ -9,7 +9,7 @@ import AdminNotifications from './AdminNotifications'
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-  { name: 'Médicos', href: '/admin/doctors', icon: Users },
+  { name: 'Usuarios', href: '/admin/doctors', icon: Users },
   { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
   { name: 'Aprobaciones', href: '/admin/approvals', icon: CheckSquare },
   { name: 'Finanzas', href: '/admin/finances', icon: BarChart2 },

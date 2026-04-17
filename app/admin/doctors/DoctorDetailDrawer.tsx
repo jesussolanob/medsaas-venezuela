@@ -151,12 +151,12 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
     <>
       {/* Overlay */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-40"
+        className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 w-96 bg-white z-50 shadow-2xl flex flex-col overflow-hidden">
+      <div className="fixed right-0 top-0 bottom-0 w-96 bg-white z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">Detalle del Médico</h2>

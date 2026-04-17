@@ -1,8 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, XCircle, Eye, Loader2, ExternalLink, AlertCircle } from 'lucide-react'
-import Image from 'next/image'
+import {
+  CheckCircle2,
+  XCircle,
+  Eye,
+  Loader2,
+  ExternalLink,
+  AlertCircle,
+  Clock,
+  AlertTriangle,
+} from 'lucide-react'
 
 type PendingPayment = {
   id: string
@@ -23,6 +31,30 @@ type ProcessedPayment = PendingPayment & {
   verified_by: string | null
 }
 
+type NewSubscription = {
+  id: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  specialty: string | null
+  plan: string
+  status: string
+  started_at: string
+  expires_at: string
+}
+
+type ExpiringSubscription = {
+  id: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  specialty: string | null
+  plan: string
+  status: string
+  expires_at: string
+  days_remaining: number
+}
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   pago_movil: 'Pago Móvil',
   bank_transfer: 'Transferencia',
@@ -40,6 +72,11 @@ function timeAgo(iso: string): string {
   return `Hace ${d} día${d > 1 ? 's' : ''}`
 }
 
+function formatDate(iso: string): string {
+  const date = new Date(iso)
+  return date.toLocaleDateString('es-VE', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 function formatCurrency(amount: number, currency: string): string {
   if (currency === 'USD') {
     return `$${amount.toFixed(2)} USD`
@@ -50,17 +87,31 @@ function formatCurrency(amount: number, currency: string): string {
 interface ApprovalsClientProps {
   pendingPayments: PendingPayment[]
   processedPayments: ProcessedPayment[]
+  newSubscriptions: NewSubscription[]
+  expiringSubscriptions: ExpiringSubscription[]
 }
 
-export default function ApprovalsClient({ pendingPayments: initialPending, processedPayments: initialProcessed }: ApprovalsClientProps) {
+export default function ApprovalsClient({
+  pendingPayments: initialPending,
+  processedPayments: initialProcessed,
+  newSubscriptions: initialNewSubs,
+  expiringSubscriptions: initialExpiringSubs,
+}: ApprovalsClientProps) {
+  const [activeTab, setActiveTab] = useState<'payments' | 'new' | 'expiring'>('payments')
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>(initialPending)
   const [processedPayments, setProcessedPayments] = useState<ProcessedPayment[]>(initialProcessed)
+  const [newSubscriptions, setNewSubscriptions] = useState<NewSubscription[]>(initialNewSubs)
+  const [expiringSubscriptions, setExpiringSubscriptions] = useState<ExpiringSubscription[]>(
+    initialExpiringSubs,
+  )
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
+  const [extendingId, setExtendingId] = useState<string | null>(null)
   const [receiptModal, setReceiptModal] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
-  async function handleApprove(paymentId: string) {
+  async function handleApprovePayment(paymentId: string) {
     setApprovingId(paymentId)
     setError(null)
     try {
@@ -76,7 +127,6 @@ export default function ApprovalsClient({ pendingPayments: initialPending, proce
         return
       }
 
-      // Move from pending to processed
       const payment = pendingPayments.find(p => p.id === paymentId)
       if (payment) {
         setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
@@ -89,6 +139,8 @@ export default function ApprovalsClient({ pendingPayments: initialPending, proce
           },
           ...prev,
         ])
+        setSuccessMessage('Pago aprobado exitosamente. Suscripción extendida 30 días.')
+        setTimeout(() => setSuccessMessage(null), 4000)
       }
     } catch (err) {
       setError('Error al conectar con el servidor')
@@ -98,7 +150,7 @@ export default function ApprovalsClient({ pendingPayments: initialPending, proce
     }
   }
 
-  async function handleReject(paymentId: string) {
+  async function handleRejectPayment(paymentId: string) {
     setRejectingId(paymentId)
     setError(null)
     try {
@@ -114,7 +166,6 @@ export default function ApprovalsClient({ pendingPayments: initialPending, proce
         return
       }
 
-      // Move from pending to processed
       const payment = pendingPayments.find(p => p.id === paymentId)
       if (payment) {
         setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
@@ -127,6 +178,8 @@ export default function ApprovalsClient({ pendingPayments: initialPending, proce
           },
           ...prev,
         ])
+        setSuccessMessage('Pago rechazado.')
+        setTimeout(() => setSuccessMessage(null), 3000)
       }
     } catch (err) {
       setError('Error al conectar con el servidor')
@@ -136,15 +189,81 @@ export default function ApprovalsClient({ pendingPayments: initialPending, proce
     }
   }
 
+  async function handleActivatePro(subscriptionId: string) {
+    setExtendingId(subscriptionId)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/extend-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId, days: 30, newPlan: 'pro' }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Error al activar PRO')
+        return
+      }
+
+      setNewSubscriptions(prev => prev.filter(s => s.id !== subscriptionId))
+      setSuccessMessage('Plan PRO activado. Suscripción extendida 30 días.')
+      setTimeout(() => setSuccessMessage(null), 4000)
+    } catch (err) {
+      setError('Error al conectar con el servidor')
+      console.error(err)
+    } finally {
+      setExtendingId(null)
+    }
+  }
+
+  async function handleExtendSubscription(subscriptionId: string) {
+    setExtendingId(subscriptionId)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/extend-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId, days: 30 }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Error al extender suscripción')
+        return
+      }
+
+      setExpiringSubscriptions(prev => prev.filter(s => s.id !== subscriptionId))
+      setSuccessMessage('Suscripción extendida 30 días exitosamente.')
+      setTimeout(() => setSuccessMessage(null), 4000)
+    } catch (err) {
+      setError('Error al conectar con el servidor')
+      console.error(err)
+    } finally {
+      setExtendingId(null)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Aprobado</span>
+        return (
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+            Aprobado
+          </span>
+        )
       case 'rejected':
-        return <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Rechazado</span>
+        return (
+          <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+            Rechazado
+          </span>
+        )
       case 'pending':
       default:
-        return <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Pendiente</span>
+        return (
+          <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+            Pendiente
+          </span>
+        )
     }
   }
 
@@ -160,155 +279,472 @@ export default function ApprovalsClient({ pendingPayments: initialPending, proce
     }
   }
 
+  const getSubscriptionStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
+        return (
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+            Activa
+          </span>
+        )
+      case 'trial':
+        return (
+          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+            Trial
+          </span>
+        )
+      case 'suspended':
+        return (
+          <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+            Suspendida
+          </span>
+        )
+      default:
+        return (
+          <span className="text-xs font-bold text-slate-600 bg-slate-50 px-2 py-0.5 rounded-full">
+            {status}
+          </span>
+        )
+    }
+  }
+
+  const getExpiringBadge = (daysRemaining: number) => {
+    if (daysRemaining <= 3) {
+      return (
+        <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+          {daysRemaining} día{daysRemaining !== 1 ? 's' : ''} restante
+        </span>
+      )
+    } else if (daysRemaining <= 7) {
+      return (
+        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+          {daysRemaining} día{daysRemaining !== 1 ? 's' : ''} restante
+        </span>
+      )
+    } else {
+      return (
+        <span className="text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">
+          {daysRemaining} día{daysRemaining !== 1 ? 's' : ''} restante
+        </span>
+      )
+    }
+  }
+
+  const getAvatarInitials = (name: string) => {
+    return name
+      .split(' ')
+      .slice(0, 2)
+      .map(n => n[0])
+      .join('')
+  }
+
   return (
     <>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }`}</style>
 
-      <div className="space-y-4 sm:space-y-6 w-full max-w-4xl px-4 sm:px-0">
-        {/* Error message */}
+      <div className="space-y-6 w-full max-w-5xl px-4 sm:px-0">
+        {/* Messages */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
 
-        {/* Pending Payments Section */}
-        <div>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Aprobaciones Pendientes</h2>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">Médicos que subieron comprobante de pago y esperan activación</p>
-            </div>
-            {pendingPayments.length > 0 && (
-              <span className="text-xs sm:text-sm font-bold text-white bg-amber-500 px-3 py-1 rounded-full whitespace-nowrap">
-                {pendingPayments.length} pendiente{pendingPayments.length > 1 ? 's' : ''}
-              </span>
-            )}
+        {successMessage && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <p className="text-sm text-emerald-700">{successMessage}</p>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex border-b border-slate-200">
+            <TabButton
+              active={activeTab === 'payments'}
+              onClick={() => setActiveTab('payments')}
+              label="Pagos Pendientes"
+              count={pendingPayments.length}
+            />
+            <TabButton
+              active={activeTab === 'new'}
+              onClick={() => setActiveTab('new')}
+              label="Nuevas Suscripciones"
+              count={newSubscriptions.length}
+            />
+            <TabButton
+              active={activeTab === 'expiring'}
+              onClick={() => setActiveTab('expiring')}
+              label="Próximas a Vencer"
+              count={expiringSubscriptions.length}
+            />
           </div>
 
-          {pendingPayments.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 py-12 sm:py-16 px-4 text-center">
-              <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="w-7 h-7 text-emerald-400" />
-              </div>
-              <p className="text-slate-600 font-semibold">Sin aprobaciones pendientes</p>
-              <p className="text-slate-400 text-sm mt-1">Todas las solicitudes han sido procesadas.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {pendingPayments.map(payment => (
-                <div key={payment.id} className="bg-white rounded-xl border border-amber-100 p-4 sm:p-5">
-                  <div className="flex flex-col sm:flex-row items-start gap-4">
-                    <div className={`w-10 h-10 rounded-full ${getAvatarBg(payment.status)} flex items-center justify-center text-white font-bold shrink-0`}>
-                      {payment.doctor_name.split(' ').slice(0, 2).map(n => n[0]).join('')}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-0.5">
-                        <p className="font-semibold text-slate-900 truncate">{payment.doctor_name}</p>
-                        {getStatusBadge(payment.status)}
+          <div className="p-6">
+            {/* Tab 1: Pending Payments */}
+            {activeTab === 'payments' && (
+              <div>
+                {pendingPayments.length === 0 ? (
+                  <EmptyState
+                    icon={<CheckCircle2 className="w-8 h-8 text-emerald-400" />}
+                    title="Sin aprobaciones pendientes"
+                    description="Todas las solicitudes de pago han sido procesadas."
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {pendingPayments.map(payment => (
+                      <div key={payment.id} className="border border-amber-100 rounded-lg p-4">
+                        <div className="flex flex-col sm:flex-row items-start gap-4">
+                          <div className={`w-10 h-10 rounded-full ${getAvatarBg(payment.status)} flex items-center justify-center text-white font-bold shrink-0`}>
+                            {getAvatarInitials(payment.doctor_name)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                              <p className="font-semibold text-slate-900">{payment.doctor_name}</p>
+                              {getStatusBadge(payment.status)}
+                            </div>
+                            <p className="text-xs text-slate-400 mb-2">{payment.doctor_email}</p>
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                              <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                {PAYMENT_METHOD_LABELS[payment.payment_method] ?? payment.payment_method}
+                              </span>
+                              <span className="text-xs font-bold text-emerald-600">
+                                {formatCurrency(payment.amount, payment.currency)}
+                              </span>
+                              {payment.reference_number && (
+                                <span className="text-xs text-slate-400">
+                                  Ref: {payment.reference_number}
+                                </span>
+                              )}
+                              <span className="text-xs text-slate-400">{timeAgo(payment.created_at)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
+                            {payment.receipt_url ? (
+                              <button
+                                onClick={() => setReceiptModal(payment.receipt_url)}
+                                className="flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:border-teal-300 transition-colors whitespace-nowrap"
+                              >
+                                <Eye className="w-3.5 h-3.5" /> Ver comprobante
+                              </button>
+                            ) : (
+                              <span className="flex items-center justify-center gap-1 text-xs text-slate-400">
+                                <AlertCircle className="w-3.5 h-3.5" /> Sin comprobante
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleRejectPayment(payment.id)}
+                              disabled={
+                                rejectingId === payment.id || approvingId === payment.id
+                              }
+                              className="flex items-center justify-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors whitespace-nowrap disabled:opacity-60"
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> Rechazar
+                            </button>
+                            <button
+                              onClick={() => handleApprovePayment(payment.id)}
+                              disabled={
+                                approvingId === payment.id || rejectingId === payment.id
+                              }
+                              className="flex items-center justify-center gap-1.5 text-xs text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap font-medium"
+                            >
+                              {approvingId === payment.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  Aprobando...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Aprobar
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-400 truncate">{payment.doctor_email}</p>
-                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
-                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full whitespace-nowrap">
-                          {PAYMENT_METHOD_LABELS[payment.payment_method] ?? payment.payment_method}
-                        </span>
-                        <span className="text-xs font-bold text-emerald-600">{formatCurrency(payment.amount, payment.currency)}</span>
-                        {payment.reference_number && (
-                          <span className="text-xs text-slate-400">Ref: {payment.reference_number}</span>
-                        )}
-                        <span className="text-xs text-slate-400">{timeAgo(payment.created_at)}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
-                      {payment.receipt_url ? (
-                        <button
-                          onClick={() => setReceiptModal(payment.receipt_url)}
-                          className="flex items-center justify-center sm:justify-start gap-1.5 text-xs text-slate-500 hover:text-teal-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:border-teal-300 transition-colors bg-white whitespace-nowrap"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> Comprobante
-                        </button>
-                      ) : (
-                        <span className="flex items-center justify-center gap-1 text-xs text-slate-400">
-                          <AlertCircle className="w-3.5 h-3.5" /> Sin comprobante
-                        </span>
-                      )}
-                      <button
-                        onClick={() => handleReject(payment.id)}
-                        disabled={rejectingId === payment.id || approvingId === payment.id}
-                        className="flex items-center justify-center gap-1.5 text-xs text-red-500 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors whitespace-nowrap disabled:opacity-60"
-                      >
-                        <XCircle className="w-3.5 h-3.5" /> Rechazar
-                      </button>
-                      <button
-                        onClick={() => handleApprove(payment.id)}
-                        disabled={approvingId === payment.id || rejectingId === payment.id}
-                        className="flex items-center justify-center gap-1.5 text-xs text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap font-medium"
-                      >
-                        {approvingId === payment.id ? (
-                          <><Loader2 className="w-3.5 h-3.5 animate-spin" />Aprobando...</>
-                        ) : (
-                          <><CheckCircle2 className="w-3.5 h-3.5" />Aprobar</>
-                        )}
-                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* History */}
+                {processedPayments.length > 0 && (
+                  <div className="mt-8 pt-8 border-t border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                      Histórico Reciente
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200">
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Médico
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Monto
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Método
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Estado
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Fecha
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {processedPayments.map(payment => (
+                            <tr key={payment.id} className="border-b border-slate-100 hover:bg-slate-50">
+                              <td className="py-3 px-4 text-slate-900">{payment.doctor_name}</td>
+                              <td className="py-3 px-4 font-semibold text-slate-900">
+                                {formatCurrency(payment.amount, payment.currency)}
+                              </td>
+                              <td className="py-3 px-4 text-slate-600">
+                                {PAYMENT_METHOD_LABELS[payment.payment_method] ??
+                                  payment.payment_method}
+                              </td>
+                              <td className="py-3 px-4">{getStatusBadge(payment.status)}</td>
+                              <td className="py-3 px-4 text-slate-500 text-xs">
+                                {timeAgo(payment.verified_at)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: New Subscriptions */}
+            {activeTab === 'new' && (
+              <div>
+                {newSubscriptions.length === 0 ? (
+                  <EmptyState
+                    icon={<CheckCircle2 className="w-8 h-8 text-emerald-400" />}
+                    title="Sin nuevas suscripciones"
+                    description="No hay suscripciones creadas en los últimos 30 días."
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {newSubscriptions.map(sub => (
+                      <div key={sub.id} className="border border-slate-200 rounded-lg p-4">
+                        <div className="flex flex-col sm:flex-row items-start gap-4">
+                          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold shrink-0">
+                            {getAvatarInitials(sub.doctor_name)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                              <p className="font-semibold text-slate-900">{sub.doctor_name}</p>
+                              {getSubscriptionStatusBadge(sub.status)}
+                            </div>
+                            <p className="text-xs text-slate-400 mb-1">{sub.doctor_email}</p>
+                            {sub.specialty && (
+                              <p className="text-xs text-slate-500 mb-2">{sub.specialty}</p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
+                              <span className="text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
+                                Plan: {sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                Inicio: {formatDate(sub.started_at)}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                Vence: {formatDate(sub.expires_at)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
+                            {sub.plan === 'free' && (
+                              <button
+                                onClick={() => handleActivatePro(sub.id)}
+                                disabled={extendingId === sub.id}
+                                className="flex items-center justify-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap font-medium"
+                              >
+                                {extendingId === sub.id ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    Activando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Activar PRO
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            <button className="flex items-center justify-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors whitespace-nowrap">
+                              <Eye className="w-3.5 h-3.5" /> Ver perfil
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 3: Expiring Subscriptions */}
+            {activeTab === 'expiring' && (
+              <div>
+                {expiringSubscriptions.length === 0 ? (
+                  <EmptyState
+                    icon={<CheckCircle2 className="w-8 h-8 text-emerald-400" />}
+                    title="Sin suscripciones por vencer"
+                    description="No hay suscripciones próximas a vencer en los próximos 14 días."
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {expiringSubscriptions.map(sub => (
+                      <div
+                        key={sub.id}
+                        className={`border rounded-lg p-4 ${
+                          sub.days_remaining <= 3
+                            ? 'border-red-100 bg-red-50'
+                            : sub.days_remaining <= 7
+                              ? 'border-amber-100 bg-amber-50'
+                              : 'border-yellow-100 bg-yellow-50'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row items-start gap-4">
+                          <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold shrink-0">
+                            {getAvatarInitials(sub.doctor_name)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                              <p className="font-semibold text-slate-900">{sub.doctor_name}</p>
+                              {getExpiringBadge(sub.days_remaining)}
+                            </div>
+                            <p className="text-xs text-slate-400 mb-1">{sub.doctor_email}</p>
+                            {sub.specialty && (
+                              <p className="text-xs text-slate-500 mb-2">{sub.specialty}</p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
+                              <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                                Plan: {sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                Vence: {formatDate(sub.expires_at)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
+                            <button
+                              onClick={() => handleExtendSubscription(sub.id)}
+                              disabled={extendingId === sub.id}
+                              className="flex items-center justify-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap font-medium"
+                            >
+                              {extendingId === sub.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  Extendiendo...
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-3.5 h-3.5" />
+                                  Extender 30 días
+                                </>
+                              )}
+                            </button>
+                            <button className="flex items-center justify-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors whitespace-nowrap">
+                              <AlertTriangle className="w-3.5 h-3.5" /> Recordatorio
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Processed Payments History */}
-        {processedPayments.length > 0 && (
-          <div className="mt-8">
-            <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4">Histórico de Procesadas</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-3 px-4 font-semibold text-slate-700">Médico</th>
-                    <th className="text-left py-3 px-4 font-semibold text-slate-700">Monto</th>
-                    <th className="text-left py-3 px-4 font-semibold text-slate-700">Método</th>
-                    <th className="text-left py-3 px-4 font-semibold text-slate-700">Estado</th>
-                    <th className="text-left py-3 px-4 font-semibold text-slate-700">Fecha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {processedPayments.map(payment => (
-                    <tr key={payment.id} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="py-3 px-4 text-slate-900">{payment.doctor_name}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-900">{formatCurrency(payment.amount, payment.currency)}</td>
-                      <td className="py-3 px-4 text-slate-600">{PAYMENT_METHOD_LABELS[payment.payment_method] ?? payment.payment_method}</td>
-                      <td className="py-3 px-4">{getStatusBadge(payment.status)}</td>
-                      <td className="py-3 px-4 text-slate-500 text-xs">{timeAgo(payment.verified_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Receipt Modal */}
-        {receiptModal && (
-          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setReceiptModal(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 flex-shrink-0">
-                <h4 className="text-sm font-semibold text-slate-900">Comprobante de pago</h4>
-                <button onClick={() => setReceiptModal(null)} className="text-slate-400 hover:text-slate-700">✕</button>
-              </div>
-              <div className="p-3 sm:p-4 overflow-y-auto flex-1">
-                <img src={receiptModal} alt="Comprobante" className="w-full rounded-xl" />
-              </div>
-              <div className="px-4 sm:px-5 py-3 border-t border-slate-100 flex justify-end flex-shrink-0">
-                <a href={receiptModal} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-teal-600 font-semibold hover:text-teal-700">
-                  <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Receipt Modal */}
+      {receiptModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setReceiptModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+              <h4 className="text-sm font-semibold text-slate-900">Comprobante de pago</h4>
+              <button
+                onClick={() => setReceiptModal(null)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <img src={receiptModal} alt="Comprobante" className="w-full rounded-xl" />
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end flex-shrink-0">
+              <a
+                href={receiptModal}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 text-xs text-teal-600 font-semibold hover:text-teal-700"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </>
+  )
+}
+
+interface TabButtonProps {
+  active: boolean
+  onClick: () => void
+  label: string
+  count: number
+}
+
+function TabButton({ active, onClick, label, count }: TabButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 py-4 px-4 text-sm font-medium transition-colors border-b-2 ${
+        active
+          ? 'text-teal-600 border-teal-500 bg-teal-50'
+          : 'text-slate-600 border-transparent hover:text-slate-900'
+      }`}
+    >
+      {label}
+      {count > 0 && (
+        <span className="ml-2 bg-teal-500 text-white text-xs font-bold rounded-full px-2 py-0.5">
+          {count}
+        </span>
+      )}
+    </button>
+  )
+}
+
+interface EmptyStateProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+}
+
+function EmptyState({ icon, title, description }: EmptyStateProps) {
+  return (
+    <div className="py-12 px-4 text-center">
+      <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+        {icon}
+      </div>
+      <p className="text-slate-600 font-semibold">{title}</p>
+      <p className="text-slate-400 text-sm mt-1">{description}</p>
+    </div>
   )
 }

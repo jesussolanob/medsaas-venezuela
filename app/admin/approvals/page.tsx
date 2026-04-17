@@ -21,6 +21,30 @@ type ProcessedPayment = PendingPayment & {
   verified_by: string | null
 }
 
+type NewSubscription = {
+  id: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  specialty: string | null
+  plan: string
+  status: string
+  started_at: string
+  expires_at: string
+}
+
+type ExpiringSubscription = {
+  id: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  specialty: string | null
+  plan: string
+  status: string
+  expires_at: string
+  days_remaining: number
+}
+
 export default async function ApprovalsPage() {
   const supabase = await createClient()
 
@@ -41,8 +65,8 @@ export default async function ApprovalsPage() {
     redirect('/doctor')
   }
 
-  // Fetch pending payments with doctor info
-  const { data: pendingData, error: pendingError } = await supabase
+  // 1. Fetch pending payments with doctor info
+  const { data: pendingData } = await supabase
     .from('subscription_payments')
     .select(`
       id,
@@ -59,8 +83,8 @@ export default async function ApprovalsPage() {
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
 
-  // Fetch recently processed payments (last 20)
-  const { data: processedData, error: processedError } = await supabase
+  // 2. Fetch recently processed payments (last 20)
+  const { data: processedData } = await supabase
     .from('subscription_payments')
     .select(`
       id,
@@ -80,7 +104,45 @@ export default async function ApprovalsPage() {
     .order('verified_at', { ascending: false })
     .limit(20)
 
-  // Transform pending data
+  // 3. Fetch new subscriptions (last 30 days)
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+  const { data: newSubsData } = await supabase
+    .from('subscriptions')
+    .select(`
+      id,
+      doctor_id,
+      plan,
+      status,
+      started_at,
+      expires_at,
+      profiles:doctor_id(full_name, email, specialty)
+    `)
+    .gte('started_at', thirtyDaysAgo.toISOString())
+    .order('started_at', { ascending: false })
+
+  // 4. Fetch subscriptions expiring in next 14 days
+  const now = new Date()
+  const fourteenDaysFromNow = new Date()
+  fourteenDaysFromNow.setDate(fourteenDaysFromNow.getDate() + 14)
+
+  const { data: expiringSubsData } = await supabase
+    .from('subscriptions')
+    .select(`
+      id,
+      doctor_id,
+      plan,
+      status,
+      expires_at,
+      profiles:doctor_id(full_name, email, specialty)
+    `)
+    .lte('expires_at', fourteenDaysFromNow.toISOString())
+    .gte('expires_at', now.toISOString())
+    .in('status', ['active', 'trial'])
+    .order('expires_at', { ascending: true })
+
+  // Transform pending payments
   const pendingPayments: PendingPayment[] = (pendingData || []).map((p: any) => ({
     id: p.id,
     doctor_id: p.doctor_id,
@@ -95,7 +157,7 @@ export default async function ApprovalsPage() {
     status: p.status,
   }))
 
-  // Transform processed data
+  // Transform processed payments
   const processedPayments: ProcessedPayment[] = (processedData || []).map((p: any) => ({
     id: p.id,
     doctor_id: p.doctor_id,
@@ -112,5 +174,43 @@ export default async function ApprovalsPage() {
     verified_by: p.verified_by,
   }))
 
-  return <ApprovalsClient pendingPayments={pendingPayments} processedPayments={processedPayments} />
+  // Transform new subscriptions
+  const newSubscriptions: NewSubscription[] = (newSubsData || []).map((s: any) => ({
+    id: s.id,
+    doctor_id: s.doctor_id,
+    doctor_name: s.profiles?.full_name || 'Unknown',
+    doctor_email: s.profiles?.email || 'unknown@example.com',
+    specialty: s.profiles?.specialty || null,
+    plan: s.plan,
+    status: s.status,
+    started_at: s.started_at,
+    expires_at: s.expires_at,
+  }))
+
+  // Transform expiring subscriptions
+  const expiringSubscriptions: ExpiringSubscription[] = (expiringSubsData || []).map((s: any) => {
+    const expiresDate = new Date(s.expires_at)
+    const daysRemaining = Math.ceil((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+    return {
+      id: s.id,
+      doctor_id: s.doctor_id,
+      doctor_name: s.profiles?.full_name || 'Unknown',
+      doctor_email: s.profiles?.email || 'unknown@example.com',
+      specialty: s.profiles?.specialty || null,
+      plan: s.plan,
+      status: s.status,
+      expires_at: s.expires_at,
+      days_remaining: Math.max(0, daysRemaining),
+    }
+  })
+
+  return (
+    <ApprovalsClient
+      pendingPayments={pendingPayments}
+      processedPayments={processedPayments}
+      newSubscriptions={newSubscriptions}
+      expiringSubscriptions={expiringSubscriptions}
+    />
+  )
 }
