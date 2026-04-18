@@ -1,9 +1,46 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, XCircle, ClipboardList, Search, X } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+
 const toast = { success: (msg: string) => alert(msg), error: (msg: string) => alert(msg) }
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type ScheduleConfig = {
+  slot_duration: number    // minutos por cita
+  buffer_minutes: number   // minutos entre citas
+  advance_booking_days: number
+  auto_approve: boolean
+}
+
+type AvailabilitySlot = {
+  id?: string
+  day_of_week: number     // 0=Lun, 6=Dom
+  start_time: string      // HH:MM
+  end_time: string        // HH:MM
+  is_enabled: boolean
+}
+
+type CalendarAppointment = {
+  id: string
+  patient_name: string
+  date: string            // YYYY-MM-DD
+  isoDate: string         // full ISO
+  time: string            // HH:MM
+  endTime: string         // HH:MM (calculado)
+  chief_complaint?: string
+  status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled'
+  source: 'consultation' | 'appointment'
+  consultation_code?: string
+  appointment_code?: string
+  plan_name?: string
+  plan_price?: number
+  patient_phone?: string | null
+  patient_email?: string | null
+  patient_cedula?: string | null
+}
 
 type PendingAppointment = {
   id: string
@@ -16,39 +53,36 @@ type PendingAppointment = {
   plan_name: string | null
   plan_price: number | null
   status: string
-  consultation_code?: string
+  appointment_code?: string
 }
 
-type TimeSlot = { day: number; start: string; end: string; enabled: boolean }
-type Appointment = {
-  id: string
-  patient_name: string
-  date: string        // localeDateString es-VE
-  isoDate: string     // ISO string for comparisons
-  time: string
-  chief_complaint?: string
-  status: 'scheduled' | 'completed' | 'cancelled'
-}
-
-type DailyHour = {
-  hour: number
-  appointments: Appointment[]
-}
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const DAYS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const DAYS_FULL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const DURATION_OPTIONS = [15, 20, 30, 45, 60]
+const BUFFER_OPTIONS = [0, 5, 10, 15, 30]
 
-const DEFAULT_SLOTS: TimeSlot[] = [
-  { day: 0, start: '08:00', end: '12:00', enabled: true },
-  { day: 0, start: '14:00', end: '17:00', enabled: true },
-  { day: 1, start: '08:00', end: '12:00', enabled: true },
-  { day: 1, start: '14:00', end: '17:00', enabled: true },
-  { day: 2, start: '08:00', end: '12:00', enabled: true },
-  { day: 3, start: '08:00', end: '12:00', enabled: true },
-  { day: 3, start: '14:00', end: '17:00', enabled: true },
-  { day: 4, start: '08:00', end: '12:00', enabled: true },
+const DEFAULT_CONFIG: ScheduleConfig = {
+  slot_duration: 30,
+  buffer_minutes: 0,
+  advance_booking_days: 30,
+  auto_approve: false,
+}
+
+const DEFAULT_SLOTS: AvailabilitySlot[] = [
+  { day_of_week: 0, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { day_of_week: 0, start_time: '14:00', end_time: '17:00', is_enabled: true },
+  { day_of_week: 1, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { day_of_week: 1, start_time: '14:00', end_time: '17:00', is_enabled: true },
+  { day_of_week: 2, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { day_of_week: 3, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { day_of_week: 3, start_time: '14:00', end_time: '17:00', is_enabled: true },
+  { day_of_week: 4, start_time: '08:00', end_time: '12:00', is_enabled: true },
 ]
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getWeekDates(offset = 0): Date[] {
   const today = new Date()
@@ -64,7 +98,6 @@ function getWeekDates(offset = 0): Date[] {
 function getMonthDates(year: number, month: number): (Date | null)[] {
   const firstDay = new Date(year, month, 1)
   const lastDay = new Date(year, month + 1, 0)
-  // start from Monday
   const startPad = (firstDay.getDay() + 6) % 7
   const cells: (Date | null)[] = []
   for (let i = 0; i < startPad; i++) cells.push(null)
@@ -72,6 +105,59 @@ function getMonthDates(year: number, month: number): (Date | null)[] {
   while (cells.length % 7 !== 0) cells.push(null)
   return cells
 }
+
+function toHHMM(date: Date): string {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function addMinutes(time: string, mins: number): string {
+  const [h, m] = time.split(':').map(Number)
+  const total = h * 60 + m + mins
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  return h * 60 + m
+}
+
+/** Generate time slots for a day based on availability and config */
+function generateTimeSlots(
+  dayOfWeek: number,
+  availSlots: AvailabilitySlot[],
+  config: ScheduleConfig
+): { time: string; endTime: string }[] {
+  const daySlots = availSlots.filter(s => s.day_of_week === dayOfWeek && s.is_enabled)
+  const result: { time: string; endTime: string }[] = []
+
+  for (const slot of daySlots) {
+    const blockStart = timeToMinutes(slot.start_time)
+    const blockEnd = timeToMinutes(slot.end_time)
+    const step = config.slot_duration + config.buffer_minutes
+    let current = blockStart
+
+    while (current + config.slot_duration <= blockEnd) {
+      const startStr = `${String(Math.floor(current / 60)).padStart(2, '0')}:${String(current % 60).padStart(2, '0')}`
+      const endStr = addMinutes(startStr, config.slot_duration)
+      result.push({ time: startStr, endTime: endStr })
+      current += step
+    }
+  }
+
+  return result
+}
+
+/** Check if a time falls on a valid slot boundary */
+function isValidSlotTime(time: string, dayOfWeek: number, availSlots: AvailabilitySlot[], config: ScheduleConfig): boolean {
+  const validSlots = generateTimeSlots(dayOfWeek, availSlots, config)
+  return validSlots.some(s => s.time === time)
+}
+
+function dateToYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 type CalendarView = 'week' | 'month' | 'day'
 type AgendaTab = 'calendar' | 'availability'
@@ -82,94 +168,210 @@ export default function AgendaPage() {
   const [monthYear, setMonthYear] = useState({ year: today.getFullYear(), month: today.getMonth() })
   const [selectedDate, setSelectedDate] = useState(today)
   const [calView, setCalView] = useState<CalendarView>('week')
-  const [slots, setSlots] = useState<TimeSlot[]>(DEFAULT_SLOTS)
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [allAppointments, setAllAppointments] = useState<Appointment[]>([])
-  const [pendingAppointments, setPendingAppointments] = useState<PendingAppointment[]>([])
   const [tab, setTab] = useState<AgendaTab>('calendar')
-  const [gcConnected] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [accepting, setAccepting] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [doctorId, setDoctorId] = useState<string | null>(null)
+
+  // Schedule config
+  const [config, setConfig] = useState<ScheduleConfig>(DEFAULT_CONFIG)
+  const [availSlots, setAvailSlots] = useState<AvailabilitySlot[]>(DEFAULT_SLOTS)
+
+  // Calendar data (real from DB)
+  const [allAppointments, setAllAppointments] = useState<CalendarAppointment[]>([])
+  const [pendingAppointments, setPendingAppointments] = useState<PendingAppointment[]>([])
+
+  // UI state
+  const [accepting, setAccepting] = useState<string | null>(null)
   const [searchText, setSearchText] = useState('')
   const [rescheduling, setRescheduling] = useState<PendingAppointment | null>(null)
   const [newDateTime, setNewDateTime] = useState('')
-  const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
-  const [bulkMode, setBulkMode] = useState(false)
-  const [bulkSelected, setBulkSelected] = useState<string[]>([])
-  const [bulkReschedule, setBulkReschedule] = useState(false)
-  const [bulkNewDateTime, setBulkNewDateTime] = useState('')
+  const [detailAppt, setDetailAppt] = useState<CalendarAppointment | null>(null)
+  const [showConfigPanel, setShowConfigPanel] = useState(false)
+
   const weekDates = getWeekDates(weekOffset)
   const monthCells = getMonthDates(monthYear.year, monthYear.month)
 
-  // Fetch appointments and pending bookings
-  useEffect(() => {
+  // ── Load data from DB ────────────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
     const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      setDoctorId(user.id)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    setDoctorId(user.id)
 
-      // Confirmed consultations (already accepted)
-      const { data: consults } = await supabase
-        .from('consultations')
-        .select('id, consultation_date, chief_complaint, patients(full_name)')
-        .eq('doctor_id', user.id)
-        .order('consultation_date', { ascending: true })
+    // 1. Load schedule config + availability from API
+    try {
+      const schedRes = await fetch('/api/doctor/schedule')
+      if (schedRes.ok) {
+        const sched = await schedRes.json()
+        if (sched.config) setConfig(sched.config)
+        if (sched.slots && sched.slots.length > 0) {
+          setAvailSlots(sched.slots.map((s: any) => ({
+            id: s.id,
+            day_of_week: s.day_of_week,
+            start_time: s.start_time?.slice(0, 5) || s.start_time,
+            end_time: s.end_time?.slice(0, 5) || s.end_time,
+            is_enabled: s.is_enabled,
+          })))
+        }
+      }
+    } catch { /* use defaults */ }
 
-      const consultAppts: Appointment[] = (consults ?? []).map(a => ({
-        id: a.id,
-        patient_name: (!Array.isArray(a.patients) && a.patients) ? (a.patients as { full_name: string }).full_name : 'Paciente',
-        date: new Date(a.consultation_date).toLocaleDateString('es-VE'),
-        isoDate: a.consultation_date,
-        time: new Date(a.consultation_date).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
-        chief_complaint: a.chief_complaint ?? undefined,
-        status: 'scheduled' as const,
-      }))
+    // 2. Load CONFIRMED consultations (real data)
+    const { data: consults } = await supabase
+      .from('consultations')
+      .select('id, consultation_code, consultation_date, chief_complaint, payment_status, appointment_id, amount, patients(full_name, phone, email)')
+      .eq('doctor_id', user.id)
+      .order('consultation_date', { ascending: true })
 
-      setAllAppointments(consultAppts)
-
-      // Pending appointments from booking (awaiting doctor acceptance)
-      const { data: pending } = await supabase
-        .from('appointments')
-        .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_cedula, plan_name, plan_price, status')
-        .eq('doctor_id', user.id)
-        .in('status', ['scheduled', 'confirmed'])
-        .order('scheduled_at', { ascending: true })
-
-      setPendingAppointments((pending ?? []) as PendingAppointment[])
-      setLoading(false)
+    const slotDuration = config.slot_duration || 30
+    const consultAppts: CalendarAppointment[] = (consults ?? []).map(c => {
+      const d = new Date(c.consultation_date)
+      const timeStr = toHHMM(d)
+      return {
+        id: c.id,
+        patient_name: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).full_name : 'Paciente',
+        date: dateToYMD(d),
+        isoDate: c.consultation_date,
+        time: timeStr,
+        endTime: addMinutes(timeStr, slotDuration),
+        chief_complaint: c.chief_complaint ?? undefined,
+        status: 'confirmed' as const,
+        source: 'consultation' as const,
+        consultation_code: c.consultation_code,
+        patient_phone: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).phone : null,
+        patient_email: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).email : null,
+      }
     })
-  }, [])
 
-  // Accept appointment → create patient + consultation (linked to appointment)
+    // 3. Load PENDING appointments (not yet accepted)
+    const { data: pending } = await supabase
+      .from('appointments')
+      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_cedula, plan_name, plan_price, status, appointment_code')
+      .eq('doctor_id', user.id)
+      .eq('status', 'scheduled')
+      .order('scheduled_at', { ascending: true })
+
+    // 4. Load CONFIRMED appointments (already accepted, show in calendar)
+    const { data: confirmed } = await supabase
+      .from('appointments')
+      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, plan_name, plan_price, status, appointment_code')
+      .eq('doctor_id', user.id)
+      .eq('status', 'confirmed')
+      .order('scheduled_at', { ascending: true })
+
+    const confirmedAppts: CalendarAppointment[] = (confirmed ?? [])
+      .filter(a => !consultAppts.some(c => c.isoDate === a.scheduled_at && c.patient_name === a.patient_name))
+      .map(a => {
+        const d = new Date(a.scheduled_at)
+        const timeStr = toHHMM(d)
+        return {
+          id: a.id,
+          patient_name: a.patient_name,
+          date: dateToYMD(d),
+          isoDate: a.scheduled_at,
+          time: timeStr,
+          endTime: addMinutes(timeStr, slotDuration),
+          chief_complaint: a.chief_complaint ?? undefined,
+          status: 'confirmed' as const,
+          source: 'appointment' as const,
+          appointment_code: a.appointment_code,
+          plan_name: a.plan_name,
+          plan_price: a.plan_price,
+          patient_phone: a.patient_phone,
+          patient_email: a.patient_email,
+        }
+      })
+
+    setAllAppointments([...consultAppts, ...confirmedAppts])
+    setPendingAppointments((pending ?? []) as PendingAppointment[])
+    setLoading(false)
+  }, [config.slot_duration])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  // ── Save availability to DB ──────────────────────────────────────────────
+
+  async function saveSchedule() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/doctor/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config,
+          slots: availSlots.map(s => ({
+            day_of_week: s.day_of_week,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            is_enabled: s.is_enabled,
+          })),
+        }),
+      })
+      if (!res.ok) throw new Error('Error guardando')
+      toast.success('Disponibilidad guardada')
+    } catch (e) {
+      console.error(e)
+      toast.error('Error al guardar')
+    }
+    setSaving(false)
+  }
+
+  // ── Accept / Reject appointments ────────────────────────────────────────
+
   async function acceptAppointment(appt: PendingAppointment) {
     if (!doctorId) return
     setAccepting(appt.id)
     const supabase = createClient()
 
     try {
-      // 1. Check if patient already exists (by email or cedula)
+      // Validate slot time
+      const apptDate = new Date(appt.scheduled_at)
+      const dayOfWeek = (apptDate.getDay() + 6) % 7 // 0=Monday
+      const timeStr = toHHMM(apptDate)
+
+      if (!isValidSlotTime(timeStr, dayOfWeek, availSlots, config)) {
+        const validSlots = generateTimeSlots(dayOfWeek, availSlots, config)
+        if (validSlots.length > 0) {
+          toast.error(`Horario ${timeStr} no es válido. Horarios disponibles: ${validSlots.slice(0, 5).map(s => s.time).join(', ')}...`)
+        } else {
+          toast.error(`No hay horarios disponibles para ${DAYS_FULL[dayOfWeek]}`)
+        }
+        setAccepting(null)
+        return
+      }
+
+      // Check for conflicts
+      const conflict = allAppointments.find(a => {
+        if (a.date !== dateToYMD(apptDate)) return false
+        const aStart = timeToMinutes(a.time)
+        const aEnd = timeToMinutes(a.endTime)
+        const newStart = timeToMinutes(timeStr)
+        const newEnd = newStart + config.slot_duration
+        return (newStart < aEnd && newEnd > aStart)
+      })
+
+      if (conflict) {
+        toast.error(`Conflicto: ya hay una cita a las ${conflict.time} con ${conflict.patient_name}`)
+        setAccepting(null)
+        return
+      }
+
+      // Find or create patient
       let patientId: string | null = null
       if (appt.patient_email) {
         const { data: existing } = await supabase
-          .from('patients')
-          .select('id')
-          .eq('doctor_id', doctorId)
-          .eq('email', appt.patient_email)
-          .maybeSingle()
+          .from('patients').select('id')
+          .eq('doctor_id', doctorId).eq('email', appt.patient_email).maybeSingle()
         if (existing) patientId = existing.id
       }
       if (!patientId && appt.patient_cedula) {
         const { data: existing } = await supabase
-          .from('patients')
-          .select('id')
-          .eq('doctor_id', doctorId)
-          .eq('cedula', appt.patient_cedula)
-          .maybeSingle()
+          .from('patients').select('id')
+          .eq('doctor_id', doctorId).eq('cedula', appt.patient_cedula).maybeSingle()
         if (existing) patientId = existing.id
       }
-
-      // If no existing patient, create one
       if (!patientId) {
         const { data: patient } = await supabase
           .from('patients')
@@ -179,7 +381,7 @@ export default function AgendaPage() {
         patientId = patient.id
       }
 
-      // 2. Create consultation via API (linked to appointment)
+      // Create consultation via API
       const res = await fetch('/api/doctor/consultations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,26 +395,32 @@ export default function AgendaPage() {
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Error creando consulta')
-      const code = result.code
 
-      // 3. Update local state
+      // Update local state
       setPendingAppointments(prev => prev.filter(a => a.id !== appt.id))
-
-      // 4. Send confirmation toast
-      toast.success(`Consulta ${code} confirmada · Cita ${appt.consultation_code || appt.id.slice(0, 8)}`)
-
-      // Add to calendar
-      const newAppt: Appointment = {
-        id: code,
+      const newAppt: CalendarAppointment = {
+        id: result.consultation?.id || appt.id,
         patient_name: appt.patient_name,
-        date: new Date(appt.scheduled_at).toLocaleDateString('es-VE'),
+        date: dateToYMD(apptDate),
         isoDate: appt.scheduled_at,
-        time: new Date(appt.scheduled_at).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
+        time: timeStr,
+        endTime: addMinutes(timeStr, config.slot_duration),
         chief_complaint: appt.chief_complaint ?? undefined,
-        status: 'scheduled',
+        status: 'confirmed',
+        source: 'consultation',
+        consultation_code: result.code,
+        appointment_code: appt.appointment_code,
+        plan_name: appt.plan_name ?? undefined,
+        plan_price: appt.plan_price ?? undefined,
+        patient_phone: appt.patient_phone,
+        patient_email: appt.patient_email,
       }
       setAllAppointments(prev => [...prev, newAppt])
-    } catch (e) { console.error(e) }
+      toast.success(`Consulta ${result.code} confirmada`)
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e.message || 'Error al aprobar')
+    }
     setAccepting(null)
   }
 
@@ -226,21 +434,16 @@ export default function AgendaPage() {
     if (!rescheduling || !newDateTime) return
     const supabase = createClient()
     try {
-      // Convertir el datetime local a ISO string
       const rescheduledDate = new Date(newDateTime).toISOString()
-
-      // Actualizar cita
       await supabase
         .from('appointments')
-        .update({ scheduled_at: rescheduledDate, appointment_date: rescheduledDate })
+        .update({ scheduled_at: rescheduledDate })
         .eq('id', rescheduling.id)
 
-      // Actualizar lista
       setPendingAppointments(prev => prev.map(a =>
         a.id === rescheduling.id ? { ...a, scheduled_at: rescheduledDate } : a
       ))
-
-      toast.success(`Cita reagendada para ${new Date(rescheduledDate).toLocaleDateString('es-VE')} a las ${new Date(rescheduledDate).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}`)
+      toast.success('Cita reagendada')
       setRescheduling(null)
       setNewDateTime('')
     } catch (e) {
@@ -249,68 +452,60 @@ export default function AgendaPage() {
     }
   }
 
-  async function confirmBulkReschedule() {
-    if (bulkSelected.length === 0 || !bulkNewDateTime) return
-    const supabase = createClient()
-    try {
-      const rescheduledDate = new Date(bulkNewDateTime).toISOString()
+  // ── Get appointments for a specific date ─────────────────────────────────
 
-      for (const apptId of bulkSelected) {
-        await supabase
-          .from('appointments')
-          .update({ scheduled_at: rescheduledDate, appointment_date: rescheduledDate })
-          .eq('id', apptId)
-      }
-
-      setPendingAppointments(prev => prev.map(a =>
-        bulkSelected.includes(a.id) ? { ...a, scheduled_at: rescheduledDate } : a
-      ))
-
-      toast.success(`${bulkSelected.length} cita(s) reagendada(s) para ${new Date(rescheduledDate).toLocaleDateString('es-VE')} a las ${new Date(rescheduledDate).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}`)
-      setBulkReschedule(false)
-      setBulkSelected([])
-      setBulkNewDateTime('')
-      setBulkMode(false)
-    } catch (e) {
-      console.error(e)
-      toast.error('Error al reagendar citas')
-    }
-  }
-
-  // Filter for week view
-  useEffect(() => {
-    const start = weekDates[0]
-    const end = weekDates[6]
-    setAppointments(allAppointments.filter(a => {
-      const d = new Date(a.isoDate)
-      return d >= start && d <= end
-    }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset, allAppointments])
-
-  function getApptsByDate(d: Date): Appointment[] {
-    const dateStr = d.toLocaleDateString('es-VE')
-    const combinedAppts = [
-      ...allAppointments,
-      ...pendingAppointments.map(p => ({
+  function getApptsByDate(d: Date): CalendarAppointment[] {
+    const ymd = dateToYMD(d)
+    const pendingAsAppts: CalendarAppointment[] = pendingAppointments.map(p => {
+      const pd = new Date(p.scheduled_at)
+      const timeStr = toHHMM(pd)
+      return {
         id: p.id,
         patient_name: p.patient_name,
-        date: new Date(p.scheduled_at).toLocaleDateString('es-VE'),
+        date: dateToYMD(pd),
         isoDate: p.scheduled_at,
-        time: new Date(p.scheduled_at).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
+        time: timeStr,
+        endTime: addMinutes(timeStr, config.slot_duration),
         chief_complaint: p.chief_complaint ?? undefined,
         status: 'scheduled' as const,
-      }))
-    ]
-    return combinedAppts.filter(a => a.date === dateStr)
+        source: 'appointment' as const,
+        appointment_code: p.appointment_code,
+        plan_name: p.plan_name ?? undefined,
+        plan_price: p.plan_price ?? undefined,
+        patient_phone: p.patient_phone,
+        patient_email: p.patient_email,
+      }
+    })
+    return [...allAppointments, ...pendingAsAppts]
+      .filter(a => a.date === ymd)
+      .sort((a, b) => a.time.localeCompare(b.time))
   }
 
-  function toggleSlot(idx: number) { setSlots(prev => prev.map((s, i) => i === idx ? { ...s, enabled: !s.enabled } : s)) }
-  function removeSlot(idx: number) { setSlots(prev => prev.filter((_, i) => i !== idx)) }
-  function addSlot(day: number) { setSlots(prev => [...prev, { day, start: '09:00', end: '12:00', enabled: true }]) }
+  // Week appointments
+  const weekAppts = allAppointments.filter(a => {
+    const d = new Date(a.isoDate)
+    return d >= weekDates[0] && d <= weekDates[6]
+  })
+
+  // ── Availability helpers ─────────────────────────────────────────────────
+
+  function toggleSlot(idx: number) {
+    setAvailSlots(prev => prev.map((s, i) => i === idx ? { ...s, is_enabled: !s.is_enabled } : s))
+  }
+  function removeSlot(idx: number) {
+    setAvailSlots(prev => prev.filter((_, i) => i !== idx))
+  }
+  function addSlot(day: number) {
+    setAvailSlots(prev => [...prev, { day_of_week: day, start_time: '09:00', end_time: '12:00', is_enabled: true }])
+  }
+  function updateSlotTime(idx: number, field: 'start_time' | 'end_time', value: string) {
+    setAvailSlots(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s))
+  }
 
   const prevMonth = () => setMonthYear(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })
   const nextMonth = () => setMonthYear(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -321,122 +516,107 @@ export default function AgendaPage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex-1">
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Agenda</h1>
-            <p className="text-sm text-slate-500 mt-1">Consultas programadas y disponibilidad</p>
+            <p className="text-sm text-slate-500 mt-1">
+              Citas cada {config.slot_duration} min
+              {config.buffer_minutes > 0 && ` · ${config.buffer_minutes} min entre citas`}
+              {' · '}{allAppointments.length} consultas
+            </p>
           </div>
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
-            {(['calendar', 'availability'] as AgendaTab[]).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${tab === t ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                {t === 'calendar' ? 'Calendario' : 'Disponibilidad'}
-              </button>
-            ))}
+          <div className="flex gap-2">
+            <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
+              {(['calendar', 'availability'] as AgendaTab[]).map(t => (
+                <button key={t} onClick={() => setTab(t)} className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${tab === t ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  {t === 'calendar' ? 'Calendario' : 'Disponibilidad'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Google Calendar connect banner */}
-        <div className={`rounded-xl p-4 flex items-center gap-4 ${gcConnected ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-900 border border-slate-700'}`}>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${gcConnected ? 'bg-emerald-500' : 'bg-white/10'}`}>
-            {gcConnected ? <Check className="w-5 h-5 text-white" /> : <Calendar className="w-5 h-5 text-white" />}
-          </div>
-          <div className="flex-1">
-            {gcConnected
-              ? <><p className="text-sm font-semibold text-emerald-700">Google Calendar conectado</p><p className="text-xs text-emerald-500">Las citas se sincronizan automáticamente</p></>
-              : <><p className="text-sm font-semibold text-white">Conecta tu Google Calendar</p><p className="text-xs text-slate-400">Sincroniza citas bidireccionales, evita conflictos de horario</p></>
-            }
-          </div>
-          {!gcConnected && (
-            <button onClick={() => alert('Para conectar Google Calendar, configura las credenciales OAuth en Google Cloud Console y agrega GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET al .env.local')}
-              className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors">
-              <Link2 className="w-3.5 h-3.5" />Conectar
-            </button>
-          )}
-        </div>
-
-        {/* CALENDAR TAB */}
+        {/* ═══ CALENDAR TAB ═══ */}
         {tab === 'calendar' && (
           <div className="space-y-4">
             {/* View toggle + nav */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3">
-              {/* View switcher */}
               <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5 shrink-0">
-                <button onClick={() => { setCalView('week'); setSelectedDate(today) }} className={`px-2 sm:px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'week' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Semana</button>
-                <button onClick={() => { setCalView('month'); setSelectedDate(today) }} className={`px-2 sm:px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'month' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Mes</button>
-                <button onClick={() => { setCalView('day'); setSelectedDate(today) }} className={`px-2 sm:px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === 'day' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>Día</button>
+                {(['week', 'month', 'day'] as CalendarView[]).map(v => (
+                  <button key={v} onClick={() => { setCalView(v); if (v !== 'day') setSelectedDate(today) }}
+                    className={`px-2 sm:px-3 py-1 rounded-md text-xs font-semibold transition-all ${calView === v ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500'}`}>
+                    {v === 'week' ? 'Semana' : v === 'month' ? 'Mes' : 'Día'}
+                  </button>
+                ))}
               </div>
 
-              {/* Navigation */}
               <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
                 <button onClick={() => {
                   if (calView === 'week') setWeekOffset(v => v - 1)
                   else if (calView === 'month') prevMonth()
                   else setSelectedDate(d => new Date(d.getTime() - 86400000))
-                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors shrink-0">
-                  <ChevronLeft className="w-4 h-4 text-slate-500" />
-                </button>
-                <p className="text-xs sm:text-sm font-semibold text-slate-700 min-w-[180px] sm:min-w-[220px] text-center flex-1 sm:flex-none">
-                  {calView === 'week'
-                    ? `${weekDates[0].toLocaleDateString('es-VE', { day: '2-digit', month: 'long' })} – ${weekDates[6].toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })}`
-                    : calView === 'month'
-                      ? `${MONTHS_ES[monthYear.month]} ${monthYear.year}`
-                      : selectedDate.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-                  }
+                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 min-w-[180px] sm:min-w-[220px] text-center">
+                  {calView === 'week' ? `${weekDates[0].toLocaleDateString('es-VE', { day: '2-digit', month: 'long' })} – ${weekDates[6].toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })}`
+                    : calView === 'month' ? `${MONTHS_ES[monthYear.month]} ${monthYear.year}`
+                    : selectedDate.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </p>
                 <button onClick={() => {
                   if (calView === 'week') setWeekOffset(v => v + 1)
                   else if (calView === 'month') nextMonth()
                   else setSelectedDate(d => new Date(d.getTime() + 86400000))
-                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors shrink-0">
-                  <ChevronRight className="w-4 h-4 text-slate-500" />
-                </button>
+                }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center"><ChevronRight className="w-4 h-4 text-slate-500" /></button>
               </div>
 
-              <button onClick={() => { setWeekOffset(0); setMonthYear({ year: today.getFullYear(), month: today.getMonth() }) }}
-                className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 transition-colors shrink-0">
-                Hoy
-              </button>
+              <button onClick={() => { setWeekOffset(0); setMonthYear({ year: today.getFullYear(), month: today.getMonth() }); setSelectedDate(today) }}
+                className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 transition-colors shrink-0">Hoy</button>
             </div>
 
             {/* WEEK VIEW */}
             {calView === 'week' && (
               <>
-                <div className="grid grid-cols-7 gap-1 sm:gap-2 overflow-x-auto pb-2">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 pb-2">
                   {weekDates.map((date, idx) => {
                     const isToday = date.toDateString() === today.toDateString()
                     const dayAppts = getApptsByDate(date)
                     return (
-                      <button key={idx} onClick={() => { setCalView('day'); setSelectedDate(date) }} className={`rounded-lg sm:rounded-xl border p-2 sm:p-3 min-h-[100px] sm:min-h-[120px] shrink-0 cursor-pointer hover:text-teal-600 hover:underline transition-colors text-left day-hover ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
+                      <button key={idx} onClick={() => { setCalView('day'); setSelectedDate(date) }}
+                        className={`rounded-lg sm:rounded-xl border p-2 sm:p-3 min-h-[100px] sm:min-h-[120px] cursor-pointer text-left day-hover ${isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white'}`}>
                         <div className="mb-2">
                           <p className={`text-xs font-semibold ${isToday ? 'text-teal-600' : 'text-slate-400'}`}>{DAYS_SHORT[idx]}</p>
                           <p className={`text-lg font-bold ${isToday ? 'text-teal-700' : 'text-slate-800'}`}>{date.getDate()}</p>
                         </div>
-                        {dayAppts.map(a => (
-                          <button
-                            key={a.id}
-                            onClick={(e) => { e.stopPropagation(); setDetailAppt(a) }}
-                            className="mb-1 bg-teal-500 rounded px-1.5 py-0.5 hover:bg-teal-600 transition-colors text-left cursor-pointer"
-                          >
+                        {dayAppts.slice(0, 3).map(a => (
+                          <div key={a.id} onClick={(e) => { e.stopPropagation(); setDetailAppt(a) }}
+                            className={`mb-1 rounded px-1.5 py-0.5 cursor-pointer text-left ${a.status === 'scheduled' ? 'bg-amber-400 hover:bg-amber-500' : 'bg-teal-500 hover:bg-teal-600'}`}>
                             <p className="text-white text-[9px] font-bold">{a.time}</p>
                             <p className="text-white/90 text-[9px] truncate">{a.patient_name}</p>
-                          </button>
+                          </div>
                         ))}
+                        {dayAppts.length > 3 && <p className="text-[9px] text-slate-400 font-semibold">+{dayAppts.length - 3} más</p>}
                         {dayAppts.length === 0 && <p className="text-xs text-slate-300 mt-1">Sin citas</p>}
                       </button>
                     )
                   })}
                 </div>
 
-                {!loading && appointments.length > 0 && (
+                {!loading && weekAppts.length > 0 && (
                   <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div className="px-5 py-3 border-b border-slate-100">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Citas de la semana</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Citas de la semana ({weekAppts.length})</p>
                     </div>
-                    {appointments.map((a, i) => (
-                      <div key={a.id} className={`flex items-center gap-4 px-5 py-3.5 ${i < appointments.length - 1 ? 'border-b border-slate-100' : ''}`}>
+                    {weekAppts.sort((a, b) => a.isoDate.localeCompare(b.isoDate)).map((a, i) => (
+                      <div key={a.id} className={`flex items-center gap-4 px-5 py-3.5 ${i < weekAppts.length - 1 ? 'border-b border-slate-100' : ''} hover:bg-slate-50 cursor-pointer`}
+                        onClick={() => setDetailAppt(a)}>
                         <div className="w-9 h-9 rounded-xl g-bg flex items-center justify-center shrink-0"><Clock className="w-4 h-4 text-white" /></div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800">{a.patient_name}</p>
-                          <p className="text-xs text-slate-400">{a.date} · {a.time}{a.chief_complaint ? ` · ${a.chief_complaint}` : ''}</p>
+                          <p className="text-xs text-slate-400 truncate">
+                            {new Date(a.isoDate).toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' })} · {a.time}–{a.endTime}
+                            {a.consultation_code && ` · ${a.consultation_code}`}
+                            {a.chief_complaint && ` · ${a.chief_complaint}`}
+                          </p>
                         </div>
-                        <span className="text-xs font-semibold text-teal-600 bg-teal-50 px-2.5 py-1 rounded-full">Programada</span>
+                        <span className="text-xs font-semibold text-teal-600 bg-teal-50 px-2.5 py-1 rounded-full shrink-0">
+                          {a.time}–{a.endTime}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -447,36 +627,25 @@ export default function AgendaPage() {
             {/* MONTH VIEW */}
             {calView === 'month' && (
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                {/* Day headers */}
                 <div className="grid grid-cols-7 border-b border-slate-100">
                   {DAYS_SHORT.map(d => (
                     <div key={d} className="px-2 py-2.5 text-center text-xs font-bold text-slate-400 uppercase tracking-widest">{d}</div>
                   ))}
                 </div>
-                {/* Cells */}
                 <div className="grid grid-cols-7">
                   {monthCells.map((date, idx) => {
-                    if (!date) return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-slate-100 bg-slate-50/50" />
+                    if (!date) return <div key={`e-${idx}`} className="min-h-[90px] border-b border-r border-slate-100 bg-slate-50/50" />
                     const isToday = date.toDateString() === today.toDateString()
                     const dayAppts = getApptsByDate(date)
-                    const isCurrentMonth = date.getMonth() === monthYear.month
                     return (
-                      <button
-                        key={idx}
-                        onClick={() => { setCalView('day'); setSelectedDate(date) }}
-                        className={`min-h-[90px] border-b border-r border-slate-100 p-2 transition-colors cursor-pointer day-hover ${isToday ? 'bg-teal-50' : 'hover:bg-slate-50'} ${!isCurrentMonth ? 'opacity-40' : ''} text-left`}
-                      >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 ${isToday ? 'g-bg text-white' : 'text-slate-700'}`}>
-                          {date.getDate()}
-                        </div>
+                      <button key={idx} onClick={() => { setCalView('day'); setSelectedDate(date) }}
+                        className={`min-h-[90px] border-b border-r border-slate-100 p-2 cursor-pointer day-hover text-left ${isToday ? 'bg-teal-50' : ''} ${date.getMonth() !== monthYear.month ? 'opacity-40' : ''}`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold mb-1 ${isToday ? 'g-bg text-white' : 'text-slate-700'}`}>{date.getDate()}</div>
                         {dayAppts.slice(0, 2).map(a => (
-                          <button
-                            key={a.id}
-                            onClick={(e) => { e.stopPropagation(); setDetailAppt(a) }}
-                            className="mb-0.5 bg-teal-500 rounded px-1.5 py-0.5 hover:bg-teal-600 transition-colors w-full text-left"
-                          >
+                          <div key={a.id} onClick={e => { e.stopPropagation(); setDetailAppt(a) }}
+                            className={`mb-0.5 rounded px-1.5 py-0.5 w-full text-left ${a.status === 'scheduled' ? 'bg-amber-400' : 'bg-teal-500'}`}>
                             <p className="text-white text-[9px] font-bold truncate">{a.time} {a.patient_name}</p>
-                          </button>
+                          </div>
                         ))}
                         {dayAppts.length > 2 && <p className="text-[9px] text-slate-400 font-semibold">+{dayAppts.length - 2} más</p>}
                       </button>
@@ -486,221 +655,272 @@ export default function AgendaPage() {
               </div>
             )}
 
-            {/* DAY VIEW */}
+            {/* DAY VIEW — Shows real time slots based on availability config */}
             {calView === 'day' && (
-              <div className="space-y-4">
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
-                    <p className="text-sm font-bold text-slate-700 uppercase tracking-widest">Horario del día</p>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {Array.from({ length: 10 }, (_, i) => i + 8).map(hour => {
-                      const hourAppts = allAppointments.filter(a => {
-                        const aHour = new Date(a.isoDate).getHours()
-                        return aHour === hour && new Date(a.isoDate).toDateString() === selectedDate.toDateString()
-                      })
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <p className="text-sm font-bold text-slate-700 uppercase tracking-widest">Horario del día</p>
+                  <p className="text-xs text-slate-400">Citas de {config.slot_duration} min{config.buffer_minutes > 0 && ` + ${config.buffer_minutes} min descanso`}</p>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {(() => {
+                    const dayOfWeek = (selectedDate.getDay() + 6) % 7
+                    const timeSlots = generateTimeSlots(dayOfWeek, availSlots, config)
+                    const dayAppts = getApptsByDate(selectedDate)
+
+                    if (timeSlots.length === 0) {
                       return (
-                        <div key={hour} className="p-4 hover:bg-slate-50 transition-colors">
-                          <div className="flex items-start gap-4">
-                            <div className="w-12 text-center shrink-0">
-                              <p className="text-sm font-bold text-slate-700">{String(hour).padStart(2, '0')}:00</p>
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <Calendar className="w-10 h-10 text-slate-200 mb-3" />
+                          <p className="text-slate-400 text-sm">No hay horarios configurados para {DAYS_FULL[dayOfWeek]}</p>
+                          <button onClick={() => setTab('availability')} className="mt-3 text-xs text-teal-600 font-semibold hover:text-teal-700">
+                            Configurar disponibilidad
+                          </button>
+                        </div>
+                      )
+                    }
+
+                    return timeSlots.map(slot => {
+                      const slotAppt = dayAppts.find(a => a.time === slot.time)
+                      const isPast = new Date(`${dateToYMD(selectedDate)}T${slot.time}`) < new Date()
+
+                      return (
+                        <div key={slot.time} className={`p-4 ${isPast ? 'opacity-50' : ''} hover:bg-slate-50 transition-colors`}>
+                          <div className="flex items-center gap-4">
+                            <div className="w-20 text-center shrink-0">
+                              <p className="text-sm font-bold text-slate-700">{slot.time}</p>
+                              <p className="text-[10px] text-slate-400">{slot.endTime}</p>
                             </div>
-                            <div className="flex-1 space-y-2">
-                              {hourAppts.length > 0 ? hourAppts.map(a => (
-                                <button
-                                  key={a.id}
-                                  onClick={() => setDetailAppt(a)}
-                                  className="bg-teal-50 border border-teal-200 rounded-lg p-3 hover:bg-teal-100 transition-colors text-left w-full"
-                                >
-                                  <p className="text-sm font-semibold text-teal-700">{a.patient_name}</p>
-                                  <p className="text-xs text-teal-600 mt-0.5">{a.time}{a.chief_complaint ? ` · ${a.chief_complaint}` : ''}</p>
+                            <div className="flex-1">
+                              {slotAppt ? (
+                                <button onClick={() => setDetailAppt(slotAppt)}
+                                  className={`w-full text-left rounded-lg p-3 border transition-colors ${
+                                    slotAppt.status === 'scheduled' ? 'bg-amber-50 border-amber-200 hover:bg-amber-100' : 'bg-teal-50 border-teal-200 hover:bg-teal-100'
+                                  }`}>
+                                  <div className="flex items-center justify-between">
+                                    <p className={`text-sm font-semibold ${slotAppt.status === 'scheduled' ? 'text-amber-700' : 'text-teal-700'}`}>{slotAppt.patient_name}</p>
+                                    {slotAppt.consultation_code && <span className="text-[10px] font-mono text-slate-400">{slotAppt.consultation_code}</span>}
+                                  </div>
+                                  <p className={`text-xs mt-0.5 ${slotAppt.status === 'scheduled' ? 'text-amber-600' : 'text-teal-600'}`}>
+                                    {slotAppt.chief_complaint || (slotAppt.status === 'scheduled' ? 'Pendiente de aprobación' : 'Confirmada')}
+                                  </p>
                                 </button>
-                              )) : (
-                                <p className="text-xs text-slate-300">Libre</p>
+                              ) : (
+                                <div className="h-12 rounded-lg border border-dashed border-slate-200 flex items-center justify-center">
+                                  <p className="text-xs text-slate-300">Disponible</p>
+                                </div>
                               )}
                             </div>
                           </div>
                         </div>
                       )
-                    })}
-                  </div>
+                    })
+                  })()}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* APPROVAL PANEL */}
+        {/* ═══ APPROVAL PANEL (below calendar) ═══ */}
         {tab === 'calendar' && (
-          <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-xl">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                    <ClipboardList className="w-4 h-4" /> Panel de aprobaciones
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">{pendingAppointments.length} citas pendientes</p>
-                </div>
-                {pendingAppointments.length > 0 && !bulkMode && (
-                  <button
-                    onClick={() => setBulkMode(true)}
-                    className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors"
-                  >
-                    Reagendar múltiples
-                  </button>
-                )}
+          <div className="bg-white border border-slate-200 rounded-xl">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4" /> Panel de aprobaciones
+                </p>
+                <p className="text-xs text-slate-400 mt-1">{pendingAppointments.length} citas pendientes</p>
               </div>
+            </div>
 
-              {/* Search bar */}
-              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    value={searchText}
-                    onChange={e => setSearchText(e.target.value)}
-                    placeholder="Buscar por nombre, cédula o código de consulta..."
-                    className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white"
-                  />
-                </div>
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="Buscar por nombre, cédula..."
+                  className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white" />
               </div>
+            </div>
 
-              {pendingAppointments.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <CheckCircle className="w-10 h-10 text-emerald-200 mb-3" />
-                  <p className="text-slate-400 text-sm">Sin citas pendientes</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {pendingAppointments.filter(a =>
-                    !searchText ||
-                    a.patient_name.toLowerCase().includes(searchText.toLowerCase()) ||
-                    (a.patient_cedula ?? '').includes(searchText)
-                  ).map((appt, i) => (
-                    <div key={appt.id} className={`p-5 hover:bg-slate-50 transition-colors ${i < pendingAppointments.length - 1 ? 'border-b border-slate-100' : ''}`}>
-                      <div className="flex items-start justify-between gap-4 mb-3">
-                        <div className="flex items-start gap-3 flex-1">
-                          {bulkMode && (
-                            <input
-                              type="checkbox"
-                              checked={bulkSelected.includes(appt.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setBulkSelected(prev => [...prev, appt.id])
-                                } else {
-                                  setBulkSelected(prev => prev.filter(id => id !== appt.id))
-                                }
-                              }}
-                              className="mt-1 cursor-pointer w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                            />
-                          )}
+            {pendingAppointments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <CheckCircle className="w-10 h-10 text-emerald-200 mb-3" />
+                <p className="text-slate-400 text-sm">Sin citas pendientes</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {pendingAppointments
+                  .filter(a => !searchText || a.patient_name.toLowerCase().includes(searchText.toLowerCase()) || (a.patient_cedula ?? '').includes(searchText))
+                  .map(appt => {
+                    const apptDate = new Date(appt.scheduled_at)
+                    const dayOfWeek = (apptDate.getDay() + 6) % 7
+                    const timeStr = toHHMM(apptDate)
+                    const isValidTime = isValidSlotTime(timeStr, dayOfWeek, availSlots, config)
+                    const hasConflict = allAppointments.some(a => {
+                      if (a.date !== dateToYMD(apptDate)) return false
+                      const aStart = timeToMinutes(a.time)
+                      const aEnd = timeToMinutes(a.endTime)
+                      const newStart = timeToMinutes(timeStr)
+                      const newEnd = newStart + config.slot_duration
+                      return (newStart < aEnd && newEnd > aStart)
+                    })
+
+                    return (
+                      <div key={appt.id} className="p-5 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-start justify-between gap-4 mb-3">
                           <div>
                             <p className="text-sm font-semibold text-slate-800">{appt.patient_name}</p>
                             <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                              {appt.patient_cedula && <span>Cédula: {appt.patient_cedula}</span>}
-                              {appt.patient_phone && <span>·</span>}
-                              {appt.patient_phone && <span>{appt.patient_phone}</span>}
+                              {appt.patient_cedula && <span>CI: {appt.patient_cedula}</span>}
+                              {appt.patient_phone && <><span>·</span><span>{appt.patient_phone}</span></>}
                             </div>
+                            {appt.appointment_code && <p className="text-[10px] font-mono text-slate-400 mt-1">{appt.appointment_code}</p>}
                           </div>
+                          <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">Pendiente</span>
                         </div>
-                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">Pendiente</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {new Date(appt.scheduled_at).toLocaleDateString('es-VE')} a las {new Date(appt.scheduled_at).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                      {appt.chief_complaint && <p className="text-xs text-slate-600 mb-3 italic">&quot;{appt.chief_complaint}&quot;</p>}
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xs text-slate-500">{appt.plan_name}</span>
-                        <span className="text-xs font-bold text-emerald-600">${appt.plan_price ?? 20}</span>
-                      </div>
-                      {!bulkMode && (
+
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {apptDate.toLocaleDateString('es-VE')} · {timeStr}–{addMinutes(timeStr, config.slot_duration)}
+                        </div>
+
+                        {/* Warnings */}
+                        {!isValidTime && (
+                          <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-2">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>Horario {timeStr} no está en tus bloques disponibles para {DAYS_FULL[dayOfWeek]}. Reagenda antes de aprobar.</span>
+                          </div>
+                        )}
+                        {hasConflict && (
+                          <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-2">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>Conflicto: ya existe una cita en este horario.</span>
+                          </div>
+                        )}
+
+                        {appt.chief_complaint && <p className="text-xs text-slate-600 mb-2 italic">&quot;{appt.chief_complaint}&quot;</p>}
+
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-xs text-slate-500">{appt.plan_name}</span>
+                          <span className="text-xs font-bold text-emerald-600">${appt.plan_price ?? 0}</span>
+                        </div>
+
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => acceptAppointment(appt)}
-                            disabled={accepting === appt.id}
-                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors"
-                          >
+                          <button onClick={() => acceptAppointment(appt)} disabled={accepting === appt.id || hasConflict}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors">
                             <Check className="w-4 h-4" /> {accepting === appt.id ? 'Aprobando...' : 'Aprobar'}
                           </button>
-                          <button
-                            onClick={() => setRescheduling(appt)}
-                            className="flex items-center justify-center gap-2 px-3 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition-colors"
-                          >
+                          <button onClick={() => setRescheduling(appt)}
+                            className="flex items-center justify-center gap-2 px-3 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition-colors">
                             <Calendar className="w-4 h-4" /> Reagendar
                           </button>
-                          <button
-                            onClick={() => rejectAppointment(appt.id)}
-                            className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors"
-                          >
+                          <button onClick={() => rejectAppointment(appt.id)}
+                            className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors">
                             <X className="w-4 h-4" /> Rechazar
                           </button>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {bulkMode && (
-                <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white p-4 flex items-center gap-3 justify-between">
-                  <p className="text-sm font-semibold text-slate-700">{bulkSelected.length} seleccionada(s)</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { setBulkMode(false); setBulkSelected([]) }}
-                      className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={() => setBulkReschedule(true)}
-                      disabled={bulkSelected.length === 0}
-                      className="px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
-                    >
-                      Reagendar seleccionadas
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+                      </div>
+                    )
+                  })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* AVAILABILITY TAB */}
+        {/* ═══ AVAILABILITY TAB ═══ */}
         {tab === 'availability' && (
           <div className="space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-700">Configura los horarios en que estás disponible para consultas. Los pacientes verán estos horarios al agendar desde tu link público.</p>
+            {/* Config panel */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Settings className="w-4 h-4 text-teal-500" />
+                <p className="text-sm font-bold text-slate-700">Configuración de citas</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Duración de cita</label>
+                  <select value={config.slot_duration} onChange={e => setConfig(c => ({ ...c, slot_duration: parseInt(e.target.value) }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 bg-white">
+                    {DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} minutos</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Tiempo entre citas</label>
+                  <select value={config.buffer_minutes} onChange={e => setConfig(c => ({ ...c, buffer_minutes: parseInt(e.target.value) }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 bg-white">
+                    {BUFFER_OPTIONS.map(b => <option key={b} value={b}>{b === 0 ? 'Sin descanso' : `${b} minutos`}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Preview of generated slots */}
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-teal-700 mb-2">Vista previa — Ejemplo bloque 08:00–12:00:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(() => {
+                    const preview = generateTimeSlots(0, [{ day_of_week: 0, start_time: '08:00', end_time: '12:00', is_enabled: true }], config)
+                    return preview.map(s => (
+                      <span key={s.time} className="text-[10px] bg-white text-teal-700 px-2 py-1 rounded-md border border-teal-200 font-mono font-semibold">
+                        {s.time}–{s.endTime}
+                      </span>
+                    ))
+                  })()}
+                </div>
+              </div>
             </div>
 
+            {/* Info banner */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-700">
+                Configura los bloques de horario (ej: 08:00–12:00). Las citas se generarán automáticamente cada {config.slot_duration} min
+                {config.buffer_minutes > 0 && ` con ${config.buffer_minutes} min de descanso`}.
+                Los pacientes verán estos horarios al agendar.
+              </p>
+            </div>
+
+            {/* Weekly schedule */}
             {DAYS_FULL.map((dayName, dayIdx) => {
-              const daySlots = slots.filter(s => s.day === dayIdx)
+              const daySlots = availSlots.filter(s => s.day_of_week === dayIdx)
+              const totalSlots = daySlots.filter(s => s.is_enabled).reduce((sum, s) => {
+                return sum + generateTimeSlots(dayIdx, [s], config).length
+              }, 0)
+
               return (
                 <div key={dayIdx} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 sm:px-5 py-3 border-b border-slate-100">
-                    <p className="text-sm font-semibold text-slate-700">{dayName}</p>
-                    <button onClick={() => addSlot(dayIdx)} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold whitespace-nowrap">
-                      <Plus className="w-3.5 h-3.5" /><span>Agregar horario</span>
+                  <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-slate-700">{dayName}</p>
+                      {totalSlots > 0 && <span className="text-[10px] text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full font-semibold">{totalSlots} citas</span>}
+                    </div>
+                    <button onClick={() => addSlot(dayIdx)} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold">
+                      <Plus className="w-3.5 h-3.5" /><span>Agregar bloque</span>
                     </button>
                   </div>
                   <div className="p-3 sm:p-4 space-y-2">
                     {daySlots.length === 0 ? (
                       <p className="text-xs text-slate-400 py-1">Sin horarios — día libre</p>
-                    ) : daySlots.map((slot) => {
-                      const globalIdx = slots.indexOf(slot)
+                    ) : daySlots.map(slot => {
+                      const globalIdx = availSlots.indexOf(slot)
+                      const slotsInBlock = generateTimeSlots(dayIdx, [slot], config).length
                       return (
-                        <div key={globalIdx} className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 px-3 py-2 rounded-xl border transition-all ${slot.enabled ? 'border-teal-200 bg-teal-50/50' : 'border-slate-200 bg-slate-50 opacity-50'}`}>
-                          <Clock className={`w-3.5 h-3.5 shrink-0 hidden sm:block ${slot.enabled ? 'text-teal-500' : 'text-slate-400'}`} />
-                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 sm:gap-2 flex-1">
-                            <input type="time" value={slot.start} onChange={e => setSlots(p => p.map((s, i) => i === globalIdx ? { ...s, start: e.target.value } : s))} className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 bg-white" />
-                            <span className="text-xs text-slate-400 hidden sm:inline">—</span>
-                            <input type="time" value={slot.end} onChange={e => setSlots(p => p.map((s, i) => i === globalIdx ? { ...s, end: e.target.value } : s))} className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 bg-white" />
+                        <div key={globalIdx} className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-xl border transition-all ${slot.is_enabled ? 'border-teal-200 bg-teal-50/50' : 'border-slate-200 bg-slate-50 opacity-50'}`}>
+                          <Clock className={`w-3.5 h-3.5 shrink-0 hidden sm:block ${slot.is_enabled ? 'text-teal-500' : 'text-slate-400'}`} />
+                          <div className="flex items-center gap-2 flex-1">
+                            <input type="time" value={slot.start_time} onChange={e => updateSlotTime(globalIdx, 'start_time', e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-teal-400 bg-white w-24" />
+                            <span className="text-xs text-slate-400">a</span>
+                            <input type="time" value={slot.end_time} onChange={e => updateSlotTime(globalIdx, 'end_time', e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-teal-400 bg-white w-24" />
+                            {slot.is_enabled && <span className="text-[10px] text-teal-600 font-semibold ml-1">{slotsInBlock} citas</span>}
                           </div>
                           <div className="flex gap-1 sm:gap-2">
-                            <button onClick={() => toggleSlot(globalIdx)} className={`text-xs px-2 sm:px-2.5 py-1 rounded-full font-semibold transition-all flex-1 ${slot.enabled ? 'bg-teal-100 text-teal-600 hover:bg-teal-200' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>
-                              {slot.enabled ? 'Activo' : 'Inactivo'}
+                            <button onClick={() => toggleSlot(globalIdx)}
+                              className={`text-xs px-2.5 py-1 rounded-full font-semibold transition-all ${slot.is_enabled ? 'bg-teal-100 text-teal-600' : 'bg-slate-200 text-slate-500'}`}>
+                              {slot.is_enabled ? 'Activo' : 'Inactivo'}
                             </button>
-                            <button onClick={() => removeSlot(globalIdx)} className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors shrink-0">
+                            <button onClick={() => removeSlot(globalIdx)} className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center shrink-0">
                               <Trash2 className="w-3 h-3 text-red-400" />
                             </button>
                           </div>
@@ -711,172 +931,130 @@ export default function AgendaPage() {
                 </div>
               )
             })}
-            <button className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity">
-              Guardar disponibilidad
+
+            <button onClick={saveSchedule} disabled={saving}
+              className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-60">
+              {saving ? 'Guardando...' : 'Guardar disponibilidad'}
             </button>
           </div>
         )}
 
-        {/* APPOINTMENT DETAIL MODAL */}
+        {/* ═══ APPOINTMENT DETAIL MODAL ═══ */}
         {detailAppt && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-slate-900">Detalles de cita</h2>
-                <button onClick={() => setDetailAppt(null)} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-5 h-5" />
-                </button>
+                <button onClick={() => setDetailAppt(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Paciente</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase">Paciente</p>
                   <p className="text-lg font-bold text-slate-900 mt-1">{detailAppt.patient_name}</p>
+                  {detailAppt.patient_phone && <p className="text-xs text-slate-500 mt-0.5">{detailAppt.patient_phone}</p>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Fecha</p>
-                    <p className="text-sm font-semibold text-slate-700 mt-1">{detailAppt.date}</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Fecha</p>
+                    <p className="text-sm font-semibold text-slate-700 mt-1">{new Date(detailAppt.isoDate).toLocaleDateString('es-VE')}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Hora</p>
-                    <p className="text-sm font-semibold text-slate-700 mt-1">{detailAppt.time}</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Horario</p>
+                    <p className="text-sm font-semibold text-slate-700 mt-1">{detailAppt.time} – {detailAppt.endTime}</p>
                   </div>
                 </div>
 
+                {(detailAppt.consultation_code || detailAppt.appointment_code) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailAppt.consultation_code && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase">Código consulta</p>
+                        <p className="text-sm font-mono text-teal-600 mt-1">{detailAppt.consultation_code}</p>
+                      </div>
+                    )}
+                    {detailAppt.appointment_code && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase">Código cita</p>
+                        <p className="text-sm font-mono text-slate-600 mt-1">{detailAppt.appointment_code}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {detailAppt.chief_complaint && (
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Motivo</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Motivo</p>
                     <p className="text-sm text-slate-700 mt-1">{detailAppt.chief_complaint}</p>
                   </div>
                 )}
 
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Estado</p>
-                  <div className="mt-1">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                      detailAppt.status === 'scheduled'
-                        ? 'bg-teal-50 text-teal-600'
-                        : detailAppt.status === 'completed'
-                        ? 'bg-emerald-50 text-emerald-600'
-                        : 'bg-red-50 text-red-600'
-                    }`}>
-                      {detailAppt.status === 'scheduled' ? 'Programada' : detailAppt.status === 'completed' ? 'Completada' : 'Cancelada'}
-                    </span>
+                {detailAppt.plan_name && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500">{detailAppt.plan_name}</span>
+                    {detailAppt.plan_price != null && <span className="text-sm font-bold text-emerald-600">${detailAppt.plan_price}</span>}
                   </div>
+                )}
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase">Estado</p>
+                  <span className={`inline-block mt-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                    detailAppt.status === 'scheduled' ? 'bg-amber-50 text-amber-600'
+                    : detailAppt.status === 'confirmed' ? 'bg-teal-50 text-teal-600'
+                    : detailAppt.status === 'completed' ? 'bg-emerald-50 text-emerald-600'
+                    : 'bg-red-50 text-red-600'
+                  }`}>
+                    {detailAppt.status === 'scheduled' ? 'Pendiente' : detailAppt.status === 'confirmed' ? 'Confirmada' : detailAppt.status === 'completed' ? 'Completada' : 'Cancelada'}
+                  </span>
                 </div>
               </div>
 
               <div className="flex gap-2 pt-4">
-                <button
-                  onClick={() => setDetailAppt(null)}
-                  className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                >
-                  Cerrar
-                </button>
-                <button
-                  onClick={() => {
-                    setDetailAppt(null);
-                    // For pending appointments, allow reschedule
-                    const pending = pendingAppointments.find(p => p.id === detailAppt.id);
-                    if (pending) {
-                      setRescheduling(pending);
-                    }
-                  }}
-                  className="flex-1 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 transition-colors"
-                >
-                  Reagendar
-                </button>
+                <button onClick={() => setDetailAppt(null)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* RESCHEDULE MODAL */}
+        {/* ═══ RESCHEDULE MODAL ═══ */}
         {rescheduling && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-slate-900">Reagendar cita</h2>
-                <button onClick={() => { setRescheduling(null); setNewDateTime('') }} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-5 h-5" />
-                </button>
+                <button onClick={() => { setRescheduling(null); setNewDateTime('') }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
               </div>
 
-              <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+              <div className="bg-slate-50 rounded-lg p-4 space-y-1">
                 <p className="text-sm text-slate-600"><span className="font-semibold">Paciente:</span> {rescheduling.patient_name}</p>
-                <p className="text-sm text-slate-600"><span className="font-semibold">Fecha actual:</span> {new Date(rescheduling.scheduled_at).toLocaleDateString('es-VE')} a las {new Date(rescheduling.scheduled_at).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</p>
+                <p className="text-sm text-slate-600"><span className="font-semibold">Actual:</span> {new Date(rescheduling.scheduled_at).toLocaleDateString('es-VE')} · {toHHMM(new Date(rescheduling.scheduled_at))}</p>
               </div>
+
+              {/* Show valid time slots for selected date */}
+              {newDateTime && (() => {
+                const newDate = new Date(newDateTime)
+                const dayOfWeek = (newDate.getDay() + 6) % 7
+                const validSlots = generateTimeSlots(dayOfWeek, availSlots, config)
+                const timeStr = toHHMM(newDate)
+                const isValid = validSlots.some(s => s.time === timeStr)
+
+                return (
+                  <div className={`text-xs px-3 py-2 rounded-lg ${isValid ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                    {isValid ? `Horario ${timeStr} válido para ${DAYS_FULL[dayOfWeek]}` : `Horario ${timeStr} NO disponible. Válidos: ${validSlots.slice(0, 6).map(s => s.time).join(', ')}`}
+                  </div>
+                )
+              })()}
 
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-slate-700">Nueva fecha y hora</label>
-                <input
-                  type="datetime-local"
-                  value={newDateTime}
-                  onChange={e => setNewDateTime(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
-                />
+                <input type="datetime-local" value={newDateTime} onChange={e => setNewDateTime(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10" />
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => { setRescheduling(null); setNewDateTime('') }}
-                  className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmReschedule}
-                  disabled={!newDateTime}
-                  className="flex-1 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Confirmar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* BULK RESCHEDULE MODAL */}
-        {bulkReschedule && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-900">Reagendar citas seleccionadas</h2>
-                <button onClick={() => { setBulkReschedule(false); setBulkNewDateTime('') }} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-sm text-slate-600"><span className="font-semibold">Total de citas:</span> {bulkSelected.length}</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700">Nueva fecha y hora (se aplicará a todas)</label>
-                <input
-                  type="datetime-local"
-                  value={bulkNewDateTime}
-                  onChange={e => setBulkNewDateTime(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => { setBulkReschedule(false); setBulkNewDateTime('') }}
-                  className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmBulkReschedule}
-                  disabled={!bulkNewDateTime}
-                  className="flex-1 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Confirmar
-                </button>
+                <button onClick={() => { setRescheduling(null); setNewDateTime('') }} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+                <button onClick={confirmReschedule} disabled={!newDateTime} className="flex-1 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-50">Confirmar</button>
               </div>
             </div>
           </div>
