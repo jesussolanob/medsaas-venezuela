@@ -74,8 +74,23 @@ export async function GET(req: NextRequest) {
         : invoice.profiles,
     }
 
-    // Generate PDF
-    const pdfBuffer = await generatePdfBuffer(normalizedInvoice as any)
+    // Fetch BCV rate for the invoice
+    let bcvRate: number | null = null
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
+      const bcvRes = await fetch(`${baseUrl}/api/admin/bcv-rate`)
+      if (bcvRes.ok) {
+        const bcvData = await bcvRes.json()
+        if (bcvData.rate) bcvRate = bcvData.rate
+      }
+    } catch {
+      // Proceed without BCV rate
+    }
+
+    // Generate PDF with billing config
+    const pdfBuffer = await generatePdfBuffer(normalizedInvoice as any, {
+      bcv_rate: bcvRate,
+    })
 
     // Check if download is requested
     const download = req.nextUrl.searchParams.get('download') === 'true'

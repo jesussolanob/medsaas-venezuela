@@ -1,6 +1,7 @@
 /**
- * Pure Node.js PDF generation for invoices
- * Creates a professional PDF invoice without external dependencies
+ * Pure Node.js PDF generation for Venezuelan fiscal invoices
+ * Format modeled after PagoDirecto / SENIAT fiscal invoices
+ * Emisor: Delta Medical CRM  |  Destinatario: Doctor/Clínica
  */
 
 interface InvoiceData {
@@ -23,188 +24,52 @@ interface InvoiceData {
   }
 }
 
-// Simple PDF primitives
-class SimplePDF {
-  private content: string[] = []
-  private width: number = 595 // A4 width in points (8.27 inches)
-  private height: number = 842 // A4 height in points (11.69 inches)
-  private currentY: number = 40
-  private currentX: number = 40
-  private margin: number = 40
-  private lineHeight: number = 15
-
-  constructor() {
-    this.initPdf()
-  }
-
-  private initPdf() {
-    this.content.push('%PDF-1.4')
-    this.content.push('1 0 obj')
-    this.content.push('<< /Type /Catalog /Pages 2 0 R >>')
-    this.content.push('endobj')
-    this.content.push('2 0 obj')
-    this.content.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
-    this.content.push('endobj')
-  }
-
-  text(str: string, x?: number, y?: number, options?: any) {
-    if (x !== undefined) this.currentX = x
-    if (y !== undefined) this.currentY = y
-
-    const fontSize = options?.fontSize || 12
-    const color = options?.color || '0 0 0' // RGB
-    const bold = options?.bold || false
-
-    // Simple text positioning
-    const textStr = `BT /F${bold ? '2' : '1'} ${fontSize} Tf ${this.currentX} ${
-      this.height - this.currentY
-    } Td (${this.escapeString(str)}) Tj ET`
-    this.content.push(textStr)
-
-    if (!y) {
-      this.currentY += this.lineHeight
-    }
-
-    return this
-  }
-
-  line(x1: number, y1: number, x2: number, y2: number, color?: string) {
-    const lineColor = color || '0.8 0.8 0.8'
-    const cmd = `${lineColor} RG\n${x1} ${this.height - y1} m\n${x2} ${
-      this.height - y2
-    } l\nS`
-    this.content.push(cmd)
-    return this
-  }
-
-  rect(x: number, y: number, width: number, height: number, color?: string, fill?: boolean) {
-    const fillColor = color || '0.95 0.95 0.95'
-    const operator = fill ? 'rg' : 'RG'
-    const cmd = `${fillColor} ${operator}\n${x} ${this.height - y} ${width} ${-height} re\n${
-      fill ? 'f' : 'S'
-    }`
-    this.content.push(cmd)
-    return this
-  }
-
-  newLine(count: number = 1) {
-    this.currentY += this.lineHeight * count
-    return this
-  }
-
-  getBuffer(): Buffer {
-    // Build PDF structure
-    const pages = this.buildPdfStructure()
-    const pdfContent = pages.join('\n')
-
-    // Create byte array
-    return Buffer.from(pdfContent, 'latin1')
-  }
-
-  private buildPdfStructure(): string[] {
-    const result: string[] = []
-    const objects: string[] = [''] // Index 0 unused
-
-    // Catalog
-    objects.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj')
-
-    // Pages
-    objects.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj')
-
-    // Page
-    const contentStr = this.content.join('\n')
-    const contentObj = `4 0 obj\n<< /Length ${contentStr.length} >>\nstream\n${contentStr}\nendstream\nendobj`
-    objects.push(contentObj)
-
-    const pageObj = `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.width} ${this.height}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj`
-    objects.splice(3, 0, pageObj)
-
-    // Font F1 (Helvetica)
-    objects.push(
-      '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj'
-    )
-
-    // Font F2 (Helvetica Bold)
-    objects.push(
-      '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj'
-    )
-
-    // Build final PDF
-    result.push('%PDF-1.4')
-
-    let offset = 0
-    const offsets: number[] = []
-
-    objects.forEach((obj, idx) => {
-      if (idx === 0) return
-      offsets[idx] = offset
-      offset += obj.length + 1
-      result.push(obj)
-    })
-
-    // Xref
-    const xrefOffset = offset
-    result.push('xref')
-    result.push(`0 ${objects.length}`)
-    result.push('0000000000 65535 f ')
-    offsets.forEach((off, idx) => {
-      if (idx > 0) {
-        result.push(`${String(off).padStart(10, '0')} 00000 n `)
-      }
-    })
-
-    // Trailer
-    result.push('trailer')
-    result.push(`<< /Size ${objects.length} /Root 1 0 R >>`)
-    result.push('startxref')
-    result.push(String(xrefOffset))
-    result.push('%%EOF')
-
-    return result
-  }
-
-  private escapeString(str: string): string {
-    return str
-      .replace(/\\/g, '\\\\')
-      .replace(/\(/g, '\\(')
-      .replace(/\)/g, '\\)')
-      .slice(0, 255)
-  }
+interface BillingConfig {
+  razon_social: string
+  rif: string
+  domicilio_fiscal: string
+  telefono: string
+  codigo_actividad: string
+  iva_percent: number
+  igtf_percent: number
+  control_number: string
+  bcv_rate: number | null
 }
 
-/**
- * Generate a complete invoice PDF from invoice data
- */
-export async function generatePdfBuffer(invoice: InvoiceData): Promise<Buffer> {
-  // Simple text-based PDF generation
-  // This is a lightweight alternative to jsPDF
+const DEFAULT_BILLING: BillingConfig = {
+  razon_social: 'Delta Medical CRM, C.A.',
+  rif: 'J-50000000-0',
+  domicilio_fiscal: 'Av. Francisco de Miranda, Torre Delta, Piso 5, Of. 5-A, Urb. El Rosal, Caracas (Chacao), Miranda, Zona Postal 1060',
+  telefono: '+58 212 000 0000',
+  codigo_actividad: '6201',
+  iva_percent: 16,
+  igtf_percent: 3,
+  control_number: '00-00000001',
+  bcv_rate: null,
+}
+
+export async function generatePdfBuffer(
+  invoice: InvoiceData,
+  billingConfig?: Partial<BillingConfig>
+): Promise<Buffer> {
+  const billing = { ...DEFAULT_BILLING, ...billingConfig }
+  const content = buildFiscalInvoice(invoice, billing)
+  const contentLength = content.length
 
   const lines: string[] = []
-
-  // PDF Header
   lines.push('%PDF-1.4')
 
-  // Object 1: Catalog
-  let offset = lines.join('\n').length + 1
-  const obj1Offset = offset
+  const obj1Offset = lines.join('\n').length + 1
   lines.push('1 0 obj')
   lines.push('<< /Type /Catalog /Pages 2 0 R >>')
   lines.push('endobj')
 
-  // Object 2: Pages
-  offset = lines.join('\n').length + 1
-  const obj2Offset = offset
+  const obj2Offset = lines.join('\n').length + 1
   lines.push('2 0 obj')
   lines.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
   lines.push('endobj')
 
-  // Build page content
-  const content = buildInvoiceContent(invoice)
-  const contentLength = content.length
-
-  // Object 4: Content stream
-  offset = lines.join('\n').length + 1
-  const obj4Offset = offset
+  const obj4Offset = lines.join('\n').length + 1
   lines.push('4 0 obj')
   lines.push(`<< /Length ${contentLength} >>`)
   lines.push('stream')
@@ -212,30 +77,21 @@ export async function generatePdfBuffer(invoice: InvoiceData): Promise<Buffer> {
   lines.push('endstream')
   lines.push('endobj')
 
-  // Object 3: Page
-  offset = lines.join('\n').length + 1
-  const obj3Offset = offset
+  const obj3Offset = lines.join('\n').length + 1
   lines.push('3 0 obj')
-  lines.push(
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>'
-  )
+  lines.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>')
   lines.push('endobj')
 
-  // Object 5: Font Helvetica
-  offset = lines.join('\n').length + 1
-  const obj5Offset = offset
+  const obj5Offset = lines.join('\n').length + 1
   lines.push('5 0 obj')
   lines.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
   lines.push('endobj')
 
-  // Object 6: Font Helvetica-Bold
-  offset = lines.join('\n').length + 1
-  const obj6Offset = offset
+  const obj6Offset = lines.join('\n').length + 1
   lines.push('6 0 obj')
   lines.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>')
   lines.push('endobj')
 
-  // Xref table
   const xrefOffset = lines.join('\n').length + 1
   lines.push('xref')
   lines.push('0 7')
@@ -247,268 +103,246 @@ export async function generatePdfBuffer(invoice: InvoiceData): Promise<Buffer> {
   lines.push(`${String(obj5Offset).padStart(10, '0')} 00000 n `)
   lines.push(`${String(obj6Offset).padStart(10, '0')} 00000 n `)
 
-  // Trailer
   lines.push('trailer')
   lines.push('<< /Size 7 /Root 1 0 R >>')
   lines.push('startxref')
   lines.push(String(xrefOffset))
   lines.push('%%EOF')
 
-  const pdfContent = lines.join('\n')
-  return Buffer.from(pdfContent, 'latin1')
+  return Buffer.from(lines.join('\n'), 'latin1')
 }
 
-function buildInvoiceContent(invoice: InvoiceData): string {
-  const lines: string[] = []
+// ─── Build fiscal invoice content stream ────────────────────────────────────
+
+function buildFiscalInvoice(invoice: InvoiceData, billing: BillingConfig): string {
+  const L: string[] = []
   const doctor = invoice.profiles
-  const issueDate = invoice.issued_at
-    ? new Date(invoice.issued_at).toLocaleDateString('es-VE')
-    : new Date(invoice.created_at).toLocaleDateString('es-VE')
+  const issueDateObj = invoice.issued_at ? new Date(invoice.issued_at) : new Date(invoice.created_at)
+  const issueDate = issueDateObj.toLocaleDateString('es-VE')
+  const issueTime = issueDateObj.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
   // Colors
-  const teal = '0.08 0.73 0.65' // teal-500 RGB equivalent
-  const darkText = '0 0 0'
-  const lightGray = '0.9 0.9 0.9'
+  const TEAL = '0.08 0.73 0.65'
+  const BLACK = '0 0 0'
+  const GRAY = '0.5 0.5 0.5'
+  const LGRAY = '0.85 0.85 0.85'
+  const WHITE = '1 1 1'
 
-  // Page setup
-  lines.push('BT')
-  lines.push('/F2 24 Tf')
-  lines.push(teal + ' rg')
-  lines.push('50 750 Td')
-  lines.push('(DELTA MEDICAL CRM) Tj')
-  lines.push('ET')
+  // ─────────────────────────────────────────────────────
+  // TOP ACCENT LINE (teal)
+  // ─────────────────────────────────────────────────────
+  L.push(`${TEAL} rg`)
+  L.push('0 842 595 -5 re f')
 
-  // Invoice title
-  lines.push('BT')
-  lines.push('/F2 18 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 700 Td')
-  lines.push('(FACTURA) Tj')
-  lines.push('ET')
+  // ─────────────────────────────────────────────────────
+  // EMISOR — Left: logo/name  |  Right: company details
+  // ─────────────────────────────────────────────────────
+  txt(L, 'Delta', 50, 48, 26, true, TEAL)
+  txt(L, 'MEDICAL CRM', 50, 66, 8, true, GRAY)
 
-  // Invoice number and date
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 680 Td')
-  lines.push('(Factura: ' + escapeForPdf(invoice.invoice_number) + ') Tj')
-  lines.push('ET')
+  // Right side — company data
+  txt(L, esc(billing.razon_social), 350, 48, 9, true, BLACK)
+  txt(L, billing.rif, 350, 60, 9, false, BLACK)
+  const domLines = wordWrap(billing.domicilio_fiscal, 48)
+  let dy = 72
+  for (const dl of domLines) {
+    txt(L, esc(dl), 350, dy, 7, false, GRAY)
+    dy += 9
+  }
+  txt(L, `Codigo de Actividad: ${billing.codigo_actividad}`, 350, dy, 7, false, GRAY)
 
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  lines.push('50 665 Td')
-  lines.push('(Fecha: ' + issueDate + ') Tj')
-  lines.push('ET')
-
-  // Status
-  const statusText = getStatusLabel(invoice.status)
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  const statusColor = invoice.status === 'paid' ? '0 0.6 0' : '0.8 0 0'
-  lines.push(statusColor + ' rg')
-  lines.push('50 650 Td')
-  lines.push('(Estado: ' + statusText + ') Tj')
-  lines.push('ET')
-
-  // Doctor info section
-  lines.push('BT')
-  lines.push('/F2 12 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 610 Td')
-  lines.push('(Informacion del Medico) Tj')
-  lines.push('ET')
-
-  // Horizontal line
-  lines.push(lightGray + ' RG')
-  lines.push('50 605 m')
-  lines.push('545 605 l')
-  lines.push('S')
-
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 590 Td')
-  lines.push('(Nombre: ' + escapeForPdf(doctor.full_name) + ') Tj')
-  lines.push('ET')
-
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  lines.push('50 575 Td')
-  lines.push('(Email: ' + escapeForPdf(doctor.email) + ') Tj')
-  lines.push('ET')
-
+  // ─────────────────────────────────────────────────────
+  // DESTINATARIO — Client (Doctor / Clínica)
+  // ─────────────────────────────────────────────────────
+  const clientY = 105
+  txt(L, `Razon Social: ${esc(doctor.full_name)}`, 50, clientY, 9, true, BLACK)
+  txt(L, `Email: ${esc(doctor.email)}`, 50, clientY + 13, 8, false, BLACK)
   if (doctor.specialty) {
-    lines.push('BT')
-    lines.push('/F1 10 Tf')
-    lines.push('50 560 Td')
-    lines.push('(Especialidad: ' + escapeForPdf(doctor.specialty) + ') Tj')
-    lines.push('ET')
+    txt(L, `Especialidad: ${esc(doctor.specialty)}`, 50, clientY + 25, 8, false, BLACK)
+  }
+  txt(L, `Telefono: ---`, 50, clientY + 37, 8, false, GRAY)
+
+  // ─────────────────────────────────────────────────────
+  // FACTURA BOX — Right side details
+  // ─────────────────────────────────────────────────────
+  const boxX = 330; const boxY = 97; const boxW = 225; const boxH = 95
+
+  // Box border
+  L.push(`${LGRAY} RG`)
+  L.push('0.5 w')
+  L.push(`${boxX} ${842 - boxY} ${boxW} ${-boxH} re S`)
+
+  // "Factura" title
+  txt(L, 'Factura', boxX + 70, boxY + 6, 16, true, BLACK)
+
+  // Details inside box
+  const bx = boxX + 10; let by = boxY + 28
+  txt(L, `N de Documento: ${esc(invoice.invoice_number)}`, bx, by, 8, false, BLACK); by += 12
+  txt(L, `Fecha de Emision: ${issueDate}`, bx, by, 8, false, BLACK); by += 12
+  txt(L, `Hora de Emision: ${issueTime}`, bx, by, 8, false, BLACK); by += 12
+  txt(L, `N DE CONTROL ${billing.control_number}`, bx, by, 8, true, BLACK); by += 12
+
+  // Tasa / Moneda
+  const tasaStr = billing.bcv_rate ? billing.bcv_rate.toFixed(4) : '---'
+  txt(L, `Condiciones de pago: Pago inmediato`, bx, by, 7, false, GRAY); by += 10
+  txt(L, `Tasa de cambio: ${tasaStr}    Moneda: Bs`, bx, by, 7, false, GRAY)
+
+  // ─────────────────────────────────────────────────────
+  // TABLE HEADER (teal bar)
+  // ─────────────────────────────────────────────────────
+  const tblY = 215
+  L.push(`${TEAL} rg`)
+  L.push(`40 ${842 - tblY} 515 -18 re f`)
+
+  txt(L, 'Codigo', 50, tblY + 4, 8, true, WHITE)
+  txt(L, 'Descripcion', 120, tblY + 4, 8, true, WHITE)
+  txt(L, 'Cantidad', 345, tblY + 4, 8, true, WHITE)
+  txt(L, 'Precio Unitario', 410, tblY + 4, 8, true, WHITE)
+  txt(L, 'Monto', 510, tblY + 4, 8, true, WHITE)
+
+  // ─────────────────────────────────────────────────────
+  // TABLE ROW — Line item
+  // ─────────────────────────────────────────────────────
+  const rowY = tblY + 24
+  const description = invoice.description || 'Suscripcion Plan - Delta Medical CRM'
+  const amt = invoice.amount
+  const bsAmt = billing.bcv_rate ? amt * billing.bcv_rate : null
+
+  txt(L, '000001', 50, rowY, 8, false, BLACK)
+  // Wrap description if long
+  const descLines = wordWrap(esc(description), 45)
+  descLines.forEach((line, i) => {
+    txt(L, line, 120, rowY + i * 11, 8, false, BLACK)
+  })
+  txt(L, '1,00', 360, rowY, 8, false, BLACK)
+
+  if (bsAmt !== null) {
+    txt(L, `Bs ${fmtBs(bsAmt)}`, 405, rowY, 8, false, BLACK)
+    txt(L, `Bs ${fmtBs(bsAmt)}`, 500, rowY, 8, false, BLACK)
+  } else {
+    txt(L, `$${amt.toFixed(2)}`, 420, rowY, 8, false, BLACK)
+    txt(L, `$${amt.toFixed(2)}`, 510, rowY, 8, false, BLACK)
   }
 
-  // Company info
-  lines.push('BT')
-  lines.push('/F2 12 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 520 Td')
-  lines.push('(Delta Medical CRM) Tj')
-  lines.push('ET')
+  // Bottom table line
+  const afterRow = rowY + Math.max(descLines.length * 11, 14) + 4
+  L.push(`${LGRAY} RG`)
+  L.push(`40 ${842 - afterRow} m 555 ${842 - afterRow} l S`)
 
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  lines.push('50 505 Td')
-  lines.push('(Venezuela) Tj')
-  lines.push('ET')
+  // ─────────────────────────────────────────────────────
+  // TAX BREAKDOWN BOX — right side
+  // ─────────────────────────────────────────────────────
+  const taxY = afterRow + 25
 
-  // Invoice details section
-  lines.push('BT')
-  lines.push('/F2 12 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 460 Td')
-  lines.push('(Detalles de la Factura) Tj')
-  lines.push('ET')
+  // Tax box background
+  L.push('0.97 0.97 0.97 rg')
+  L.push(`310 ${842 - taxY + 8} 245 -155 re f`)
+  L.push(`${LGRAY} RG`)
+  L.push('0.5 w')
+  L.push(`310 ${842 - taxY + 8} 245 -155 re S`)
+
+  // Column header
+  txt(L, 'Bs', 520, taxY - 5, 7, true, GRAY)
+
+  const baseUSD = amt
+  const bsBase = bsAmt ?? 0
+  const ivaRate = billing.iva_percent / 100
+  const igtfRate = billing.igtf_percent / 100
+
+  const bsIVA = bsBase * ivaRate
+  const bsTotalVentas = bsBase + bsIVA
+  const bsIGTF = bsBase * igtfRate
+  const bsTotalPagar = bsTotalVentas + bsIGTF
+
+  let ty = taxY + 10
+  taxRow(L, 'Base Exenta:', '0,00', 320, ty); ty += 13
+  taxRow(L, 'Base Imponible:', fmtBs(bsBase), 320, ty); ty += 13
+  taxRow(L, `IVA ${billing.iva_percent.toFixed(2)}% Sobre Base Imponible:`, fmtBs(bsIVA), 320, ty); ty += 13
 
   // Line
-  lines.push(lightGray + ' RG')
-  lines.push('50 455 m')
-  lines.push('545 455 l')
-  lines.push('S')
+  L.push(`${LGRAY} RG`)
+  L.push(`315 ${842 - ty + 3} m 550 ${842 - ty + 3} l S`)
+  ty += 4
+  taxRow(L, 'Total Ventas:', fmtBs(bsTotalVentas), 320, ty, true); ty += 16
+  taxRow(L, `IGTF ${billing.igtf_percent.toFixed(2)}% (pago en divisas):`, fmtBs(bsIGTF), 320, ty); ty += 16
 
-  // Table headers
-  lines.push('BT')
-  lines.push('/F2 10 Tf')
-  lines.push(teal + ' rg')
-  lines.push('50 440 Td')
-  lines.push('(Descripción) Tj')
-  lines.push('ET')
+  // TOTAL bar
+  L.push(`${TEAL} rg`)
+  L.push(`310 ${842 - ty + 5} 245 -22 re f`)
 
-  lines.push('BT')
-  lines.push('/F2 10 Tf')
-  lines.push('450 440 Td')
-  lines.push('(Monto) Tj')
-  lines.push('ET')
+  txt(L, 'Total a Pagar:', 320, ty, 10, true, WHITE)
+  txt(L, fmtBs(bsTotalPagar), 490, ty, 10, true, WHITE)
 
-  // Content line
-  lines.push(lightGray + ' RG')
-  lines.push('50 435 m')
-  lines.push('545 435 l')
-  lines.push('S')
+  ty += 28
+  // USD equivalent
+  if (billing.bcv_rate) {
+    const usdTotal = baseUSD * (1 + ivaRate + igtfRate)
+    txt(L, `Equivalente USD: $${usdTotal.toFixed(2)}`, 320, ty, 7, false, GRAY)
+  }
 
-  // Description
-  const description = invoice.description || 'Servicio de Suscripción Médica'
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 420 Td')
-  lines.push('(' + escapeForPdf(description) + ') Tj')
-  lines.push('ET')
+  // ─────────────────────────────────────────────────────
+  // FOOTER
+  // ─────────────────────────────────────────────────────
+  L.push(`${LGRAY} RG`)
+  L.push(`40 52 m 555 52 l S`)
 
-  // Amount
-  const amount = formatCurrency(invoice.amount, invoice.currency)
-  lines.push('BT')
-  lines.push('/F1 10 Tf')
-  lines.push('450 420 Td')
-  lines.push('(' + amount + ') Tj')
-  lines.push('ET')
+  txt(L, 'Delta Medical CRM - Sistema para Medicos Especialistas | deltamedical.ve', 50, 796, 7, false, GRAY)
 
-  // Total line
-  lines.push(lightGray + ' RG')
-  lines.push('50 410 m')
-  lines.push('545 410 l')
-  lines.push('S')
-
-  // Total
-  lines.push('BT')
-  lines.push('/F2 12 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 390 Td')
-  lines.push('(Total) Tj')
-  lines.push('ET')
-
-  lines.push('BT')
-  lines.push('/F2 12 Tf')
-  lines.push('450 390 Td')
-  lines.push('(' + amount + ') Tj')
-  lines.push('ET')
-
-  // Payment instructions
-  lines.push('BT')
-  lines.push('/F2 11 Tf')
-  lines.push(darkText + ' rg')
-  lines.push('50 320 Td')
-  lines.push('(Metodos de Pago) Tj')
-  lines.push('ET')
-
-  lines.push(lightGray + ' RG')
-  lines.push('50 315 m')
-  lines.push('545 315 l')
-  lines.push('S')
-
-  lines.push('BT')
-  lines.push('/F1 9 Tf')
-  lines.push('50 300 Td')
-  lines.push('(Pago Movil) Tj')
-  lines.push('ET')
-
-  lines.push('BT')
-  lines.push('/F1 9 Tf')
-  lines.push('50 285 Td')
-  lines.push('(Transferencia Bancaria) Tj')
-  lines.push('ET')
-
-  lines.push('BT')
-  lines.push('/F1 9 Tf')
-  lines.push('50 270 Td')
-  lines.push('(Zelle) Tj')
-  lines.push('ET')
-
-  // Footer
-  const footerY = 50
-  lines.push(lightGray + ' RG')
-  lines.push('50 60 m')
-  lines.push('545 60 l')
-  lines.push('S')
-
-  lines.push('BT')
-  lines.push('/F1 8 Tf')
-  lines.push('0.5 0.5 0.5 rg')
-  lines.push('50 ' + footerY + ' Td')
-  lines.push('(Delta Medical CRM - Sistema Integral para Medicos) Tj')
-  lines.push('ET')
-
-  return lines.join('\n')
+  return L.join('\n')
 }
 
-function escapeForPdf(text: string): string {
+// ─── Primitives ──────────────────────────────────────────────────────────────
+
+function txt(L: string[], text: string, x: number, y: number, size: number, bold: boolean, color: string) {
+  L.push('BT')
+  L.push(`/F${bold ? '2' : '1'} ${size} Tf`)
+  L.push(`${color} rg`)
+  L.push(`${x} ${842 - y} Td`)
+  L.push(`(${escPdf(text)}) Tj`)
+  L.push('ET')
+}
+
+function taxRow(L: string[], label: string, value: string, x: number, y: number, bold = false) {
+  txt(L, label, x, y, 8, bold, bold ? '0 0 0' : '0.3 0.3 0.3')
+  txt(L, value, 490, y, 8, bold, '0 0 0')
+}
+
+function escPdf(text: string): string {
   if (!text) return ''
   return text
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
-    .slice(0, 200)
+    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u').replace(/[ñ]/g, 'n')
+    .replace(/[ÁÀÄÂ]/g, 'A').replace(/[ÉÈËÊ]/g, 'E').replace(/[ÍÌÏÎ]/g, 'I')
+    .replace(/[ÓÒÖÔ]/g, 'O').replace(/[ÚÙÜÛ]/g, 'U').replace(/[Ñ]/g, 'N')
+    .replace(/°/g, '').replace(/[^\x20-\x7E]/g, '')
+    .slice(0, 255)
 }
 
-function getStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    issued: 'Emitida',
-    sent: 'Enviada',
-    paid: 'Pagada',
-    overdue: 'Vencida',
-    cancelled: 'Cancelada',
+function esc(t: string): string { return escPdf(t) }
+
+function wordWrap(text: string, maxChars: number): string[] {
+  if (!text || text.length <= maxChars) return [text || '']
+  const words = text.split(' ')
+  const lines: string[] = []
+  let current = ''
+  for (const word of words) {
+    if ((current + ' ' + word).trim().length > maxChars) {
+      if (current) lines.push(current.trim())
+      current = word
+    } else {
+      current = current ? current + ' ' + word : word
+    }
   }
-  return labels[status] || status
+  if (current) lines.push(current.trim())
+  return lines.length ? lines : [text.slice(0, maxChars)]
 }
 
-function formatCurrency(amount: number, currency: string): string {
-  const symbol = getCurrencySymbol(currency)
-  return `${symbol}${amount.toFixed(2)}`
-}
-
-function getCurrencySymbol(currency: string): string {
-  const symbols: Record<string, string> = {
-    USD: '$',
-    EUR: '€',
-    VES: 'Bs.',
-    VEF: 'Bs.',
-  }
-  return symbols[currency] || currency
+function fmtBs(n: number): string {
+  // Venezuelan format: 1.234,56
+  const parts = n.toFixed(2).split('.')
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${intPart},${parts[1]}`
 }

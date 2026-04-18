@@ -28,7 +28,7 @@ const METRICS = [
 
 const TESTIMONIALS = [
   { name: 'Dr. Carlos Ramírez', role: 'Cardiólogo · Caracas', avatar: 'CR', text: 'Mis no-shows bajaron del 28% a solo 4% en el primer mes. Los recordatorios automáticos de WhatsApp funcionan increíblemente bien.', metric: '−85% No-Shows', metricColor: 'text-emerald-600 bg-emerald-50' },
-  { name: 'Dra. María González', role: 'Ginecóloga · Maracaibo', avatar: 'MG', text: 'La IA redacta la historia clínica completa mientras consulto. Ahorro casi 2 horas diarias que ahora dedico a mi familia.', metric: '+2h/día libres', metricColor: 'text-cyan-600 bg-cyan-50' },
+  { name: 'Dra. María González', role: 'Ginecóloga · Maracaibo', avatar: 'MG', text: 'Tener la agenda y los recordatorios automáticos me cambió la vida. Ahorro casi 2 horas diarias que ahora dedico a mi familia.', metric: '+2h/día libres', metricColor: 'text-cyan-600 bg-cyan-50' },
   { name: 'Dr. Alejandro Méndez', role: 'Internista · Valencia', avatar: 'AM', text: 'Pasé de 40 a 72 consultas al mes en 3 meses. El CRM de leads de WhatsApp convierte conversaciones en citas reales.', metric: '+80% Consultas', metricColor: 'text-violet-600 bg-violet-50' },
 ]
 
@@ -135,7 +135,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="anim-fu2 text-xl text-slate-500 leading-relaxed max-w-lg font-medium">
-              Gestiona pacientes, leads de WhatsApp, agenda e historial clínico con IA — todo desde un solo lugar diseñado para especialistas venezolanos.
+              Gestiona pacientes, leads de WhatsApp, agenda e historial clínico — todo desde un solo lugar diseñado para especialistas venezolanos.
             </p>
 
             <div className="anim-fu3 flex flex-col sm:flex-row gap-4">
@@ -206,7 +206,7 @@ export default function LandingPage() {
             </div>
             <div className="anim-f2 absolute -left-10 top-1/3 bg-white rounded-2xl shadow-xl border border-slate-100 p-3.5 flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0"><CheckCircle2 className="w-4 h-4 text-emerald-500" /></div>
-              <div><p className="text-xs font-bold text-slate-900">IA redactó récipe</p><p className="text-xs text-slate-400">Hace 2 minutos</p></div>
+              <div><p className="text-xs font-bold text-slate-900">Récipe generado</p><p className="text-xs text-slate-400">Hace 2 minutos</p></div>
             </div>
             <div className="anim-f1 absolute -right-6 bottom-24 bg-white rounded-2xl shadow-xl border border-slate-100 p-4">
               <p className="text-xs text-slate-400 font-medium mb-1">Satisfacción NPS</p>
@@ -278,13 +278,13 @@ export default function LandingPage() {
               <div>
                 <span className="text-xs font-bold text-white/60 uppercase tracking-widest">CRM</span>
                 <h3 className="text-2xl font-bold text-white mt-1 mb-2">CRM de Leads Dinámico</h3>
-                <p className="text-white/80 text-sm leading-relaxed max-w-md">Clasifica leads de WhatsApp e Instagram en <strong className="text-white">Hot</strong> (&lt;7d), <strong className="text-white">Cold</strong> (&gt;7d) y <strong className="text-white">Clientes</strong>. Vista Kanban con movimiento dinámico entre columnas.</p>
+                <p className="text-white/80 text-sm leading-relaxed max-w-md">Clasifica leads de WhatsApp e Instagram en <strong className="text-white">Hot</strong> (&lt;7d), <strong className="text-white">Cold</strong> (&gt;7d) y <strong className="text-white">Clientes</strong>. Seguimiento completo desde el primer mensaje hasta la cita.</p>
               </div>
             </div>
 
             <div className="rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden lift cursor-pointer bg-slate-900" style={{ minHeight: 220 }}>
-              <div className="absolute -right-4 -bottom-4 opacity-10"><Brain className="w-32 h-32 text-cyan-400" /></div>
-              <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center mb-4"><Brain className="w-5 h-5 text-cyan-400" /></div>
+              <div className="absolute -right-4 -bottom-4 opacity-10"><FileText className="w-32 h-32 text-cyan-400" /></div>
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center mb-4"><FileText className="w-5 h-5 text-cyan-400" /></div>
               <div>
                 <span className="text-xs font-bold text-cyan-400 uppercase tracking-widest">Historial</span>
                 <h3 className="text-xl font-bold text-white mt-1 mb-2">Historial Clínico Digital</h3>
@@ -330,9 +330,9 @@ export default function LandingPage() {
 
             {/* NexHealth-inspired features row */}
             {[
-              { icon: Users, tag: 'Nuevo', title: 'Consultas Online y Presencial', desc: 'El paciente elige entre videoconsulta o asistir al consultorio. Tú configuras la dirección y disponibilidad.' },
-              { icon: Clock, tag: 'Waitlist', title: 'Lista de Espera Inteligente', desc: 'Cuando la agenda está llena, los pacientes se unen a la lista de espera. Al cancelar alguien, se notifica automáticamente.' },
-              { icon: Building2, tag: 'Clínicas', title: 'Multi-Doctor para Clínicas', desc: 'Plan Centro de Salud: registra tu clínica, agrega doctores, y permite a pacientes elegir disponibilidad entre todos.' },
+              { icon: Users, tag: 'Pacientes', title: 'Portal del Paciente', desc: 'Tus pacientes acceden a sus citas, recetas y datos clínicos. Todo organizado y accesible desde cualquier dispositivo.' },
+              { icon: FileText, tag: 'Recetas', title: 'Récipes y Documentos', desc: 'Genera récipes médicos digitales para tus pacientes. Control completo de prescripciones con historial accesible.' },
+              { icon: Building2, tag: 'Clínicas', title: 'Multi-Doctor para Clínicas', desc: 'Plan Centro de Salud: registra tu clínica, agrega doctores, y gestiona suscripciones desde un panel centralizado.' },
             ].map(f => (
               <div key={f.title} className="bg-white rounded-3xl p-7 flex flex-col justify-between lift cursor-pointer border border-slate-200 hover:border-cyan-200" style={{ minHeight: 200 }}>
                 <div className="flex items-center gap-3 mb-3">
@@ -685,13 +685,13 @@ export default function LandingPage() {
                   <span className="text-xs text-slate-400 block font-medium">Medical CRM</span>
                 </div>
               </div>
-              <p className="text-sm text-slate-500 leading-relaxed max-w-xs">El ecosistema digital para médicos especialistas en Venezuela. CRM, agenda, EHR con IA y finanzas en un solo lugar.</p>
+              <p className="text-sm text-slate-500 leading-relaxed max-w-xs">El ecosistema digital para médicos especialistas en Venezuela. CRM, agenda, historial clínico y finanzas en un solo lugar.</p>
               <a href="mailto:soporte@delta.ve" className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600"><Mail className="w-3.5 h-3.5" /> soporte@delta.ve</a>
             </div>
 
             <div className="space-y-3">
               <h4 className="text-sm font-bold text-slate-900">Producto</h4>
-              {['CRM de Leads','Agenda Médica','EHR + IA','Recordatorios','Finanzas','Marketing'].map(item=>(
+              {['CRM de Leads','Agenda Médica','Historial Clínico','Recordatorios','Finanzas','Suscripciones'].map(item=>(
                 <a key={item} href="#features" className="block text-sm text-slate-500 hover:text-slate-900 transition-colors">{item}</a>
               ))}
             </div>
