@@ -80,7 +80,6 @@ async function handler() {
     doctor_id: adminUserId,
     plan: 'centro_salud',
     status: 'trial',
-    started_at: now.toISOString(),
     current_period_end: expires.toISOString(),
   })
 
@@ -129,7 +128,6 @@ async function handler() {
       doctor_id: docUserId,
       plan: 'centro_salud',
       status: 'trial',
-      started_at: now.toISOString(),
       current_period_end: expires.toISOString(),
     })
 

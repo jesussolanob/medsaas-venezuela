@@ -64,7 +64,6 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     doctor_id: userId,
     plan: input.plan,
     status: input.plan === 'free' ? 'trial' : 'pending_payment',
-    started_at: now.toISOString(),
     current_period_end: input.plan === 'free' ? expiresAt.toISOString() : null,
   })
 
@@ -173,7 +172,6 @@ export async function registerClinic(input: RegisterClinicInput): Promise<Regist
     doctor_id: userId,
     plan: 'centro_salud',
     status: 'trial',
-    started_at: now.toISOString(),
     current_period_end: expiresAt.toISOString(),
   })
 

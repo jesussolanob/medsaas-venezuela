@@ -58,7 +58,6 @@ export async function POST(req: NextRequest) {
           doctor_id: doctorId,
           plan: 'free',
           status: 'trial',
-          started_at: now.toISOString(),
           current_period_end: expiresAt.toISOString(),
         })
         .select('id')

@@ -95,7 +95,6 @@ async function handler() {
         doctor_id: doctorUserId,
         plan: 'free',
         status: 'trial',
-        started_at: now.toISOString(),
         current_period_end: expires.toISOString(),
       }).select().single()
     }

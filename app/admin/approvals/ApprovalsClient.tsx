@@ -42,7 +42,7 @@ type NewSubscription = {
   specialty: string | null
   plan: string
   status: string
-  started_at: string
+  created_at: string
   current_period_end: string
 }
 
@@ -748,7 +748,7 @@ export default function ApprovalsClient({
                                 Plan: {sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)}
                               </span>
                               <span className="text-xs text-slate-500">
-                                Inicio: {formatDate(sub.started_at)}
+                                Inicio: {formatDate(sub.created_at)}
                               </span>
                               <span className="text-xs text-slate-500">
                                 Vence: {formatDate(sub.current_period_end)}

@@ -29,7 +29,7 @@ type NewSubscription = {
   specialty: string | null
   plan: string
   status: string
-  started_at: string
+  created_at: string
   current_period_end: string
 }
 
@@ -141,12 +141,12 @@ export default async function ApprovalsPage() {
       doctor_id,
       plan,
       status,
-      started_at,
+      created_at,
       current_period_end,
       profiles:doctor_id(full_name, email, specialty)
     `)
-    .gte('started_at', thirtyDaysAgo.toISOString())
-    .order('started_at', { ascending: false })
+    .gte('created_at', thirtyDaysAgo.toISOString())
+    .order('created_at', { ascending: false })
 
   // 4. Fetch subscriptions expiring in next 14 days
   const now = new Date()
@@ -242,7 +242,7 @@ export default async function ApprovalsPage() {
     specialty: s.profiles?.specialty || null,
     plan: s.plan,
     status: s.status,
-    started_at: s.started_at,
+    created_at: s.created_at,
     current_period_end: s.current_period_end,
   }))
 
