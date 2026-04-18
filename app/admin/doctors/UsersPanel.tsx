@@ -48,7 +48,7 @@ interface Doctor {
   email: string
   specialty?: string
   is_active: boolean
-  subscriptions?: Array<{ plan: string; status: string }>
+  subscriptions?: { plan: string; status: string } | Array<{ plan: string; status: string }> | null
 }
 
 interface Clinic {
@@ -212,7 +212,8 @@ export default function UsersPanel() {
                       </td>
                       <td className="px-4 sm:px-6 py-4">
                         {(() => {
-                          const sub = doctor.subscriptions?.[0]
+                          const subs = doctor.subscriptions
+                          const sub = Array.isArray(subs) ? subs[0] : subs
                           const tag = getPlanTag(sub?.plan, sub?.status)
                           return (
                             <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${tag.color}`}>

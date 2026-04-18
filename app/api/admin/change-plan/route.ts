@@ -7,25 +7,18 @@ export async function POST(req: NextRequest) {
     const { doctorId, plan } = await req.json()
 
     if (!doctorId || !plan) {
-      return NextResponse.json(
-        { error: 'Missing doctorId or plan' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing doctorId or plan' }, { status: 400 })
     }
 
-    if (!['basic', 'professional', 'enterprise'].includes(plan)) {
-      return NextResponse.json(
-        { error: 'Invalid plan. Must be basic, professional, or enterprise' },
-        { status: 400 }
-      )
+    const validPlans = ['trial', 'basic', 'professional', 'enterprise', 'clinic']
+    if (!validPlans.includes(plan)) {
+      return NextResponse.json({ error: 'Plan inválido' }, { status: 400 })
     }
 
-    // Verify the caller is authenticated and is a super_admin or admin
+    // Verify caller is admin
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-    }
+    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
 
     const admin = createAdminClient()
     const { data: callerProfile } = await admin
@@ -38,78 +31,60 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Get the doctor's subscription
+    // Get existing subscription
     const { data: subscription } = await admin
       .from('subscriptions')
       .select('*')
       .eq('doctor_id', doctorId)
       .maybeSingle()
 
-    // If no subscription exists, create one first
-    let subscriptionId = subscription?.id
-    if (!subscription) {
-      const now = new Date()
-      const expiresAt = new Date(now)
-      expiresAt.setDate(expiresAt.getDate() + 30)
+    const now = new Date()
+    const expiresAt = new Date(now)
+    expiresAt.setDate(expiresAt.getDate() + 30)
 
-      const { data: newSub, error: newSubErr } = await admin
+    const isTrial = plan === 'trial'
+    const newStatus = isTrial ? 'trial' : 'active'
+
+    if (subscription) {
+      // Update existing subscription
+      const { error: updateError } = await admin
+        .from('subscriptions')
+        .update({
+          plan,
+          status: newStatus,
+          current_period_end: expiresAt.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq('id', subscription.id)
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 })
+      }
+    } else {
+      // Create new subscription
+      const { error: insertError } = await admin
         .from('subscriptions')
         .insert({
           doctor_id: doctorId,
-          plan: 'basic',
-          status: 'trial',
+          plan,
+          status: newStatus,
           current_period_end: expiresAt.toISOString(),
         })
-        .select('id')
-        .single()
 
-      if (newSubErr) {
-        return NextResponse.json(
-          { error: 'Error creating subscription: ' + newSubErr.message },
-          { status: 500 }
-        )
+      if (insertError) {
+        return NextResponse.json({ error: insertError.message }, { status: 500 })
       }
-      subscriptionId = newSub.id
-    }
-
-    // Create a pending approval request in subscription_payments
-    // Instead of directly changing the plan
-    let amount = 0
-    if (plan === 'professional') {
-      amount = 30
-    } else if (plan === 'enterprise') {
-      amount = 100
-    } else if (plan === 'basic') {
-      amount = 0
-    }
-
-    const { error: insertError } = await admin
-      .from('subscription_payments')
-      .insert({
-        doctor_id: doctorId,
-        subscription_id: subscriptionId,
-        amount: amount,
-        currency: 'USD',
-        method: 'admin_upgrade',
-        reference_number: `UPGRADE-${Date.now()}`,
-        status: 'pending',
-      })
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
       doctorId,
       plan,
-      message: 'Solicitud de cambio enviada a aprobaciones',
+      status: newStatus,
+      message: `Plan cambiado a ${plan} exitosamente`,
     })
   } catch (error: any) {
     console.error('Error changing plan:', error)
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }

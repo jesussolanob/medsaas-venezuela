@@ -1,7 +1,6 @@
 'use client'
-import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
-import { X, Phone, Mail, FileText, Calendar, Users, TrendingUp, MapPin, Building2 } from 'lucide-react'
+import { X, Phone, Mail, FileText, Calendar, Users, TrendingUp, MapPin, Building2, RefreshCw } from 'lucide-react'
 
 interface DoctorDetailDrawerProps {
   doctor: any
@@ -16,8 +15,9 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
   const [error, setError] = useState('')
   const [suspending, setSuspending] = useState(false)
   const [changingPlan, setChangingPlan] = useState(false)
+  const [showPlanSelector, setShowPlanSelector] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
-  const supabase = createClient()
 
   useEffect(() => {
     if (!isOpen || !doctor) {
@@ -92,16 +92,25 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
     }
   }
 
-  const handleChangeToPro = async () => {
+  const PLAN_OPTIONS = [
+    { key: 'trial', label: 'Trial', color: 'bg-slate-100 text-slate-700' },
+    { key: 'basic', label: 'Basic', color: 'bg-blue-50 text-blue-700' },
+    { key: 'professional', label: 'Professional', color: 'bg-teal-50 text-teal-700' },
+    { key: 'enterprise', label: 'Centro de Salud', color: 'bg-violet-50 text-violet-700' },
+  ]
+
+  const handleChangePlan = async (newPlan: string) => {
     if (!details?.profile) return
 
-    // If already Professional, show error
-    if (details?.subscription?.plan === 'professional') {
-      setError('Este médico ya está en plan Professional')
+    const currentPlan = details?.subscription?.plan
+    if (currentPlan === newPlan) {
+      setError('El médico ya tiene este plan')
+      setTimeout(() => setError(''), 3000)
       return
     }
 
-    if (!confirm('¿Solicitar cambio a plan Professional? Se enviará a Aprobaciones para verificación.')) return
+    const planLabel = PLAN_OPTIONS.find(p => p.key === newPlan)?.label || newPlan
+    if (!confirm(`¿Cambiar a plan ${planLabel}? El cambio será inmediato.`)) return
 
     try {
       setChangingPlan(true)
@@ -110,17 +119,24 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
       const response = await fetch('/api/admin/change-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doctorId: details.profile.id, plan: 'professional' }),
+        body: JSON.stringify({ doctorId: details.profile.id, plan: newPlan }),
       })
 
       const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Error al cambiar plan')
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al cambiar plan')
-      }
+      // Update local state
+      setDetails({
+        ...details,
+        subscription: {
+          ...(details.subscription || {}),
+          plan: newPlan,
+          status: newPlan === 'trial' ? 'trial' : 'active',
+        },
+      })
 
-      // Don't update local state - the plan hasn't changed yet, it's pending approval
-      setSuccessMessage('Solicitud enviada a Aprobaciones')
+      setSuccessMessage(`Plan cambiado a ${planLabel} exitosamente`)
+      setShowPlanSelector(false)
       setTimeout(() => setSuccessMessage(''), 3000)
       onDoctorUpdated?.()
     } catch (err: any) {
@@ -240,33 +256,29 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 p-3 rounded-lg">
                   <p className="text-xs text-slate-500 uppercase mb-1">Plan</p>
-                  <p className="text-sm font-semibold text-slate-900 capitalize">
-                    {({ basic: 'Basic', professional: 'Professional', enterprise: 'Centro de Salud', centro_salud: 'Centro de Salud' }[subscription?.plan || '']) || 'Basic'}
+                  <p className="text-sm font-semibold text-slate-900">
+                    {({ trial: 'Trial', basic: 'Basic', professional: 'Professional', enterprise: 'Centro de Salud', clinic: 'Centro de Salud', centro_salud: 'Centro de Salud' }[subscription?.plan || 'trial']) || subscription?.plan || 'Sin plan'}
                   </p>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg">
-                  <p className="text-xs text-slate-500 uppercase mb-1">Estado</p>
+                  <p className="text-xs text-slate-500 uppercase mb-1">Estado Suscripción</p>
                   <p className="text-sm font-semibold">
-                    {profile?.is_active ? (
-                      <span className="text-emerald-600">Activo</span>
-                    ) : (
-                      <span className="text-red-600">Inactivo</span>
-                    )}
+                    {({ active: <span className="text-emerald-600">Activo</span>, trial: <span className="text-amber-600">Trial</span>, suspended: <span className="text-red-600">Suspendido</span>, past_due: <span className="text-orange-600">Vencido</span>, cancelled: <span className="text-slate-400">Cancelado</span> }[subscription?.status || 'trial']) || <span className="text-slate-400">{subscription?.status || 'N/A'}</span>}
                   </p>
                 </div>
               </div>
 
-              {/* Subscription status */}
+              {/* Subscription details */}
               {subscription && (
-                <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
-                  <p className="text-xs text-amber-700 uppercase font-medium mb-1">Suscripción</p>
+                <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg space-y-1">
+                  <p className="text-xs text-slate-500 uppercase font-medium">Suscripción</p>
                   {subscription.current_period_end && (
-                    <p className="text-xs text-amber-600">
-                      Vencimiento: {new Date(subscription.current_period_end).toLocaleDateString('es-VE')}
+                    <p className="text-xs text-slate-600">
+                      Vencimiento: <strong>{new Date(subscription.current_period_end).toLocaleDateString('es-VE')}</strong>
                     </p>
                   )}
                   {subscription.status === 'trial' && trialDaysLeft > 0 && (
-                    <p className="text-xs text-amber-600 mt-1">
+                    <p className="text-xs text-amber-600 font-medium">
                       {trialDaysLeft} días restantes de prueba
                     </p>
                   )}
@@ -311,6 +323,51 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
         {/* Actions */}
         {!loading && (
           <div className="border-t border-slate-200 p-6 space-y-2">
+            {/* Plan selector */}
+            {showPlanSelector ? (
+              <div className="space-y-2 mb-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase">Seleccionar nuevo plan</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {PLAN_OPTIONS.map(opt => {
+                    const isCurrent = subscription?.plan === opt.key
+                    return (
+                      <button
+                        key={opt.key}
+                        onClick={() => handleChangePlan(opt.key)}
+                        disabled={changingPlan || isCurrent}
+                        className={`px-3 py-2.5 rounded-lg text-xs font-semibold transition-all border-2 ${
+                          isCurrent
+                            ? 'border-teal-400 bg-teal-50 text-teal-700 cursor-default'
+                            : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50 text-slate-700'
+                        } disabled:opacity-50`}
+                      >
+                        {opt.label}
+                        {isCurrent && <span className="block text-[10px] text-teal-500 mt-0.5">Actual</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+                {changingPlan && (
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Cambiando plan...
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowPlanSelector(false)}
+                  className="w-full text-xs text-slate-400 hover:text-slate-600 py-1"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowPlanSelector(true)}
+                className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors"
+              >
+                Cambiar Plan
+              </button>
+            )}
+
             <button
               onClick={handleToggleStatus}
               disabled={suspending}
@@ -321,13 +378,6 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               }`}
             >
               {suspending ? 'Actualizando...' : (profile?.is_active ? 'Suspender' : 'Activar')}
-            </button>
-            <button
-              onClick={handleChangeToPro}
-              disabled={changingPlan}
-              className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60"
-            >
-              {changingPlan ? 'Cambiando...' : 'Cambiar a Professional'}
             </button>
             <button
               onClick={onClose}
