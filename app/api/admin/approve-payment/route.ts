@@ -77,24 +77,38 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // If approving, extend the doctor's subscription by 30 days
-    // or change the plan if it's an admin upgrade request
+    // If approving, extend the doctor's subscription
+    // Check for promotions to determine duration
     if (action === 'approve') {
       // Get current subscription
       const { data: subscription, error: subError } = await admin
         .from('subscriptions')
-        .select('id, current_period_end')
+        .select('id, plan, current_period_end')
         .eq('doctor_id', payment.doctor_id)
         .single()
 
       if (subError) {
         console.error('Error fetching subscription:', subError)
       } else if (subscription) {
-        // Extend by 30 days from now or from expiration (whichever is later)
+        // Check if there's a matching active promotion for this payment amount
+        let extensionDays = 30 // default: 1 month
+        const { data: matchingPromo } = await admin
+          .from('plan_promotions')
+          .select('duration_months, promo_price_usd')
+          .eq('is_active', true)
+          .eq('promo_price_usd', payment.amount)
+          .or('ends_at.is.null,ends_at.gt.' + new Date().toISOString())
+          .maybeSingle()
+
+        if (matchingPromo) {
+          extensionDays = matchingPromo.duration_months * 30
+        }
+
+        // Extend from now or from expiration (whichever is later)
         const expiresAt = subscription.current_period_end ? new Date(subscription.current_period_end) : new Date()
         const now = new Date()
         const startDate = expiresAt > now ? expiresAt : now
-        startDate.setDate(startDate.getDate() + 30)
+        startDate.setDate(startDate.getDate() + extensionDays)
 
         // Check if this is an admin upgrade request
         const isAdminUpgrade = payment.method === 'admin_upgrade'

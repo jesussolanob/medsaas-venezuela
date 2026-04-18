@@ -10,18 +10,37 @@ import NewClinicModal from './NewClinicModal'
 import { clsx } from 'clsx'
 
 const PLAN_LABELS: Record<string, string> = {
+  trial: 'Trial',
   basic: 'Basic',
   professional: 'Professional',
+  clinic: 'Centro de Salud',
   enterprise: 'Centro de Salud',
   centro_salud: 'Centro de Salud',
 }
 
+const PLAN_COLORS: Record<string, string> = {
+  trial: 'bg-slate-100 text-slate-600',
+  basic: 'bg-blue-50 text-blue-600',
+  professional: 'bg-teal-50 text-teal-600',
+  clinic: 'bg-violet-50 text-violet-600',
+  enterprise: 'bg-violet-50 text-violet-600',
+}
+
+const STATUS_COLORS: Record<string, { suffix: string; color: string }> = {
+  active: { suffix: '', color: '' },
+  trial: { suffix: ' · Trial', color: 'bg-amber-50 text-amber-700' },
+  trialing: { suffix: ' · Trial', color: 'bg-amber-50 text-amber-700' },
+  suspended: { suffix: ' · Suspendida', color: 'bg-red-50 text-red-700' },
+  past_due: { suffix: ' · Vencido', color: 'bg-orange-50 text-orange-700' },
+  pending_payment: { suffix: ' · Pendiente', color: 'bg-orange-50 text-orange-700' },
+}
+
 function getPlanTag(plan?: string | null, status?: string | null): { label: string; color: string } {
-  const planName = PLAN_LABELS[plan || ''] || 'Basic'
-  if (status === 'suspended') return { label: `${planName} · Suspendida`, color: 'bg-red-50 text-red-700' }
-  if (status === 'active') return { label: planName, color: 'bg-teal-50 text-teal-700' }
-  if (status === 'past_due' || status === 'pending_payment') return { label: `${planName} · Pendiente`, color: 'bg-orange-50 text-orange-700' }
-  return { label: `${planName} · Trial`, color: 'bg-amber-50 text-amber-700' }
+  const planKey = plan || 'trial'
+  const planName = PLAN_LABELS[planKey] || planKey.charAt(0).toUpperCase() + planKey.slice(1)
+  const statusInfo = STATUS_COLORS[status || 'trial'] || STATUS_COLORS.trial
+  const color = statusInfo.color || PLAN_COLORS[planKey] || PLAN_COLORS.trial
+  return { label: planName + (statusInfo.suffix || ''), color }
 }
 
 interface Doctor {

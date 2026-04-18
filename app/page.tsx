@@ -37,15 +37,34 @@ const BASIC_FEATURES = ['Pacientes ilimitados','Agenda inteligente','Recordatori
 const PROFESSIONAL_FEATURES = ['Pacientes ilimitados','CRM de leads dinámico','Historial clínico digital','Portal del paciente','Recordatorios personalizados','Gestión financiera completa','Múltiples métodos de pago','Soporte prioritario WhatsApp']
 const CLINIC_FEATURES = ['Todo del Plan Profesional incluido','Hasta 10 doctores por clínica','Panel de administración centralizado','Agenda de todos los doctores','Paciente elige doctor disponible','Reportes financieros consolidados','Roles: admin clínica + doctores','Marca personalizada (logo, colores)','Booking público multi-doctor','Soporte VIP dedicado']
 
+interface Promotion {
+  id: string
+  plan_key: string
+  duration_months: number
+  original_price_usd: number
+  promo_price_usd: number
+  label: string
+}
+
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [promotions, setPromotions] = useState<Promotion[]>([])
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 30)
     window.addEventListener('scroll', handler)
     return () => window.removeEventListener('scroll', handler)
   }, [])
+
+  useEffect(() => {
+    fetch('/api/promotions')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setPromotions(data) })
+      .catch(() => {})
+  }, [])
+
+  const getPromo = (planKey: string) => promotions.find(p => p.plan_key === planKey)
 
   return (
     <div className="min-h-screen bg-white text-slate-900" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -576,6 +595,20 @@ export default function LandingPage() {
                   <span className="text-slate-400 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
                 <p className="text-sm text-slate-500 mt-2">Para el médico que inicia su digitalización.</p>
+                {getPromo('basic') && (() => {
+                  const p = getPromo('basic')!
+                  const disc = Math.round(((p.original_price_usd - p.promo_price_usd) / p.original_price_usd) * 100)
+                  return (
+                    <div className="mt-3 bg-gradient-to-r from-teal-50 to-emerald-50 rounded-xl p-3 border border-teal-200">
+                      <p className="text-xs font-bold text-teal-700">{p.label || `Oferta ${p.duration_months} meses`}</p>
+                      <p className="text-sm mt-0.5">
+                        <span className="line-through text-slate-400">${p.original_price_usd}</span>{' '}
+                        <span className="font-extrabold text-teal-600">${p.promo_price_usd} USD</span>{' '}
+                        <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">-{disc}%</span>
+                      </p>
+                    </div>
+                  )
+                })()}
               </div>
               <ul className="space-y-2.5 flex-1">
                 {BASIC_FEATURES.map(f=>(
@@ -602,6 +635,20 @@ export default function LandingPage() {
                   <span className="text-slate-400 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-2">Para el especialista independiente.</p>
+                {getPromo('professional') && (() => {
+                  const p = getPromo('professional')!
+                  const disc = Math.round(((p.original_price_usd - p.promo_price_usd) / p.original_price_usd) * 100)
+                  return (
+                    <div className="mt-3 rounded-xl p-3 border border-cyan-700" style={{ background: 'rgba(0,196,204,0.1)' }}>
+                      <p className="text-xs font-bold" style={{ color: '#00C4CC' }}>{p.label || `Oferta ${p.duration_months} meses`}</p>
+                      <p className="text-sm mt-0.5">
+                        <span className="line-through text-slate-500">${p.original_price_usd}</span>{' '}
+                        <span className="font-extrabold text-white">${p.promo_price_usd} USD</span>{' '}
+                        <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">-{disc}%</span>
+                      </p>
+                    </div>
+                  )
+                })()}
               </div>
               <ul className="space-y-2.5 flex-1">
                 {PROFESSIONAL_FEATURES.map(f=>(
@@ -628,6 +675,20 @@ export default function LandingPage() {
                   <span className="text-violet-300 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
                 <p className="text-sm text-violet-300 mt-2">Para clínicas con múltiples doctores.</p>
+                {getPromo('clinic') && (() => {
+                  const p = getPromo('clinic')!
+                  const disc = Math.round(((p.original_price_usd - p.promo_price_usd) / p.original_price_usd) * 100)
+                  return (
+                    <div className="mt-3 rounded-xl p-3 border border-violet-600" style={{ background: 'rgba(139,92,246,0.15)' }}>
+                      <p className="text-xs font-bold text-violet-300">{p.label || `Oferta ${p.duration_months} meses`}</p>
+                      <p className="text-sm mt-0.5">
+                        <span className="line-through text-violet-400">${p.original_price_usd}</span>{' '}
+                        <span className="font-extrabold text-white">${p.promo_price_usd} USD</span>{' '}
+                        <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">-{disc}%</span>
+                      </p>
+                    </div>
+                  )
+                })()}
               </div>
               <ul className="space-y-2.5 flex-1">
                 {CLINIC_FEATURES.map(f=>(

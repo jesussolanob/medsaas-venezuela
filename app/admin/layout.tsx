@@ -2,22 +2,45 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity, BarChart2, CheckSquare, Menu, Shield, Blocks, Package } from 'lucide-react'
+import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity, BarChart2, CheckSquare, Menu, Shield, Blocks, Package, Tag } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import AdminNotifications from './AdminNotifications'
 
-const navigation = [
-  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-  { name: 'Usuarios', href: '/admin/doctors', icon: Users },
-  { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
-  { name: 'Aprobaciones', href: '/admin/approvals', icon: CheckSquare },
-  { name: 'Finanzas', href: '/admin/finances', icon: BarChart2 },
-  { name: 'Planes', href: '/admin/plans', icon: Package },
-  { name: 'Módulos', href: '/admin/plan-features', icon: Blocks },
-  { name: 'Roles', href: '/admin/roles', icon: Shield },
-  { name: 'Configuración', href: '/admin/settings', icon: Settings },
+const navigationGroups = [
+  {
+    items: [
+      { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Gestión de Usuarios',
+    items: [
+      { name: 'Usuarios', href: '/admin/doctors', icon: Users },
+      { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
+    ],
+  },
+  {
+    label: 'Configuración del Negocio',
+    items: [
+      { name: 'Finanzas', href: '/admin/finances', icon: BarChart2 },
+      { name: 'Planes', href: '/admin/plans', icon: Package },
+      { name: 'Promociones', href: '/admin/promotions', icon: Tag },
+      { name: 'Módulos', href: '/admin/plan-features', icon: Blocks },
+      { name: 'Aprobaciones', href: '/admin/approvals', icon: CheckSquare },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [
+      { name: 'Roles', href: '/admin/roles', icon: Shield },
+      { name: 'Configuración', href: '/admin/settings', icon: Settings },
+    ],
+  },
 ]
+
+// Flat list for header title lookup
+const navigation = navigationGroups.flatMap(g => g.items)
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -69,26 +92,35 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {navigation.map((item) => {
-              const active = pathname === item.href
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={clsx(
-                    'nav-item flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm transition-all',
-                    active
-                      ? 'nav-active text-teal-600 font-semibold'
-                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                  )}
-                >
-                  <item.icon className={clsx('w-4 h-4 shrink-0', active ? 'text-teal-500' : '')} />
-                  {item.name}
-                </Link>
-              )
-            })}
+          <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+            {navigationGroups.map((group, gi) => (
+              <div key={gi}>
+                {group.label && (
+                  <p className="px-3 mb-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{group.label}</p>
+                )}
+                <div className="space-y-0.5">
+                  {group.items.map((item) => {
+                    const active = pathname === item.href
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        onClick={() => setMobileOpen(false)}
+                        className={clsx(
+                          'nav-item flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm transition-all',
+                          active
+                            ? 'nav-active text-teal-600 font-semibold'
+                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                        )}
+                      >
+                        <item.icon className={clsx('w-4 h-4 shrink-0', active ? 'text-teal-500' : '')} />
+                        {item.name}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
 
           {/* Footer */}

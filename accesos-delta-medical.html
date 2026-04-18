@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delta Medical CRM - Accesos y Datos de Prueba</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.6; }
+    .container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+    .header { text-align: center; margin-bottom: 48px; }
+    .header h1 { font-size: 28px; font-weight: 800; color: #0d9488; margin-bottom: 8px; }
+    .header p { color: #64748b; font-size: 14px; }
+    .badge { display: inline-block; background: #f0fdfa; color: #0d9488; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; border: 1px solid #99f6e4; margin-bottom: 16px; }
+    .section { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; margin-bottom: 24px; }
+    .section h2 { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #f1f5f9; }
+    .section h3 { font-size: 15px; font-weight: 600; color: #334155; margin: 20px 0 12px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th { text-align: left; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+    tr:last-child td { border-bottom: none; }
+    .role-badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .role-admin { background: #fef3c7; color: #92400e; }
+    .role-doctor { background: #dbeafe; color: #1e40af; }
+    .role-patient { background: #d1fae5; color: #065f46; }
+    .url-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; font-family: monospace; font-size: 13px; color: #0d9488; margin: 8px 0; word-break: break-all; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+    .info-card { background: #f8fafc; border-radius: 10px; padding: 16px; }
+    .info-card .label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .info-card .value { font-size: 14px; font-weight: 600; color: #1e293b; }
+    .note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 16px; margin: 16px 0; font-size: 13px; color: #92400e; }
+    .note strong { display: block; margin-bottom: 4px; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .dot-completed { background: #10b981; }
+    .dot-today { background: #f59e0b; }
+    .dot-future { background: #3b82f6; }
+    .footer { text-align: center; color: #94a3b8; font-size: 12px; margin-top: 40px; padding-top: 24px; border-top: 1px solid #e2e8f0; }
+    @media (max-width: 640px) {
+      .info-grid { grid-template-columns: 1fr; }
+      .container { padding: 20px 16px; }
+      .section { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge">Documento Interno</div>
+      <h1>Delta Medical CRM</h1>
+      <p>Accesos, credenciales y datos de prueba &mdash; Generado el 18 de abril de 2026</p>
+    </div>
+
+    <!-- URLs -->
+    <div class="section">
+      <h2>URLs del Sistema</h2>
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="label">Aplicacion (Vercel)</div>
+          <div class="value">medsaas-venezuela.vercel.app</div>
+        </div>
+        <div class="info-card">
+          <div class="label">Supabase Dashboard</div>
+          <div class="value">supabase.com/dashboard</div>
+        </div>
+        <div class="info-card">
+          <div class="label">Repositorio GitHub</div>
+          <div class="value">github.com/jesussolanob/medsaas-venezuela</div>
+        </div>
+        <div class="info-card">
+          <div class="label">Supabase URL</div>
+          <div class="value" style="font-size:12px;">azsismbgfanszkygzwaz.supabase.co</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accesos por Rol -->
+    <div class="section">
+      <h2>Accesos por Rol</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Rol</th>
+            <th>Email</th>
+            <th>URL de Acceso</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="role-badge role-admin">Super Admin</span></td>
+            <td><strong>jesussolano4@gmail.com</strong></td>
+            <td>/login &rarr; redirige a /admin</td>
+          </tr>
+          <tr>
+            <td><span class="role-badge role-doctor">Doctor (Prueba)</span></td>
+            <td><strong>anasolanob07@gmail.com</strong></td>
+            <td>/login &rarr; redirige a /doctor</td>
+          </tr>
+          <tr>
+            <td><span class="role-badge role-doctor">Doctor</span></td>
+            <td><strong>ing.jesussolanob@gmail.com</strong></td>
+            <td>/login &rarr; redirige a /doctor</td>
+          </tr>
+          <tr>
+            <td><span class="role-badge role-patient">Paciente</span></td>
+            <td>Se registran via /patient/register</td>
+            <td>/patient/login &rarr; /patient</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">
+        <strong>Nota sobre contrasenas:</strong>
+        Las contrasenas de cada cuenta fueron definidas al momento del registro en Supabase Auth. Si necesitas resetear alguna, puedes hacerlo desde el dashboard de Supabase (Authentication &rarr; Users).
+      </div>
+    </div>
+
+    <!-- Rutas Principales -->
+    <div class="section">
+      <h2>Rutas Principales por Rol</h2>
+      <h3>Super Admin (/admin)</h3>
+      <table>
+        <thead><tr><th>Modulo</th><th>Ruta</th><th>Descripcion</th></tr></thead>
+        <tbody>
+          <tr><td>Dashboard</td><td>/admin</td><td>KPIs en tiempo real</td></tr>
+          <tr><td>Medicos</td><td>/admin/doctors</td><td>Lista de medicos + crear nuevos</td></tr>
+          <tr><td>Suscripciones</td><td>/admin/subscriptions</td><td>Gestion de suscripciones</td></tr>
+          <tr><td>Planes</td><td>/admin/plans</td><td>Activar/desactivar planes</td></tr>
+          <tr><td>Features</td><td>/admin/plan-features</td><td>Configurar features por plan</td></tr>
+          <tr><td>Finanzas</td><td>/admin/finances</td><td>Finanzas globales</td></tr>
+          <tr><td>Aprobaciones</td><td>/admin/approvals</td><td>Aprobaciones de pagos</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Doctor (/doctor)</h3>
+      <table>
+        <thead><tr><th>Modulo</th><th>Ruta</th><th>Descripcion</th></tr></thead>
+        <tbody>
+          <tr><td>Dashboard</td><td>/doctor</td><td>Citas del dia + finanzas del mes</td></tr>
+          <tr><td>Agenda</td><td>/doctor/agenda</td><td>Calendario semana/mes/dia</td></tr>
+          <tr><td>Pacientes</td><td>/doctor/patients</td><td>Lista de pacientes</td></tr>
+          <tr><td>Consultas</td><td>/doctor/consultations</td><td>Consultas medicas + informe</td></tr>
+          <tr><td>EHR</td><td>/doctor/ehr</td><td>Historial clinico electronico</td></tr>
+          <tr><td>Finanzas</td><td>/doctor/finances</td><td>Finanzas del medico (gated)</td></tr>
+          <tr><td>Reportes</td><td>/doctor/reports</td><td>Reporteria con filtros</td></tr>
+          <tr><td>CRM</td><td>/doctor/crm</td><td>CRM de leads</td></tr>
+          <tr><td>Mensajes</td><td>/doctor/messages</td><td>Chat con pacientes</td></tr>
+          <tr><td>Configuracion</td><td>/doctor/settings</td><td>Perfil, booking, pagos</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Paciente (/patient)</h3>
+      <table>
+        <thead><tr><th>Modulo</th><th>Ruta</th><th>Descripcion</th></tr></thead>
+        <tbody>
+          <tr><td>Dashboard</td><td>/patient</td><td>Proxima cita + paquetes activos</td></tr>
+          <tr><td>Citas</td><td>/patient/appointments</td><td>Historial de citas</td></tr>
+          <tr><td>Informes</td><td>/patient/reports</td><td>Informes medicos del doctor</td></tr>
+          <tr><td>Recetas</td><td>/patient/prescriptions</td><td>Recetas medicas</td></tr>
+          <tr><td>Mensajes</td><td>/patient/messages</td><td>Chat con doctor</td></tr>
+          <tr><td>Perfil</td><td>/patient/profile</td><td>Datos personales y medicos</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Datos de Prueba (Seed) -->
+    <div class="section">
+      <h2>Datos de Prueba (Seed) &mdash; Doctor: anasolanob07@gmail.com</h2>
+
+      <h3>Pacientes Creados</h3>
+      <table>
+        <thead>
+          <tr><th>Nombre</th><th>Cedula</th><th>Telefono</th><th>Email</th><th>Edad</th><th>Sangre</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Maria Elena Rodriguez</td><td>V-18234567</td><td>0414-555-1234</td><td>maria.rodriguez@gmail.com</td><td>34</td><td>O+</td></tr>
+          <tr><td>Jose Antonio Perez</td><td>V-15678901</td><td>0412-555-5678</td><td>jose.perez@gmail.com</td><td>52</td><td>A+</td></tr>
+          <tr><td>Ana Gabriela Martinez</td><td>V-20345678</td><td>0416-555-9012</td><td>ana.martinez@gmail.com</td><td>28</td><td>B+</td></tr>
+          <tr><td>Carlos Eduardo Lopez</td><td>V-12890123</td><td>0424-555-3456</td><td>carlos.lopez@gmail.com</td><td>45</td><td>AB+</td></tr>
+          <tr><td>Pedro Jose San Maria</td><td>V-19567890</td><td>0414-555-7890</td><td>pedro.sanmaria@gmail.com</td><td>38</td><td>O-</td></tr>
+          <tr><td>Luisa Fernanda Torres</td><td>V-21678901</td><td>0412-555-2345</td><td>luisa.torres@gmail.com</td><td>62</td><td>A-</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Consultas Pasadas (con Informe Medico Completo)</h3>
+      <table>
+        <thead>
+          <tr><th>Estado</th><th>Codigo</th><th>Paciente</th><th>Motivo</th><th>Fecha</th><th>Pago</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="status-dot dot-completed"></span>Completada</td>
+            <td>CON-0001</td>
+            <td>Maria Elena Rodriguez</td>
+            <td>Dolor de cabeza frecuente</td>
+            <td>Hace 14 dias</td>
+            <td>$20 - Pago Movil</td>
+          </tr>
+          <tr>
+            <td><span class="status-dot dot-completed"></span>Completada</td>
+            <td>CON-0002</td>
+            <td>Jose Antonio Perez</td>
+            <td>Control de hipertension</td>
+            <td>Hace 10 dias</td>
+            <td>$35 - Transferencia</td>
+          </tr>
+          <tr>
+            <td><span class="status-dot dot-completed"></span>Completada</td>
+            <td>CON-0003</td>
+            <td>Ana Gabriela Martinez</td>
+            <td>Erupcion cutanea</td>
+            <td>Hace 7 dias</td>
+            <td>$20 - Efectivo</td>
+          </tr>
+          <tr>
+            <td><span class="status-dot dot-completed"></span>Completada</td>
+            <td>CON-0004</td>
+            <td>Carlos Eduardo Lopez</td>
+            <td>Control de diabetes</td>
+            <td>Hace 5 dias</td>
+            <td>$35 - Zelle</td>
+          </tr>
+          <tr>
+            <td><span class="status-dot dot-completed"></span>Completada</td>
+            <td>CON-0005</td>
+            <td>Luisa Fernanda Torres</td>
+            <td>Dolor articular, rigidez matutina</td>
+            <td>Hace 3 dias</td>
+            <td>$40 - Pago Movil</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Citas de Hoy</h3>
+      <table>
+        <thead>
+          <tr><th>Estado</th><th>Paciente</th><th>Hora</th><th>Motivo</th><th>Pago</th><th>Comprobante</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="status-dot dot-today"></span>Programada</td>
+            <td>Pedro Jose San Maria</td>
+            <td>10:00 AM</td>
+            <td>Dolor abdominal recurrente</td>
+            <td>$20 - Pago Movil</td>
+            <td>Si (imagen de prueba)</td>
+          </tr>
+          <tr>
+            <td><span class="status-dot dot-today"></span>Confirmada</td>
+            <td>Maria Elena Rodriguez</td>
+            <td>11:00 AM</td>
+            <td>Control cefalea - seguimiento</td>
+            <td>$20 - Transferencia</td>
+            <td>No</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Citas Futuras</h3>
+      <table>
+        <thead>
+          <tr><th>Estado</th><th>Paciente</th><th>Fecha</th><th>Motivo</th><th>Pago</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="status-dot dot-future"></span>Programada</td>
+            <td>Jose Antonio Perez</td>
+            <td>En 3 dias, 9:00 AM</td>
+            <td>Control con resultados de laboratorio</td>
+            <td>$35 - Zelle</td>
+          </tr>
+          <tr>
+            <td><span class="status-dot dot-future"></span>Programada</td>
+            <td>Carlos Eduardo Lopez</td>
+            <td>En 7 dias, 10:30 AM</td>
+            <td>Control de diabetes - seguimiento</td>
+            <td>$35 - Pago Movil</td>
+          </tr>
+          <tr>
+            <td><span class="status-dot dot-future"></span>Programada</td>
+            <td>Luisa Fernanda Torres</td>
+            <td>En 14 dias, 2:00 PM</td>
+            <td>Control de artritis con laboratorio</td>
+            <td>$40 - Transferencia</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Booking Publico -->
+    <div class="section">
+      <h2>Booking Publico</h2>
+      <p style="font-size: 14px; color: #64748b; margin-bottom: 12px;">Los pacientes pueden agendar citas usando el link publico del doctor:</p>
+      <div class="url-box">medsaas-venezuela.vercel.app/book/[doctorId]</div>
+      <div class="note">
+        <strong>Para obtener el doctorId:</strong>
+        Entra como doctor &rarr; Configuracion (/doctor/settings) &rarr; ahi esta el link de booking con el ID del doctor.
+      </div>
+    </div>
+
+    <!-- Planes -->
+    <div class="section">
+      <h2>Planes de Suscripcion</h2>
+      <table>
+        <thead>
+          <tr><th>Plan</th><th>Precio</th><th>Duracion Trial</th><th>Descripcion</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Trial</strong></td><td>$0</td><td>15 dias</td><td>Prueba gratuita, se suspende al vencer</td></tr>
+          <tr><td><strong>Basic</strong></td><td>$10 USD/mes</td><td>-</td><td>Funciones basicas</td></tr>
+          <tr><td><strong>Professional</strong></td><td>$30 USD/mes</td><td>-</td><td>Funciones avanzadas</td></tr>
+          <tr><td><strong>Clinic</strong></td><td>$100 USD/mes</td><td>-</td><td>Gestion de multiples medicos</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size: 13px; color: #64748b; margin-top: 12px;">Los precios se cargan dinamicamente desde la tabla <code>plan_configs</code> en Supabase.</p>
+    </div>
+
+    <!-- Metodos de Pago -->
+    <div class="section">
+      <h2>Metodos de Pago Soportados</h2>
+      <div class="info-grid">
+        <div class="info-card"><div class="label">Venezuela</div><div class="value">Pago Movil, Transferencia</div></div>
+        <div class="info-card"><div class="label">Internacional</div><div class="value">Zelle, Binance</div></div>
+        <div class="info-card"><div class="label">Presencial</div><div class="value">Efectivo USD, Efectivo Bs, POS</div></div>
+        <div class="info-card"><div class="label">Flujo</div><div class="value">Paciente sube comprobante &rarr; Doctor lo ve en tab Pago</div></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Delta Medical CRM &mdash; Documento generado automaticamente &mdash; Abril 2026
+    </div>
+  </div>
+</body>
+</html>
