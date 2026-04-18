@@ -14,6 +14,7 @@ type DoctorProfile = { id: string; full_name: string; specialty: string; phone: 
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count?: number }
 type Slot = { date: string; time: string; label: string }
 type PaymentMethod = 'pago_movil' | 'transferencia' | 'zelle' | 'binance' | 'cash_usd' | 'cash_bs' | 'pos'
+type ActivePackage = { id: string; plan_name: string; total_sessions: number; used_sessions: number }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function generateSlots(): Slot[] {
@@ -137,6 +138,10 @@ export default function BookingClient({
   // Accordion step (1-6)
   const [activeStep, setActiveStep] = useState(1)
 
+  // Active package (prepaid sessions)
+  const [activePackage, setActivePackage] = useState<ActivePackage | null>(null)
+  const [usingPackage, setUsingPackage] = useState(false)
+
   // Selections
   const [selectedPlan, setSelectedPlan] = useState<PricingPlan | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -172,6 +177,28 @@ export default function BookingClient({
     })
   }
 
+  // Fetch active packages for this doctor
+  const fetchActivePackages = async (userId: string) => {
+    try {
+      const supabase = createClient()
+      const { data: pkgs } = await supabase
+        .from('patient_packages')
+        .select('id, plan_name, total_sessions, used_sessions')
+        .eq('auth_user_id', userId)
+        .eq('doctor_id', doctor.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (pkgs && pkgs.used_sessions < pkgs.total_sessions) {
+        setActivePackage(pkgs)
+      }
+    } catch (err) {
+      console.error('Error fetching packages:', err)
+    }
+  }
+
   // Check auth on mount
   useEffect(() => {
     const checkAuth = async () => {
@@ -187,6 +214,7 @@ export default function BookingClient({
             phone: user.user_metadata?.phone || f.phone,
             cedula: user.user_metadata?.cedula || f.cedula,
           }))
+          fetchActivePackages(user.id)
         }
       } catch (err) {
         console.error('Auth check error:', err)
@@ -219,6 +247,7 @@ export default function BookingClient({
         phone: data.user.user_metadata?.phone || f.phone,
         cedula: data.user.user_metadata?.cedula || f.cedula,
       }))
+      fetchActivePackages(data.user.id)
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión')
     }
@@ -265,8 +294,8 @@ export default function BookingClient({
 
     if (!selectedSlot) { setError('Selecciona una fecha y hora'); return }
     if (!appointmentMode) { setError('Selecciona modalidad de consulta'); return }
-    if (!useInsurance && !selectedPaymentMethod) { setError('Selecciona un método de pago'); return }
-    if (useInsurance && !selectedInsurance) { setError('Selecciona tu seguro'); return }
+    if (!usingPackage && !useInsurance && !selectedPaymentMethod) { setError('Selecciona un método de pago'); return }
+    if (!usingPackage && useInsurance && !selectedInsurance) { setError('Selecciona tu seguro'); return }
 
     setSubmitting(true)
     try {
@@ -282,9 +311,9 @@ export default function BookingClient({
       const patientPhone = (form.phone.trim() || authUser?.user_metadata?.phone || '').trim()
       const patientCedula = (form.cedula.trim() || authUser?.user_metadata?.cedula || '').trim()
 
-      // Upload receipt if needed
+      // Upload receipt if needed (skip if using package)
       let receiptUrl = null
-      if (!useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod)) {
+      if (!usingPackage && !useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod)) {
         if (!paymentFile) {
           setError(`Comprobante requerido para ${PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]}`)
           setSubmitting(false)
@@ -320,10 +349,11 @@ export default function BookingClient({
           planName: selectedPlan?.name ?? 'Consulta General',
           planPrice: selectedPlan?.price_usd ?? 20,
           sessionsCount: selectedPlan?.sessions_count || 1,
-          paymentMethod: useInsurance ? 'insurance' : selectedPaymentMethod,
+          paymentMethod: usingPackage ? 'package' : useInsurance ? 'insurance' : selectedPaymentMethod,
           insuranceName: useInsurance ? selectedInsurance : null,
           receiptUrl,
           appointmentMode: appointmentMode || 'presencial',
+          packageId: usingPackage ? activePackage?.id : null,
         }),
       })
 
@@ -517,11 +547,43 @@ export default function BookingClient({
             currentStep={activeStep}
             title="Tipo de consulta"
             icon={FileText}
-            summary={selectedPlan ? `${selectedPlan.name} — $${selectedPlan.price_usd} USD` : undefined}
+            summary={
+              usingPackage && activePackage
+                ? `${activePackage.plan_name} (paquete: ${activePackage.used_sessions}/${activePackage.total_sessions} usadas)`
+                : selectedPlan ? `${selectedPlan.name} — $${selectedPlan.price_usd} USD` : undefined
+            }
             completed={!!selectedPlan && activeStep > 1}
             onOpen={() => setActiveStep(1)}
           >
             <div className="space-y-3">
+              {/* Active package banner */}
+              {activePackage && (
+                <button
+                  onClick={() => {
+                    const matchingPlan = plans.find(p => p.name === activePackage.plan_name)
+                    setSelectedPlan(matchingPlan || { id: 'package', name: activePackage.plan_name, price_usd: 0, duration_minutes: 30 })
+                    setUsingPackage(true)
+                    setActiveStep(2)
+                  }}
+                  className={`w-full text-left rounded-xl p-4 transition-all border-2 ${
+                    usingPackage ? 'border-violet-500 bg-violet-50' : 'border-violet-300 bg-violet-50/50 hover:border-violet-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-slate-900">{activePackage.plan_name}</p>
+                        <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">Paquete activo</span>
+                      </div>
+                      <p className="text-xs text-violet-600 mt-0.5">
+                        Te quedan {activePackage.total_sessions - activePackage.used_sessions} cita{activePackage.total_sessions - activePackage.used_sessions !== 1 ? 's' : ''} — ya pagadas
+                      </p>
+                    </div>
+                    <p className="text-lg font-extrabold text-emerald-600">Gratis</p>
+                  </div>
+                </button>
+              )}
+
               {plans.map((plan, idx) => {
                 const isSelected = selectedPlan?.id === plan.id
                 const isMiddle = idx === Math.floor(plans.length / 2) && plans.length > 1
@@ -530,6 +592,7 @@ export default function BookingClient({
                     key={plan.id}
                     onClick={() => {
                       setSelectedPlan(plan)
+                      setUsingPackage(false)
                       setActiveStep(2)
                     }}
                     className={`relative w-full text-left rounded-xl p-4 transition-all ${
@@ -665,7 +728,7 @@ export default function BookingClient({
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
-                onClick={() => { setAppointmentMode('presencial'); setActiveStep(4) }}
+                onClick={() => { setAppointmentMode('presencial'); setActiveStep(usingPackage ? 5 : 4) }}
                 className={`p-4 rounded-xl border-2 text-left transition-all ${
                   appointmentMode === 'presencial' ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
                 }`}
@@ -684,7 +747,7 @@ export default function BookingClient({
 
               {doctor.allows_online !== false && (
                 <button
-                  onClick={() => { setAppointmentMode('online'); setActiveStep(4) }}
+                  onClick={() => { setAppointmentMode('online'); setActiveStep(usingPackage ? 5 : 4) }}
                   className={`p-4 rounded-xl border-2 text-left transition-all ${
                     appointmentMode === 'online' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'
                   }`}
@@ -703,7 +766,8 @@ export default function BookingClient({
             </div>
           </AccordionSection>
 
-          {/* ── Step 4: Método de pago ─────────────────────────────────────── */}
+          {/* ── Step 4: Método de pago (skip if using package) ─────────────── */}
+          {!usingPackage && (
           <AccordionSection
             step={4}
             currentStep={activeStep}
@@ -806,6 +870,7 @@ export default function BookingClient({
               )}
             </div>
           </AccordionSection>
+          )}
 
           {/* ── Step 5: Motivo y confirmación ──────────────────────────────── */}
           <AccordionSection
@@ -819,25 +884,36 @@ export default function BookingClient({
           >
             <div className="space-y-4">
               {/* Summary card */}
-              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-2 text-sm">
+              <div className={`rounded-xl p-4 space-y-2 text-sm border ${usingPackage ? 'bg-violet-50 border-violet-200' : 'bg-teal-50 border-teal-200'}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-teal-700 font-semibold">{selectedPlan?.name}</span>
-                  <span className="text-teal-800 font-bold">${selectedPlan?.price_usd} USD</span>
+                  <span className={`font-semibold ${usingPackage ? 'text-violet-700' : 'text-teal-700'}`}>{selectedPlan?.name}</span>
+                  {usingPackage && activePackage ? (
+                    <span className="text-xs font-bold text-violet-700 bg-violet-100 px-2.5 py-1 rounded-full">
+                      Paquete ({activePackage.used_sessions + 1}/{activePackage.total_sessions})
+                    </span>
+                  ) : (
+                    <span className="text-teal-800 font-bold">${selectedPlan?.price_usd} USD</span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-teal-600">
+                <div className={`flex items-center gap-2 text-xs ${usingPackage ? 'text-violet-600' : 'text-teal-600'}`}>
                   <Calendar className="w-3.5 h-3.5" />
                   <span>{selectedSlot?.label} a las {selectedSlot?.time}</span>
                 </div>
                 <div className={`flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-lg w-fit ${
-                  appointmentMode === 'online' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'
+                  appointmentMode === 'online' ? 'bg-blue-100 text-blue-700' : usingPackage ? 'bg-violet-100 text-violet-700' : 'bg-teal-100 text-teal-700'
                 }`}>
                   {appointmentMode === 'online' ? <Video className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
                   {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-teal-600">
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>{useInsurance ? `Seguro: ${selectedInsurance}` : PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]}</span>
-                </div>
+                {!usingPackage && (
+                  <div className="flex items-center gap-2 text-xs text-teal-600">
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>{useInsurance ? `Seguro: ${selectedInsurance}` : PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]}</span>
+                  </div>
+                )}
+                {usingPackage && (
+                  <p className="text-xs text-violet-600">Ya pagado con tu paquete activo</p>
+                )}
               </div>
 
               {/* Patient info */}

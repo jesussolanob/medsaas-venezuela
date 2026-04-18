@@ -39,6 +39,7 @@ export default function DoctorDashboard() {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
+  const [financesEnabled, setFinancesEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -91,10 +92,24 @@ export default function DoctorDashboard() {
       const totalRevenue = monthlyAppointments?.reduce((sum, apt) => sum + (apt.plan_price || 0), 0) || 0
       const appointmentCount = monthlyAppointments?.length || 0
 
+      // Check if finances feature is enabled for this plan
+      let isFinancesEnabled = false
+      if (sub?.plan) {
+        const { data: features } = await supabase
+          .from('plan_features')
+          .select('feature_key')
+          .eq('plan', sub.plan)
+          .eq('feature_key', 'finances')
+          .eq('enabled', true)
+          .maybeSingle()
+        isFinancesEnabled = !!features
+      }
+
       setProfile(prof)
       setSubscription(sub)
       setTodayAppointments(appointments || [])
       setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount })
+      setFinancesEnabled(isFinancesEnabled)
       setLoading(false)
     }
     fetchData()
@@ -319,20 +334,20 @@ export default function DoctorDashboard() {
                 </div>
               </div>
 
-              {subscription && ['trial'].includes(subscription.plan) ? (
-                <Link
-                  href="/register?plan=professional"
-                  className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 pt-2"
-                >
-                  Upgrade para ver finanzas
-                  <ArrowRight className="w-3 h-3" />
-                </Link>
-              ) : (
+              {financesEnabled ? (
                 <Link
                   href="/doctor/finances"
                   className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
                 >
                   Ver más detalles
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              ) : (
+                <Link
+                  href="/register?plan=professional"
+                  className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 pt-2"
+                >
+                  Upgrade para ver finanzas
                   <ArrowRight className="w-3 h-3" />
                 </Link>
               )}

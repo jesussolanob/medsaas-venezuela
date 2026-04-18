@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       insuranceName,
       receiptUrl,
       appointmentMode,
+      packageId,
     } = body
 
     if (!doctorId || !accessToken || !scheduledAt) {
@@ -224,8 +225,38 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 4. Create package if multi-session plan
-    if (sessionsCount && sessionsCount > 1) {
+    // 4. Handle packages: use existing or create new
+    // If booking from an existing package, increment used_sessions
+    if (packageId) {
+      try {
+        const { data: pkg } = await admin
+          .from('patient_packages')
+          .select('id, used_sessions, total_sessions')
+          .eq('id', packageId)
+          .single()
+
+        if (pkg) {
+          const newUsed = pkg.used_sessions + 1
+          const updateData: Record<string, unknown> = { used_sessions: newUsed }
+          // Auto-complete package when all sessions are used
+          if (newUsed >= pkg.total_sessions) {
+            updateData.status = 'completed'
+          }
+          await admin
+            .from('patient_packages')
+            .update(updateData)
+            .eq('id', packageId)
+
+          // Link appointment to package
+          await admin
+            .from('appointments')
+            .update({ package_id: packageId, session_number: newUsed })
+            .eq('id', appt.id)
+        }
+      } catch (pkgErr) {
+        console.warn('[API /book] package update skipped:', pkgErr)
+      }
+    } else if (sessionsCount && sessionsCount > 1) {
       try {
         const { data: pkg } = await admin
           .from('patient_packages')
