@@ -7,8 +7,14 @@ export async function GET(req: NextRequest) {
   if (!clinicId) return NextResponse.json({ error: 'Missing clinic id' }, { status: 400 })
 
   // Verify the caller is authenticated and is a super_admin or admin
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase.auth.getUser()
+    user = data?.user
+  } catch (err) {
+    console.error('Auth error in clinic-details:', err)
+  }
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
 
   const admin = createAdminClient()

@@ -6,6 +6,7 @@ import {
   CreditCard, Plus, Trash2, Save,
   Loader2, Banknote, CheckCircle2,
   FileText, RefreshCw, Building2,
+  ChevronDown, ChevronUp,
 } from 'lucide-react'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ export default function SettingsPage() {
   const [billing, setBilling] = useState<BillingData>(DEFAULT_BILLING)
   const [savingBilling, setSavingBilling] = useState(false)
   const [billingSaved, setBillingSaved] = useState(false)
+  const [billingOpen, setBillingOpen] = useState(false)
 
   // Tasa BCV
   const [bcvRate, setBcvRate] = useState<number | null>(null)
@@ -207,35 +209,55 @@ export default function SettingsPage() {
         <p className="text-slate-400 text-xs sm:text-sm mt-1">Información del sistema, facturación y ajustes de plataforma</p>
       </div>
 
-      {/* ── Datos de Facturación (Delta) ── */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+      {/* ── Datos de Facturación (Delta) — Collapsible ── */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setBillingOpen(!billingOpen)}
+          className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50 transition-colors"
+        >
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
               <FileText className="w-4 h-4 text-indigo-600" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 text-left">
               <h3 className="text-sm font-semibold text-slate-900">Datos de Facturación — Emisor</h3>
               <p className="text-xs text-slate-400 truncate">Datos fiscales de Delta que aparecen como remitente en las facturas</p>
             </div>
           </div>
-          <button
-            onClick={saveBillingData}
-            disabled={savingBilling}
-            className="flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
-          >
-            {savingBilling ? (
-              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando...</>
-            ) : billingSaved ? (
-              <><CheckCircle2 className="w-3.5 h-3.5" /> Guardado</>
-            ) : (
-              <><Save className="w-3.5 h-3.5" /> Guardar cambios</>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            {!billingOpen && (
+              <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full hidden sm:inline">{billing.rif}</span>
             )}
-          </button>
-        </div>
+            {billingOpen ? (
+              <ChevronUp className="w-5 h-5 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-slate-400" />
+            )}
+          </div>
+        </button>
 
-        {/* Datos fiscales del emisor */}
-        <div className="space-y-0">
+        {billingOpen && (
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4 border-t border-slate-100">
+          {/* Save button */}
+          <div className="flex justify-end pt-3">
+            <button
+              onClick={saveBillingData}
+              disabled={savingBilling}
+              className="flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
+            >
+              {savingBilling ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando...</>
+              ) : billingSaved ? (
+                <><CheckCircle2 className="w-3.5 h-3.5" /> Guardado</>
+              ) : (
+                <><Save className="w-3.5 h-3.5" /> Guardar cambios</>
+              )}
+            </button>
+          </div>
+
+          {/* Datos fiscales del emisor */}
+          <div className="space-y-0">
           <FieldRow label="Razón Social *">
             <input
               type="text"
@@ -381,6 +403,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* ── Tasa BCV ── */}

@@ -19,8 +19,9 @@ export default async function AdminDashboard() {
     .order('created_at', { ascending: false })
     .limit(5)
 
-  // Fetch active clinics from database
-  const { data: activeClinics } = await supabase
+  // Fetch active clinics from database (use admin client to bypass RLS)
+  const adminClient = createAdminClient()
+  const { data: activeClinics } = await adminClient
     .from('clinics')
     .select('id, name, city, subscription_status, is_active')
     .eq('is_active', true)
@@ -30,7 +31,7 @@ export default async function AdminDashboard() {
   // Get doctor count per clinic
   const clinicIds = (activeClinics || []).map(c => c.id)
   const { data: clinicDoctorCounts } = clinicIds.length > 0
-    ? await supabase
+    ? await adminClient
       .from('profiles')
       .select('clinic_id')
       .in('clinic_id', clinicIds)
@@ -49,8 +50,7 @@ export default async function AdminDashboard() {
   let newThisMonth = 0
 
   try {
-    const admin = createAdminClient()
-    const { data: subscriptions } = await admin
+    const { data: subscriptions } = await adminClient
       .from('subscriptions')
       .select('id, created_at')
       .order('created_at', { ascending: true })

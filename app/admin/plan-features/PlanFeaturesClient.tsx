@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Lock, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
+import { Lock, Loader2, CheckCircle2, AlertCircle, Save } from 'lucide-react';
 
 interface PlanFeature {
   id: string;
@@ -28,57 +28,81 @@ const LOCKED_FEATURES = ['dashboard', 'settings'];
 
 export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientProps) {
   const [features, setFeatures] = useState<PlanFeature[]>(initialData);
+  const [savedFeatures, setSavedFeatures] = useState<PlanFeature[]>(initialData);
   const [loading, setLoading] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Track if there are unsaved changes
+  const hasChanges = useMemo(() => {
+    return features.some((f) => {
+      const saved = savedFeatures.find((s) => s.id === f.id);
+      return saved && saved.enabled !== f.enabled;
+    });
+  }, [features, savedFeatures]);
+
+  // Count changed features
+  const changesCount = useMemo(() => {
+    return features.filter((f) => {
+      const saved = savedFeatures.find((s) => s.id === f.id);
+      return saved && saved.enabled !== f.enabled;
+    }).length;
+  }, [features, savedFeatures]);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Toggle locally without saving to API
   const handleToggle = useCallback(
-    async (featureId: string, plan: string, feature_key: string, currentEnabled: boolean) => {
-      // Don't allow toggling locked features
-      if (LOCKED_FEATURES.includes(feature_key)) {
-        return;
-      }
-
-      setLoading(featureId);
-
-      try {
-        const response = await fetch('/api/admin/plan-features', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            plan,
-            feature_key,
-            enabled: !currentEnabled,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to update feature');
-        }
-
-        // Update local state
-        setFeatures((prevFeatures) =>
-          prevFeatures.map((f) =>
-            f.id === featureId ? { ...f, enabled: !currentEnabled } : f
-          )
-        );
-
-        showToast('success', `Feature ${feature_key} updated successfully`);
-      } catch (error) {
-        console.error('Error updating feature:', error);
-        showToast('error', 'Failed to update feature');
-      } finally {
-        setLoading(null);
-      }
+    (featureId: string, _plan: string, feature_key: string, currentEnabled: boolean) => {
+      if (LOCKED_FEATURES.includes(feature_key)) return;
+      setFeatures((prev) =>
+        prev.map((f) => (f.id === featureId ? { ...f, enabled: !currentEnabled } : f))
+      );
     },
     []
   );
+
+  // Save all changes to API
+  const saveAllChanges = useCallback(async () => {
+    const changed = features.filter((f) => {
+      const saved = savedFeatures.find((s) => s.id === f.id);
+      return saved && saved.enabled !== f.enabled;
+    });
+
+    if (changed.length === 0) return;
+
+    setSaving(true);
+    let errorCount = 0;
+
+    for (const feature of changed) {
+      try {
+        const response = await fetch('/api/admin/plan-features', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan: feature.plan,
+            feature_key: feature.feature_key,
+            enabled: feature.enabled,
+          }),
+        });
+        if (!response.ok) errorCount++;
+      } catch {
+        errorCount++;
+      }
+    }
+
+    if (errorCount === 0) {
+      setSavedFeatures([...features]);
+      showToast('success', `${changed.length} cambio${changed.length > 1 ? 's' : ''} guardado${changed.length > 1 ? 's' : ''} exitosamente`);
+    } else {
+      showToast('error', `Error al guardar ${errorCount} de ${changed.length} cambios`);
+    }
+
+    setSaving(false);
+  }, [features, savedFeatures]);
 
   // Group features by plan
   const featuresByPlan = PLANS.reduce(
@@ -93,9 +117,30 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">Módulos por Plan</h1>
-          <p className="text-slate-600 mt-2">Manage feature toggles for each subscription plan</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Módulos por Plan</h1>
+            <p className="text-slate-600 mt-2">Administra los módulos habilitados para cada plan de suscripción</p>
+          </div>
+          {hasChanges && (
+            <button
+              onClick={saveAllChanges}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm font-medium">Guardando...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span className="text-sm font-medium">Guardar cambios ({changesCount})</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Plans Grid */}

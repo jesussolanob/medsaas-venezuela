@@ -39,7 +39,7 @@ interface BillingConfig {
 const DEFAULT_BILLING: BillingConfig = {
   razon_social: 'Delta Medical CRM, C.A.',
   rif: 'J-50000000-0',
-  domicilio_fiscal: 'Av. Francisco de Miranda, Torre Delta, Piso 5, Of. 5-A, Urb. El Rosal, Caracas (Chacao), Miranda, Zona Postal 1060',
+  domicilio_fiscal: 'Av. Francisco de Miranda, Torre Delta, Piso 5, Of. 5-A, Urb. El Rosal, Caracas, Miranda, Zona Postal 1060',
   telefono: '+58 212 000 0000',
   codigo_actividad: '6201',
   iva_percent: 16,
@@ -54,62 +54,67 @@ export async function generatePdfBuffer(
 ): Promise<Buffer> {
   const billing = { ...DEFAULT_BILLING, ...billingConfig }
   const content = buildFiscalInvoice(invoice, billing)
-  const contentLength = content.length
 
-  const lines: string[] = []
-  lines.push('%PDF-1.4')
+  // Build a proper PDF with correct byte offsets
+  const parts: string[] = []
 
-  const obj1Offset = lines.join('\n').length + 1
-  lines.push('1 0 obj')
-  lines.push('<< /Type /Catalog /Pages 2 0 R >>')
-  lines.push('endobj')
+  parts.push('%PDF-1.4')
+  parts.push('')
 
-  const obj2Offset = lines.join('\n').length + 1
-  lines.push('2 0 obj')
-  lines.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
-  lines.push('endobj')
+  // We need to track byte offsets precisely
+  const objects: { num: number; content: string }[] = []
 
-  const obj4Offset = lines.join('\n').length + 1
-  lines.push('4 0 obj')
-  lines.push(`<< /Length ${contentLength} >>`)
-  lines.push('stream')
-  lines.push(content)
-  lines.push('endstream')
-  lines.push('endobj')
+  // Object 1: Catalog
+  objects.push({ num: 1, content: '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj' })
 
-  const obj3Offset = lines.join('\n').length + 1
-  lines.push('3 0 obj')
-  lines.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>')
-  lines.push('endobj')
+  // Object 2: Pages
+  objects.push({ num: 2, content: '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj' })
 
-  const obj5Offset = lines.join('\n').length + 1
-  lines.push('5 0 obj')
-  lines.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
-  lines.push('endobj')
+  // Object 3: Page
+  objects.push({
+    num: 3,
+    content: '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj'
+  })
 
-  const obj6Offset = lines.join('\n').length + 1
-  lines.push('6 0 obj')
-  lines.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>')
-  lines.push('endobj')
+  // Object 4: Content stream
+  const streamContent = content
+  objects.push({
+    num: 4,
+    content: `4 0 obj\n<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream\nendobj`
+  })
 
-  const xrefOffset = lines.join('\n').length + 1
-  lines.push('xref')
-  lines.push('0 7')
-  lines.push('0000000000 65535 f ')
-  lines.push(`${String(obj1Offset).padStart(10, '0')} 00000 n `)
-  lines.push(`${String(obj2Offset).padStart(10, '0')} 00000 n `)
-  lines.push(`${String(obj3Offset).padStart(10, '0')} 00000 n `)
-  lines.push(`${String(obj4Offset).padStart(10, '0')} 00000 n `)
-  lines.push(`${String(obj5Offset).padStart(10, '0')} 00000 n `)
-  lines.push(`${String(obj6Offset).padStart(10, '0')} 00000 n `)
+  // Object 5: Helvetica font
+  objects.push({ num: 5, content: '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj' })
 
-  lines.push('trailer')
-  lines.push('<< /Size 7 /Root 1 0 R >>')
-  lines.push('startxref')
-  lines.push(String(xrefOffset))
-  lines.push('%%EOF')
+  // Object 6: Helvetica-Bold font
+  objects.push({ num: 6, content: '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj' })
 
-  return Buffer.from(lines.join('\n'), 'latin1')
+  // Build the PDF body and track offsets
+  let body = '%PDF-1.4\n'
+  const offsets: number[] = []
+
+  for (const obj of objects) {
+    offsets[obj.num] = body.length
+    body += obj.content + '\n'
+  }
+
+  // Cross-reference table
+  const xrefOffset = body.length
+  body += 'xref\n'
+  body += `0 ${objects.length + 1}\n`
+  body += '0000000000 65535 f \n'
+  for (let i = 1; i <= objects.length; i++) {
+    body += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
+  }
+
+  // Trailer
+  body += 'trailer\n'
+  body += `<< /Size ${objects.length + 1} /Root 1 0 R >>\n`
+  body += 'startxref\n'
+  body += `${xrefOffset}\n`
+  body += '%%EOF'
+
+  return Buffer.from(body, 'latin1')
 }
 
 // ─── Build fiscal invoice content stream ────────────────────────────────────
@@ -119,202 +124,274 @@ function buildFiscalInvoice(invoice: InvoiceData, billing: BillingConfig): strin
   const doctor = invoice.profiles
   const issueDateObj = invoice.issued_at ? new Date(invoice.issued_at) : new Date(invoice.created_at)
   const issueDate = issueDateObj.toLocaleDateString('es-VE')
-  const issueTime = issueDateObj.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const issueTime = issueDateObj.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })
 
-  // Colors
-  const TEAL = '0.08 0.73 0.65'
-  const BLACK = '0 0 0'
-  const GRAY = '0.5 0.5 0.5'
-  const LGRAY = '0.85 0.85 0.85'
-  const WHITE = '1 1 1'
-
-  // ─────────────────────────────────────────────────────
-  // TOP ACCENT LINE (teal)
-  // ─────────────────────────────────────────────────────
-  L.push(`${TEAL} rg`)
-  L.push('0 842 595 -5 re f')
+  // Page dimensions: 595 x 842 (A4)
+  const PW = 595
+  const PH = 842
+  const ML = 40  // margin left
+  const MR = 555 // margin right
 
   // ─────────────────────────────────────────────────────
-  // EMISOR — Left: logo/name  |  Right: company details
+  // TOP ACCENT BAR (teal)
   // ─────────────────────────────────────────────────────
-  txt(L, 'Delta', 50, 48, 26, true, TEAL)
-  txt(L, 'MEDICAL CRM', 50, 66, 8, true, GRAY)
+  fill(L, TEAL)
+  rect(L, 0, 0, PW, 6)
 
-  // Right side — company data
-  txt(L, esc(billing.razon_social), 350, 48, 9, true, BLACK)
-  txt(L, billing.rif, 350, 60, 9, false, BLACK)
-  const domLines = wordWrap(billing.domicilio_fiscal, 48)
-  let dy = 72
+  // ─────────────────────────────────────────────────────
+  // HEADER: EMISOR section
+  // ─────────────────────────────────────────────────────
+
+  // Company brand — left
+  text(L, 'Delta', ML + 10, 30, 22, true, TEAL_RGB)
+  text(L, 'MEDICAL CRM', ML + 10, 50, 7, true, GRAY_RGB)
+
+  // Separator line
+  stroke(L, LGRAY_RGB)
+  line(L, ML, 62, MR, 62)
+
+  // Company details — left column
+  text(L, esc(billing.razon_social), ML + 10, 78, 9, true, BLACK_RGB)
+  text(L, `RIF: ${billing.rif}`, ML + 10, 92, 8, false, BLACK_RGB)
+
+  const domLines = wordWrap(esc(billing.domicilio_fiscal), 60)
+  let yPos = 106
   for (const dl of domLines) {
-    txt(L, esc(dl), 350, dy, 7, false, GRAY)
-    dy += 9
+    text(L, dl, ML + 10, yPos, 7, false, GRAY_RGB)
+    yPos += 10
   }
-  txt(L, `Codigo de Actividad: ${billing.codigo_actividad}`, 350, dy, 7, false, GRAY)
+  text(L, `Tel: ${esc(billing.telefono)}`, ML + 10, yPos, 7, false, GRAY_RGB)
 
-  // ─────────────────────────────────────────────────────
-  // DESTINATARIO — Client (Doctor / Clínica)
-  // ─────────────────────────────────────────────────────
-  const clientY = 105
-  txt(L, `Razon Social: ${esc(doctor.full_name)}`, 50, clientY, 9, true, BLACK)
-  txt(L, `Email: ${esc(doctor.email)}`, 50, clientY + 13, 8, false, BLACK)
-  if (doctor.specialty) {
-    txt(L, `Especialidad: ${esc(doctor.specialty)}`, 50, clientY + 25, 8, false, BLACK)
-  }
-  txt(L, `Telefono: ---`, 50, clientY + 37, 8, false, GRAY)
+  // ─── FACTURA BOX — right side ─────────────────────
+  const fbX = 340
+  const fbY = 72
+  const fbW = MR - fbX
+  const fbH = 80
 
-  // ─────────────────────────────────────────────────────
-  // FACTURA BOX — Right side details
-  // ─────────────────────────────────────────────────────
-  const boxX = 330; const boxY = 97; const boxW = 225; const boxH = 95
-
+  // Box background
+  fill(L, '0.96 0.96 0.96')
+  rect(L, fbX, fbY, fbW, fbH)
   // Box border
-  L.push(`${LGRAY} RG`)
-  L.push('0.5 w')
-  L.push(`${boxX} ${842 - boxY} ${boxW} ${-boxH} re S`)
+  stroke(L, TEAL_RGB)
+  lineW(L, 1)
+  rectStroke(L, fbX, fbY, fbW, fbH)
+  lineW(L, 0.5)
 
-  // "Factura" title
-  txt(L, 'Factura', boxX + 70, boxY + 6, 16, true, BLACK)
+  // "FACTURA" title centered in box
+  text(L, 'FACTURA', fbX + (fbW / 2) - 30, fbY + 16, 14, true, TEAL_RGB)
 
-  // Details inside box
-  const bx = boxX + 10; let by = boxY + 28
-  txt(L, `N de Documento: ${esc(invoice.invoice_number)}`, bx, by, 8, false, BLACK); by += 12
-  txt(L, `Fecha de Emision: ${issueDate}`, bx, by, 8, false, BLACK); by += 12
-  txt(L, `Hora de Emision: ${issueTime}`, bx, by, 8, false, BLACK); by += 12
-  txt(L, `N DE CONTROL ${billing.control_number}`, bx, by, 8, true, BLACK); by += 12
-
-  // Tasa / Moneda
-  const tasaStr = billing.bcv_rate ? billing.bcv_rate.toFixed(4) : '---'
-  txt(L, `Condiciones de pago: Pago inmediato`, bx, by, 7, false, GRAY); by += 10
-  txt(L, `Tasa de cambio: ${tasaStr}    Moneda: Bs`, bx, by, 7, false, GRAY)
+  // Invoice details
+  const fx = fbX + 12
+  let fy = fbY + 34
+  text(L, `No. ${esc(invoice.invoice_number)}`, fx, fy, 8, true, BLACK_RGB); fy += 13
+  text(L, `Fecha: ${issueDate}  ${issueTime}`, fx, fy, 7, false, BLACK_RGB); fy += 11
+  text(L, `N Control: ${esc(billing.control_number)}`, fx, fy, 7, true, BLACK_RGB); fy += 11
+  const tasaStr = billing.bcv_rate ? `Bs ${billing.bcv_rate.toFixed(4)}` : '---'
+  text(L, `Tasa BCV: ${tasaStr}`, fx, fy, 7, false, GRAY_RGB)
 
   // ─────────────────────────────────────────────────────
-  // TABLE HEADER (teal bar)
+  // DESTINATARIO section
   // ─────────────────────────────────────────────────────
-  const tblY = 215
-  L.push(`${TEAL} rg`)
-  L.push(`40 ${842 - tblY} 515 -18 re f`)
+  const destY = 170
 
-  txt(L, 'Codigo', 50, tblY + 4, 8, true, WHITE)
-  txt(L, 'Descripcion', 120, tblY + 4, 8, true, WHITE)
-  txt(L, 'Cantidad', 345, tblY + 4, 8, true, WHITE)
-  txt(L, 'Precio Unitario', 410, tblY + 4, 8, true, WHITE)
-  txt(L, 'Monto', 510, tblY + 4, 8, true, WHITE)
+  // Label
+  fill(L, '0.94 0.97 0.96')
+  rect(L, ML, destY, MR - ML, 20)
+  text(L, 'DATOS DEL CLIENTE', ML + 10, destY + 14, 7, true, TEAL_RGB)
+
+  // Client data
+  const cy = destY + 32
+  text(L, esc(doctor.full_name), ML + 10, cy, 10, true, BLACK_RGB)
+  text(L, doctor.email, ML + 10, cy + 14, 8, false, GRAY_RGB)
+  if (doctor.specialty) {
+    text(L, `Especialidad: ${esc(doctor.specialty)}`, ML + 10, cy + 28, 8, false, GRAY_RGB)
+  }
 
   // ─────────────────────────────────────────────────────
-  // TABLE ROW — Line item
+  // TABLE HEADER
   // ─────────────────────────────────────────────────────
-  const rowY = tblY + 24
-  const description = invoice.description || 'Suscripcion Plan - Delta Medical CRM'
+  const tblY = 245
+
+  // Teal header bar
+  fill(L, TEAL)
+  rect(L, ML, tblY, MR - ML, 22)
+
+  // Column headers
+  text(L, 'Cod.', ML + 8, tblY + 15, 8, true, WHITE_RGB)
+  text(L, 'Descripcion', ML + 60, tblY + 15, 8, true, WHITE_RGB)
+  text(L, 'Cant.', 340, tblY + 15, 8, true, WHITE_RGB)
+  text(L, 'P. Unitario', 400, tblY + 15, 8, true, WHITE_RGB)
+  text(L, 'Monto', 500, tblY + 15, 8, true, WHITE_RGB)
+
+  // ─────────────────────────────────────────────────────
+  // TABLE ROW
+  // ─────────────────────────────────────────────────────
+  const rowY = tblY + 28
+  const description = invoice.description || 'Suscripcion Plan Professional - Delta Medical CRM'
   const amt = invoice.amount
   const bsAmt = billing.bcv_rate ? amt * billing.bcv_rate : null
 
-  txt(L, '000001', 50, rowY, 8, false, BLACK)
-  // Wrap description if long
-  const descLines = wordWrap(esc(description), 45)
-  descLines.forEach((line, i) => {
-    txt(L, line, 120, rowY + i * 11, 8, false, BLACK)
+  // Alternate row background
+  fill(L, '0.98 0.98 0.98')
+  rect(L, ML, rowY, MR - ML, 28)
+
+  text(L, '001', ML + 12, rowY + 18, 8, false, BLACK_RGB)
+
+  const descLines = wordWrap(esc(description), 50)
+  descLines.forEach((dl, i) => {
+    text(L, dl, ML + 60, rowY + 18 + i * 11, 8, false, BLACK_RGB)
   })
-  txt(L, '1,00', 360, rowY, 8, false, BLACK)
 
-  if (bsAmt !== null) {
-    txt(L, `Bs ${fmtBs(bsAmt)}`, 405, rowY, 8, false, BLACK)
-    txt(L, `Bs ${fmtBs(bsAmt)}`, 500, rowY, 8, false, BLACK)
-  } else {
-    txt(L, `$${amt.toFixed(2)}`, 420, rowY, 8, false, BLACK)
-    txt(L, `$${amt.toFixed(2)}`, 510, rowY, 8, false, BLACK)
-  }
+  text(L, '1,00', 348, rowY + 18, 8, false, BLACK_RGB)
 
-  // Bottom table line
-  const afterRow = rowY + Math.max(descLines.length * 11, 14) + 4
-  L.push(`${LGRAY} RG`)
-  L.push(`40 ${842 - afterRow} m 555 ${842 - afterRow} l S`)
+  const priceStr = bsAmt !== null ? `Bs. ${fmtBs(bsAmt)}` : `$${amt.toFixed(2)}`
+  const totalStr = priceStr
+  text(L, priceStr, 400, rowY + 18, 8, false, BLACK_RGB)
+  text(L, totalStr, 495, rowY + 18, 8, false, BLACK_RGB)
+
+  // Table bottom line
+  const afterRow = rowY + 28 + Math.max((descLines.length - 1) * 11, 0) + 8
+  stroke(L, LGRAY_RGB)
+  line(L, ML, afterRow, MR, afterRow)
 
   // ─────────────────────────────────────────────────────
-  // TAX BREAKDOWN BOX — right side
+  // TAX BREAKDOWN — right aligned box
   // ─────────────────────────────────────────────────────
-  const taxY = afterRow + 25
+  const taxBoxX = 300
+  const taxBoxY = afterRow + 15
+  const taxBoxW = MR - taxBoxX
+  const taxBoxH = 145
 
-  // Tax box background
-  L.push('0.97 0.97 0.97 rg')
-  L.push(`310 ${842 - taxY + 8} 245 -155 re f`)
-  L.push(`${LGRAY} RG`)
-  L.push('0.5 w')
-  L.push(`310 ${842 - taxY + 8} 245 -155 re S`)
-
-  // Column header
-  txt(L, 'Bs', 520, taxY - 5, 7, true, GRAY)
+  // Light background
+  fill(L, '0.97 0.97 0.97')
+  rect(L, taxBoxX, taxBoxY, taxBoxW, taxBoxH)
+  stroke(L, LGRAY_RGB)
+  rectStroke(L, taxBoxX, taxBoxY, taxBoxW, taxBoxH)
 
   const baseUSD = amt
   const bsBase = bsAmt ?? 0
   const ivaRate = billing.iva_percent / 100
   const igtfRate = billing.igtf_percent / 100
-
   const bsIVA = bsBase * ivaRate
-  const bsTotalVentas = bsBase + bsIVA
+  const bsSubtotal = bsBase + bsIVA
   const bsIGTF = bsBase * igtfRate
-  const bsTotalPagar = bsTotalVentas + bsIGTF
+  const bsTotalPagar = bsSubtotal + bsIGTF
 
-  let ty = taxY + 10
-  taxRow(L, 'Base Exenta:', '0,00', 320, ty); ty += 13
-  taxRow(L, 'Base Imponible:', fmtBs(bsBase), 320, ty); ty += 13
-  taxRow(L, `IVA ${billing.iva_percent.toFixed(2)}% Sobre Base Imponible:`, fmtBs(bsIVA), 320, ty); ty += 13
+  let ty = taxBoxY + 18
+  const txL = taxBoxX + 10
+  const txR = MR - 12
 
-  // Line
-  L.push(`${LGRAY} RG`)
-  L.push(`315 ${842 - ty + 3} m 550 ${842 - ty + 3} l S`)
+  taxLine(L, 'Base Exenta:', 'Bs. 0,00', txL, txR, ty); ty += 16
+  taxLine(L, 'Base Imponible:', `Bs. ${fmtBs(bsBase)}`, txL, txR, ty); ty += 16
+  taxLine(L, `IVA ${billing.iva_percent.toFixed(0)}%:`, `Bs. ${fmtBs(bsIVA)}`, txL, txR, ty); ty += 16
+
+  // Separator
+  stroke(L, LGRAY_RGB)
+  line(L, taxBoxX + 8, ty - 4, MR - 8, ty - 4)
   ty += 4
-  taxRow(L, 'Total Ventas:', fmtBs(bsTotalVentas), 320, ty, true); ty += 16
-  taxRow(L, `IGTF ${billing.igtf_percent.toFixed(2)}% (pago en divisas):`, fmtBs(bsIGTF), 320, ty); ty += 16
 
-  // TOTAL bar
-  L.push(`${TEAL} rg`)
-  L.push(`310 ${842 - ty + 5} 245 -22 re f`)
+  taxLine(L, 'Subtotal:', `Bs. ${fmtBs(bsSubtotal)}`, txL, txR, ty, true); ty += 18
+  taxLine(L, `IGTF ${billing.igtf_percent.toFixed(0)}%:`, `Bs. ${fmtBs(bsIGTF)}`, txL, txR, ty); ty += 20
 
-  txt(L, 'Total a Pagar:', 320, ty, 10, true, WHITE)
-  txt(L, fmtBs(bsTotalPagar), 490, ty, 10, true, WHITE)
+  // TOTAL BAR — teal
+  fill(L, TEAL)
+  rect(L, taxBoxX, ty - 6, taxBoxW, 26)
 
-  ty += 28
-  // USD equivalent
+  text(L, 'TOTAL A PAGAR:', taxBoxX + 10, ty + 12, 9, true, WHITE_RGB)
+  text(L, `Bs. ${fmtBs(bsTotalPagar)}`, txR - 5, ty + 12, 9, true, WHITE_RGB)
+
+  // USD equivalent below the box
   if (billing.bcv_rate) {
     const usdTotal = baseUSD * (1 + ivaRate + igtfRate)
-    txt(L, `Equivalente USD: $${usdTotal.toFixed(2)}`, 320, ty, 7, false, GRAY)
+    text(L, `Equivalente USD: $${usdTotal.toFixed(2)}`, taxBoxX + 10, ty + 36, 8, false, GRAY_RGB)
+    text(L, `Tasa BCV: ${billing.bcv_rate.toFixed(4)} Bs/$`, taxBoxX + 10, ty + 48, 7, false, GRAY_RGB)
   }
+
+  // ─────────────────────────────────────────────────────
+  // PAYMENT INFO — left side
+  // ─────────────────────────────────────────────────────
+  const payY = afterRow + 20
+  text(L, 'Condiciones:', ML + 10, payY, 7, true, BLACK_RGB)
+  text(L, 'Pago inmediato', ML + 10, payY + 12, 7, false, GRAY_RGB)
+  text(L, `Moneda: ${billing.bcv_rate ? 'Bs (ref. BCV)' : 'USD'}`, ML + 10, payY + 24, 7, false, GRAY_RGB)
 
   // ─────────────────────────────────────────────────────
   // FOOTER
   // ─────────────────────────────────────────────────────
-  L.push(`${LGRAY} RG`)
-  L.push(`40 52 m 555 52 l S`)
+  // Footer line
+  stroke(L, LGRAY_RGB)
+  line(L, ML, PH - 50, MR, PH - 50)
 
-  txt(L, 'Delta Medical CRM - Sistema para Medicos Especialistas | deltamedical.ve', 50, 796, 7, false, GRAY)
+  text(L, 'Delta Medical CRM', ML + 10, PH - 38, 7, true, GRAY_RGB)
+  text(L, 'Sistema para Medicos Especialistas | deltamedical.ve', ML + 10, PH - 26, 6, false, GRAY_RGB)
+
+  // Page indicator
+  text(L, 'Pagina 1 de 1', MR - 55, PH - 38, 6, false, GRAY_RGB)
 
   return L.join('\n')
 }
 
-// ─── Primitives ──────────────────────────────────────────────────────────────
+// ─── Color constants ────────────────────────────────────────────────────────
 
-function txt(L: string[], text: string, x: number, y: number, size: number, bold: boolean, color: string) {
+const TEAL = '0.08 0.73 0.65'
+const TEAL_RGB = '0.08 0.73 0.65'
+const BLACK_RGB = '0 0 0'
+const GRAY_RGB = '0.45 0.45 0.45'
+const LGRAY_RGB = '0.82 0.82 0.82'
+const WHITE_RGB = '1 1 1'
+
+// ─── PDF Primitives ─────────────────────────────────────────────────────────
+
+function text(L: string[], t: string, x: number, y: number, size: number, bold: boolean, color: string) {
+  if (!t) return
   L.push('BT')
   L.push(`/F${bold ? '2' : '1'} ${size} Tf`)
   L.push(`${color} rg`)
   L.push(`${x} ${842 - y} Td`)
-  L.push(`(${escPdf(text)}) Tj`)
+  L.push(`(${escPdf(t)}) Tj`)
   L.push('ET')
 }
 
-function taxRow(L: string[], label: string, value: string, x: number, y: number, bold = false) {
-  txt(L, label, x, y, 8, bold, bold ? '0 0 0' : '0.3 0.3 0.3')
-  txt(L, value, 490, y, 8, bold, '0 0 0')
+function fill(L: string[], color: string) {
+  L.push(`${color} rg`)
 }
 
-function escPdf(text: string): string {
-  if (!text) return ''
-  return text
+function stroke(L: string[], color: string) {
+  L.push(`${color} RG`)
+}
+
+function lineW(L: string[], w: number) {
+  L.push(`${w} w`)
+}
+
+function rect(L: string[], x: number, y: number, w: number, h: number) {
+  L.push(`${x} ${842 - y} ${w} ${-h} re f`)
+}
+
+function rectStroke(L: string[], x: number, y: number, w: number, h: number) {
+  L.push(`${x} ${842 - y} ${w} ${-h} re S`)
+}
+
+function line(L: string[], x1: number, y1: number, x2: number, y2: number) {
+  L.push(`${x1} ${842 - y1} m ${x2} ${842 - y2} l S`)
+}
+
+function taxLine(L: string[], label: string, value: string, xL: number, xR: number, y: number, bold = false) {
+  text(L, label, xL, y, 8, bold, bold ? BLACK_RGB : '0.3 0.3 0.3')
+  // Right-align value approximately
+  text(L, value, xR - value.length * 4, y, 8, bold, BLACK_RGB)
+}
+
+// ─── Text utilities ─────────────────────────────────────────────────────────
+
+function escPdf(t: string): string {
+  if (!t) return ''
+  return t
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
-    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
-    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u').replace(/[ñ]/g, 'n')
+    .replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i')
+    .replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/[ñ]/g, 'n')
     .replace(/[ÁÀÄÂ]/g, 'A').replace(/[ÉÈËÊ]/g, 'E').replace(/[ÍÌÏÎ]/g, 'I')
     .replace(/[ÓÒÖÔ]/g, 'O').replace(/[ÚÙÜÛ]/g, 'U').replace(/[Ñ]/g, 'N')
     .replace(/°/g, '').replace(/[^\x20-\x7E]/g, '')
@@ -323,9 +400,9 @@ function escPdf(text: string): string {
 
 function esc(t: string): string { return escPdf(t) }
 
-function wordWrap(text: string, maxChars: number): string[] {
-  if (!text || text.length <= maxChars) return [text || '']
-  const words = text.split(' ')
+function wordWrap(t: string, maxChars: number): string[] {
+  if (!t || t.length <= maxChars) return [t || '']
+  const words = t.split(' ')
   const lines: string[] = []
   let current = ''
   for (const word of words) {
@@ -337,12 +414,12 @@ function wordWrap(text: string, maxChars: number): string[] {
     }
   }
   if (current) lines.push(current.trim())
-  return lines.length ? lines : [text.slice(0, maxChars)]
+  return lines.length ? lines : [t.slice(0, maxChars)]
 }
 
 function fmtBs(n: number): string {
   // Venezuelan format: 1.234,56
-  const parts = n.toFixed(2).split('.')
+  const parts = Math.abs(n).toFixed(2).split('.')
   const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${intPart},${parts[1]}`
+  return `${n < 0 ? '-' : ''}${intPart},${parts[1]}`
 }
