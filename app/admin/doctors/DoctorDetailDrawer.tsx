@@ -93,14 +93,15 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
   }
 
   const handleChangeToPro = async () => {
-    if (!details?.profile || !details?.subscription) return
+    if (!details?.profile) return
 
-    if (details.subscription.plan === 'pro') {
+    // If already PRO, show error
+    if (details?.subscription?.plan === 'pro') {
       setError('Este médico ya está en plan PRO')
       return
     }
 
-    if (!confirm('¿Cambiar a médico a plan PRO? Se le asignarán 30 días de acceso.')) return
+    if (!confirm('¿Solicitar cambio a plan PRO? Se enviará a Aprobaciones para verificación.')) return
 
     try {
       setChangingPlan(true)

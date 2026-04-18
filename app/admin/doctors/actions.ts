@@ -180,6 +180,17 @@ export async function createClinic(input: CreateClinicInput): Promise<ActionResu
     console.error('Error creating clinic subscription:', subError.message)
   }
 
+  // Create pending approval for clinic subscription
+  await supabase.from('subscription_payments').insert({
+    doctor_id: userId,
+    amount: 100, // Centro de Salud plan costs $100/month
+    currency: 'USD',
+    payment_method: 'admin_creation',
+    reference_number: `CLINIC-${Date.now()}`,
+    status: 'pending',
+    notes: `Nueva clínica creada: ${input.name}. Pendiente de verificación de pago.`,
+  })
+
   revalidatePath('/admin/doctors')
 
   return { success: true }

@@ -149,6 +149,15 @@ export default function ApprovalsClient({
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
+  // Date filter for billing tab
+  const today = new Date()
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+  const defaultDateFrom = firstDayOfMonth.toISOString().split('T')[0]
+  const defaultDateTo = today.toISOString().split('T')[0]
+
+  const [billingDateFrom, setBillingDateFrom] = useState<string>(defaultDateFrom)
+  const [billingDateTo, setBillingDateTo] = useState<string>(defaultDateTo)
+
   async function handleApprovePayment(paymentId: string) {
     setApprovingId(paymentId)
     setError(null)
@@ -513,6 +522,13 @@ export default function ApprovalsClient({
       .join('')
   }
 
+  // Filter invoices by date range
+  const filteredInvoices = invoices.filter(inv => {
+    if (billingDateFrom && inv.issued_at < billingDateFrom) return false
+    if (billingDateTo && inv.issued_at > billingDateTo + 'T23:59:59') return false
+    return true
+  })
+
   return (
     <>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }`}</style>
@@ -846,22 +862,53 @@ export default function ApprovalsClient({
             {/* Tab 4: Billing/Invoices */}
             {activeTab === 'billing' && (
               <div className="space-y-8">
+                {/* Date Filter */}
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Desde:</label>
+                    <input
+                      type="date"
+                      value={billingDateFrom}
+                      onChange={(e) => setBillingDateFrom(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Hasta:</label>
+                    <input
+                      type="date"
+                      value={billingDateTo}
+                      onChange={(e) => setBillingDateTo(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      setBillingDateFrom(defaultDateFrom)
+                      setBillingDateTo(defaultDateTo)
+                    }}
+                    className="text-xs text-slate-500 hover:text-slate-700 underline"
+                  >
+                    Limpiar filtro
+                  </button>
+                </div>
+
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4">
                     <p className="text-xs text-slate-600 font-medium mb-1">Total facturas emitidas</p>
-                    <p className="text-2xl font-bold text-slate-900">{invoices.length}</p>
+                    <p className="text-2xl font-bold text-slate-900">{filteredInvoices.length}</p>
                   </div>
                   <div className="bg-gradient-to-br from-teal-50 to-slate-50 border border-teal-100 rounded-lg p-4">
                     <p className="text-xs text-slate-600 font-medium mb-1">Monto total facturado</p>
                     <p className="text-2xl font-bold text-slate-900">
-                      ${invoices.reduce((sum, inv) => sum + inv.amount, 0).toFixed(2)}
+                      ${filteredInvoices.reduce((sum, inv) => sum + inv.amount, 0).toFixed(2)}
                     </p>
                   </div>
                   <div className="bg-gradient-to-br from-amber-50 to-slate-50 border border-amber-100 rounded-lg p-4">
                     <p className="text-xs text-slate-600 font-medium mb-1">Pendientes de envío</p>
                     <p className="text-2xl font-bold text-slate-900">
-                      {invoices.filter(inv => inv.sent_at === null).length}
+                      {filteredInvoices.filter(inv => inv.sent_at === null).length}
                     </p>
                   </div>
                 </div>
@@ -917,7 +964,7 @@ export default function ApprovalsClient({
                 )}
 
                 {/* Issued Invoices Section */}
-                {invoices.length > 0 ? (
+                {filteredInvoices.length > 0 ? (
                   <div className="pt-6 border-t border-slate-200">
                     <h3 className="text-lg font-semibold text-slate-900 mb-4">Facturas Emitidas</h3>
                     <div className="overflow-x-auto">
@@ -948,7 +995,7 @@ export default function ApprovalsClient({
                           </tr>
                         </thead>
                         <tbody>
-                          {invoices.map(invoice => (
+                          {filteredInvoices.map(invoice => (
                             <tr key={invoice.id} className="border-b border-slate-100 hover:bg-slate-50">
                               <td className="py-3 px-4 font-mono text-xs font-semibold text-teal-600">
                                 {invoice.invoice_number}

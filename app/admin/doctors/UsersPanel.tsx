@@ -53,17 +53,10 @@ export default function UsersPanel() {
 
   const loadClinics = async () => {
     try {
-      const { data } = await supabase
-        .from('clinics')
-        .select('*, profiles(full_name)')
-        .order('created_at', { ascending: false })
-
-      const formattedClinics = (data || []).map((clinic: any) => ({
-        ...clinic,
-        owner_name: clinic.profiles?.full_name || 'Sin asignar',
-        doctor_count: 0, // TODO: calculate from profiles where clinic_id = clinic.id
-      }))
-      setClinics(formattedClinics)
+      const res = await fetch('/api/admin/clinics')
+      if (!res.ok) throw new Error('Failed to load clinics')
+      const data = await res.json()
+      setClinics(data)
     } catch (err) {
       console.error('Error loading clinics:', err)
     }
