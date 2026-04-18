@@ -104,10 +104,19 @@ export async function POST(req: NextRequest) {
           status: 'active',
         }
 
-        // If it's an admin upgrade, also change the plan to 'professional'
+        // If it's an admin upgrade, also update the plan and price based on payment amount
         if (isAdminUpgrade) {
-          updatePayload.plan = 'professional'
-          updatePayload.price_usd = 20
+          // Determine plan based on payment amount
+          if (payment.amount === 30) {
+            updatePayload.plan = 'professional'
+            updatePayload.price_usd = 30
+          } else if (payment.amount === 100) {
+            updatePayload.plan = 'enterprise'
+            updatePayload.price_usd = 100
+          } else {
+            updatePayload.plan = 'basic'
+            updatePayload.price_usd = 20
+          }
         }
 
         const { error: extendError } = await admin

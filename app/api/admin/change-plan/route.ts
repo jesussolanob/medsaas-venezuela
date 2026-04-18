@@ -13,9 +13,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!['basic', 'professional'].includes(plan)) {
+    if (!['basic', 'professional', 'enterprise'].includes(plan)) {
       return NextResponse.json(
-        { error: 'Invalid plan. Must be basic or professional' },
+        { error: 'Invalid plan. Must be basic, professional, or enterprise' },
         { status: 400 }
       )
     }
@@ -74,12 +74,21 @@ export async function POST(req: NextRequest) {
 
     // Create a pending approval request in subscription_payments
     // Instead of directly changing the plan
+    let amount = 0
+    if (plan === 'professional') {
+      amount = 30
+    } else if (plan === 'enterprise') {
+      amount = 100
+    } else if (plan === 'basic') {
+      amount = 0
+    }
+
     const { error: insertError } = await admin
       .from('subscription_payments')
       .insert({
         doctor_id: doctorId,
         subscription_id: subscriptionId,
-        amount: plan === 'professional' ? 20 : 0,
+        amount: amount,
         currency: 'USD',
         method: 'admin_upgrade',
         reference_number: `UPGRADE-${Date.now()}`,

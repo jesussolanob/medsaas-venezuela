@@ -83,8 +83,9 @@ function RegisterInner() {
 
   const isClinic = form.plan === 'clinic'
   const isPro = form.plan === 'professional'
+  const isBasic = form.plan === 'basic'
   const needsPayment = isPro || isClinic
-  const planPrice = isClinic ? 100 : 20
+  const planPrice = isClinic ? 100 : isPro ? 30 : 20
 
   // Fetch BCV rate when on payment step
   useEffect(() => {
@@ -298,7 +299,7 @@ function RegisterInner() {
                   </div>
                   <p className="text-sm font-bold uppercase tracking-widest mb-1" style={{ color: '#00C4CC' }}>Professional</p>
                   <div className="flex items-end gap-1.5 mb-2">
-                    <span className="text-4xl font-extrabold text-white">$20</span>
+                    <span className="text-4xl font-extrabold text-white">$30</span>
                     <span className="text-slate-400 font-medium mb-1">USD / mes</span>
                   </div>
                   <p className="text-sm text-slate-400">Todas las funcionalidades: CRM completo, EHR con IA, finanzas y marketing masivo.</p>
@@ -347,7 +348,7 @@ function RegisterInner() {
                 </h1>
                 <p className="text-sm text-slate-500 font-medium">
                   Plan <span className="font-bold" style={{ color: isClinic ? '#8b5cf6' : '#00C4CC' }}>
-                    {isClinic ? 'Centro de Salud · $100 USD/mes' : isPro ? 'Professional · $20 USD/mes' : 'Basic · 30 días'}
+                    {isClinic ? 'Centro de Salud · $100 USD/mes' : isPro ? 'Professional · $30 USD/mes' : 'Basic · 30 días'}
                   </span>
                 </p>
                 {isClinic && (
@@ -662,7 +663,7 @@ function RegisterInner() {
                       background: isClinic ? 'rgba(139,92,246,0.1)' : 'rgba(0,196,204,0.1)',
                       color: isClinic ? '#8b5cf6' : '#00C4CC'
                     }}>
-                      {isClinic ? 'Centro de Salud · $100/mes' : isPro ? 'Professional · $20 USD/mes' : 'Basic · 30 días'}
+                      {isClinic ? 'Centro de Salud · $100/mes' : isPro ? 'Professional · $30 USD/mes' : 'Basic · 30 días'}
                     </span>
                   </span>
                   {isClinic && (

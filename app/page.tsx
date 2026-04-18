@@ -32,9 +32,10 @@ const TESTIMONIALS = [
   { name: 'Dr. Alejandro Méndez', role: 'Internista · Valencia', avatar: 'AM', text: 'Pasé de 40 a 72 consultas al mes en 3 meses. El CRM de leads de WhatsApp convierte conversaciones en citas reales.', metric: '+80% Consultas', metricColor: 'text-violet-600 bg-violet-50' },
 ]
 
-const FREE_FEATURES = ['30 días de prueba completa','Hasta 50 pacientes','Agenda básica','Recordatorios automáticos','CRM de leads (limitado)','Soporte por email']
-const PRO_FEATURES = ['Pacientes ilimitados','CRM Kanban dinámico','EHR con IA integrada','Google Calendar sync','Gestión financiera completa','Campañas de marketing masivo','Recordatorios personalizados','Paquetes de consulta','Soporte prioritario WhatsApp']
-const CLINIC_FEATURES = ['Todo del Plan Pro incluido','Hasta 10 doctores por clínica','Panel de administración centralizado','Agenda de todos los doctores','Paciente elige doctor disponible','Reportes financieros consolidados','Roles: admin clínica + doctores','Marca personalizada (logo, colores)','Booking público multi-doctor','Soporte VIP dedicado']
+const TRIAL_FEATURES = ['30 días de prueba completa','Hasta 50 pacientes','Agenda básica','Recordatorios automáticos','CRM de leads (limitado)','Soporte por email']
+const BASIC_FEATURES = ['Pacientes ilimitados','Agenda inteligente','Recordatorios automáticos','Control financiero básico','Soporte por email']
+const PROFESSIONAL_FEATURES = ['Pacientes ilimitados','CRM de leads dinámico','Historial clínico digital','Portal del paciente','Recordatorios personalizados','Gestión financiera completa','Múltiples métodos de pago','Soporte prioritario WhatsApp']
+const CLINIC_FEATURES = ['Todo del Plan Profesional incluido','Hasta 10 doctores por clínica','Panel de administración centralizado','Agenda de todos los doctores','Paciente elige doctor disponible','Reportes financieros consolidados','Roles: admin clínica + doctores','Marca personalizada (logo, colores)','Booking público multi-doctor','Soporte VIP dedicado']
 
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -141,8 +142,8 @@ export default function LandingPage() {
               <Link href="/register?plan=basic" className="group flex items-center justify-center gap-2 text-white font-semibold px-7 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl shadow-cyan-500/30 g-bg">
                 Comenzar gratis <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
-              <Link href="/register?plan=pro" className="group flex items-center justify-center gap-2 font-semibold px-7 py-4 rounded-2xl text-base border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700">
-                Ver Plan Pro · $20/mes <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <Link href="/register?plan=professional" className="group flex items-center justify-center gap-2 font-semibold px-7 py-4 rounded-2xl text-base border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700">
+                Ver Plan Profesional · $30/mes <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
 
@@ -285,16 +286,16 @@ export default function LandingPage() {
               <div className="absolute -right-4 -bottom-4 opacity-10"><Brain className="w-32 h-32 text-cyan-400" /></div>
               <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center mb-4"><Brain className="w-5 h-5 text-cyan-400" /></div>
               <div>
-                <span className="text-xs font-bold text-cyan-400 uppercase tracking-widest">IA</span>
-                <h3 className="text-xl font-bold text-white mt-1 mb-2">EHR con Inteligencia Artificial</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Historia clínica y récipes redactados por IA mientras atiendes al paciente.</p>
+                <span className="text-xs font-bold text-cyan-400 uppercase tracking-widest">Historial</span>
+                <h3 className="text-xl font-bold text-white mt-1 mb-2">Historial Clínico Digital</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Acceso seguro a la historia de cada paciente, diagnósticos, tratamientos y notas clínicas.</p>
               </div>
             </div>
 
             {[
-              { icon: CalendarDays, tag: 'Agenda', title: 'Agenda + Google Calendar', desc: 'Sincronización bidireccional. Bloqueos automáticos según tu horario de atención configurado.' },
+              { icon: CalendarDays, tag: 'Agenda', title: 'Agenda Inteligente', desc: 'Bloqueos automáticos según tu horario. Visualiza disponibilidad y evita doble-booking.' },
               { icon: Bell, tag: 'Automatización', title: 'Recordatorios Inteligentes', desc: 'WhatsApp y email automáticos a las 24h, 3h y 1h antes. Reduce el no-show hasta un 80%.' },
-              { icon: Banknote, tag: 'Finanzas', title: 'Gestión Financiera', desc: 'Cobros en USD, Bs. y Pago Móvil. Paquetes de consulta e informes de ingresos.' },
+              { icon: Banknote, tag: 'Finanzas', title: 'Gestión Financiera', desc: 'Cobros en USD, Bs. y Pago Móvil. Informes de ingresos mensuales.' },
             ].map(f => (
               <div key={f.title} className="bg-white rounded-3xl p-7 flex flex-col justify-between lift cursor-pointer border border-slate-200 hover:border-cyan-200" style={{ minHeight: 200 }}>
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: 'rgba(0,196,204,0.1)' }}>
@@ -311,9 +312,9 @@ export default function LandingPage() {
             <div className="md:col-span-2 bg-white rounded-3xl p-8 flex items-center gap-8 lift cursor-pointer border border-slate-200 hover:border-cyan-200" style={{ minHeight: 200 }}>
               <div className="flex-1">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: 'rgba(0,196,204,0.1)' }}><BarChart3 className="w-5 h-5" style={{ color: '#00C4CC' }} /></div>
-                <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#00C4CC' }}>Marketing</span>
-                <h3 className="text-xl font-bold text-slate-900 mt-1 mb-2">Marketing Masivo</h3>
-                <p className="text-sm text-slate-500 leading-relaxed max-w-sm">Campañas de WhatsApp y email a toda tu base. Segmentación por especialidad, diagnóstico y fecha de última consulta.</p>
+                <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#00C4CC' }}>Reportes</span>
+                <h3 className="text-xl font-bold text-slate-900 mt-1 mb-2">Reportes e Informes</h3>
+                <p className="text-sm text-slate-500 leading-relaxed max-w-sm">Panel de administración con KPIs en tiempo real. Visualiza consultas completadas, ingresos, no-shows y tendencias mensuales.</p>
               </div>
               <div className="hidden sm:flex flex-col gap-2 shrink-0 w-32">
                 {[85,62,91,48,73].map((v,i)=>(
@@ -414,7 +415,7 @@ export default function LandingPage() {
                     <Activity className="w-5 h-5 text-white" />
                   </div>
                   <p className="text-sm font-bold text-slate-900 text-center">Delta Medical CRM</p>
-                  <p className="text-xs text-teal-600 font-semibold mt-1">$20/mes</p>
+                  <p className="text-xs text-teal-600 font-semibold mt-1">Desde $20/mes</p>
                 </div>
                 <div className="p-6 border-r border-slate-200 flex flex-col items-center justify-center bg-white hover:bg-slate-50 transition-colors">
                   <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center mb-2 shrink-0">
@@ -543,11 +544,11 @@ export default function LandingPage() {
             <p className="text-lg text-slate-500 font-medium">Comienza gratis, escala cuando estés listo.</p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-5">
-            {/* Free */}
+          <div className="grid md:grid-cols-4 gap-5">
+            {/* Trial */}
             <div className="bg-white rounded-3xl border-2 border-slate-200 p-7 flex flex-col gap-5">
               <div>
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Free</p>
+                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Trial</p>
                 <div className="flex items-end gap-2">
                   <span className="text-4xl font-extrabold text-slate-900">$0</span>
                   <span className="text-slate-400 font-medium mb-1.5 text-sm">/ 30 días</span>
@@ -555,40 +556,62 @@ export default function LandingPage() {
                 <p className="text-sm text-slate-500 mt-2">Prueba completa. Sin tarjeta.</p>
               </div>
               <ul className="space-y-2.5 flex-1">
-                {FREE_FEATURES.map(f=>(
+                {TRIAL_FEATURES.map(f=>(
                   <li key={f} className="flex items-center gap-2.5 text-sm text-slate-600">
                     <Check className="w-4 h-4 text-slate-400 shrink-0" />{f}
                   </li>
                 ))}
               </ul>
-              <Link href="/register?plan=basic" className="block text-center font-semibold py-3 rounded-2xl border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700 text-sm">
+              <Link href="/register?plan=trial" className="block text-center font-semibold py-3 rounded-2xl border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700 text-sm">
                 Comenzar gratis →
               </Link>
             </div>
 
-            {/* Pro */}
+            {/* Basic */}
+            <div className="bg-white rounded-3xl border-2 border-slate-200 p-7 flex flex-col gap-5">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#00C4CC' }}>Basic</p>
+                <div className="flex items-end gap-2">
+                  <span className="text-4xl font-extrabold text-slate-900">$20</span>
+                  <span className="text-slate-400 font-medium mb-1.5 text-sm">USD / mes</span>
+                </div>
+                <p className="text-sm text-slate-500 mt-2">Para el médico que inicia su digitalización.</p>
+              </div>
+              <ul className="space-y-2.5 flex-1">
+                {BASIC_FEATURES.map(f=>(
+                  <li key={f} className="flex items-center gap-2.5 text-sm text-slate-600">
+                    <Check className="w-4 h-4 shrink-0" style={{ color: '#00C4CC' }} />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register?plan=basic" className="block text-center font-semibold py-3 rounded-2xl border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700 text-sm">
+                Seleccionar Plan →
+              </Link>
+            </div>
+
+            {/* Professional */}
             <div className="rounded-3xl p-7 flex flex-col gap-5 relative overflow-hidden" style={{ background: 'linear-gradient(145deg,#0f172a 0%,#1e293b 100%)' }}>
               <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full opacity-10" style={{ background: '#00C4CC' }} />
               <div className="absolute top-5 right-5">
                 <span className="text-xs font-bold px-3 py-1 rounded-full text-white" style={{ background: '#00C4CC' }}>Popular</span>
               </div>
               <div>
-                <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#00C4CC' }}>Pro</p>
+                <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#00C4CC' }}>Professional</p>
                 <div className="flex items-end gap-2">
-                  <span className="text-4xl font-extrabold text-white">$20</span>
+                  <span className="text-4xl font-extrabold text-white">$30</span>
                   <span className="text-slate-400 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-2">Para el especialista independiente.</p>
               </div>
               <ul className="space-y-2.5 flex-1">
-                {PRO_FEATURES.map(f=>(
+                {PROFESSIONAL_FEATURES.map(f=>(
                   <li key={f} className="flex items-center gap-2.5 text-sm text-white">
                     <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: '#00C4CC' }} />{f}
                   </li>
                 ))}
               </ul>
-              <Link href="/register?plan=pro" className="block text-center font-bold py-3 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-95 shadow-xl" style={{ background: '#00C4CC' }}>
-                Obtener Plan Pro →
+              <Link href="/register?plan=professional" className="block text-center font-bold py-3 rounded-2xl text-sm text-white transition-all hover:opacity-90 active:scale-95 shadow-xl" style={{ background: '#00C4CC' }}>
+                Obtener Plan Profesional →
               </Link>
             </div>
 
@@ -675,7 +698,7 @@ export default function LandingPage() {
 
             <div className="space-y-3">
               <h4 className="text-sm font-bold text-slate-900">Cuenta</h4>
-              {[{label:'Iniciar sesión',href:'/login'},{label:'Prueba gratis',href:'/register?plan=free'},{label:'Plan Pro',href:'/register?plan=pro'}].map(item=>(
+              {[{label:'Iniciar sesión',href:'/login'},{label:'Prueba gratis',href:'/register?plan=trial'},{label:'Plan Profesional',href:'/register?plan=professional'}].map(item=>(
                 <Link key={item.label} href={item.href} className="block text-sm text-slate-500 hover:text-slate-900 transition-colors">{item.label}</Link>
               ))}
             </div>

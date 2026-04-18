@@ -60,7 +60,7 @@ const PLANES: {
     label: 'Professional',
     badge: 'Recomendado',
     description: 'CRM completo, agenda, finanzas e IA',
-    price: '$20 USD / mes',
+    price: '$30 USD / mes',
     icon: <Zap className="w-4 h-4" />,
     color: 'text-teal-600',
     selected: 'border-teal-500 bg-teal-50 ring-1 ring-teal-400/40',
@@ -436,7 +436,7 @@ function SuccessView({
   plan: 'basic' | 'professional'
   onClose: () => void
 }) {
-  const planLabel = plan === 'professional' ? 'Professional · $20 USD/mes' : 'Basic · 30 días trial'
+  const planLabel = plan === 'professional' ? 'Professional · $30 USD/mes' : 'Basic · 30 días trial'
   const planColor = plan === 'professional' ? 'text-teal-600 bg-teal-50' : 'text-slate-600 bg-slate-100'
 
   return (

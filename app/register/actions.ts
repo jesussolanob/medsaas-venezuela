@@ -223,7 +223,7 @@ export async function uploadPaymentReceipt(
   base64Data: string,
   fileName: string,
   mimeType: string,
-  amount: number = 20
+  amount: number = 30
 ): Promise<UploadReceiptResult> {
   const supabase = createAdminClient()
 

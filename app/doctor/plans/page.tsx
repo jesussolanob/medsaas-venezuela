@@ -145,7 +145,7 @@ export default function DoctorPlansPage() {
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Plan actual</p>
               <p className="text-3xl font-bold text-slate-900 mt-2">
-                {subscription.plan === 'professional' ? 'Professional - $20 USD' : subscription.plan === 'enterprise' ? 'Centro de Salud - $100 USD' : 'Plan Basic'}
+                {subscription.plan === 'professional' ? 'Professional - $30 USD' : subscription.plan === 'enterprise' ? 'Centro de Salud - $100 USD' : 'Plan Basic'}
               </p>
             </div>
             <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${getPlanBadgeColor(subscription.plan).bg} ${getPlanBadgeColor(subscription.plan).text}`}>
@@ -286,7 +286,7 @@ export default function DoctorPlansPage() {
             <div className="border border-slate-200 rounded-xl p-6 space-y-4 hover:border-teal-300 hover:shadow-md transition-all">
               <div>
                 <h4 className="text-lg font-bold text-slate-900">Plan Professional</h4>
-                <p className="text-2xl font-bold text-teal-600 mt-2">$20 <span className="text-sm text-slate-500">/mes</span></p>
+                <p className="text-2xl font-bold text-teal-600 mt-2">$30 <span className="text-sm text-slate-500">/mes</span></p>
               </div>
               <ul className="space-y-2 text-sm text-slate-600">
                 <li className="flex items-center gap-2">
