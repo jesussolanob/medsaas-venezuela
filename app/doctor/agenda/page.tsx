@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings, Stethoscope } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const toast = { success: (msg: string) => alert(msg), error: (msg: string) => alert(msg) }
@@ -163,6 +164,7 @@ type CalendarView = 'week' | 'month' | 'day'
 type AgendaTab = 'calendar' | 'availability'
 
 export default function AgendaPage() {
+  const router = useRouter()
   const today = new Date()
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthYear, setMonthYear] = useState({ year: today.getFullYear(), month: today.getMonth() })
@@ -1018,6 +1020,13 @@ export default function AgendaPage() {
               </div>
 
               <div className="flex gap-2 pt-4">
+                <button onClick={() => {
+                  router.push(`/doctor/consultations?open=${detailAppt.id}`)
+                  setDetailAppt(null)
+                }} className="flex-1 py-2 g-bg rounded-lg text-sm font-bold text-white hover:opacity-90 flex items-center justify-center gap-2">
+                  <Stethoscope className="w-4 h-4" />
+                  Ir a consulta
+                </button>
                 <button onClick={() => setDetailAppt(null)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
               </div>
             </div>

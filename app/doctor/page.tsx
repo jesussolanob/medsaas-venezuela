@@ -8,6 +8,7 @@ import {
   CheckCircle, Clock, AlertCircle
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 type Profile = {
   full_name: string
@@ -27,6 +28,7 @@ type Appointment = {
   patient_name: string
   scheduled_at: string
   status: string
+  source?: 'appointment' | 'consultation'
 }
 
 type FinancialData = {
@@ -35,6 +37,7 @@ type FinancialData = {
 }
 
 export default function DoctorDashboard() {
+  const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
@@ -76,6 +79,36 @@ export default function DoctorDashboard() {
         .lt('scheduled_at', tomorrow.toISOString())
         .order('scheduled_at', { ascending: true })
 
+      // Also get today's confirmed consultations
+      const { data: consultations } = await supabase
+        .from('consultations')
+        .select('id, patients(full_name), consultation_date')
+        .eq('doctor_id', user.id)
+        .gte('consultation_date', today.toISOString())
+        .lt('consultation_date', tomorrow.toISOString())
+        .order('consultation_date', { ascending: true })
+
+      // Merge appointments and consultations into a single list
+      const appointmentsList: Appointment[] = (appointments || []).map(a => ({
+        id: a.id,
+        patient_name: a.patient_name,
+        scheduled_at: a.scheduled_at,
+        status: a.status,
+        source: 'appointment'
+      }))
+
+      const consultationsList: Appointment[] = (consultations || []).map(c => ({
+        id: c.id,
+        patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
+        scheduled_at: c.consultation_date,
+        status: 'confirmed',
+        source: 'consultation'
+      }))
+
+      const allAppointments = [...appointmentsList, ...consultationsList].sort((a, b) =>
+        new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+      )
+
       // Get this month's financial data
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
       const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
@@ -107,7 +140,7 @@ export default function DoctorDashboard() {
 
       setProfile(prof)
       setSubscription(sub)
-      setTodayAppointments(appointments || [])
+      setTodayAppointments(allAppointments)
       setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount })
       setFinancesEnabled(isFinancesEnabled)
       setLoading(false)
@@ -131,7 +164,11 @@ export default function DoctorDashboard() {
     return date.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true })
   }
 
-  const getStatusBadgeColor = (status: string) => {
+  const getStatusBadgeColor = (status: string, isPast: boolean = false) => {
+    // If appointment time has passed, show as "Pasada"
+    if (isPast && (status === 'scheduled' || status === 'pending')) {
+      return 'bg-red-50 text-red-700 border border-red-200'
+    }
     switch (status) {
       case 'completed':
         return 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -144,6 +181,33 @@ export default function DoctorDashboard() {
         return 'bg-slate-50 text-slate-700 border border-slate-200'
       default:
         return 'bg-slate-50 text-slate-700 border border-slate-200'
+    }
+  }
+
+  const getStatusBadgeText = (apt: Appointment, isPast: boolean = false): string => {
+    if (isPast && (apt.status === 'scheduled' || apt.status === 'pending')) {
+      return 'Pasada'
+    }
+    switch (apt.status) {
+      case 'completed':
+        return 'Completada'
+      case 'confirmed':
+        return 'Confirmada'
+      case 'pending':
+      case 'scheduled':
+        return 'Pendiente'
+      case 'cancelled':
+        return 'Cancelada'
+      default:
+        return apt.status
+    }
+  }
+
+  const handleAppointmentClick = (apt: Appointment) => {
+    if (apt.source === 'consultation') {
+      router.push(`/doctor/consultations?open=${apt.id}`)
+    } else {
+      router.push(`/doctor/consultations?open=${apt.id}`)
     }
   }
 
@@ -186,7 +250,7 @@ export default function DoctorDashboard() {
               </p>
             </div>
             <Link
-              href="/register?plan=professional"
+              href="/doctor/plans"
               className="text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 sm:px-4 py-1.5 rounded-lg transition-colors shrink-0"
             >
               Renovar
@@ -216,7 +280,7 @@ export default function DoctorDashboard() {
               )}
               <div>
                 <p className="text-xs font-semibold text-slate-700 capitalize">
-                  Plan {subscription.plan === 'professional' ? 'Professional' : 'Basic'}
+                  Plan {subscription.plan === 'clinic' ? 'Centro de Salud' : subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)}
                 </p>
                 <p className="text-[10px] text-slate-400 capitalize">
                   {subscription.status === 'trial' ? 'Período de prueba' :
@@ -278,20 +342,26 @@ export default function DoctorDashboard() {
               <p className="text-sm text-slate-400 py-8 text-center">No hay citas programadas para hoy</p>
             ) : (
               <div className="space-y-3">
-                {todayAppointments.slice(0, 3).map((apt) => (
-                  <div key={apt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 transition-colors">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-slate-900">{apt.patient_name || 'Paciente sin nombre'}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{formatTime(apt.scheduled_at)}</p>
-                    </div>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${getStatusBadgeColor(apt.status)}`}>
-                      {apt.status === 'completed' ? 'Completada' :
-                       apt.status === 'confirmed' ? 'Confirmada' :
-                       apt.status === 'pending' || apt.status === 'scheduled' ? 'Pendiente' :
-                       apt.status === 'cancelled' ? 'Cancelada' : apt.status}
-                    </span>
-                  </div>
-                ))}
+                {todayAppointments.slice(0, 3).map((apt) => {
+                  const appointmentTime = new Date(apt.scheduled_at)
+                  const now = new Date()
+                  const isPast = appointmentTime < now
+                  return (
+                    <button
+                      key={apt.id}
+                      onClick={() => handleAppointmentClick(apt)}
+                      className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 hover:bg-teal-50/30 transition-colors text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900">{apt.patient_name || 'Paciente sin nombre'}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{formatTime(apt.scheduled_at)}</p>
+                      </div>
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${getStatusBadgeColor(apt.status, isPast)}`}>
+                        {getStatusBadgeText(apt, isPast)}
+                      </span>
+                    </button>
+                  )
+                })}
                 {todayAppointments.length > 3 && (
                   <Link
                     href="/doctor/agenda"
@@ -344,7 +414,7 @@ export default function DoctorDashboard() {
                 </Link>
               ) : (
                 <Link
-                  href="/register?plan=professional"
+                  href="/doctor/plans"
                   className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 pt-2"
                 >
                   Upgrade para ver finanzas

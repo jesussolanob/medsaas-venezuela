@@ -13,8 +13,18 @@ interface Subscription {
   price_usd: number
 }
 
+interface PlanConfig {
+  plan_key: string
+  name: string
+  price: number
+  trial_days: number
+  is_active: boolean
+  description?: string
+}
+
 export default function DoctorPlansPage() {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [planConfigs, setPlanConfigs] = useState<PlanConfig[]>([])
   const [daysRemaining, setDaysRemaining] = useState(0)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -41,6 +51,18 @@ export default function DoctorPlansPage() {
           setDaysRemaining(Math.max(0, days))
         }
       }
+
+      // Fetch plan configs
+      const { data: plans } = await supabase
+        .from('plan_configs')
+        .select('plan_key, name, price, trial_days, is_active, description')
+        .eq('is_active', true)
+        .order('sort_order')
+
+      if (plans) {
+        setPlanConfigs(plans)
+      }
+
       setLoading(false)
     }
 
@@ -107,10 +129,28 @@ export default function DoctorPlansPage() {
         return { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Plan Basic' }
       case 'professional':
         return { bg: 'bg-teal-100', text: 'text-teal-600', label: 'Plan Professional' }
-      case 'enterprise':
+      case 'clinic':
         return { bg: 'bg-violet-100', text: 'text-violet-600', label: 'Centro de Salud' }
       default:
         return { bg: 'bg-slate-100', text: 'text-slate-600', label: plan }
+    }
+  }
+
+  const getPlanNameAndPrice = (planKey: string): { name: string; price: number } => {
+    const plan = planConfigs.find(p => p.plan_key === planKey)
+    if (plan) {
+      return { name: plan.name, price: plan.price }
+    }
+    // Fallback hardcoded values
+    switch (planKey) {
+      case 'professional':
+        return { name: 'Professional', price: 30 }
+      case 'clinic':
+        return { name: 'Centro de Salud', price: 100 }
+      case 'basic':
+        return { name: 'Basic', price: 10 }
+      default:
+        return { name: planKey, price: 0 }
     }
   }
 
@@ -145,7 +185,7 @@ export default function DoctorPlansPage() {
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Plan actual</p>
               <p className="text-3xl font-bold text-slate-900 mt-2">
-                {subscription.plan === 'professional' ? 'Professional - $30 USD' : subscription.plan === 'enterprise' ? 'Centro de Salud - $100 USD' : 'Plan Basic'}
+                {getPlanNameAndPrice(subscription.plan).name} - ${getPlanNameAndPrice(subscription.plan).price} USD
               </p>
             </div>
             <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${getPlanBadgeColor(subscription.plan).bg} ${getPlanBadgeColor(subscription.plan).text}`}>
@@ -277,77 +317,48 @@ export default function DoctorPlansPage() {
         </div>
       ) : null}
 
-      {/* Upgrade Section */}
-      {subscription?.plan === 'basic' || subscription?.plan === 'trial' ? (
+      {/* Upgrade Section - Show if current plan is not the highest tier */}
+      {subscription && subscription.plan !== 'clinic' && planConfigs.length > 0 ? (
         <div className="space-y-4">
-          <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Planes disponibles</h3>
+          <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Planes disponibles para actualizar</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Professional Plan */}
-            <div className="border border-slate-200 rounded-xl p-6 space-y-4 hover:border-teal-300 hover:shadow-md transition-all">
-              <div>
-                <h4 className="text-lg font-bold text-slate-900">Plan Professional</h4>
-                <p className="text-2xl font-bold text-teal-600 mt-2">$30 <span className="text-sm text-slate-500">/mes</span></p>
-              </div>
-              <ul className="space-y-2 text-sm text-slate-600">
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  Agenda ilimitada de citas
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  Historial clínico (EHR)
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  CRM de leads
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  Recordatorios automáticos
-                </li>
-              </ul>
-              <button className="w-full bg-teal-500 text-white font-semibold py-2.5 rounded-xl hover:bg-teal-600 transition-colors">
-                Actualizar a Professional
-              </button>
-            </div>
-
-            {/* Centro de Salud Plan */}
-            <div className="border border-slate-200 rounded-xl p-6 space-y-4 ring-2 ring-teal-500 hover:shadow-md transition-all">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h4 className="text-lg font-bold text-slate-900">Centro de Salud</h4>
-                  <p className="text-2xl font-bold text-violet-600 mt-2">$100 <span className="text-sm text-slate-500">/mes</span></p>
-                </div>
-                <span className="text-xs font-bold bg-teal-500 text-white px-2 py-1 rounded-full">Popular</span>
-              </div>
-              <ul className="space-y-2 text-sm text-slate-600">
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  Todo de Pro +
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  Hasta 5 médicos asociados
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  Facturación avanzada
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  Reportes y analytics
-                </li>
-              </ul>
-              <button className="w-full bg-violet-500 text-white font-semibold py-2.5 rounded-xl hover:bg-violet-600 transition-colors">
-                Upgrade a Centro de Salud
-              </button>
-            </div>
+            {planConfigs
+              .filter(plan => {
+                // Show plans that are higher tier than current
+                const planHierarchy = { trial: 0, basic: 1, professional: 2, clinic: 3 }
+                const currentTier = planHierarchy[subscription.plan as keyof typeof planHierarchy] ?? 0
+                const planTier = planHierarchy[plan.plan_key as keyof typeof planHierarchy] ?? 0
+                return planTier > currentTier
+              })
+              .map(plan => {
+                const isHighest = plan.plan_key === 'clinic'
+                const buttonColor = plan.plan_key === 'professional' ? 'bg-teal-500 hover:bg-teal-600' : 'bg-violet-500 hover:bg-violet-600'
+                return (
+                  <div key={plan.plan_key} className={`border border-slate-200 rounded-xl p-6 space-y-4 hover:border-teal-300 hover:shadow-md transition-all ${isHighest ? 'ring-2 ring-teal-500' : ''}`}>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="text-lg font-bold text-slate-900">{plan.name}</h4>
+                        <p className={`text-2xl font-bold mt-2 ${plan.plan_key === 'professional' ? 'text-teal-600' : 'text-violet-600'}`}>
+                          ${plan.price} <span className="text-sm text-slate-500">/mes</span>
+                        </p>
+                      </div>
+                      {isHighest && (
+                        <span className="text-xs font-bold bg-teal-500 text-white px-2 py-1 rounded-full">Popular</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-600">{plan.description || 'Plan completo con todas las características'}</p>
+                    <button className={`w-full text-white font-semibold py-2.5 rounded-xl transition-colors ${buttonColor}`}>
+                      Actualizar a {plan.name}
+                    </button>
+                  </div>
+                )
+              })}
           </div>
         </div>
       ) : null}
 
-      {/* Current Plan Info */}
-      {subscription && subscription.plan !== 'basic' && subscription.plan !== 'trial' && (
+      {/* Current Plan Info - Show when at highest tier */}
+      {subscription && subscription.plan === 'clinic' && (
         <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
           <p className="text-xs text-slate-600">
             Tu plan actual incluye todo lo necesario para gestionar tu práctica médica. Para cambiar de plan o necesitas ayuda, contacta a soporte.

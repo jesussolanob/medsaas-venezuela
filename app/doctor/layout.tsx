@@ -432,7 +432,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             </Link>
           ) : (
             <Link
-              href="/register?plan=clinic"
+              href="/doctor/plans"
               onClick={() => setMobileOpen(false)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-amber-600 hover:bg-amber-50 transition-all"
             >

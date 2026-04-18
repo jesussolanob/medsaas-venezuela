@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -44,6 +45,13 @@ type Recipe = {
   notes: string
 }
 
+type AppointmentData = {
+  payment_receipt_url?: string | null
+  payment_method?: string | null
+  plan_price?: number | null
+  plan_name?: string | null
+}
+
 const PAYMENT_STATUS = {
   unpaid: { label: 'No pagado', color: 'bg-red-100 text-red-600', dot: 'bg-red-500' },
   pending_approval: { label: 'Pago pendiente', color: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
@@ -52,9 +60,12 @@ const PAYMENT_STATUS = {
 
 type ViewMode = 'list' | 'consultation'
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today'
-type ConsultationTab = 'informe' | 'notas' | 'diagnostico' | 'tratamiento' | 'pago' | 'perfil'
+type ConsultationTab = 'informe' | 'diagnostico' | 'tratamiento' | 'pago' | 'perfil'
 
 export default function ConsultationsPage() {
+  const searchParams = useSearchParams()
+  const openId = searchParams.get('open')
+
   const [view, setView] = useState<ViewMode>('list')
   const [selected, setSelected] = useState<Consultation | null>(null)
   const [consultations, setConsultations] = useState<Consultation[]>([])
@@ -86,6 +97,9 @@ export default function ConsultationsPage() {
   const [isSavingRecipe, setIsSavingRecipe] = useState(false)
   const [showPrintRecipe, setShowPrintRecipe] = useState(false)
 
+  // Appointment data (for payment receipt, method, price)
+  const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null)
+
   const today = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
@@ -107,7 +121,7 @@ export default function ConsultationsPage() {
           .eq('doctor_id', user.id)
           .order('consultation_date', { ascending: false })
 
-        setConsultations((data ?? []).map(c => ({
+        const consultationsList = (data ?? []).map(c => ({
           id: c.id,
           consultation_code: c.consultation_code,
           consultation_date: c.consultation_date,
@@ -119,13 +133,24 @@ export default function ConsultationsPage() {
           patient_id: c.patient_id,
           patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
           patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
-        })))
+        }))
+
+        setConsultations(consultationsList)
+
+        // Auto-open consultation if openId is in query params
+        if (openId) {
+          const consultationToOpen = consultationsList.find(c => c.id === openId)
+          if (consultationToOpen) {
+            await new Promise(resolve => setTimeout(resolve, 100)) // Small delay to ensure state is updated
+            openConsultation(consultationToOpen)
+          }
+        }
       } catch (err) {
         console.error('Error loading data:', err)
       }
       setLoading(false)
     })
-  }, [])
+  }, [openId])
 
   async function openConsultation(c: Consultation) {
     // Fetch fresh data from DB to ensure we have latest notes/diagnosis/treatment
@@ -133,7 +158,7 @@ export default function ConsultationsPage() {
     try {
       const { data } = await supabase
         .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, patients(full_name, phone)')
+        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, appointment_id, patients(full_name, phone)')
         .eq('id', c.id)
         .single()
 
@@ -161,15 +186,40 @@ export default function ConsultationsPage() {
         })
         // Update local list with fresh data
         setConsultations(prev => prev.map(x => x.id === fresh.id ? fresh : x))
+
+        // Fetch linked appointment data for payment receipt
+        if (data.appointment_id) {
+          const { data: apptData } = await supabase
+            .from('appointments')
+            .select('payment_receipt_url, payment_method, plan_price, plan_name')
+            .eq('id', data.appointment_id)
+            .maybeSingle()
+          setAppointmentData(apptData || null)
+        } else {
+          // Fallback: try to find by doctor_id + patient_id + consultation_date
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: apptData } = await supabase
+              .from('appointments')
+              .select('payment_receipt_url, payment_method, plan_price, plan_name')
+              .eq('doctor_id', user.id)
+              .eq('patient_id', data.patient_id)
+              .eq('scheduled_at', data.consultation_date)
+              .maybeSingle()
+            setAppointmentData(apptData || null)
+          }
+        }
       } else {
         // Fallback to cached data
         setSelected(c)
         setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
+        setAppointmentData(null)
       }
     } catch {
       // Fallback to cached data on error
       setSelected(c)
       setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
+      setAppointmentData(null)
     }
     setRecipe({ medications: [], notes: '' })
     setView('consultation')
@@ -283,6 +333,95 @@ export default function ConsultationsPage() {
     } finally {
       setIsSavingRecipe(false)
     }
+  }
+
+  function generatePDF() {
+    if (!selected) return
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Informe Médico - ${selected.consultation_code}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+    body { padding: 40px; color: #1e293b; line-height: 1.6; }
+    .header { border-bottom: 3px solid #0891b2; padding-bottom: 20px; margin-bottom: 30px; }
+    .header h1 { color: #0891b2; font-size: 24px; }
+    .header p { color: #64748b; font-size: 12px; margin-top: 4px; }
+    .meta { display: flex; gap: 40px; margin-bottom: 30px; flex-wrap: wrap; }
+    .meta-item { }
+    .meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: 700; }
+    .meta-value { font-size: 14px; font-weight: 600; color: #1e293b; margin-top: 2px; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #0891b2; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; }
+    .section-content { font-size: 13px; color: #334155; }
+    .section-content ul, .section-content ol { padding-left: 20px; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; }
+    .footer p { font-size: 10px; color: #94a3b8; }
+    .code { font-family: monospace; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    @media print { body { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Delta Medical CRM</h1>
+    <p>Informe Médico</p>
+  </div>
+
+  <div class="meta">
+    <div class="meta-item">
+      <div class="meta-label">Paciente</div>
+      <div class="meta-value">${selected.patient_name}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Código</div>
+      <div class="meta-value code">${selected.consultation_code}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Fecha</div>
+      <div class="meta-value">${new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+    </div>
+  </div>
+
+  ${report.chief_complaint ? \`
+  <div class="section">
+    <div class="section-title">Motivo de Consulta</div>
+    <div class="section-content">\${report.chief_complaint}</div>
+  </div>\` : ''}
+
+  ${report.notes ? \`
+  <div class="section">
+    <div class="section-title">Informe Médico</div>
+    <div class="section-content">\${report.notes}</div>
+  </div>\` : ''}
+
+  ${report.diagnosis ? \`
+  <div class="section">
+    <div class="section-title">Diagnóstico</div>
+    <div class="section-content">\${report.diagnosis}</div>
+  </div>\` : ''}
+
+  ${report.treatment ? \`
+  <div class="section">
+    <div class="section-title">Plan de Tratamiento</div>
+    <div class="section-content">\${report.treatment}</div>
+  </div>\` : ''}
+
+  <div class="footer">
+    <p>Documento generado por Delta Medical CRM · ${new Date().toLocaleDateString('es-VE')}</p>
+    <p>${selected.consultation_code}</p>
+  </div>
+
+  <script>window.onload = function() { window.print(); }</script>
+</body>
+</html>`
+
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
   }
 
   function addMedication() {
@@ -423,16 +562,19 @@ export default function ConsultationsPage() {
               className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
               <Pill className="w-4 h-4" /> Generar receta
             </button>
+            <button onClick={generatePDF}
+              className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
+              <Printer className="w-4 h-4" /> PDF
+            </button>
           </div>
 
           {/* Medical Report Form with Safari-style Tabs */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             {/* Safari-style Tab Navigation */}
             <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200">
-              {(['informe', 'notas', 'diagnostico', 'tratamiento', 'pago', 'perfil'] as ConsultationTab[]).map(tab => {
+              {(['informe', 'diagnostico', 'tratamiento', 'pago', 'perfil'] as ConsultationTab[]).map(tab => {
                 const labels: Record<ConsultationTab, string> = {
                   informe: 'Informe',
-                  notas: 'Notas',
                   diagnostico: 'Diagnóstico',
                   tratamiento: 'Plan de Tratamiento',
                   pago: 'Pago',
@@ -459,9 +601,12 @@ export default function ConsultationsPage() {
               {/* Informe Tab */}
               {consultationTab === 'informe' && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                    <FileText className="w-4 h-4 text-slate-400" />
-                    <p className="text-sm font-bold text-slate-800">Informe médico</p>
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-400" />
+                      <p className="text-sm font-bold text-slate-800">Informe médico</p>
+                    </div>
+                    <p className="text-xs font-mono text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg">ID: {selected.consultation_code}</p>
                   </div>
                   <div>
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
@@ -470,21 +615,25 @@ export default function ConsultationsPage() {
                     <input value={report.chief_complaint} onChange={e => setReport(p => ({ ...p, chief_complaint: e.target.value }))}
                       placeholder="¿Por qué consulta el paciente hoy?" className={fi} />
                   </div>
-                </div>
-              )}
-
-              {/* Notas Tab */}
-              {consultationTab === 'notas' && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                    <FileText className="w-4 h-4 text-slate-400" />
-                    <p className="text-sm font-bold text-slate-800">Notas de la consulta</p>
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                      <FileText className="w-3.5 h-3.5 text-slate-400" /> Informe completo
+                    </label>
+                    <RichTextEditor value={report.notes} onChange={html => setReport(p => ({ ...p, notes: html }))}
+                      placeholder="Escribe el informe completo: anamnesis, examen físico, hallazgos relevantes..." />
                   </div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                    <FileText className="w-3.5 h-3.5 text-slate-400" /> Anotaciones
-                  </label>
-                  <RichTextEditor value={report.notes} onChange={html => setReport(p => ({ ...p, notes: html }))}
-                    placeholder="Anamnesis, examen físico, hallazgos relevantes..." />
+                  <div className="flex gap-2 pt-2">
+                    <button type="button" onClick={() => setReport(p => ({ ...p, diagnosis: p.notes }))}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg text-xs font-semibold hover:bg-violet-100 transition-colors"
+                      title="Copia el contenido del informe al diagnóstico">
+                      <Stethoscope className="w-3.5 h-3.5" /> Insertar en Diagnóstico
+                    </button>
+                    <button type="button" onClick={() => setReport(p => ({ ...p, treatment: p.notes }))}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold hover:bg-emerald-100 transition-colors"
+                      title="Copia el contenido del informe al plan de tratamiento">
+                      <Pill className="w-3.5 h-3.5" /> Insertar en Tratamiento
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -520,23 +669,81 @@ export default function ConsultationsPage() {
 
               {/* Pago Tab */}
               {consultationTab === 'pago' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
                     <DollarSign className="w-4 h-4 text-slate-400" />
                     <p className="text-sm font-bold text-slate-800">Estado del pago</p>
                   </div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                    <DollarSign className="w-3.5 h-3.5 text-slate-400" /> Estado del pago
-                  </label>
-                  <div className="flex gap-2">
-                    {(Object.entries(PAYMENT_STATUS) as [Consultation['payment_status'], typeof PAYMENT_STATUS.unpaid][]).map(([key, val]) => (
-                      <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key }))}
-                        className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${report.payment_status === key ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
-                        <span className={`w-2 h-2 rounded-full ${report.payment_status === key ? val.dot : 'bg-slate-300'}`} />
-                        {val.label}
-                      </button>
-                    ))}
+
+                  {/* Payment Status Buttons */}
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                      <DollarSign className="w-3.5 h-3.5 text-slate-400" /> Estado del pago
+                    </label>
+                    <div className="flex gap-2">
+                      {(Object.entries(PAYMENT_STATUS) as [Consultation['payment_status'], typeof PAYMENT_STATUS.unpaid][]).map(([key, val]) => (
+                        <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key }))}
+                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${report.payment_status === key ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
+                          <span className={`w-2 h-2 rounded-full ${report.payment_status === key ? val.dot : 'bg-slate-300'}`} />
+                          {val.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Payment Details */}
+                  {appointmentData && (appointmentData.payment_method || appointmentData.plan_price) && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                      <p className="text-xs font-bold text-slate-600 uppercase">Detalles del pago</p>
+                      {appointmentData.plan_name && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-600">Plan / Servicio:</span>
+                          <span className="text-sm font-semibold text-slate-900">{appointmentData.plan_name}</span>
+                        </div>
+                      )}
+                      {appointmentData.plan_price !== null && appointmentData.plan_price !== undefined && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-600">Monto:</span>
+                          <span className="text-sm font-semibold text-slate-900">${appointmentData.plan_price.toFixed(2)} USD</span>
+                        </div>
+                      )}
+                      {appointmentData.payment_method && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-600">Método de pago:</span>
+                          <span className="text-sm font-semibold text-slate-900 capitalize">{appointmentData.payment_method.replace(/_/g, ' ')}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Payment Receipt */}
+                  {appointmentData?.payment_receipt_url && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        <p className="text-sm font-bold text-blue-900">Comprobante de pago</p>
+                      </div>
+                      <div className="bg-white border border-blue-100 rounded-lg overflow-hidden">
+                        {appointmentData.payment_receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                          <img src={appointmentData.payment_receipt_url} alt="Comprobante de pago" className="w-full h-auto" />
+                        ) : (
+                          <a href={appointmentData.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between px-4 py-3 hover:bg-blue-50 transition-colors">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-blue-600" />
+                              <span className="text-sm font-semibold text-blue-600 break-all">Ver comprobante</span>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-blue-400" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {!appointmentData?.payment_receipt_url && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <p className="text-xs text-amber-800">Sin comprobante de pago registrado</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -805,6 +1012,7 @@ export default function ConsultationsPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                     {hasReport && <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full hidden sm:inline-block">Con informe</span>}
+                    {c.payment_status !== 'unpaid' && <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full hidden sm:inline-block" title="Comprobante registrado">Con comprobante</span>}
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${ps.color}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${ps.dot}`} /><span className="hidden sm:inline">{ps.label}</span>
                     </span>
