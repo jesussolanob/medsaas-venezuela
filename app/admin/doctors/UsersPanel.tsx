@@ -9,6 +9,21 @@ import DoctorActionButton from './DoctorActionButton'
 import NewClinicModal from './NewClinicModal'
 import { clsx } from 'clsx'
 
+const PLAN_LABELS: Record<string, string> = {
+  basic: 'Basic',
+  professional: 'Professional',
+  enterprise: 'Centro de Salud',
+  centro_salud: 'Centro de Salud',
+}
+
+function getPlanTag(plan?: string | null, status?: string | null): { label: string; color: string } {
+  const planName = PLAN_LABELS[plan || ''] || 'Basic'
+  if (status === 'suspended') return { label: `${planName} · Suspendida`, color: 'bg-red-50 text-red-700' }
+  if (status === 'active') return { label: planName, color: 'bg-teal-50 text-teal-700' }
+  if (status === 'past_due' || status === 'pending_payment') return { label: `${planName} · Pendiente`, color: 'bg-orange-50 text-orange-700' }
+  return { label: `${planName} · Trial`, color: 'bg-amber-50 text-amber-700' }
+}
+
 interface Doctor {
   id: string
   full_name: string
@@ -24,6 +39,7 @@ interface Clinic {
   city?: string
   email?: string
   is_active: boolean
+  subscription_plan?: string
   subscription_status?: string
   max_doctors: number
   owner_id?: string
@@ -180,9 +196,15 @@ export default function UsersPanel() {
                         {doctor.specialty ?? '—'}
                       </td>
                       <td className="px-4 sm:px-6 py-4">
-                        <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full capitalize whitespace-nowrap">
-                          {doctor.subscriptions?.[0]?.plan ?? 'Sin plan'}
-                        </span>
+                        {(() => {
+                          const sub = doctor.subscriptions?.[0]
+                          const tag = getPlanTag(sub?.plan, sub?.status)
+                          return (
+                            <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${tag.color}`}>
+                              {tag.label}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
                         {doctor.is_active ? (
@@ -288,21 +310,14 @@ export default function UsersPanel() {
                         {clinic.city ?? '—'}
                       </td>
                       <td className="px-4 sm:px-6 py-4">
-                        {clinic.is_active ? (
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full capitalize whitespace-nowrap ${
-                              clinic.subscription_status === 'trial'
-                                ? 'bg-amber-50 text-amber-600'
-                                : 'bg-emerald-50 text-emerald-600'
-                            }`}
-                          >
-                            {clinic.subscription_status || 'activa'}
-                          </span>
-                        ) : (
-                          <span className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full whitespace-nowrap">
-                            inactiva
-                          </span>
-                        )}
+                        {(() => {
+                          const tag = getPlanTag(clinic.subscription_plan, clinic.subscription_status)
+                          return (
+                            <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${tag.color}`}>
+                              {tag.label}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td className="px-4 sm:px-6 py-4 text-sm text-slate-900 font-medium hidden md:table-cell">
                         {clinic.doctor_count || 0}

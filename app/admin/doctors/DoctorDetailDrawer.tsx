@@ -241,7 +241,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 <div className="bg-slate-50 p-3 rounded-lg">
                   <p className="text-xs text-slate-500 uppercase mb-1">Plan</p>
                   <p className="text-sm font-semibold text-slate-900 capitalize">
-                    {subscription?.plan || 'Sin plan'}
+                    {({ basic: 'Basic', professional: 'Professional', enterprise: 'Centro de Salud', centro_salud: 'Centro de Salud' }[subscription?.plan || '']) || 'Basic'}
                   </p>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg">
