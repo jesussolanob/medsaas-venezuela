@@ -120,7 +120,9 @@ export default function SettingsPage() {
   const [loadingBcv, setLoadingBcv] = useState(false)
   const [manualRate, setManualRate] = useState('')
 
-  // Fetch settings data on mount
+  const [loadingAccounts, setLoadingAccounts] = useState(true)
+
+  // Fetch settings data + payment accounts on mount
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -135,7 +137,29 @@ export default function SettingsPage() {
         setLoadingData(false)
       }
     }
+    const fetchAccounts = async () => {
+      try {
+        const res = await fetch('/api/admin/payment-accounts')
+        if (res.ok) {
+          const data = await res.json()
+          setAccounts(data.map((a: { id: string; type: string; bank_name: string; account_holder: string; phone: string; rif: string; notes: string }) => ({
+            id: a.id,
+            type: a.type as PaymentAccount['type'],
+            bank_name: a.bank_name || '',
+            account_holder: a.account_holder || '',
+            phone: a.phone || '',
+            rif: a.rif || '',
+            notes: a.notes || '',
+          })))
+        }
+      } catch (error) {
+        console.error('Failed to load payment accounts:', error)
+      } finally {
+        setLoadingAccounts(false)
+      }
+    }
     fetchSettings()
+    fetchAccounts()
   }, [])
 
   // Fetch BCV rate on mount
@@ -187,19 +211,45 @@ export default function SettingsPage() {
     } catch { /* SSR safety */ }
   }, [])
 
-  function addAccount() {
+  async function addAccount() {
     if (!newAccount.account_holder) return
     setSavingAccount(true)
-    setTimeout(() => {
-      setAccounts(prev => [...prev, { ...newAccount, id: Date.now().toString() }])
-      setNewAccount({ type: 'pago_movil', bank_name: '', account_holder: '', phone: '', rif: '', notes: '' })
-      setShowAddAccount(false)
+    try {
+      const res = await fetch('/api/admin/payment-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAccount),
+      })
+      if (res.ok) {
+        const saved = await res.json()
+        setAccounts(prev => [...prev, {
+          id: saved.id,
+          type: saved.type as PaymentAccount['type'],
+          bank_name: saved.bank_name || '',
+          account_holder: saved.account_holder || '',
+          phone: saved.phone || '',
+          rif: saved.rif || '',
+          notes: saved.notes || '',
+        }])
+        setNewAccount({ type: 'pago_movil', bank_name: '', account_holder: '', phone: '', rif: '', notes: '' })
+        setShowAddAccount(false)
+      }
+    } catch (error) {
+      console.error('Error saving account:', error)
+    } finally {
       setSavingAccount(false)
-    }, 600)
+    }
   }
 
-  function removeAccount(id: string) {
-    setAccounts(prev => prev.filter(a => a.id !== id))
+  async function removeAccount(id: string) {
+    try {
+      const res = await fetch(`/api/admin/payment-accounts?id=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setAccounts(prev => prev.filter(a => a.id !== id))
+      }
+    } catch (error) {
+      console.error('Error removing account:', error)
+    }
   }
 
   return (
@@ -726,7 +776,11 @@ export default function SettingsPage() {
         </div>
 
         {/* Lista de cuentas */}
-        {accounts.length === 0 && !showAddAccount && (
+        {loadingAccounts ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+          </div>
+        ) : accounts.length === 0 && !showAddAccount ? (
           <div className="text-center py-8">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
               <CreditCard className="w-5 h-5 text-slate-400" />
@@ -734,7 +788,7 @@ export default function SettingsPage() {
             <p className="text-sm text-slate-400">No hay cuentas configuradas todavía</p>
             <p className="text-xs text-slate-300 mt-1">Agrega Pago Móvil, transferencias o Zelle</p>
           </div>
-        )}
+        ) : null}
 
         {accounts.map(acc => (
           <div key={acc.id} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-100">

@@ -4,6 +4,15 @@ import { redirect } from 'next/navigation'
 import { Users, Calendar, CreditCard, TrendingUp } from 'lucide-react'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
 
+function getPlanTag(status?: string | null, plan?: string | null): { label: string; color: string } {
+  if (status === 'suspended') return { label: 'Suspendida', color: 'bg-red-50 text-red-700' }
+  if (status === 'trial') return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
+  if (status === 'active') return { label: 'Pro', color: 'bg-teal-50 text-teal-700' }
+  // Fallback: if has a plan but no recognized status
+  if (plan) return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
+  return { label: 'Sin plan', color: 'bg-slate-100 text-slate-500' }
+}
+
 export default async function AdminDashboard() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -11,19 +20,21 @@ export default async function AdminDashboard() {
 
   const { data: kpis } = await supabase.rpc('bi_platform_kpis')
 
-  // Fetch recent doctors from database (with clinic plan info)
-  const { data: recentDoctors } = await supabase
+  // Use admin client for all queries to bypass RLS
+  const adminClient = createAdminClient()
+
+  // Fetch recent doctors with clinic plan info
+  const { data: recentDoctors } = await adminClient
     .from('profiles')
     .select('id, full_name, specialty, email, created_at, clinic_id, clinics(subscription_plan, subscription_status)')
     .eq('role', 'doctor')
     .order('created_at', { ascending: false })
     .limit(5)
 
-  // Fetch active clinics from database (use admin client to bypass RLS)
-  const adminClient = createAdminClient()
+  // Fetch active clinics
   const { data: activeClinics } = await adminClient
     .from('clinics')
-    .select('id, name, city, subscription_status, is_active')
+    .select('id, name, city, subscription_plan, subscription_status, is_active')
     .eq('is_active', true)
     .order('created_at', { ascending: false })
     .limit(5)
@@ -191,10 +202,7 @@ export default async function AdminDashboard() {
           <div className="space-y-2">
             {(recentDoctors || []).map((doctor) => {
               const clinic = doctor.clinics as { subscription_plan?: string; subscription_status?: string } | null
-              const plan = clinic?.subscription_plan || 'free'
-              const status = clinic?.subscription_status || 'trial'
-              const planLabel = plan === 'centro_salud' ? (status === 'trial' ? 'Trial' : 'Pro') : plan === 'free' ? 'Free' : plan
-              const isTrial = status === 'trial'
+              const tag = getPlanTag(clinic?.subscription_status, clinic?.subscription_plan)
               return (
                 <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -207,8 +215,8 @@ export default async function AdminDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${isTrial ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'}`}>
-                      {planLabel}
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tag.color}`}>
+                      {tag.label}
                     </span>
                     <span className="text-[10px] text-slate-400 whitespace-nowrap">
                       {new Date(doctor.created_at).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
@@ -229,7 +237,7 @@ export default async function AdminDashboard() {
           <div className="space-y-2">
             {(activeClinics || []).map((clinic) => {
               const doctorCount = doctorCountByClinic[clinic.id] || 0
-              const statusIsTrial = clinic.subscription_status === 'trial'
+              const tag = getPlanTag(clinic.subscription_status, clinic.subscription_plan)
               return (
                 <div key={clinic.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -241,8 +249,8 @@ export default async function AdminDashboard() {
                       <p className="text-[10px] text-slate-400 truncate">{doctorCount} médico{doctorCount !== 1 ? 's' : ''} • {clinic.city}</p>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-semibold px-2 py-1 rounded-full flex-shrink-0 ml-2 whitespace-nowrap ${!statusIsTrial ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                    {!statusIsTrial ? 'Activa' : 'Trial'}
+                  <span className={`text-[10px] font-semibold px-2 py-1 rounded-full flex-shrink-0 ml-2 whitespace-nowrap ${tag.color}`}>
+                    {tag.label}
                   </span>
                 </div>
               )
