@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { UserCheck, UserX, Plus } from 'lucide-react'
 import NewDoctorModal from './NewDoctorModal'
 import DoctorDetailDrawer from './DoctorDetailDrawer'
+import ClinicDetailDrawer from './ClinicDetailDrawer'
 import DoctorActionButton from './DoctorActionButton'
 import NewClinicModal from './NewClinicModal'
 import { clsx } from 'clsx'
@@ -36,6 +37,7 @@ export default function UsersPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null)
+  const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null)
   const supabase = createClient()
 
   const loadDoctors = async () => {
@@ -309,7 +311,10 @@ export default function UsersPanel() {
                         {clinic.owner_name}
                       </td>
                       <td className="px-4 sm:px-6 py-4">
-                        <button className="text-xs text-teal-600 hover:text-teal-700 font-medium">
+                        <button
+                          onClick={() => setSelectedClinic(clinic)}
+                          className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                        >
                           Ver
                         </button>
                       </td>
@@ -327,6 +332,13 @@ export default function UsersPanel() {
         isOpen={selectedDoctor !== null}
         onClose={() => setSelectedDoctor(null)}
         onDoctorUpdated={loadDoctors}
+      />
+
+      <ClinicDetailDrawer
+        clinic={selectedClinic}
+        isOpen={selectedClinic !== null}
+        onClose={() => setSelectedClinic(null)}
+        onClinicUpdated={loadClinics}
       />
     </>
   )

@@ -555,24 +555,26 @@ export default function ApprovalsClient({
               onClick={() => setActiveTab('payments')}
               label="Pagos Pendientes"
               count={pendingPayments.length}
+              badgeColor="red"
             />
             <TabButton
               active={activeTab === 'new'}
               onClick={() => setActiveTab('new')}
               label="Nuevas Suscripciones"
               count={newSubscriptions.length}
+              badgeColor="teal"
             />
             <TabButton
               active={activeTab === 'expiring'}
               onClick={() => setActiveTab('expiring')}
               label="Próximas a Vencer"
               count={expiringSubscriptions.length}
+              badgeColor="teal"
             />
             <TabButton
               active={activeTab === 'billing'}
               onClick={() => setActiveTab('billing')}
               label="Facturación"
-              count={invoices.filter(inv => inv.sent_at === null).length}
             />
           </div>
 
@@ -1112,10 +1114,13 @@ interface TabButtonProps {
   active: boolean
   onClick: () => void
   label: string
-  count: number
+  count?: number
+  badgeColor?: 'red' | 'teal'
 }
 
-function TabButton({ active, onClick, label, count }: TabButtonProps) {
+function TabButton({ active, onClick, label, count, badgeColor = 'teal' }: TabButtonProps) {
+  const badgeColorClass = badgeColor === 'red' ? 'bg-red-500' : 'bg-teal-500'
+
   return (
     <button
       onClick={onClick}
@@ -1126,8 +1131,8 @@ function TabButton({ active, onClick, label, count }: TabButtonProps) {
       }`}
     >
       {label}
-      {count > 0 && (
-        <span className="ml-2 bg-teal-500 text-white text-xs font-bold rounded-full px-2 py-0.5">
+      {count !== undefined && count > 0 && (
+        <span className={`ml-2 ${badgeColorClass} text-white text-xs font-bold rounded-full px-2 py-0.5`}>
           {count}
         </span>
       )}
