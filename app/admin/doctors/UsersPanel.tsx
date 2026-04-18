@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { UserCheck, UserX, Plus } from 'lucide-react'
 import NewDoctorModal from './NewDoctorModal'
 import DoctorDetailDrawer from './DoctorDetailDrawer'
@@ -73,15 +72,12 @@ export default function UsersPanel() {
   const [loading, setLoading] = useState(true)
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null)
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null)
-  const supabase = createClient()
 
   const loadDoctors = async () => {
     try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*, subscriptions(plan, status)')
-        .eq('role', 'doctor')
-        .order('created_at', { ascending: false })
+      const res = await fetch('/api/admin/doctors')
+      if (!res.ok) throw new Error('Failed to load doctors')
+      const data = await res.json()
       setDoctors(data || [])
     } catch (err) {
       console.error('Error loading doctors:', err)
