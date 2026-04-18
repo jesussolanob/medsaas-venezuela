@@ -224,17 +224,24 @@ export default async function ApprovalsPage() {
     }
   })
 
-  // Transform approved payments
-  const approvedPayments: ApprovedPayment[] = (approvedPaymentsData || []).map((p: any) => ({
-    id: p.id,
-    doctor_id: p.doctor_id,
-    doctor_name: p.profiles?.full_name || 'Unknown',
-    doctor_email: p.profiles?.email || 'unknown@example.com',
-    amount: p.amount,
-    currency: p.currency,
-    method: p.method,
-    created_at: p.created_at,
-  }))
+  // Build a set of doctor_ids that already have invoices
+  const doctorIdsWithInvoices = new Set(
+    (invoicesData || []).map((inv: any) => inv.doctor_id)
+  )
+
+  // Transform approved payments — filter out those that already have invoices
+  const approvedPayments: ApprovedPayment[] = (approvedPaymentsData || [])
+    .filter((p: any) => !doctorIdsWithInvoices.has(p.doctor_id))
+    .map((p: any) => ({
+      id: p.id,
+      doctor_id: p.doctor_id,
+      doctor_name: p.profiles?.full_name || 'Unknown',
+      doctor_email: p.profiles?.email || 'unknown@example.com',
+      amount: p.amount,
+      currency: p.currency,
+      method: p.method,
+      created_at: p.created_at,
+    }))
 
   // Transform invoices
   const invoices: Invoice[] = (invoicesData || []).map((inv: any) => ({

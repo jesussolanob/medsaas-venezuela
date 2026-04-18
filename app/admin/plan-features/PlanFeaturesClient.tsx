@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from 'react';
 import { Lock, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
-import { Toast } from '@/components/ui/toast';
 
 interface PlanFeature {
   id: string;

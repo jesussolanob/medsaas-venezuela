@@ -212,7 +212,7 @@ export default async function AdminDashboard() {
         <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-slate-600">Clínicas activas</h3>
-            <a href="/admin/clinics" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todas</a>
+            <a href="/admin/doctors" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todas</a>
           </div>
           <div className="space-y-2">
             {(activeClinics || []).map((clinic) => {

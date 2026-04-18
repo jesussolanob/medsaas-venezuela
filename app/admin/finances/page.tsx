@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingUp, Users, DollarSign, Activity, RefreshCw } from 'lucide-react'
+import { TrendingUp, Users, DollarSign, Activity, RefreshCw, Download } from 'lucide-react'
 import { getFinanceStats } from './actions'
 
 type Period = 'day' | 'week' | 'month'
@@ -30,14 +30,30 @@ export default function AdminFinancesPage() {
             <h1 className="text-lg sm:text-xl font-bold text-slate-900">Finanzas & Analíticas</h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Seguimiento de registros, ingresos y distribución por especialidad</p>
           </div>
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-shrink-0">
-            {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
-              <button key={p} onClick={() => setPeriod(p)}
-                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${period === p ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                {PERIOD_LABELS[p]}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 bg-slate-100 rounded-xl p-1 flex-shrink-0">
+              {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
+                <button key={p} onClick={() => setPeriod(p)}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${period === p ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {PERIOD_LABELS[p]}
+                </button>
+              ))}
+            </div>
+            <a
+              href="/api/admin/export-subscriptions"
+              className="flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700 border border-teal-200 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              CSV Suscripciones
+            </a>
+            <a
+              href="/api/admin/export-payments"
+              className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              CSV Pagos
+            </a>
           </div>
         </div>
 

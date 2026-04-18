@@ -66,8 +66,16 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    // Normalize profiles (Supabase returns array for joined relations)
+    const normalizedInvoice = {
+      ...invoice,
+      profiles: Array.isArray(invoice.profiles)
+        ? invoice.profiles[0]
+        : invoice.profiles,
+    }
+
     // Generate PDF
-    const pdfBuffer = await generatePdfBuffer(invoice)
+    const pdfBuffer = await generatePdfBuffer(normalizedInvoice as any)
 
     // Check if download is requested
     const download = req.nextUrl.searchParams.get('download') === 'true'

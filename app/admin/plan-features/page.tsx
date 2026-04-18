@@ -1,9 +1,10 @@
-import { createAdminClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import PlanFeaturesClient from './PlanFeaturesClient';
 
 export default async function PlanFeaturesPage() {
-  const supabase = createAdminClient();
+  const supabase = await createClient();
 
   // Verify user is authenticated and is an admin
   const {
@@ -14,19 +15,21 @@ export default async function PlanFeaturesPage() {
     redirect('/login');
   }
 
+  const admin = createAdminClient();
+
   // Check if user is admin
-  const { data: profile } = await supabase
+  const { data: profile } = await admin
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single();
 
-  if (!profile || profile.role !== 'admin') {
+  if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
     redirect('/');
   }
 
   // Fetch all plan features
-  const { data: planFeatures, error } = await supabase
+  const { data: planFeatures, error } = await admin
     .from('plan_features')
     .select('*')
     .order('plan')
