@@ -205,7 +205,7 @@ export default function DoctorDashboard() {
                 <p className="text-[10px] text-slate-400 capitalize">
                   {subscription.status === 'trial' ? 'Período de prueba' :
                    subscription.status === 'active' ? 'Activo' :
-                   subscription.status === 'pending_payment' ? 'Pago pendiente' : subscription.status}
+                   subscription.status === 'past_due' ? 'Pago pendiente' : subscription.status}
                 </p>
               </div>
             </div>

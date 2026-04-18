@@ -169,7 +169,7 @@ export async function createClinic(input: CreateClinicInput): Promise<ActionResu
 
   const { error: subError } = await supabase.from('subscriptions').insert({
     doctor_id: userId,
-    plan: 'centro_salud',
+    plan: 'enterprise',
     status: 'trial',
     current_period_end: expiresAt.toISOString(),
   })

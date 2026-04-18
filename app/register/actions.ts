@@ -63,7 +63,7 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
   const { error: subError } = await supabase.from('subscriptions').insert({
     doctor_id: userId,
     plan: input.plan,
-    status: input.plan === 'basic' ? 'trial' : 'pending_payment',
+    status: input.plan === 'basic' ? 'trial' : 'past_due',
     current_period_end: input.plan === 'basic' ? expiresAt.toISOString() : null,
   })
 
@@ -170,7 +170,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<Regist
 
   await supabase.from('subscriptions').insert({
     doctor_id: userId,
-    plan: 'centro_salud',
+    plan: 'enterprise',
     status: 'trial',
     current_period_end: expiresAt.toISOString(),
   })

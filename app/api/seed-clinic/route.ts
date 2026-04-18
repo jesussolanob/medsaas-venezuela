@@ -78,7 +78,7 @@ async function handler() {
 
   await supabase.from('subscriptions').insert({
     doctor_id: adminUserId,
-    plan: 'centro_salud',
+    plan: 'enterprise',
     status: 'trial',
     current_period_end: expires.toISOString(),
   })
@@ -126,7 +126,7 @@ async function handler() {
 
     await supabase.from('subscriptions').insert({
       doctor_id: docUserId,
-      plan: 'centro_salud',
+      plan: 'enterprise',
       status: 'trial',
       current_period_end: expires.toISOString(),
     })

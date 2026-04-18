@@ -91,7 +91,7 @@ export default function DoctorPlansPage() {
         return { bg: 'bg-amber-50', text: 'text-amber-600', label: 'Trial' }
       case 'suspended':
         return { bg: 'bg-red-50', text: 'text-red-600', label: 'Suspendido' }
-      case 'pending_payment':
+      case 'past_due':
         return { bg: 'bg-orange-50', text: 'text-orange-600', label: 'Pendiente de pago' }
       default:
         return { bg: 'bg-slate-50', text: 'text-slate-600', label: 'Desconocido' }
@@ -105,7 +105,7 @@ export default function DoctorPlansPage() {
         return { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Plan Basic' }
       case 'professional':
         return { bg: 'bg-teal-100', text: 'text-teal-600', label: 'Plan Professional' }
-      case 'centro_salud':
+      case 'enterprise':
         return { bg: 'bg-violet-100', text: 'text-violet-600', label: 'Centro de Salud' }
       default:
         return { bg: 'bg-slate-100', text: 'text-slate-600', label: plan }
@@ -143,7 +143,7 @@ export default function DoctorPlansPage() {
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Plan actual</p>
               <p className="text-3xl font-bold text-slate-900 mt-2">
-                {subscription.plan === 'professional' ? 'Professional - $20 USD' : subscription.plan === 'centro_salud' ? 'Centro de Salud - $100 USD' : 'Plan Basic'}
+                {subscription.plan === 'professional' ? 'Professional - $20 USD' : subscription.plan === 'enterprise' ? 'Centro de Salud - $100 USD' : 'Plan Basic'}
               </p>
             </div>
             <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${getPlanBadgeColor(subscription.plan).bg} ${getPlanBadgeColor(subscription.plan).text}`}>
@@ -159,7 +159,7 @@ export default function DoctorPlansPage() {
                 {subscription.status === 'active' && <CheckCircle className="w-4 h-4" />}
                 {subscription.status === 'trial' && <Clock className="w-4 h-4" />}
                 {subscription.status === 'suspended' && <AlertCircle className="w-4 h-4" />}
-                {subscription.status === 'pending_payment' && <AlertCircle className="w-4 h-4" />}
+                {subscription.status === 'past_due' && <AlertCircle className="w-4 h-4" />}
                 <span className="text-sm font-semibold">{getStatusBadgeColor(subscription.status).label}</span>
               </div>
             </div>
@@ -236,7 +236,7 @@ export default function DoctorPlansPage() {
       </div>
 
       {/* Upload Receipt Section */}
-      {subscription?.status === 'suspended' || subscription?.status === 'pending_payment' ? (
+      {subscription?.status === 'suspended' || subscription?.status === 'past_due' ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 space-y-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
