@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
     }
 
-    // Verify the user's JWT with a throwaway client
+    // ── Verify JWT ───────────────────────────────────────────────────────────
     const userClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -39,14 +39,104 @@ export async function POST(req: NextRequest) {
     )
     const { data: { user }, error: userErr } = await userClient.auth.getUser(accessToken)
     if (userErr || !user) {
-      return NextResponse.json({ error: 'Sesion expirada. Inicia sesion de nuevo.' }, { status: 401 })
+      return NextResponse.json({ error: 'Sesión expirada. Inicia sesión de nuevo.' }, { status: 401 })
     }
 
     const admin = createAdminClient()
     const finalName = patientName || user.email?.split('@')[0] || 'Paciente'
 
-    // 1. Get or create patient (admin client bypasses RLS)
-    // First try to find by doctor_id + auth_user_id
+    // ── VALIDATION 1: Check for duplicate appointment (same doctor + time) ──
+    const scheduledDate = new Date(scheduledAt)
+    const bufferMs = 15 * 60 * 1000 // 15 min buffer for near-duplicate detection
+    const windowStart = new Date(scheduledDate.getTime() - bufferMs).toISOString()
+    const windowEnd = new Date(scheduledDate.getTime() + bufferMs).toISOString()
+
+    const { data: existingAppts } = await admin
+      .from('appointments')
+      .select('id, patient_name, scheduled_at')
+      .eq('doctor_id', doctorId)
+      .in('status', ['scheduled', 'confirmed'])
+      .gte('scheduled_at', windowStart)
+      .lte('scheduled_at', windowEnd)
+
+    // Check if THIS user already has an appointment in that window
+    const { data: userExistingAppts } = await admin
+      .from('appointments')
+      .select('id, scheduled_at')
+      .eq('doctor_id', doctorId)
+      .eq('auth_user_id', user.id)
+      .in('status', ['scheduled', 'confirmed'])
+      .gte('scheduled_at', windowStart)
+      .lte('scheduled_at', windowEnd)
+
+    if (userExistingAppts && userExistingAppts.length > 0) {
+      return NextResponse.json(
+        { error: 'Ya tienes una cita agendada en este horario con este doctor.' },
+        { status: 409 }
+      )
+    }
+
+    // Check if the slot itself is taken by anyone
+    if (existingAppts && existingAppts.length > 0) {
+      return NextResponse.json(
+        { error: 'Este horario ya fue tomado por otro paciente. Selecciona otro.' },
+        { status: 409 }
+      )
+    }
+
+    // ── VALIDATION 2: Package validation (if using package) ─────────────────
+    let validatedPackage: { id: string; used_sessions: number; total_sessions: number; auth_user_id: string } | null = null
+
+    if (packageId) {
+      const { data: pkg, error: pkgErr } = await admin
+        .from('patient_packages')
+        .select('id, used_sessions, total_sessions, auth_user_id, status, doctor_id')
+        .eq('id', packageId)
+        .single()
+
+      if (pkgErr || !pkg) {
+        return NextResponse.json(
+          { error: 'Paquete no encontrado.' },
+          { status: 404 }
+        )
+      }
+
+      // Verify ownership
+      if (pkg.auth_user_id !== user.id) {
+        return NextResponse.json(
+          { error: 'Este paquete no te pertenece.' },
+          { status: 403 }
+        )
+      }
+
+      // Verify doctor matches
+      if (pkg.doctor_id !== doctorId) {
+        return NextResponse.json(
+          { error: 'Este paquete es de otro médico.' },
+          { status: 400 }
+        )
+      }
+
+      // Verify package is still active
+      if (pkg.status !== 'active') {
+        return NextResponse.json(
+          { error: 'Este paquete ya fue completado o está inactivo.' },
+          { status: 400 }
+        )
+      }
+
+      // Verify remaining sessions
+      if (pkg.used_sessions >= pkg.total_sessions) {
+        return NextResponse.json(
+          { error: `Ya usaste todas las ${pkg.total_sessions} citas de tu paquete.` },
+          { status: 400 }
+        )
+      }
+
+      validatedPackage = pkg
+    }
+
+    // ── 1. Get or create patient ────────────────────────────────────────────
     const { data: existingPatient, error: findErr } = await admin
       .from('patients')
       .select('id')
@@ -56,7 +146,6 @@ export async function POST(req: NextRequest) {
 
     let patientId = existingPatient?.id
 
-    // If not found by auth_user_id, try by email
     if (!patientId && !findErr) {
       const { data: byEmail } = await admin
         .from('patients')
@@ -67,7 +156,6 @@ export async function POST(req: NextRequest) {
 
       if (byEmail?.id) {
         patientId = byEmail.id
-        // Link auth_user_id to existing patient
         await admin
           .from('patients')
           .update({ auth_user_id: user.id })
@@ -76,18 +164,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!patientId) {
-      // Build insert object with only columns we know exist
       const patientInsert: Record<string, unknown> = {
         doctor_id: doctorId,
         full_name: finalName,
         phone: patientPhone || null,
         email: patientEmail || user.email,
         source: 'booking',
+        auth_user_id: user.id,
       }
-
-      // Try adding optional columns (may not exist if migrations weren't run)
-      // We add them to the insert and if they fail, we retry without them
-      patientInsert.auth_user_id = user.id
       if (patientCedula) patientInsert.cedula = patientCedula
 
       const { data: newPatient, error: pErr } = await admin
@@ -97,9 +181,7 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (pErr || !newPatient) {
-        // If the error is about auth_user_id column not existing, retry without it
         if (pErr?.message?.includes('auth_user_id')) {
-          console.warn('[API /book] auth_user_id column missing, retrying without it')
           const { data: retryPatient, error: retryErr } = await admin
             .from('patients')
             .insert({
@@ -113,7 +195,6 @@ export async function POST(req: NextRequest) {
             .single()
 
           if (retryErr || !retryPatient) {
-            console.error('[API /book] createPatient retry error:', retryErr)
             return NextResponse.json(
               { error: `Error al registrar paciente: ${retryErr?.message || 'Unknown'}` },
               { status: 500 }
@@ -121,7 +202,6 @@ export async function POST(req: NextRequest) {
           }
           patientId = retryPatient.id
         } else {
-          console.error('[API /book] createPatient error:', pErr)
           return NextResponse.json(
             { error: `Error al registrar paciente: ${pErr?.message || 'Unknown'}` },
             { status: 500 }
@@ -132,28 +212,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Verify patient exists before creating appointment
     if (!patientId) {
-      return NextResponse.json(
-        { error: 'No se pudo obtener el ID del paciente' },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'No se pudo obtener el ID del paciente' }, { status: 500 })
     }
 
-    const { data: verifyPatient } = await admin
-      .from('patients')
-      .select('id')
-      .eq('id', patientId)
-      .single()
-
-    if (!verifyPatient) {
-      return NextResponse.json(
-        { error: 'El paciente fue creado pero no se encontró en la base de datos. Intenta de nuevo.' },
-        { status: 500 }
-      )
-    }
-
-    // 3. Build appointment insert — only include columns that exist
+    // ── 2. Create appointment ───────────────────────────────────────────────
     const appointmentData: Record<string, unknown> = {
       doctor_id: doctorId,
       patient_id: patientId,
@@ -162,19 +225,23 @@ export async function POST(req: NextRequest) {
       patient_email: patientEmail || user.email,
       status: 'scheduled',
       source: 'booking',
+      auth_user_id: user.id,
+      scheduled_at: scheduledAt,
+      chief_complaint: chiefComplaint || null,
+      plan_name: planName || 'Consulta General',
+      plan_price: validatedPackage ? 0 : (planPrice || 20), // Package sessions are $0
+      payment_method: validatedPackage ? 'package' : (paymentMethod || 'direct'),
+      insurance_name: insuranceName || null,
+      payment_receipt_url: receiptUrl || null,
+      appointment_mode: appointmentMode || 'presencial',
     }
-
-    // Add columns that may exist (from migrations v6, v11)
-    appointmentData.auth_user_id = user.id
-    appointmentData.scheduled_at = scheduledAt
-    appointmentData.chief_complaint = chiefComplaint || null
-    appointmentData.plan_name = planName || 'Consulta General'
-    appointmentData.plan_price = planPrice || 20
-    appointmentData.payment_method = paymentMethod || 'direct'
-    appointmentData.insurance_name = insuranceName || null
-    appointmentData.payment_receipt_url = receiptUrl || null
-    appointmentData.appointment_mode = appointmentMode || 'presencial'
     if (patientCedula) appointmentData.patient_cedula = patientCedula
+
+    // Pre-link to package if using one
+    if (validatedPackage) {
+      appointmentData.package_id = validatedPackage.id
+      appointmentData.session_number = validatedPackage.used_sessions + 1
+    }
 
     const { data: appt, error: apptErr } = await admin
       .from('appointments')
@@ -183,9 +250,8 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (apptErr || !appt) {
-      // If error is about missing columns, retry with minimal columns
+      // Retry with minimal columns if some don't exist
       if (apptErr?.message?.includes('column') || apptErr?.message?.includes('does not exist')) {
-        console.warn('[API /book] Some appointment columns missing, retrying with minimal set')
         const minimalAppt: Record<string, unknown> = {
           doctor_id: doctorId,
           patient_id: patientId,
@@ -194,12 +260,11 @@ export async function POST(req: NextRequest) {
           patient_email: patientEmail || user.email,
           status: 'scheduled',
           source: 'booking',
+          scheduled_at: scheduledAt,
+          chief_complaint: chiefComplaint || null,
+          plan_name: planName || 'Consulta General',
+          plan_price: validatedPackage ? 0 : (planPrice || 20),
         }
-        // Try adding appointment_date instead of scheduled_at
-        minimalAppt.appointment_date = scheduledAt
-        minimalAppt.chief_complaint = chiefComplaint || null
-        minimalAppt.plan_name = planName || 'Consulta General'
-        minimalAppt.plan_price = planPrice || 20
 
         const { data: retryAppt, error: retryErr } = await admin
           .from('appointments')
@@ -208,55 +273,39 @@ export async function POST(req: NextRequest) {
           .single()
 
         if (retryErr || !retryAppt) {
-          console.error('[API /book] createAppointment retry error:', retryErr)
           return NextResponse.json(
             { error: `Error al guardar cita: ${retryErr?.message || 'Unknown'}` },
             { status: 500 }
           )
         }
 
-        return NextResponse.json({ success: true, appointmentId: retryAppt.id, patientId })
+        // Still handle package even on retry
+        if (validatedPackage) {
+          await updatePackageUsage(admin, validatedPackage, retryAppt.id)
+        }
+
+        return NextResponse.json({
+          success: true,
+          appointmentId: retryAppt.id,
+          patientId,
+          packageUsed: !!validatedPackage,
+          packageRemaining: validatedPackage
+            ? validatedPackage.total_sessions - validatedPackage.used_sessions - 1
+            : null,
+        })
       }
 
-      console.error('[API /book] createAppointment error:', apptErr)
       return NextResponse.json(
         { error: `Error al guardar cita: ${apptErr?.message || 'Unknown'}` },
         { status: 500 }
       )
     }
 
-    // 4. Handle packages: use existing or create new
-    // If booking from an existing package, increment used_sessions
-    if (packageId) {
-      try {
-        const { data: pkg } = await admin
-          .from('patient_packages')
-          .select('id, used_sessions, total_sessions')
-          .eq('id', packageId)
-          .single()
-
-        if (pkg) {
-          const newUsed = pkg.used_sessions + 1
-          const updateData: Record<string, unknown> = { used_sessions: newUsed }
-          // Auto-complete package when all sessions are used
-          if (newUsed >= pkg.total_sessions) {
-            updateData.status = 'completed'
-          }
-          await admin
-            .from('patient_packages')
-            .update(updateData)
-            .eq('id', packageId)
-
-          // Link appointment to package
-          await admin
-            .from('appointments')
-            .update({ package_id: packageId, session_number: newUsed })
-            .eq('id', appt.id)
-        }
-      } catch (pkgErr) {
-        console.warn('[API /book] package update skipped:', pkgErr)
-      }
+    // ── 3. Handle packages ──────────────────────────────────────────────────
+    if (validatedPackage) {
+      await updatePackageUsage(admin, validatedPackage, appt.id)
     } else if (sessionsCount && sessionsCount > 1) {
+      // Create new package for multi-session plan
       try {
         const { data: pkg } = await admin
           .from('patient_packages')
@@ -274,20 +323,71 @@ export async function POST(req: NextRequest) {
           .single()
 
         if (pkg) {
-          await admin
-            .from('appointments')
-            .update({ package_id: pkg.id, session_number: 1 })
-            .eq('id', appt.id)
+          try {
+            await admin
+              .from('appointments')
+              .update({ package_id: pkg.id, session_number: 1 })
+              .eq('id', appt.id)
+          } catch { /* column may not exist */ }
         }
       } catch (pkgErr) {
-        // Package creation is optional, don't fail the booking
         console.warn('[API /book] package creation skipped:', pkgErr)
       }
     }
 
-    return NextResponse.json({ success: true, appointmentId: appt.id, patientId })
+    return NextResponse.json({
+      success: true,
+      appointmentId: appt.id,
+      patientId,
+      packageUsed: !!validatedPackage,
+      packageRemaining: validatedPackage
+        ? validatedPackage.total_sessions - validatedPackage.used_sessions - 1
+        : null,
+    })
   } catch (err: any) {
     console.error('[API /book] unexpected error:', err)
     return NextResponse.json({ error: err?.message || 'Error interno' }, { status: 500 })
+  }
+}
+
+/** Atomically increment used_sessions and auto-complete if all sessions used */
+async function updatePackageUsage(
+  admin: ReturnType<typeof createAdminClient>,
+  pkg: { id: string; used_sessions: number; total_sessions: number },
+  appointmentId: string
+) {
+  const newUsed = pkg.used_sessions + 1
+  const updateData: Record<string, unknown> = { used_sessions: newUsed }
+
+  if (newUsed >= pkg.total_sessions) {
+    updateData.status = 'completed'
+  }
+
+  await admin
+    .from('patient_packages')
+    .update(updateData)
+    .eq('id', pkg.id)
+    // Safety: only update if used_sessions hasn't changed (optimistic lock)
+    .eq('used_sessions', pkg.used_sessions)
+
+  // Verify the update took effect (race condition check)
+  const { data: updated } = await admin
+    .from('patient_packages')
+    .select('used_sessions')
+    .eq('id', pkg.id)
+    .single()
+
+  if (updated && updated.used_sessions !== newUsed) {
+    console.warn(`[API /book] Package ${pkg.id} race condition detected. Expected ${newUsed}, got ${updated.used_sessions}`)
+  }
+
+  // Link appointment to package
+  try {
+    await admin
+      .from('appointments')
+      .update({ package_id: pkg.id, session_number: newUsed })
+      .eq('id', appointmentId)
+  } catch {
+    // package_id or session_number columns may not exist
   }
 }

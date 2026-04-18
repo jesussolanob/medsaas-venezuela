@@ -363,6 +363,18 @@ export default function BookingClient({
         setSubmitting(false)
         return
       }
+
+      // Update package state after successful booking
+      if (usingPackage && activePackage) {
+        const newUsed = activePackage.used_sessions + 1
+        if (newUsed >= activePackage.total_sessions) {
+          // Package fully used
+          setActivePackage(null)
+        } else {
+          setActivePackage({ ...activePackage, used_sessions: newUsed })
+        }
+      }
+
       setDone(true)
     } catch (err: any) {
       setError(err?.message || 'Error inesperado')
@@ -384,12 +396,31 @@ export default function BookingClient({
         </p>
         <div className="bg-slate-50 rounded-xl p-4 text-left space-y-1.5 mb-5">
           <p className="text-xs text-slate-500"><span className="font-semibold">Fecha:</span> {selectedSlot?.label} a las {selectedSlot?.time}</p>
-          {selectedPlan && <p className="text-xs text-slate-500"><span className="font-semibold">Plan:</span> {selectedPlan.name} — ${selectedPlan.price_usd} USD</p>}
+          {selectedPlan && (
+            <p className="text-xs text-slate-500">
+              <span className="font-semibold">Plan:</span> {selectedPlan.name}
+              {usingPackage ? ' (paquete prepagado)' : ` — $${selectedPlan.price_usd} USD`}
+            </p>
+          )}
           <p className="text-xs text-slate-500"><span className="font-semibold">Modalidad:</span> {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}</p>
           {appointmentMode === 'presencial' && doctor.office_address && (
             <p className="text-xs text-slate-500"><span className="font-semibold">Dirección:</span> {doctor.office_address}</p>
           )}
         </div>
+        {usingPackage && activePackage && activePackage.total_sessions - activePackage.used_sessions > 0 && (
+          <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-4 text-left">
+            <p className="text-xs text-violet-700 font-semibold">
+              Te quedan {activePackage.total_sessions - activePackage.used_sessions} cita{activePackage.total_sessions - activePackage.used_sessions !== 1 ? 's' : ''} en tu paquete
+            </p>
+          </div>
+        )}
+        {usingPackage && activePackage && activePackage.total_sessions - activePackage.used_sessions <= 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-left">
+            <p className="text-xs text-amber-700 font-semibold">
+              Usaste todas las citas de tu paquete
+            </p>
+          </div>
+        )}
         <p className="text-xs text-slate-400 mb-4">El médico confirmará tu cita y se pondrá en contacto contigo.</p>
         <a href="/patient/dashboard" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
           Ir a mi dashboard
