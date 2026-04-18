@@ -5,11 +5,13 @@ import { Users, Calendar, CreditCard, TrendingUp } from 'lucide-react'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
 
 function getPlanTag(status?: string | null, plan?: string | null): { label: string; color: string } {
+  // Explicit statuses
   if (status === 'suspended') return { label: 'Suspendida', color: 'bg-red-50 text-red-700' }
-  if (status === 'trial') return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
   if (status === 'active') return { label: 'Pro', color: 'bg-teal-50 text-teal-700' }
-  // Fallback: if has a plan but no recognized status
+  if (status === 'trial') return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
+  // Has a plan assigned (registered) but status not explicitly set → Trial
   if (plan) return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
+  // No plan, no status → Sin plan
   return { label: 'Sin plan', color: 'bg-slate-100 text-slate-500' }
 }
 
@@ -23,24 +25,31 @@ export default async function AdminDashboard() {
   // Use admin client for all queries to bypass RLS
   const adminClient = createAdminClient()
 
-  // Fetch recent doctors with clinic plan info
+  // Fetch recent doctors (simple query, no joins)
   const { data: recentDoctors } = await adminClient
     .from('profiles')
-    .select('id, full_name, specialty, email, created_at, clinic_id, clinics(subscription_plan, subscription_status)')
+    .select('id, full_name, specialty, email, created_at, clinic_id')
     .eq('role', 'doctor')
     .order('created_at', { ascending: false })
     .limit(5)
 
-  // Fetch active clinics
-  const { data: activeClinics } = await adminClient
+  // Fetch ALL clinics (for doctor plan lookup + active clinics section)
+  const { data: allClinics } = await adminClient
     .from('clinics')
     .select('id, name, city, subscription_plan, subscription_status, is_active')
-    .eq('is_active', true)
     .order('created_at', { ascending: false })
-    .limit(5)
+
+  // Build a lookup map: clinic_id → clinic data
+  const clinicMap: Record<string, { subscription_plan: string; subscription_status: string; name: string; city: string; is_active: boolean }> = {}
+  ;(allClinics || []).forEach(c => {
+    clinicMap[c.id] = c
+  })
+
+  // Filter active clinics for the "Clínicas activas" section
+  const activeClinics = (allClinics || []).filter(c => c.is_active).slice(0, 5)
 
   // Get doctor count per clinic
-  const clinicIds = (activeClinics || []).map(c => c.id)
+  const clinicIds = activeClinics.map(c => c.id)
   const { data: clinicDoctorCounts } = clinicIds.length > 0
     ? await adminClient
       .from('profiles')
@@ -201,7 +210,7 @@ export default async function AdminDashboard() {
           </div>
           <div className="space-y-2">
             {(recentDoctors || []).map((doctor) => {
-              const clinic = doctor.clinics as { subscription_plan?: string; subscription_status?: string } | null
+              const clinic = doctor.clinic_id ? clinicMap[doctor.clinic_id] : null
               const tag = getPlanTag(clinic?.subscription_status, clinic?.subscription_plan)
               return (
                 <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
