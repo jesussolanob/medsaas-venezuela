@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="es-VE">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Medical CRM — Pitch para Inversores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --teal-50: #f0fdfa;
+    --teal-100: #ccfbf1;
+    --teal-400: #2dd4bf;
+    --teal-500: #14b8a6;
+    --teal-600: #0d9488;
+    --teal-700: #0f766e;
+    --brand: #00C4CC;
+    --brand-2: #0891b2;
+    --slate-50: #f8fafc;
+    --slate-100: #f1f5f9;
+    --slate-200: #e2e8f0;
+    --slate-300: #cbd5e1;
+    --slate-400: #94a3b8;
+    --slate-500: #64748b;
+    --slate-600: #475569;
+    --slate-700: #334155;
+    --slate-800: #1e293b;
+    --slate-900: #0f172a;
+    --amber-500: #f59e0b;
+    --rose-500: #f43f5e;
+    --green-500: #22c55e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--slate-50);
+    color: var(--slate-800);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .deck {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    padding: 56px 72px 88px;
+    flex-direction: column;
+    animation: fadeIn 0.5s ease;
+    overflow-y: auto;
+  }
+
+  .slide.active { display: flex; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Barra de progreso */
+  .progress {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--slate-200);
+    z-index: 50;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+    transition: width 0.4s ease;
+  }
+
+  /* Navegación */
+  .nav {
+    position: fixed;
+    bottom: 24px;
+    right: 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 40;
+  }
+  .nav button {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: white;
+    border: 1px solid var(--slate-200);
+    color: var(--slate-700);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  }
+  .nav button:hover {
+    background: var(--teal-500);
+    color: white;
+    border-color: var(--teal-500);
+    transform: translateY(-1px);
+  }
+  .nav button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .nav .counter {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slate-500);
+    background: white;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--slate-200);
+  }
+
+  .brand-mark {
+    position: fixed;
+    top: 24px;
+    left: 32px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--slate-700);
+    z-index: 40;
+  }
+  .brand-mark .dot {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+  }
+
+  /* Tipografía */
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--teal-600);
+    margin-bottom: 14px;
+  }
+  h1.title {
+    font-size: clamp(40px, 5vw, 68px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--slate-900);
+    margin-bottom: 20px;
+  }
+  h2.title {
+    font-size: clamp(32px, 3.6vw, 46px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--slate-900);
+    margin-bottom: 16px;
+  }
+  p.lead {
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--slate-600);
+    max-width: 780px;
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Hero Slide */
+  .hero {
+    background: linear-gradient(135deg, #00C4CC 0%, #0891b2 100%);
+    color: white;
+    justify-content: center;
+  }
+  .hero .eyebrow { color: rgba(255,255,255,0.85); }
+  .hero h1 {
+    font-size: clamp(56px, 7vw, 104px);
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    line-height: 0.98;
+    color: white;
+  }
+  .hero .sub {
+    font-size: clamp(18px, 1.8vw, 24px);
+    color: rgba(255,255,255,0.92);
+    margin-top: 18px;
+    max-width: 700px;
+    font-weight: 400;
+  }
+  .hero .meta {
+    margin-top: 64px;
+    display: flex;
+    gap: 40px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    color: rgba(255,255,255,0.85);
+  }
+  .hero .meta b { color: white; font-weight: 700; display: block; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+
+  .hero-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 40px;
+    color: white;
+  }
+  .hero-logo .bx {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+  }
+
+  /* Tarjetas */
+  .card {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 16px;
+    padding: 24px;
+    transition: all 0.25s;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    border-color: var(--teal-400);
+  }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  .kpi {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .kpi .num {
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .kpi .label {
+    margin-top: 10px;
+    color: var(--slate-500);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .feature-card {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.25s;
+  }
+  .feature-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--teal-400);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  }
+  .feature-card .icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: var(--teal-50);
+    color: var(--teal-600);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .feature-card h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--slate-900);
+  }
+  .feature-card p {
+    font-size: 14px;
+    color: var(--slate-500);
+    line-height: 1.55;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .badge.done { background: #dcfce7; color: #15803d; }
+  .badge.pending { background: #fef3c7; color: #b45309; }
+  .badge.brand { background: var(--teal-50); color: var(--teal-700); }
+
+  /* Problem / Solution */
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin-top: 32px;
+  }
+  .split .col {
+    background: white;
+    border-radius: 18px;
+    padding: 32px;
+    border: 1px solid var(--slate-200);
+  }
+  .split .col.problem {
+    background: #fff1f2;
+    border-color: #fecdd3;
+  }
+  .split .col.solution {
+    background: linear-gradient(135deg, #ecfeff 0%, #f0fdfa 100%);
+    border-color: var(--teal-100);
+  }
+  .split .col h3 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .split .col.problem h3 { color: var(--rose-500); }
+  .split .col.solution h3 { color: var(--teal-600); }
+  .split .col ul { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  .split .col li {
+    display: flex;
+    gap: 12px;
+    font-size: 15px;
+    color: var(--slate-700);
+    line-height: 1.5;
+  }
+  .split .col li .dot {
+    flex-shrink: 0;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    margin-top: 9px;
+  }
+  .problem li .dot { background: var(--rose-500); }
+  .solution li .dot { background: var(--teal-500); }
+
+  /* Stack tecnológico */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 32px;
+  }
+  .stack-item {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.25s;
+  }
+  .stack-item:hover {
+    transform: translateY(-2px);
+    border-color: var(--teal-400);
+  }
+  .stack-item .logo {
+    width: 48px; height: 48px;
+    margin: 0 auto 12px;
+    border-radius: 12px;
+    background: var(--slate-100);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    color: var(--slate-700);
+    font-size: 18px;
+  }
+  .stack-item h4 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--slate-900);
+    margin-bottom: 4px;
+  }
+  .stack-item p {
+    font-size: 12px;
+    color: var(--slate-500);
+  }
+
+  /* Planes */
+  .plans {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 28px;
+  }
+  .plan {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    transition: all 0.25s;
+  }
+  .plan:hover {
+    transform: translateY(-3px);
+    border-color: var(--teal-400);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  }
+  .plan.highlight {
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+    color: white;
+    border-color: transparent;
+  }
+  .plan.highlight .plan-tier { color: rgba(255,255,255,0.85); }
+  .plan.highlight .plan-price { color: white; }
+  .plan.highlight .plan-desc { color: rgba(255,255,255,0.85); }
+  .plan.highlight ul li { color: rgba(255,255,255,0.95); }
+  .plan.highlight ul li svg { color: white; }
+
+  .plan-tier {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    color: var(--slate-500);
+    margin-bottom: 8px;
+  }
+  .plan-price {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--slate-900);
+    letter-spacing: -0.02em;
+  }
+  .plan-price small { font-size: 14px; font-weight: 600; color: var(--slate-500); }
+  .plan-desc {
+    font-size: 13px;
+    color: var(--slate-500);
+    margin: 10px 0 16px;
+  }
+  .plan ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .plan ul li {
+    font-size: 13px;
+    color: var(--slate-600);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .plan ul li svg { flex-shrink: 0; margin-top: 2px; color: var(--teal-500); }
+
+  /* Status list */
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 24px;
+  }
+  .status-col {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .status-col h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 18px;
+    color: var(--slate-900);
+  }
+  .status-col ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .status-col li {
+    display: flex;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--slate-700);
+    line-height: 1.5;
+    padding: 8px 10px;
+    background: var(--slate-50);
+    border-radius: 8px;
+  }
+  .status-col li svg { flex-shrink: 0; margin-top: 2px; }
+  .status-col.done li svg { color: var(--green-500); }
+  .status-col.pending li svg { color: var(--amber-500); }
+
+  /* Modules list */
+  .modules {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 28px;
+  }
+  .module {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 14px;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s;
+  }
+  .module:hover {
+    border-color: var(--teal-400);
+    transform: translateY(-1px);
+  }
+  .module .icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    background: var(--teal-50);
+    color: var(--teal-600);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .module .name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slate-800);
+  }
+
+  /* Architecture diagram */
+  .arch {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 28px;
+  }
+  .arch-layer {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .arch-layer h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--teal-600);
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+  .arch-layer h4 {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--slate-900);
+    margin-bottom: 14px;
+  }
+  .arch-layer ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .arch-layer li {
+    font-size: 13px;
+    color: var(--slate-600);
+    padding: 6px 10px;
+    background: var(--slate-50);
+    border-radius: 6px;
+  }
+
+  /* Design palette */
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-top: 28px;
+  }
+  .swatch {
+    border-radius: 14px;
+    padding: 18px;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--slate-200);
+  }
+  .swatch small { opacity: 0.85; font-weight: 500; display: block; margin-top: 2px; }
+
+  /* Market section */
+  .market-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 32px;
+    margin-top: 24px;
+    align-items: start;
+  }
+  .market-stats { display: flex; flex-direction: column; gap: 14px; }
+  .market-stat {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .market-stat .label {
+    font-size: 13px;
+    color: var(--slate-600);
+    font-weight: 500;
+  }
+  .market-stat .value {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--slate-900);
+    letter-spacing: -0.01em;
+  }
+  .market-stat .value span { color: var(--teal-600); }
+
+  .bullet-block {
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .bullet-block h4 {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    color: var(--slate-900);
+  }
+  .bullet-block ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .bullet-block li {
+    font-size: 14px;
+    color: var(--slate-700);
+    line-height: 1.55;
+    padding-left: 18px;
+    position: relative;
+  }
+  .bullet-block li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px;
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  }
+
+  /* Ask slide */
+  .ask {
+    background: linear-gradient(135deg, var(--slate-900) 0%, #0f2e36 100%);
+    color: white;
+    justify-content: center;
+  }
+  .ask h2.title { color: white; }
+  .ask p.lead { color: rgba(255,255,255,0.8); }
+  .ask .eyebrow { color: var(--teal-400); }
+
+  .ask-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 40px;
+  }
+  .ask-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 24px;
+    backdrop-filter: blur(8px);
+  }
+  .ask-card h4 {
+    font-size: 13px;
+    color: var(--teal-400);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .ask-card p {
+    font-size: 15px;
+    color: rgba(255,255,255,0.9);
+    line-height: 1.5;
+  }
+
+  .contact {
+    margin-top: 48px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+  }
+  .contact b {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--teal-400);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--teal-50);
+    color: var(--teal-700);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--slate-300); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--slate-400); }
+
+  @media print {
+    .slide { position: relative !important; display: flex !important; page-break-after: always; height: 100vh; }
+    .nav, .progress, .brand-mark { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+
+<div class="brand-mark">
+  <span class="dot">D</span>
+  <span>Delta Medical CRM</span>
+</div>
+
+<div class="deck" id="deck">
+
+  <!-- ============== SLIDE 1: HERO ============== -->
+  <section class="slide hero active">
+    <div class="hero-logo">
+      <span class="bx">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M10 16h4"/><path d="M12 14v4"/></svg>
+      </span>
+      DELTA MEDICAL CRM
+    </div>
+    <div class="eyebrow">Pitch deck · Inversión semilla · 2026</div>
+    <h1>El sistema operativo<br/>del médico venezolano.</h1>
+    <p class="sub">SaaS multi-tenant omnicanal que digitaliza la gestión clínica, agenda, pagos y portal de pacientes — adaptado a la realidad local (Pago Móvil, Zelle, Binance, USD/Bs).</p>
+    <div class="meta">
+      <div><b>Mercado</b>Venezuela · LATAM emergente</div>
+      <div><b>Modelo</b>Suscripción B2B SaaS</div>
+      <div><b>Estado</b>MVP funcional en producción</div>
+      <div><b>Fundador</b>Jesús Solano</div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 2: PROBLEMA / SOLUCIÓN ============== -->
+  <section class="slide">
+    <span class="section-label">01 · El problema</span>
+    <h2 class="title">Los médicos venezolanos gestionan su consulta con <span class="gradient-text">herramientas fragmentadas</span>.</h2>
+    <p class="lead">WhatsApp para agendar, cuadernos para historia clínica, Excel para finanzas y pagos informales en múltiples monedas. No existe una solución integral adaptada a la realidad local.</p>
+
+    <div class="split">
+      <div class="col problem">
+        <h3>Dolor actual</h3>
+        <ul>
+          <li><span class="dot"></span> Agendas por WhatsApp → no-shows del 25–40%, sin trazabilidad</li>
+          <li><span class="dot"></span> Historia clínica en papel, sin portabilidad ni respaldo</li>
+          <li><span class="dot"></span> Cobros informales en Bs, USD, Zelle, Binance sin control</li>
+          <li><span class="dot"></span> Pacientes pagan paquetes pero pierden las sesiones</li>
+          <li><span class="dot"></span> CRMs internacionales (USD 50–300/mes) no aceptan métodos locales</li>
+        </ul>
+      </div>
+      <div class="col solution">
+        <h3>Nuestra solución</h3>
+        <ul>
+          <li><span class="dot"></span> Booking público con link único — cero fricción para el paciente</li>
+          <li><span class="dot"></span> EHR digital con consultas, recetas y expediente clínico completo</li>
+          <li><span class="dot"></span> Módulo de finanzas multi-moneda y multi-método de pago local</li>
+          <li><span class="dot"></span> Paquetes prepagados con control server-side de sesiones</li>
+          <li><span class="dot"></span> Planes desde USD 10/mes con feature gating dinámico</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 3: MERCADO ============== -->
+  <section class="slide">
+    <span class="section-label">02 · Mercado</span>
+    <h2 class="title">Un mercado desatendido con <span class="gradient-text">alta adopción digital</span> post-pandemia.</h2>
+    <p class="lead">Venezuela cuenta con una base sólida de médicos privados que operan fuera del sistema público. Existe presión real para profesionalizar la consulta y aceptar pagos digitales.</p>
+
+    <div class="market-grid">
+      <div class="market-stats">
+        <div class="market-stat"><span class="label">Médicos activos estimados en Venezuela</span><span class="value">~70.000</span></div>
+        <div class="market-stat"><span class="label">Médicos con consulta privada</span><span class="value">~35.000</span></div>
+        <div class="market-stat"><span class="label">Target alcanzable (10% del privado)</span><span class="value">3.500</span></div>
+        <div class="market-stat"><span class="label">ARR potencial @ plan Professional</span><span class="value"><span>~$1,2M</span></span></div>
+        <div class="market-stat"><span class="label">Expansión LATAM (Colombia, Ecuador, Perú)</span><span class="value"><span>10x</span></span></div>
+      </div>
+      <div class="bullet-block">
+        <h4>Por qué ahora</h4>
+        <ul>
+          <li>La telemedicina se normalizó en Venezuela desde 2020 — los pacientes esperan canales digitales.</li>
+          <li>Pago Móvil, Zelle y Binance son hoy métodos de pago estándar en consultas privadas.</li>
+          <li>Los médicos jóvenes (30–45 años) son nativos digitales con capacidad de pago en USD.</li>
+          <li>No existe un competidor local con producto integral — solo CRMs internacionales caros.</li>
+          <li>Modelo probado en México (Doctoralia, Nimbo-X) escalable a Venezuela con fricción menor.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 4: PRODUCTO - 3 PORTALES ============== -->
+  <section class="slide">
+    <span class="section-label">03 · Producto</span>
+    <h2 class="title">Tres portales, una sola plataforma.</h2>
+    <p class="lead">Arquitectura multi-tenant con RLS en PostgreSQL. Cada rol tiene su propia experiencia adaptada: Super Admin, Médico y Paciente. Más un booking público para captación.</p>
+
+    <div class="arch">
+      <div class="arch-layer">
+        <h3>/admin</h3>
+        <h4>Super Administrador</h4>
+        <ul>
+          <li>Dashboard con KPIs en tiempo real</li>
+          <li>Gestión de médicos y clínicas</li>
+          <li>Suscripciones y aprobación de pagos</li>
+          <li>Configuración dinámica de planes</li>
+          <li>Feature gating por plan</li>
+          <li>Finanzas globales y reportería</li>
+        </ul>
+      </div>
+      <div class="arch-layer">
+        <h3>/doctor</h3>
+        <h4>App del Médico</h4>
+        <ul>
+          <li>Agenda semana/mes/día + disponibilidad</li>
+          <li>Pacientes, consultas, EHR, recetas</li>
+          <li>Finanzas, facturación, reportería</li>
+          <li>CRM de leads y recordatorios</li>
+          <li>Mensajes y portal de invitaciones</li>
+          <li>Sidebar con feature gating dinámico</li>
+        </ul>
+      </div>
+      <div class="arch-layer">
+        <h3>/patient · /book</h3>
+        <h4>Paciente + Booking</h4>
+        <ul>
+          <li>Dashboard con próxima cita y paquetes</li>
+          <li>Historial de citas, informes, recetas</li>
+          <li>Chat con el doctor</li>
+          <li>Booking público tipo acordeón (5 pasos)</li>
+          <li>Registro y login unificado</li>
+          <li>Pago con paquete prepagado</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 5: MÓDULOS ============== -->
+  <section class="slide">
+    <span class="section-label">04 · Funcionalidad</span>
+    <h2 class="title">13 módulos clínicos activados por plan.</h2>
+    <p class="lead">Cada plan desbloquea módulos específicos mediante la tabla <code style="background:var(--slate-100); padding:2px 6px; border-radius:4px; font-size:0.9em;">plan_features</code>. El sidebar del médico se adapta dinámicamente.</p>
+
+    <div class="modules">
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></span><span class="name">Dashboard</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span class="name">Agenda</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="name">Pacientes</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="name">Consultas</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span><span class="name">EHR / Historia clínica</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span class="name">Finanzas</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span><span class="name">Facturación</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span class="name">Reportería</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span><span class="name">CRM de leads</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span><span class="name">Recordatorios</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="name">Mensajes</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><span class="name">Invitaciones</span></div>
+      <div class="module"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="name">Configuración</span></div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 6: MODELO DE NEGOCIO ============== -->
+  <section class="slide">
+    <span class="section-label">05 · Modelo de negocio</span>
+    <h2 class="title">Suscripción mensual con <span class="gradient-text">4 planes escalonados</span>.</h2>
+    <p class="lead">Modelo SaaS B2B puro. El trial gratuito de 15 días reduce fricción de entrada. El plan Clinic permite venta upsell a centros con varios médicos.</p>
+
+    <div class="plans">
+      <div class="plan">
+        <div class="plan-tier">Trial</div>
+        <div class="plan-price">$0<small>/15 días</small></div>
+        <p class="plan-desc">Acceso completo para probar el producto. Se suspende al vencer.</p>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Todos los módulos</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Onboarding asistido</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Sin tarjeta de crédito</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <div class="plan-tier">Basic</div>
+        <div class="plan-price">$10<small>/mes</small></div>
+        <p class="plan-desc">Ideal para médicos que inician su consulta privada.</p>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Agenda + pacientes</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Booking público</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Consultas básicas</li>
+        </ul>
+      </div>
+      <div class="plan highlight">
+        <div class="plan-tier">Professional ★</div>
+        <div class="plan-price">$30<small>/mes</small></div>
+        <p class="plan-desc">Plan con mejor ratio valor/precio. Nuestro objetivo de conversión.</p>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Todo el plan Basic</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> EHR + recetas + CRM</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Finanzas + reportería</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Recordatorios</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <div class="plan-tier">Clinic</div>
+        <div class="plan-price">$100<small>/mes</small></div>
+        <p class="plan-desc">Para centros de salud con múltiples médicos y administración.</p>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Gestión multi-médico</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Facturación avanzada</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Invitaciones de staff</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Soporte prioritario</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top: 28px;">
+      <div class="kpi"><div class="num">$240</div><div class="label">LTV promedio estimado (12 meses)</div></div>
+      <div class="kpi"><div class="num">&lt;$25</div><div class="label">CAC objetivo (digital + referidos)</div></div>
+      <div class="kpi"><div class="num">~10x</div><div class="label">LTV/CAC proyectado al año 2</div></div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 7: TECNOLOGÍA ============== -->
+  <section class="slide">
+    <span class="section-label">06 · Tecnología</span>
+    <h2 class="title">Stack moderno, <span class="gradient-text">infraestructura costo-eficiente</span>.</h2>
+    <p class="lead">Arquitectura serverless con Next.js 15 en Vercel y Supabase como backend unificado. Costos de infraestructura mínimos hasta ~10.000 usuarios activos.</p>
+
+    <div class="stack-grid">
+      <div class="stack-item">
+        <div class="logo">N</div>
+        <h4>Next.js 15</h4>
+        <p>App Router · Server Components · TypeScript</p>
+      </div>
+      <div class="stack-item">
+        <div class="logo">⬡</div>
+        <h4>Supabase</h4>
+        <p>Postgres · Auth · Storage · RLS</p>
+      </div>
+      <div class="stack-item">
+        <div class="logo">▲</div>
+        <h4>Vercel</h4>
+        <p>Edge functions · Deploy automático</p>
+      </div>
+      <div class="stack-item">
+        <div class="logo">T</div>
+        <h4>Tailwind CSS</h4>
+        <p>Utility-first · Design system consistente</p>
+      </div>
+      <div class="stack-item">
+        <div class="logo">TS</div>
+        <h4>TypeScript</h4>
+        <p>Type safety end-to-end</p>
+      </div>
+      <div class="stack-item">
+        <div class="logo">◎</div>
+        <h4>Lucide Icons</h4>
+        <p>Iconografía consistente</p>
+      </div>
+      <div class="stack-item">
+        <div class="logo">GH</div>
+        <h4>GitHub</h4>
+        <p>CI/CD + versionado · Deploy continuo</p>
+      </div>
+      <div class="stack-item">
+        <div class="logo">API</div>
+        <h4>Arquitectura API</h4>
+        <p>Next API Routes · RPC Supabase · RLS</p>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top: 28px;">
+      <div class="bullet-block">
+        <h4>Seguridad y cumplimiento</h4>
+        <ul>
+          <li>Row Level Security (RLS) multi-tenant en todas las tablas clínicas</li>
+          <li>Autenticación JWT con rotación y verificación de email</li>
+          <li>Separación de roles: super_admin / doctor / clinic_admin / patient</li>
+          <li>Validaciones server-side con optimistic locking (anti race-conditions)</li>
+        </ul>
+      </div>
+      <div class="bullet-block">
+        <h4>Escalabilidad y costo</h4>
+        <ul>
+          <li>Serverless: pago por uso — infraestructura escala sola</li>
+          <li>Estimado MVP &lt; USD 100/mes hasta 1.000 médicos activos</li>
+          <li>PostgreSQL administrado con backups automáticos</li>
+          <li>CDN global y edge caching incluidos</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 8: DISEÑO ============== -->
+  <section class="slide">
+    <span class="section-label">07 · Diseño</span>
+    <h2 class="title">Identidad visual limpia, <span class="gradient-text">clínicamente profesional</span>.</h2>
+    <p class="lead">Paleta turquesa y slate, tipografía Inter, tarjetas redondeadas y espacios amplios. Pensada para reducir carga cognitiva en entornos clínicos. Locale es-VE para fechas y formatos.</p>
+
+    <div class="palette">
+      <div class="swatch" style="background: #00C4CC;">Brand Primary<small>#00C4CC</small></div>
+      <div class="swatch" style="background: #0891b2;">Brand Dark<small>#0891b2</small></div>
+      <div class="swatch" style="background: #14b8a6;">Teal 500<small>#14b8a6</small></div>
+      <div class="swatch" style="background: #0f172a;">Slate 900<small>#0f172a</small></div>
+      <div class="swatch" style="background: #f8fafc; color: var(--slate-700); border-color: var(--slate-300);">Slate 50<small>#f8fafc</small></div>
+    </div>
+
+    <div class="grid-3" style="margin-top: 32px;">
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+        <h3>Mobile-first</h3>
+        <p>Los médicos trabajan desde el celular entre consultas. Todo responsive desde el primer día.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-7m7 10h-7M4 7l3 3-3 3m0 4l3 3"/></svg></div>
+        <h3>Componentes reutilizables</h3>
+        <p>Design system basado en tarjetas, botones y layouts consistentes en los 3 portales.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/></svg></div>
+        <h3>Jerarquía visual clara</h3>
+        <p>Badges de estado (done/pending/brand), banners de suscripción amarillo/rojo, foco en lo crítico.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 9: ESTADO ACTUAL ============== -->
+  <section class="slide">
+    <span class="section-label">08 · Estado actual</span>
+    <h2 class="title">MVP funcional. <span class="gradient-text">Listo para primeros usuarios pagos.</span></h2>
+    <p class="lead">Arquitectura estable, base de datos con RLS, 3 portales completos y flujo de booking público funcionando con pagos y paquetes prepagados.</p>
+
+    <div class="status-grid">
+      <div class="status-col done">
+        <h3><span class="badge done">Completado</span> Lo que ya está construido</h3>
+        <ul>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Schema SQL completo con RLS en Supabase</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Login unificado con redirección por rol</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Registro de médicos con 4 planes + verificación email</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Portal Super Admin completo (dashboard, médicos, suscripciones, planes, features)</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Activación dinámica de planes y features desde el admin</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Doctor layout con feature gating dinámico por plan</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Doctor dashboard + agenda (semana/mes/día)</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Módulos: pacientes, consultas, EHR, finanzas, facturación, reportería</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> CRM, recordatorios, mensajes, invitaciones, planes de precio</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Booking público tipo acordeón (5 pasos)</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Sistema de paquetes prepagados con validación server-side</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Portal paciente con dashboard, citas, recetas, mensajes</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Banners de vencimiento de suscripción (amarillo/rojo)</li>
+        </ul>
+      </div>
+      <div class="status-col pending">
+        <h3><span class="badge pending">Roadmap</span> Próximos hitos (90 días)</h3>
+        <ul>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Página bloqueante completa cuando la suscripción esté suspendida</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Edge Function para recordatorios automáticos (WhatsApp + Email)</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Cron job para detectar suscripciones vencidas</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Integración oficial con WhatsApp Business API</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Notificaciones push y email transaccionales</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Portal de clínica (gestión de múltiples médicos)</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Reportes PDF descargables para pacientes</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Suite de tests unitarios y E2E (Playwright)</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Landing page comercial y blog SEO</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Integración con pasarela de pago local (Stripe / MercadoPago)</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Reconciliación automática de pagos móviles</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> App móvil nativa (React Native)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 10: VENTAJA COMPETITIVA ============== -->
+  <section class="slide">
+    <span class="section-label">09 · Ventaja competitiva</span>
+    <h2 class="title">¿Por qué Delta gana en Venezuela?</h2>
+    <p class="lead">No competimos contra gigantes globales en su terreno. Construimos lo que ellos no harán: adaptación profunda al mercado local con precio asequible.</p>
+
+    <div class="grid-3" style="margin-top: 28px;">
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <h3>Multi-moneda nativo</h3>
+        <p>Soportamos Pago Móvil, Zelle, Binance, USD y Bs en el mismo flujo. Ningún CRM global lo hace.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+        <h3>Precio local asequible</h3>
+        <p>$10–30/mes vs. $50–300 de competidores. Pensado para el poder adquisitivo real del médico venezolano.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <h3>Paquetes prepagados</h3>
+        <p>Funcionalidad única: el paciente compra sesiones por adelantado, el doctor cobra de una vez, y el sistema gestiona el consumo.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>
+        <h3>Feature gating dinámico</h3>
+        <p>El admin activa/desactiva módulos por plan sin deploy. Permite experimentar con pricing y empaquetado en tiempo real.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>Canal WhatsApp</h3>
+        <p>Donde realmente están los pacientes. Recordatorios y confirmaciones automáticas vía el canal #1 del país.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+        <h3>Expansión natural a LATAM</h3>
+        <p>Una vez probado en Venezuela, el producto es 100% portable a Colombia, Ecuador, Perú y Centroamérica.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 11: EQUIPO ============== -->
+  <section class="slide">
+    <span class="section-label">10 · Equipo</span>
+    <h2 class="title">Dupla fundadora con <span class="gradient-text">producto construido y finanzas bajo control</span>.</h2>
+    <p class="lead">Equipo co-fundador complementario: ejecución de producto end-to-end y liderazgo financiero. Esto demuestra velocidad de construcción, dominio técnico y disciplina de capital desde el día cero.</p>
+
+    <div class="grid-2" style="margin-top: 28px; gap: 22px;">
+      <div class="card" style="background: linear-gradient(135deg, var(--teal-50) 0%, #fff 100%); border-color: var(--teal-100);">
+        <div style="display:flex; align-items:center; gap:18px; margin-bottom:16px;">
+          <div style="width:64px; height:64px; border-radius:16px; background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); display:flex; align-items:center; justify-content:center; color:white; font-weight:800; font-size:22px; flex-shrink:0;">JS</div>
+          <div>
+            <h3 style="font-size:20px; font-weight:800; color: var(--slate-900);">Jesús Solano</h3>
+            <p style="font-size:13px; color: var(--slate-500); font-weight:600;">Co-Founder · CEO &amp; CTO</p>
+          </div>
+        </div>
+        <p style="font-size:13px; color: var(--slate-600); line-height:1.6;">Ingeniero, product builder y arquitecto del producto. Construyó Delta Medical CRM desde cero: schema SQL con RLS, backend, frontend, booking público, portal del paciente y sistema de suscripciones con feature gating dinámico.</p>
+      </div>
+      <div class="card" style="background: linear-gradient(135deg, #f0fdfa 0%, #fff 100%); border-color: var(--teal-100);">
+        <div style="display:flex; align-items:center; gap:18px; margin-bottom:16px;">
+          <div style="width:64px; height:64px; border-radius:16px; background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); display:flex; align-items:center; justify-content:center; color:white; font-weight:800; font-size:22px; flex-shrink:0;">AS</div>
+          <div>
+            <h3 style="font-size:20px; font-weight:800; color: var(--slate-900);">Ana María Solano Bracamonte</h3>
+            <p style="font-size:13px; color: var(--slate-500); font-weight:600;">Co-Founder · CFO</p>
+          </div>
+        </div>
+        <p style="font-size:13px; color: var(--slate-600); line-height:1.6;">Lidera la estrategia financiera, modelo de suscripciones, proyecciones, control de gastos y relación con inversionistas. Responsable de reconciliación multi-moneda (USD, Bs, Zelle, Binance, Pago Móvil) y unit economics.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+      <h3 style="font-size:15px; font-weight:700; color: var(--slate-900); margin-bottom:12px;">Roles clave a contratar con el capital</h3>
+      <div class="grid-4" style="gap: 12px;">
+        <div style="display:flex; gap:10px; align-items:flex-start; padding:10px; background: var(--slate-50); border-radius:8px;"><span style="width:6px; height:6px; background: var(--teal-500); border-radius:50%; margin-top:7px; flex-shrink:0;"></span><span style="font-size:13px; color: var(--slate-700);"><b>Growth Lead</b> — adquisición de médicos</span></div>
+        <div style="display:flex; gap:10px; align-items:flex-start; padding:10px; background: var(--slate-50); border-radius:8px;"><span style="width:6px; height:6px; background: var(--teal-500); border-radius:50%; margin-top:7px; flex-shrink:0;"></span><span style="font-size:13px; color: var(--slate-700);"><b>Customer Success</b> — onboarding y retención</span></div>
+        <div style="display:flex; gap:10px; align-items:flex-start; padding:10px; background: var(--slate-50); border-radius:8px;"><span style="width:6px; height:6px; background: var(--teal-500); border-radius:50%; margin-top:7px; flex-shrink:0;"></span><span style="font-size:13px; color: var(--slate-700);"><b>Full-stack engineer</b> — WhatsApp, mobile, pagos</span></div>
+        <div style="display:flex; gap:10px; align-items:flex-start; padding:10px; background: var(--slate-50); border-radius:8px;"><span style="width:6px; height:6px; background: var(--teal-500); border-radius:50%; margin-top:7px; flex-shrink:0;"></span><span style="font-size:13px; color: var(--slate-700);"><b>Medical Advisor</b> — board clínico</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 12: ASK ============== -->
+  <section class="slide ask">
+    <span class="eyebrow">11 · La propuesta</span>
+    <h2 class="title">Buscamos socios que nos ayuden a <span class="gradient-text">capturar los primeros 1.000 médicos</span>.</h2>
+    <p class="lead">Producto listo. Mercado validado. Lo que falta es combustible para adquisición, integración WhatsApp y primer equipo comercial.</p>
+
+    <div class="ask-grid">
+      <div class="ask-card">
+        <h4>Uso de fondos · 40%</h4>
+        <p><b>Producto e integraciones.</b> WhatsApp Business API, pasarela de pago, app móvil, notificaciones.</p>
+      </div>
+      <div class="ask-card">
+        <h4>Uso de fondos · 40%</h4>
+        <p><b>Go-to-market.</b> Growth lead, Customer Success, marketing digital y programa de referidos médicos.</p>
+      </div>
+      <div class="ask-card">
+        <h4>Uso de fondos · 20%</h4>
+        <p><b>Operación y reservas.</b> Infraestructura, legal, compliance y 12 meses de runway.</p>
+      </div>
+    </div>
+
+    <div class="contact">
+      <div><b>Contacto</b>Jesús Solano · Founder</div>
+      <div><b>Email</b>jesussolano4@gmail.com</div>
+      <div><b>GitHub</b>github.com/jesussolanob</div>
+      <div><b>Producto</b>medsaas-venezuela</div>
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prevBtn" aria-label="Anterior">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <span class="counter"><span id="currentSlide">1</span> / <span id="totalSlides">12</span></span>
+  <button id="nextBtn" aria-label="Siguiente">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const counter = document.getElementById('currentSlide');
+  const totalEl = document.getElementById('totalSlides');
+  const progressBar = document.getElementById('progressBar');
+
+  totalEl.textContent = total;
+
+  function show(i) {
+    slides[current].classList.remove('active');
+    current = Math.max(0, Math.min(total - 1, i));
+    slides[current].classList.add('active');
+    counter.textContent = current + 1;
+    progressBar.style.width = ((current + 1) / total * 100) + '%';
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === total - 1;
+    slides[current].scrollTop = 0;
+  }
+
+  prevBtn.addEventListener('click', () => show(current - 1));
+  nextBtn.addEventListener('click', () => show(current + 1));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+      e.preventDefault();
+      show(current + 1);
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      show(current - 1);
+    } else if (e.key === 'Home') {
+      show(0);
+    } else if (e.key === 'End') {
+      show(total - 1);
+    }
+  });
+
+  // Swipe en mobile
+  let touchStart = 0;
+  document.addEventListener('touchstart', (e) => { touchStart = e.touches[0].clientX; });
+  document.addEventListener('touchend', (e) => {
+    const delta = e.changedTouches[0].clientX - touchStart;
+    if (Math.abs(delta) > 60) show(current + (delta < 0 ? 1 : -1));
+  });
+
+  show(0);
+</script>
+
+</body>
+</html>
