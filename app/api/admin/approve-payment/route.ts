@@ -107,6 +107,7 @@ export async function POST(req: NextRequest) {
         // If it's an admin upgrade, also change the plan to 'professional'
         if (isAdminUpgrade) {
           updatePayload.plan = 'professional'
+          updatePayload.price_usd = 20
         }
 
         const { error: extendError } = await admin

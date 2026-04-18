@@ -13,6 +13,7 @@ import {
   FileText,
   Send,
   CheckCheck,
+  Download,
 } from 'lucide-react'
 
 type PendingPayment = {
@@ -916,7 +917,22 @@ export default function ApprovalsClient({
                                 {invoice.sent_at ? formatDate(invoice.sent_at) : '-'}
                               </td>
                               <td className="py-3 px-4">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <a
+                                    href={`/api/admin/invoice-pdf?invoiceId=${invoice.id}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center justify-center gap-1 text-xs text-slate-600 hover:text-slate-700 border border-slate-200 px-2 py-1 rounded transition-colors whitespace-nowrap"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    PDF
+                                  </a>
+                                  <a
+                                    href={`/api/admin/invoice-pdf?invoiceId=${invoice.id}&download=true`}
+                                    className="flex items-center justify-center gap-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded transition-colors whitespace-nowrap"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                  </a>
                                   {invoice.status === 'issued' && (
                                     <button
                                       onClick={() => handleSendInvoice(invoice.id)}

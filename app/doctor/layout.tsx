@@ -6,7 +6,8 @@ import {
   LayoutDashboard, Users, Calendar, FileText, Bell,
   DollarSign, Settings, LogOut, Activity, BarChart2, Send,
   ClipboardList, Receipt, FileBarChart, ChevronDown, Menu, X,
-  Stethoscope, Briefcase, MessageSquare, ListTodo, Plus, Trash2, Check
+  Stethoscope, Briefcase, MessageSquare, ListTodo, Plus, Trash2, Check,
+  Lock
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -17,46 +18,63 @@ type Task = {
   completed: boolean
 }
 
-type NavItem = { name: string; href: string; icon: any }
+type NavItem = { name: string; href: string; icon: any; featureKey?: string }
 type NavGroup = { name: string; icon: any; items: NavItem[] }
+
+// Feature key mapping
+const FEATURE_KEY_MAP: Record<string, string> = {
+  'Inicio': 'dashboard',
+  'Agenda': 'agenda',
+  'Pacientes': 'patients',
+  'Consultas': 'consultations',
+  'Historial Clínico': 'ehr',
+  'Finanzas': 'finances',
+  'Facturación': 'billing',
+  'Reportería': 'reports',
+  'CRM Leads': 'crm',
+  'Recordatorios': 'reminders',
+  'Mensajes': 'messages',
+  'Invitaciones': 'invitations',
+  'Configuración': 'settings',
+}
 
 const groups: NavGroup[] = [
   {
     name: 'Consultorio',
     icon: Stethoscope,
     items: [
-      { name: 'Pacientes', href: '/doctor/patients', icon: Users },
-      { name: 'Consultas', href: '/doctor/consultations', icon: ClipboardList },
-      { name: 'Historial Clínico', href: '/doctor/ehr', icon: FileText },
+      { name: 'Pacientes', href: '/doctor/patients', icon: Users, featureKey: 'patients' },
+      { name: 'Consultas', href: '/doctor/consultations', icon: ClipboardList, featureKey: 'consultations' },
+      { name: 'Historial Clínico', href: '/doctor/ehr', icon: FileText, featureKey: 'ehr' },
     ],
   },
   {
     name: 'Finanzas',
     icon: Briefcase,
     items: [
-      { name: 'Finanzas', href: '/doctor/finances', icon: DollarSign },
-      { name: 'Facturación', href: '/doctor/billing', icon: Receipt },
-      { name: 'Reportería', href: '/doctor/reports', icon: FileBarChart },
+      { name: 'Finanzas', href: '/doctor/finances', icon: DollarSign, featureKey: 'finances' },
+      { name: 'Facturación', href: '/doctor/billing', icon: Receipt, featureKey: 'billing' },
+      { name: 'Reportería', href: '/doctor/reports', icon: FileBarChart, featureKey: 'reports' },
     ],
   },
   {
     name: 'CRM',
     icon: MessageSquare,
     items: [
-      { name: 'CRM Leads', href: '/doctor/crm', icon: BarChart2 },
-      { name: 'Recordatorios', href: '/doctor/reminders', icon: Bell },
-      { name: 'Mensajes', href: '/doctor/messages', icon: Send },
+      { name: 'CRM Leads', href: '/doctor/crm', icon: BarChart2, featureKey: 'crm' },
+      { name: 'Recordatorios', href: '/doctor/reminders', icon: Bell, featureKey: 'reminders' },
+      { name: 'Mensajes', href: '/doctor/messages', icon: Send, featureKey: 'messages' },
     ],
   },
 ]
 
 const topItems: NavItem[] = [
-  { name: 'Inicio', href: '/doctor', icon: LayoutDashboard },
-  { name: 'Agenda', href: '/doctor/agenda', icon: Calendar },
+  { name: 'Inicio', href: '/doctor', icon: LayoutDashboard, featureKey: 'dashboard' },
+  { name: 'Agenda', href: '/doctor/agenda', icon: Calendar, featureKey: 'agenda' },
 ]
 
 const bottomItems: NavItem[] = [
-  { name: 'Invitaciones', href: '/doctor/invitations', icon: Send },
+  { name: 'Invitaciones', href: '/doctor/invitations', icon: Send, featureKey: 'invitations' },
 ]
 
 function isPathActive(pathname: string, href: string) {
@@ -81,6 +99,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [tasksOpen, setTasksOpen] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTaskText, setNewTaskText] = useState('')
+  const [enabledFeatures, setEnabledFeatures] = useState<Set<string>>(new Set(['dashboard', 'agenda', 'settings']))
   const tasksDropdownRef = useRef<HTMLDivElement>(null)
   const lastCheckRef = useRef<number>(Date.now())
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -110,6 +129,53 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         setTasks([])
       }
     }
+  }, [])
+
+  // Fetch subscription and enabled features
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function fetchEnabledFeatures() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        // Fetch doctor's subscription
+        const { data: subscription } = await supabase
+          .from('subscriptions')
+          .select('plan, status')
+          .eq('doctor_id', user.id)
+          .single()
+
+        if (!subscription || subscription.status !== 'active') {
+          // No active subscription: only dashboard, agenda, and settings
+          setEnabledFeatures(new Set(['dashboard', 'agenda', 'settings']))
+          return
+        }
+
+        // Fetch enabled features for this plan
+        const { data: features } = await supabase
+          .from('plan_features')
+          .select('feature_key')
+          .eq('plan', subscription.plan)
+          .eq('enabled', true)
+
+        if (features) {
+          const enabledSet = new Set<string>(features.map(f => f.feature_key))
+          // Always ensure dashboard, agenda, and settings are enabled
+          enabledSet.add('dashboard')
+          enabledSet.add('agenda')
+          enabledSet.add('settings')
+          setEnabledFeatures(enabledSet)
+        }
+      } catch (error) {
+        console.error('Error fetching subscription features:', error)
+        // Default to basic features if there's an error
+        setEnabledFeatures(new Set(['dashboard', 'agenda', 'settings']))
+      }
+    }
+
+    fetchEnabledFeatures()
   }, [])
 
   // Save tasks to localStorage whenever they change
@@ -232,8 +298,45 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     setOpenGroups(o => ({ ...o, [name]: !o[name] }))
   }
 
+  const isFeatureEnabled = (featureKey?: string): boolean => {
+    if (!featureKey) return true
+    return enabledFeatures.has(featureKey)
+  }
+
   const NavLink = ({ item, indent = false }: { item: NavItem; indent?: boolean }) => {
     const active = isPathActive(pathname, item.href)
+    const isEnabled = isFeatureEnabled(item.featureKey)
+
+    const handleLockedClick = (e: React.MouseEvent) => {
+      if (!isEnabled) {
+        e.preventDefault()
+      }
+    }
+
+    const content = (
+      <>
+        <item.icon className={clsx('w-4 h-4 shrink-0', active ? 'text-teal-500' : '')} />
+        <span className="flex-1">{item.name}</span>
+        {!isEnabled && <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+      </>
+    )
+
+    if (!isEnabled) {
+      return (
+        <div
+          title="Disponible en Plan Professional"
+          className={clsx(
+            'nav-item-doc flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm transition-all opacity-50 cursor-not-allowed',
+            indent && 'pl-9',
+            'text-slate-400'
+          )}
+          onClick={handleLockedClick}
+        >
+          {content}
+        </div>
+      )
+    }
+
     return (
       <Link
         href={item.href}
@@ -246,8 +349,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
         )}
       >
-        <item.icon className={clsx('w-4 h-4 shrink-0', active ? 'text-teal-500' : '')} />
-        {item.name}
+        {content}
       </Link>
     )
   }
@@ -304,7 +406,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
       {/* Footer */}
       <div className="px-3 py-4 border-t border-slate-100 space-y-1">
-        <NavLink item={{ name: 'Configuración', href: '/doctor/settings', icon: Settings }} />
+        <NavLink item={{ name: 'Configuración', href: '/doctor/settings', icon: Settings, featureKey: 'settings' }} />
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:text-red-500 hover:bg-red-50 w-full transition-all"

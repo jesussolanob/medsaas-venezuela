@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity, BarChart2, CheckSquare, Menu, Shield } from 'lucide-react'
+import { LayoutDashboard, Users, CreditCard, Bell, Settings, LogOut, Activity, BarChart2, CheckSquare, Menu, Shield, Blocks } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import AdminNotifications from './AdminNotifications'
@@ -13,6 +13,7 @@ const navigation = [
   { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
   { name: 'Aprobaciones', href: '/admin/approvals', icon: CheckSquare },
   { name: 'Finanzas', href: '/admin/finances', icon: BarChart2 },
+  { name: 'Módulos', href: '/admin/plan-features', icon: Blocks },
   { name: 'Roles', href: '/admin/roles', icon: Shield },
   { name: 'Configuración', href: '/admin/settings', icon: Settings },
 ]
