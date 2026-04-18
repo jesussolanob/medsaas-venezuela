@@ -260,9 +260,9 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               {subscription && (
                 <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
                   <p className="text-xs text-amber-700 uppercase font-medium mb-1">Suscripción</p>
-                  {subscription.expires_at && (
+                  {subscription.current_period_end && (
                     <p className="text-xs text-amber-600">
-                      Vencimiento: {new Date(subscription.expires_at).toLocaleDateString('es-VE')}
+                      Vencimiento: {new Date(subscription.current_period_end).toLocaleDateString('es-VE')}
                     </p>
                   )}
                   {subscription.status === 'trial' && trialDaysLeft > 0 && (

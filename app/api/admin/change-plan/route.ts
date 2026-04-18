@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
           plan: 'free',
           status: 'trial',
           started_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
+          current_period_end: expiresAt.toISOString(),
         })
         .select('id')
         .single()

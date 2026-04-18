@@ -96,7 +96,7 @@ async function handler() {
         plan: 'free',
         status: 'trial',
         started_at: now.toISOString(),
-        expires_at: expires.toISOString(),
+        current_period_end: expires.toISOString(),
       }).select().single()
     }
 

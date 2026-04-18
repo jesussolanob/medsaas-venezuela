@@ -64,7 +64,7 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
     plan: input.plan,
     status: input.plan === 'free' ? 'trial' : 'active',
     started_at: now.toISOString(),
-    expires_at: expiresAt.toISOString(),
+    current_period_end: expiresAt.toISOString(),
   })
 
   if (subError) {
@@ -173,7 +173,7 @@ export async function createClinic(input: CreateClinicInput): Promise<ActionResu
     plan: 'centro_salud',
     status: 'trial',
     started_at: now.toISOString(),
-    expires_at: expiresAt.toISOString(),
+    current_period_end: expiresAt.toISOString(),
   })
 
   if (subError) {

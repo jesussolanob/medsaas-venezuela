@@ -81,7 +81,7 @@ async function handler() {
     plan: 'centro_salud',
     status: 'trial',
     started_at: now.toISOString(),
-    expires_at: expires.toISOString(),
+    current_period_end: expires.toISOString(),
   })
 
   // 5. Create test doctors
@@ -130,7 +130,7 @@ async function handler() {
       plan: 'centro_salud',
       status: 'trial',
       started_at: now.toISOString(),
-      expires_at: expires.toISOString(),
+      current_period_end: expires.toISOString(),
     })
 
     createdDoctors.push(doc.name)

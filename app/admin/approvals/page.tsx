@@ -30,7 +30,7 @@ type NewSubscription = {
   plan: string
   status: string
   started_at: string
-  expires_at: string
+  current_period_end: string
 }
 
 type ExpiringSubscription = {
@@ -41,7 +41,7 @@ type ExpiringSubscription = {
   specialty: string | null
   plan: string
   status: string
-  expires_at: string
+  current_period_end: string
   days_remaining: number
 }
 
@@ -142,7 +142,7 @@ export default async function ApprovalsPage() {
       plan,
       status,
       started_at,
-      expires_at,
+      current_period_end,
       profiles:doctor_id(full_name, email, specialty)
     `)
     .gte('started_at', thirtyDaysAgo.toISOString())
@@ -160,13 +160,13 @@ export default async function ApprovalsPage() {
       doctor_id,
       plan,
       status,
-      expires_at,
+      current_period_end,
       profiles:doctor_id(full_name, email, specialty)
     `)
-    .lte('expires_at', fourteenDaysFromNow.toISOString())
-    .gte('expires_at', now.toISOString())
+    .lte('current_period_end', fourteenDaysFromNow.toISOString())
+    .gte('current_period_end', now.toISOString())
     .in('status', ['active', 'trial'])
-    .order('expires_at', { ascending: true })
+    .order('current_period_end', { ascending: true })
 
   // 5. Fetch approved payments (for billing tab)
   const { data: approvedPaymentsData } = await supabase
@@ -243,12 +243,12 @@ export default async function ApprovalsPage() {
     plan: s.plan,
     status: s.status,
     started_at: s.started_at,
-    expires_at: s.expires_at,
+    current_period_end: s.current_period_end,
   }))
 
   // Transform expiring subscriptions
   const expiringSubscriptions: ExpiringSubscription[] = (expiringSubsData || []).map((s: any) => {
-    const expiresDate = new Date(s.expires_at)
+    const expiresDate = new Date(s.current_period_end)
     const daysRemaining = Math.ceil((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
 
     return {
@@ -259,7 +259,7 @@ export default async function ApprovalsPage() {
       specialty: s.profiles?.specialty || null,
       plan: s.plan,
       status: s.status,
-      expires_at: s.expires_at,
+      current_period_end: s.current_period_end,
       days_remaining: Math.max(0, daysRemaining),
     }
   })

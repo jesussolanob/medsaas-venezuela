@@ -43,7 +43,7 @@ type NewSubscription = {
   plan: string
   status: string
   started_at: string
-  expires_at: string
+  current_period_end: string
 }
 
 type ExpiringSubscription = {
@@ -54,7 +54,7 @@ type ExpiringSubscription = {
   specialty: string | null
   plan: string
   status: string
-  expires_at: string
+  current_period_end: string
   days_remaining: number
 }
 
@@ -751,7 +751,7 @@ export default function ApprovalsClient({
                                 Inicio: {formatDate(sub.started_at)}
                               </span>
                               <span className="text-xs text-slate-500">
-                                Vence: {formatDate(sub.expires_at)}
+                                Vence: {formatDate(sub.current_period_end)}
                               </span>
                             </div>
                           </div>
@@ -827,7 +827,7 @@ export default function ApprovalsClient({
                                 Plan: {sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)}
                               </span>
                               <span className="text-xs text-slate-500">
-                                Vence: {formatDate(sub.expires_at)}
+                                Vence: {formatDate(sub.current_period_end)}
                               </span>
                             </div>
                           </div>

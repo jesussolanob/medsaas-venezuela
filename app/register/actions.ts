@@ -65,7 +65,7 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     plan: input.plan,
     status: input.plan === 'free' ? 'trial' : 'pending_payment',
     started_at: now.toISOString(),
-    expires_at: input.plan === 'free' ? expiresAt.toISOString() : null,
+    current_period_end: input.plan === 'free' ? expiresAt.toISOString() : null,
   })
 
   if (subError) {
@@ -174,7 +174,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<Regist
     plan: 'centro_salud',
     status: 'trial',
     started_at: now.toISOString(),
-    expires_at: expiresAt.toISOString(),
+    current_period_end: expiresAt.toISOString(),
   })
 
   revalidatePath('/admin/doctors')

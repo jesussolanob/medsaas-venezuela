@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     // Get the subscription record
     const { data: subscription, error: subError } = await admin
       .from('subscriptions')
-      .select('id, expires_at, doctor_id')
+      .select('id, current_period_end, doctor_id')
       .eq('id', subscriptionId)
       .single()
 
@@ -46,14 +46,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Calculate new expiration date (from current expiration, or from now if already expired)
-    const expiresAt = subscription.expires_at ? new Date(subscription.expires_at) : new Date()
+    const expiresAt = subscription.current_period_end ? new Date(subscription.current_period_end) : new Date()
     const now = new Date()
     const startDate = expiresAt > now ? expiresAt : now
     startDate.setDate(startDate.getDate() + days)
 
     // Update subscription
     const updateData: any = {
-      expires_at: startDate.toISOString(),
+      current_period_end: startDate.toISOString(),
       status: 'active',
     }
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       subscriptionId,
-      expires_at: startDate.toISOString(),
+      current_period_end: startDate.toISOString(),
       plan: newPlan || undefined,
     })
   } catch (error: any) {

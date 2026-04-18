@@ -19,7 +19,7 @@ type Profile = {
 type Subscription = {
   plan: string
   status: string
-  expires_at: string | null
+  current_period_end: string | null
 }
 
 type Appointment = {
@@ -55,7 +55,7 @@ export default function DoctorDashboard() {
 
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('plan, status, expires_at')
+        .select('plan, status, current_period_end')
         .eq('doctor_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -100,8 +100,8 @@ export default function DoctorDashboard() {
     fetchData()
   }, [])
 
-  const daysLeft = subscription?.expires_at
-    ? Math.ceil((new Date(subscription.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  const daysLeft = subscription?.current_period_end
+    ? Math.ceil((new Date(subscription.current_period_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null
 
   const greeting = () => {

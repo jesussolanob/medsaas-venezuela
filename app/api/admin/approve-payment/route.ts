@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       // Get current subscription
       const { data: subscription, error: subError } = await admin
         .from('subscriptions')
-        .select('id, expires_at')
+        .select('id, current_period_end')
         .eq('doctor_id', payment.doctor_id)
         .single()
 
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
         console.error('Error fetching subscription:', subError)
       } else if (subscription) {
         // Extend by 30 days from now or from expiration (whichever is later)
-        const expiresAt = subscription.expires_at ? new Date(subscription.expires_at) : new Date()
+        const expiresAt = subscription.current_period_end ? new Date(subscription.current_period_end) : new Date()
         const now = new Date()
         const startDate = expiresAt > now ? expiresAt : now
         startDate.setDate(startDate.getDate() + 30)
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
         const isAdminUpgrade = payment.payment_method === 'admin_upgrade'
 
         let updatePayload: any = {
-          expires_at: startDate.toISOString(),
+          current_period_end: startDate.toISOString(),
           status: 'active',
         }
 

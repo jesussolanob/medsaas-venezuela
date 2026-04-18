@@ -14,6 +14,7 @@ export default function ClinicDetailDrawer({ clinic, isOpen, onClose, onClinicUp
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [suspending, setSuspending] = useState(false)
+  const [changingPlan, setChangingPlan] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
   useEffect(() => {
@@ -86,6 +87,39 @@ export default function ClinicDetailDrawer({ clinic, isOpen, onClose, onClinicUp
       setError(err.message || 'Error al actualizar el estado')
     } finally {
       setSuspending(false)
+    }
+  }
+
+  const handleChangeToPro = async () => {
+    if (!details?.clinic || !details?.ownerProfile) return
+
+    const confirmMessage = '¿Solicitar cambio a plan PRO para esta clínica? Se enviará a Aprobaciones para verificación.'
+    if (!confirm(confirmMessage)) return
+
+    try {
+      setChangingPlan(true)
+      setError('')
+
+      const response = await fetch('/api/admin/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctorId: details.ownerProfile.id, plan: 'pro' }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cambiar plan')
+      }
+
+      setSuccessMessage('Solicitud enviada a Aprobaciones')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      onClinicUpdated?.()
+    } catch (err: any) {
+      console.error('Error changing plan:', err)
+      setError(err.message || 'Error al cambiar plan')
+    } finally {
+      setChangingPlan(false)
     }
   }
 
@@ -283,9 +317,9 @@ export default function ClinicDetailDrawer({ clinic, isOpen, onClose, onClinicUp
               {subscription && (
                 <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
                   <p className="text-xs text-amber-700 uppercase font-medium mb-2">Información de Suscripción</p>
-                  {subscription.expires_at && (
+                  {subscription.current_period_end && (
                     <p className="text-xs text-amber-600">
-                      Vencimiento: {new Date(subscription.expires_at).toLocaleDateString('es-VE')}
+                      Vencimiento: {new Date(subscription.current_period_end).toLocaleDateString('es-VE')}
                     </p>
                   )}
                   {subscription.status === 'trial' && (
@@ -310,6 +344,13 @@ export default function ClinicDetailDrawer({ clinic, isOpen, onClose, onClinicUp
               }`}
             >
               {suspending ? 'Actualizando...' : (clinicData?.is_active ? 'Suspender' : 'Activar')}
+            </button>
+            <button
+              onClick={handleChangeToPro}
+              disabled={changingPlan}
+              className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60"
+            >
+              {changingPlan ? 'Solicitando...' : 'Cambiar a PRO'}
             </button>
             <button
               onClick={onClose}
