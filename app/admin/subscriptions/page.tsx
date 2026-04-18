@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react'
 import SubscriptionActionButtons from './SubscriptionActionButtons'
@@ -8,9 +9,10 @@ export default async function SubscriptionsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: subscriptions } = await supabase
+  const admin = createAdminClient()
+  const { data: subscriptions } = await admin
     .from('subscriptions')
-    .select('*, profiles(full_name, email, specialty)')
+    .select('*, profiles:doctor_id(full_name, email, specialty)')
     .order('created_at', { ascending: false })
 
   const statusConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {

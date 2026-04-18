@@ -34,18 +34,6 @@ type ProcessedPayment = PendingPayment & {
   verified_by: string | null
 }
 
-type NewSubscription = {
-  id: string
-  doctor_id: string
-  doctor_name: string
-  doctor_email: string
-  specialty: string | null
-  plan: string
-  status: string
-  created_at: string
-  current_period_end: string
-}
-
 type ExpiringSubscription = {
   id: string
   doctor_id: string
@@ -116,7 +104,6 @@ function formatCurrency(amount: number, currency: string): string {
 interface ApprovalsClientProps {
   pendingPayments: PendingPayment[]
   processedPayments: ProcessedPayment[]
-  newSubscriptions: NewSubscription[]
   expiringSubscriptions: ExpiringSubscription[]
   approvedPayments: ApprovedPayment[]
   invoices: Invoice[]
@@ -125,15 +112,13 @@ interface ApprovalsClientProps {
 export default function ApprovalsClient({
   pendingPayments: initialPending,
   processedPayments: initialProcessed,
-  newSubscriptions: initialNewSubs,
   expiringSubscriptions: initialExpiringSubs,
   approvedPayments: initialApprovedPayments,
   invoices: initialInvoices,
 }: ApprovalsClientProps) {
-  const [activeTab, setActiveTab] = useState<'payments' | 'new' | 'expiring' | 'billing'>('payments')
+  const [activeTab, setActiveTab] = useState<'payments' | 'expiring' | 'billing'>('payments')
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>(initialPending)
   const [processedPayments, setProcessedPayments] = useState<ProcessedPayment[]>(initialProcessed)
-  const [newSubscriptions, setNewSubscriptions] = useState<NewSubscription[]>(initialNewSubs)
   const [expiringSubscriptions, setExpiringSubscriptions] = useState<ExpiringSubscription[]>(
     initialExpiringSubs,
   )
@@ -148,6 +133,9 @@ export default function ApprovalsClient({
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [approvalModal, setApprovalModal] = useState<{ paymentId: string; doctorName: string } | null>(null)
+  const [approvalMethod, setApprovalMethod] = useState<string>('pago_movil')
+  const [approvalReference, setApprovalReference] = useState<string>('')
 
   // Date filter for billing tab
   const today = new Date()
@@ -157,45 +145,6 @@ export default function ApprovalsClient({
 
   const [billingDateFrom, setBillingDateFrom] = useState<string>(defaultDateFrom)
   const [billingDateTo, setBillingDateTo] = useState<string>(defaultDateTo)
-
-  async function handleApprovePayment(paymentId: string) {
-    setApprovingId(paymentId)
-    setError(null)
-    try {
-      const res = await fetch('/api/admin/approve-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentId, action: 'approve' }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || 'Error al aprobar el pago')
-        return
-      }
-
-      const payment = pendingPayments.find(p => p.id === paymentId)
-      if (payment) {
-        setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
-        setProcessedPayments(prev => [
-          {
-            ...payment,
-            status: 'verified',
-            verified_at: new Date().toISOString(),
-            verified_by: 'current_user',
-          },
-          ...prev,
-        ])
-        setSuccessMessage('Pago aprobado exitosamente. Suscripción extendida 30 días.')
-        setTimeout(() => setSuccessMessage(null), 4000)
-      }
-    } catch (err) {
-      setError('Error al conectar con el servidor')
-      console.error(err)
-    } finally {
-      setApprovingId(null)
-    }
-  }
 
   async function handleRejectPayment(paymentId: string) {
     setRejectingId(paymentId)
@@ -236,30 +185,55 @@ export default function ApprovalsClient({
     }
   }
 
-  async function handleActivatePro(subscriptionId: string) {
-    setExtendingId(subscriptionId)
+  async function handleConfirmApproval() {
+    if (!approvalModal) return
+    const paymentId = approvalModal.paymentId
+    setApprovingId(paymentId)
+    setApprovalModal(null)
     setError(null)
     try {
-      const res = await fetch('/api/admin/extend-subscription', {
+      const res = await fetch('/api/admin/approve-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriptionId, days: 30, newPlan: 'professional' }),
+        body: JSON.stringify({
+          paymentId,
+          action: 'approve',
+          method: approvalMethod,
+          reference_number: approvalReference || null,
+        }),
       })
 
       if (!res.ok) {
         const data = await res.json()
-        setError(data.error || 'Error al activar PRO')
+        setError(data.error || 'Error al aprobar el pago')
         return
       }
 
-      setNewSubscriptions(prev => prev.filter(s => s.id !== subscriptionId))
-      setSuccessMessage('Plan Professional activado. Suscripción extendida 30 días.')
-      setTimeout(() => setSuccessMessage(null), 4000)
+      const payment = pendingPayments.find(p => p.id === paymentId)
+      if (payment) {
+        setPendingPayments(prev => prev.filter(p => p.id !== paymentId))
+        setProcessedPayments(prev => [
+          {
+            ...payment,
+            method: approvalMethod,
+            reference_number: approvalReference || null,
+            status: 'verified',
+            verified_at: new Date().toISOString(),
+            verified_by: 'current_user',
+          },
+          ...prev,
+        ])
+        setSuccessMessage('Pago aprobado exitosamente. Suscripción extendida 30 días.')
+        setTimeout(() => setSuccessMessage(null), 4000)
+      }
+      // Reset modal fields
+      setApprovalMethod('pago_movil')
+      setApprovalReference('')
     } catch (err) {
       setError('Error al conectar con el servidor')
       console.error(err)
     } finally {
-      setExtendingId(null)
+      setApprovingId(null)
     }
   }
 
@@ -558,13 +532,6 @@ export default function ApprovalsClient({
               badgeColor="red"
             />
             <TabButton
-              active={activeTab === 'new'}
-              onClick={() => setActiveTab('new')}
-              label="Nuevas Suscripciones"
-              count={newSubscriptions.length}
-              badgeColor="teal"
-            />
-            <TabButton
               active={activeTab === 'expiring'}
               onClick={() => setActiveTab('expiring')}
               label="Próximas a Vencer"
@@ -640,7 +607,7 @@ export default function ApprovalsClient({
                               <XCircle className="w-3.5 h-3.5" /> Rechazar
                             </button>
                             <button
-                              onClick={() => handleApprovePayment(payment.id)}
+                              onClick={() => setApprovalModal({ paymentId: payment.id, doctorName: payment.doctor_name })}
                               disabled={
                                 approvingId === payment.id || rejectingId === payment.id
                               }
@@ -717,77 +684,7 @@ export default function ApprovalsClient({
               </div>
             )}
 
-            {/* Tab 2: New Subscriptions */}
-            {activeTab === 'new' && (
-              <div>
-                {newSubscriptions.length === 0 ? (
-                  <EmptyState
-                    icon={<CheckCircle2 className="w-8 h-8 text-emerald-400" />}
-                    title="Sin nuevas suscripciones"
-                    description="No hay suscripciones creadas en los últimos 30 días."
-                  />
-                ) : (
-                  <div className="space-y-4">
-                    {newSubscriptions.map(sub => (
-                      <div key={sub.id} className="border border-slate-200 rounded-lg p-4">
-                        <div className="flex flex-col sm:flex-row items-start gap-4">
-                          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold shrink-0">
-                            {getAvatarInitials(sub.doctor_name)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                              <p className="font-semibold text-slate-900">{sub.doctor_name}</p>
-                              {getSubscriptionStatusBadge(sub.status)}
-                            </div>
-                            <p className="text-xs text-slate-400 mb-1">{sub.doctor_email}</p>
-                            {sub.specialty && (
-                              <p className="text-xs text-slate-500 mb-2">{sub.specialty}</p>
-                            )}
-                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
-                              <span className="text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
-                                Plan: {sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)}
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                Inicio: {formatDate(sub.created_at)}
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                Vence: {formatDate(sub.current_period_end)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
-                            {sub.plan === 'basic' && (
-                              <button
-                                onClick={() => handleActivatePro(sub.id)}
-                                disabled={extendingId === sub.id}
-                                className="flex items-center justify-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap font-medium"
-                              >
-                                {extendingId === sub.id ? (
-                                  <>
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    Activando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    Activar Professional
-                                  </>
-                                )}
-                              </button>
-                            )}
-                            <button className="flex items-center justify-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors whitespace-nowrap">
-                              <Eye className="w-3.5 h-3.5" /> Ver perfil
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Tab 3: Expiring Subscriptions */}
+            {/* Tab 2: Expiring Subscriptions */}
             {activeTab === 'expiring' && (
               <div>
                 {expiringSubscriptions.length === 0 ? (
@@ -861,7 +758,7 @@ export default function ApprovalsClient({
               </div>
             )}
 
-            {/* Tab 4: Billing/Invoices */}
+            {/* Tab 3: Billing/Invoices */}
             {activeTab === 'billing' && (
               <div className="space-y-8">
                 {/* Date Filter */}
@@ -1102,6 +999,73 @@ export default function ApprovalsClient({
               >
                 <ExternalLink className="w-3.5 h-3.5" /> Abrir en nueva pestaña
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approval Modal */}
+      {approvalModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setApprovalModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-md w-full"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h4 className="text-sm font-semibold text-slate-900">Aprobar Pago</h4>
+              <p className="text-xs text-slate-400 mt-1">
+                Confirma el método de pago de {approvalModal.doctorName}
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  Método de pago
+                </label>
+                <select
+                  value={approvalMethod}
+                  onChange={(e) => setApprovalMethod(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+                >
+                  <option value="pago_movil">Pago Móvil</option>
+                  <option value="bank_transfer">Transferencia Bancaria</option>
+                  <option value="zelle">Zelle</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  Número de referencia
+                </label>
+                <input
+                  type="text"
+                  value={approvalReference}
+                  onChange={(e) => setApprovalReference(e.target.value)}
+                  placeholder="Ej: 1234567890"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+                />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setApprovalModal(null)
+                  setApprovalMethod('pago_movil')
+                  setApprovalReference('')
+                }}
+                className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmApproval}
+                className="text-xs text-white bg-emerald-500 hover:bg-emerald-600 px-4 py-1.5 rounded-lg transition-colors font-medium"
+              >
+                Confirmar Aprobación
+              </button>
             </div>
           </div>
         </div>

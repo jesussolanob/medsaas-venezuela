@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(req: NextRequest) {
   try {
-    const { paymentId, action, notes } = await req.json()
+    const { paymentId, action, notes, method, reference_number } = await req.json()
 
     if (!paymentId || !['approve', 'reject'].includes(action)) {
       return NextResponse.json(
@@ -55,6 +55,14 @@ export async function POST(req: NextRequest) {
 
     if (notes) {
       updateData.rejection_reason = notes
+    }
+
+    // Update method and reference if provided (from approval modal)
+    if (method) {
+      updateData.method = method
+    }
+    if (reference_number) {
+      updateData.reference_number = reference_number
     }
 
     const { error: updateError } = await admin

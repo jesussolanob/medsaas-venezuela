@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import ApprovalsClient from './ApprovalsClient'
 
@@ -19,18 +20,6 @@ type PendingPayment = {
 type ProcessedPayment = PendingPayment & {
   verified_at: string
   verified_by: string | null
-}
-
-type NewSubscription = {
-  id: string
-  doctor_id: string
-  doctor_name: string
-  doctor_email: string
-  specialty: string | null
-  plan: string
-  status: string
-  created_at: string
-  current_period_end: string
 }
 
 type ExpiringSubscription = {
@@ -91,8 +80,10 @@ export default async function ApprovalsPage() {
     redirect('/doctor')
   }
 
+  const admin = createAdminClient()
+
   // 1. Fetch pending payments with doctor info
-  const { data: pendingData } = await supabase
+  const { data: pendingData } = await admin
     .from('subscription_payments')
     .select(`
       id,
@@ -110,7 +101,7 @@ export default async function ApprovalsPage() {
     .order('created_at', { ascending: false })
 
   // 2. Fetch recently processed payments (last 20)
-  const { data: processedData } = await supabase
+  const { data: processedData } = await admin
     .from('subscription_payments')
     .select(`
       id,
@@ -130,30 +121,12 @@ export default async function ApprovalsPage() {
     .order('verified_at', { ascending: false })
     .limit(20)
 
-  // 3. Fetch new subscriptions (last 30 days)
-  const thirtyDaysAgo = new Date()
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-  const { data: newSubsData } = await supabase
-    .from('subscriptions')
-    .select(`
-      id,
-      doctor_id,
-      plan,
-      status,
-      created_at,
-      current_period_end,
-      profiles:doctor_id(full_name, email, specialty)
-    `)
-    .gte('created_at', thirtyDaysAgo.toISOString())
-    .order('created_at', { ascending: false })
-
-  // 4. Fetch subscriptions expiring in next 14 days
+  // 3. Fetch subscriptions expiring in next 14 days
   const now = new Date()
   const fourteenDaysFromNow = new Date()
   fourteenDaysFromNow.setDate(fourteenDaysFromNow.getDate() + 14)
 
-  const { data: expiringSubsData } = await supabase
+  const { data: expiringSubsData } = await admin
     .from('subscriptions')
     .select(`
       id,
@@ -169,7 +142,7 @@ export default async function ApprovalsPage() {
     .order('current_period_end', { ascending: true })
 
   // 5. Fetch approved payments (for billing tab)
-  const { data: approvedPaymentsData } = await supabase
+  const { data: approvedPaymentsData } = await admin
     .from('subscription_payments')
     .select(`
       id,
@@ -184,7 +157,7 @@ export default async function ApprovalsPage() {
     .order('created_at', { ascending: false })
 
   // 6. Fetch all invoices (for billing tab)
-  const { data: invoicesData } = await supabase
+  const { data: invoicesData } = await admin
     .from('invoices')
     .select(`
       id,
@@ -231,19 +204,6 @@ export default async function ApprovalsPage() {
     status: p.status,
     verified_at: p.verified_at,
     verified_by: p.verified_by,
-  }))
-
-  // Transform new subscriptions
-  const newSubscriptions: NewSubscription[] = (newSubsData || []).map((s: any) => ({
-    id: s.id,
-    doctor_id: s.doctor_id,
-    doctor_name: s.profiles?.full_name || 'Unknown',
-    doctor_email: s.profiles?.email || 'unknown@example.com',
-    specialty: s.profiles?.specialty || null,
-    plan: s.plan,
-    status: s.status,
-    created_at: s.created_at,
-    current_period_end: s.current_period_end,
   }))
 
   // Transform expiring subscriptions
@@ -296,7 +256,6 @@ export default async function ApprovalsPage() {
     <ApprovalsClient
       pendingPayments={pendingPayments}
       processedPayments={processedPayments}
-      newSubscriptions={newSubscriptions}
       expiringSubscriptions={expiringSubscriptions}
       approvedPayments={approvedPayments}
       invoices={invoices}
