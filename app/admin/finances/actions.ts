@@ -35,13 +35,13 @@ export async function getFinanceStats(period: 'day' | 'week' | 'month') {
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: true })
 
-  // 2. Approved payments
+  // 2. Verified payments
   const { data: payData } = await supabase
     .from('subscription_payments')
-    .select('submitted_at, amount_usd')
-    .eq('status', 'approved')
-    .gte('submitted_at', since.toISOString())
-    .order('submitted_at', { ascending: true })
+    .select('created_at, amount')
+    .eq('status', 'verified')
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending: true })
 
   // 3. Specialties
   const { data: specData } = await supabase
@@ -61,9 +61,9 @@ export async function getFinanceStats(period: 'day' | 'week' | 'month') {
   // Aggregate payments by period
   const payMap = new Map<string, { amount: number; count: number }>()
   for (const row of payData ?? []) {
-    const key = formatDate(row.submitted_at, period)
+    const key = formatDate(row.created_at, period)
     const prev = payMap.get(key) ?? { amount: 0, count: 0 }
-    payMap.set(key, { amount: prev.amount + (row.amount_usd ?? 0), count: prev.count + 1 })
+    payMap.set(key, { amount: prev.amount + (row.amount ?? 0), count: prev.count + 1 })
   }
   const income: IncomeEntry[] = Array.from(payMap.entries()).map(([date, v]) => ({ date, amount: v.amount, count: v.count }))
 
@@ -80,7 +80,7 @@ export async function getFinanceStats(period: 'day' | 'week' | 'month') {
 
   // KPIs
   const totalDoctors = (docData?.length ?? 0)
-  const totalIncome = (payData ?? []).reduce((s, r) => s + (r.amount_usd ?? 0), 0)
+  const totalIncome = (payData ?? []).reduce((s, r) => s + (r.amount ?? 0), 0)
   const totalPayments = payData?.length ?? 0
 
   return { registrations, income, specialties, totalDoctors, totalIncome, totalPayments }

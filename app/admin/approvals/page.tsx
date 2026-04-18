@@ -126,7 +126,7 @@ export default async function ApprovalsPage() {
       verified_by,
       profiles:doctor_id(full_name, email)
     `)
-    .in('status', ['approved', 'rejected'])
+    .in('status', ['verified', 'rejected'])
     .order('verified_at', { ascending: false })
     .limit(20)
 
@@ -180,7 +180,7 @@ export default async function ApprovalsPage() {
       created_at,
       profiles:doctor_id(full_name, email)
     `)
-    .eq('status', 'approved')
+    .eq('status', 'verified')
     .order('created_at', { ascending: false })
 
   // 6. Fetch all invoices (for billing tab)

@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Update the payment status
-    const newStatus = action === 'approve' ? 'approved' : 'rejected'
+    const newStatus = action === 'approve' ? 'verified' : 'rejected'
     const updateData: any = {
       status: newStatus,
       verified_by: user.id,
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (notes) {
-      updateData.notes = notes
+      updateData.rejection_reason = notes
     }
 
     const { error: updateError } = await admin

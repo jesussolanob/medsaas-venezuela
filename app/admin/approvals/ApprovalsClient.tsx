@@ -180,7 +180,7 @@ export default function ApprovalsClient({
         setProcessedPayments(prev => [
           {
             ...payment,
-            status: 'approved',
+            status: 'verified',
             verified_at: new Date().toISOString(),
             verified_by: 'current_user',
           },
@@ -400,7 +400,7 @@ export default function ApprovalsClient({
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'approved':
+      case 'verified':
         return (
           <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
             Aprobado
@@ -424,7 +424,7 @@ export default function ApprovalsClient({
 
   const getAvatarBg = (status: string) => {
     switch (status) {
-      case 'approved':
+      case 'verified':
         return 'bg-emerald-500'
       case 'rejected':
         return 'bg-red-500'
