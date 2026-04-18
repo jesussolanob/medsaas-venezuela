@@ -141,41 +141,65 @@ export default function AgendaPage() {
     })
   }, [])
 
-  // Accept appointment → create patient + consultation
+  // Accept appointment → create patient + consultation (linked to appointment)
   async function acceptAppointment(appt: PendingAppointment) {
     if (!doctorId) return
     setAccepting(appt.id)
     const supabase = createClient()
 
     try {
-      // 1. Create patient
-      const { data: patient } = await supabase
-        .from('patients')
-        .insert({ doctor_id: doctorId, full_name: appt.patient_name, phone: appt.patient_phone, email: appt.patient_email, source: 'booking' })
-        .select().single()
+      // 1. Check if patient already exists (by email or cedula)
+      let patientId: string | null = null
+      if (appt.patient_email) {
+        const { data: existing } = await supabase
+          .from('patients')
+          .select('id')
+          .eq('doctor_id', doctorId)
+          .eq('email', appt.patient_email)
+          .maybeSingle()
+        if (existing) patientId = existing.id
+      }
+      if (!patientId && appt.patient_cedula) {
+        const { data: existing } = await supabase
+          .from('patients')
+          .select('id')
+          .eq('doctor_id', doctorId)
+          .eq('cedula', appt.patient_cedula)
+          .maybeSingle()
+        if (existing) patientId = existing.id
+      }
 
-      if (!patient) throw new Error('Error creando paciente')
+      // If no existing patient, create one
+      if (!patientId) {
+        const { data: patient } = await supabase
+          .from('patients')
+          .insert({ doctor_id: doctorId, full_name: appt.patient_name, phone: appt.patient_phone, email: appt.patient_email, cedula: appt.patient_cedula, source: 'booking' })
+          .select().single()
+        if (!patient) throw new Error('Error creando paciente')
+        patientId = patient.id
+      }
 
-      // 2. Create consultation with unique code
-      const dateStr = new Date(appt.scheduled_at).toISOString().split('T')[0].replace(/-/g, '')
-      const code = `CON-${dateStr}-${Math.floor(1000 + Math.random() * 9000)}`
-      await supabase.from('consultations').insert({
-        consultation_code: code,
-        patient_id: patient.id,
-        doctor_id: doctorId,
-        chief_complaint: appt.chief_complaint || 'Consulta agendada online',
-        payment_status: 'unpaid',
-        consultation_date: appt.scheduled_at,
+      // 2. Create consultation via API (linked to appointment)
+      const res = await fetch('/api/doctor/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: patientId,
+          appointment_id: appt.id,
+          chief_complaint: appt.chief_complaint || 'Consulta agendada online',
+          consultation_date: appt.scheduled_at,
+          amount: appt.plan_price || 0,
+        }),
       })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Error creando consulta')
+      const code = result.code
 
-      // 3. Mark appointment as confirmed
-      await supabase.from('appointments').update({ status: 'confirmed' }).eq('id', appt.id)
-
-      // 4. Update local state
+      // 3. Update local state
       setPendingAppointments(prev => prev.filter(a => a.id !== appt.id))
 
-      // 5. Send confirmation toast
-      toast.success(`Consulta ${code} confirmada al paciente`)
+      // 4. Send confirmation toast
+      toast.success(`Consulta ${code} confirmada · Cita ${appt.consultation_code || appt.id.slice(0, 8)}`)
 
       // Add to calendar
       const newAppt: Appointment = {

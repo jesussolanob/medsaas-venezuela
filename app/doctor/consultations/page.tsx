@@ -144,45 +144,59 @@ export default function ConsultationsPage() {
     }
     setIsCreatingConsultation(true)
     try {
+      // 1. Create consultation via API
+      const res = await fetch('/api/doctor/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: newConsultation.patient_id,
+          chief_complaint: newConsultation.reason || null,
+          consultation_date: new Date(newConsultation.consultation_date).toISOString(),
+          amount: parseFloat(newConsultation.amount) || 0,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Error al crear consulta')
+
+      // 2. If there's an amount and payment method, register the payment
+      const consultationId = result.consultation?.id
+      if (consultationId && newConsultation.amount && parseFloat(newConsultation.amount) > 0) {
+        await fetch('/api/doctor/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            consultation_id: consultationId,
+            patient_id: newConsultation.patient_id,
+            amount: parseFloat(newConsultation.amount),
+            payment_method: newConsultation.payment_method,
+          }),
+        })
+      }
+
+      // 3. Reload consultation list
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (user) {
+        const { data } = await supabase
+          .from('consultations')
+          .select('*, patients(full_name, phone)')
+          .eq('doctor_id', user.id)
+          .order('consultation_date', { ascending: false })
 
-      // Generar código de consulta
-      const now = new Date()
-      const code = `C-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
-
-      const { error } = await supabase.from('consultations').insert({
-        doctor_id: user.id,
-        patient_id: newConsultation.patient_id,
-        consultation_code: code,
-        consultation_date: new Date(newConsultation.consultation_date).toISOString(),
-        chief_complaint: newConsultation.reason || null,
-        payment_status: 'unpaid',
-      })
-
-      if (error) throw error
-
-      // Recargar lista
-      const { data } = await supabase
-        .from('consultations')
-        .select('*, patients(full_name, phone)')
-        .eq('doctor_id', user.id)
-        .order('consultation_date', { ascending: false })
-
-      setConsultations((data ?? []).map(c => ({
-        id: c.id,
-        consultation_code: c.consultation_code,
-        consultation_date: c.consultation_date,
-        chief_complaint: c.chief_complaint,
-        notes: c.notes,
-        diagnosis: c.diagnosis,
-        treatment: c.treatment,
-        payment_status: c.payment_status,
-        patient_id: c.patient_id,
-        patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
-        patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
-      })))
+        setConsultations((data ?? []).map(c => ({
+          id: c.id,
+          consultation_code: c.consultation_code,
+          consultation_date: c.consultation_date,
+          chief_complaint: c.chief_complaint,
+          notes: c.notes,
+          diagnosis: c.diagnosis,
+          treatment: c.treatment,
+          payment_status: c.payment_status,
+          patient_id: c.patient_id,
+          patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
+          patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
+        })))
+      }
 
       setShowNewConsultation(false)
       setNewConsultation({

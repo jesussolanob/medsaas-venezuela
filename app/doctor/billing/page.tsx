@@ -110,7 +110,45 @@ export default function BillingPage() {
     setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }
 
+  // Save billing document to DB
+  async function saveDocumentToDB() {
+    try {
+      const docTypeMap: Record<string, string> = { receipt: 'factura', estimate: 'presupuesto' }
+      const res = await fetch('/api/doctor/billing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doc_type: docTypeMap[docType] || docType,
+          consultation_id: selectedConsult?.id || null,
+          patient_id: null, // resolved on backend if needed
+          items,
+          subtotal,
+          total: subtotal,
+          bcv_rate: bcvRate,
+          total_bs: bcvRate ? subtotal * bcvRate : null,
+          notes,
+          currency: 'USD',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      // Update stats locally
+      setDocStats(prev => ({
+        ...prev,
+        [docTypeMap[docType] === 'factura' ? 'facturas' : 'presupuestos']:
+          prev[docTypeMap[docType] === 'factura' ? 'facturas' : 'presupuestos'] + 1,
+        [docTypeMap[docType] === 'factura' ? 'totalFacturas' : 'totalPresupuestos']:
+          prev[docTypeMap[docType] === 'factura' ? 'totalFacturas' : 'totalPresupuestos'] + subtotal,
+      }))
+      return data.docNumber
+    } catch (err) {
+      console.error('Error saving document:', err)
+      return null
+    }
+  }
+
   function printDocument() {
+    saveDocumentToDB() // Fire and forget — save to DB in background
     if (!printRef.current) return
     const content = printRef.current.innerHTML
     const printWindow = window.open('', '_blank', 'width=800,height=900')
@@ -178,6 +216,7 @@ export default function BillingPage() {
       : null
 
   function sendViaWhatsApp() {
+    saveDocumentToDB() // Save to DB when sending
     const phone = (effectivePatient?.phone ?? '').replace(/\D/g, '')
     if (!phone) return
     const text = `Hola ${effectivePatient?.name}, te enviamos tu ${docType === 'receipt' ? 'recibo' : 'presupuesto'} N° ${currentDocNumber}.\n\nTotal: $${subtotal.toFixed(2)} USD${bcvRate ? ` (Bs. ${(subtotal * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })})` : ''}\n\nGracias por su preferencia. Delta Medical CRM`
