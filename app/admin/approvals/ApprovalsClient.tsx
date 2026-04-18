@@ -22,7 +22,7 @@ type PendingPayment = {
   doctor_email: string
   amount: number
   currency: string
-  payment_method: string
+  method: string
   reference_number: string | null
   receipt_url: string | null
   created_at: string
@@ -65,7 +65,7 @@ type ApprovedPayment = {
   doctor_email: string
   amount: number
   currency: string
-  payment_method: string
+  method: string
   created_at: string
 }
 
@@ -307,7 +307,7 @@ export default function ApprovalsClient({
           doctorId: payment.doctor_id,
           amount: payment.amount,
           currency: payment.currency,
-          description: `Pago de suscripción - ${payment.payment_method}`,
+          description: `Pago de suscripción - ${payment.method}`,
         }),
       })
 
@@ -604,7 +604,7 @@ export default function ApprovalsClient({
                             <p className="text-xs text-slate-400 mb-2">{payment.doctor_email}</p>
                             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                               <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                                {PAYMENT_METHOD_LABELS[payment.payment_method] ?? payment.payment_method}
+                                {PAYMENT_METHOD_LABELS[payment.method] ?? payment.method}
                               </span>
                               <span className="text-xs font-bold text-emerald-600">
                                 {formatCurrency(payment.amount, payment.currency)}
@@ -700,8 +700,8 @@ export default function ApprovalsClient({
                                 {formatCurrency(payment.amount, payment.currency)}
                               </td>
                               <td className="py-3 px-4 text-slate-600">
-                                {PAYMENT_METHOD_LABELS[payment.payment_method] ??
-                                  payment.payment_method}
+                                {PAYMENT_METHOD_LABELS[payment.method] ??
+                                  payment.method}
                               </td>
                               <td className="py-3 px-4">{getStatusBadge(payment.status)}</td>
                               <td className="py-3 px-4 text-slate-500 text-xs">
@@ -936,7 +936,7 @@ export default function ApprovalsClient({
                                   {formatCurrency(payment.amount, payment.currency)}
                                 </span>
                                 <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                                  {PAYMENT_METHOD_LABELS[payment.payment_method] ?? payment.payment_method}
+                                  {PAYMENT_METHOD_LABELS[payment.method] ?? payment.method}
                                 </span>
                                 <span className="text-xs text-slate-400">{formatDate(payment.created_at)}</span>
                               </div>

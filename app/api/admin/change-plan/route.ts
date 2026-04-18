@@ -78,12 +78,12 @@ export async function POST(req: NextRequest) {
       .from('subscription_payments')
       .insert({
         doctor_id: doctorId,
+        subscription_id: subscriptionId,
         amount: plan === 'professional' ? 20 : 0,
         currency: 'USD',
-        payment_method: 'admin_upgrade',
+        method: 'admin_upgrade',
         reference_number: `UPGRADE-${Date.now()}`,
         status: 'pending',
-        notes: `Solicitud de cambio a plan ${plan.toUpperCase()} por admin`,
       })
 
     if (insertError) {

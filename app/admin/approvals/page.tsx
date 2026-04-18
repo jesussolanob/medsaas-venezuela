@@ -9,7 +9,7 @@ type PendingPayment = {
   doctor_email: string
   amount: number
   currency: string
-  payment_method: string
+  method: string
   reference_number: string | null
   receipt_url: string | null
   created_at: string
@@ -52,7 +52,7 @@ type ApprovedPayment = {
   doctor_email: string
   amount: number
   currency: string
-  payment_method: string
+  method: string
   created_at: string
 }
 
@@ -99,7 +99,7 @@ export default async function ApprovalsPage() {
       doctor_id,
       amount,
       currency,
-      payment_method,
+      method,
       reference_number,
       receipt_url,
       status,
@@ -117,7 +117,7 @@ export default async function ApprovalsPage() {
       doctor_id,
       amount,
       currency,
-      payment_method,
+      method,
       reference_number,
       receipt_url,
       status,
@@ -176,7 +176,7 @@ export default async function ApprovalsPage() {
       doctor_id,
       amount,
       currency,
-      payment_method,
+      method,
       created_at,
       profiles:doctor_id(full_name, email)
     `)
@@ -209,7 +209,7 @@ export default async function ApprovalsPage() {
     doctor_email: p.profiles?.email || 'unknown@example.com',
     amount: p.amount,
     currency: p.currency,
-    payment_method: p.payment_method,
+    method: p.method,
     reference_number: p.reference_number,
     receipt_url: p.receipt_url,
     created_at: p.created_at,
@@ -224,7 +224,7 @@ export default async function ApprovalsPage() {
     doctor_email: p.profiles?.email || 'unknown@example.com',
     amount: p.amount,
     currency: p.currency,
-    payment_method: p.payment_method,
+    method: p.method,
     reference_number: p.reference_number,
     receipt_url: p.receipt_url,
     created_at: p.created_at,
@@ -272,7 +272,7 @@ export default async function ApprovalsPage() {
     doctor_email: p.profiles?.email || 'unknown@example.com',
     amount: p.amount,
     currency: p.currency,
-    payment_method: p.payment_method,
+    method: p.method,
     created_at: p.created_at,
   }))
 

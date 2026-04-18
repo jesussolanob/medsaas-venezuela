@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     // Get the payment record
     const { data: payment, error: paymentError } = await admin
       .from('subscription_payments')
-      .select('id, doctor_id, amount, currency, payment_method, notes')
+      .select('id, doctor_id, amount, currency, method')
       .eq('id', paymentId)
       .single()
 
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
         startDate.setDate(startDate.getDate() + 30)
 
         // Check if this is an admin upgrade request
-        const isAdminUpgrade = payment.payment_method === 'admin_upgrade'
+        const isAdminUpgrade = payment.method === 'admin_upgrade'
 
         let updatePayload: any = {
           current_period_end: startDate.toISOString(),

@@ -67,11 +67,13 @@ export default function DoctorPlansPage() {
 
       if (uploadError) throw uploadError
 
+      const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(fileName)
+
       await supabase.from('subscription_payments').insert({
         doctor_id: user.id,
         subscription_id: subscription?.id,
-        receipt_path: fileName,
-        status: 'pending_verification',
+        receipt_url: urlData.publicUrl,
+        status: 'pending',
         amount: subscription?.price_usd,
       })
 

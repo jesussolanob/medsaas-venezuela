@@ -242,13 +242,20 @@ export async function uploadPaymentReceipt(
   const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(storagePath)
   const receiptUrl = urlData.publicUrl
 
+  // Get the doctor's subscription ID
+  const { data: subscription } = await supabase
+    .from('subscriptions')
+    .select('id')
+    .eq('doctor_id', doctorId)
+    .single()
+
   const { error: paymentError } = await supabase.from('subscription_payments').insert({
     doctor_id: doctorId,
-    amount_usd: amount,
-    payment_method: 'pago_movil',
+    subscription_id: subscription?.id,
+    amount: amount,
+    method: 'pago_movil',
     receipt_url: receiptUrl,
     status: 'pending',
-    submitted_at: new Date().toISOString(),
   })
 
   if (paymentError) console.error('Error guardando pago:', paymentError.message)
