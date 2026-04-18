@@ -31,6 +31,7 @@ const ESPECIALIDADES = [
   'Psicología',
   'Psiquiatría',
   'Reumatología',
+  'Fisioterapia',
   'Urología',
   'Otra',
 ]

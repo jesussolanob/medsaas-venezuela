@@ -319,13 +319,23 @@ export default function DoctorDashboard() {
                 </div>
               </div>
 
-              <Link
-                href="/doctor/finances"
-                className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
-              >
-                Ver más detalles
-                <ArrowRight className="w-3 h-3" />
-              </Link>
+              {subscription && ['trial'].includes(subscription.plan) ? (
+                <Link
+                  href="/register?plan=professional"
+                  className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 pt-2"
+                >
+                  Upgrade para ver finanzas
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              ) : (
+                <Link
+                  href="/doctor/finances"
+                  className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
+                >
+                  Ver más detalles
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              )}
             </div>
           </div>
         </div>

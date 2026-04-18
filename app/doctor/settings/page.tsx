@@ -29,7 +29,7 @@ const ESPECIALIDADES = [
   'Medicina General','Cardiología','Dermatología','Endocrinología','Gastroenterología',
   'Ginecología','Hematología','Infectología','Medicina Interna','Nefrología',
   'Neumología','Neurología','Oftalmología','Oncología','Ortopedia y Traumatología',
-  'Otorrinolaringología','Pediatría','Psicología','Psiquiatría','Reumatología','Urología',
+  'Otorrinolaringología','Pediatría','Psicología','Psiquiatría','Reumatología','Fisioterapia','Urología',
   'Cirugía General','Cirugía Plástica','Medicina de Emergencia','Radiología','Otra',
 ]
 

@@ -30,6 +30,7 @@ const ESPECIALIDADES = [
   'Psicología',
   'Psiquiatría',
   'Reumatología',
+  'Fisioterapia',
   'Urología',
   'Centro de Salud',
   'Clínica General',

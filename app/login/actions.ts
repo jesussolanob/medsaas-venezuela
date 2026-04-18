@@ -30,7 +30,8 @@ export async function loginUser(email: string, password: string): Promise<LoginR
     .eq('id', userId)
     .single()
 
-  const role = profile?.role ?? 'doctor'
+  // If no profile exists, check auth user metadata for role (e.g. patients registered via /patient/register)
+  const role = profile?.role ?? data.user.user_metadata?.role ?? 'doctor'
   const clinicRole = profile?.clinic_role ?? null
   const hasClinic = !!profile?.clinic_id
 

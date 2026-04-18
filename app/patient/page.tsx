@@ -26,6 +26,8 @@ interface PatientPackage {
   total_sessions: number
   used_sessions: number
   doctor_id: string
+  doctor_name?: string
+  doctor_specialty?: string
 }
 
 export default function PatientHome() {
@@ -98,14 +100,29 @@ export default function PatientHome() {
           }
         }
 
-        // Get active patient packages
+        // Get active patient packages with doctor info
         const { data: pkgData } = await supabase
           .from('patient_packages')
           .select('id, plan_name, total_sessions, used_sessions, doctor_id')
           .eq('auth_user_id', authUser.id)
           .eq('status', 'active')
 
-        if (pkgData) setPackages(pkgData as PatientPackage[])
+        if (pkgData && pkgData.length > 0) {
+          // Fetch doctor names for each package
+          const doctorIds = [...new Set(pkgData.map(p => p.doctor_id).filter(Boolean))]
+          const { data: doctors } = await supabase
+            .from('profiles')
+            .select('id, full_name, specialty')
+            .in('id', doctorIds)
+
+          const doctorMap = new Map(doctors?.map(d => [d.id, d]) || [])
+          const enriched = pkgData.map(pkg => ({
+            ...pkg,
+            doctor_name: doctorMap.get(pkg.doctor_id)?.full_name || undefined,
+            doctor_specialty: doctorMap.get(pkg.doctor_id)?.specialty || undefined,
+          }))
+          setPackages(enriched as PatientPackage[])
+        }
 
         setLoading(false)
       } catch (err) {
@@ -227,6 +244,12 @@ export default function PatientHome() {
                     <div className="space-y-1 flex-1">
                       <p className="text-xs font-semibold text-slate-500 uppercase">{pkg.plan_name}</p>
                       <p className="text-sm font-semibold text-slate-900">Te quedan {remaining} {remaining === 1 ? 'cita' : 'citas'}</p>
+                      {pkg.doctor_name && (
+                        <p className="text-xs text-slate-500">
+                          Dr. {pkg.doctor_name}
+                          {pkg.doctor_specialty && <span className="text-slate-400"> · {pkg.doctor_specialty}</span>}
+                        </p>
+                      )}
                     </div>
                     <div className="px-3 py-1 rounded-full bg-violet-50 text-xs font-bold text-violet-600">
                       {pkg.used_sessions}/{pkg.total_sessions}
@@ -240,6 +263,13 @@ export default function PatientHome() {
                       {pkg.used_sessions} de {pkg.total_sessions} usadas
                     </p>
                   </div>
+                  {remaining > 0 && pkg.doctor_id && (
+                    <Link href={`/book/${pkg.doctor_id}`}
+                      className="flex items-center justify-center gap-2 w-full py-2 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-lg text-xs font-semibold transition-colors border border-teal-200">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Agendar siguiente cita
+                    </Link>
+                  )}
                 </div>
               )
             })}

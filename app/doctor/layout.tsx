@@ -101,6 +101,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [newTaskText, setNewTaskText] = useState('')
   const [enabledFeatures, setEnabledFeatures] = useState<Set<string>>(new Set(['dashboard', 'agenda', 'settings']))
   const [isClinicAdmin, setIsClinicAdmin] = useState(false)
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null)
   const tasksDropdownRef = useRef<HTMLDivElement>(null)
   const lastCheckRef = useRef<number>(Date.now())
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -158,11 +159,15 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           .eq('doctor_id', user.id)
           .single()
 
-        if (!subscription || subscription.status !== 'active') {
-          // No active subscription: only dashboard, agenda, and settings
+        const validStatuses = ['active', 'trial', 'trialing']
+        if (!subscription || !validStatuses.includes(subscription.status)) {
+          // No valid subscription: only dashboard, agenda, and settings
           setEnabledFeatures(new Set(['dashboard', 'agenda', 'settings']))
+          setCurrentPlan(subscription?.plan ?? null)
           return
         }
+
+        setCurrentPlan(subscription.plan)
 
         // Fetch enabled features for this plan
         const { data: features } = await supabase
@@ -414,9 +419,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           {bottomItems.map(i => <NavLink key={i.href} item={i} />)}
         </div>
 
-        {/* Clinic admin link */}
-        {isClinicAdmin && (
-          <div className="pt-2 border-t border-slate-100 mt-2">
+        {/* Clinic link: "Mi Clínica" if clinic admin, "Upgrade" for everyone else */}
+        <div className="pt-2 border-t border-slate-100 mt-2">
+          {isClinicAdmin ? (
             <Link
               href="/clinic/admin"
               onClick={() => setMobileOpen(false)}
@@ -425,8 +430,20 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               <Building2 className="w-4 h-4" />
               Mi Clínica
             </Link>
-          </div>
-        )}
+          ) : (
+            <Link
+              href="/register?plan=clinic"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-amber-600 hover:bg-amber-50 transition-all"
+            >
+              <Building2 className="w-4 h-4" />
+              <span className="flex items-center gap-1.5">
+                Upgrade a Clínica
+                <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">PRO</span>
+              </span>
+            </Link>
+          )}
+        </div>
       </nav>
 
       {/* Footer */}

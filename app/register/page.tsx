@@ -17,7 +17,7 @@ const ESPECIALIDADES = [
   'Ginecología y Obstetricia','Medicina General','Medicina Interna',
   'Nefrología','Neurología','Oftalmología','Ortopedia y Traumatología',
   'Otorrinolaringología','Pediatría','Psicología','Psiquiatría',
-  'Reumatología','Urología','Otra',
+  'Reumatología','Fisioterapia','Urología','Otra',
 ]
 
 const PROFESSIONAL_TITLES = [
