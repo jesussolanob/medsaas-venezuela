@@ -123,6 +123,7 @@ export default function DoctorDashboard() {
       case 'confirmed':
         return 'bg-blue-50 text-blue-700 border border-blue-200'
       case 'pending':
+      case 'scheduled':
         return 'bg-amber-50 text-amber-700 border border-amber-200'
       case 'cancelled':
         return 'bg-slate-50 text-slate-700 border border-slate-200'
@@ -271,7 +272,7 @@ export default function DoctorDashboard() {
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${getStatusBadgeColor(apt.status)}`}>
                       {apt.status === 'completed' ? 'Completada' :
                        apt.status === 'confirmed' ? 'Confirmada' :
-                       apt.status === 'pending' ? 'Pendiente' :
+                       apt.status === 'pending' || apt.status === 'scheduled' ? 'Pendiente' :
                        apt.status === 'cancelled' ? 'Cancelada' : apt.status}
                     </span>
                   </div>

@@ -124,6 +124,28 @@ export default function ReportsPage() {
     }
   }
 
+  const getFilteredRecords = (records: ConsultationRecord[], from: string, to: string) => {
+    let filtered = records
+    if (from) {
+      const fromDate = new Date(from)
+      filtered = filtered.filter(c => new Date(c.consultation_date) >= fromDate)
+    }
+    if (to) {
+      const toDate = new Date(to)
+      toDate.setHours(23, 59, 59)
+      filtered = filtered.filter(c => new Date(c.consultation_date) <= toDate)
+    }
+    return filtered
+  }
+
+  const recalculateStatsWithFilter = (from: string, to: string) => {
+    const filtered = getFilteredRecords(consultations, from, to)
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) calculateStats(filtered, user.id, supabase)
+    })
+  }
+
   const applyFilter = () => {
     setFilterError('')
     if (dateFrom && dateTo) {
@@ -136,6 +158,7 @@ export default function ReportsPage() {
     }
     setAppliedFrom(dateFrom)
     setAppliedTo(dateTo)
+    recalculateStatsWithFilter(dateFrom, dateTo)
   }
 
   const clearFilter = () => {
@@ -144,6 +167,7 @@ export default function ReportsPage() {
     setAppliedFrom('')
     setAppliedTo('')
     setFilterError('')
+    recalculateStatsWithFilter('', '')
   }
 
   const setPreset = (preset: string) => {
@@ -239,29 +263,9 @@ export default function ReportsPage() {
     setExporting(false)
   }
 
-  const filteredCount = consultations.filter(c => {
-    let match = true
-    if (appliedFrom) match = match && new Date(c.consultation_date) >= new Date(appliedFrom)
-    if (appliedTo) {
-      const toDate = new Date(appliedTo)
-      toDate.setHours(23, 59, 59)
-      match = match && new Date(c.consultation_date) <= toDate
-    }
-    return match
-  }).length
-
-  const totalAmount = consultations
-    .filter(c => {
-      let match = true
-      if (appliedFrom) match = match && new Date(c.consultation_date) >= new Date(appliedFrom)
-      if (appliedTo) {
-        const toDate = new Date(appliedTo)
-        toDate.setHours(23, 59, 59)
-        match = match && new Date(c.consultation_date) <= toDate
-      }
-      return match
-    })
-    .reduce((sum, c) => sum + c.amount, 0)
+  const displayRecords = getFilteredRecords(consultations, appliedFrom, appliedTo)
+  const filteredCount = displayRecords.length
+  const totalAmount = displayRecords.reduce((sum, c) => sum + c.amount, 0)
 
   return (
     <>
@@ -327,8 +331,8 @@ export default function ReportsPage() {
               </div>
               <span className="text-xs font-bold text-slate-400 uppercase">Total</span>
             </div>
-            <p className="text-2xl font-bold text-slate-900">{consultations.length}</p>
-            <p className="text-xs text-slate-500 mt-1">Consultas registradas</p>
+            <p className="text-2xl font-bold text-slate-900">{(appliedFrom || appliedTo) ? filteredCount : consultations.length}</p>
+            <p className="text-xs text-slate-500 mt-1">{(appliedFrom || appliedTo) ? 'Consultas en rango' : 'Consultas registradas'}</p>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
@@ -442,7 +446,7 @@ export default function ReportsPage() {
         {/* Export Button */}
         <button
           onClick={exportToCSV}
-          disabled={loading || exporting || consultations.length === 0}
+          disabled={loading || exporting || displayRecords.length === 0}
           className="w-full g-bg text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {exporting ? (
@@ -461,10 +465,10 @@ export default function ReportsPage() {
           <div className="flex items-center justify-center py-16 text-slate-400">
             <Loader2 className="w-5 h-5 animate-spin mr-2" /> Cargando consultas...
           </div>
-        ) : consultations.length === 0 ? (
+        ) : displayRecords.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl py-12 text-center">
             <BarChart3 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-            <p className="text-slate-500 font-semibold">Sin consultas registradas</p>
+            <p className="text-slate-500 font-semibold">{(appliedFrom || appliedTo) ? 'Sin consultas en el rango seleccionado' : 'Sin consultas registradas'}</p>
           </div>
         ) : (
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
@@ -481,7 +485,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {consultations.map((c, i) => (
+                  {displayRecords.map((c, i) => (
                     <tr key={c.id} className={`border-b border-slate-100 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
                       <td className="px-5 py-3">
                         <Link
