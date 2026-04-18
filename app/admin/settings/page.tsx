@@ -38,11 +38,11 @@ type BillingData = {
   codigo_actividad: string
   iva_percent: number
   igtf_percent: number
-  control_prefix: string
-  next_control_number: number
   moneda_base: string
   nota_legal_iva: string
   nota_legal_igtf: string
+  nota_legal_iva_enabled: boolean
+  nota_legal_igtf_enabled: boolean
 }
 
 const DEFAULT_BILLING: BillingData = {
@@ -54,11 +54,11 @@ const DEFAULT_BILLING: BillingData = {
   codigo_actividad: '6201',
   iva_percent: 16,
   igtf_percent: 3,
-  control_prefix: '00-',
-  next_control_number: 1,
   moneda_base: 'USD',
   nota_legal_iva: 'Este documento se expresa en Bolívares con su equivalencia en divisas al tipo de cambio corriente del mercado a la fecha de su emisión, según lo establecido en el artículo 13 numeral 14 de la Providencia Administrativa SNAT/2011/0071 en concordancia con el artículo 128 de la Ley del Banco Central de Venezuela (BCV).',
   nota_legal_igtf: 'Este pago estará sujeto al cobro adicional del 3% del Impuesto a las Grandes Transacciones Financieras (IGTF), de conformidad con la Providencia Administrativa SNAT/2022/000013 publicada en la G.O. N° 42.339 del 17-03-2022, en caso de ser cancelado en divisas.',
+  nota_legal_iva_enabled: true,
+  nota_legal_igtf_enabled: true,
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ export default function SettingsPage() {
     }
   }
 
-  function updateBilling(field: keyof BillingData, value: string | number) {
+  function updateBilling(field: keyof BillingData, value: string | number | boolean) {
     setBilling(prev => ({ ...prev, [field]: value }))
     setBillingSaved(false)
   }
@@ -238,7 +238,7 @@ export default function SettingsPage() {
         </button>
 
         {billingOpen && (
-        <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4 border-t border-slate-100">
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-5 border-t border-slate-100">
           {/* Save button */}
           <div className="flex justify-end pt-3">
             <button
@@ -256,153 +256,157 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          {/* Datos fiscales del emisor */}
-          <div className="space-y-0">
-          <FieldRow label="Razón Social *">
-            <input
-              type="text"
-              value={billing.razon_social}
-              onChange={e => updateBilling('razon_social', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
-            />
-          </FieldRow>
-
-          <FieldRow label="RIF *">
-            <input
-              type="text"
-              value={billing.rif}
-              onChange={e => updateBilling('rif', e.target.value)}
-              placeholder="J-12345678-9"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
-            />
-          </FieldRow>
-
-          <FieldRow label="Domicilio Fiscal *">
-            <textarea
-              value={billing.domicilio_fiscal}
-              onChange={e => updateBilling('domicilio_fiscal', e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white resize-none"
-            />
-          </FieldRow>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-            <FieldRow label="Teléfono">
-              <input
-                type="text"
-                value={billing.telefono}
-                onChange={e => updateBilling('telefono', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
-              />
-            </FieldRow>
-            <FieldRow label="Email Facturación">
-              <input
-                type="email"
-                value={billing.email}
-                onChange={e => updateBilling('email', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
-              />
-            </FieldRow>
-          </div>
-
-          <FieldRow label="Código de Actividad">
-            <input
-              type="text"
-              value={billing.codigo_actividad}
-              onChange={e => updateBilling('codigo_actividad', e.target.value)}
-              placeholder="6201"
-              className="w-full max-w-[120px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
-            />
-          </FieldRow>
-        </div>
-
-        {/* Impuestos */}
-        <div className="pt-2 border-t border-slate-100">
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Impuestos</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs font-medium text-slate-500 block mb-1">IVA (%)</label>
-              <input
-                type="number"
-                value={billing.iva_percent}
-                onChange={e => updateBilling('iva_percent', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
-              />
+          {/* Datos fiscales — grid alineado */}
+          <div className="space-y-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Datos Fiscales del Emisor</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Razón Social <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  value={billing.razon_social}
+                  onChange={e => updateBilling('razon_social', e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">RIF <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  value={billing.rif}
+                  onChange={e => updateBilling('rif', e.target.value)}
+                  placeholder="J-12345678-9"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
+                />
+              </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-500 block mb-1">IGTF (%)</label>
-              <input
-                type="number"
-                value={billing.igtf_percent}
-                onChange={e => updateBilling('igtf_percent', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-500 block mb-1">Moneda base</label>
-              <select
-                value={billing.moneda_base}
-                onChange={e => updateBilling('moneda_base', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
-              >
-                <option value="USD">USD (Dólar)</option>
-                <option value="VES">VES (Bolívares)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Numeración de control */}
-        <div className="pt-2 border-t border-slate-100">
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Numeración de Control</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-medium text-slate-500 block mb-1">Prefijo N° de Control</label>
-              <input
-                type="text"
-                value={billing.control_prefix}
-                onChange={e => updateBilling('control_prefix', e.target.value)}
-                placeholder="00-"
-                className="w-full max-w-[120px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-500 block mb-1">Próximo N° de Control</label>
-              <input
-                type="number"
-                value={billing.next_control_number}
-                onChange={e => updateBilling('next_control_number', parseInt(e.target.value) || 1)}
-                className="w-full max-w-[180px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
-              />
-              <p className="text-xs text-slate-400 mt-1">Siguiente: {billing.control_prefix}{String(billing.next_control_number).padStart(8, '0')}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Notas legales */}
-        <div className="pt-2 border-t border-slate-100">
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Notas Legales (pie de factura)</p>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-medium text-slate-500 block mb-1">Nota IVA / BCV</label>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Domicilio Fiscal <span className="text-red-400">*</span></label>
               <textarea
-                value={billing.nota_legal_iva}
-                onChange={e => updateBilling('nota_legal_iva', e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white resize-none text-slate-600"
+                value={billing.domicilio_fiscal}
+                onChange={e => updateBilling('domicilio_fiscal', e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white resize-none"
               />
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-500 block mb-1">Nota IGTF</label>
-              <textarea
-                value={billing.nota_legal_igtf}
-                onChange={e => updateBilling('nota_legal_igtf', e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white resize-none text-slate-600"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Teléfono</label>
+                <input
+                  type="text"
+                  value={billing.telefono}
+                  onChange={e => updateBilling('telefono', e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Email Facturación</label>
+                <input
+                  type="email"
+                  value={billing.email}
+                  onChange={e => updateBilling('email', e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Código de Actividad</label>
+                <input
+                  type="text"
+                  value={billing.codigo_actividad}
+                  onChange={e => updateBilling('codigo_actividad', e.target.value)}
+                  placeholder="6201"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
+                />
+              </div>
             </div>
           </div>
-        </div>
+
+          {/* Impuestos — grid alineado */}
+          <div className="pt-3 border-t border-slate-100 space-y-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Impuestos</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">IVA (%)</label>
+                <input
+                  type="number"
+                  value={billing.iva_percent}
+                  onChange={e => updateBilling('iva_percent', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">IGTF (%)</label>
+                <input
+                  type="number"
+                  value={billing.igtf_percent}
+                  onChange={e => updateBilling('igtf_percent', parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Moneda base</label>
+                <select
+                  value={billing.moneda_base}
+                  onChange={e => updateBilling('moneda_base', e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                >
+                  <option value="USD">USD (Dólar)</option>
+                  <option value="VES">VES (Bolívares)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Notas legales con toggles */}
+          <div className="pt-3 border-t border-slate-100 space-y-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Notas Legales (pie de factura)</p>
+
+            {/* Nota IVA / BCV */}
+            <div className="rounded-lg border border-slate-200 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-semibold text-slate-700">Nota IVA / BCV</span>
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${billing.nota_legal_iva_enabled ? 'bg-teal-50 text-teal-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {billing.nota_legal_iva_enabled ? 'Activa' : 'Desactivada'}
+                  </span>
+                </div>
+                <Toggle enabled={billing.nota_legal_iva_enabled} onChange={() => updateBilling('nota_legal_iva_enabled', !billing.nota_legal_iva_enabled)} />
+              </div>
+              {billing.nota_legal_iva_enabled && (
+                <div className="px-3 pb-3 pt-2">
+                  <textarea
+                    value={billing.nota_legal_iva}
+                    onChange={e => updateBilling('nota_legal_iva', e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white resize-none text-slate-600"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Nota IGTF */}
+            <div className="rounded-lg border border-slate-200 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-semibold text-slate-700">Nota IGTF</span>
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${billing.nota_legal_igtf_enabled ? 'bg-teal-50 text-teal-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {billing.nota_legal_igtf_enabled ? 'Activa' : 'Desactivada'}
+                  </span>
+                </div>
+                <Toggle enabled={billing.nota_legal_igtf_enabled} onChange={() => updateBilling('nota_legal_igtf_enabled', !billing.nota_legal_igtf_enabled)} />
+              </div>
+              {billing.nota_legal_igtf_enabled && (
+                <div className="px-3 pb-3 pt-2">
+                  <textarea
+                    value={billing.nota_legal_igtf}
+                    onChange={e => updateBilling('nota_legal_igtf', e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white resize-none text-slate-600"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         )}
       </div>
@@ -516,7 +520,6 @@ export default function SettingsPage() {
                 <p className="text-sm font-bold text-slate-900">FACTURA</p>
                 <p className="text-slate-500">N° de Documento: <span className="font-semibold text-slate-700">FAC-20260417-0001</span></p>
                 <p className="text-slate-500">Fecha: <span className="font-semibold text-slate-700">{new Date().toLocaleDateString('es-VE')}</span></p>
-                <p className="text-slate-500">N° de Control: <span className="font-semibold text-slate-700">{billing.control_prefix}{String(billing.next_control_number).padStart(8, '0')}</span></p>
                 <p className="text-slate-500">Tasa BCV: <span className="font-semibold text-slate-700">Bs. {bcvRate.toFixed(4)}</span></p>
                 <p className="text-slate-500">Moneda: <span className="font-semibold text-slate-700">{billing.moneda_base}</span></p>
               </div>
@@ -580,10 +583,12 @@ export default function SettingsPage() {
             </div>
 
             {/* Nota legal */}
+            {(billing.nota_legal_iva_enabled || billing.nota_legal_igtf_enabled) && (
             <div className="border-t border-slate-200 pt-3 text-[9px] text-slate-400 space-y-1">
-              <p>{billing.nota_legal_igtf}</p>
-              <p>{billing.nota_legal_iva}</p>
+              {billing.nota_legal_igtf_enabled && <p>{billing.nota_legal_igtf}</p>}
+              {billing.nota_legal_iva_enabled && <p>{billing.nota_legal_iva}</p>}
             </div>
+            )}
           </div>
         </div>
       )}

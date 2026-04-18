@@ -11,10 +11,10 @@ export default async function AdminDashboard() {
 
   const { data: kpis } = await supabase.rpc('bi_platform_kpis')
 
-  // Fetch recent doctors from database
+  // Fetch recent doctors from database (with clinic plan info)
   const { data: recentDoctors } = await supabase
     .from('profiles')
-    .select('id, full_name, specialty, email, created_at')
+    .select('id, full_name, specialty, email, created_at, clinic_id, clinics(subscription_plan, subscription_status)')
     .eq('role', 'doctor')
     .order('created_at', { ascending: false })
     .limit(5)
@@ -189,22 +189,34 @@ export default async function AdminDashboard() {
             <a href="/admin/doctors" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todos</a>
           </div>
           <div className="space-y-2">
-            {(recentDoctors || []).map((doctor) => (
-              <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-xs flex-shrink-0">
-                    {doctor.full_name?.charAt(0) || '?'}
+            {(recentDoctors || []).map((doctor) => {
+              const clinic = doctor.clinics as { subscription_plan?: string; subscription_status?: string } | null
+              const plan = clinic?.subscription_plan || 'free'
+              const status = clinic?.subscription_status || 'trial'
+              const planLabel = plan === 'centro_salud' ? (status === 'trial' ? 'Trial' : 'Pro') : plan === 'free' ? 'Free' : plan
+              const isTrial = status === 'trial'
+              return (
+                <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-xs flex-shrink-0">
+                      {doctor.full_name?.charAt(0) || '?'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{doctor.full_name}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{doctor.specialty}</p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{doctor.full_name}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{doctor.specialty}</p>
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${isTrial ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'}`}>
+                      {planLabel}
+                    </span>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                      {new Date(doctor.created_at).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
+                    </span>
                   </div>
                 </div>
-                <span className="text-[10px] text-slate-400 flex-shrink-0 ml-2 whitespace-nowrap">
-                  {new Date(doctor.created_at).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
-                </span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
