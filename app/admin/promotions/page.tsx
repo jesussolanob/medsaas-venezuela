@@ -53,46 +53,19 @@ export default function PromotionsPage() {
     try {
       const [promosRes, plansRes] = await Promise.all([
         fetch('/api/admin/promotions'),
-        fetch('/api/admin/promotions').then(() =>
-          // Fetch plan_configs via a simple supabase call
-          fetch('/api/promotions').then(r => r.json()) // We'll use the admin endpoint
-        ),
+        fetch('/api/plans'),
       ])
+
       const promosData = await promosRes.json()
       setPromotions(Array.isArray(promosData) ? promosData : [])
 
-      // Load plans from plan_configs
-      const plansResponse = await fetch('/api/admin/promotions')
-      // We need plan_configs separately, let's do a quick hack using the promotions endpoint
-      // Actually let's just parse from the promo data or load separately
+      const plansData = await plansRes.json()
+      if (Array.isArray(plansData)) {
+        setPlans(plansData.filter((p: PlanConfig) => p.plan_key !== 'trial'))
+      }
     } catch (err) {
       console.error('Error loading data:', err)
     }
-
-    // Load plan configs separately
-    try {
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('plan_configs')
-        .select('plan_key, name, price')
-        .eq('is_active', true)
-        .neq('plan_key', 'trial')
-        .order('sort_order')
-      setPlans(data || [])
-    } catch (err) {
-      console.error('Error loading plans:', err)
-    }
-
-    // Reload promotions cleanly
-    try {
-      const res = await fetch('/api/admin/promotions')
-      const data = await res.json()
-      setPromotions(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error(err)
-    }
-
     setLoading(false)
   }
 

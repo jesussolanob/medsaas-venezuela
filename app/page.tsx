@@ -46,10 +46,23 @@ interface Promotion {
   label: string
 }
 
+interface PlanPrice {
+  plan_key: string
+  name: string
+  price: number
+  trial_days: number
+}
+
+// Fallback prices in case API fails
+const FALLBACK_PRICES: Record<string, number> = {
+  trial: 0, basic: 10, professional: 30, clinic: 100,
+}
+
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [promotions, setPromotions] = useState<Promotion[]>([])
+  const [planPrices, setPlanPrices] = useState<Record<string, number>>(FALLBACK_PRICES)
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 30)
@@ -58,6 +71,19 @@ export default function LandingPage() {
   }, [])
 
   useEffect(() => {
+    // Load plan prices from plan_configs
+    fetch('/api/plans')
+      .then(r => r.json())
+      .then((data: PlanPrice[]) => {
+        if (Array.isArray(data)) {
+          const prices: Record<string, number> = { ...FALLBACK_PRICES }
+          data.forEach(p => { prices[p.plan_key] = p.price })
+          setPlanPrices(prices)
+        }
+      })
+      .catch(() => {})
+
+    // Load promotions
     fetch('/api/promotions')
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setPromotions(data) })
@@ -65,6 +91,7 @@ export default function LandingPage() {
   }, [])
 
   const getPromo = (planKey: string) => promotions.find(p => p.plan_key === planKey)
+  const getPrice = (planKey: string) => planPrices[planKey] ?? FALLBACK_PRICES[planKey] ?? 0
 
   return (
     <div className="min-h-screen bg-white text-slate-900" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -569,7 +596,7 @@ export default function LandingPage() {
               <div>
                 <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Trial</p>
                 <div className="flex items-end gap-2">
-                  <span className="text-4xl font-extrabold text-slate-900">$0</span>
+                  <span className="text-4xl font-extrabold text-slate-900">${getPrice('trial')}</span>
                   <span className="text-slate-400 font-medium mb-1.5 text-sm">/ 30 días</span>
                 </div>
                 <p className="text-sm text-slate-500 mt-2">Prueba completa. Sin tarjeta.</p>
@@ -591,7 +618,7 @@ export default function LandingPage() {
               <div>
                 <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#00C4CC' }}>Basic</p>
                 <div className="flex items-end gap-2">
-                  <span className="text-4xl font-extrabold text-slate-900">$20</span>
+                  <span className="text-4xl font-extrabold text-slate-900">${getPrice('basic')}</span>
                   <span className="text-slate-400 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
                 <p className="text-sm text-slate-500 mt-2">Para el médico que inicia su digitalización.</p>
@@ -631,7 +658,7 @@ export default function LandingPage() {
               <div>
                 <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: '#00C4CC' }}>Professional</p>
                 <div className="flex items-end gap-2">
-                  <span className="text-4xl font-extrabold text-white">$30</span>
+                  <span className="text-4xl font-extrabold text-white">${getPrice('professional')}</span>
                   <span className="text-slate-400 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-2">Para el especialista independiente.</p>
@@ -671,7 +698,7 @@ export default function LandingPage() {
               <div>
                 <p className="text-sm font-bold uppercase tracking-widest mb-3 text-violet-400">Centro de Salud</p>
                 <div className="flex items-end gap-2">
-                  <span className="text-4xl font-extrabold text-white">$100</span>
+                  <span className="text-4xl font-extrabold text-white">${getPrice('clinic')}</span>
                   <span className="text-violet-300 font-medium mb-1.5 text-sm">USD / mes</span>
                 </div>
                 <p className="text-sm text-violet-300 mt-2">Para clínicas con múltiples doctores.</p>
