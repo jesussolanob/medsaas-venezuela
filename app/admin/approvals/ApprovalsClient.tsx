@@ -10,6 +10,9 @@ import {
   AlertCircle,
   Clock,
   AlertTriangle,
+  FileText,
+  Send,
+  CheckCheck,
 } from 'lucide-react'
 
 type PendingPayment = {
@@ -55,6 +58,32 @@ type ExpiringSubscription = {
   days_remaining: number
 }
 
+type ApprovedPayment = {
+  id: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  amount: number
+  currency: string
+  payment_method: string
+  created_at: string
+}
+
+type Invoice = {
+  id: string
+  invoice_number: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  amount: number
+  currency: string
+  description: string | null
+  status: string
+  issued_at: string
+  sent_at: string | null
+  paid_at: string | null
+}
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   pago_movil: 'Pago Móvil',
   bank_transfer: 'Transferencia',
@@ -89,6 +118,8 @@ interface ApprovalsClientProps {
   processedPayments: ProcessedPayment[]
   newSubscriptions: NewSubscription[]
   expiringSubscriptions: ExpiringSubscription[]
+  approvedPayments: ApprovedPayment[]
+  invoices: Invoice[]
 }
 
 export default function ApprovalsClient({
@@ -96,18 +127,25 @@ export default function ApprovalsClient({
   processedPayments: initialProcessed,
   newSubscriptions: initialNewSubs,
   expiringSubscriptions: initialExpiringSubs,
+  approvedPayments: initialApprovedPayments,
+  invoices: initialInvoices,
 }: ApprovalsClientProps) {
-  const [activeTab, setActiveTab] = useState<'payments' | 'new' | 'expiring'>('payments')
+  const [activeTab, setActiveTab] = useState<'payments' | 'new' | 'expiring' | 'billing'>('payments')
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>(initialPending)
   const [processedPayments, setProcessedPayments] = useState<ProcessedPayment[]>(initialProcessed)
   const [newSubscriptions, setNewSubscriptions] = useState<NewSubscription[]>(initialNewSubs)
   const [expiringSubscriptions, setExpiringSubscriptions] = useState<ExpiringSubscription[]>(
     initialExpiringSubs,
   )
+  const [approvedPayments, setApprovedPayments] = useState<ApprovedPayment[]>(initialApprovedPayments)
+  const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [extendingId, setExtendingId] = useState<string | null>(null)
   const [receiptModal, setReceiptModal] = useState<string | null>(null)
+  const [creatingInvoiceId, setCreatingInvoiceId] = useState<string | null>(null)
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null)
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -243,6 +281,114 @@ export default function ApprovalsClient({
     }
   }
 
+  async function handleCreateInvoice(paymentId: string) {
+    setCreatingInvoiceId(paymentId)
+    setError(null)
+    try {
+      const payment = approvedPayments.find(p => p.id === paymentId)
+      if (!payment) {
+        setError('Pago no encontrado')
+        return
+      }
+
+      const res = await fetch('/api/admin/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doctorId: payment.doctor_id,
+          amount: payment.amount,
+          currency: payment.currency,
+          description: `Pago de suscripción - ${payment.payment_method}`,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Error al crear factura')
+        return
+      }
+
+      const data = await res.json()
+      setInvoices(prev => [data.invoice, ...prev])
+      setApprovedPayments(prev => prev.filter(p => p.id !== paymentId))
+      setSuccessMessage(`Factura ${data.invoice.invoice_number} creada exitosamente.`)
+      setTimeout(() => setSuccessMessage(null), 4000)
+    } catch (err) {
+      setError('Error al conectar con el servidor')
+      console.error(err)
+    } finally {
+      setCreatingInvoiceId(null)
+    }
+  }
+
+  async function handleSendInvoice(invoiceId: string) {
+    setSendingInvoiceId(invoiceId)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/send-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Error al enviar factura')
+        return
+      }
+
+      const data = await res.json()
+      setInvoices(prev =>
+        prev.map(inv =>
+          inv.id === invoiceId
+            ? { ...inv, status: 'sent', sent_at: new Date().toISOString() }
+            : inv
+        )
+      )
+      setSuccessMessage(data.message)
+      setTimeout(() => setSuccessMessage(null), 4000)
+    } catch (err) {
+      setError('Error al conectar con el servidor')
+      console.error(err)
+    } finally {
+      setSendingInvoiceId(null)
+    }
+  }
+
+  async function handleMarkInvoicePaid(invoiceId: string) {
+    setMarkingPaidId(invoiceId)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/mark-invoice-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Error al marcar factura como pagada')
+        return
+      }
+
+      const data = await res.json()
+      setInvoices(prev =>
+        prev.map(inv =>
+          inv.id === invoiceId
+            ? { ...inv, status: 'paid', paid_at: new Date().toISOString() }
+            : inv
+        )
+      )
+      setSuccessMessage(data.message)
+      setTimeout(() => setSuccessMessage(null), 4000)
+    } catch (err) {
+      setError('Error al conectar con el servidor')
+      console.error(err)
+    } finally {
+      setMarkingPaidId(null)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
@@ -330,6 +476,35 @@ export default function ApprovalsClient({
     }
   }
 
+  const getInvoiceStatusBadge = (status: string) => {
+    switch (status) {
+      case 'issued':
+        return (
+          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+            Emitida
+          </span>
+        )
+      case 'sent':
+        return (
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+            Enviada
+          </span>
+        )
+      case 'paid':
+        return (
+          <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
+            Pagada
+          </span>
+        )
+      default:
+        return (
+          <span className="text-xs font-bold text-slate-600 bg-slate-50 px-2 py-0.5 rounded-full">
+            {status}
+          </span>
+        )
+    }
+  }
+
   const getAvatarInitials = (name: string) => {
     return name
       .split(' ')
@@ -376,6 +551,12 @@ export default function ApprovalsClient({
               onClick={() => setActiveTab('expiring')}
               label="Próximas a Vencer"
               count={expiringSubscriptions.length}
+            />
+            <TabButton
+              active={activeTab === 'billing'}
+              onClick={() => setActiveTab('billing')}
+              label="Facturación"
+              count={invoices.filter(inv => inv.sent_at === null).length}
             />
           </div>
 
@@ -658,6 +839,182 @@ export default function ApprovalsClient({
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 4: Billing/Invoices */}
+            {activeTab === 'billing' && (
+              <div className="space-y-8">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4">
+                    <p className="text-xs text-slate-600 font-medium mb-1">Total facturas emitidas</p>
+                    <p className="text-2xl font-bold text-slate-900">{invoices.length}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-teal-50 to-slate-50 border border-teal-100 rounded-lg p-4">
+                    <p className="text-xs text-slate-600 font-medium mb-1">Monto total facturado</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      ${invoices.reduce((sum, inv) => sum + inv.amount, 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-amber-50 to-slate-50 border border-amber-100 rounded-lg p-4">
+                    <p className="text-xs text-slate-600 font-medium mb-1">Pendientes de envío</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {invoices.filter(inv => inv.sent_at === null).length}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Approved Payments Section */}
+                {approvedPayments.length > 0 && (
+                  <div className="pt-6 border-t border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                      Suscripciones Pagadas (Sin Factura)
+                    </h3>
+                    <div className="space-y-4">
+                      {approvedPayments.map(payment => (
+                        <div key={payment.id} className="border border-slate-200 rounded-lg p-4">
+                          <div className="flex flex-col sm:flex-row items-start gap-4">
+                            <div className="w-10 h-10 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold shrink-0">
+                              {getAvatarInitials(payment.doctor_name)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-slate-900">{payment.doctor_name}</p>
+                              <p className="text-xs text-slate-400 mb-2">{payment.doctor_email}</p>
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                                <span className="text-xs font-bold text-emerald-600">
+                                  {formatCurrency(payment.amount, payment.currency)}
+                                </span>
+                                <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  {PAYMENT_METHOD_LABELS[payment.payment_method] ?? payment.payment_method}
+                                </span>
+                                <span className="text-xs text-slate-400">{formatDate(payment.created_at)}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleCreateInvoice(payment.id)}
+                              disabled={creatingInvoiceId === payment.id}
+                              className="flex items-center justify-center gap-1.5 text-xs text-white bg-teal-500 hover:bg-teal-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 whitespace-nowrap font-medium"
+                            >
+                              {creatingInvoiceId === payment.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  Creando...
+                                </>
+                              ) : (
+                                <>
+                                  <FileText className="w-3.5 h-3.5" />
+                                  Emitir Factura
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Issued Invoices Section */}
+                {invoices.length > 0 ? (
+                  <div className="pt-6 border-t border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4">Facturas Emitidas</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200">
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Nº Factura
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Médico
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Monto
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Estado
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Fecha Emisión
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Fecha Envío
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-slate-700">
+                              Acciones
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invoices.map(invoice => (
+                            <tr key={invoice.id} className="border-b border-slate-100 hover:bg-slate-50">
+                              <td className="py-3 px-4 font-mono text-xs font-semibold text-teal-600">
+                                {invoice.invoice_number}
+                              </td>
+                              <td className="py-3 px-4 text-slate-900">
+                                <div>
+                                  <p className="font-medium">{invoice.doctor_name}</p>
+                                  <p className="text-xs text-slate-400">{invoice.doctor_email}</p>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 font-semibold text-slate-900">
+                                {formatCurrency(invoice.amount, invoice.currency)}
+                              </td>
+                              <td className="py-3 px-4">{getInvoiceStatusBadge(invoice.status)}</td>
+                              <td className="py-3 px-4 text-slate-500 text-xs">
+                                {formatDate(invoice.issued_at)}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 text-xs">
+                                {invoice.sent_at ? formatDate(invoice.sent_at) : '-'}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  {invoice.status === 'issued' && (
+                                    <button
+                                      onClick={() => handleSendInvoice(invoice.id)}
+                                      disabled={sendingInvoiceId === invoice.id}
+                                      className="flex items-center justify-center gap-1 text-xs text-teal-600 hover:text-teal-700 border border-teal-200 px-2 py-1 rounded transition-colors disabled:opacity-60 whitespace-nowrap"
+                                    >
+                                      {sendingInvoiceId === invoice.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <Send className="w-3 h-3" />
+                                      )}
+                                      Enviar
+                                    </button>
+                                  )}
+                                  {['sent', 'issued'].includes(invoice.status) && (
+                                      <button
+                                        onClick={() => handleMarkInvoicePaid(invoice.id)}
+                                        disabled={markingPaidId === invoice.id}
+                                        className="flex items-center justify-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 px-2 py-1 rounded transition-colors disabled:opacity-60 whitespace-nowrap"
+                                      >
+                                        {markingPaidId === invoice.id ? (
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                          <CheckCheck className="w-3 h-3" />
+                                        )}
+                                        Pagada
+                                      </button>
+                                    )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  approvedPayments.length === 0 && (
+                    <EmptyState
+                      icon={<FileText className="w-8 h-8 text-slate-400" />}
+                      title="Sin facturas"
+                      description="No hay facturas emitidas ni pagos pendientes de facturación."
+                    />
+                  )
                 )}
               </div>
             )}

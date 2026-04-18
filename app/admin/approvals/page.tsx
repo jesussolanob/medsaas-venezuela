@@ -45,6 +45,32 @@ type ExpiringSubscription = {
   days_remaining: number
 }
 
+type ApprovedPayment = {
+  id: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  amount: number
+  currency: string
+  payment_method: string
+  created_at: string
+}
+
+type Invoice = {
+  id: string
+  invoice_number: string
+  doctor_id: string
+  doctor_name: string
+  doctor_email: string
+  amount: number
+  currency: string
+  description: string | null
+  status: string
+  issued_at: string
+  sent_at: string | null
+  paid_at: string | null
+}
+
 export default async function ApprovalsPage() {
   const supabase = await createClient()
 
@@ -142,6 +168,39 @@ export default async function ApprovalsPage() {
     .in('status', ['active', 'trial'])
     .order('expires_at', { ascending: true })
 
+  // 5. Fetch approved payments (for billing tab)
+  const { data: approvedPaymentsData } = await supabase
+    .from('subscription_payments')
+    .select(`
+      id,
+      doctor_id,
+      amount,
+      currency,
+      payment_method,
+      created_at,
+      profiles:doctor_id(full_name, email)
+    `)
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+
+  // 6. Fetch all invoices (for billing tab)
+  const { data: invoicesData } = await supabase
+    .from('invoices')
+    .select(`
+      id,
+      invoice_number,
+      doctor_id,
+      amount,
+      currency,
+      description,
+      status,
+      issued_at,
+      sent_at,
+      paid_at,
+      profiles:doctor_id(full_name, email)
+    `)
+    .order('created_at', { ascending: false })
+
   // Transform pending payments
   const pendingPayments: PendingPayment[] = (pendingData || []).map((p: any) => ({
     id: p.id,
@@ -205,12 +264,42 @@ export default async function ApprovalsPage() {
     }
   })
 
+  // Transform approved payments
+  const approvedPayments: ApprovedPayment[] = (approvedPaymentsData || []).map((p: any) => ({
+    id: p.id,
+    doctor_id: p.doctor_id,
+    doctor_name: p.profiles?.full_name || 'Unknown',
+    doctor_email: p.profiles?.email || 'unknown@example.com',
+    amount: p.amount,
+    currency: p.currency,
+    payment_method: p.payment_method,
+    created_at: p.created_at,
+  }))
+
+  // Transform invoices
+  const invoices: Invoice[] = (invoicesData || []).map((inv: any) => ({
+    id: inv.id,
+    invoice_number: inv.invoice_number,
+    doctor_id: inv.doctor_id,
+    doctor_name: inv.profiles?.full_name || 'Unknown',
+    doctor_email: inv.profiles?.email || 'unknown@example.com',
+    amount: inv.amount,
+    currency: inv.currency,
+    description: inv.description,
+    status: inv.status,
+    issued_at: inv.issued_at,
+    sent_at: inv.sent_at,
+    paid_at: inv.paid_at,
+  }))
+
   return (
     <ApprovalsClient
       pendingPayments={pendingPayments}
       processedPayments={processedPayments}
       newSubscriptions={newSubscriptions}
       expiringSubscriptions={expiringSubscriptions}
+      approvedPayments={approvedPayments}
+      invoices={invoices}
     />
   )
 }

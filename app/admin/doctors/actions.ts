@@ -100,7 +100,7 @@ export async function createClinic(input: CreateClinicInput): Promise<ActionResu
     email_confirm: true,
     user_metadata: {
       full_name: input.admin_name,
-      role: 'clinic_admin',
+      role: 'doctor',
     },
   })
 
@@ -148,7 +148,7 @@ export async function createClinic(input: CreateClinicInput): Promise<ActionResu
     id: userId,
     full_name: input.admin_name,
     email: input.email,
-    role: 'clinic_admin',
+    role: 'doctor',
     clinic_id: clinicId,
     clinic_role: 'admin',
     is_active: true,
@@ -169,7 +169,7 @@ export async function createClinic(input: CreateClinicInput): Promise<ActionResu
   expiresAt.setDate(expiresAt.getDate() + 30)
 
   const { error: subError } = await supabase.from('subscriptions').insert({
-    clinic_id: clinicId,
+    doctor_id: userId,
     plan: 'centro_salud',
     status: 'trial',
     started_at: now.toISOString(),

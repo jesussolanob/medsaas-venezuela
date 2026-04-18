@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Get the doctor's subscription
+    // Get the doctor's subscription to verify it exists
     const { data: subscription, error: subQueryError } = await admin
       .from('subscriptions')
       .select('*')
@@ -52,45 +52,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Update subscription plan
-    const now = new Date()
-    let newStatus = 'active'
-    let expiresAt = null
-
-    if (plan === 'pro') {
-      // PRO plan: expires in 30 days
-      const expirationDate = new Date(now)
-      expirationDate.setDate(expirationDate.getDate() + 30)
-      expiresAt = expirationDate.toISOString()
-      newStatus = 'active'
-    } else {
-      // FREE plan: expires in 30 days (trial)
-      const expirationDate = new Date(now)
-      expirationDate.setDate(expirationDate.getDate() + 30)
-      expiresAt = expirationDate.toISOString()
-      newStatus = 'trial'
-    }
-
-    const { error: updateError } = await admin
-      .from('subscriptions')
-      .update({
-        plan,
-        status: newStatus,
-        current_period_end: expiresAt,
-        trial_ends_at: plan === 'free' ? expiresAt : null,
+    // Create a pending approval request in subscription_payments
+    // Instead of directly changing the plan
+    const { error: insertError } = await admin
+      .from('subscription_payments')
+      .insert({
+        doctor_id: doctorId,
+        amount: plan === 'pro' ? 20 : 0,
+        currency: 'USD',
+        payment_method: 'admin_upgrade',
+        reference_number: `UPGRADE-${Date.now()}`,
+        status: 'pending',
+        notes: `Solicitud de cambio a plan ${plan.toUpperCase()} por admin`,
       })
-      .eq('id', subscription.id)
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
       doctorId,
       plan,
-      status: newStatus,
-      expiresAt,
+      message: 'Solicitud de cambio enviada a aprobaciones',
     })
   } catch (error: any) {
     console.error('Error changing plan:', error)

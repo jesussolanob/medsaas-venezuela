@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     // Get the payment record
     const { data: payment, error: paymentError } = await admin
       .from('subscription_payments')
-      .select('id, doctor_id, amount, currency')
+      .select('id, doctor_id, amount, currency, payment_method, notes')
       .eq('id', paymentId)
       .single()
 
@@ -70,13 +70,13 @@ export async function POST(req: NextRequest) {
     }
 
     // If approving, extend the doctor's subscription by 30 days
+    // or change the plan if it's an admin upgrade request
     if (action === 'approve') {
       // Get current subscription
       const { data: subscription, error: subError } = await admin
         .from('subscriptions')
         .select('id, expires_at')
         .eq('doctor_id', payment.doctor_id)
-        .eq('status', 'active')
         .single()
 
       if (subError) {
@@ -88,12 +88,22 @@ export async function POST(req: NextRequest) {
         const startDate = expiresAt > now ? expiresAt : now
         startDate.setDate(startDate.getDate() + 30)
 
+        // Check if this is an admin upgrade request
+        const isAdminUpgrade = payment.payment_method === 'admin_upgrade'
+
+        let updatePayload: any = {
+          expires_at: startDate.toISOString(),
+          status: 'active',
+        }
+
+        // If it's an admin upgrade, also change the plan to 'pro'
+        if (isAdminUpgrade) {
+          updatePayload.plan = 'pro'
+        }
+
         const { error: extendError } = await admin
           .from('subscriptions')
-          .update({
-            expires_at: startDate.toISOString(),
-            status: 'active',
-          })
+          .update(updatePayload)
           .eq('id', subscription.id)
 
         if (extendError) {

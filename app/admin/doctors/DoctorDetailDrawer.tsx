@@ -118,17 +118,8 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
         throw new Error(data.error || 'Error al cambiar plan')
       }
 
-      setDetails({
-        ...details,
-        subscription: {
-          ...details.subscription,
-          plan: 'pro',
-          status: 'active',
-          current_period_end: data.expiresAt,
-        },
-      })
-
-      setSuccessMessage('Plan cambiado a PRO exitosamente')
+      // Don't update local state - the plan hasn't changed yet, it's pending approval
+      setSuccessMessage('Solicitud enviada a Aprobaciones')
       setTimeout(() => setSuccessMessage(''), 3000)
       onDoctorUpdated?.()
     } catch (err: any) {
