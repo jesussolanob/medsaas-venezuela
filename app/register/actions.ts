@@ -13,6 +13,8 @@ export type RegisterInput = {
   plan: 'basic' | 'professional' | 'clinic'
   sex?: string
   professional_title?: string
+  clinic_name?: string
+  clinic_city?: string
 }
 
 export type RegisterResult =
@@ -22,6 +24,7 @@ export type RegisterResult =
 export async function registerDoctor(input: RegisterInput): Promise<RegisterResult> {
   const supabase = createAdminClient()
 
+  // 1. Create auth user
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
@@ -38,6 +41,34 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
 
   const userId = authData.user.id
 
+  // 2. Create clinic (nombre opcional — usa nombre del doctor como fallback)
+  const clinicName = input.clinic_name?.trim() || `Consultorio ${input.full_name}`
+  const slug = clinicName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+
+  const planMap: Record<string, string> = { basic: 'basic', professional: 'professional' }
+  const statusMap: Record<string, string> = { basic: 'trial', professional: 'pending_payment' }
+
+  const { data: clinic, error: clinicError } = await supabase
+    .from('clinics')
+    .insert({
+      name: clinicName,
+      slug,
+      owner_id: userId,
+      city: input.clinic_city || null,
+      email: input.email,
+      specialty: input.specialty || null,
+      subscription_plan: planMap[input.plan] || input.plan,
+      subscription_status: statusMap[input.plan] || 'trial',
+    })
+    .select('id')
+    .single()
+
+  if (clinicError || !clinic) {
+    await supabase.auth.admin.deleteUser(userId)
+    return { success: false, error: clinicError?.message || 'Error al crear la clínica' }
+  }
+
+  // 3. Create profile linked to clinic
   const { error: profileError } = await supabase.from('profiles').upsert({
     id: userId,
     full_name: input.full_name,
@@ -49,6 +80,8 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     professional_title: input.professional_title || 'Dr.',
     role: 'doctor',
     is_active: true,
+    clinic_id: clinic.id,
+    clinic_role: 'admin',
   })
 
   if (profileError) {
@@ -56,6 +89,7 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     return { success: false, error: profileError.message }
   }
 
+  // 4. Create subscription
   const now = new Date()
   const expiresAt = new Date(now)
   expiresAt.setDate(expiresAt.getDate() + 30)

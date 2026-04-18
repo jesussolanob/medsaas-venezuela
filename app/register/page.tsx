@@ -410,6 +410,12 @@ function RegisterInner() {
                   </Field>
                 </div>
 
+                {!isClinic && (
+                  <Field label="Nombre de tu consultorio o clínica">
+                    <input type="text" value={form.clinic_name} onChange={e => change('clinic_name', e.target.value)} placeholder="Ej: Centro Médico Metropolitano (opcional)" className={inp(false)} />
+                  </Field>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Contraseña" required error={errors.password}>
                     <div className="relative">

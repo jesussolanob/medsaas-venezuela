@@ -5,13 +5,13 @@ import { Users, Calendar, CreditCard, TrendingUp } from 'lucide-react'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
 
 function getPlanTag(status?: string | null, plan?: string | null): { label: string; color: string } {
-  // Explicit statuses
+  // Map real DB statuses to display labels
   if (status === 'suspended') return { label: 'Suspendida', color: 'bg-red-50 text-red-700' }
-  if (status === 'active') return { label: 'Pro', color: 'bg-teal-50 text-teal-700' }
+  if (status === 'active') return { label: 'Activo', color: 'bg-teal-50 text-teal-700' }
   if (status === 'trial') return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
-  // Has a plan assigned (registered) but status not explicitly set → Trial
+  if (status === 'past_due' || status === 'pending_payment') return { label: 'Pago pendiente', color: 'bg-orange-50 text-orange-700' }
+  // Has a plan assigned but no explicit status
   if (plan) return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
-  // No plan, no status → Sin plan
   return { label: 'Sin plan', color: 'bg-slate-100 text-slate-500' }
 }
 
@@ -63,6 +63,21 @@ export default async function AdminDashboard() {
     if (record.clinic_id) {
       doctorCountByClinic[record.clinic_id] = (doctorCountByClinic[record.clinic_id] || 0) + 1
     }
+  })
+
+  // Fetch subscriptions for doctors without clinic_id (legacy registrations)
+  const doctorIdsWithoutClinic = (recentDoctors || []).filter(d => !d.clinic_id).map(d => d.id)
+  const { data: doctorSubscriptions } = doctorIdsWithoutClinic.length > 0
+    ? await adminClient
+      .from('subscriptions')
+      .select('doctor_id, plan, status')
+      .in('doctor_id', doctorIdsWithoutClinic)
+    : { data: [] }
+
+  // Build subscription lookup: doctor_id → { plan, status }
+  const subMap: Record<string, { plan: string; status: string }> = {}
+  ;(doctorSubscriptions || []).forEach(s => {
+    subMap[s.doctor_id] = { plan: s.plan, status: s.status }
   })
 
   // Fetch subscription stats for MoM calculation
@@ -211,7 +226,11 @@ export default async function AdminDashboard() {
           <div className="space-y-2">
             {(recentDoctors || []).map((doctor) => {
               const clinic = doctor.clinic_id ? clinicMap[doctor.clinic_id] : null
-              const tag = getPlanTag(clinic?.subscription_status, clinic?.subscription_plan)
+              const sub = !clinic ? subMap[doctor.id] : null
+              const tag = getPlanTag(
+                clinic?.subscription_status || sub?.status,
+                clinic?.subscription_plan || sub?.plan
+              )
               return (
                 <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
