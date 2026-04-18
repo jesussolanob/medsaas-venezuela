@@ -22,6 +22,10 @@ type Patient = {
   id: string
   full_name: string
   phone: string | null
+  email?: string | null
+  cedula?: string | null
+  age?: number | null
+  sex?: string | null
   blood_type?: string | null
   allergies?: string | null
   chronic_conditions?: string | null
@@ -92,7 +96,7 @@ export default function ConsultationsPage() {
         // Cargar pacientes con datos médicos
         const { data: patientsData } = await supabase
           .from('patients')
-          .select('id, full_name, phone, blood_type, allergies, chronic_conditions')
+          .select('id, full_name, phone, email, cedula, age, sex, blood_type, allergies, chronic_conditions')
           .eq('doctor_id', user.id)
         setPatients(patientsData ?? [])
 
@@ -123,18 +127,54 @@ export default function ConsultationsPage() {
     })
   }, [])
 
-  function openConsultation(c: Consultation) {
-    setSelected(c)
-    setReport({
-      chief_complaint: c.chief_complaint ?? '',
-      notes: c.notes ?? '',
-      diagnosis: c.diagnosis ?? '',
-      treatment: c.treatment ?? '',
-      payment_status: c.payment_status,
-    })
+  async function openConsultation(c: Consultation) {
+    // Fetch fresh data from DB to ensure we have latest notes/diagnosis/treatment
+    const supabase = createClient()
+    try {
+      const { data } = await supabase
+        .from('consultations')
+        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, patients(full_name, phone)')
+        .eq('id', c.id)
+        .single()
+
+      if (data) {
+        const fresh: Consultation = {
+          id: data.id,
+          consultation_code: data.consultation_code,
+          consultation_date: data.consultation_date,
+          chief_complaint: data.chief_complaint,
+          notes: data.notes,
+          diagnosis: data.diagnosis,
+          treatment: data.treatment,
+          payment_status: data.payment_status,
+          patient_id: data.patient_id,
+          patient_name: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string }).full_name : c.patient_name,
+          patient_phone: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string; phone: string | null }).phone : c.patient_phone,
+        }
+        setSelected(fresh)
+        setReport({
+          chief_complaint: fresh.chief_complaint ?? '',
+          notes: fresh.notes ?? '',
+          diagnosis: fresh.diagnosis ?? '',
+          treatment: fresh.treatment ?? '',
+          payment_status: fresh.payment_status,
+        })
+        // Update local list with fresh data
+        setConsultations(prev => prev.map(x => x.id === fresh.id ? fresh : x))
+      } else {
+        // Fallback to cached data
+        setSelected(c)
+        setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
+      }
+    } catch {
+      // Fallback to cached data on error
+      setSelected(c)
+      setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
+    }
     setRecipe({ medications: [], notes: '' })
     setView('consultation')
     setSaved(false)
+    setConsultationTab('informe')
   }
 
   async function createNewConsultation() {
@@ -507,21 +547,74 @@ export default function ConsultationsPage() {
                     <User className="w-4 h-4 text-slate-400" />
                     <p className="text-sm font-bold text-slate-800">Perfil del paciente</p>
                   </div>
-                  {selected && (
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Nombre</p>
-                        <p className="text-sm text-slate-800">{selected.patient_name}</p>
-                      </div>
-                      {selected.patient_phone && (
-                        <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Teléfono</p>
-                          <p className="text-sm text-slate-800">{selected.patient_phone}</p>
+                  {selected && (() => {
+                    const patientData = patients.find(p => p.id === selected.patient_id)
+                    return (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Nombre</p>
+                            <p className="text-sm text-slate-800">{selected.patient_name}</p>
+                          </div>
+                          {(patientData?.cedula) && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Cédula</p>
+                              <p className="text-sm text-slate-800">{patientData.cedula}</p>
+                            </div>
+                          )}
+                          {(patientData?.age) && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Edad</p>
+                              <p className="text-sm text-slate-800">{patientData.age} años</p>
+                            </div>
+                          )}
+                          {(patientData?.sex) && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Sexo</p>
+                              <p className="text-sm text-slate-800 capitalize">{patientData.sex === 'male' ? 'Masculino' : patientData.sex === 'female' ? 'Femenino' : patientData.sex}</p>
+                            </div>
+                          )}
+                          {selected.patient_phone && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Teléfono</p>
+                              <p className="text-sm text-slate-800">{selected.patient_phone}</p>
+                            </div>
+                          )}
+                          {(patientData?.email) && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Email</p>
+                              <p className="text-sm text-slate-800">{patientData.email}</p>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      <p className="text-xs text-slate-500 italic">Información adicional del paciente disponible en el módulo de pacientes.</p>
-                    </div>
-                  )}
+                        {(patientData?.blood_type || patientData?.allergies || patientData?.chronic_conditions) && (
+                          <div className="pt-3 border-t border-slate-100 space-y-3">
+                            <p className="text-xs font-semibold text-slate-500 uppercase">Información médica</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {patientData.blood_type && (
+                                <div>
+                                  <p className="text-xs font-semibold text-slate-500 mb-1">Tipo de sangre</p>
+                                  <p className="text-sm text-slate-800">{patientData.blood_type}</p>
+                                </div>
+                              )}
+                              {patientData.allergies && (
+                                <div>
+                                  <p className="text-xs font-semibold text-slate-500 mb-1">Alergias</p>
+                                  <p className="text-sm text-slate-800">{patientData.allergies}</p>
+                                </div>
+                              )}
+                              {patientData.chronic_conditions && (
+                                <div className="sm:col-span-2">
+                                  <p className="text-xs font-semibold text-slate-500 mb-1">Condiciones crónicas</p>
+                                  <p className="text-sm text-slate-800">{patientData.chronic_conditions}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -803,6 +896,23 @@ export default function ConsultationsPage() {
 function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (html: string) => void; placeholder?: string }) {
   const editorRef = useRef<HTMLDivElement>(null)
   const [isActive, setIsActive] = useState(false)
+  const initializedRef = useRef(false)
+
+  // Set initial content when value changes externally (e.g., opening a consultation)
+  useEffect(() => {
+    if (editorRef.current && !isActive) {
+      // Only update if the editor content differs from the prop value
+      const currentHTML = editorRef.current.innerHTML
+      const isEmpty = !currentHTML || currentHTML === '<br>' || currentHTML.startsWith('<span class="text-slate-400">')
+      if (value && (isEmpty || !initializedRef.current)) {
+        editorRef.current.innerHTML = value
+        initializedRef.current = true
+      } else if (!value && !isActive) {
+        editorRef.current.innerHTML = ''
+        initializedRef.current = false
+      }
+    }
+  }, [value, isActive])
 
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value)
@@ -836,9 +946,9 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
         onFocus={() => setIsActive(true)}
         onBlur={() => setIsActive(false)}
         suppressContentEditableWarning={true}
-      >
-        {!value && <span className="text-slate-400">{placeholder}</span>}
-      </div>
+        data-placeholder={placeholder}
+      />
+      <style>{`[data-placeholder]:empty:not(:focus):before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }`}</style>
     </div>
   )
 }

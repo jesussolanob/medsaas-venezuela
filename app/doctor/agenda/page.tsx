@@ -218,11 +218,18 @@ export default function AgendaPage() {
       }
     } catch { /* use defaults */ }
 
-    // 2. Load CONFIRMED consultations (real data)
+    // 2. Load CONFIRMED consultations (only recent + future — last 30 days + next 60 days)
+    const pastCutoff = new Date()
+    pastCutoff.setDate(pastCutoff.getDate() - 30)
+    const futureCutoff = new Date()
+    futureCutoff.setDate(futureCutoff.getDate() + 60)
+
     const { data: consults } = await supabase
       .from('consultations')
       .select('id, consultation_code, consultation_date, chief_complaint, payment_status, appointment_id, amount, patients(full_name, phone, email)')
       .eq('doctor_id', user.id)
+      .gte('consultation_date', pastCutoff.toISOString())
+      .lte('consultation_date', futureCutoff.toISOString())
       .order('consultation_date', { ascending: true })
 
     const slotDuration = config.slot_duration || 30

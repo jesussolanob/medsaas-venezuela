@@ -54,24 +54,27 @@ export default function EHRPage() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       setDoctorId(user.id)
-      // Only fetch patients with at least one consultation (INNER JOIN via filter)
-      const { data: consultations } = await supabase
-        .from('consultations')
-        .select('patient_id')
-        .eq('doctor_id', user.id)
+      // Fetch patients that have at least one consultation using inner join
+      // Use a direct query on patients with an existence filter via consultations
+      const { data: patientsWithConsults } = await supabase
+        .from('patients')
+        .select(`
+          id, full_name, phone, age, sex, id_number, created_at,
+          consultations!inner(id)
+        `)
+        .eq('consultations.doctor_id', user.id)
+        .order('full_name')
 
-      const patientIds = Array.from(new Set((consultations ?? []).map(c => c.patient_id)))
-
-      if (patientIds.length === 0) {
-        setPatients([])
-      } else {
-        const { data } = await supabase
-          .from('patients')
-          .select('id, full_name, phone, age, sex, id_number, created_at')
-          .in('id', patientIds)
-          .order('full_name')
-        setPatients((data ?? []) as Patient[])
+      // Deduplicate at JS level as a safety net (inner join may return dupes per consultation)
+      const seen = new Set<string>()
+      const uniquePatients: Patient[] = []
+      for (const p of (patientsWithConsults ?? [])) {
+        if (!seen.has(p.id)) {
+          seen.add(p.id)
+          uniquePatients.push({ id: p.id, full_name: p.full_name, phone: p.phone, age: p.age, sex: p.sex, id_number: p.id_number, created_at: p.created_at })
+        }
       }
+      setPatients(uniquePatients)
       setLoading(false)
     })
   }, [])
