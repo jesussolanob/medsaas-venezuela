@@ -127,6 +127,24 @@ export async function POST(req: NextRequest) {
         if (extendError) {
           console.error('Error extending subscription:', extendError)
         }
+
+        // Sync clinic subscription_status when approving payment
+        const { data: doctorProfile } = await admin
+          .from('profiles')
+          .select('clinic_id')
+          .eq('id', payment.doctor_id)
+          .single()
+
+        if (doctorProfile?.clinic_id) {
+          const clinicUpdate: Record<string, string> = { subscription_status: 'active' }
+          if (isAdminUpgrade && updatePayload.plan) {
+            clinicUpdate.subscription_plan = updatePayload.plan
+          }
+          await admin
+            .from('clinics')
+            .update(clinicUpdate)
+            .eq('id', doctorProfile.clinic_id)
+        }
       }
     }
 

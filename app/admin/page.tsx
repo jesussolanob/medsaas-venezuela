@@ -4,15 +4,23 @@ import { redirect } from 'next/navigation'
 import { Users, Calendar, CreditCard, TrendingUp } from 'lucide-react'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
 
-function getPlanTag(status?: string | null, plan?: string | null): { label: string; color: string } {
-  // Map real DB statuses to display labels
-  if (status === 'suspended') return { label: 'Suspendida', color: 'bg-red-50 text-red-700' }
-  if (status === 'active') return { label: 'Activo', color: 'bg-teal-50 text-teal-700' }
-  if (status === 'trial') return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
-  if (status === 'past_due' || status === 'pending_payment') return { label: 'Pago pendiente', color: 'bg-orange-50 text-orange-700' }
-  // Has a plan assigned but no explicit status
-  if (plan) return { label: 'Trial', color: 'bg-amber-50 text-amber-700' }
-  return { label: 'Sin plan', color: 'bg-slate-100 text-slate-500' }
+// Plan names displayed to the user
+const PLAN_LABELS: Record<string, string> = {
+  basic: 'Basic',
+  professional: 'Professional',
+  enterprise: 'Centro de Salud',
+  centro_salud: 'Centro de Salud',
+}
+
+function getPlanTag(plan?: string | null, status?: string | null): { label: string; color: string } {
+  const planName = PLAN_LABELS[plan || ''] || 'Basic'
+
+  // Status determines the color/badge style
+  if (status === 'suspended') return { label: `${planName} · Suspendida`, color: 'bg-red-50 text-red-700' }
+  if (status === 'active') return { label: planName, color: 'bg-teal-50 text-teal-700' }
+  if (status === 'past_due' || status === 'pending_payment') return { label: `${planName} · Pendiente`, color: 'bg-orange-50 text-orange-700' }
+  // trial or default — everyone has at least trial
+  return { label: `${planName} · Trial`, color: 'bg-amber-50 text-amber-700' }
 }
 
 export default async function AdminDashboard() {
@@ -65,13 +73,13 @@ export default async function AdminDashboard() {
     }
   })
 
-  // Fetch subscriptions for doctors without clinic_id (legacy registrations)
-  const doctorIdsWithoutClinic = (recentDoctors || []).filter(d => !d.clinic_id).map(d => d.id)
-  const { data: doctorSubscriptions } = doctorIdsWithoutClinic.length > 0
+  // Fetch subscriptions for ALL recent doctors (source of truth for plan + status)
+  const recentDoctorIds = (recentDoctors || []).map(d => d.id)
+  const { data: doctorSubscriptions } = recentDoctorIds.length > 0
     ? await adminClient
       .from('subscriptions')
       .select('doctor_id, plan, status')
-      .in('doctor_id', doctorIdsWithoutClinic)
+      .in('doctor_id', recentDoctorIds)
     : { data: [] }
 
   // Build subscription lookup: doctor_id → { plan, status }
@@ -225,12 +233,9 @@ export default async function AdminDashboard() {
           </div>
           <div className="space-y-2">
             {(recentDoctors || []).map((doctor) => {
-              const clinic = doctor.clinic_id ? clinicMap[doctor.clinic_id] : null
-              const sub = !clinic ? subMap[doctor.id] : null
-              const tag = getPlanTag(
-                clinic?.subscription_status || sub?.status,
-                clinic?.subscription_plan || sub?.plan
-              )
+              // subscriptions table is the source of truth
+              const sub = subMap[doctor.id]
+              const tag = getPlanTag(sub?.plan, sub?.status)
               return (
                 <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -265,7 +270,7 @@ export default async function AdminDashboard() {
           <div className="space-y-2">
             {(activeClinics || []).map((clinic) => {
               const doctorCount = doctorCountByClinic[clinic.id] || 0
-              const tag = getPlanTag(clinic.subscription_status, clinic.subscription_plan)
+              const tag = getPlanTag(clinic.subscription_plan, clinic.subscription_status)
               return (
                 <div key={clinic.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
