@@ -387,29 +387,13 @@ export default function ConsultationsPage() {
     </div>
   </div>
 
-  ${report.chief_complaint ? \`
-  <div class="section">
-    <div class="section-title">Motivo de Consulta</div>
-    <div class="section-content">\${report.chief_complaint}</div>
-  </div>\` : ''}
+  ${report.chief_complaint ? '<div class="section"><div class="section-title">Motivo de Consulta</div><div class="section-content">' + report.chief_complaint + '</div></div>' : ''}
 
-  ${report.notes ? \`
-  <div class="section">
-    <div class="section-title">Informe Médico</div>
-    <div class="section-content">\${report.notes}</div>
-  </div>\` : ''}
+  ${report.notes ? '<div class="section"><div class="section-title">Informe Médico</div><div class="section-content">' + report.notes + '</div></div>' : ''}
 
-  ${report.diagnosis ? \`
-  <div class="section">
-    <div class="section-title">Diagnóstico</div>
-    <div class="section-content">\${report.diagnosis}</div>
-  </div>\` : ''}
+  ${report.diagnosis ? '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>' : ''}
 
-  ${report.treatment ? \`
-  <div class="section">
-    <div class="section-title">Plan de Tratamiento</div>
-    <div class="section-content">\${report.treatment}</div>
-  </div>\` : ''}
+  ${report.treatment ? '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' + report.treatment + '</div></div>' : ''}
 
   <div class="footer">
     <p>Documento generado por Delta Medical CRM · ${new Date().toLocaleDateString('es-VE')}</p>
