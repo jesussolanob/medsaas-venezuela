@@ -7,7 +7,7 @@ import {
   DollarSign, Settings, LogOut, Activity, BarChart2, Send,
   ClipboardList, Receipt, FileBarChart, ChevronDown, Menu, X,
   Stethoscope, Briefcase, MessageSquare, ListTodo, Plus, Trash2, Check,
-  Lock
+  Lock, Building2
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -100,6 +100,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTaskText, setNewTaskText] = useState('')
   const [enabledFeatures, setEnabledFeatures] = useState<Set<string>>(new Set(['dashboard', 'agenda', 'settings']))
+  const [isClinicAdmin, setIsClinicAdmin] = useState(false)
   const tasksDropdownRef = useRef<HTMLDivElement>(null)
   const lastCheckRef = useRef<number>(Date.now())
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -139,6 +140,16 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
+
+        // Check if user is clinic admin
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('clinic_id, clinic_role')
+          .eq('id', user.id)
+          .single()
+        if (profile?.clinic_id && profile?.clinic_role === 'admin') {
+          setIsClinicAdmin(true)
+        }
 
         // Fetch doctor's subscription
         const { data: subscription } = await supabase
@@ -402,6 +413,20 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         <div className="pt-2">
           {bottomItems.map(i => <NavLink key={i.href} item={i} />)}
         </div>
+
+        {/* Clinic admin link */}
+        {isClinicAdmin && (
+          <div className="pt-2 border-t border-slate-100 mt-2">
+            <Link
+              href="/clinic/admin"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-violet-600 hover:bg-violet-50 transition-all"
+            >
+              <Building2 className="w-4 h-4" />
+              Mi Clínica
+            </Link>
+          </div>
+        )}
       </nav>
 
       {/* Footer */}

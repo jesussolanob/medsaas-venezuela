@@ -10,7 +10,7 @@ export type RegisterInput = {
   password: string
   specialty: string
   phone: string
-  plan: 'basic' | 'professional' | 'clinic'
+  plan: 'trial' | 'basic' | 'professional' | 'clinic'
   sex?: string
   professional_title?: string
   clinic_name?: string
@@ -24,11 +24,11 @@ export type RegisterResult =
 export async function registerDoctor(input: RegisterInput): Promise<RegisterResult> {
   const supabase = createAdminClient()
 
-  // 1. Create auth user
+  // 1. Create auth user (email_confirm: false → Supabase sends verification email)
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
-    email_confirm: true,
+    email_confirm: false,
     user_metadata: { full_name: input.full_name, role: 'doctor' },
   })
 
@@ -41,34 +41,7 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
 
   const userId = authData.user.id
 
-  // 2. Create clinic (nombre opcional — usa nombre del doctor como fallback)
-  const clinicName = input.clinic_name?.trim() || `Consultorio ${input.full_name}`
-  const slug = clinicName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-
-  const planMap: Record<string, string> = { basic: 'basic', professional: 'professional' }
-  const statusMap: Record<string, string> = { basic: 'trial', professional: 'pending_payment' }
-
-  const { data: clinic, error: clinicError } = await supabase
-    .from('clinics')
-    .insert({
-      name: clinicName,
-      slug,
-      owner_id: userId,
-      city: input.clinic_city || null,
-      email: input.email,
-      specialty: input.specialty || null,
-      subscription_plan: planMap[input.plan] || input.plan,
-      subscription_status: statusMap[input.plan] || 'trial',
-    })
-    .select('id')
-    .single()
-
-  if (clinicError || !clinic) {
-    await supabase.auth.admin.deleteUser(userId)
-    return { success: false, error: clinicError?.message || 'Error al crear la clínica' }
-  }
-
-  // 3. Create profile linked to clinic
+  // 2. Create profile (NO clinic for basic/professional plans)
   const { error: profileError } = await supabase.from('profiles').upsert({
     id: userId,
     full_name: input.full_name,
@@ -80,8 +53,8 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     professional_title: input.professional_title || 'Dr.',
     role: 'doctor',
     is_active: true,
-    clinic_id: clinic.id,
-    clinic_role: 'admin',
+    clinic_id: null,
+    clinic_role: null,
   })
 
   if (profileError) {
@@ -89,20 +62,31 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     return { success: false, error: profileError.message }
   }
 
-  // 4. Create subscription
+  // 3. Create subscription
   const now = new Date()
   const expiresAt = new Date(now)
-  expiresAt.setDate(expiresAt.getDate() + 30)
+  const isTrial = input.plan === 'trial'
+  expiresAt.setDate(expiresAt.getDate() + (isTrial ? 15 : 30))
 
   const { error: subError } = await supabase.from('subscriptions').insert({
     doctor_id: userId,
     plan: input.plan,
-    status: input.plan === 'basic' ? 'trial' : 'past_due',
-    current_period_end: input.plan === 'basic' ? expiresAt.toISOString() : null,
+    status: isTrial ? 'trial' : 'past_due',
+    current_period_end: isTrial ? expiresAt.toISOString() : null,
   })
 
   if (subError) {
     console.error('Error creando suscripción:', subError.message)
+  }
+
+  // 4. Send verification email via Supabase magic link
+  try {
+    await supabase.auth.admin.generateLink({
+      type: 'signup',
+      email: input.email,
+    })
+  } catch (e) {
+    console.error('Error sending verification email:', e)
   }
 
   revalidatePath('/admin/doctors')
@@ -295,6 +279,23 @@ export async function uploadPaymentReceipt(
   if (paymentError) console.error('Error guardando pago:', paymentError.message)
 
   return { success: true, receiptUrl }
+}
+
+// ── Obtener planes activos ────────────────────────────────────────────────────
+export type PlanConfigPublic = {
+  plan_key: string; name: string; price: number
+  trial_days: number; description: string | null
+}
+
+export async function getActivePlans(): Promise<PlanConfigPublic[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('plan_configs')
+    .select('plan_key, name, price, trial_days, description')
+    .eq('is_active', true)
+    .order('sort_order')
+  if (error) { console.error('Error fetching plans:', error.message); return [] }
+  return data ?? []
 }
 
 // ── Cuentas de cobro del admin ────────────────────────────────────────────────

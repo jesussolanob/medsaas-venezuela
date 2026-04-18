@@ -38,11 +38,11 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   let destination = '/doctor'
   if (role === 'super_admin' || role === 'admin') {
     destination = '/admin'
-  } else if (hasClinic && clinicRole === 'admin') {
-    destination = '/clinic/admin'
   } else if (role === 'patient') {
     destination = '/patient/dashboard'
   }
+  // Doctors (including clinic admins) always go to /doctor
+  // Clinic admin features accessible via sidebar link
 
   return { success: true, role, clinicRole, hasClinic, destination }
 }

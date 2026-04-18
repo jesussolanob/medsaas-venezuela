@@ -230,8 +230,8 @@ export default function LoginPage() {
             {/* Register link */}
             <p className="text-center text-sm text-slate-500 mt-5">
               ¿Aún no tienes cuenta?{' '}
-              <Link href="/register?plan=free" className="text-teal-600 hover:text-teal-700 font-semibold">
-                Prueba gratis 30 días →
+              <Link href="/register?plan=trial" className="text-teal-600 hover:text-teal-700 font-semibold">
+                Prueba gratis →
               </Link>
             </p>
 
