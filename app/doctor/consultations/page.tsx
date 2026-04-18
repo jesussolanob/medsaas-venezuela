@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition, useRef } from 'react'
+import { useState, useEffect, useTransition, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -62,7 +62,15 @@ type ViewMode = 'list' | 'consultation'
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today'
 type ConsultationTab = 'informe' | 'diagnostico' | 'tratamiento' | 'pago' | 'perfil'
 
-export default function ConsultationsPage() {
+export default function ConsultationsPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400 text-sm">Cargando...</div>}>
+      <ConsultationsPage />
+    </Suspense>
+  )
+}
+
+function ConsultationsPage() {
   const searchParams = useSearchParams()
   const openId = searchParams.get('open')
 
