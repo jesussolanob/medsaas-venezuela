@@ -10,7 +10,7 @@ import {
   Loader2, X, Stethoscope, Zap, ChevronLeft, Image, AlertCircle,
   TrendingUp, RefreshCw, Building2, Mail,
 } from 'lucide-react'
-import { registerDoctor, registerClinic, uploadPaymentReceipt, getPaymentAccounts, getBCVRate, getActivePlans, type PaymentAccount, type BCVRateResult, type PlanConfigPublic } from './actions'
+import { registerDoctor, registerClinic, uploadPaymentReceipt, getPaymentAccounts, getBCVRate, getActivePlans, getActivePromotions, type PaymentAccount, type BCVRateResult, type PlanConfigPublic, type PromotionPublic } from './actions'
 
 const ESPECIALIDADES = [
   'Cardiología','Dermatología','Endocrinología','Gastroenterología',
@@ -66,14 +66,17 @@ function RegisterInner() {
   const [step, setStep] = useState(1) // Always start at form
   const [form, setForm] = useState<FormData>({ ...defaultForm, plan: planParam ?? 'trial' })
   const [activePlans, setActivePlans] = useState<PlanConfigPublic[]>([])
+  const [promotions, setPromotions] = useState<PromotionPublic[]>([])
   const [plansLoaded, setPlansLoaded] = useState(false)
+  const [selectedBilling, setSelectedBilling] = useState<'monthly' | 'promo'>('monthly')
+  const [selectedPromo, setSelectedPromo] = useState<PromotionPublic | null>(null)
 
-  // Load active plans from DB
+  // Load active plans and promotions from DB
   useEffect(() => {
-    getActivePlans().then(plans => {
+    Promise.all([getActivePlans(), getActivePromotions()]).then(([plans, promos]) => {
       setActivePlans(plans)
+      setPromotions(promos)
       setPlansLoaded(true)
-      // If current plan is not active, default to first active plan
       if (plans.length > 0 && !plans.find(p => p.plan_key === form.plan)) {
         setForm(prev => ({ ...prev, plan: plans[0].plan_key as PlanType }))
       }
@@ -98,8 +101,22 @@ function RegisterInner() {
   const isBasic = form.plan === 'basic'
   const isTrial = form.plan === 'trial'
   const currentPlanConfig = activePlans.find(p => p.plan_key === form.plan)
-  const planPrice = currentPlanConfig?.price ?? (isClinic ? 100 : isPro ? 30 : isBasic ? 10 : 0)
-  const needsPayment = planPrice > 0
+  const monthlyPrice = currentPlanConfig?.price ?? (isClinic ? 100 : isPro ? 30 : isBasic ? 10 : 0)
+  const promoForPlan = promotions.find(p => p.plan_key === form.plan)
+  const planPrice = selectedBilling === 'promo' && selectedPromo ? selectedPromo.promo_price_usd : monthlyPrice
+  const needsPayment = monthlyPrice > 0
+
+  // Reset billing selection when plan changes
+  useEffect(() => {
+    const promo = promotions.find(p => p.plan_key === form.plan)
+    if (promo) {
+      setSelectedPromo(promo)
+      setSelectedBilling('promo') // default to promo if available
+    } else {
+      setSelectedPromo(null)
+      setSelectedBilling('monthly')
+    }
+  }, [form.plan, promotions])
 
   // Steps: 1=Form, 2=Payment (pro/clinic only), 3=Success
   const totalSteps = needsPayment ? 3 : 2
@@ -309,6 +326,40 @@ function RegisterInner() {
                           </div>
                         ) : null
                       })()}
+
+                      {/* Billing option: monthly vs promo */}
+                      {needsPayment && promoForPlan && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs font-medium text-slate-500">Modalidad de pago</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedBilling('monthly'); setSelectedPromo(null) }}
+                              className={`rounded-xl border-2 p-3 text-left transition-all ${selectedBilling === 'monthly' ? 'border-teal-400 bg-teal-50/50' : 'border-slate-200 hover:border-slate-300'}`}
+                            >
+                              <p className="text-xs font-bold text-slate-900">1 mes</p>
+                              <p className="text-sm font-bold text-slate-700 mt-0.5">${monthlyPrice} USD</p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedBilling('promo'); setSelectedPromo(promoForPlan) }}
+                              className={`rounded-xl border-2 p-3 text-left transition-all relative ${selectedBilling === 'promo' ? 'border-teal-400 bg-teal-50/50' : 'border-slate-200 hover:border-slate-300'}`}
+                            >
+                              <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">
+                                -{Math.round(((promoForPlan.original_price_usd - promoForPlan.promo_price_usd) / promoForPlan.original_price_usd) * 100)}%
+                              </span>
+                              <p className="text-xs font-bold text-slate-900">{promoForPlan.duration_months} meses</p>
+                              <p className="text-sm mt-0.5">
+                                <span className="line-through text-slate-400 text-xs">${promoForPlan.original_price_usd}</span>{' '}
+                                <span className="font-bold text-teal-600">${promoForPlan.promo_price_usd} USD</span>
+                              </p>
+                              {promoForPlan.label && (
+                                <p className="text-[10px] text-teal-600 font-medium mt-0.5">{promoForPlan.label}</p>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -440,7 +491,11 @@ function RegisterInner() {
                   <ChevronLeft className="w-4 h-4" /> Volver
                 </button>
                 <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Adjunta el comprobante</h1>
-                <p className="text-sm text-slate-500 font-medium">Realiza el pago de ${planPrice} USD y sube el comprobante para activar tu {isClinic ? 'Centro de Salud' : 'Plan Professional'}.</p>
+                <p className="text-sm text-slate-500 font-medium">
+                  Realiza el pago de <strong>${planPrice} USD</strong>
+                  {selectedBilling === 'promo' && selectedPromo ? ` (${selectedPromo.duration_months} meses)` : ' (1 mes)'}
+                  {' '}y sube el comprobante para activar tu {isClinic ? 'Centro de Salud' : currentPlanConfig?.name ?? 'plan'}.
+                </p>
               </div>
 
               {/* BCV Rate Box */}
@@ -595,7 +650,11 @@ function RegisterInner() {
                       background: isClinic ? 'rgba(139,92,246,0.1)' : 'rgba(0,196,204,0.1)',
                       color: isClinic ? '#8b5cf6' : '#00C4CC'
                     }}>
-                      {currentPlanConfig ? `${currentPlanConfig.name} · ${currentPlanConfig.price > 0 ? `$${currentPlanConfig.price}/mes` : `${currentPlanConfig.trial_days} días gratis`}` : form.plan}
+                      {currentPlanConfig ? `${currentPlanConfig.name} · ${
+                        selectedBilling === 'promo' && selectedPromo
+                          ? `$${selectedPromo.promo_price_usd} / ${selectedPromo.duration_months} meses`
+                          : currentPlanConfig.price > 0 ? `$${currentPlanConfig.price}/mes` : `${currentPlanConfig.trial_days} días gratis`
+                      }` : form.plan}
                     </span>
                   </span>
                   {isClinic && (

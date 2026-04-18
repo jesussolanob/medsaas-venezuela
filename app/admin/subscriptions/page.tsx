@@ -27,7 +27,13 @@ export default async function SubscriptionsPage() {
     trial:        'bg-slate-100 text-slate-600',
     basic:        'bg-blue-50 text-blue-600',
     professional: 'bg-teal-50 text-teal-600',
+    clinic:       'bg-violet-50 text-violet-600',
     enterprise:   'bg-violet-50 text-violet-600',
+  }
+
+  const planLabels: Record<string, string> = {
+    trial: 'Trial', basic: 'Basic', professional: 'Professional',
+    clinic: 'Centro de Salud', enterprise: 'Centro de Salud',
   }
 
   return (
@@ -95,8 +101,8 @@ export default async function SubscriptionsPage() {
                       </div>
                     </td>
                     <td className="px-4 sm:px-6 py-4">
-                      <span className={`text-xs px-2 py-1 rounded-full capitalize font-medium ${planColor} whitespace-nowrap`}>
-                        {sub.plan}
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${planColor} whitespace-nowrap`}>
+                        {planLabels[sub.plan] || sub.plan}
                       </span>
                     </td>
                     <td className="px-4 sm:px-6 py-4">

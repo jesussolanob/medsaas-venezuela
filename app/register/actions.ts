@@ -298,6 +298,28 @@ export async function getActivePlans(): Promise<PlanConfigPublic[]> {
   return data ?? []
 }
 
+// ── Obtener promociones activas ──────────────────────────────────────────────
+export type PromotionPublic = {
+  id: string
+  plan_key: string
+  duration_months: number
+  original_price_usd: number
+  promo_price_usd: number
+  label: string
+}
+
+export async function getActivePromotions(): Promise<PromotionPublic[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('plan_promotions')
+    .select('id, plan_key, duration_months, original_price_usd, promo_price_usd, label')
+    .eq('is_active', true)
+    .or('ends_at.is.null,ends_at.gt.' + new Date().toISOString())
+    .order('duration_months')
+  if (error) { console.error('Error fetching promotions:', error.message); return [] }
+  return data ?? []
+}
+
 // ── Cuentas de cobro del admin ────────────────────────────────────────────────
 export type PaymentAccount = {
   id: string; type: string; bank_name: string | null
