@@ -100,11 +100,11 @@ export default function DoctorPlansPage() {
 
   const getPlanBadgeColor = (plan: string) => {
     switch (plan) {
-      case 'free':
+      case 'basic':
       case 'trial':
-        return { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Plan Gratis' }
-      case 'pro':
-        return { bg: 'bg-teal-100', text: 'text-teal-600', label: 'Plan Pro' }
+        return { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Plan Basic' }
+      case 'professional':
+        return { bg: 'bg-teal-100', text: 'text-teal-600', label: 'Plan Professional' }
       case 'centro_salud':
         return { bg: 'bg-violet-100', text: 'text-violet-600', label: 'Centro de Salud' }
       default:
@@ -120,7 +120,7 @@ export default function DoctorPlansPage() {
       })
     : 'N/A'
 
-  const progressPercentage = subscription?.plan === 'free'
+  const progressPercentage = subscription?.plan === 'basic'
     ? (daysRemaining / 30) * 100
     : Math.min((daysRemaining / 30) * 100, 100)
 
@@ -143,7 +143,7 @@ export default function DoctorPlansPage() {
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Plan actual</p>
               <p className="text-3xl font-bold text-slate-900 mt-2">
-                {subscription.plan === 'pro' ? 'Pro - $20 USD' : subscription.plan === 'centro_salud' ? 'Centro de Salud - $100 USD' : 'Plan Gratis'}
+                {subscription.plan === 'professional' ? 'Professional - $20 USD' : subscription.plan === 'centro_salud' ? 'Centro de Salud - $100 USD' : 'Plan Basic'}
               </p>
             </div>
             <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${getPlanBadgeColor(subscription.plan).bg} ${getPlanBadgeColor(subscription.plan).text}`}>
@@ -276,14 +276,14 @@ export default function DoctorPlansPage() {
       ) : null}
 
       {/* Upgrade Section */}
-      {subscription?.plan === 'free' || subscription?.plan === 'trial' ? (
+      {subscription?.plan === 'basic' || subscription?.plan === 'trial' ? (
         <div className="space-y-4">
           <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Planes disponibles</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Pro Plan */}
+            {/* Professional Plan */}
             <div className="border border-slate-200 rounded-xl p-6 space-y-4 hover:border-teal-300 hover:shadow-md transition-all">
               <div>
-                <h4 className="text-lg font-bold text-slate-900">Plan Pro</h4>
+                <h4 className="text-lg font-bold text-slate-900">Plan Professional</h4>
                 <p className="text-2xl font-bold text-teal-600 mt-2">$20 <span className="text-sm text-slate-500">/mes</span></p>
               </div>
               <ul className="space-y-2 text-sm text-slate-600">
@@ -305,7 +305,7 @@ export default function DoctorPlansPage() {
                 </li>
               </ul>
               <button className="w-full bg-teal-500 text-white font-semibold py-2.5 rounded-xl hover:bg-teal-600 transition-colors">
-                Actualizar a Pro
+                Actualizar a Professional
               </button>
             </div>
 
@@ -345,7 +345,7 @@ export default function DoctorPlansPage() {
       ) : null}
 
       {/* Current Plan Info */}
-      {subscription && subscription.plan !== 'free' && subscription.plan !== 'trial' && (
+      {subscription && subscription.plan !== 'basic' && subscription.plan !== 'trial' && (
         <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
           <p className="text-xs text-slate-600">
             Tu plan actual incluye todo lo necesario para gestionar tu práctica médica. Para cambiar de plan o necesitas ayuda, contacta a soporte.

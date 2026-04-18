@@ -95,13 +95,13 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
   const handleChangeToPro = async () => {
     if (!details?.profile) return
 
-    // If already PRO, show error
-    if (details?.subscription?.plan === 'pro') {
-      setError('Este médico ya está en plan PRO')
+    // If already Professional, show error
+    if (details?.subscription?.plan === 'professional') {
+      setError('Este médico ya está en plan Professional')
       return
     }
 
-    if (!confirm('¿Solicitar cambio a plan PRO? Se enviará a Aprobaciones para verificación.')) return
+    if (!confirm('¿Solicitar cambio a plan Professional? Se enviará a Aprobaciones para verificación.')) return
 
     try {
       setChangingPlan(true)
@@ -110,7 +110,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
       const response = await fetch('/api/admin/change-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doctorId: details.profile.id, plan: 'pro' }),
+        body: JSON.stringify({ doctorId: details.profile.id, plan: 'professional' }),
       })
 
       const data = await response.json()
@@ -327,7 +327,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               disabled={changingPlan}
               className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60"
             >
-              {changingPlan ? 'Cambiando...' : 'Cambiar a PRO'}
+              {changingPlan ? 'Cambiando...' : 'Cambiar a Professional'}
             </button>
             <button
               onClick={onClose}

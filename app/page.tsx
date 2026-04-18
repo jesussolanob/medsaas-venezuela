@@ -93,7 +93,7 @@ export default function LandingPage() {
             <Link href="/patient/login" className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg hover:bg-slate-100 transition-all">
               Soy paciente
             </Link>
-            <Link href="/register?plan=free" className="text-sm font-semibold text-white px-5 py-2.5 rounded-xl transition-all hover:opacity-90 active:scale-95 shadow-lg shadow-cyan-500/25 g-bg">
+            <Link href="/register?plan=basic" className="text-sm font-semibold text-white px-5 py-2.5 rounded-xl transition-all hover:opacity-90 active:scale-95 shadow-lg shadow-cyan-500/25 g-bg">
               Prueba gratis
             </Link>
           </div>
@@ -111,7 +111,7 @@ export default function LandingPage() {
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2 mt-2">
               <Link href="/login" className="text-center text-sm font-semibold text-slate-600 py-2.5 border border-slate-200 rounded-xl">Soy doctor</Link>
               <Link href="/patient/login" className="text-center text-sm font-semibold text-slate-600 py-2.5 border border-slate-200 rounded-xl">Soy paciente</Link>
-              <Link href="/register?plan=free" className="text-center text-sm font-semibold text-white py-2.5 rounded-xl g-bg">Prueba gratis — 30 días</Link>
+              <Link href="/register?plan=basic" className="text-center text-sm font-semibold text-white py-2.5 rounded-xl g-bg">Prueba gratis — 30 días</Link>
             </div>
           </div>
         )}
@@ -138,7 +138,7 @@ export default function LandingPage() {
             </p>
 
             <div className="anim-fu3 flex flex-col sm:flex-row gap-4">
-              <Link href="/register?plan=free" className="group flex items-center justify-center gap-2 text-white font-semibold px-7 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl shadow-cyan-500/30 g-bg">
+              <Link href="/register?plan=basic" className="group flex items-center justify-center gap-2 text-white font-semibold px-7 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl shadow-cyan-500/30 g-bg">
                 Comenzar gratis <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
               <Link href="/register?plan=pro" className="group flex items-center justify-center gap-2 font-semibold px-7 py-4 rounded-2xl text-base border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700">
@@ -495,7 +495,7 @@ export default function LandingPage() {
 
           <div className="mt-12 text-center">
             <p className="text-slate-600 text-sm mb-4">Delta está diseñado específicamente para médicos especialistas. Comienza en 5 minutos.</p>
-            <Link href="/register?plan=free" className="inline-flex items-center justify-center gap-2 font-bold px-8 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl text-white g-bg">
+            <Link href="/register?plan=basic" className="inline-flex items-center justify-center gap-2 font-bold px-8 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl text-white g-bg">
               Prueba gratis — 30 días <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -561,7 +561,7 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/register?plan=free" className="block text-center font-semibold py-3 rounded-2xl border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700 text-sm">
+              <Link href="/register?plan=basic" className="block text-center font-semibold py-3 rounded-2xl border-2 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/40 transition-all text-slate-700 text-sm">
                 Comenzar gratis →
               </Link>
             </div>
@@ -638,7 +638,7 @@ export default function LandingPage() {
               </h2>
               <p className="text-lg text-slate-400 font-medium max-w-lg mx-auto">Únete a los médicos venezolanos que transformaron su manera de trabajar. Empieza en 5 minutos.</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
-                <Link href="/register?plan=free" className="group flex items-center justify-center gap-2 font-bold px-8 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl text-white g-bg">
+                <Link href="/register?plan=basic" className="group flex items-center justify-center gap-2 font-bold px-8 py-4 rounded-2xl text-base transition-all hover:opacity-90 active:scale-95 shadow-xl text-white g-bg">
                   Prueba gratis — 30 días <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
                 <Link href="/register?plan=clinic" className="flex items-center justify-center gap-2 font-semibold px-8 py-4 rounded-2xl text-base border border-violet-400/40 text-white hover:bg-violet-500/20 transition-all">

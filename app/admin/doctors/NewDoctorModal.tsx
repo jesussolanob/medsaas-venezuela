@@ -36,7 +36,7 @@ const ESPECIALIDADES = [
 ]
 
 const PLANES: {
-  value: 'free' | 'pro'
+  value: 'basic' | 'professional'
   label: string
   badge: string
   description: string
@@ -46,8 +46,8 @@ const PLANES: {
   selected: string
 }[] = [
   {
-    value: 'free',
-    label: 'Free',
+    value: 'basic',
+    label: 'Basic',
     badge: 'Trial',
     description: '30 días gratis para explorar la plataforma',
     price: '$0 / mes',
@@ -56,8 +56,8 @@ const PLANES: {
     selected: 'border-slate-400 bg-slate-50 ring-1 ring-slate-300',
   },
   {
-    value: 'pro',
-    label: 'Pro',
+    value: 'professional',
+    label: 'Professional',
     badge: 'Recomendado',
     description: 'CRM completo, agenda, finanzas e IA',
     price: '$20 USD / mes',
@@ -77,7 +77,7 @@ const defaultForm: FormState = {
   confirmPassword: '',
   specialty: '',
   phone: '',
-  plan: 'free',
+  plan: 'basic',
 }
 
 type FormErrors = Partial<Record<keyof FormState, string>>
@@ -338,7 +338,7 @@ export default function NewDoctorModal() {
                               ${isSelected ? plan.selected : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'}`}
                           >
                             <span className={`absolute top-2.5 right-2.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full
-                              ${plan.value === 'pro' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
+                              ${plan.value === 'professional' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
                               {plan.badge}
                             </span>
                             <span className={`flex items-center gap-1.5 font-semibold text-sm ${isSelected ? plan.color : 'text-slate-700'}`}>
@@ -433,11 +433,11 @@ function SuccessView({
 }: {
   doctorName: string
   email: string
-  plan: 'free' | 'pro'
+  plan: 'basic' | 'professional'
   onClose: () => void
 }) {
-  const planLabel = plan === 'pro' ? 'Pro · $20 USD/mes' : 'Free · 30 días trial'
-  const planColor = plan === 'pro' ? 'text-teal-600 bg-teal-50' : 'text-slate-600 bg-slate-100'
+  const planLabel = plan === 'professional' ? 'Professional · $20 USD/mes' : 'Basic · 30 días trial'
+  const planColor = plan === 'professional' ? 'text-teal-600 bg-teal-50' : 'text-slate-600 bg-slate-100'
 
   return (
     <div className="flex flex-col items-center text-center gap-5 py-2">

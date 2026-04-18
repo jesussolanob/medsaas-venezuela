@@ -243,7 +243,7 @@ export default function ApprovalsClient({
       const res = await fetch('/api/admin/extend-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriptionId, days: 30, newPlan: 'pro' }),
+        body: JSON.stringify({ subscriptionId, days: 30, newPlan: 'professional' }),
       })
 
       if (!res.ok) {
@@ -253,7 +253,7 @@ export default function ApprovalsClient({
       }
 
       setNewSubscriptions(prev => prev.filter(s => s.id !== subscriptionId))
-      setSuccessMessage('Plan PRO activado. Suscripción extendida 30 días.')
+      setSuccessMessage('Plan Professional activado. Suscripción extendida 30 días.')
       setTimeout(() => setSuccessMessage(null), 4000)
     } catch (err) {
       setError('Error al conectar con el servidor')
@@ -756,7 +756,7 @@ export default function ApprovalsClient({
                             </div>
                           </div>
                           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
-                            {sub.plan === 'free' && (
+                            {sub.plan === 'basic' && (
                               <button
                                 onClick={() => handleActivatePro(sub.id)}
                                 disabled={extendingId === sub.id}
@@ -770,7 +770,7 @@ export default function ApprovalsClient({
                                 ) : (
                                   <>
                                     <CheckCircle2 className="w-3.5 h-3.5" />
-                                    Activar PRO
+                                    Activar Professional
                                   </>
                                 )}
                               </button>

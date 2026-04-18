@@ -93,7 +93,7 @@ export default function ClinicDetailDrawer({ clinic, isOpen, onClose, onClinicUp
   const handleChangeToPro = async () => {
     if (!details?.clinic || !details?.ownerProfile) return
 
-    const confirmMessage = '¿Solicitar cambio a plan PRO para esta clínica? Se enviará a Aprobaciones para verificación.'
+    const confirmMessage = '¿Solicitar cambio a plan Professional para esta clínica? Se enviará a Aprobaciones para verificación.'
     if (!confirm(confirmMessage)) return
 
     try {
@@ -103,7 +103,7 @@ export default function ClinicDetailDrawer({ clinic, isOpen, onClose, onClinicUp
       const response = await fetch('/api/admin/change-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doctorId: details.ownerProfile.id, plan: 'pro' }),
+        body: JSON.stringify({ doctorId: details.ownerProfile.id, plan: 'professional' }),
       })
 
       const data = await response.json()
@@ -350,7 +350,7 @@ export default function ClinicDetailDrawer({ clinic, isOpen, onClose, onClinicUp
               disabled={changingPlan}
               className="w-full bg-teal-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-60"
             >
-              {changingPlan ? 'Solicitando...' : 'Cambiar a PRO'}
+              {changingPlan ? 'Solicitando...' : 'Cambiar a Professional'}
             </button>
             <button
               onClick={onClose}

@@ -10,7 +10,7 @@ export type RegisterInput = {
   password: string
   specialty: string
   phone: string
-  plan: 'free' | 'pro' | 'clinic'
+  plan: 'basic' | 'professional' | 'clinic'
   sex?: string
   professional_title?: string
 }
@@ -63,8 +63,8 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
   const { error: subError } = await supabase.from('subscriptions').insert({
     doctor_id: userId,
     plan: input.plan,
-    status: input.plan === 'free' ? 'trial' : 'pending_payment',
-    current_period_end: input.plan === 'free' ? expiresAt.toISOString() : null,
+    status: input.plan === 'basic' ? 'trial' : 'pending_payment',
+    current_period_end: input.plan === 'basic' ? expiresAt.toISOString() : null,
   })
 
   if (subError) {

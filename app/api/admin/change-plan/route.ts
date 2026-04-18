@@ -13,9 +13,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!['free', 'pro'].includes(plan)) {
+    if (!['basic', 'professional'].includes(plan)) {
       return NextResponse.json(
-        { error: 'Invalid plan. Must be free or pro' },
+        { error: 'Invalid plan. Must be basic or professional' },
         { status: 400 }
       )
     }
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         .from('subscriptions')
         .insert({
           doctor_id: doctorId,
-          plan: 'free',
+          plan: 'basic',
           status: 'trial',
           current_period_end: expiresAt.toISOString(),
         })
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       .from('subscription_payments')
       .insert({
         doctor_id: doctorId,
-        amount: plan === 'pro' ? 20 : 0,
+        amount: plan === 'professional' ? 20 : 0,
         currency: 'USD',
         payment_method: 'admin_upgrade',
         reference_number: `UPGRADE-${Date.now()}`,

@@ -31,7 +31,7 @@ const PROFESSIONAL_TITLES = [
   { value: 'Fisio.', label: 'Fisioterapeuta (Fisio.)', gender: 'N' },
 ]
 
-type PlanType = 'free' | 'pro' | 'clinic'
+type PlanType = 'basic' | 'professional' | 'clinic'
 
 type FormData = {
   full_name: string; cedula: string; email: string
@@ -48,7 +48,7 @@ type FormErrors = Partial<Record<keyof FormData, string>>
 const defaultForm: FormData = {
   full_name: '', cedula: '', email: '',
   password: '', confirmPassword: '',
-  specialty: '', phone: '', plan: 'free', sex: '', professional_title: 'Dr.',
+  specialty: '', phone: '', plan: 'basic', sex: '', professional_title: 'Dr.',
   clinic_name: '', clinic_address: '', clinic_city: '', clinic_state: '',
   clinic_phone: '', clinic_email: '', clinic_specialty: '',
 }
@@ -66,7 +66,7 @@ function RegisterInner() {
   const planParam = searchParams.get('plan') as PlanType | null
 
   const [step, setStep] = useState(planParam ? 1 : 0)
-  const [form, setForm] = useState<FormData>({ ...defaultForm, plan: planParam ?? 'free' })
+  const [form, setForm] = useState<FormData>({ ...defaultForm, plan: planParam ?? 'basic' })
   const [errors, setErrors] = useState<FormErrors>({})
   const [serverError, setServerError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -82,7 +82,7 @@ function RegisterInner() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isClinic = form.plan === 'clinic'
-  const isPro = form.plan === 'pro'
+  const isPro = form.plan === 'professional'
   const needsPayment = isPro || isClinic
   const planPrice = isClinic ? 100 : 20
 
@@ -143,7 +143,7 @@ function RegisterInner() {
       const result = await registerDoctor(input)
       if (!result.success) { setServerError(result.error); return }
       setDoctorId(result.doctorId)
-      if (form.plan === 'free') {
+      if (form.plan === 'basic') {
         setStep(3)
       } else {
         setLoadingAccounts(true)
@@ -266,15 +266,15 @@ function RegisterInner() {
                 <p className="text-slate-500 font-medium">Comienza gratis, activa Pro o registra tu centro de salud.</p>
               </div>
               <div className="grid gap-4">
-                {/* Free */}
-                <button onClick={() => selectPlan('free')} className="group w-full bg-white rounded-2xl border-2 border-slate-200 hover:border-cyan-300 p-6 text-left transition-all hover:shadow-lg hover:shadow-cyan-500/10 active:scale-[.99]">
+                {/* Basic */}
+                <button onClick={() => selectPlan('basic')} className="group w-full bg-white rounded-2xl border-2 border-slate-200 hover:border-cyan-300 p-6 text-left transition-all hover:shadow-lg hover:shadow-cyan-500/10 active:scale-[.99]">
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center group-hover:bg-cyan-50 transition-colors">
                       <Stethoscope className="w-5 h-5 text-slate-500 group-hover:text-cyan-500 transition-colors" />
                     </div>
                     <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Trial 30 días</span>
                   </div>
-                  <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Free</p>
+                  <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Basic</p>
                   <div className="flex items-end gap-1.5 mb-2">
                     <span className="text-4xl font-extrabold text-slate-900">$0</span>
                     <span className="text-slate-400 font-medium mb-1">/ mes</span>
@@ -285,8 +285,8 @@ function RegisterInner() {
                   </div>
                 </button>
 
-                {/* Pro */}
-                <button onClick={() => selectPlan('pro')} className="group w-full rounded-2xl border-2 border-transparent p-6 text-left transition-all hover:shadow-xl hover:shadow-cyan-500/20 active:scale-[.99] relative overflow-hidden" style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)' }}>
+                {/* Professional */}
+                <button onClick={() => selectPlan('professional')} className="group w-full rounded-2xl border-2 border-transparent p-6 text-left transition-all hover:shadow-xl hover:shadow-cyan-500/20 active:scale-[.99] relative overflow-hidden" style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)' }}>
                   <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full opacity-10" style={{ background: '#00C4CC' }} />
                   <div className="absolute top-4 right-4">
                     <span className="text-xs font-bold px-3 py-1.5 rounded-full text-white" style={{ background: '#00C4CC' }}>Recomendado</span>
@@ -296,14 +296,14 @@ function RegisterInner() {
                       <Zap className="w-5 h-5" style={{ color: '#00C4CC' }} />
                     </div>
                   </div>
-                  <p className="text-sm font-bold uppercase tracking-widest mb-1" style={{ color: '#00C4CC' }}>Pro</p>
+                  <p className="text-sm font-bold uppercase tracking-widest mb-1" style={{ color: '#00C4CC' }}>Professional</p>
                   <div className="flex items-end gap-1.5 mb-2">
                     <span className="text-4xl font-extrabold text-white">$20</span>
                     <span className="text-slate-400 font-medium mb-1">USD / mes</span>
                   </div>
                   <p className="text-sm text-slate-400">Todas las funcionalidades: CRM completo, EHR con IA, finanzas y marketing masivo.</p>
                   <div className="mt-4 flex items-center gap-2 text-sm font-bold text-white">
-                    Activar Plan Pro <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    Activar Plan Professional <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
 
@@ -347,7 +347,7 @@ function RegisterInner() {
                 </h1>
                 <p className="text-sm text-slate-500 font-medium">
                   Plan <span className="font-bold" style={{ color: isClinic ? '#8b5cf6' : '#00C4CC' }}>
-                    {isClinic ? 'Centro de Salud · $100 USD/mes' : isPro ? 'Pro · $20 USD/mes' : 'Free · 30 días'}
+                    {isClinic ? 'Centro de Salud · $100 USD/mes' : isPro ? 'Professional · $20 USD/mes' : 'Basic · 30 días'}
                   </span>
                 </p>
                 {isClinic && (
@@ -640,15 +640,15 @@ function RegisterInner() {
               </div>
               <div className="space-y-2">
                 <h1 className="text-2xl font-extrabold text-slate-900">
-                  {form.plan === 'free' ? '¡Bienvenido a Delta!' :
+                  {form.plan === 'basic' ? '¡Bienvenido a Delta!' :
                     isClinic ? '¡Centro de Salud registrado!' : '¡Solicitud enviada!'}
                 </h1>
                 <p className="text-slate-500 font-medium">
-                  {form.plan === 'free'
+                  {form.plan === 'basic'
                     ? 'Tu cuenta está lista. Tienes 30 días de acceso completo.'
                     : isClinic
                       ? 'Tu clínica ha sido creada. El equipo verificará tu pago y activará el plan completo en máximo 24 horas.'
-                      : 'Hemos recibido tu comprobante. El equipo lo verificará y activará tu Plan Pro en máximo 24 horas.'}
+                      : 'Hemos recibido tu comprobante. El equipo lo verificará y activará tu Plan Professional en máximo 24 horas.'}
                 </p>
               </div>
               <div className="bg-slate-50 rounded-2xl p-4 text-left space-y-3">
@@ -662,7 +662,7 @@ function RegisterInner() {
                       background: isClinic ? 'rgba(139,92,246,0.1)' : 'rgba(0,196,204,0.1)',
                       color: isClinic ? '#8b5cf6' : '#00C4CC'
                     }}>
-                      {isClinic ? 'Centro de Salud · $100/mes' : isPro ? 'Pro · $20 USD/mes' : 'Free · 30 días'}
+                      {isClinic ? 'Centro de Salud · $100/mes' : isPro ? 'Professional · $20 USD/mes' : 'Basic · 30 días'}
                     </span>
                   </span>
                   {isClinic && (
@@ -673,12 +673,12 @@ function RegisterInner() {
                   )}
                   <span className="text-slate-400">Estado</span>
                   <span className="text-right">
-                    {form.plan === 'free' ? <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">Activo</span> : <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">Pendiente</span>}
+                    {form.plan === 'basic' ? <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">Activo</span> : <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">Pendiente</span>}
                   </span>
                 </div>
               </div>
               <div className="space-y-3">
-                {form.plan === 'free' && (
+                {form.plan === 'basic' && (
                   <Link href="/login" className="w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-2xl text-sm text-white g-bg shadow-lg shadow-cyan-500/25 hover:opacity-90 transition-all">
                     Ir a mi panel <ArrowRight className="w-4 h-4" />
                   </Link>

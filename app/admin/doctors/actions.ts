@@ -9,7 +9,7 @@ export type CreateDoctorInput = {
   password: string
   specialty: string
   phone: string
-  plan: 'free' | 'pro'
+  plan: 'basic' | 'professional'
 }
 
 export type ActionResult =
@@ -54,7 +54,7 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
   }
 
   // 3. Crear suscripción según el plan
-  // Free: trial de 30 días  |  Pro: activo por 30 días desde hoy
+  // Basic: trial de 30 días  |  Professional: activo por 30 días desde hoy
   const now = new Date()
   const expiresAt = new Date(now)
   expiresAt.setDate(expiresAt.getDate() + 30)
@@ -62,7 +62,7 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
   const { error: subError } = await supabase.from('subscriptions').insert({
     doctor_id: userId,
     plan: input.plan,
-    status: input.plan === 'free' ? 'trial' : 'active',
+    status: input.plan === 'basic' ? 'trial' : 'active',
     current_period_end: expiresAt.toISOString(),
   })
 

@@ -170,7 +170,7 @@ export default function DoctorDashboard() {
               </p>
             </div>
             <Link
-              href="/register?plan=pro"
+              href="/register?plan=professional"
               className="text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 sm:px-4 py-1.5 rounded-lg transition-colors shrink-0"
             >
               Renovar
@@ -200,7 +200,7 @@ export default function DoctorDashboard() {
               )}
               <div>
                 <p className="text-xs font-semibold text-slate-700 capitalize">
-                  Plan {subscription.plan === 'pro' ? 'Pro' : 'Free'}
+                  Plan {subscription.plan === 'professional' ? 'Professional' : 'Basic'}
                 </p>
                 <p className="text-[10px] text-slate-400 capitalize">
                   {subscription.status === 'trial' ? 'Período de prueba' :

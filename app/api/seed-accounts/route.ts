@@ -93,7 +93,7 @@ async function handler() {
 
       await supabase.from('subscriptions').insert({
         doctor_id: doctorUserId,
-        plan: 'free',
+        plan: 'basic',
         status: 'trial',
         current_period_end: expires.toISOString(),
       }).select().single()
@@ -122,7 +122,7 @@ async function handler() {
         password: '12345678',
         userId: doctorUserId,
         specialty: 'Psicología',
-        subscriptionPlan: 'free',
+        subscriptionPlan: 'basic',
         expiresIn: '30 days',
       },
     })
