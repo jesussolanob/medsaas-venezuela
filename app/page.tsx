@@ -67,12 +67,14 @@ const BETA_FEATURES = [
   'Agenda inteligente con aprobaciones',
   'Gestión de pacientes completa',
   'Consultas médicas + EHR',
-  'Informes médicos digitales',
+  'Informes, recetas y prescripciones',
+  'Cobros y facturación con PDF',
   'Finanzas: ingresos, gastos, balance',
+  'Plantillas de documentos médicos',
   'Portal del paciente',
   'Booking público por link',
+  'Compartir por WhatsApp y correo',
   'Configuración de perfil y pagos',
-  'Soporte directo por WhatsApp',
 ]
 
 const PRO_FEATURES = [

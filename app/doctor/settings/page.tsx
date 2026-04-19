@@ -137,6 +137,9 @@ function SettingsPageInner() {
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [browserNotif, setBrowserNotif] = useState(false)
 
+  // Share message template
+  const [shareMessageTemplate, setShareMessageTemplate] = useState('Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}')
+
   // Integrations
   const [whatsappToken, setWhatsappToken] = useState('')
   const [whatsappPhoneId, setWhatsappPhoneId] = useState('')
@@ -166,7 +169,7 @@ function SettingsPageInner() {
       // profile
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications, state, city, country, office_address, allows_online')
+        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications, state, city, country, office_address, allows_online, share_message_template')
         .eq('id', user.id).single()
 
       if (data) {
@@ -175,6 +178,7 @@ function SettingsPageInner() {
         setLogoUrl(data.logo_url ?? null)
         setWhatsappToken(data.whatsapp_token ?? '')
         setWhatsappPhoneId(data.whatsapp_phone_id ?? '')
+        if (data.share_message_template) setShareMessageTemplate(data.share_message_template)
         setGoogleToken(data.google_refresh_token ? '••••••••••' : '')
         setPaymentMethods(data.payment_methods ?? ['pago_movil', 'transferencia'])
         setPaymentDetails(data.payment_details ?? {})
@@ -225,6 +229,7 @@ function SettingsPageInner() {
       city: profile.city,
       office_address: profile.office_address || null,
       allows_online: profile.allows_online,
+      share_message_template: shareMessageTemplate || null,
     }).eq('id', user.id)
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
@@ -654,6 +659,59 @@ function SettingsPageInner() {
                 className="bg-white border border-slate-200 rounded-xl p-4 text-left hover:border-emerald-300 hover:shadow-sm transition-all flex items-center gap-3">
                 <span className="text-emerald-500 font-bold text-sm shrink-0">WA</span>
                 <div><p className="text-sm font-semibold text-slate-800">Compartir por WhatsApp</p><p className="text-xs text-slate-400">Enviar a cualquier contacto</p></div>
+              </button>
+            </div>
+
+            {/* Share Message Template */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Mensaje de WhatsApp / Correo</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Personaliza el mensaje que se envía al compartir documentos con tus pacientes desde Consultas.
+                </p>
+              </div>
+              <div>
+                <textarea
+                  value={shareMessageTemplate}
+                  onChange={e => setShareMessageTemplate(e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none"
+                  placeholder="Escribe tu mensaje personalizado..."
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1 self-center">Variables:</span>
+                {[
+                  { tag: '{paciente}', desc: 'Nombre' },
+                  { tag: '{fecha}', desc: 'Fecha consulta' },
+                  { tag: '{documentos}', desc: 'Docs seleccionados' },
+                  { tag: '{doctor}', desc: 'Tu nombre' },
+                  { tag: '{codigo}', desc: 'Código consulta' },
+                ].map(v => (
+                  <button
+                    key={v.tag}
+                    onClick={() => setShareMessageTemplate(prev => prev + ' ' + v.tag)}
+                    className="px-2 py-1 bg-teal-50 text-teal-700 rounded-md text-[11px] font-semibold hover:bg-teal-100 transition-colors"
+                    title={v.desc}
+                  >
+                    {v.tag}
+                  </button>
+                ))}
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Vista previa</p>
+                <p className="text-xs text-slate-600 whitespace-pre-wrap">
+                  {shareMessageTemplate
+                    .replace('{paciente}', 'María García')
+                    .replace('{fecha}', new Date().toLocaleDateString('es-VE'))
+                    .replace('{documentos}', 'informe médico, receta')
+                    .replace('{doctor}', profile.professional_title + ' ' + profile.full_name)
+                    .replace('{codigo}', 'CON-001')
+                  }
+                </p>
+              </div>
+              <button onClick={saveProfile} className="flex items-center gap-2 g-bg px-4 py-2 rounded-lg text-sm font-bold text-white hover:opacity-90 transition-opacity">
+                <Check className="w-4 h-4" /> Guardar mensaje
               </button>
             </div>
           </div>

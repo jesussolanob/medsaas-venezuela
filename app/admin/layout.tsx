@@ -4,7 +4,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
   LayoutDashboard, Users, CreditCard, CheckSquare, Package,
-  Settings, LogOut, Activity, Menu, MessageSquarePlus
+  Settings, LogOut, Activity, Menu, MessageSquarePlus, DollarSign,
+  Bell, ShieldCheck, Sliders
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -13,9 +14,14 @@ import AdminNotifications from './AdminNotifications'
 const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
   { name: 'Médicos',        href: '/admin/doctors',       icon: Users },
+  { name: 'Suscripciones',  href: '/admin/subscriptions', icon: CreditCard },
   { name: 'Aprobaciones',   href: '/admin/approvals',     icon: CheckSquare },
   { name: 'Planes',         href: '/admin/plans',         icon: Package },
+  { name: 'Features',       href: '/admin/plan-features', icon: Sliders },
+  { name: 'Finanzas',       href: '/admin/finances',      icon: DollarSign },
+  { name: 'Recordatorios',  href: '/admin/reminders',     icon: Bell },
   { name: 'Sugerencias',    href: '/admin/suggestions',   icon: MessageSquarePlus },
+  { name: 'Configuración',  href: '/admin/settings',      icon: Settings },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

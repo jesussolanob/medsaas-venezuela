@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   DollarSign, TrendingUp, TrendingDown, BarChart3,
-  Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Search, Calendar,
+  Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Search, Calendar, Download,
 } from 'lucide-react'
 
 type Income = {
@@ -204,6 +204,30 @@ export default function FinancesPage() {
     return currentDate.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })
   }
 
+  const downloadCSV = (type: 'income' | 'expenses') => {
+    let csv = ''
+    if (type === 'income') {
+      csv = 'Paciente,Monto USD,Método de pago,Fecha,Código\n'
+      const rows = tab === 'income' ? incomes : filteredData.filteredIncomes
+      rows.forEach(i => {
+        csv += `"${i.patient_name}",${i.amount_usd},"${i.payment_method}","${new Date(i.date).toLocaleDateString('es-VE')}","${i.consultation_code || ''}"\n`
+      })
+    } else {
+      csv = 'Proveedor,Concepto,Monto,Fecha,Pagado\n'
+      const rows = tab === 'expenses' ? expenses : filteredData.filteredExpenses
+      rows.forEach(e => {
+        csv += `"${e.vendor_name}","${e.concept}",${e.amount},"${new Date(e.due_date).toLocaleDateString('es-VE')}","${e.paid ? 'Sí' : 'No'}"\n`
+      })
+    }
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${type === 'income' ? 'ingresos' : 'gastos'}_${periodLabel().replace(/\s/g, '_')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!expenseForm.concept || !expenseForm.amount) return
@@ -327,29 +351,41 @@ export default function FinancesPage() {
             </span>
           </div>
         </div>
-        <div className="flex items-end gap-3 h-40">
-          {chartData.map((p, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className="w-full flex gap-1 items-end h-32">
-                <div className="flex-1 flex flex-col justify-end">
-                  <div
-                    className="w-full bg-emerald-400 rounded-t-md transition-all duration-300 min-h-[2px]"
-                    style={{ height: `${(p.income / maxChartVal) * 100}%` }}
-                    title={`$${p.income.toFixed(2)}`}
-                  />
+        {chartData.every(p => p.income === 0 && p.expenses === 0) ? (
+          <div className="flex items-center justify-center h-40 text-sm text-slate-300">
+            Sin datos en este período
+          </div>
+        ) : (
+          <div className="flex items-end gap-3 h-48">
+            {chartData.map((p, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <div className="w-full flex gap-1 items-end h-36">
+                  <div className="flex-1 flex flex-col items-center justify-end">
+                    {p.income > 0 && (
+                      <span className="text-[9px] font-bold text-emerald-600 mb-0.5">${p.income >= 1000 ? `${(p.income/1000).toFixed(1)}k` : p.income.toFixed(0)}</span>
+                    )}
+                    <div
+                      className="w-full bg-emerald-400 rounded-t-md transition-all duration-500"
+                      style={{ height: `${Math.max((p.income / maxChartVal) * 100, p.income > 0 ? 4 : 0)}%` }}
+                      title={`$${p.income.toFixed(2)}`}
+                    />
+                  </div>
+                  <div className="flex-1 flex flex-col items-center justify-end">
+                    {p.expenses > 0 && (
+                      <span className="text-[9px] font-bold text-red-500 mb-0.5">${p.expenses >= 1000 ? `${(p.expenses/1000).toFixed(1)}k` : p.expenses.toFixed(0)}</span>
+                    )}
+                    <div
+                      className="w-full bg-red-400 rounded-t-md transition-all duration-500"
+                      style={{ height: `${Math.max((p.expenses / maxChartVal) * 100, p.expenses > 0 ? 4 : 0)}%` }}
+                      title={`$${p.expenses.toFixed(2)}`}
+                    />
+                  </div>
                 </div>
-                <div className="flex-1 flex flex-col justify-end">
-                  <div
-                    className="w-full bg-red-400 rounded-t-md transition-all duration-300 min-h-[2px]"
-                    style={{ height: `${(p.expenses / maxChartVal) * 100}%` }}
-                    title={`$${p.expenses.toFixed(2)}`}
-                  />
-                </div>
+                <span className="text-[10px] text-slate-400 font-medium">{p.label}</span>
               </div>
-              <span className="text-[10px] text-slate-400 font-medium">{p.label}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -385,7 +421,12 @@ export default function FinancesPage() {
         return (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <h3 className="text-sm font-bold text-slate-700">Ingresos (Pagos aprobados)</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-700">Ingresos (Pagos aprobados)</h3>
+                <button onClick={() => downloadCSV('income')} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-teal-600 transition-colors" title="Descargar CSV">
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
               {tab === 'income' && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <Calendar className="w-4 h-4 text-slate-400" />
@@ -449,7 +490,12 @@ export default function FinancesPage() {
         return (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <h3 className="text-sm font-bold text-slate-700">Gastos del consultorio</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-700">Gastos del consultorio</h3>
+                <button onClick={() => downloadCSV('expenses')} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-teal-600 transition-colors" title="Descargar CSV">
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
               <div className="flex items-center gap-3 flex-wrap">
                 {tab === 'expenses' && (
                   <div className="flex items-center gap-2">

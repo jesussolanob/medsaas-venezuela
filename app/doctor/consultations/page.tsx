@@ -140,6 +140,10 @@ function ConsultationsPage() {
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
 
+  // Doctor profile for share template
+  const [doctorName, setDoctorName] = useState('')
+  const [shareTemplate, setShareTemplate] = useState('Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}')
+
   const today = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
@@ -147,6 +151,17 @@ function ConsultationsPage() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       try {
+        // Cargar perfil del doctor (nombre + template de mensaje)
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('full_name, professional_title, share_message_template')
+          .eq('id', user.id)
+          .single()
+        if (profileData) {
+          setDoctorName(`${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim())
+          if (profileData.share_message_template) setShareTemplate(profileData.share_message_template)
+        }
+
         // Cargar pacientes con datos médicos
         const { data: patientsData } = await supabase
           .from('patients')
@@ -598,13 +613,18 @@ function ConsultationsPage() {
                       </div>
                       <div className="flex gap-2 pt-2">
                         <button onClick={() => {
-                          const docs = []
+                          const docs: string[] = []
                           if (shareItems.informe) docs.push('informe médico')
                           if (shareItems.recipe) docs.push('receta')
                           if (shareItems.prescripciones) docs.push('prescripciones')
                           if (shareItems.reposo) docs.push('constancia de reposo')
                           if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
-                          const message = `Hola ${selected.patient_name}, tengo listos los siguientes documentos de tu consulta del ${new Date(selected.consultation_date).toLocaleDateString('es-VE')}: ${docs.join(', ')}. Por favor contacta al consultorio para recibirlos.`
+                          const message = shareTemplate
+                            .replace('{paciente}', selected.patient_name)
+                            .replace('{fecha}', new Date(selected.consultation_date).toLocaleDateString('es-VE'))
+                            .replace('{documentos}', docs.join(', '))
+                            .replace('{doctor}', doctorName)
+                            .replace('{codigo}', selected.consultation_code || '')
                           const phone = selected.patient_phone?.replace(/\D/g, '')
                           if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank')
                           else alert('Este paciente no tiene teléfono registrado')
@@ -614,14 +634,19 @@ function ConsultationsPage() {
                           <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                         </button>
                         <button onClick={() => {
-                          const docs = []
+                          const docs: string[] = []
                           if (shareItems.informe) docs.push('Informe médico')
                           if (shareItems.recipe) docs.push('Receta')
                           if (shareItems.prescripciones) docs.push('Prescripciones')
                           if (shareItems.reposo) docs.push('Constancia de reposo')
                           if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
                           const subject = `Documentos médicos - Consulta ${selected.consultation_code}`
-                          const body = `Hola ${selected.patient_name},\n\nTengo listos los siguientes documentos de tu consulta del ${new Date(selected.consultation_date).toLocaleDateString('es-VE')}:\n\n- ${docs.join('\n- ')}\n\nPor favor, revisa tu portal de paciente o contacta al consultorio para recibirlos.\n\nSaludos.`
+                          const body = shareTemplate
+                            .replace('{paciente}', selected.patient_name)
+                            .replace('{fecha}', new Date(selected.consultation_date).toLocaleDateString('es-VE'))
+                            .replace('{documentos}', docs.join(', '))
+                            .replace('{doctor}', doctorName)
+                            .replace('{codigo}', selected.consultation_code || '')
                           const patientEmail = patients.find(p => p.id === selected.patient_id)?.email
                           if (patientEmail) window.open(`mailto:${patientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
                           else alert('Este paciente no tiene email registrado')
@@ -1013,9 +1038,9 @@ function ConsultationsPage() {
           {/* Right Sidebar Toggle (when hidden) */}
           {!showRightSidebar && (
             <button onClick={() => setShowRightSidebar(true)}
-              className="hidden lg:flex fixed right-4 top-24 z-30 items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
-              <User className="w-3.5 h-3.5 text-teal-500" /> {selected.patient_name}
-              <ChevronDown className="w-3 h-3 text-slate-400" />
+              className="hidden lg:flex fixed right-4 top-24 z-30 items-center justify-center w-10 h-10 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 hover:shadow-md transition-all"
+              title={selected.patient_name}>
+              <User className="w-4 h-4 text-teal-500" />
             </button>
           )}
 

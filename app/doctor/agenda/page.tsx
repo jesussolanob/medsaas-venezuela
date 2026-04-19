@@ -202,6 +202,17 @@ export default function AgendaPage() {
   const [showConfigPanel, setShowConfigPanel] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled'>('all')
 
+  // Nueva consulta desde agenda
+  const [showNewConsulta, setShowNewConsulta] = useState(false)
+  const [patients, setPatients] = useState<{ id: string; full_name: string; phone: string | null }[]>([])
+  const [newConsulta, setNewConsulta] = useState({
+    patient_id: '',
+    date: '',
+    time: '',
+    reason: '',
+  })
+  const [creatingConsulta, setCreatingConsulta] = useState(false)
+
   const weekDates = getWeekDates(weekOffset)
   const monthCells = getMonthDates(monthYear.year, monthYear.month)
 
@@ -230,6 +241,14 @@ export default function AgendaPage() {
         }
       }
     } catch { /* use defaults */ }
+
+    // Load patients for "nueva consulta" modal
+    const { data: patientsList } = await supabase
+      .from('patients')
+      .select('id, full_name, phone')
+      .eq('doctor_id', user.id)
+      .order('full_name')
+    setPatients(patientsList || [])
 
     // 2. Load CONFIRMED consultations (only recent + future — last 30 days + next 60 days)
     const pastCutoff = new Date()
@@ -579,6 +598,48 @@ export default function AgendaPage() {
     setAvailSlots(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s))
   }
 
+  async function createConsultaFromAgenda() {
+    if (!newConsulta.patient_id || !newConsulta.date || !newConsulta.time) {
+      toast.error('Completa paciente, fecha y hora')
+      return
+    }
+    setCreatingConsulta(true)
+    try {
+      const consultationDate = new Date(`${newConsulta.date}T${newConsulta.time}:00`).toISOString()
+      const res = await fetch('/api/doctor/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: newConsulta.patient_id,
+          chief_complaint: newConsulta.reason || null,
+          consultation_date: consultationDate,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Error al crear')
+      toast.success('Consulta creada y agregada a la agenda')
+      setShowNewConsulta(false)
+      setNewConsulta({ patient_id: '', date: '', time: '', reason: '' })
+      await loadData()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Error al crear consulta')
+    } finally {
+      setCreatingConsulta(false)
+    }
+  }
+
+  // Open new consulta modal pre-filled with a date
+  function openNewConsultaForDate(date: Date, time?: string) {
+    setNewConsulta({
+      patient_id: '',
+      date: dateToYMD(date),
+      time: time || '09:00',
+      reason: '',
+    })
+    setShowNewConsulta(true)
+  }
+
   const prevMonth = () => setMonthYear(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })
   const nextMonth = () => setMonthYear(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })
 
@@ -599,7 +660,13 @@ export default function AgendaPage() {
               {' · '}{allAppointments.length} consultas
             </p>
           </div>
-          {/* Tab toggle removed — availability now managed in Consultorios */}
+          <button
+            onClick={() => openNewConsultaForDate(selectedDate)}
+            className="flex items-center gap-2 px-4 py-2 g-bg text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity shrink-0 shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva consulta
+          </button>
         </div>
 
         {/* ═══ CALENDAR TAB ═══ */}
@@ -802,9 +869,15 @@ export default function AgendaPage() {
                                   </p>
                                 </button>
                               ) : (
-                                <div className="h-12 rounded-lg border border-dashed border-slate-200 flex items-center justify-center">
-                                  <p className="text-xs text-slate-300">Disponible</p>
-                                </div>
+                                <button
+                                  onClick={() => openNewConsultaForDate(selectedDate, slot.time)}
+                                  className="w-full h-12 rounded-lg border border-dashed border-slate-200 flex items-center justify-center hover:border-teal-300 hover:bg-teal-50/50 transition-all group cursor-pointer"
+                                >
+                                  <span className="text-xs text-slate-300 group-hover:hidden">Disponible</span>
+                                  <span className="text-xs text-teal-500 font-medium hidden group-hover:flex items-center gap-1">
+                                    <Plus className="w-3 h-3" /> Agendar consulta
+                                  </span>
+                                </button>
                               )}
                             </div>
                           </div>
@@ -1052,6 +1125,206 @@ export default function AgendaPage() {
               </div>
             </div>
           </div>
+          )
+        })()}
+
+        {/* ═══ NUEVA CONSULTA MODAL ═══ */}
+        {showNewConsulta && (() => {
+          // Generate available dates (next 30 days)
+          const ncDates: string[] = []
+          const ncToday = new Date()
+          // Include today
+          ncDates.push(dateToYMD(ncToday))
+          for (let d = 1; d <= 30; d++) {
+            const dt = new Date(ncToday)
+            dt.setDate(ncToday.getDate() + d)
+            ncDates.push(dateToYMD(dt))
+          }
+
+          // Generate time slots for the selected date
+          let ncSlots: { time: string; endTime: string }[] = []
+          if (newConsulta.date) {
+            const ncDateObj = new Date(newConsulta.date + 'T12:00:00')
+            const dayOfWeek = (ncDateObj.getDay() + 6) % 7
+            ncSlots = generateTimeSlots(dayOfWeek, availSlots, config)
+          }
+
+          // Check which slots are already booked
+          const isSlotBooked = (date: string, time: string): boolean => {
+            return [...allAppointments, ...pendingAppointments.map(p => {
+              const pd = new Date(p.scheduled_at)
+              return { date: dateToYMD(pd), time: toHHMM(pd), endTime: addMinutes(toHHMM(pd), config.slot_duration) }
+            })].some(a => {
+              if (a.date !== date) return false
+              const aStart = timeToMinutes(a.time)
+              const aEnd = timeToMinutes(a.endTime)
+              const newStart = timeToMinutes(time)
+              const newEnd = newStart + config.slot_duration
+              return (newStart < aEnd && newEnd > aStart)
+            })
+          }
+
+          // Patient search
+          const filteredPatients = patients.filter(p =>
+            p.full_name.toLowerCase().includes(searchText.toLowerCase())
+          )
+
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
+                      <Stethoscope className="w-5 h-5 text-white" />
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-900">Nueva consulta</h2>
+                  </div>
+                  <button onClick={() => { setShowNewConsulta(false); setSearchText('') }} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Step 1: Select patient */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Paciente</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar paciente..."
+                      value={newConsulta.patient_id ? patients.find(p => p.id === newConsulta.patient_id)?.full_name || searchText : searchText}
+                      onChange={e => {
+                        setSearchText(e.target.value)
+                        if (newConsulta.patient_id) setNewConsulta(prev => ({ ...prev, patient_id: '' }))
+                      }}
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                    />
+                    {newConsulta.patient_id && (
+                      <button onClick={() => { setNewConsulta(prev => ({ ...prev, patient_id: '' })); setSearchText('') }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {!newConsulta.patient_id && searchText.length > 0 && (
+                    <div className="border border-slate-200 rounded-lg max-h-36 overflow-y-auto">
+                      {filteredPatients.length === 0 ? (
+                        <p className="text-xs text-slate-400 p-3 text-center">No se encontró paciente</p>
+                      ) : (
+                        filteredPatients.slice(0, 8).map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => { setNewConsulta(prev => ({ ...prev, patient_id: p.id })); setSearchText('') }}
+                            className="w-full text-left px-3 py-2 hover:bg-teal-50 text-sm text-slate-700 border-b border-slate-100 last:border-b-0 flex items-center justify-between"
+                          >
+                            <span className="font-medium">{p.full_name}</span>
+                            {p.phone && <span className="text-xs text-slate-400">{p.phone}</span>}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  {newConsulta.patient_id && (
+                    <div className="flex items-center gap-2 bg-teal-50 rounded-lg px-3 py-2">
+                      <CheckCircle className="w-4 h-4 text-teal-500" />
+                      <span className="text-sm font-semibold text-teal-700">
+                        {patients.find(p => p.id === newConsulta.patient_id)?.full_name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 2: Select date */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fecha</label>
+                  <input
+                    type="date"
+                    value={newConsulta.date}
+                    min={dateToYMD(new Date())}
+                    onChange={e => setNewConsulta(prev => ({ ...prev, date: e.target.value, time: '' }))}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  />
+                </div>
+
+                {/* Step 3: Select time slot */}
+                {newConsulta.date && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Horario — {new Date(newConsulta.date + 'T12:00:00').toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </label>
+                    {ncSlots.length === 0 ? (
+                      <div className="bg-slate-50 rounded-lg p-4 text-center">
+                        <p className="text-sm text-slate-400">No hay horarios configurados para este día</p>
+                        <a href="/doctor/offices" className="text-xs text-teal-600 font-semibold hover:text-teal-700 mt-1 inline-block">
+                          Configurar en Consultorios
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {ncSlots.map(slot => {
+                          const booked = isSlotBooked(newConsulta.date, slot.time)
+                          const isSel = newConsulta.time === slot.time
+                          return (
+                            <button
+                              key={slot.time}
+                              onClick={() => { if (!booked) setNewConsulta(prev => ({ ...prev, time: slot.time })) }}
+                              disabled={booked}
+                              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                booked ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through' :
+                                isSel ? 'bg-teal-500 text-white shadow-md' :
+                                'bg-white border border-slate-200 text-slate-700 hover:border-teal-400 hover:text-teal-600'
+                              }`}
+                            >
+                              {slot.time}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 4: Reason (optional) */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Motivo de consulta <span className="text-slate-300 font-normal">(opcional)</span></label>
+                  <input
+                    type="text"
+                    value={newConsulta.reason}
+                    onChange={e => setNewConsulta(prev => ({ ...prev, reason: e.target.value }))}
+                    placeholder="Ej: Control de rutina, seguimiento..."
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  />
+                </div>
+
+                {/* Summary */}
+                {newConsulta.patient_id && newConsulta.date && newConsulta.time && (
+                  <div className="bg-emerald-50 rounded-lg p-3 text-sm text-emerald-700">
+                    <span className="font-semibold">Resumen:</span>{' '}
+                    {patients.find(p => p.id === newConsulta.patient_id)?.full_name} —{' '}
+                    {new Date(newConsulta.date + 'T12:00:00').toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })} a las {newConsulta.time}
+                    {newConsulta.reason && ` · ${newConsulta.reason}`}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => { setShowNewConsulta(false); setSearchText('') }}
+                    className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={createConsultaFromAgenda}
+                    disabled={!newConsulta.patient_id || !newConsulta.date || !newConsulta.time || creatingConsulta}
+                    className="flex-1 py-2.5 g-bg text-white rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {creatingConsulta ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    {creatingConsulta ? 'Creando...' : 'Crear consulta'}
+                  </button>
+                </div>
+              </div>
+            </div>
           )
         })()}
       </div>

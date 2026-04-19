@@ -15,6 +15,8 @@ const navItems: NavItem[] = [
   { name: 'Inicio', href: '/patient', icon: LayoutDashboard },
   { name: 'Mis citas', href: '/patient/appointments', icon: Calendar },
   { name: 'Mis informes', href: '/patient/reports', icon: FileText },
+  { name: 'Recetas', href: '/patient/prescriptions', icon: Pill },
+  { name: 'Mensajes', href: '/patient/messages', icon: MessageCircle },
   { name: 'Mi perfil', href: '/patient/profile', icon: User },
 ]
 
