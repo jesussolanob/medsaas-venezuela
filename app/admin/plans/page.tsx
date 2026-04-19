@@ -97,7 +97,7 @@ export default function PlansPage() {
           <h2 className="text-lg font-bold">Beta Privada</h2>
         </div>
         <p className="text-sm text-white/70">
-          Delta Medical CRM está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.
+          Delta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.
         </p>
       </div>
 

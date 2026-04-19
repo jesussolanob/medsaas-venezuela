@@ -219,7 +219,7 @@ export default function BillingPage() {
     saveDocumentToDB() // Save to DB when sending
     const phone = (effectivePatient?.phone ?? '').replace(/\D/g, '')
     if (!phone) return
-    const text = `Hola ${effectivePatient?.name}, te enviamos tu ${docType === 'receipt' ? 'recibo' : 'presupuesto'} N° ${currentDocNumber}.\n\nTotal: $${subtotal.toFixed(2)} USD${bcvRate ? ` (Bs. ${(subtotal * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })})` : ''}\n\nGracias por su preferencia. Delta Medical CRM`
+    const text = `Hola ${effectivePatient?.name}, te enviamos tu ${docType === 'receipt' ? 'recibo' : 'presupuesto'} N° ${currentDocNumber}.\n\nTotal: $${subtotal.toFixed(2)} USD${bcvRate ? ` (Bs. ${(subtotal * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })})` : ''}\n\nGracias por su preferencia. Delta`
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank')
   }
 
@@ -438,7 +438,7 @@ export default function BillingPage() {
 
                 {/* Footer */}
                 <div style={{ marginTop: 40, paddingTop: 16, borderTop: '1px solid #e2e8f0', textAlign: 'center', fontSize: 10, color: '#94a3b8' }}>
-                  Documento generado por Delta Medical CRM · {docType === 'estimate' ? 'Este presupuesto tiene validez de 30 días' : 'Gracias por su preferencia'}
+                  Documento generado por Delta · {docType === 'estimate' ? 'Este presupuesto tiene validez de 30 días' : 'Gracias por su preferencia'}
                 </div>
               </div>
 

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Delta Medical CRM — El CRM que transforma tu consulta",
-  description: "Gestiona pacientes, leads de WhatsApp, agenda e historial clínico con IA. Diseñado para especialistas venezolanos.",
+  title: "Delta — First Health Tech Software in Venezuela",
+  description: "El primer software de salud hecho en Venezuela. Gestiona pacientes, agenda, historial clínico y finanzas desde un solo lugar.",
 };
 
 export default function RootLayout({

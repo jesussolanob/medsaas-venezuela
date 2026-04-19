@@ -1,7 +1,7 @@
 /**
  * Pure Node.js PDF generation for Venezuelan fiscal invoices
  * Format modeled after PagoDirecto / SENIAT fiscal invoices
- * Emisor: Delta Medical CRM  |  Destinatario: Doctor/Clínica
+ * Emisor: Delta  |  Destinatario: Doctor/Clínica
  */
 
 interface InvoiceData {
@@ -37,7 +37,7 @@ interface BillingConfig {
 }
 
 const DEFAULT_BILLING: BillingConfig = {
-  razon_social: 'Delta Medical CRM, C.A.',
+  razon_social: 'Delta, C.A.',
   rif: 'J-50000000-0',
   domicilio_fiscal: 'Av. Francisco de Miranda, Torre Delta, Piso 5, Of. 5-A, Urb. El Rosal, Caracas, Miranda, Zona Postal 1060',
   telefono: '+58 212 000 0000',
@@ -227,7 +227,7 @@ function buildFiscalInvoice(invoice: InvoiceData, billing: BillingConfig): strin
   // TABLE ROW
   // ─────────────────────────────────────────────────────
   const rowY = tblY + 28
-  const description = invoice.description || 'Suscripcion Plan Professional - Delta Medical CRM'
+  const description = invoice.description || 'Suscripcion Plan Professional - Delta'
   const amt = invoice.amount
   const bsAmt = billing.bcv_rate ? amt * billing.bcv_rate : null
 
@@ -322,7 +322,7 @@ function buildFiscalInvoice(invoice: InvoiceData, billing: BillingConfig): strin
   stroke(L, LGRAY_RGB)
   line(L, ML, PH - 50, MR, PH - 50)
 
-  text(L, 'Delta Medical CRM', ML + 10, PH - 38, 7, true, GRAY_RGB)
+  text(L, 'Delta', ML + 10, PH - 38, 7, true, GRAY_RGB)
   text(L, 'Sistema para Medicos Especialistas | deltamedical.ve', ML + 10, PH - 26, 6, false, GRAY_RGB)
 
   // Page indicator

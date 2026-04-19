@@ -59,8 +59,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Activity className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-sm font-bold leading-none g-text-logo">Delta Medical CRM</p>
-              <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Super Admin</p>
+              <p className="text-sm font-bold leading-none g-text-logo">Delta</p>
+              <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Health Tech · Admin</p>
             </div>
           </div>
 
@@ -120,7 +120,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="flex items-center gap-3 sm:gap-4">
               <AdminNotifications />
               <span className="hidden sm:inline-flex text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full font-medium">
-                Delta Medical CRM
+                Delta
               </span>
             </div>
           </header>

@@ -46,7 +46,7 @@ type BillingData = {
 }
 
 const DEFAULT_BILLING: BillingData = {
-  razon_social: 'Delta Medical CRM, C.A.',
+  razon_social: 'Delta, C.A.',
   rif: 'J-50000000-0',
   domicilio_fiscal: 'Av. Francisco de Miranda, Torre Delta, Piso 5, Of. 5-A, Urb. El Rosal, Caracas, Miranda, Zona Postal 1060',
   telefono: '+58 212 000 0000',
@@ -595,7 +595,7 @@ export default function SettingsPage() {
               </div>
               <div className="grid grid-cols-12 gap-2 py-2 border-b border-slate-100">
                 <div className="col-span-1 text-slate-500">001</div>
-                <div className="col-span-5 text-slate-700">Suscripción Plan Professional — Delta Medical CRM (1 mes)</div>
+                <div className="col-span-5 text-slate-700">Suscripción Plan Professional — Delta (1 mes)</div>
                 <div className="col-span-2 text-right text-slate-500">1,00</div>
                 <div className="col-span-2 text-right text-slate-500">$30,00</div>
                 <div className="col-span-2 text-right font-semibold text-slate-700">$30,00</div>

@@ -433,7 +433,7 @@ export default function LandingPage() {
           </div>
 
           <div className="pt-8 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-slate-400">© 2026 Delta Medical CRM · Hecho en Venezuela</p>
+            <p className="text-xs text-slate-400">© 2026 Delta · First Health Tech Software in Venezuela</p>
             <div className="flex items-center gap-6">
               <a href="#" className="text-xs text-slate-400 hover:text-slate-600">Privacidad</a>
               <a href="#" className="text-xs text-slate-400 hover:text-slate-600">Términos</a>

@@ -220,7 +220,7 @@ export default async function PatientPage({ params }: { params: { patientId: str
               <div className="flex items-center">
                 <div className="text-right w-full">
                   <p className="text-sm text-white/60 mb-2">Plataforma segura de</p>
-                  <p className="text-xl font-bold">Delta Medical CRM</p>
+                  <p className="text-xl font-bold">Delta</p>
                 </div>
               </div>
             </div>

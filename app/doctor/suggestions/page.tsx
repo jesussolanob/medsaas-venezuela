@@ -73,7 +73,7 @@ export default function SuggestionsPage() {
         </div>
         <div>
           <h2 className="text-lg sm:text-xl font-semibold">Envía tus ideas y sugerencias</h2>
-          <p className="text-sm text-white/80">para mejorar Delta Medical CRM</p>
+          <p className="text-sm text-white/80">para mejorar Delta</p>
         </div>
       </div>
 

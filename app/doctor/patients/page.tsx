@@ -22,7 +22,16 @@ const PAYMENT_STATUS = {
   approved: { label: 'Pago verificado', color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle className="w-3 h-3" /> },
 }
 
-const SOURCE_LABELS: Record<string, string> = { manual: 'Manual', invitation: 'Invitación', whatsapp: 'WhatsApp' }
+const SOURCE_LABELS: Record<string, string> = { manual: 'Manual', invitation: 'Invitación', whatsapp: 'WhatsApp', consultorio: 'Consultorio', redes_sociales: 'Redes Sociales', seguro: 'Seguro', otro: 'Otro' }
+
+const CHANNEL_OPTIONS = [
+  { value: 'consultorio', label: 'Consultorio' },
+  { value: 'redes_sociales', label: 'Redes Sociales' },
+  { value: 'seguro', label: 'Seguro' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'invitation', label: 'Invitación' },
+  { value: 'otro', label: 'Otro' },
+]
 
 type View = 'list' | 'detail' | 'new-consultation'
 type DetailTab = 'consultas' | 'historial'
@@ -41,7 +50,7 @@ export default function PatientsPage() {
   const [isPending, startTransition] = useTransition()
 
   // New patient form
-  const [newPat, setNewPat] = useState({ full_name: '', age: '', phone: '', cedula: '', email: '', sex: '', notes: '' })
+  const [newPat, setNewPat] = useState({ full_name: '', age: '', phone: '', cedula: '', email: '', sex: '', notes: '', source: '' })
   const [patError, setPatError] = useState('')
 
   // New consultation form
@@ -109,11 +118,11 @@ export default function PatientsPage() {
         email: newPat.email || undefined,
         sex: newPat.sex || undefined,
         notes: newPat.notes || undefined,
-        source: 'manual',
+        source: newPat.source || 'manual',
       })
       if (!res.success) { setPatError(res.error); return }
       setShowAddModal(false)
-      setNewPat({ full_name: '', age: '', phone: '', cedula: '', email: '', sex: '', notes: '' })
+      setNewPat({ full_name: '', age: '', phone: '', cedula: '', email: '', sex: '', notes: '', source: '' })
       if (doctorId) getPatients(doctorId).then(setPatients)
     })
   }
@@ -183,10 +192,14 @@ export default function PatientsPage() {
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 shrink-0">
               <Filter className="w-4 h-4 text-slate-400 hidden sm:block" />
               <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="text-sm text-slate-600 outline-none bg-transparent py-2.5 pr-2 flex-1 sm:flex-none">
-                <option value="all">Todos los orígenes</option>
-                <option value="manual">Manual</option>
-                <option value="invitation">Invitación</option>
+                <option value="all">Todos los canales</option>
+                <option value="consultorio">Consultorio</option>
+                <option value="redes_sociales">Redes Sociales</option>
+                <option value="seguro">Seguro</option>
                 <option value="whatsapp">WhatsApp</option>
+                <option value="invitation">Invitación</option>
+                <option value="manual">Manual</option>
+                <option value="otro">Otro</option>
               </select>
             </div>
           </div>
@@ -676,6 +689,17 @@ export default function PatientsPage() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Notas</label>
                 <textarea value={newPat.notes} onChange={e => setNewPat(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Alergias, condiciones previas..." className={fi + ' resize-none'} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Canal de captación</label>
+                <select value={newPat.source} onChange={e => setNewPat(p => ({ ...p, source: e.target.value }))} className={fi}>
+                  <option value="">Seleccionar canal...</option>
+                  {CHANNEL_OPTIONS.map(ch => (
+                    <option key={ch.value} value={ch.value}>{ch.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">¿Por dónde llegó este paciente?</p>
               </div>
 
               <div className="flex gap-3 pt-1">

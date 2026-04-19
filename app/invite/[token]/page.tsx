@@ -198,7 +198,7 @@ export default function InviteBookingPage() {
             <Activity className="w-4 h-4 text-white" />
           </div>
           <div>
-            <span className="font-bold text-slate-900">Delta Medical CRM</span>
+            <span className="font-bold text-slate-900">Delta</span>
             <span className="text-slate-400 text-xs block">Booking de consulta</span>
           </div>
         </div>

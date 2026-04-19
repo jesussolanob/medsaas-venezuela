@@ -180,7 +180,7 @@ export default async function ConsultationReportPage({
 
             {/* Footer */}
             <div className="border-t border-slate-200 pt-6 mt-8 text-center text-xs text-slate-500">
-              <p>Documento generado por Delta Medical CRM</p>
+              <p>Documento generado por Delta</p>
               <p>Este documento contiene información confidencial de salud.</p>
             </div>
           </div>

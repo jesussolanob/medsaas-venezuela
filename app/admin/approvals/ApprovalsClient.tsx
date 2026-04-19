@@ -125,7 +125,7 @@ export default function ApprovalsClient({
       {/* Header */}
       <div className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 p-5 text-white">
         <h2 className="text-lg font-bold">Beta Privada — Aprobaciones</h2>
-        <p className="text-sm text-white/70 mt-1">Médicos que quieren unirse a la beta privada de Delta Medical CRM</p>
+        <p className="text-sm text-white/70 mt-1">Médicos que quieren unirse a la beta privada de Delta</p>
       </div>
 
       {/* Stats */}

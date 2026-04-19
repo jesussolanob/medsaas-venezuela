@@ -299,7 +299,7 @@ export default function DoctorDashboard() {
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-5 h-5 text-white/80" />
-              <span className="text-white/80 text-sm font-medium">Delta Medical CRM</span>
+              <span className="text-white/80 text-sm font-medium">Delta</span>
             </div>
             <h2 className="text-xl font-bold text-white mb-1">
               Tu portal médico está listo

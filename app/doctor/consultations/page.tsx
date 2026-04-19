@@ -87,6 +87,10 @@ function ConsultationsPage() {
   // Report fields (editable during consultation)
   const [report, setReport] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid' as Consultation['payment_status'] })
 
+  // PDF include toggles
+  const [includeDiagnosis, setIncludeDiagnosis] = useState(true)
+  const [includeTreatment, setIncludeTreatment] = useState(true)
+
   // New consultation modal
   const [showNewConsultation, setShowNewConsultation] = useState(false)
   const [patients, setPatients] = useState<Patient[]>([])
@@ -376,7 +380,7 @@ function ConsultationsPage() {
 </head>
 <body>
   <div class="header">
-    <h1>Delta Medical CRM</h1>
+    <h1>Delta</h1>
     <p>Informe Médico</p>
   </div>
 
@@ -399,12 +403,12 @@ function ConsultationsPage() {
 
   ${report.notes ? '<div class="section"><div class="section-title">Informe Médico</div><div class="section-content">' + report.notes + '</div></div>' : ''}
 
-  ${report.diagnosis ? '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>' : ''}
+  ${includeDiagnosis && report.diagnosis ? '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>' : ''}
 
-  ${report.treatment ? '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' + report.treatment + '</div></div>' : ''}
+  ${includeTreatment && report.treatment ? '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' + report.treatment + '</div></div>' : ''}
 
   <div class="footer">
-    <p>Documento generado por Delta Medical CRM · ${new Date().toLocaleDateString('es-VE')}</p>
+    <p>Documento generado por Delta · ${new Date().toLocaleDateString('es-VE')}</p>
     <p>${selected.consultation_code}</p>
   </div>
 
@@ -558,6 +562,26 @@ function ConsultationsPage() {
               className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
               <Printer className="w-4 h-4" /> PDF
             </button>
+          </div>
+
+          {/* PDF Include Toggles */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Incluir en el informe PDF</p>
+            <div className="flex flex-wrap gap-4">
+              <button type="button" onClick={() => setIncludeDiagnosis(v => !v)} className="flex items-center gap-2.5 group">
+                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${includeDiagnosis ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white group-hover:border-slate-400'}`}>
+                  {includeDiagnosis && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                </div>
+                <span className={`text-sm font-medium transition-colors ${includeDiagnosis ? 'text-slate-800' : 'text-slate-400'}`}>Diagnóstico</span>
+              </button>
+
+              <button type="button" onClick={() => setIncludeTreatment(v => !v)} className="flex items-center gap-2.5 group">
+                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${includeTreatment ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white group-hover:border-slate-400'}`}>
+                  {includeTreatment && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                </div>
+                <span className={`text-sm font-medium transition-colors ${includeTreatment ? 'text-slate-800' : 'text-slate-400'}`}>Plan de tratamiento</span>
+              </button>
+            </div>
           </div>
 
           {/* Medical Report Form with Safari-style Tabs */}
