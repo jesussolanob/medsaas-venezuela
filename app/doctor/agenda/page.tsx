@@ -167,7 +167,7 @@ function dateToYMD(d: Date): string {
 // ── Component ────────────────────────────────────────────────────────────────
 
 type CalendarView = 'week' | 'month' | 'day'
-type AgendaTab = 'calendar' | 'availability'
+type AgendaTab = 'calendar'
 
 export default function AgendaPage() {
   const router = useRouter()
@@ -599,15 +599,7 @@ export default function AgendaPage() {
               {' · '}{allAppointments.length} consultas
             </p>
           </div>
-          <div className="flex gap-2">
-            <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
-              {(['calendar', 'availability'] as AgendaTab[]).map(t => (
-                <button key={t} onClick={() => setTab(t)} className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${tab === t ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                  {t === 'calendar' ? 'Calendario' : 'Disponibilidad'}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Tab toggle removed — availability now managed in Consultorios */}
         </div>
 
         {/* ═══ CALENDAR TAB ═══ */}
@@ -777,9 +769,9 @@ export default function AgendaPage() {
                         <div className="flex flex-col items-center justify-center py-16 text-center">
                           <Calendar className="w-10 h-10 text-slate-200 mb-3" />
                           <p className="text-slate-400 text-sm">No hay horarios configurados para {DAYS_FULL[dayOfWeek]}</p>
-                          <button onClick={() => setTab('availability')} className="mt-3 text-xs text-teal-600 font-semibold hover:text-teal-700">
-                            Configurar disponibilidad
-                          </button>
+                          <a href="/doctor/offices" className="mt-3 text-xs text-teal-600 font-semibold hover:text-teal-700 inline-block">
+                            Configurar en Consultorios
+                          </a>
                         </div>
                       )
                     }
@@ -826,277 +818,7 @@ export default function AgendaPage() {
           </div>
         )}
 
-        {/* ═══ APPROVAL PANEL (below calendar) ═══ */}
-        {tab === 'calendar' && (
-          <div className="bg-white border border-slate-200 rounded-xl">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                  <ClipboardList className="w-4 h-4" /> Panel de aprobaciones
-                </p>
-                <p className="text-xs text-slate-400 mt-1">{pendingAppointments.length} citas pendientes</p>
-              </div>
-            </div>
-
-            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="Buscar por nombre, cédula..."
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white" />
-              </div>
-            </div>
-
-            {pendingAppointments.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <CheckCircle className="w-10 h-10 text-emerald-200 mb-3" />
-                <p className="text-slate-400 text-sm">Sin citas pendientes</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {pendingAppointments
-                  .filter(a => !searchText || a.patient_name.toLowerCase().includes(searchText.toLowerCase()) || (a.patient_cedula ?? '').includes(searchText))
-                  .map(appt => {
-                    const apptDate = new Date(appt.scheduled_at)
-                    const dayOfWeek = (apptDate.getDay() + 6) % 7
-                    const timeStr = toHHMM(apptDate)
-                    const isValidTime = isValidSlotTime(timeStr, dayOfWeek, availSlots, config)
-                    const hasConflict = allAppointments.some(a => {
-                      if (a.date !== dateToYMD(apptDate)) return false
-                      const aStart = timeToMinutes(a.time)
-                      const aEnd = timeToMinutes(a.endTime)
-                      const newStart = timeToMinutes(timeStr)
-                      const newEnd = newStart + config.slot_duration
-                      return (newStart < aEnd && newEnd > aStart)
-                    })
-
-                    return (
-                      <div key={appt.id} className="p-5 hover:bg-slate-50 transition-colors">
-                        <div className="flex items-start justify-between gap-4 mb-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-800">{appt.patient_name}</p>
-                            <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                              {appt.patient_cedula && <span>CI: {appt.patient_cedula}</span>}
-                              {appt.patient_phone && <><span>·</span><span>{appt.patient_phone}</span></>}
-                            </div>
-                            {appt.appointment_code && <p className="text-[10px] font-mono text-slate-400 mt-1">{appt.appointment_code}</p>}
-                          </div>
-                          <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">Pendiente</span>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {apptDate.toLocaleDateString('es-VE')} · {timeStr}–{addMinutes(timeStr, config.slot_duration)}
-                        </div>
-
-                        {/* Warnings */}
-                        {!isValidTime && (
-                          <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-2">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span>Horario {timeStr} no está en tus bloques disponibles para {DAYS_FULL[dayOfWeek]}. Reagenda antes de aprobar.</span>
-                          </div>
-                        )}
-                        {hasConflict && (
-                          <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-2">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span>Conflicto: ya existe una cita en este horario.</span>
-                          </div>
-                        )}
-
-                        {appt.chief_complaint && <p className="text-xs text-slate-600 mb-2 italic">&quot;{appt.chief_complaint}&quot;</p>}
-
-                        <div className="flex items-center gap-2 flex-wrap mb-2">
-                          <span className="text-xs text-slate-500">{appt.plan_name}</span>
-                          <span className="text-xs font-bold text-emerald-600">${appt.plan_price ?? 0}</span>
-                          {appt.payment_method && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                              {appt.payment_method}
-                            </span>
-                          )}
-                          {appt.appointment_mode && (
-                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${appt.appointment_mode === 'online' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600'}`}>
-                              {appt.appointment_mode === 'online' ? 'Online' : 'Presencial'}
-                            </span>
-                          )}
-                          {appt.package_id && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 flex items-center gap-1">
-                              <Package className="w-3 h-3" />
-                              Paquete {appt.session_number ?? '?'}/{appt.total_sessions ?? '?'}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Comprobante de pago */}
-                        <div className="mb-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Comprobante de pago</p>
-                          {appt.payment_receipt_url ? (
-                            <>
-                              {appt.payment_receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                                <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="block">
-                                  <img src={appt.payment_receipt_url} alt="Comprobante" className="w-full max-w-xs rounded-lg border border-slate-200 hover:opacity-90 transition-opacity cursor-pointer" />
-                                </a>
-                              ) : (
-                                <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-teal-600 hover:text-teal-700 font-medium underline">
-                                  Ver comprobante adjunto
-                                </a>
-                              )}
-                            </>
-                          ) : (
-                            <div className="space-y-2">
-                              <p className="text-xs text-slate-400 italic">El paciente no adjuntó comprobante</p>
-                              <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-slate-300 hover:border-teal-400 hover:bg-teal-50/50 cursor-pointer transition-all text-xs font-medium text-slate-500 hover:text-teal-600">
-                                {uploadingReceipt === appt.id ? (
-                                  <><Loader2 className="w-4 h-4 animate-spin" /> Subiendo...</>
-                                ) : (
-                                  <><Upload className="w-4 h-4" /> Adjuntar comprobante</>
-                                )}
-                                <input
-                                  type="file"
-                                  accept="image/*,.pdf"
-                                  className="hidden"
-                                  disabled={uploadingReceipt === appt.id}
-                                  onChange={e => {
-                                    const file = e.target.files?.[0]
-                                    if (file) handleUploadReceipt(appt.id, file)
-                                  }}
-                                />
-                              </label>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button onClick={() => acceptAppointment(appt)} disabled={accepting === appt.id || hasConflict}
-                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors">
-                            <Check className="w-4 h-4" /> {accepting === appt.id ? 'Aprobando...' : 'Aprobar'}
-                          </button>
-                          <button onClick={() => setRescheduling(appt)}
-                            className="flex items-center justify-center gap-2 px-3 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold transition-colors">
-                            <Calendar className="w-4 h-4" /> Reagendar
-                          </button>
-                          <button onClick={() => rejectAppointment(appt.id)}
-                            className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-sm font-semibold transition-colors">
-                            <X className="w-4 h-4" /> Rechazar
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ═══ AVAILABILITY TAB ═══ */}
-        {tab === 'availability' && (
-          <div className="space-y-4">
-            {/* Config panel */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Settings className="w-4 h-4 text-teal-500" />
-                <p className="text-sm font-bold text-slate-700">Configuración de citas</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Duración de cita</label>
-                  <select value={config.slot_duration} onChange={e => setConfig(c => ({ ...c, slot_duration: parseInt(e.target.value) }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 bg-white">
-                    {DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} minutos</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Tiempo entre citas</label>
-                  <select value={config.buffer_minutes} onChange={e => setConfig(c => ({ ...c, buffer_minutes: parseInt(e.target.value) }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 bg-white">
-                    {BUFFER_OPTIONS.map(b => <option key={b} value={b}>{b === 0 ? 'Sin descanso' : `${b} minutos`}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Preview of generated slots */}
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
-                <p className="text-xs font-semibold text-teal-700 mb-2">Vista previa — Ejemplo bloque 08:00–12:00:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {(() => {
-                    const preview = generateTimeSlots(0, [{ day_of_week: 0, start_time: '08:00', end_time: '12:00', is_enabled: true }], config)
-                    return preview.map(s => (
-                      <span key={s.time} className="text-[10px] bg-white text-teal-700 px-2 py-1 rounded-md border border-teal-200 font-mono font-semibold">
-                        {s.time}–{s.endTime}
-                      </span>
-                    ))
-                  })()}
-                </div>
-              </div>
-            </div>
-
-            {/* Info banner */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-700">
-                Configura los bloques de horario (ej: 08:00–12:00). Las citas se generarán automáticamente cada {config.slot_duration} min
-                {config.buffer_minutes > 0 && ` con ${config.buffer_minutes} min de descanso`}.
-                Los pacientes verán estos horarios al agendar.
-              </p>
-            </div>
-
-            {/* Weekly schedule */}
-            {DAYS_FULL.map((dayName, dayIdx) => {
-              const daySlots = availSlots.filter(s => s.day_of_week === dayIdx)
-              const totalSlots = daySlots.filter(s => s.is_enabled).reduce((sum, s) => {
-                return sum + generateTimeSlots(dayIdx, [s], config).length
-              }, 0)
-
-              return (
-                <div key={dayIdx} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-slate-700">{dayName}</p>
-                      {totalSlots > 0 && <span className="text-[10px] text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full font-semibold">{totalSlots} citas</span>}
-                    </div>
-                    <button onClick={() => addSlot(dayIdx)} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold">
-                      <Plus className="w-3.5 h-3.5" /><span>Agregar bloque</span>
-                    </button>
-                  </div>
-                  <div className="p-3 sm:p-4 space-y-2">
-                    {daySlots.length === 0 ? (
-                      <p className="text-xs text-slate-400 py-1">Sin horarios — día libre</p>
-                    ) : daySlots.map(slot => {
-                      const globalIdx = availSlots.indexOf(slot)
-                      const slotsInBlock = generateTimeSlots(dayIdx, [slot], config).length
-                      return (
-                        <div key={globalIdx} className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-xl border transition-all ${slot.is_enabled ? 'border-teal-200 bg-teal-50/50' : 'border-slate-200 bg-slate-50 opacity-50'}`}>
-                          <Clock className={`w-3.5 h-3.5 shrink-0 hidden sm:block ${slot.is_enabled ? 'text-teal-500' : 'text-slate-400'}`} />
-                          <div className="flex items-center gap-2 flex-1">
-                            <input type="time" value={slot.start_time} onChange={e => updateSlotTime(globalIdx, 'start_time', e.target.value)}
-                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-teal-400 bg-white w-24" />
-                            <span className="text-xs text-slate-400">a</span>
-                            <input type="time" value={slot.end_time} onChange={e => updateSlotTime(globalIdx, 'end_time', e.target.value)}
-                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-teal-400 bg-white w-24" />
-                            {slot.is_enabled && <span className="text-[10px] text-teal-600 font-semibold ml-1">{slotsInBlock} citas</span>}
-                          </div>
-                          <div className="flex gap-1 sm:gap-2">
-                            <button onClick={() => toggleSlot(globalIdx)}
-                              className={`text-xs px-2.5 py-1 rounded-full font-semibold transition-all ${slot.is_enabled ? 'bg-teal-100 text-teal-600' : 'bg-slate-200 text-slate-500'}`}>
-                              {slot.is_enabled ? 'Activo' : 'Inactivo'}
-                            </button>
-                            <button onClick={() => removeSlot(globalIdx)} className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center shrink-0">
-                              <Trash2 className="w-3 h-3 text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-
-            <button onClick={saveSchedule} disabled={saving}
-              className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-60">
-              {saving ? 'Guardando...' : 'Guardar disponibilidad'}
-            </button>
-          </div>
-        )}
+        {/* Approval panel and availability tab removed — see Cobros and Consultorios */}
 
         {/* ═══ APPOINTMENT DETAIL MODAL ═══ */}
         {detailAppt && (

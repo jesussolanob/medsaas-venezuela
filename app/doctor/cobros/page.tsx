@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Receipt, Search, Download, DollarSign, CheckCircle, Clock,
   XCircle, Calendar, ArrowRight, Loader2, RefreshCw, Filter,
-  TrendingUp, Banknote
+  TrendingUp, Banknote, X, CreditCard, FileText, ExternalLink
 } from 'lucide-react'
 
 type CobrosTab = 'pending' | 'approved' | 'cancelled'
@@ -49,6 +49,8 @@ export default function CobrosPage() {
   })
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0])
   const [showExport, setShowExport] = useState(false)
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
 
   // Fetch BCV rate
   useEffect(() => {
@@ -158,6 +160,15 @@ export default function CobrosPage() {
     a.click()
     URL.revokeObjectURL(url)
     setShowExport(false)
+  }
+
+  async function updatePaymentStatus(id: string, newStatus: string) {
+    setUpdatingStatus(true)
+    const supabase = createClient()
+    await supabase.from('appointments').update({ status: newStatus }).eq('id', id)
+    setUpdatingStatus(false)
+    setSelectedPayment(null)
+    fetchPayments()
   }
 
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString('es-VE', {
@@ -298,7 +309,7 @@ export default function CobrosPage() {
             </div>
 
             {filtered.map(p => (
-              <div key={p.id} className="grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors items-center">
+              <div key={p.id} onClick={() => setSelectedPayment(p)} className="grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors items-center cursor-pointer">
                 <div className="col-span-3">
                   <p className="text-sm font-medium text-slate-900">{p.patient_name || 'Sin nombre'}</p>
                   {p.appointment_code && (
@@ -343,6 +354,137 @@ export default function CobrosPage() {
           </div>
         )}
       </div>
+
+      {/* Detail drawer */}
+      {selectedPayment && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex" onClick={() => setSelectedPayment(null)}>
+          <div className="ml-auto w-full max-w-md bg-white h-full overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900">Detalle del cobro</h3>
+              <button onClick={() => setSelectedPayment(null)} className="p-1.5 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Patient info */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase">Paciente</p>
+                <p className="text-lg font-bold text-slate-900">{selectedPayment.patient_name || 'Sin nombre'}</p>
+                {selectedPayment.appointment_code && (
+                  <p className="text-xs font-mono text-slate-400">Código: {selectedPayment.appointment_code}</p>
+                )}
+              </div>
+
+              {/* Service & amount */}
+              <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-4 border border-teal-100 space-y-2">
+                <p className="text-xs font-semibold text-slate-500">Servicio</p>
+                <p className="text-sm font-bold text-slate-800">{selectedPayment.plan_name || '—'}</p>
+                <div className="flex items-baseline gap-2 pt-1">
+                  <span className="text-2xl font-bold text-teal-600">${(selectedPayment.plan_price || 0).toFixed(2)}</span>
+                  <span className="text-xs text-slate-400">USD</span>
+                  {bcvRate && (
+                    <span className="text-sm text-slate-500 ml-2">
+                      = Bs {((selectedPayment.plan_price || 0) * bcvRate).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Date */}
+              <div className="flex items-center gap-3 py-3 border-b border-slate-100">
+                <Calendar className="w-4 h-4 text-slate-400" />
+                <div>
+                  <p className="text-sm text-slate-700">{formatDate(selectedPayment.scheduled_at)}</p>
+                  <p className="text-xs text-slate-400">{formatTime(selectedPayment.scheduled_at)}</p>
+                </div>
+              </div>
+
+              {/* Payment method */}
+              <div className="flex items-center gap-3 py-3 border-b border-slate-100">
+                <CreditCard className="w-4 h-4 text-slate-400" />
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase">Método de pago</p>
+                  <p className="text-sm font-medium text-slate-700">
+                    {PAYMENT_METHOD_LABELS[selectedPayment.payment_method || ''] || selectedPayment.payment_method || 'No especificado'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Receipt/comprobante */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> Comprobante
+                </p>
+                {selectedPayment.payment_receipt_url ? (
+                  <div className="space-y-2">
+                    {selectedPayment.payment_receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                      <a href={selectedPayment.payment_receipt_url} target="_blank" rel="noopener noreferrer">
+                        <img src={selectedPayment.payment_receipt_url} alt="Comprobante"
+                          className="w-full rounded-xl border border-slate-200 hover:opacity-90 transition-opacity" />
+                      </a>
+                    ) : (
+                      <a href={selectedPayment.payment_receipt_url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-medium">
+                        <ExternalLink className="w-4 h-4" /> Ver comprobante adjunto
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">Sin comprobante adjunto</p>
+                )}
+              </div>
+
+              {/* Current status */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase">Estado actual</p>
+                <span className={`inline-flex text-sm font-semibold px-3 py-1.5 rounded-full ${
+                  selectedPayment.status === 'completed'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : selectedPayment.status === 'cancelled'
+                    ? 'bg-red-50 text-red-600 border border-red-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}>
+                  {selectedPayment.status === 'completed' ? 'Aprobada' : selectedPayment.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
+                </span>
+              </div>
+
+              {/* Change status */}
+              <div className="space-y-3 pt-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase">Cambiar estado</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => updatePaymentStatus(selectedPayment.id, 'scheduled')}
+                    disabled={updatingStatus || selectedPayment.status === 'scheduled' || selectedPayment.status === 'pending'}
+                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-amber-200 text-amber-600 hover:bg-amber-50"
+                  >
+                    <Clock className="w-3.5 h-3.5" /> Pendiente
+                  </button>
+                  <button
+                    onClick={() => updatePaymentStatus(selectedPayment.id, 'completed')}
+                    disabled={updatingStatus || selectedPayment.status === 'completed'}
+                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" /> Aprobar
+                  </button>
+                  <button
+                    onClick={() => updatePaymentStatus(selectedPayment.id, 'cancelled')}
+                    disabled={updatingStatus || selectedPayment.status === 'cancelled'}
+                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-red-200 text-red-600 hover:bg-red-50"
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> Cancelar
+                  </button>
+                </div>
+                {updatingStatus && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Actualizando...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

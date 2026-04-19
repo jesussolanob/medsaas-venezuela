@@ -920,85 +920,58 @@ export default function BookingClient({
             onOpen={() => setActiveStep(5)}
           >
             <div className="space-y-4">
-              {/* Toggle: Pago directo vs Seguro */}
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button"
-                  onClick={() => { setUseInsurance(false); setSelectedPaymentMethod('') }}
-                  className={`p-3 rounded-lg border-2 text-sm font-semibold transition-all ${!useInsurance ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                  💵 Pago directo
-                </button>
-                <button type="button"
-                  onClick={() => { setUseInsurance(true); setSelectedPaymentMethod('') }}
-                  className={`p-3 rounded-lg border-2 text-sm font-semibold transition-all ${useInsurance ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                  🏥 Seguro médico
-                </button>
-              </div>
-
               {/* Payment methods */}
-              {!useInsurance && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {(paymentMethods.length > 0
-                      ? paymentMethods
-                      : ['pago_movil', 'transferencia', 'zelle', 'cash_usd']
-                    ).map(method => (
-                      <button key={method} type="button"
-                        onClick={() => setSelectedPaymentMethod(method as PaymentMethod)}
-                        className={`p-3 rounded-lg border-2 text-left text-sm font-semibold transition-all ${
-                          selectedPaymentMethod === method ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
-                        }`}>
-                        {PAYMENT_LABELS[method as PaymentMethod] || method}
-                      </button>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {(paymentMethods.length > 0
+                    ? paymentMethods
+                    : ['pago_movil', 'transferencia', 'zelle', 'cash_usd']
+                  ).map(method => (
+                    <button key={method} type="button"
+                      onClick={() => setSelectedPaymentMethod(method as PaymentMethod)}
+                      className={`p-3 rounded-lg border-2 text-left text-sm font-semibold transition-all ${
+                        selectedPaymentMethod === method ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
+                      }`}>
+                      {PAYMENT_LABELS[method as PaymentMethod] || method}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Show payment details for transfer methods */}
+                {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && paymentDetails?.[selectedPaymentMethod] && (
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 space-y-1 text-xs">
+                    <p className="font-bold text-slate-700">Datos para transferencia:</p>
+                    {Object.entries(paymentDetails[selectedPaymentMethod] || {}).map(([key, val]) => (
+                      val ? <p key={key} className="text-slate-600"><span className="font-semibold capitalize">{key}:</span> {String(val)}</p> : null
                     ))}
                   </div>
+                )}
 
-                  {/* Show payment details for transfer methods */}
-                  {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && paymentDetails?.[selectedPaymentMethod] && (
-                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 space-y-1 text-xs">
-                      <p className="font-bold text-slate-700">Datos para transferencia:</p>
-                      {Object.entries(paymentDetails[selectedPaymentMethod] || {}).map(([key, val]) => (
-                        val ? <p key={key} className="text-slate-600"><span className="font-semibold capitalize">{key}:</span> {String(val)}</p> : null
-                      ))}
-                    </div>
-                  )}
+                {/* Receipt upload */}
+                {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-medium text-slate-700">Comprobante de pago <span className="text-red-500">*</span></p>
+                    <label className="flex items-center justify-center border-2 border-dashed border-orange-300 rounded-lg p-4 cursor-pointer hover:bg-orange-100 transition-colors">
+                      <input type="file" accept="image/*,application/pdf" onChange={e => setPaymentFile(e.target.files?.[0] || null)} className="hidden" />
+                      <div className="text-center">
+                        <Upload className="w-5 h-5 text-orange-500 mx-auto mb-1" />
+                        <p className="text-sm font-medium text-slate-700">{paymentFile ? paymentFile.name : 'Sube comprobante (JPG, PNG, PDF)'}</p>
+                      </div>
+                    </label>
+                    {paymentFile && <p className="text-xs text-slate-500">{paymentFile.name} ({(paymentFile.size / 1024 / 1024).toFixed(2)} MB)</p>}
+                  </div>
+                )}
 
-                  {/* Receipt upload */}
-                  {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-2">
-                      <p className="text-sm font-medium text-slate-700">Comprobante de pago <span className="text-red-500">*</span></p>
-                      <label className="flex items-center justify-center border-2 border-dashed border-orange-300 rounded-lg p-4 cursor-pointer hover:bg-orange-100 transition-colors">
-                        <input type="file" accept="image/*,application/pdf" onChange={e => setPaymentFile(e.target.files?.[0] || null)} className="hidden" />
-                        <div className="text-center">
-                          <Upload className="w-5 h-5 text-orange-500 mx-auto mb-1" />
-                          <p className="text-sm font-medium text-slate-700">{paymentFile ? paymentFile.name : 'Sube comprobante (JPG, PNG, PDF)'}</p>
-                        </div>
-                      </label>
-                      {paymentFile && <p className="text-xs text-slate-500">{paymentFile.name} ({(paymentFile.size / 1024 / 1024).toFixed(2)} MB)</p>}
-                    </div>
-                  )}
-
-                  {/* Cash note */}
-                  {selectedPaymentMethod && !requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <p className="text-xs text-green-700"><span className="font-semibold">Nota:</span> Pagarás el día de la consulta ({PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]})</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Insurance */}
-              {useInsurance && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Selecciona tu seguro</label>
-                  <select value={selectedInsurance} onChange={e => setSelectedInsurance(e.target.value)} className={fi}>
-                    <option value="">-- Seleccionar seguro --</option>
-                    {mockInsurances.map(ins => <option key={ins} value={ins}>{ins}</option>)}
-                  </select>
-                </div>
-              )}
+                {/* Cash note */}
+                {selectedPaymentMethod && !requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="text-xs text-green-700"><span className="font-semibold">Nota:</span> Pagarás el día de la consulta ({PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]})</p>
+                  </div>
+                )}
+              </div>
 
               {/* Continue button */}
-              {(selectedPaymentMethod || (useInsurance && selectedInsurance)) && (
+              {selectedPaymentMethod && (
                 <button
                   type="button"
                   onClick={() => setActiveStep(6)}
