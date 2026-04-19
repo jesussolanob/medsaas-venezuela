@@ -1,11 +1,11 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Calendar, ClipboardList, Users,
   DollarSign, Settings, LogOut, Activity, Menu, MessageSquarePlus,
-  Building2, Package, Receipt, FileEdit
+  Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -37,6 +37,29 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [subInfo, setSubInfo] = useState<SubscriptionInfo | null>(null)
+
+  // Collapsible sidebar state
+  const [pinned, setPinned] = useState(true)
+  const [hovered, setHovered] = useState(false)
+
+  // Read pinned preference from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('delta_sidebar_pinned')
+      if (saved !== null) setPinned(saved === 'true')
+    } catch {}
+  }, [])
+
+  const togglePin = useCallback(() => {
+    setPinned(prev => {
+      const next = !prev
+      try { localStorage.setItem('delta_sidebar_pinned', String(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  // On desktop: sidebar visible when pinned OR hovered
+  const sidebarVisible = pinned || hovered
 
   // Fetch subscription info once on mount
   useEffect(() => {
@@ -83,6 +106,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         .g-text-logo { background: linear-gradient(135deg, #00C4CC, #0891b2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .nav-active-doc { background: linear-gradient(135deg, rgba(0,196,204,0.1) 0%, rgba(8,145,178,0.08) 100%); border-left: 3px solid #00C4CC; }
         .nav-item-doc { border-left: 3px solid transparent; }
+        .sidebar-hover-zone { position: fixed; top: 0; left: 0; width: 12px; height: 100%; z-index: 45; }
       `}</style>
 
       <div className="doctor-layout flex min-h-screen bg-slate-50 text-slate-900">
@@ -90,20 +114,47 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
         )}
 
+        {/* Hover zone — thin strip on left edge to trigger sidebar when unpinned */}
+        {!pinned && !hovered && (
+          <div className="sidebar-hover-zone hidden lg:block" onMouseEnter={() => setHovered(true)} />
+        )}
+
         {/* Sidebar */}
-        <aside className={clsx(
-          'fixed inset-y-0 left-0 w-[240px] flex flex-col border-r border-slate-200 bg-white z-50 transition-transform',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        )}>
-          {/* Logo */}
-          <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
-            <div className="w-9 h-9 rounded-xl g-logo flex items-center justify-center shadow-md shadow-cyan-200">
-              <Activity className="w-5 h-5 text-white" />
+        <aside
+          onMouseEnter={() => { if (!pinned) setHovered(true) }}
+          onMouseLeave={() => { if (!pinned) setHovered(false) }}
+          className={clsx(
+            'fixed inset-y-0 left-0 w-[240px] flex flex-col border-r border-slate-200 bg-white z-50 transition-transform duration-200',
+            // Mobile behavior
+            mobileOpen ? 'translate-x-0' : '-translate-x-full',
+            // Desktop behavior: show when pinned or hovered
+            sidebarVisible ? 'lg:translate-x-0' : 'lg:-translate-x-full'
+          )}
+          style={!pinned && hovered ? { boxShadow: '4px 0 24px rgba(0,0,0,0.08)' } : undefined}
+        >
+          {/* Logo + Pin button */}
+          <div className="flex items-center justify-between px-5 py-5 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl g-logo flex items-center justify-center shadow-md shadow-cyan-200">
+                <Activity className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold leading-none g-text-logo">Delta</p>
+                <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Portal Médico</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold leading-none g-text-logo">Delta</p>
-              <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Portal Médico</p>
-            </div>
+            <button
+              onClick={togglePin}
+              className={clsx(
+                'hidden lg:flex items-center justify-center w-7 h-7 rounded-lg transition-all',
+                pinned
+                  ? 'bg-teal-50 text-teal-600 hover:bg-teal-100'
+                  : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+              )}
+              title={pinned ? 'Ocultar sidebar (hover para mostrar)' : 'Fijar sidebar'}
+            >
+              {pinned ? <PanelLeftClose className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+            </button>
           </div>
 
           {/* Nav */}
@@ -195,8 +246,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </div>
         </aside>
 
-        {/* Main content */}
-        <div className="flex-1 lg:ml-[240px] flex flex-col min-h-screen w-full">
+        {/* Main content — margin adjusts based on pinned state */}
+        <div className={clsx(
+          'flex-1 flex flex-col min-h-screen w-full transition-[margin] duration-200',
+          pinned ? 'lg:ml-[240px]' : 'lg:ml-0'
+        )}>
           <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 lg:px-8 py-4 border-b border-slate-200 bg-white/80 backdrop-blur">
             <div className="flex items-center gap-3">
               <button
@@ -205,6 +259,16 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               >
                 <Menu className="w-5 h-5 text-slate-600" />
               </button>
+              {/* Desktop: show sidebar toggle when unpinned */}
+              {!pinned && (
+                <button
+                  className="hidden lg:flex p-2 -ml-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700"
+                  onClick={togglePin}
+                  title="Fijar sidebar"
+                >
+                  <PanelLeft className="w-5 h-5" />
+                </button>
+              )}
               <h1 className="text-sm font-semibold text-slate-700">{activeTitle}</h1>
             </div>
             <span className="hidden sm:inline-flex text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full font-medium">
