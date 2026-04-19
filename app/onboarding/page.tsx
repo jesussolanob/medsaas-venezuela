@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User } from 'lucide-react'
+import Link from 'next/link'
+import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User, Clock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const ESPECIALIDADES = [
@@ -34,8 +35,8 @@ export default function OnboardingPage() {
   const [userName, setUserName] = useState('')
   const [userEmail, setUserEmail] = useState('')
 
-  // Step 1: role selection, Step 2: details
-  const [step, setStep] = useState<1 | 2>(1)
+  // Step 1: role selection, Step 2: details, Step 3: success/pending
+  const [step, setStep] = useState<1 | 2 | 3>(1)
   const [role, setRole] = useState<Role>('doctor')
 
   // Form fields
@@ -119,11 +120,11 @@ export default function OnboardingPage() {
         return
       }
 
-      // Redirect based on role
+      // Patients go straight to dashboard, doctors see pending approval
       if (role === 'patient') {
         router.push('/patient/dashboard')
       } else {
-        router.push('/doctor')
+        setStep(3) // Show pending approval message
       }
     } catch (err: any) {
       setError(err?.message || 'Error al guardar')
@@ -316,6 +317,43 @@ export default function OnboardingPage() {
             <p className="text-center text-xs text-slate-400">
               Podrás completar el resto de tus datos en Configuración
             </p>
+          </div>
+        )}
+
+        {/* Step 3: Pending Approval (doctors) */}
+        {step === 3 && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 space-y-6 text-center">
+            <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-amber-100">
+              <Clock className="w-8 h-8 text-amber-600" />
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-xl font-extrabold text-slate-900">¡Registro completado!</h1>
+              <p className="text-sm text-slate-500">
+                Tu cuenta ha sido creada exitosamente. Cuando el administrador de Delta apruebe tu solicitud, tendrás acceso completo a la beta.
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2 text-left">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">¿Qué sigue?</p>
+              <p className="text-sm text-amber-800">
+                El equipo de Delta revisará tu solicitud y te notificará cuando tu acceso esté activo. Este proceso suele tomar menos de 24 horas.
+              </p>
+            </div>
+
+            <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-left">
+              <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-1">Tu información</p>
+              <p className="text-sm text-teal-800">{userName} · {userEmail}</p>
+              <p className="text-sm text-teal-800">{phone}</p>
+              {specialty && <p className="text-sm text-teal-800">{specialty}</p>}
+            </div>
+
+            <Link
+              href="/"
+              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 g-bg"
+            >
+              Volver al inicio <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
         )}
       </div>

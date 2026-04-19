@@ -73,12 +73,12 @@ export async function POST(req: Request) {
       if (!existingSub) {
         const now = new Date()
         const expiresAt = new Date(now)
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1) // Beta: 1 year free
+        expiresAt.setDate(expiresAt.getDate() + 15) // Trial: 15 days, pending admin approval
 
         await supabase.from('subscriptions').insert({
           doctor_id: userId,
           plan: 'trial',
-          status: 'active',
+          status: 'trial', // Pending admin approval
           current_period_end: expiresAt.toISOString(),
         })
       }

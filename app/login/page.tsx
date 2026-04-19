@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Activity, AlertCircle, Loader2 } from 'lucide-react'
+import { Activity, AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Suspense } from 'react'
 
@@ -28,9 +28,17 @@ export default function LoginPage() {
 
 function LoginInner() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const authError = searchParams.get('error')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(authError === 'auth' ? 'Error de autenticación. Intenta de nuevo.' : '')
+
+  // Email/password form
+  const [showEmailForm, setShowEmailForm] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(false)
 
   async function handleGoogleLogin() {
     setLoading(true)
@@ -53,6 +61,52 @@ function LoginInner() {
     }
   }
 
+  async function handleEmailLogin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email || !password) {
+      setError('Ingresa tu email y contraseña')
+      return
+    }
+    setEmailLoading(true)
+    setError('')
+
+    try {
+      const supabase = createClient()
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      })
+
+      if (authErr || !data.user) {
+        setError(authErr?.message === 'Invalid login credentials'
+          ? 'Correo o contraseña incorrectos.'
+          : authErr?.message || 'Error al iniciar sesión')
+        setEmailLoading(false)
+        return
+      }
+
+      // Check profile to determine redirect
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, phone')
+        .eq('id', data.user.id)
+        .maybeSingle()
+
+      if (!profile || !profile.phone) {
+        router.push('/onboarding')
+      } else if (profile.role === 'super_admin' || profile.role === 'admin') {
+        router.push('/admin')
+      } else if (profile.role === 'patient') {
+        router.push('/patient/dashboard')
+      } else {
+        router.push('/doctor')
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Error al iniciar sesión')
+      setEmailLoading(false)
+    }
+  }
+
   return (
     <>
       <style>{`
@@ -63,6 +117,10 @@ function LoginInner() {
         .btn-google { transition: all 0.2s; }
         .btn-google:hover { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(0,0,0,0.12); }
         .btn-google:active { transform: translateY(0); }
+        .btn-primary { background: linear-gradient(135deg, #00C4CC 0%, #0891b2 100%); transition: all 0.2s; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,196,204,0.4); }
+        .btn-primary:active { transform: translateY(0); }
+        .input-focus:focus { border-color: #00C4CC; box-shadow: 0 0 0 3px rgba(0,196,204,0.15); outline: none; }
         .float-orb { animation: float 6s ease-in-out infinite; }
         .float-orb-2 { animation: float 8s ease-in-out infinite reverse; }
         @keyframes float {
@@ -136,7 +194,7 @@ function LoginInner() {
           </div>
         </div>
 
-        {/* Right Panel — Google Login */}
+        {/* Right Panel — Login */}
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="w-full max-w-md fade-in">
 
@@ -153,20 +211,21 @@ function LoginInner() {
 
             {/* Card */}
             <div className="bg-white rounded-2xl card-shadow p-8 border border-slate-100">
-              <div className="mb-8 text-center">
+              <div className="mb-7 text-center">
                 <h2 className="text-2xl font-bold text-slate-900">Bienvenido a Delta</h2>
                 <p className="text-slate-500 text-sm mt-2">
-                  Inicia sesión o crea tu cuenta con Google
+                  Inicia sesión o crea tu cuenta
                 </p>
               </div>
 
               {error && (
-                <div className="mb-6 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+                <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                   <p className="text-red-700 text-sm">{error}</p>
                 </div>
               )}
 
+              {/* Google Button */}
               <button
                 onClick={handleGoogleLogin}
                 disabled={loading}
@@ -185,21 +244,100 @@ function LoginInner() {
                 )}
               </button>
 
-              <div className="mt-6 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-px bg-slate-200" />
-                  <span className="text-xs text-slate-400 font-medium">Acceso para</span>
-                  <div className="flex-1 h-px bg-slate-200" />
-                </div>
-                <div className="flex gap-2 justify-center">
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Médicos</span>
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Pacientes</span>
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Admin</span>
-                </div>
+              {/* Divider */}
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-xs text-slate-400 font-medium">o</span>
+                <div className="flex-1 h-px bg-slate-200" />
               </div>
 
-              <p className="text-center text-xs text-slate-400 mt-6">
-                Si es tu primera vez, se creará tu cuenta automáticamente y completarás tu perfil después.
+              {/* Email/Password Toggle */}
+              {!showEmailForm ? (
+                <button
+                  onClick={() => setShowEmailForm(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all"
+                >
+                  <Mail className="w-4 h-4" />
+                  Iniciar con email y contraseña
+                </button>
+              ) : (
+                <form onSubmit={handleEmailLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Correo electrónico</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        required
+                        disabled={emailLoading}
+                        placeholder="medico@ejemplo.com"
+                        className="input-focus w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-slate-50 transition-all disabled:opacity-60"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Contraseña</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        required
+                        disabled={emailLoading}
+                        placeholder="••••••••"
+                        className="input-focus w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-slate-50 transition-all disabled:opacity-60"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={emailLoading}
+                    className="btn-primary w-full py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {emailLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Verificando...
+                      </>
+                    ) : (
+                      <>
+                        Ingresar
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setShowEmailForm(false); setError('') }}
+                    className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    ← Volver a opciones de login
+                  </button>
+                </form>
+              )}
+
+              {/* Role badges */}
+              <div className="mt-5 flex gap-2 justify-center">
+                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Médicos</span>
+                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Pacientes</span>
+                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Admin</span>
+              </div>
+
+              <p className="text-center text-xs text-slate-400 mt-4">
+                Si es tu primera vez con Google, se creará tu cuenta automáticamente.
               </p>
             </div>
 
