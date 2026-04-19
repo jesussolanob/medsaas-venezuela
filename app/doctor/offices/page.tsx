@@ -15,6 +15,8 @@ type Office = {
   phone: string
   is_active: boolean
   schedule: DaySchedule[]
+  slot_duration: number  // minutes per appointment
+  buffer_minutes: number // minutes between appointments
 }
 
 type DaySchedule = {
@@ -50,6 +52,8 @@ export default function OfficesPage() {
   const [city, setCity] = useState('')
   const [phone, setPhone] = useState('')
   const [schedule, setSchedule] = useState<DaySchedule[]>(DEFAULT_SCHEDULE)
+  const [slotDuration, setSlotDuration] = useState(30)
+  const [bufferMinutes, setBufferMinutes] = useState(10)
 
   const fetchOffices = useCallback(async () => {
     const supabase = createClient()
@@ -65,6 +69,8 @@ export default function OfficesPage() {
     setOffices((data || []).map(o => ({
       ...o,
       schedule: o.schedule || DEFAULT_SCHEDULE,
+      slot_duration: o.slot_duration || 30,
+      buffer_minutes: o.buffer_minutes || 10,
     })))
     setLoading(false)
   }, [])
@@ -78,6 +84,8 @@ export default function OfficesPage() {
     setCity('')
     setPhone('')
     setSchedule(DEFAULT_SCHEDULE.map(d => ({ ...d })))
+    setSlotDuration(30)
+    setBufferMinutes(10)
     setShowForm(true)
   }
 
@@ -88,6 +96,8 @@ export default function OfficesPage() {
     setCity(office.city)
     setPhone(office.phone)
     setSchedule(office.schedule.map(d => ({ ...d })))
+    setSlotDuration(office.slot_duration)
+    setBufferMinutes(office.buffer_minutes)
     setShowForm(true)
   }
 
@@ -117,6 +127,8 @@ export default function OfficesPage() {
       city: city.trim(),
       phone: phone.trim(),
       schedule,
+      slot_duration: slotDuration,
+      buffer_minutes: bufferMinutes,
       is_active: true,
     }
 
@@ -225,8 +237,19 @@ export default function OfficesPage() {
                 </div>
               </div>
 
+              {/* Slot config summary */}
+              <div className="mt-3 pt-3 border-t border-slate-100 flex gap-4 mb-2">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <Clock className="w-3 h-3" />
+                  <span><strong>{office.slot_duration} min</strong> por consulta</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span><strong>{office.buffer_minutes} min</strong> entre consultas</span>
+                </div>
+              </div>
+
               {/* Schedule summary */}
-              <div className="mt-3 pt-3 border-t border-slate-100">
+              <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <Clock className="w-3 h-3 text-slate-400" />
                   <span className="text-xs font-semibold text-slate-500">Horarios</span>
@@ -279,6 +302,26 @@ export default function OfficesPage() {
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">Teléfono</label>
                   <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+58 212 1234567" className={inp} />
+                </div>
+              </div>
+
+              {/* Slot config */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Duración de consulta (min)</label>
+                  <select value={slotDuration} onChange={e => setSlotDuration(Number(e.target.value))} className={inp}>
+                    {[15, 20, 30, 40, 45, 60, 90].map(m => (
+                      <option key={m} value={m}>{m} minutos</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Tiempo entre consultas (min)</label>
+                  <select value={bufferMinutes} onChange={e => setBufferMinutes(Number(e.target.value))} className={inp}>
+                    {[0, 5, 10, 15, 20, 30].map(m => (
+                      <option key={m} value={m}>{m} minutos</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

@@ -15,6 +15,7 @@ type PricingPlan = { id: string; name: string; price_usd: number; duration_minut
 type Slot = { date: string; time: string; label: string }
 type PaymentMethod = 'pago_movil' | 'transferencia' | 'zelle' | 'binance' | 'cash_usd' | 'cash_bs' | 'pos'
 type ActivePackage = { id: string; plan_name: string; total_sessions: number; used_sessions: number }
+type DoctorOffice = { id: string; name: string; address: string; city: string; phone: string; schedule: { day: number; enabled: boolean; start: string; end: string }[]; slot_duration: number; buffer_minutes: number }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function generateSlots(): Slot[] {
@@ -143,6 +144,10 @@ export default function BookingClient({
   const [activePackage, setActivePackage] = useState<ActivePackage | null>(null)
   const [usingPackage, setUsingPackage] = useState(false)
 
+  // Doctor offices
+  const [doctorOffices, setDoctorOffices] = useState<DoctorOffice[]>([])
+  const [selectedOffice, setSelectedOffice] = useState<DoctorOffice | null>(null)
+
   // Selections
   const [selectedPlan, setSelectedPlan] = useState<PricingPlan | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -224,6 +229,43 @@ export default function BookingClient({
     }
     checkAuth()
   }, [])
+
+  // Fetch doctor offices on mount
+  useEffect(() => {
+    const fetchOffices = async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('doctor_offices')
+          .select('id, name, address, city, phone, schedule, slot_duration, buffer_minutes')
+          .eq('doctor_id', doctor.id)
+          .eq('is_active', true)
+        setDoctorOffices((data || []).map(o => ({
+          ...o,
+          schedule: o.schedule || [],
+          slot_duration: o.slot_duration || 30,
+          buffer_minutes: o.buffer_minutes || 10,
+        })))
+      } catch (err) {
+        console.error('Error fetching offices:', err)
+      }
+    }
+    fetchOffices()
+  }, [doctor.id])
+
+  // When date is selected, find the matching office for that day
+  useEffect(() => {
+    if (selectedDate && doctorOffices.length > 0) {
+      const dateObj = new Date(selectedDate + 'T12:00:00')
+      // JS getDay: 0=Sun, convert to our format: 0=Mon...6=Sun
+      const jsDay = dateObj.getDay()
+      const dayIdx = jsDay === 0 ? 6 : jsDay - 1
+      const matchingOffice = doctorOffices.find(o =>
+        o.schedule.some(s => s.day === dayIdx && s.enabled)
+      )
+      setSelectedOffice(matchingOffice || null)
+    }
+  }, [selectedDate, doctorOffices])
 
   // ── Auth Handlers ─────────────────────────────────────────────────────────
   const handleAuthLogin = async (e: React.FormEvent) => {
@@ -418,7 +460,10 @@ export default function BookingClient({
             </p>
           )}
           <p className="text-xs text-slate-500"><span className="font-semibold">Modalidad:</span> {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}</p>
-          {appointmentMode === 'presencial' && doctor.office_address && (
+          {appointmentMode === 'presencial' && selectedOffice && (
+            <p className="text-xs text-slate-500"><span className="font-semibold">Consultorio:</span> {selectedOffice.name} — {selectedOffice.address}, {selectedOffice.city}</p>
+          )}
+          {appointmentMode === 'presencial' && !selectedOffice && doctor.office_address && (
             <p className="text-xs text-slate-500"><span className="font-semibold">Dirección:</span> {doctor.office_address}</p>
           )}
         </div>
@@ -683,42 +728,62 @@ export default function BookingClient({
             completed={!!appointmentMode && activeStep > 3}
             onOpen={() => setActiveStep(3)}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                onClick={() => { setAppointmentMode('presencial'); setActiveStep(4) }}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  appointmentMode === 'presencial' ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
-                    <MapPin className="w-5 h-5 text-teal-600" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-slate-900">Presencial</p>
-                    <p className="text-xs text-slate-500">En el consultorio</p>
-                    {doctor.office_address && <p className="text-[10px] text-slate-400 mt-0.5">{doctor.office_address}</p>}
-                  </div>
-                </div>
-              </button>
-
-              {doctor.allows_online !== false && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
-                  onClick={() => { setAppointmentMode('online'); setActiveStep(4) }}
+                  onClick={() => { setAppointmentMode('presencial'); setActiveStep(4) }}
                   className={`p-4 rounded-xl border-2 text-left transition-all ${
-                    appointmentMode === 'online' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'
+                    appointmentMode === 'presencial' ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                      <Video className="w-5 h-5 text-blue-600" />
+                    <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+                      <MapPin className="w-5 h-5 text-teal-600" />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-900">Online</p>
-                      <p className="text-xs text-slate-500">Videollamada</p>
+                      <p className="font-bold text-slate-900">Presencial</p>
+                      <p className="text-xs text-slate-500">En el consultorio</p>
                     </div>
                   </div>
                 </button>
+
+                {doctor.allows_online !== false && (
+                  <button
+                    onClick={() => { setAppointmentMode('online'); setSelectedOffice(null); setActiveStep(4) }}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${
+                      appointmentMode === 'online' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <Video className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900">Online</p>
+                        <p className="text-xs text-slate-500">Videollamada</p>
+                      </div>
+                    </div>
+                  </button>
+                )}
+              </div>
+
+              {/* Show assigned office for the selected date */}
+              {appointmentMode === 'presencial' && selectedOffice && (
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-teal-800">{selectedOffice.name}</p>
+                      <p className="text-xs text-teal-600 mt-0.5">{selectedOffice.address}, {selectedOffice.city}</p>
+                      {selectedOffice.phone && <p className="text-xs text-teal-500 mt-0.5">{selectedOffice.phone}</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {appointmentMode === 'presencial' && !selectedOffice && selectedDate && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-amber-700">{doctor.office_address || 'Consulta con el médico la dirección del consultorio para este día.'}</p>
+                </div>
               )}
             </div>
           </AccordionSection>
