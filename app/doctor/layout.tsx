@@ -144,7 +144,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           <div className="px-3 py-4 border-t border-slate-100 space-y-2">
             {subInfo && (
               <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
-                <p className="text-[10px] text-slate-400 uppercase font-semibold">Tu plan</p>
+                <p className="text-[10px] text-slate-400 uppercase font-semibold">Tu acceso</p>
                 <p className="text-xs font-bold text-slate-700">{subInfo.planLabel}</p>
                 <p className="text-[10px] text-slate-400">
                   {subInfo.statusLabel}

@@ -32,18 +32,18 @@ export interface SubscriptionInfo {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 export const PLAN_LABELS: Record<string, string> = {
-  trial: 'Trial',
-  basic: 'Basic',
-  professional: 'Professional',
-  enterprise: 'Centro de Salud',
-  clinic: 'Centro de Salud',
-  centro_salud: 'Centro de Salud',
+  trial: 'Beta Privada',
+  basic: 'Beta Privada',
+  professional: 'Beta Privada',
+  enterprise: 'Beta Privada',
+  clinic: 'Beta Privada',
+  centro_salud: 'Beta Privada',
 }
 
 export const STATUS_LABELS: Record<string, string> = {
   active: 'Activo',
-  trial: 'Trial',
-  trialing: 'Trial',
+  trial: 'Pendiente de aprobación',
+  trialing: 'Pendiente de aprobación',
   past_due: 'Vencido',
   suspended: 'Suspendido',
   cancelled: 'Cancelado',

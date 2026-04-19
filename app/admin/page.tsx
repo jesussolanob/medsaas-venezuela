@@ -28,10 +28,12 @@ const styles = `
 
 // Plan names displayed to the user
 const PLAN_LABELS: Record<string, string> = {
-  basic: 'Basic',
-  professional: 'Professional',
-  enterprise: 'Centro de Salud',
-  centro_salud: 'Centro de Salud',
+  trial: 'Beta Privada',
+  basic: 'Beta Privada',
+  professional: 'Beta Privada',
+  enterprise: 'Beta Privada',
+  centro_salud: 'Beta Privada',
+  clinic: 'Beta Privada',
 }
 
 function getPlanTag(plan?: string | null, status?: string | null): { label: string; color: string } {
@@ -58,42 +60,10 @@ export default async function AdminDashboard() {
   // Fetch recent doctors (simple query, no joins)
   const { data: recentDoctors } = await adminClient
     .from('profiles')
-    .select('id, full_name, specialty, email, created_at, clinic_id')
+    .select('id, full_name, specialty, email, created_at')
     .eq('role', 'doctor')
     .order('created_at', { ascending: false })
     .limit(5)
-
-  // Fetch ALL clinics (for doctor plan lookup + active clinics section)
-  const { data: allClinics } = await adminClient
-    .from('clinics')
-    .select('id, name, city, subscription_plan, subscription_status, is_active')
-    .order('created_at', { ascending: false })
-
-  // Build a lookup map: clinic_id → clinic data
-  const clinicMap: Record<string, { subscription_plan: string; subscription_status: string; name: string; city: string; is_active: boolean }> = {}
-  ;(allClinics || []).forEach(c => {
-    clinicMap[c.id] = c
-  })
-
-  // Filter active clinics for the "Clínicas activas" section
-  const activeClinics = (allClinics || []).filter(c => c.is_active).slice(0, 5)
-
-  // Get doctor count per clinic
-  const clinicIds = activeClinics.map(c => c.id)
-  const { data: clinicDoctorCounts } = clinicIds.length > 0
-    ? await adminClient
-      .from('profiles')
-      .select('clinic_id')
-      .in('clinic_id', clinicIds)
-    : { data: [] }
-
-  // Count doctors per clinic
-  const doctorCountByClinic: Record<string, number> = {}
-  ;(clinicDoctorCounts || []).forEach(record => {
-    if (record.clinic_id) {
-      doctorCountByClinic[record.clinic_id] = (doctorCountByClinic[record.clinic_id] || 0) + 1
-    }
-  })
 
   // Fetch subscriptions for ALL recent doctors (source of truth for plan + status)
   const recentDoctorIds = (recentDoctors || []).map(d => d.id)
@@ -286,72 +256,38 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      {/* Tercera fila: Médicos Activos + Clínicas Activas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-        {/* Médicos Activos */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-slate-600">Últimos médicos registrados</h3>
-            <a href="/admin/doctors" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todos</a>
-          </div>
-          <div className="space-y-2">
-            {(recentDoctors || []).map((doctor) => {
-              // subscriptions table is the source of truth
-              const sub = subMap[doctor.id]
-              const tag = getPlanTag(sub?.plan, sub?.status)
-              return (
-                <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-xs flex-shrink-0">
-                      {doctor.full_name?.charAt(0) || '?'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{doctor.full_name}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{doctor.specialty}</p>
-                    </div>
+      {/* Últimos médicos registrados */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-slate-600">Últimos médicos registrados</h3>
+          <a href="/admin/doctors" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todos</a>
+        </div>
+        <div className="space-y-2">
+          {(recentDoctors || []).map((doctor) => {
+            const sub = subMap[doctor.id]
+            const tag = getPlanTag(sub?.plan, sub?.status)
+            return (
+              <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-xs flex-shrink-0">
+                    {doctor.full_name?.charAt(0) || '?'}
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tag.color}`}>
-                      {tag.label}
-                    </span>
-                    <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                      {new Date(doctor.created_at).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{doctor.full_name}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{doctor.specialty}</p>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Clínicas Activas */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-slate-600">Clínicas activas</h3>
-            <a href="/admin/doctors" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todas</a>
-          </div>
-          <div className="space-y-2">
-            {(activeClinics || []).map((clinic) => {
-              const doctorCount = doctorCountByClinic[clinic.id] || 0
-              const tag = getPlanTag(clinic.subscription_plan, clinic.subscription_status)
-              return (
-                <div key={clinic.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-semibold text-xs flex-shrink-0">
-                      {clinic.name?.charAt(0) || '?'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{clinic.name}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{doctorCount} médico{doctorCount !== 1 ? 's' : ''} • {clinic.city}</p>
-                    </div>
-                  </div>
-                  <span className={`text-[10px] font-semibold px-2 py-1 rounded-full flex-shrink-0 ml-2 whitespace-nowrap ${tag.color}`}>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tag.color}`}>
                     {tag.label}
                   </span>
+                  <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                    {new Date(doctor.created_at).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
+                  </span>
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
