@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Calendar, ClipboardList, Users,
   DollarSign, Settings, LogOut, Activity, Menu, MessageSquarePlus,
-  Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft
+  Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft, TrendingUp
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -21,6 +21,7 @@ const navItems: NavItem[] = [
   { name: 'Agenda',        href: '/doctor/agenda',        icon: Calendar,        featureKey: 'agenda' },
   { name: 'Pacientes',     href: '/doctor/patients',      icon: Users,           featureKey: 'patients' },
   { name: 'Consultas',     href: '/doctor/consultations', icon: ClipboardList,   featureKey: 'consultations' },
+  { name: 'Finanzas',      href: '/doctor/finances',      icon: TrendingUp,      featureKey: 'finances' },
   { name: 'Cobros',        href: '/doctor/cobros',        icon: Receipt,         featureKey: 'finances' },
   { name: 'Consultorios',  href: '/doctor/offices',       icon: Building2,       featureKey: 'dashboard' },
   { name: 'Servicios',     href: '/doctor/services',      icon: Package,         featureKey: 'dashboard' },
