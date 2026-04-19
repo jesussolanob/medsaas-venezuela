@@ -1,40 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 type AIAction = 'summarize' | 'improve' | 'patient_history'
 
 export async function POST(req: NextRequest) {
   try {
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
     if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'API key de Gemini no configurada' }, { status: 500 })
+      return NextResponse.json({ error: 'API key de Gemini no configurada. Agrega GEMINI_API_KEY en las variables de entorno.' }, { status: 500 })
     }
 
-    // Verify authenticated doctor
+    // Create supabase client with user's token for RLS
     const authHeader = req.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
     if (!token) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { global: { headers: { Authorization: `Bearer ${token}` } } }
+    )
+
+    // Verify user
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
     if (authErr || !user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
     const body = await req.json()
-    const { action, content, patientId, consultationId } = body as {
+    const { action, content, patientId } = body as {
       action: AIAction
       content?: string
       patientId?: string
-      consultationId?: string
     }
 
     let prompt = ''
@@ -55,8 +56,8 @@ export async function POST(req: NextRequest) {
       case 'patient_history': {
         if (!patientId) return NextResponse.json({ error: 'ID de paciente requerido' }, { status: 400 })
 
-        // Fetch patient's consultation history
-        const { data: consultations } = await supabaseAdmin
+        // Fetch patient's consultation history (uses RLS with doctor's token)
+        const { data: consultations, error: consultErr } = await supabase
           .from('consultations')
           .select('consultation_date, chief_complaint, diagnosis, treatment, notes')
           .eq('doctor_id', user.id)
@@ -64,8 +65,12 @@ export async function POST(req: NextRequest) {
           .order('consultation_date', { ascending: false })
           .limit(20)
 
+        if (consultErr) {
+          console.error('Error fetching consultations:', consultErr)
+        }
+
         // Fetch patient info
-        const { data: patient } = await supabaseAdmin
+        const { data: patient } = await supabase
           .from('patients')
           .select('full_name, age, sex, blood_type, allergies, chronic_conditions')
           .eq('id', patientId)
@@ -106,17 +111,17 @@ export async function POST(req: NextRequest) {
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text()
-      console.error('Gemini API error:', errText)
-      return NextResponse.json({ error: 'Error al conectar con Gemini' }, { status: 500 })
+      console.error('Gemini API error:', geminiRes.status, errText)
+      return NextResponse.json({ error: `Error de Gemini (${geminiRes.status}): verifica tu API key` }, { status: 500 })
     }
 
     const geminiData = await geminiRes.json()
     const result = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta de la IA'
 
     return NextResponse.json({ result })
-  } catch (err) {
-    console.error('AI route error:', err)
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  } catch (err: any) {
+    console.error('AI route error:', err?.message || err)
+    return NextResponse.json({ error: `Error interno: ${err?.message || 'desconocido'}` }, { status: 500 })
   }
 }
 
