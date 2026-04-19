@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(req: NextRequest) {
   try {
-    const { subscriptionId, days = 30, newPlan } = await req.json()
+    const { subscriptionId, days = 30, newPlan, activate, suspend } = await req.json()
 
     if (!subscriptionId || typeof days !== 'number') {
       return NextResponse.json(
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     // Update subscription
     const updateData: any = {
       current_period_end: startDate.toISOString(),
-      status: 'active',
+      status: suspend ? 'suspended' : 'active',
     }
 
     if (newPlan) {

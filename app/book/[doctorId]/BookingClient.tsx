@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Calendar, Clock, User, Phone, Mail, CheckCircle, Activity,
   ChevronLeft, ChevronRight, ChevronDown, Upload, Video, MapPin,
-  CreditCard, FileText, Shield, Check
+  CreditCard, FileText, Shield, Check, LogIn, UserPlus
 } from 'lucide-react'
 import { getProfessionalTitle } from '@/lib/professional-title'
 
@@ -135,8 +135,9 @@ export default function BookingClient({
   const [authReady, setAuthReady] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
 
-  // Accordion step (1-6)
+  // Accordion step (1-7)
   const [activeStep, setActiveStep] = useState(1)
+  const [guestMode, setGuestMode] = useState(false)
 
   // Active package (prepaid sessions)
   const [activePackage, setActivePackage] = useState<ActivePackage | null>(null)
@@ -297,19 +298,33 @@ export default function BookingClient({
     if (!usingPackage && !useInsurance && !selectedPaymentMethod) { setError('Selecciona un método de pago'); return }
     if (!usingPackage && useInsurance && !selectedInsurance) { setError('Selecciona tu seguro'); return }
 
+    // Guest validation
+    if (!authUser && (!form.full_name.trim() || !form.email.trim())) {
+      setError('Nombre y email son requeridos'); return
+    }
+
     setSubmitting(true)
     try {
       const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
-        setError('Sesión expirada. Recarga la página.')
-        setSubmitting(false)
-        return
+      let accessToken: string | null = null
+      let sessionEmail: string | null = null
+
+      // Get access token only if authenticated
+      if (authUser) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) {
+          setError('Sesión expirada. Recarga la página.')
+          setSubmitting(false)
+          return
+        }
+        accessToken = session.access_token
+        sessionEmail = session.user.email || null
       }
 
-      const patientName = (form.full_name.trim() || authUser?.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Paciente').trim()
+      const patientName = (form.full_name.trim() || authUser?.user_metadata?.full_name || 'Paciente').trim()
       const patientPhone = (form.phone.trim() || authUser?.user_metadata?.phone || '').trim()
       const patientCedula = (form.cedula.trim() || authUser?.user_metadata?.cedula || '').trim()
+      const patientEmail = sessionEmail || form.email.trim()
 
       // Upload receipt if needed (skip if using package)
       let receiptUrl = null
@@ -321,7 +336,8 @@ export default function BookingClient({
         }
         try {
           const ext = paymentFile.name.split('.').pop()
-          const path = `${doctor.id}/${session.user.id}/${Date.now()}.${ext}`
+          const uploaderId = authUser?.id || 'guest'
+          const path = `${doctor.id}/${uploaderId}/${Date.now()}.${ext}`
           const { error: uploadErr } = await supabase.storage.from('payment-receipts').upload(path, paymentFile, { upsert: false })
           if (uploadErr) throw uploadErr
           const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
@@ -339,10 +355,10 @@ export default function BookingClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           doctorId: doctor.id,
-          accessToken: session.access_token,
+          accessToken,
           patientName,
           patientPhone: patientPhone || null,
-          patientEmail: session.user.email,
+          patientEmail,
           patientCedula: patientCedula || null,
           scheduledAt: dateTime.toISOString(),
           chiefComplaint: form.notes.trim() || null,
@@ -368,7 +384,6 @@ export default function BookingClient({
       if (usingPackage && activePackage) {
         const newUsed = activePackage.used_sessions + 1
         if (newUsed >= activePackage.total_sessions) {
-          // Package fully used
           setActivePackage(null)
         } else {
           setActivePackage({ ...activePackage, used_sessions: newUsed })
@@ -422,9 +437,18 @@ export default function BookingClient({
           </div>
         )}
         <p className="text-xs text-slate-400 mb-4">El médico confirmará tu cita y se pondrá en contacto contigo.</p>
-        <a href="/patient/dashboard" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
-          Ir a mi dashboard
-        </a>
+        {authUser ? (
+          <a href="/patient/dashboard" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
+            Ir a mi dashboard
+          </a>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">¿Quieres crear una cuenta para ver tu historial?</p>
+            <a href="/patient/register" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
+              Crear cuenta
+            </a>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -439,104 +463,6 @@ export default function BookingClient({
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
         <span className="text-sm">Cargando...</span>
-      </div>
-    </div>
-  )
-
-  if (!authUser) return (
-    <div className="min-h-screen bg-slate-50">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
-      {/* Header */}
-      <div className="g-bg">
-        <div className="max-w-lg mx-auto px-4 py-8 text-white text-center">
-          <div className="w-20 h-20 rounded-full bg-white/20 overflow-hidden flex items-center justify-center mx-auto mb-4 border-4 border-white/30">
-            {doctor.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={doctor.avatar_url} alt={doctor.full_name} className="w-full h-full object-cover" />
-            ) : (
-              <Activity className="w-8 h-8 text-white" />
-            )}
-          </div>
-          <h1 className="text-2xl font-bold">{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</h1>
-          <p className="text-sm text-white/80 mt-1">{doctor.specialty || 'Médico especialista'}</p>
-          {(doctor.city || doctor.state) && (
-            <p className="text-xs text-white/60 mt-2">📍 {[doctor.city, doctor.state].filter(Boolean).join(', ')}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
-        <div className="text-center">
-          <h2 className="text-lg font-bold text-slate-900">Inicia sesión para agendar</h2>
-          <p className="text-sm text-slate-500 mt-1">Necesitas una cuenta para reservar tu cita</p>
-        </div>
-
-        <div className="grid gap-3 grid-cols-2">
-          <button onClick={() => { setAuthMode('login'); setError('') }}
-            className={`p-4 rounded-xl border-2 text-center transition-all ${authMode === 'login' ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-            <p className="font-bold text-slate-900">Iniciar sesión</p>
-            <p className="text-xs text-slate-500 mt-0.5">Ya tengo cuenta</p>
-          </button>
-          <button onClick={() => { setAuthMode('register'); setError('') }}
-            className={`p-4 rounded-xl border-2 text-center transition-all ${authMode === 'register' ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-            <p className="font-bold text-slate-900">Crear cuenta</p>
-            <p className="text-xs text-slate-500 mt-0.5">Soy nuevo</p>
-          </button>
-        </div>
-
-        {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</p>}
-
-        {authMode === 'login' && (
-          <form onSubmit={handleAuthLogin} className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
-              <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="tu@email.com" className={fi} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Contraseña</label>
-              <input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" className={fi} required />
-            </div>
-            <button type="submit" disabled={submitting} className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-              {submitting ? 'Verificando...' : 'Entrar'}
-            </button>
-          </form>
-        )}
-
-        {authMode === 'register' && (
-          <form onSubmit={handleAuthRegister} className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre completo</label>
-              <input type="text" value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} placeholder="María González" className={fi} required />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Cédula</label>
-                <input type="text" value={form.cedula} onChange={e => setForm(p => ({ ...p, cedula: e.target.value }))} placeholder="V-12345678" className={fi} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Teléfono</label>
-                <input type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+58 412 123..." className={fi} required />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
-              <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="tu@email.com" className={fi} required />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Contraseña</label>
-                <input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" className={fi} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Confirmar</label>
-                <input type="password" value={form.passwordConfirm} onChange={e => setForm(p => ({ ...p, passwordConfirm: e.target.value }))} placeholder="••••••••" className={fi} required />
-              </div>
-            </div>
-            <button type="submit" disabled={submitting} className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-              {submitting ? 'Creando cuenta...' : 'Crear cuenta y continuar'}
-            </button>
-          </form>
-        )}
       </div>
     </div>
   )
@@ -759,7 +685,7 @@ export default function BookingClient({
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
-                onClick={() => { setAppointmentMode('presencial'); setActiveStep(usingPackage ? 5 : 4) }}
+                onClick={() => { setAppointmentMode('presencial'); setActiveStep(4) }}
                 className={`p-4 rounded-xl border-2 text-left transition-all ${
                   appointmentMode === 'presencial' ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
                 }`}
@@ -778,7 +704,7 @@ export default function BookingClient({
 
               {doctor.allows_online !== false && (
                 <button
-                  onClick={() => { setAppointmentMode('online'); setActiveStep(usingPackage ? 5 : 4) }}
+                  onClick={() => { setAppointmentMode('online'); setActiveStep(4) }}
                   className={`p-4 rounded-xl border-2 text-left transition-all ${
                     appointmentMode === 'online' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'
                   }`}
@@ -797,10 +723,192 @@ export default function BookingClient({
             </div>
           </AccordionSection>
 
-          {/* ── Step 4: Método de pago (skip if using package) ─────────────── */}
-          {!usingPackage && (
+          {/* ── Step 4: Tus datos ──────────────────────────────────────────── */}
           <AccordionSection
             step={4}
+            currentStep={activeStep}
+            title="Tus datos"
+            icon={User}
+            summary={
+              authUser
+                ? `${form.full_name || authUser.user_metadata?.full_name || authUser.email} (registrado)`
+                : guestMode && form.full_name
+                  ? `${form.full_name} (invitado)`
+                  : undefined
+            }
+            completed={(!!authUser || (guestMode && !!form.full_name && !!form.email)) && activeStep > 4}
+            onOpen={() => setActiveStep(4)}
+          >
+            <div className="space-y-4">
+              {authUser ? (
+                /* Already authenticated — show summary and continue */
+                <div className="space-y-3">
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-emerald-800">Sesión iniciada</p>
+                        <p className="text-xs text-emerald-600">{authUser.email}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1 ml-11">
+                      <p className="text-xs text-slate-600"><span className="font-semibold">Nombre:</span> {form.full_name || authUser.user_metadata?.full_name}</p>
+                      {(form.phone || authUser.user_metadata?.phone) && (
+                        <p className="text-xs text-slate-600"><span className="font-semibold">Teléfono:</span> {form.phone || authUser.user_metadata?.phone}</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveStep(usingPackage ? 6 : 5)}
+                    className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors"
+                  >
+                    Continuar
+                  </button>
+                </div>
+              ) : !guestMode && !authMode ? (
+                /* Choice: login or continue as guest */
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-600">Puedes iniciar sesión para acceder a tus paquetes prepagados, o continuar como invitado.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('login')}
+                      className="p-4 rounded-xl border-2 border-teal-300 bg-white hover:border-teal-500 text-left transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+                          <LogIn className="w-5 h-5 text-teal-600" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900">Iniciar sesión</p>
+                          <p className="text-xs text-slate-500">Accede a tus paquetes</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGuestMode(true)}
+                      className="p-4 rounded-xl border-2 border-slate-200 bg-white hover:border-teal-300 text-left transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                          <UserPlus className="w-5 h-5 text-slate-500" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900">Continuar como invitado</p>
+                          <p className="text-xs text-slate-500">Sin crear cuenta</p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              ) : authMode === 'login' ? (
+                /* Login form */
+                <form onSubmit={handleAuthLogin} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={fi} required placeholder="tu@email.com" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Contraseña</label>
+                    <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className={fi} required placeholder="••••••••" />
+                  </div>
+                  <button type="submit" disabled={submitting} className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-60">
+                    {submitting ? 'Verificando...' : 'Iniciar sesión'}
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setAuthMode('register')} className="text-xs text-teal-600 hover:underline">Crear cuenta nueva</button>
+                    <span className="text-xs text-slate-300">|</span>
+                    <button type="button" onClick={() => { setAuthMode(null); setGuestMode(true) }} className="text-xs text-slate-500 hover:underline">Continuar sin cuenta</button>
+                  </div>
+                </form>
+              ) : authMode === 'register' ? (
+                /* Register form */
+                <form onSubmit={handleAuthRegister} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nombre completo</label>
+                    <input type="text" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className={fi} required placeholder="Tu nombre" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cédula</label>
+                    <input type="text" value={form.cedula} onChange={e => setForm(f => ({ ...f, cedula: e.target.value }))} className={fi} placeholder="V-12345678" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Teléfono</label>
+                    <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={fi} placeholder="0412-1234567" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={fi} required placeholder="tu@email.com" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Contraseña</label>
+                    <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className={fi} required placeholder="Mínimo 6 caracteres" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Confirmar contraseña</label>
+                    <input type="password" value={form.passwordConfirm} onChange={e => setForm(f => ({ ...f, passwordConfirm: e.target.value }))} className={fi} required placeholder="Repite tu contraseña" />
+                  </div>
+                  <button type="submit" disabled={submitting} className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-60">
+                    {submitting ? 'Registrando...' : 'Crear cuenta y continuar'}
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setAuthMode('login')} className="text-xs text-teal-600 hover:underline">Ya tengo cuenta</button>
+                    <span className="text-xs text-slate-300">|</span>
+                    <button type="button" onClick={() => { setAuthMode(null); setGuestMode(true) }} className="text-xs text-slate-500 hover:underline">Continuar sin cuenta</button>
+                  </div>
+                </form>
+              ) : (
+                /* Guest form */
+                <div className="space-y-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs text-amber-700"><span className="font-semibold">Nota:</span> Como invitado no podrás usar paquetes prepagados ni ver tu historial.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nombre completo <span className="text-red-500">*</span></label>
+                    <input type="text" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className={fi} required placeholder="Tu nombre completo" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email <span className="text-red-500">*</span></label>
+                    <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={fi} required placeholder="tu@email.com" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Teléfono</label>
+                    <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={fi} placeholder="0412-1234567" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cédula</label>
+                    <input type="text" value={form.cedula} onChange={e => setForm(f => ({ ...f, cedula: e.target.value }))} className={fi} placeholder="V-12345678" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!form.full_name.trim() || !form.email.trim()) {
+                        setError('Nombre y email son requeridos')
+                        return
+                      }
+                      setError('')
+                      setActiveStep(usingPackage ? 6 : 5)
+                    }}
+                    className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors"
+                  >
+                    Continuar
+                  </button>
+                  <button type="button" onClick={() => { setGuestMode(false); setAuthMode('login') }} className="text-xs text-teal-600 hover:underline">
+                    Prefiero iniciar sesión
+                  </button>
+                </div>
+              )}
+            </div>
+          </AccordionSection>
+
+          {/* ── Step 5: Método de pago (skip if using package) ─────────────── */}
+          {!usingPackage && (
+          <AccordionSection
+            step={5}
             currentStep={activeStep}
             title="Método de pago"
             icon={CreditCard}
@@ -808,8 +916,8 @@ export default function BookingClient({
               useInsurance ? `Seguro: ${selectedInsurance}` :
               selectedPaymentMethod ? PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod] : undefined
             }
-            completed={(!!selectedPaymentMethod || (useInsurance && !!selectedInsurance)) && activeStep > 4}
-            onOpen={() => setActiveStep(4)}
+            completed={(!!selectedPaymentMethod || (useInsurance && !!selectedInsurance)) && activeStep > 5}
+            onOpen={() => setActiveStep(5)}
           >
             <div className="space-y-4">
               {/* Toggle: Pago directo vs Seguro */}
@@ -893,7 +1001,7 @@ export default function BookingClient({
               {(selectedPaymentMethod || (useInsurance && selectedInsurance)) && (
                 <button
                   type="button"
-                  onClick={() => setActiveStep(5)}
+                  onClick={() => setActiveStep(6)}
                   className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors"
                 >
                   Continuar
@@ -903,9 +1011,9 @@ export default function BookingClient({
           </AccordionSection>
           )}
 
-          {/* ── Step 5: Motivo y confirmación ──────────────────────────────── */}
+          {/* ── Step 6: Motivo y confirmación ──────────────────────────────── */}
           <AccordionSection
-            step={5}
+            step={6}
             currentStep={activeStep}
             title="Confirmar cita"
             icon={CheckCircle}
@@ -950,9 +1058,12 @@ export default function BookingClient({
               {/* Patient info */}
               <div className="bg-slate-50 rounded-lg p-3 space-y-1">
                 <p className="text-xs text-slate-500"><span className="font-semibold">Paciente:</span> {form.full_name || authUser?.user_metadata?.full_name}</p>
-                <p className="text-xs text-slate-500"><span className="font-semibold">Email:</span> {authUser?.email}</p>
+                <p className="text-xs text-slate-500"><span className="font-semibold">Email:</span> {authUser?.email || form.email}</p>
                 {(form.phone || authUser?.user_metadata?.phone) && (
                   <p className="text-xs text-slate-500"><span className="font-semibold">Teléfono:</span> {form.phone || authUser?.user_metadata?.phone}</p>
+                )}
+                {!authUser && (
+                  <p className="text-[10px] text-amber-600 mt-1 font-medium">Agendando como invitado</p>
                 )}
               </div>
 

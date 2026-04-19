@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { UserCheck, UserX, Plus } from 'lucide-react'
+import { UserCheck, UserX, Plus, Clock, AlertTriangle, Search } from 'lucide-react'
 import NewDoctorModal from './NewDoctorModal'
 import DoctorDetailDrawer from './DoctorDetailDrawer'
 import ClinicDetailDrawer from './ClinicDetailDrawer'
@@ -15,7 +15,9 @@ interface Doctor {
   email: string
   specialty?: string
   is_active: boolean
-  subscriptions?: { plan: string; status: string } | Array<{ plan: string; status: string }> | null
+  created_at?: string
+  last_sign_in_at?: string
+  subscriptions?: { plan: string; status: string; current_period_end?: string } | Array<{ plan: string; status: string; current_period_end?: string }> | null
 }
 
 interface Clinic {
@@ -32,6 +34,11 @@ interface Clinic {
   doctor_count?: number
 }
 
+function daysSince(dateStr?: string | null): number {
+  if (!dateStr) return 999
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24))
+}
+
 export default function UsersPanel() {
   const [tab, setTab] = useState<'doctors' | 'clinics'>('doctors')
   const [doctors, setDoctors] = useState<Doctor[]>([])
@@ -39,6 +46,7 @@ export default function UsersPanel() {
   const [loading, setLoading] = useState(true)
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null)
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const loadDoctors = async () => {
     try {
@@ -75,6 +83,19 @@ export default function UsersPanel() {
     load()
   }, [tab])
 
+  const filteredDoctors = doctors.filter(d => {
+    if (!searchQuery) return true
+    const q = searchQuery.toLowerCase()
+    return d.full_name?.toLowerCase().includes(q) || d.email?.toLowerCase().includes(q) || d.specialty?.toLowerCase().includes(q)
+  })
+
+  // Stats
+  const activeDoctors = doctors.filter(d => d.is_active).length
+  const inactiveDays7 = doctors.filter(d => {
+    const days = daysSince(d.last_sign_in_at || d.created_at)
+    return days >= 7 && d.is_active
+  }).length
+
   const tabs = [
     { value: 'doctors' as const, label: 'Médicos', icon: '👨‍⚕️' },
     { value: 'clinics' as const, label: 'Clínicas', icon: '🏥' },
@@ -85,11 +106,9 @@ export default function UsersPanel() {
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div>
-            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Usuarios</h2>
+            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Médicos y Suscripciones</h2>
             <p className="text-slate-500 text-xs sm:text-sm mt-1">
-              {tab === 'doctors'
-                ? `${doctors?.length ?? 0} médicos registrados`
-                : `${clinics?.length ?? 0} clínicas registradas`}
+              {doctors?.length ?? 0} médicos registrados · {activeDoctors} activos
             </p>
           </div>
           <div className="flex-shrink-0">
@@ -97,135 +116,164 @@ export default function UsersPanel() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
-          {tabs.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setTab(t.value)}
-              className={clsx(
-                'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all',
-                tab === t.value
-                  ? 'bg-white text-teal-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              )}
-            >
-              <span>{t.icon}</span>
-              {t.label}
-            </button>
-          ))}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
+            <p className="text-2xl font-bold text-slate-900">{doctors.length}</p>
+            <p className="text-xs text-slate-400 mt-1">Total registrados</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
+            <p className="text-2xl font-bold text-emerald-600">{activeDoctors}</p>
+            <p className="text-xs text-slate-400 mt-1">Activos</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
+            <div className="flex items-center gap-2">
+              <p className="text-2xl font-bold text-amber-600">{inactiveDays7}</p>
+              {inactiveDays7 > 0 && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">+7 días sin actividad</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
+            <p className="text-2xl font-bold text-slate-900">{clinics.length}</p>
+            <p className="text-xs text-slate-400 mt-1">Clínicas</p>
+          </div>
+        </div>
+
+        {/* Tabs + Search */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+            {tabs.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTab(t.value)}
+                className={clsx(
+                  'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all',
+                  tab === t.value
+                    ? 'bg-white text-teal-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                )}
+              >
+                <span>{t.icon}</span>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {tab === 'doctors' && (
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Buscar médico..."
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
+              />
+            </div>
+          )}
         </div>
 
         {/* Doctors Tab */}
         {tab === 'doctors' && (
           <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto -mx-4 sm:mx-0 sm:overflow-hidden">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Médico
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">
-                    Especialidad
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Plan
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden md:table-cell">
-                    Estado
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Médico</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Especialidad</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Plan / Estado</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden md:table-cell">Vence</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden lg:table-cell">Actividad</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
-                      Cargando médicos...
-                    </td>
+                    <td colSpan={6} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">Cargando médicos...</td>
                   </tr>
-                ) : !doctors || doctors.length === 0 ? (
+                ) : filteredDoctors.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 sm:px-6 py-16 text-center">
+                    <td colSpan={6} className="px-4 sm:px-6 py-16 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
                           <UserCheck className="w-6 h-6 text-slate-400" />
                         </div>
-                        <p className="text-slate-400 text-sm">No hay médicos registrados todavía</p>
-                        <NewDoctorModal />
+                        <p className="text-slate-400 text-sm">{searchQuery ? 'No se encontraron resultados' : 'No hay médicos registrados todavía'}</p>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  doctors.map((doctor) => (
-                    <tr key={doctor.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 sm:px-6 py-4">
-                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-medium text-xs sm:text-sm flex-shrink-0">
-                            {doctor.full_name?.charAt(0) ?? '?'}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">
-                              {doctor.full_name}
-                            </p>
-                            <p className="text-xs text-slate-400 truncate">{doctor.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600 hidden sm:table-cell">
-                        {doctor.specialty ?? '—'}
-                      </td>
-                      <td className="px-4 sm:px-6 py-4">
-                        {(() => {
-                          const subs = doctor.subscriptions
-                          const sub = Array.isArray(subs) ? subs[0] : subs
-                          const plan = sub?.plan || 'trial'
-                          const status = sub?.status || 'trial'
-                          return (
-                            <div className="flex flex-col gap-1">
-                              <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getPlanColor(plan)}`}>
-                                {getPlanLabel(plan)}
-                              </span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getStatusColor(status)}`}>
-                                {getStatusLabel(status)}
-                              </span>
+                  filteredDoctors.map((doctor) => {
+                    const subs = doctor.subscriptions
+                    const sub = Array.isArray(subs) ? subs[0] : subs
+                    const plan = sub?.plan || 'trial'
+                    const status = sub?.status || 'trial'
+                    const daysInactive = daysSince(doctor.last_sign_in_at || doctor.created_at)
+                    const vence = sub?.current_period_end
+                      ? new Date(sub.current_period_end).toLocaleDateString('es-VE')
+                      : '—'
+
+                    return (
+                      <tr key={doctor.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 sm:px-6 py-4">
+                          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-medium text-xs sm:text-sm flex-shrink-0">
+                              {doctor.full_name?.charAt(0) ?? '?'}
                             </div>
-                          )
-                        })()}
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
-                        {doctor.is_active ? (
-                          <span className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full w-fit">
-                            <UserCheck className="w-3 h-3" /> Activo
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs text-red-500 bg-red-50 px-2 py-1 rounded-full w-fit">
-                            <UserX className="w-3 h-3" /> Inactivo
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 sm:px-6 py-4">
-                        <div className="flex items-center gap-1 sm:gap-2">
-                          <button
-                            onClick={() => setSelectedDoctor(doctor)}
-                            className="text-xs text-teal-600 hover:text-teal-700 font-medium"
-                          >
-                            Ver
-                          </button>
-                          <span className="text-slate-200 hidden sm:inline">|</span>
-                          <div className="hidden sm:block">
-                            <DoctorActionButton
-                              doctorId={doctor.id}
-                              isActive={doctor.is_active}
-                              onSuccess={loadDoctors}
-                            />
+                            <div className="min-w-0">
+                              <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{doctor.full_name}</p>
+                              <p className="text-xs text-slate-400 truncate">{doctor.email}</p>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600 hidden sm:table-cell">
+                          {doctor.specialty ?? '—'}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getPlanColor(plan)}`}>
+                              {getPlanLabel(plan)}
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getStatusColor(status)}`}>
+                              {getStatusLabel(status)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-xs text-slate-500 hidden md:table-cell">
+                          {vence}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 hidden lg:table-cell">
+                          <span className={clsx(
+                            'text-xs px-2 py-1 rounded-full flex items-center gap-1 w-fit',
+                            daysInactive >= 14 ? 'bg-red-50 text-red-600' :
+                            daysInactive >= 7 ? 'bg-amber-50 text-amber-600' :
+                            'bg-emerald-50 text-emerald-600'
+                          )}>
+                            <Clock className="w-3 h-3" />
+                            {daysInactive === 0 ? 'Hoy' : `${daysInactive}d`}
+                          </span>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4">
+                          <div className="flex items-center gap-1 sm:gap-2">
+                            <button
+                              onClick={() => setSelectedDoctor(doctor)}
+                              className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                            >
+                              Ver
+                            </button>
+                            <span className="text-slate-200 hidden sm:inline">|</span>
+                            <div className="hidden sm:block">
+                              <DoctorActionButton
+                                doctorId={doctor.id}
+                                isActive={doctor.is_active}
+                                onSuccess={loadDoctors}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -238,43 +286,20 @@ export default function UsersPanel() {
             <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Clínica
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">
-                    Ciudad
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Estado
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden md:table-cell">
-                    Médicos
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden lg:table-cell">
-                    Propietario
-                  </th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Clínica</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Ciudad</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Estado</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden md:table-cell">Médicos</th>
+                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">
-                      Cargando clínicas...
-                    </td>
-                  </tr>
+                  <tr><td colSpan={5} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">Cargando clínicas...</td></tr>
                 ) : !clinics || clinics.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 sm:px-6 py-16 text-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-2xl">
-                          🏥
-                        </div>
-                        <p className="text-slate-400 text-sm">No hay clínicas registradas todavía</p>
-                        <NewClinicModal onSuccess={loadClinics} />
-                      </div>
+                    <td colSpan={5} className="px-4 sm:px-6 py-16 text-center">
+                      <p className="text-slate-400 text-sm">No hay clínicas registradas todavía</p>
                     </td>
                   </tr>
                 ) : (
@@ -282,51 +307,24 @@ export default function UsersPanel() {
                     <tr key={clinic.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 sm:px-6 py-4">
                         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-medium text-xs sm:text-sm flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-medium text-xs flex-shrink-0">
                             {clinic.name?.charAt(0) ?? '?'}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">
-                              {clinic.name}
-                            </p>
-                            {clinic.email && (
-                              <p className="text-xs text-slate-400 truncate">{clinic.email}</p>
-                            )}
+                            <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{clinic.name}</p>
+                            {clinic.email && <p className="text-xs text-slate-400 truncate">{clinic.email}</p>}
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600 hidden sm:table-cell">
-                        {clinic.city ?? '—'}
-                      </td>
+                      <td className="px-4 sm:px-6 py-4 text-xs text-slate-600 hidden sm:table-cell">{clinic.city ?? '—'}</td>
                       <td className="px-4 sm:px-6 py-4">
-                        {(() => {
-                          const plan = clinic.subscription_plan || 'clinic'
-                          const status = clinic.subscription_status || 'trial'
-                          return (
-                            <div className="flex flex-col gap-1">
-                              <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getPlanColor(plan)}`}>
-                                {getPlanLabel(plan)}
-                              </span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getStatusColor(status)}`}>
-                                {getStatusLabel(status)}
-                              </span>
-                            </div>
-                          )
-                        })()}
+                        <span className={`text-xs px-2 py-0.5 rounded-full w-fit ${getStatusColor(clinic.subscription_status || 'trial')}`}>
+                          {getStatusLabel(clinic.subscription_status || 'trial')}
+                        </span>
                       </td>
-                      <td className="px-4 sm:px-6 py-4 text-sm text-slate-900 font-medium hidden md:table-cell">
-                        {clinic.doctor_count || 0}
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 text-sm text-slate-600 hidden lg:table-cell truncate">
-                        {clinic.owner_name}
-                      </td>
+                      <td className="px-4 sm:px-6 py-4 text-sm text-slate-900 font-medium hidden md:table-cell">{clinic.doctor_count || 0}</td>
                       <td className="px-4 sm:px-6 py-4">
-                        <button
-                          onClick={() => setSelectedClinic(clinic)}
-                          className="text-xs text-teal-600 hover:text-teal-700 font-medium"
-                        >
-                          Ver
-                        </button>
+                        <button onClick={() => setSelectedClinic(clinic)} className="text-xs text-teal-600 hover:text-teal-700 font-medium">Ver</button>
                       </td>
                     </tr>
                   ))

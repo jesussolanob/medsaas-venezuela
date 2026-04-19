@@ -3,73 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import ApprovalsClient from './ApprovalsClient'
 
-type PendingPayment = {
-  id: string
-  doctor_id: string
-  doctor_name: string
-  doctor_email: string
-  amount: number
-  currency: string
-  method: string
-  reference_number: string | null
-  receipt_url: string | null
-  created_at: string
-  status: string
-}
-
-type ProcessedPayment = PendingPayment & {
-  verified_at: string
-  verified_by: string | null
-}
-
-type ExpiringSubscription = {
-  id: string
-  doctor_id: string
-  doctor_name: string
-  doctor_email: string
-  specialty: string | null
-  plan: string
-  status: string
-  current_period_end: string
-  days_remaining: number
-}
-
-type ApprovedPayment = {
-  id: string
-  doctor_id: string
-  doctor_name: string
-  doctor_email: string
-  amount: number
-  currency: string
-  method: string
-  created_at: string
-}
-
-type Invoice = {
-  id: string
-  invoice_number: string
-  doctor_id: string
-  doctor_name: string
-  doctor_email: string
-  amount: number
-  currency: string
-  description: string | null
-  status: string
-  issued_at: string
-  sent_at: string | null
-  paid_at: string | null
-}
-
 export default async function ApprovalsPage() {
   const supabase = await createClient()
 
-  // Check authentication
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  if (!user) redirect('/login')
 
-  // Check if user is admin
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
@@ -82,51 +21,8 @@ export default async function ApprovalsPage() {
 
   const admin = createAdminClient()
 
-  // 1. Fetch pending payments with doctor info
-  const { data: pendingData } = await admin
-    .from('subscription_payments')
-    .select(`
-      id,
-      doctor_id,
-      amount,
-      currency,
-      method,
-      reference_number,
-      receipt_url,
-      status,
-      created_at,
-      profiles:doctor_id(full_name, email)
-    `)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
-
-  // 2. Fetch recently processed payments (last 20)
-  const { data: processedData } = await admin
-    .from('subscription_payments')
-    .select(`
-      id,
-      doctor_id,
-      amount,
-      currency,
-      method,
-      reference_number,
-      receipt_url,
-      status,
-      created_at,
-      verified_at,
-      verified_by,
-      profiles:doctor_id(full_name, email)
-    `)
-    .in('status', ['verified', 'rejected'])
-    .order('verified_at', { ascending: false })
-    .limit(20)
-
-  // 3. Fetch subscriptions expiring in next 14 days
-  const now = new Date()
-  const fourteenDaysFromNow = new Date()
-  fourteenDaysFromNow.setDate(fourteenDaysFromNow.getDate() + 14)
-
-  const { data: expiringSubsData } = await admin
+  // Fetch doctors in trial (pending beta approval)
+  const { data: trialDoctors } = await admin
     .from('subscriptions')
     .select(`
       id,
@@ -134,138 +30,51 @@ export default async function ApprovalsPage() {
       plan,
       status,
       current_period_end,
+      created_at,
+      profiles:doctor_id(full_name, email, specialty, phone, city, state)
+    `)
+    .in('status', ['trial', 'trialing'])
+    .order('created_at', { ascending: false })
+
+  // Fetch recently activated doctors (last 30)
+  const { data: activeDoctors } = await admin
+    .from('subscriptions')
+    .select(`
+      id,
+      doctor_id,
+      plan,
+      status,
+      current_period_end,
+      created_at,
       profiles:doctor_id(full_name, email, specialty)
     `)
-    .lte('current_period_end', fourteenDaysFromNow.toISOString())
-    .gte('current_period_end', now.toISOString())
-    .in('status', ['active', 'trial'])
-    .order('current_period_end', { ascending: true })
+    .eq('status', 'active')
+    .order('current_period_end', { ascending: false })
+    .limit(30)
 
-  // 5. Fetch approved payments (for billing tab)
-  const { data: approvedPaymentsData } = await admin
-    .from('subscription_payments')
-    .select(`
-      id,
-      doctor_id,
-      amount,
-      currency,
-      method,
-      created_at,
-      profiles:doctor_id(full_name, email)
-    `)
-    .eq('status', 'verified')
-    .order('created_at', { ascending: false })
-
-  // 6. Fetch all invoices (for billing tab)
-  const { data: invoicesData } = await admin
-    .from('invoices')
-    .select(`
-      id,
-      invoice_number,
-      doctor_id,
-      amount,
-      currency,
-      description,
-      status,
-      issued_at,
-      sent_at,
-      paid_at,
-      profiles:doctor_id(full_name, email)
-    `)
-    .order('created_at', { ascending: false })
-
-  // Transform pending payments
-  const pendingPayments: PendingPayment[] = (pendingData || []).map((p: any) => ({
-    id: p.id,
-    doctor_id: p.doctor_id,
-    doctor_name: p.profiles?.full_name || 'Unknown',
-    doctor_email: p.profiles?.email || 'unknown@example.com',
-    amount: p.amount,
-    currency: p.currency,
-    method: p.method,
-    reference_number: p.reference_number,
-    receipt_url: p.receipt_url,
-    created_at: p.created_at,
-    status: p.status,
+  const pending = (trialDoctors || []).map((s: any) => ({
+    subscriptionId: s.id,
+    doctorId: s.doctor_id,
+    name: s.profiles?.full_name || 'Sin nombre',
+    email: s.profiles?.email || '',
+    specialty: s.profiles?.specialty || null,
+    phone: s.profiles?.phone || null,
+    location: [s.profiles?.city, s.profiles?.state].filter(Boolean).join(', ') || null,
+    plan: s.plan,
+    status: s.status,
+    registeredAt: s.created_at,
+    trialEndsAt: s.current_period_end,
   }))
 
-  // Transform processed payments
-  const processedPayments: ProcessedPayment[] = (processedData || []).map((p: any) => ({
-    id: p.id,
-    doctor_id: p.doctor_id,
-    doctor_name: p.profiles?.full_name || 'Unknown',
-    doctor_email: p.profiles?.email || 'unknown@example.com',
-    amount: p.amount,
-    currency: p.currency,
-    method: p.method,
-    reference_number: p.reference_number,
-    receipt_url: p.receipt_url,
-    created_at: p.created_at,
-    status: p.status,
-    verified_at: p.verified_at,
-    verified_by: p.verified_by,
+  const approved = (activeDoctors || []).map((s: any) => ({
+    subscriptionId: s.id,
+    doctorId: s.doctor_id,
+    name: s.profiles?.full_name || 'Sin nombre',
+    email: s.profiles?.email || '',
+    specialty: s.profiles?.specialty || null,
+    plan: s.plan,
+    activatedAt: s.current_period_end,
   }))
 
-  // Transform expiring subscriptions
-  const expiringSubscriptions: ExpiringSubscription[] = (expiringSubsData || []).map((s: any) => {
-    const expiresDate = new Date(s.current_period_end)
-    const daysRemaining = Math.ceil((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-
-    return {
-      id: s.id,
-      doctor_id: s.doctor_id,
-      doctor_name: s.profiles?.full_name || 'Unknown',
-      doctor_email: s.profiles?.email || 'unknown@example.com',
-      specialty: s.profiles?.specialty || null,
-      plan: s.plan,
-      status: s.status,
-      current_period_end: s.current_period_end,
-      days_remaining: Math.max(0, daysRemaining),
-    }
-  })
-
-  // Build a set of doctor_ids that already have invoices
-  const doctorIdsWithInvoices = new Set(
-    (invoicesData || []).map((inv: any) => inv.doctor_id)
-  )
-
-  // Transform approved payments — filter out those that already have invoices
-  const approvedPayments: ApprovedPayment[] = (approvedPaymentsData || [])
-    .filter((p: any) => !doctorIdsWithInvoices.has(p.doctor_id))
-    .map((p: any) => ({
-      id: p.id,
-      doctor_id: p.doctor_id,
-      doctor_name: p.profiles?.full_name || 'Unknown',
-      doctor_email: p.profiles?.email || 'unknown@example.com',
-      amount: p.amount,
-      currency: p.currency,
-      method: p.method,
-      created_at: p.created_at,
-    }))
-
-  // Transform invoices
-  const invoices: Invoice[] = (invoicesData || []).map((inv: any) => ({
-    id: inv.id,
-    invoice_number: inv.invoice_number,
-    doctor_id: inv.doctor_id,
-    doctor_name: inv.profiles?.full_name || 'Unknown',
-    doctor_email: inv.profiles?.email || 'unknown@example.com',
-    amount: inv.amount,
-    currency: inv.currency,
-    description: inv.description,
-    status: inv.status,
-    issued_at: inv.issued_at,
-    sent_at: inv.sent_at,
-    paid_at: inv.paid_at,
-  }))
-
-  return (
-    <ApprovalsClient
-      pendingPayments={pendingPayments}
-      processedPayments={processedPayments}
-      expiringSubscriptions={expiringSubscriptions}
-      approvedPayments={approvedPayments}
-      invoices={invoices}
-    />
-  )
+  return <ApprovalsClient pending={pending} approved={approved} />
 }

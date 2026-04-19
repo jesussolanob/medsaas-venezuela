@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   DollarSign, TrendingUp, TrendingDown, BarChart3,
-  Plus, Trash2, Loader2, ChevronLeft, ChevronRight,
+  Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Search, Calendar,
 } from 'lucide-react'
 
 type Income = {
@@ -51,6 +51,11 @@ export default function FinancesPage() {
   const [expenseForm, setExpenseForm] = useState({
     vendor_name: '', concept: '', amount: '', category: 'other', due_date: new Date().toISOString().split('T')[0],
   })
+  // Date range filters for tables
+  const [incomeDateFrom, setIncomeDateFrom] = useState('')
+  const [incomeDateTo, setIncomeDateTo] = useState('')
+  const [expenseDateFrom, setExpenseDateFrom] = useState('')
+  const [expenseDateTo, setExpenseDateTo] = useState('')
 
   const supabase = createClient()
 
@@ -360,140 +365,174 @@ export default function FinancesPage() {
       </div>
 
       {/* Income Table */}
-      {(tab === 'overview' || tab === 'income') && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-700">Ingresos (Pagos aprobados)</h3>
-            <span className="text-xs text-slate-400">{filteredData.filteredIncomes.length} registros</span>
-          </div>
-          {filteredData.filteredIncomes.length === 0 ? (
-            <div className="px-5 py-10 text-center text-slate-400 text-sm">
-              No hay ingresos en este periodo
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {filteredData.filteredIncomes.slice(0, tab === 'overview' ? 5 : undefined).map(inc => (
-                <div key={inc.id} className="px-5 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
-                      <TrendingUp className="w-4 h-4 text-emerald-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{inc.patient_name}</p>
-                      <p className="text-xs text-slate-400">{new Date(inc.date).toLocaleDateString('es-VE')} · {inc.payment_method || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <span className="text-sm font-bold text-emerald-600">+${inc.amount_usd?.toFixed(2)}</span>
+      {(tab === 'overview' || tab === 'income') && (() => {
+        const tableIncomes = tab === 'income'
+          ? incomes.filter(i => {
+              if (incomeDateFrom && new Date(i.date) < new Date(incomeDateFrom)) return false
+              if (incomeDateTo && new Date(i.date) > new Date(incomeDateTo + 'T23:59:59')) return false
+              return true
+            })
+          : filteredData.filteredIncomes.slice(0, 5)
+        const tableTotal = tableIncomes.reduce((s, i) => s + (i.amount_usd || 0), 0)
+
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-slate-700">Ingresos (Pagos aprobados)</h3>
+              {tab === 'income' && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <input type="date" value={incomeDateFrom} onChange={e => setIncomeDateFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                  <span className="text-xs text-slate-400">a</span>
+                  <input type="date" value={incomeDateTo} onChange={e => setIncomeDateTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                  {(incomeDateFrom || incomeDateTo) && (
+                    <button onClick={() => { setIncomeDateFrom(''); setIncomeDateTo('') }} className="text-xs text-teal-600 hover:text-teal-700 font-medium">Limpiar</button>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-      )}
+
+            {tableIncomes.length === 0 ? (
+              <div className="px-5 py-10 text-center text-slate-400 text-sm">No hay ingresos en este periodo</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[500px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>
+                      <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Consulta</th>
+                      <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Paciente</th>
+                      <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto USD</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {tableIncomes.map(inc => (
+                      <tr key={inc.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-5 py-3 text-xs text-slate-600">{new Date(inc.date).toLocaleDateString('es-VE')}</td>
+                        <td className="px-5 py-3 text-xs text-slate-600">{inc.consultation_code || inc.payment_method || '—'}</td>
+                        <td className="px-5 py-3 text-sm font-medium text-slate-900">{inc.patient_name}</td>
+                        <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">+${inc.amount_usd?.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-emerald-50/50 border-t border-emerald-100">
+                      <td colSpan={3} className="px-5 py-3 text-xs font-bold text-slate-700">Total</td>
+                      <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">${tableTotal.toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Expenses Table */}
-      {(tab === 'overview' || tab === 'expenses') && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-700">Gastos del consultorio</h3>
-            <button
-              onClick={() => setShowExpenseForm(!showExpenseForm)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Agregar gasto
-            </button>
-          </div>
+      {(tab === 'overview' || tab === 'expenses') && (() => {
+        const tableExpenses = tab === 'expenses'
+          ? expenses.filter(e => {
+              if (expenseDateFrom && new Date(e.due_date) < new Date(expenseDateFrom)) return false
+              if (expenseDateTo && new Date(e.due_date) > new Date(expenseDateTo + 'T23:59:59')) return false
+              return true
+            })
+          : filteredData.filteredExpenses.slice(0, 5)
+        const tableTotal = tableExpenses.reduce((s, e) => s + (e.amount || 0), 0)
 
-          {/* Add expense form */}
-          {showExpenseForm && (
-            <form onSubmit={handleAddExpense} className="px-5 py-4 bg-slate-50 border-b border-slate-100 space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <select
-                  value={expenseForm.category}
-                  onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
-                >
-                  {EXPENSE_CATEGORIES.map(c => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="Concepto"
-                  value={expenseForm.concept}
-                  onChange={e => setExpenseForm(f => ({ ...f, concept: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Monto USD"
-                  value={expenseForm.amount}
-                  onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
-                />
-                <input
-                  type="date"
-                  value={expenseForm.due_date}
-                  onChange={e => setExpenseForm(f => ({ ...f, due_date: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={savingExpense}
-                  className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-all hover:opacity-90 disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
-                >
-                  {savingExpense ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Guardar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowExpenseForm(false)}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          )}
-
-          {filteredData.filteredExpenses.length === 0 ? (
-            <div className="px-5 py-10 text-center text-slate-400 text-sm">
-              No hay gastos en este periodo
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {filteredData.filteredExpenses.slice(0, tab === 'overview' ? 5 : undefined).map(exp => (
-                <div key={exp.id} className="px-5 py-3 flex items-center justify-between group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-                      <TrendingDown className="w-4 h-4 text-red-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{exp.concept}</p>
-                      <p className="text-xs text-slate-400">
-                        {new Date(exp.due_date).toLocaleDateString('es-VE')}
-                        {exp.notes && ` · ${EXPENSE_CATEGORIES.find(c => c.value === exp.notes)?.label || exp.notes}`}
-                      </p>
-                    </div>
-                  </div>
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-slate-700">Gastos del consultorio</h3>
+              <div className="flex items-center gap-3 flex-wrap">
+                {tab === 'expenses' && (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-red-500">-${exp.amount?.toFixed(2)}</span>
-                    <button
-                      onClick={() => handleDeleteExpense(exp.id)}
-                      className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <input type="date" value={expenseDateFrom} onChange={e => setExpenseDateFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                    <span className="text-xs text-slate-400">a</span>
+                    <input type="date" value={expenseDateTo} onChange={e => setExpenseDateTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                    {(expenseDateFrom || expenseDateTo) && (
+                      <button onClick={() => { setExpenseDateFrom(''); setExpenseDateTo('') }} className="text-xs text-teal-600 hover:text-teal-700 font-medium">Limpiar</button>
+                    )}
                   </div>
-                </div>
-              ))}
+                )}
+                <button
+                  onClick={() => setShowExpenseForm(!showExpenseForm)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar gasto
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Add expense form */}
+            {showExpenseForm && (
+              <form onSubmit={handleAddExpense} className="px-5 py-4 bg-slate-50 border-b border-slate-100 space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <select
+                    value={expenseForm.category}
+                    onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))}
+                    className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                  >
+                    {EXPENSE_CATEGORIES.map(c => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                  <input type="text" placeholder="Concepto" value={expenseForm.concept} onChange={e => setExpenseForm(f => ({ ...f, concept: e.target.value }))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  <input type="number" step="0.01" placeholder="Monto USD" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  <input type="date" value={expenseForm.due_date} onChange={e => setExpenseForm(f => ({ ...f, due_date: e.target.value }))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="submit" disabled={savingExpense} className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-all hover:opacity-90 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}>
+                    {savingExpense ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Guardar'}
+                  </button>
+                  <button type="button" onClick={() => setShowExpenseForm(false)} className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100">Cancelar</button>
+                </div>
+              </form>
+            )}
+
+            {tableExpenses.length === 0 ? (
+              <div className="px-5 py-10 text-center text-slate-400 text-sm">No hay gastos en este periodo</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[400px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>
+                      <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Gasto</th>
+                      <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto</th>
+                      <th className="w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {tableExpenses.map(exp => (
+                      <tr key={exp.id} className="hover:bg-slate-50 transition-colors group">
+                        <td className="px-5 py-3 text-xs text-slate-600">{new Date(exp.due_date).toLocaleDateString('es-VE')}</td>
+                        <td className="px-5 py-3">
+                          <p className="text-sm font-medium text-slate-900">{exp.concept}</p>
+                          {exp.notes && <p className="text-[10px] text-slate-400">{EXPENSE_CATEGORIES.find(c => c.value === exp.notes)?.label || exp.notes}</p>}
+                        </td>
+                        <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-${exp.amount?.toFixed(2)}</td>
+                        <td className="px-2 py-3">
+                          <button onClick={() => handleDeleteExpense(exp.id)} className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-red-50/50 border-t border-red-100">
+                      <td colSpan={2} className="px-5 py-3 text-xs font-bold text-slate-700">Total</td>
+                      <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-${tableTotal.toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }

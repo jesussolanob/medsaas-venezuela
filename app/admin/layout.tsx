@@ -12,8 +12,7 @@ import AdminNotifications from './AdminNotifications'
 
 const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
-  { name: 'Usuarios',       href: '/admin/doctors',       icon: Users },
-  { name: 'Suscripciones',  href: '/admin/subscriptions', icon: CreditCard },
+  { name: 'Médicos',        href: '/admin/doctors',       icon: Users },
   { name: 'Aprobaciones',   href: '/admin/approvals',     icon: CheckSquare },
   { name: 'Planes',         href: '/admin/plans',         icon: Package },
   { name: 'Sugerencias',    href: '/admin/suggestions',   icon: MessageSquarePlus },

@@ -24,26 +24,40 @@ export async function POST(req: NextRequest) {
       packageId,
     } = body
 
-    if (!doctorId || !accessToken || !scheduledAt) {
+    if (!doctorId || !scheduledAt) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 })
     }
 
-    // ── Verify JWT ───────────────────────────────────────────────────────────
-    const userClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: { headers: { Authorization: `Bearer ${accessToken}` } },
-        auth: { autoRefreshToken: false, persistSession: false },
-      }
-    )
-    const { data: { user }, error: userErr } = await userClient.auth.getUser(accessToken)
-    if (userErr || !user) {
-      return NextResponse.json({ error: 'Sesión expirada. Inicia sesión de nuevo.' }, { status: 401 })
+    // Guest mode: require patientName and patientEmail if no accessToken
+    if (!accessToken && (!patientName || !patientEmail)) {
+      return NextResponse.json(
+        { error: 'Se requiere nombre y email del paciente para booking sin autenticación' },
+        { status: 400 }
+      )
     }
 
     const admin = createAdminClient()
-    const finalName = patientName || user.email?.split('@')[0] || 'Paciente'
+    let user: any = null
+
+    // ── Verify JWT (if authenticated) ────────────────────────────────────────
+    if (accessToken) {
+      const userClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: { headers: { Authorization: `Bearer ${accessToken}` } },
+          auth: { autoRefreshToken: false, persistSession: false },
+        }
+      )
+      const { data: { user: authUser }, error: userErr } = await userClient.auth.getUser(accessToken)
+      if (userErr || !authUser) {
+        return NextResponse.json({ error: 'Sesión expirada. Inicia sesión de nuevo.' }, { status: 401 })
+      }
+      user = authUser
+    }
+
+    const finalName = patientName || (user ? user.email?.split('@')[0] : 'Paciente') || 'Paciente'
+    const finalEmail = patientEmail || user?.email
 
     // ── VALIDATION 1: Check for duplicate appointment (same doctor + time) ──
     const scheduledDate = new Date(scheduledAt)
@@ -60,14 +74,23 @@ export async function POST(req: NextRequest) {
       .lte('scheduled_at', windowEnd)
 
     // Check if THIS user already has an appointment in that window
-    const { data: userExistingAppts } = await admin
+    // For authenticated users: check by auth_user_id
+    // For guests: check by email
+    let userExistingQuery = admin
       .from('appointments')
       .select('id, scheduled_at')
       .eq('doctor_id', doctorId)
-      .eq('auth_user_id', user.id)
       .in('status', ['scheduled', 'confirmed'])
       .gte('scheduled_at', windowStart)
       .lte('scheduled_at', windowEnd)
+
+    if (user) {
+      userExistingQuery = userExistingQuery.eq('auth_user_id', user.id)
+    } else {
+      userExistingQuery = userExistingQuery.eq('patient_email', finalEmail)
+    }
+
+    const { data: userExistingAppts } = await userExistingQuery
 
     if (userExistingAppts && userExistingAppts.length > 0) {
       return NextResponse.json(
@@ -84,10 +107,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── VALIDATION 2: Package validation (if using package) ─────────────────
+    // ── VALIDATION 2: Package validation (only for authenticated users) ──────
     let validatedPackage: { id: string; used_sessions: number; total_sessions: number; auth_user_id: string } | null = null
 
     if (packageId) {
+      // Guests cannot use packages
+      if (!user) {
+        return NextResponse.json(
+          { error: 'Debes iniciar sesión para usar un paquete prepagado.' },
+          { status: 403 }
+        )
+      }
+
       const { data: pkg, error: pkgErr } = await admin
         .from('patient_packages')
         .select('id, used_sessions, total_sessions, auth_user_id, status, doctor_id')
@@ -137,30 +168,45 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 1. Get or create patient ────────────────────────────────────────────
-    const { data: existingPatient, error: findErr } = await admin
-      .from('patients')
-      .select('id')
-      .eq('doctor_id', doctorId)
-      .eq('auth_user_id', user.id)
-      .maybeSingle()
+    let patientId: string | undefined
 
-    let patientId = existingPatient?.id
+    // Authenticated users: look up by auth_user_id first
+    if (user) {
+      const { data: existingPatient, error: findErr } = await admin
+        .from('patients')
+        .select('id')
+        .eq('doctor_id', doctorId)
+        .eq('auth_user_id', user.id)
+        .maybeSingle()
 
-    if (!patientId && !findErr) {
+      patientId = existingPatient?.id
+
+      if (!patientId && !findErr) {
+        const { data: byEmail } = await admin
+          .from('patients')
+          .select('id')
+          .eq('doctor_id', doctorId)
+          .eq('email', finalEmail)
+          .maybeSingle()
+
+        if (byEmail?.id) {
+          patientId = byEmail.id
+          await admin
+            .from('patients')
+            .update({ auth_user_id: user.id })
+            .eq('id', patientId)
+        }
+      }
+    } else {
+      // Guests: look up by email only
       const { data: byEmail } = await admin
         .from('patients')
         .select('id')
         .eq('doctor_id', doctorId)
-        .eq('email', patientEmail || user.email)
+        .eq('email', finalEmail)
         .maybeSingle()
 
-      if (byEmail?.id) {
-        patientId = byEmail.id
-        await admin
-          .from('patients')
-          .update({ auth_user_id: user.id })
-          .eq('id', patientId)
-      }
+      patientId = byEmail?.id
     }
 
     if (!patientId) {
@@ -168,11 +214,11 @@ export async function POST(req: NextRequest) {
         doctor_id: doctorId,
         full_name: finalName,
         phone: patientPhone || null,
-        email: patientEmail || user.email,
+        email: finalEmail,
         source: 'booking',
-        auth_user_id: user.id,
       }
       if (patientCedula) patientInsert.cedula = patientCedula
+      if (user) patientInsert.auth_user_id = user.id
 
       const { data: newPatient, error: pErr } = await admin
         .from('patients')
@@ -181,14 +227,15 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (pErr || !newPatient) {
-        if (pErr?.message?.includes('auth_user_id')) {
+        if (pErr?.message?.includes('auth_user_id') && user) {
+          // Retry without auth_user_id if there was a conflict
           const { data: retryPatient, error: retryErr } = await admin
             .from('patients')
             .insert({
               doctor_id: doctorId,
               full_name: finalName,
               phone: patientPhone || null,
-              email: patientEmail || user.email,
+              email: finalEmail,
               source: 'booking',
             })
             .select('id')
@@ -222,10 +269,9 @@ export async function POST(req: NextRequest) {
       patient_id: patientId,
       patient_name: finalName,
       patient_phone: patientPhone || null,
-      patient_email: patientEmail || user.email,
+      patient_email: finalEmail,
       status: 'scheduled',
       source: 'booking',
-      auth_user_id: user.id,
       scheduled_at: scheduledAt,
       chief_complaint: chiefComplaint || null,
       plan_name: planName || 'Consulta General',
@@ -234,6 +280,10 @@ export async function POST(req: NextRequest) {
       insurance_name: insuranceName || null,
       payment_receipt_url: receiptUrl || null,
       appointment_mode: appointmentMode || 'presencial',
+    }
+    // Only set auth_user_id if user is authenticated
+    if (user) {
+      appointmentData.auth_user_id = user.id
     }
     if (patientCedula) appointmentData.patient_cedula = patientCedula
 
@@ -304,8 +354,8 @@ export async function POST(req: NextRequest) {
     // ── 3. Handle packages ──────────────────────────────────────────────────
     if (validatedPackage) {
       await updatePackageUsage(admin, validatedPackage, appt.id)
-    } else if (sessionsCount && sessionsCount > 1) {
-      // Create new package for multi-session plan
+    } else if (sessionsCount && sessionsCount > 1 && user) {
+      // Create new package for multi-session plan (only for authenticated users)
       try {
         const { data: pkg } = await admin
           .from('patient_packages')

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings, Stethoscope } from 'lucide-react'
+import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings, Stethoscope, Upload, Loader2, Package } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const toast = { success: (msg: string) => alert(msg), error: (msg: string) => alert(msg) }
@@ -58,6 +58,9 @@ type PendingAppointment = {
   payment_method?: string | null
   payment_receipt_url?: string | null
   appointment_mode?: string | null
+  package_id?: string | null
+  session_number?: number | null
+  total_sessions?: number | null
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -188,6 +191,7 @@ export default function AgendaPage() {
 
   // UI state
   const [accepting, setAccepting] = useState<string | null>(null)
+  const [uploadingReceipt, setUploadingReceipt] = useState<string | null>(null)
   const [searchText, setSearchText] = useState('')
   const [rescheduling, setRescheduling] = useState<PendingAppointment | null>(null)
   const [newDateTime, setNewDateTime] = useState('')
@@ -263,7 +267,7 @@ export default function AgendaPage() {
     // 3. Load PENDING appointments (not yet accepted)
     const { data: pending } = await supabase
       .from('appointments')
-      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_cedula, plan_name, plan_price, status, appointment_code, payment_method, payment_receipt_url, appointment_mode')
+      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_cedula, plan_name, plan_price, status, appointment_code, payment_method, payment_receipt_url, appointment_mode, package_id, session_number')
       .eq('doctor_id', user.id)
       .eq('status', 'scheduled')
       .order('scheduled_at', { ascending: true })
@@ -300,7 +304,22 @@ export default function AgendaPage() {
       })
 
     setAllAppointments([...consultAppts, ...confirmedAppts])
-    setPendingAppointments((pending ?? []) as PendingAppointment[])
+
+    // Enrich pending appointments with package total_sessions
+    const pendingList = (pending ?? []) as PendingAppointment[]
+    const packageIds = [...new Set(pendingList.filter(p => p.package_id).map(p => p.package_id!))]
+    if (packageIds.length > 0) {
+      const { data: pkgs } = await supabase
+        .from('patient_packages')
+        .select('id, total_sessions')
+        .in('id', packageIds)
+      const pkgMap = new Map((pkgs || []).map(p => [p.id, p.total_sessions]))
+      pendingList.forEach(p => {
+        if (p.package_id) p.total_sessions = pkgMap.get(p.package_id) || null
+      })
+    }
+
+    setPendingAppointments(pendingList)
     setLoading(false)
   }, [config.slot_duration])
 
@@ -443,6 +462,43 @@ export default function AgendaPage() {
     const supabase = createClient()
     await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', apptId)
     setPendingAppointments(prev => prev.filter(a => a.id !== apptId))
+  }
+
+  async function handleUploadReceipt(apptId: string, file: File) {
+    setUploadingReceipt(apptId)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const ext = file.name.split('.').pop() || 'jpg'
+      const filePath = `receipts/${user.id}/${apptId}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('payment-receipts')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) {
+        // If bucket doesn't exist, try public bucket
+        const { error: uploadError2 } = await supabase.storage
+          .from('public')
+          .upload(filePath, file, { upsert: true })
+        if (uploadError2) throw uploadError2
+        const { data: urlData } = supabase.storage.from('public').getPublicUrl(filePath)
+        await supabase.from('appointments').update({ payment_receipt_url: urlData.publicUrl }).eq('id', apptId)
+        setPendingAppointments(prev => prev.map(a => a.id === apptId ? { ...a, payment_receipt_url: urlData.publicUrl } : a))
+      } else {
+        const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(filePath)
+        await supabase.from('appointments').update({ payment_receipt_url: urlData.publicUrl }).eq('id', apptId)
+        setPendingAppointments(prev => prev.map(a => a.id === apptId ? { ...a, payment_receipt_url: urlData.publicUrl } : a))
+      }
+
+      toast.success('Comprobante subido correctamente')
+    } catch (err) {
+      console.error('Upload error:', err)
+      toast.error('Error al subir comprobante')
+    }
+    setUploadingReceipt(null)
   }
 
   async function confirmReschedule() {
@@ -830,23 +886,52 @@ export default function AgendaPage() {
                               {appt.appointment_mode === 'online' ? 'Online' : 'Presencial'}
                             </span>
                           )}
+                          {appt.package_id && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 flex items-center gap-1">
+                              <Package className="w-3 h-3" />
+                              Paquete {appt.session_number ?? '?'}/{appt.total_sessions ?? '?'}
+                            </span>
+                          )}
                         </div>
 
                         {/* Comprobante de pago */}
-                        {appt.payment_receipt_url && (
-                          <div className="mb-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Comprobante de pago</p>
-                            {appt.payment_receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                              <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="block">
-                                <img src={appt.payment_receipt_url} alt="Comprobante" className="w-full max-w-xs rounded-lg border border-slate-200 hover:opacity-90 transition-opacity cursor-pointer" />
-                              </a>
-                            ) : (
-                              <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-teal-600 hover:text-teal-700 font-medium underline">
-                                Ver comprobante adjunto
-                              </a>
-                            )}
-                          </div>
-                        )}
+                        <div className="mb-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Comprobante de pago</p>
+                          {appt.payment_receipt_url ? (
+                            <>
+                              {appt.payment_receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="block">
+                                  <img src={appt.payment_receipt_url} alt="Comprobante" className="w-full max-w-xs rounded-lg border border-slate-200 hover:opacity-90 transition-opacity cursor-pointer" />
+                                </a>
+                              ) : (
+                                <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-teal-600 hover:text-teal-700 font-medium underline">
+                                  Ver comprobante adjunto
+                                </a>
+                              )}
+                            </>
+                          ) : (
+                            <div className="space-y-2">
+                              <p className="text-xs text-slate-400 italic">El paciente no adjuntó comprobante</p>
+                              <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-slate-300 hover:border-teal-400 hover:bg-teal-50/50 cursor-pointer transition-all text-xs font-medium text-slate-500 hover:text-teal-600">
+                                {uploadingReceipt === appt.id ? (
+                                  <><Loader2 className="w-4 h-4 animate-spin" /> Subiendo...</>
+                                ) : (
+                                  <><Upload className="w-4 h-4" /> Adjuntar comprobante</>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*,.pdf"
+                                  className="hidden"
+                                  disabled={uploadingReceipt === appt.id}
+                                  onChange={e => {
+                                    const file = e.target.files?.[0]
+                                    if (file) handleUploadReceipt(appt.id, file)
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          )}
+                        </div>
 
                         <div className="flex gap-2">
                           <button onClick={() => acceptAppointment(appt)} disabled={accepting === appt.id || hasConflict}
