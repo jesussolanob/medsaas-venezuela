@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Calendar, ClipboardList, Users,
-  DollarSign, Settings, LogOut, Activity, Menu
+  DollarSign, Settings, LogOut, Activity, Menu, MessageSquarePlus
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -66,7 +66,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   }
 
   const activeTitle = navItems.find(i => isPathActive(pathname, i.href))?.name
-    ?? (pathname.includes('/settings') ? 'Configuración' : 'Portal Médico')
+    ?? (pathname.includes('/settings') ? 'Configuración' : pathname.includes('/suggestions') ? 'Sugerencias' : 'Portal Médico')
 
   const isActive = subInfo?.isActive ?? false
 
@@ -152,6 +152,20 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                 </p>
               </div>
             )}
+
+            <Link
+              href="/doctor/suggestions"
+              onClick={() => setMobileOpen(false)}
+              className={clsx(
+                'nav-item-doc flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm transition-all',
+                pathname.includes('/suggestions')
+                  ? 'nav-active-doc text-teal-600 font-semibold'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              )}
+            >
+              <MessageSquarePlus className="w-4 h-4" />
+              Sugerencias
+            </Link>
 
             <Link
               href="/doctor/settings"

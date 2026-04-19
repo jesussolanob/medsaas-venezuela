@@ -55,6 +55,9 @@ type PendingAppointment = {
   plan_price: number | null
   status: string
   appointment_code?: string
+  payment_method?: string | null
+  payment_receipt_url?: string | null
+  appointment_mode?: string | null
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -260,7 +263,7 @@ export default function AgendaPage() {
     // 3. Load PENDING appointments (not yet accepted)
     const { data: pending } = await supabase
       .from('appointments')
-      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_cedula, plan_name, plan_price, status, appointment_code')
+      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_cedula, plan_name, plan_price, status, appointment_code, payment_method, payment_receipt_url, appointment_mode')
       .eq('doctor_id', user.id)
       .eq('status', 'scheduled')
       .order('scheduled_at', { ascending: true })
@@ -814,10 +817,36 @@ export default function AgendaPage() {
 
                         {appt.chief_complaint && <p className="text-xs text-slate-600 mb-2 italic">&quot;{appt.chief_complaint}&quot;</p>}
 
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 flex-wrap mb-2">
                           <span className="text-xs text-slate-500">{appt.plan_name}</span>
                           <span className="text-xs font-bold text-emerald-600">${appt.plan_price ?? 0}</span>
+                          {appt.payment_method && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                              {appt.payment_method}
+                            </span>
+                          )}
+                          {appt.appointment_mode && (
+                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${appt.appointment_mode === 'online' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600'}`}>
+                              {appt.appointment_mode === 'online' ? 'Online' : 'Presencial'}
+                            </span>
+                          )}
                         </div>
+
+                        {/* Comprobante de pago */}
+                        {appt.payment_receipt_url && (
+                          <div className="mb-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Comprobante de pago</p>
+                            {appt.payment_receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                              <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="block">
+                                <img src={appt.payment_receipt_url} alt="Comprobante" className="w-full max-w-xs rounded-lg border border-slate-200 hover:opacity-90 transition-opacity cursor-pointer" />
+                              </a>
+                            ) : (
+                              <a href={appt.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-teal-600 hover:text-teal-700 font-medium underline">
+                                Ver comprobante adjunto
+                              </a>
+                            )}
+                          </div>
+                        )}
 
                         <div className="flex gap-2">
                           <button onClick={() => acceptAppointment(appt)} disabled={accepting === appt.id || hasConflict}

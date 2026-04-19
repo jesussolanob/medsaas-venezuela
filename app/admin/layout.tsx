@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
   LayoutDashboard, Users, CreditCard, CheckSquare, Package,
-  Settings, LogOut, Activity, Menu
+  Settings, LogOut, Activity, Menu, MessageSquarePlus
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -16,6 +16,7 @@ const navItems = [
   { name: 'Suscripciones',  href: '/admin/subscriptions', icon: CreditCard },
   { name: 'Aprobaciones',   href: '/admin/approvals',     icon: CheckSquare },
   { name: 'Planes',         href: '/admin/plans',         icon: Package },
+  { name: 'Sugerencias',    href: '/admin/suggestions',   icon: MessageSquarePlus },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

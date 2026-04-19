@@ -8,6 +8,36 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
+const styles = `
+  @keyframes card-hover {
+    0% {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      transform: translateY(0);
+    }
+    100% {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transform: translateY(-2px);
+    }
+  }
+
+  .card-hover {
+    transition: box-shadow 200ms, transform 200ms;
+  }
+
+  .card-hover:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+  }
+
+  .gradient-hero {
+    background: linear-gradient(135deg, #00C4CC 0%, #0891b2 50%, #0e7490 100%);
+  }
+
+  .gradient-progress {
+    background: linear-gradient(90deg, #a78bfa 0%, #8b5cf6 100%);
+  }
+`
+
 interface Appointment {
   id: string
   scheduled_at: string
@@ -148,18 +178,36 @@ export default function PatientHome() {
   const firstName = patient?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Paciente'
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Welcome banner */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 lg:p-8 space-y-2">
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Hola, {firstName}</h2>
-        <p className="text-sm sm:text-base text-slate-600">Bienvenido a tu portal de paciente. Aquí puedes ver tus citas, recetas y mensajes.</p>
-      </div>
+    <>
+      <style>{styles}</style>
+      <div className="space-y-6 sm:space-y-8">
+        {/* Gradient Hero Banner */}
+        <div className="gradient-hero rounded-2xl p-6 sm:p-8 lg:p-10 relative overflow-hidden">
+          {/* Decorative blur orbs */}
+          <div className="absolute -top-20 -left-20 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -right-16 w-56 h-56 bg-white opacity-5 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Content */}
+          <div className="relative z-10">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-2">Hola, {firstName}</h2>
+            <p className="text-sm sm:text-base text-white opacity-90 mb-6">Tu portal de salud está listo</p>
+
+            {!nextAppointment && (
+              <Link href="/patient/appointments">
+                <button className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-teal-600 font-semibold px-4 sm:px-6 py-2.5 rounded-lg transition-colors duration-200">
+                  <Calendar className="w-4 h-4" />
+                  Agendar cita
+                </button>
+              </Link>
+            )}
+          </div>
+        </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
         {/* Next appointment */}
         <Link href="/patient/appointments">
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
+          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 cursor-pointer h-full">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase">Próxima cita</p>
@@ -192,7 +240,7 @@ export default function PatientHome() {
 
         {/* Total appointments */}
         <Link href="/patient/appointments">
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
+          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 cursor-pointer h-full">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase">Total de citas</p>
@@ -210,7 +258,7 @@ export default function PatientHome() {
 
         {/* Unread messages */}
         <Link href="/patient/messages">
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-teal-300 transition-colors cursor-pointer h-full">
+          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 cursor-pointer h-full">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase">Mensajes</p>
@@ -239,7 +287,7 @@ export default function PatientHome() {
               const remaining = pkg.total_sessions - pkg.used_sessions
               const percentage = (pkg.used_sessions / pkg.total_sessions) * 100
               return (
-                <div key={pkg.id} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 hover:border-violet-300 transition-colors">
+                <div key={pkg.id} className="card-hover bg-white rounded-2xl border border-slate-200 border-l-4 border-l-violet-400 p-4 sm:p-6 space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1 flex-1">
                       <p className="text-xs font-semibold text-slate-500 uppercase">{pkg.plan_name}</p>
@@ -256,8 +304,8 @@ export default function PatientHome() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div className="bg-violet-500 h-2 rounded-full transition-all" style={{ width: `${percentage}%` }}></div>
+                    <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                      <div className="gradient-progress h-2 rounded-full transition-all" style={{ width: `${percentage}%` }}></div>
                     </div>
                     <p className="text-xs text-slate-500">
                       {pkg.used_sessions} de {pkg.total_sessions} usadas
@@ -280,7 +328,7 @@ export default function PatientHome() {
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
         <Link href="/patient/reports">
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-3 hover:border-teal-300 transition-colors cursor-pointer">
+          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-3 cursor-pointer">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-orange-50">
                 <FileText className="w-5 h-5 text-orange-600" />
@@ -294,7 +342,7 @@ export default function PatientHome() {
         </Link>
 
         <Link href="/patient/profile">
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-3 hover:border-teal-300 transition-colors cursor-pointer">
+          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-3 cursor-pointer">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-indigo-50">
                 <Calendar className="w-5 h-5 text-indigo-600" />
@@ -308,5 +356,6 @@ export default function PatientHome() {
         </Link>
       </div>
     </div>
+    </>
   )
 }

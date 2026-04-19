@@ -62,17 +62,16 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     return { success: false, error: profileError.message }
   }
 
-  // 3. Create subscription
+  // 3. Create subscription — Beta: all doctors get free access for 1 year
   const now = new Date()
   const expiresAt = new Date(now)
-  const isTrial = input.plan === 'trial'
-  expiresAt.setDate(expiresAt.getDate() + (isTrial ? 15 : 30))
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1) // Beta: 1 year free
 
   const { error: subError } = await supabase.from('subscriptions').insert({
     doctor_id: userId,
-    plan: input.plan,
-    status: isTrial ? 'trial' : 'past_due',
-    current_period_end: isTrial ? expiresAt.toISOString() : null,
+    plan: 'trial',
+    status: 'active', // Beta: active immediately
+    current_period_end: expiresAt.toISOString(),
   })
 
   if (subError) {

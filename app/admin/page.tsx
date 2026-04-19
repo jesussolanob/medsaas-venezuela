@@ -1,8 +1,30 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { Users, Calendar, CreditCard, TrendingUp } from 'lucide-react'
+import { Users, Calendar, CreditCard, TrendingUp, Activity } from 'lucide-react'
+import Link from 'next/link'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
+
+// Styles for animations
+const styles = `
+  @keyframes pulse-dot {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+  .pulse-dot {
+    animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  .blur-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.2;
+  }
+`
 
 // Plan names displayed to the user
 const PLAN_LABELS: Record<string, string> = {
@@ -153,6 +175,7 @@ export default async function AdminDashboard() {
       color: 'text-blue-600',
       bg: 'bg-blue-50',
       border: 'border-blue-100',
+      pulseIndicator: true,
     },
     {
       label: 'Citas este mes',
@@ -174,20 +197,60 @@ export default async function AdminDashboard() {
     },
   ]
 
+  // Format current date
+  const today = new Date()
+  const dateStr = today.toLocaleDateString('es-VE', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+
   return (
     <div className="space-y-4 sm:space-y-6 lg:space-y-8">
-      {/* Header */}
-      <div>
-        <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Bienvenido de nuevo 👋</h2>
-        <p className="text-slate-400 text-xs sm:text-sm mt-1">Resumen general de la plataforma</p>
+      <style>{styles}</style>
+
+      {/* Welcome Hero Card */}
+      <div className="relative rounded-xl overflow-hidden p-6 sm:p-8 text-white" style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 50%, #0e7490 100%)' }}>
+        {/* Decorative blur orbs */}
+        <div className="blur-orb" style={{ width: '200px', height: '200px', background: '#ffffff', top: '-50px', right: '-50px' }}></div>
+        <div className="blur-orb" style={{ width: '150px', height: '150px', background: '#0891b2', bottom: '-30px', left: '-30px' }}></div>
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-4">
+            <Activity className="w-6 h-6" />
+            <h1 className="text-2xl sm:text-3xl font-semibold">Bienvenido de nuevo</h1>
+          </div>
+          <p className="text-sm sm:text-base opacity-90 mb-6">Resumen general de la plataforma · {dateStr}</p>
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/admin/doctors"
+              className="inline-flex items-center px-4 py-2 bg-white text-teal-600 rounded-lg font-medium text-sm hover:bg-slate-50 transition-colors"
+            >
+              Ver Médicos
+            </Link>
+            <Link
+              href="/admin/approvals"
+              className="inline-flex items-center px-4 py-2 bg-white/20 text-white rounded-lg font-medium text-sm hover:bg-white/30 transition-colors border border-white/30"
+            >
+              Aprobaciones
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {stats.map((stat) => (
-          <div key={stat.label} className={`rounded-xl border ${stat.border} bg-white p-4 sm:p-5 hover:shadow-sm transition-all min-w-0`}>
+          <div key={stat.label} className={`rounded-xl border ${stat.border} bg-white p-4 sm:p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 min-w-0`}>
             <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <span className="text-xs text-slate-400 uppercase tracking-wider truncate">{stat.label}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400 uppercase tracking-wider truncate">{stat.label}</span>
+                {stat.pulseIndicator && (
+                  <div className="w-2 h-2 rounded-full bg-blue-500 pulse-dot flex-shrink-0"></div>
+                )}
+              </div>
               <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center flex-shrink-0`}>
                 <stat.icon className={`w-4 h-4 ${stat.color}`} />
               </div>
