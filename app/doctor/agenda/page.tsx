@@ -175,7 +175,7 @@ export default function AgendaPage() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthYear, setMonthYear] = useState({ year: today.getFullYear(), month: today.getMonth() })
   const [selectedDate, setSelectedDate] = useState(today)
-  const [calView, setCalView] = useState<CalendarView>('week')
+  const [calView, setCalView] = useState<CalendarView>('month')
   const [tab, setTab] = useState<AgendaTab>('calendar')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -200,6 +200,7 @@ export default function AgendaPage() {
   const [rescheduleWeekOffset, setRescheduleWeekOffset] = useState(0)
   const [detailAppt, setDetailAppt] = useState<CalendarAppointment | null>(null)
   const [showConfigPanel, setShowConfigPanel] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled'>('all')
 
   const weekDates = getWeekDates(weekOffset)
   const monthCells = getMonthDates(monthYear.year, monthYear.month)
@@ -551,14 +552,17 @@ export default function AgendaPage() {
     })
     return [...allAppointments, ...pendingAsAppts]
       .filter(a => a.date === ymd)
+      .filter(a => statusFilter === 'all' || a.status === statusFilter)
       .sort((a, b) => a.time.localeCompare(b.time))
   }
 
   // Week appointments
-  const weekAppts = allAppointments.filter(a => {
-    const d = new Date(a.isoDate)
-    return d >= weekDates[0] && d <= weekDates[6]
-  })
+  const weekAppts = allAppointments
+    .filter(a => {
+      const d = new Date(a.isoDate)
+      return d >= weekDates[0] && d <= weekDates[6]
+    })
+    .filter(a => statusFilter === 'all' || a.status === statusFilter)
 
   // ── Availability helpers ─────────────────────────────────────────────────
 
@@ -640,6 +644,33 @@ export default function AgendaPage() {
 
               <button onClick={() => { setWeekOffset(0); setMonthYear({ year: today.getFullYear(), month: today.getMonth() }); setSelectedDate(today) }}
                 className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 transition-colors shrink-0">Hoy</button>
+            </div>
+
+            {/* Status filter */}
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                { key: 'all', label: 'Todas', color: 'slate' },
+                { key: 'scheduled', label: 'Agendadas', color: 'amber' },
+                { key: 'confirmed', label: 'Confirmadas', color: 'blue' },
+                { key: 'completed', label: 'Completadas', color: 'emerald' },
+                { key: 'cancelled', label: 'Canceladas', color: 'red' },
+              ] as const).map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setStatusFilter(f.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    statusFilter === f.key
+                      ? f.key === 'all' ? 'bg-slate-800 text-white border-slate-800'
+                        : f.key === 'scheduled' ? 'bg-amber-500 text-white border-amber-500'
+                        : f.key === 'confirmed' ? 'bg-blue-500 text-white border-blue-500'
+                        : f.key === 'completed' ? 'bg-emerald-500 text-white border-emerald-500'
+                        : 'bg-red-500 text-white border-red-500'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
 
             {/* WEEK VIEW */}

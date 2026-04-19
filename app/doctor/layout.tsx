@@ -4,7 +4,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Calendar, ClipboardList, Users,
-  DollarSign, Settings, LogOut, Activity, Menu, MessageSquarePlus
+  DollarSign, Settings, LogOut, Activity, Menu, MessageSquarePlus,
+  Building2, Package, Receipt
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -16,11 +17,13 @@ import {
 type NavItem = { name: string; href: string; icon: any; featureKey: string }
 
 const navItems: NavItem[] = [
-  { name: 'Inicio',      href: '/doctor',              icon: LayoutDashboard, featureKey: 'dashboard' },
-  { name: 'Agenda',      href: '/doctor/agenda',       icon: Calendar,        featureKey: 'agenda' },
-  { name: 'Pacientes',   href: '/doctor/patients',     icon: Users,           featureKey: 'patients' },
-  { name: 'Consultas',   href: '/doctor/consultations',icon: ClipboardList,   featureKey: 'consultations' },
-  { name: 'Finanzas',    href: '/doctor/finances',     icon: DollarSign,      featureKey: 'finances' },
+  { name: 'Inicio',        href: '/doctor',               icon: LayoutDashboard, featureKey: 'dashboard' },
+  { name: 'Agenda',        href: '/doctor/agenda',        icon: Calendar,        featureKey: 'agenda' },
+  { name: 'Pacientes',     href: '/doctor/patients',      icon: Users,           featureKey: 'patients' },
+  { name: 'Consultas',     href: '/doctor/consultations', icon: ClipboardList,   featureKey: 'consultations' },
+  { name: 'Cobros',        href: '/doctor/cobros',        icon: Receipt,         featureKey: 'finances' },
+  { name: 'Consultorios',  href: '/doctor/offices',       icon: Building2,       featureKey: 'dashboard' },
+  { name: 'Servicios',     href: '/doctor/services',      icon: Package,         featureKey: 'dashboard' },
 ]
 
 function isPathActive(pathname: string, href: string) {

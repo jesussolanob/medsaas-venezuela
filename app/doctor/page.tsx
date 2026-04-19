@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Users, Calendar, FileText, TrendingUp,
   Bell, DollarSign, ArrowRight, Activity,
-  CheckCircle, Clock, AlertCircle
+  CheckCircle, Clock, AlertCircle, ClipboardList
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -322,6 +322,13 @@ export default function DoctorDashboard() {
                 <Calendar className="w-4 h-4" />
                 <span>Ver Agenda</span>
               </Link>
+              <Link
+                href="/doctor/consultations"
+                className="flex items-center justify-center sm:justify-start gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
+              >
+                <ClipboardList className="w-4 h-4" />
+                <span>Crear Consulta</span>
+              </Link>
             </div>
           </div>
         </div>
@@ -406,7 +413,7 @@ export default function DoctorDashboard() {
 
               {financesEnabled ? (
                 <Link
-                  href="/doctor/finances"
+                  href="/doctor/cobros"
                   className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
                 >
                   Ver más detalles
