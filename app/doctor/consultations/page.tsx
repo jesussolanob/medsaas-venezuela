@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type Consultation = {
@@ -117,6 +117,11 @@ function ConsultationsPage() {
   // Prescripciones (exámenes que el médico ordena)
   const [prescripciones, setPrescripciones] = useState<Prescripcion[]>([])
   const [isSavingPrescripciones, setIsSavingPrescripciones] = useState(false)
+
+  // AI assistant state
+  const [aiResult, setAiResult] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiAction, setAiAction] = useState<'summarize' | 'improve' | 'patient_history' | null>(null)
 
   // Appointment data (for payment receipt, method, price)
   const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null)
@@ -464,6 +469,44 @@ function ConsultationsPage() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     })
+  }
+
+  async function callAI(action: 'summarize' | 'improve' | 'patient_history', content?: string) {
+    if (!selected) return
+    setAiLoading(true)
+    setAiAction(action)
+    setAiResult('')
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setAiResult('Sesión expirada. Recarga la página.')
+        return
+      }
+      const res = await fetch('/api/doctor/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action,
+          content: content || report.notes || report.diagnosis || '',
+          patientId: selected.patient_id,
+          consultationId: selected.id,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) {
+        setAiResult(`Error: ${data.error}`)
+      } else {
+        setAiResult(data.result)
+      }
+    } catch (err) {
+      setAiResult('Error al conectar con la IA')
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   // Filtering
@@ -935,6 +978,105 @@ function ConsultationsPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* AI Assistant Panel */}
+          <div className="bg-gradient-to-br from-violet-50 to-blue-50 border border-violet-200 rounded-xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800">Asistente IA</p>
+                <p className="text-[10px] text-slate-500">Powered by Gemini</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                onClick={() => callAI('summarize', report.notes || report.diagnosis)}
+                disabled={aiLoading || (!report.notes && !report.diagnosis)}
+                className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {aiLoading && aiAction === 'summarize' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                Resumir informe
+              </button>
+
+              <button
+                onClick={() => {
+                  const activeContent = consultationTab === 'diagnostico' ? report.diagnosis
+                    : consultationTab === 'recipe' ? report.treatment
+                    : report.notes
+                  callAI('improve', activeContent)
+                }}
+                disabled={aiLoading || (!report.notes && !report.diagnosis && !report.treatment)}
+                className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {aiLoading && aiAction === 'improve' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                Mejorar redacción
+              </button>
+
+              <button
+                onClick={() => callAI('patient_history')}
+                disabled={aiLoading}
+                className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {aiLoading && aiAction === 'patient_history' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <History className="w-3.5 h-3.5" />}
+                Historial paciente
+              </button>
+            </div>
+
+            {/* AI Result */}
+            {(aiResult || aiLoading) && (
+              <div className="bg-white border border-violet-100 rounded-xl p-4 space-y-3">
+                {aiLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-violet-600">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Analizando con IA...</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">
+                        {aiAction === 'summarize' ? 'Resumen del informe' : aiAction === 'improve' ? 'Texto mejorado' : 'Historial del paciente'}
+                      </p>
+                      <div className="flex gap-1">
+                        {aiAction === 'improve' && (
+                          <button
+                            onClick={() => {
+                              if (consultationTab === 'diagnostico') {
+                                setReport(p => ({ ...p, diagnosis: aiResult }))
+                              } else if (consultationTab === 'recipe') {
+                                setReport(p => ({ ...p, treatment: aiResult }))
+                              } else {
+                                setReport(p => ({ ...p, notes: aiResult }))
+                              }
+                              setAiResult('')
+                            }}
+                            className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
+                          >
+                            Aplicar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(aiResult) }}
+                          className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
+                        >
+                          <Copy className="w-3 h-3" /> Copiar
+                        </button>
+                        <button
+                          onClick={() => setAiResult('')}
+                          className="text-slate-400 hover:text-slate-600 p-1"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{aiResult}</div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Saved to EHR note */}
