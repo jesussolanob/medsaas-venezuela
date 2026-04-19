@@ -65,15 +65,22 @@ export default function FinancesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Load approved consultation payments as income
-      const { data: payments } = await supabase
-        .from('consultation_payments')
-        .select('id, patient_name, amount_usd, payment_method, date, consultation_code')
+      // Load completed appointments as income (same source as Cobros "aprobados")
+      const { data: appointments } = await supabase
+        .from('appointments')
+        .select('id, patient_name, plan_price, payment_method, scheduled_at, appointment_code')
         .eq('doctor_id', user.id)
-        .eq('payment_status', 'approved')
-        .order('date', { ascending: false })
+        .eq('status', 'completed')
+        .order('scheduled_at', { ascending: false })
 
-      setIncomes(payments || [])
+      setIncomes((appointments || []).map(a => ({
+        id: a.id,
+        patient_name: a.patient_name || 'Paciente',
+        amount_usd: a.plan_price || 0,
+        payment_method: a.payment_method || '',
+        date: a.scheduled_at,
+        consultation_code: a.appointment_code || '',
+      })))
 
       // Load expenses
       const { data: exp } = await supabase

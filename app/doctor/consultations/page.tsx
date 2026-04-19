@@ -60,7 +60,7 @@ const PAYMENT_STATUS = {
 
 type ViewMode = 'list' | 'consultation'
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today'
-type ConsultationTab = 'informe' | 'recipe' | 'prescripciones' | 'reposo'
+type ConsultationTab = 'informe' | 'recipe' | 'prescripciones' | 'reposo' | 'notas'
 
 type Prescripcion = {
   exam_name: string
@@ -137,8 +137,8 @@ function ConsultationsPage() {
   const [shareItems, setShareItems] = useState({ informe: true, recipe: false, prescripciones: false, reposo: false })
 
   // Collapsible sidebar sections
-  const [showPatientDetails, setShowPatientDetails] = useState(false)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
+  const [showRightSidebar, setShowRightSidebar] = useState(true)
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -641,12 +641,13 @@ function ConsultationsPage() {
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               {/* Safari-style Tab Navigation */}
               <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200">
-                {(['informe', 'recipe', 'prescripciones', 'reposo'] as ConsultationTab[]).map(tab => {
+                {(['informe', 'recipe', 'prescripciones', 'reposo', 'notas'] as ConsultationTab[]).map(tab => {
                   const labels: Record<ConsultationTab, string> = {
                     informe: 'Informe',
                     recipe: 'Receta',
                     prescripciones: 'Prescripciones',
-                    reposo: 'Reposo'
+                    reposo: 'Reposo',
+                    notas: 'Notas'
                   }
                   return (
                     <button
@@ -689,13 +690,6 @@ function ConsultationsPage() {
                       </label>
                       <RichTextEditor value={report.notes} onChange={html => setReport(p => ({ ...p, notes: html }))}
                         placeholder="Escribe el informe completo: anamnesis, examen físico, hallazgos relevantes..." />
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                        <Stethoscope className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
-                      </label>
-                      <RichTextEditor value={report.diagnosis} onChange={html => setReport(p => ({ ...p, diagnosis: html }))}
-                        placeholder="Diagnóstico principal y diagnósticos diferenciales..." />
                     </div>
                   </div>
                 )}
@@ -897,6 +891,19 @@ function ConsultationsPage() {
                     </button>
                   </div>
                 )}
+
+                {/* Notas Tab */}
+                {consultationTab === 'notas' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                      <FileText className="w-4 h-4 text-slate-400" />
+                      <p className="text-sm font-bold text-slate-800">Notas internas</p>
+                    </div>
+                    <p className="text-xs text-slate-500">Notas privadas del médico sobre esta consulta. No se incluyen en documentos del paciente.</p>
+                    <RichTextEditor value={report.diagnosis} onChange={html => setReport(p => ({ ...p, diagnosis: html }))}
+                      placeholder="Notas internas, observaciones, seguimiento pendiente..." />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1003,10 +1010,20 @@ function ConsultationsPage() {
             </div>
           </div>
 
+          {/* Right Sidebar Toggle (when hidden) */}
+          {!showRightSidebar && (
+            <button onClick={() => setShowRightSidebar(true)}
+              className="hidden lg:flex fixed right-4 top-24 z-30 items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+              <User className="w-3.5 h-3.5 text-teal-500" /> {selected.patient_name}
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+          )}
+
           {/* Right Sidebar — Patient + Consultation Info */}
-          <div className="lg:w-80 space-y-4">
-            {/* Patient Header */}
+          {showRightSidebar && (
+          <div className="lg:w-80 space-y-0 shrink-0">
             <div className="bg-white border border-slate-200 rounded-xl p-5 sticky top-20">
+              {/* Header with hide button */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center shrink-0">
                   <User className="w-5 h-5 text-white" />
@@ -1015,6 +1032,11 @@ function ConsultationsPage() {
                   <p className="font-bold text-slate-900">{selected.patient_name}</p>
                   <p className="text-xs text-slate-400 font-mono">{selected.consultation_code}</p>
                 </div>
+                <button onClick={() => setShowRightSidebar(false)}
+                  className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
+                  title="Ocultar panel">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
               {/* Consultation info */}
@@ -1136,30 +1158,8 @@ function ConsultationsPage() {
                 )}
               </div>
             </div>
-
-            {/* Save Button */}
-            <button onClick={saveReport} disabled={isPending}
-              className="w-full flex items-center justify-center gap-2 g-bg px-4 py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-              {saved ? <><CheckCircle className="w-4 h-4" /> Guardado</> : isPending ? 'Guardando...' : <><Save className="w-4 h-4" /> Guardar</>}
-            </button>
-
-            {/* PDF Include Toggles */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Incluir en PDF</p>
-              <button type="button" onClick={() => setIncludeRecipe(v => !v)} className="w-full flex items-center gap-2.5 text-left p-2 rounded-lg hover:bg-slate-50">
-                <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${includeRecipe ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
-                  {includeRecipe && <CheckCircle className="w-2.5 h-2.5 text-white" />}
-                </div>
-                <span className={`text-xs font-medium transition-colors ${includeRecipe ? 'text-slate-800' : 'text-slate-400'}`}>Recipe</span>
-              </button>
-              <button type="button" onClick={() => setIncludePrescripciones(v => !v)} className="w-full flex items-center gap-2.5 text-left p-2 rounded-lg hover:bg-slate-50">
-                <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${includePrescripciones ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
-                  {includePrescripciones && <CheckCircle className="w-2.5 h-2.5 text-white" />}
-                </div>
-                <span className={`text-xs font-medium transition-colors ${includePrescripciones ? 'text-slate-800' : 'text-slate-400'}`}>Prescripciones</span>
-              </button>
-            </div>
           </div>
+          )}
         </div>
 
         {/* Modal: Recipe */}
