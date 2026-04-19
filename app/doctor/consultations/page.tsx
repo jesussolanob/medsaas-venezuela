@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2 } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type Consultation = {
@@ -131,6 +131,14 @@ function ConsultationsPage() {
 
   // Appointment data (for payment receipt, method, price)
   const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null)
+
+  // Share menu state
+  const [showShare, setShowShare] = useState(false)
+  const [shareItems, setShareItems] = useState({ informe: true, recipe: false, prescripciones: false, reposo: false })
+
+  // Collapsible sidebar sections
+  const [showPatientDetails, setShowPatientDetails] = useState(false)
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false)
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -543,10 +551,89 @@ function ConsultationsPage() {
         <div className="flex flex-col lg:flex-row gap-5">
           {/* Main Content (Left ~65%) */}
           <div className="flex-1 min-w-0 space-y-5">
-            {/* Back */}
-            <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Volver a consultas
-            </button>
+            {/* Header with Back and Share buttons */}
+            <div className="flex items-center justify-between">
+              <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
+                <ArrowLeft className="w-4 h-4" /> Volver a consultas
+              </button>
+              {/* Share Button */}
+              <div className="relative">
+                <button onClick={() => setShowShare(!showShare)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                  <Share2 className="w-4 h-4" /> Compartir
+                </button>
+                {showShare && (
+                  <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-5 space-y-4">
+                    <p className="text-sm font-bold text-slate-800">¿Qué deseas compartir?</p>
+                    <div className="space-y-2">
+                      {report.chief_complaint || report.notes ? (
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" checked={shareItems.informe} onChange={e => setShareItems(p => ({ ...p, informe: e.target.checked }))}
+                            className="w-4 h-4 rounded border-slate-300" />
+                          <span className="text-sm text-slate-700">Informe</span>
+                        </label>
+                      ) : null}
+                      {report.treatment ? (
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" checked={shareItems.recipe} onChange={e => setShareItems(p => ({ ...p, recipe: e.target.checked }))}
+                            className="w-4 h-4 rounded border-slate-300" />
+                          <span className="text-sm text-slate-700">Receta</span>
+                        </label>
+                      ) : null}
+                      {prescripciones.length > 0 ? (
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" checked={shareItems.prescripciones} onChange={e => setShareItems(p => ({ ...p, prescripciones: e.target.checked }))}
+                            className="w-4 h-4 rounded border-slate-300" />
+                          <span className="text-sm text-slate-700">Prescripciones</span>
+                        </label>
+                      ) : null}
+                      {reposoDiagnosis && reposoDays > 0 ? (
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input type="checkbox" checked={shareItems.reposo} onChange={e => setShareItems(p => ({ ...p, reposo: e.target.checked }))}
+                            className="w-4 h-4 rounded border-slate-300" />
+                          <span className="text-sm text-slate-700">Reposo</span>
+                        </label>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button onClick={() => {
+                        const docs = []
+                        if (shareItems.informe) docs.push('informe médico')
+                        if (shareItems.recipe) docs.push('receta')
+                        if (shareItems.prescripciones) docs.push('prescripciones')
+                        if (shareItems.reposo) docs.push('constancia de reposo')
+                        if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
+                        const message = `Hola ${selected.patient_name}, tengo listos los siguientes documentos de tu consulta del ${new Date(selected.consultation_date).toLocaleDateString('es-VE')}: ${docs.join(', ')}. Por favor contacta al consultorio para recibirlos.`
+                        const phone = selected.patient_phone?.replace(/\D/g, '')
+                        if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank')
+                        else alert('Este paciente no tiene teléfono registrado')
+                        setShowShare(false)
+                      }}
+                        className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-green-600 transition-colors">
+                        <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                      </button>
+                      <button onClick={() => {
+                        const docs = []
+                        if (shareItems.informe) docs.push('Informe médico')
+                        if (shareItems.recipe) docs.push('Receta')
+                        if (shareItems.prescripciones) docs.push('Prescripciones')
+                        if (shareItems.reposo) docs.push('Constancia de reposo')
+                        if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
+                        const subject = `Documentos médicos - Consulta ${selected.consultation_code}`
+                        const body = `Hola ${selected.patient_name},\n\nTengo listos los siguientes documentos de tu consulta del ${new Date(selected.consultation_date).toLocaleDateString('es-VE')}:\n\n- ${docs.join('\n- ')}\n\nPor favor, revisa tu portal de paciente o contacta al consultorio para recibirlos.\n\nSaludos.`
+                        const patientEmail = patients.find(p => p.id === selected.patient_id)?.email
+                        if (patientEmail) window.open(`mailto:${patientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
+                        else alert('Este paciente no tiene email registrado')
+                        setShowShare(false)
+                      }}
+                        className="flex-1 flex items-center justify-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors">
+                        <Mail className="w-3.5 h-3.5" /> Correo
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Medical Report Form with Safari-style Tabs */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -916,112 +1003,33 @@ function ConsultationsPage() {
 
           {/* Right Sidebar (~35%) - Patient Info */}
           <div className="lg:w-96 space-y-4">
-            {/* Patient Header Card */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 sticky top-20">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-white" />
+            {/* Compact Patient Header */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sticky top-20">
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg g-bg flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900">{selected.patient_name}</p>
+                  <p className="font-bold text-slate-900 text-sm">{selected.patient_name}</p>
                   <p className="text-xs text-slate-400 font-mono">{selected.consultation_code}</p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     {cDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })} · {cDate.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
                   </p>
-                  <div className="flex gap-1.5 mt-2 flex-wrap">
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${isUpcoming ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {isUpcoming ? 'Próxima' : 'Realizada'}
-                    </span>
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 ${ps.color}`}>
-                      <span className={`w-1 h-1 rounded-full ${ps.dot}`} />{ps.label}
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Patient Medical Info Card */}
-            {patients.find(p => p.id === selected.patient_id) && (() => {
-              const patientData = patients.find(p => p.id === selected.patient_id)
-              const hasInfo = patientData && (patientData.blood_type || patientData.allergies || patientData.chronic_conditions)
-              return hasInfo ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-3">Información médica</p>
-                  <div className="space-y-2">
-                    {patientData.blood_type && (
-                      <div className="flex items-center gap-2 text-xs text-amber-800">
-                        <Droplet className="w-3 h-3 shrink-0" />
-                        <span><strong>Sangre:</strong> {patientData.blood_type}</span>
-                      </div>
-                    )}
-                    {patientData.allergies && (
-                      <div className="flex items-start gap-2 text-xs text-amber-800">
-                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
-                        <span><strong>Alergias:</strong> {patientData.allergies}</span>
-                      </div>
-                    )}
-                    {patientData.chronic_conditions && (
-                      <div className="flex items-start gap-2 text-xs text-amber-800">
-                        <Clock className="w-3 h-3 shrink-0 mt-0.5" />
-                        <span><strong>Condiciones:</strong> {patientData.chronic_conditions}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : null
-            })()}
-
-            {/* Payment Info Card */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4">
-              <p className="text-xs font-bold text-slate-600 uppercase mb-3">Estado de pago</p>
-              <div className="space-y-2">
-                {(Object.entries(PAYMENT_STATUS) as [Consultation['payment_status'], typeof PAYMENT_STATUS.unpaid][]).map(([key, val]) => (
-                  <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key }))}
-                    className={`w-full text-left py-2 px-3 rounded-lg text-xs font-bold border-2 transition-all ${report.payment_status === key ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full inline-block mr-2 ${report.payment_status === key ? val.dot : 'bg-slate-300'}`} />{val.label}
-                  </button>
-                ))}
-              </div>
-
-              {appointmentData && (appointmentData.payment_method || appointmentData.plan_price) && (
-                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
-                  {appointmentData.plan_name && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600">Plan:</span>
-                      <span className="font-semibold text-slate-900">{appointmentData.plan_name}</span>
-                    </div>
-                  )}
-                  {appointmentData.plan_price !== null && appointmentData.plan_price !== undefined && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600">Monto:</span>
-                      <span className="font-semibold text-slate-900">${appointmentData.plan_price.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {appointmentData.payment_method && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600">Método:</span>
-                      <span className="font-semibold text-slate-900">{appointmentData.payment_method.replace(/_/g, ' ')}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {appointmentData?.payment_receipt_url && (
-                <div className="mt-3 pt-3 border-t border-slate-100">
-                  <a href={appointmentData.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
-                    <FileText className="w-3 h-3" /> Ver comprobante
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* Patient Profile Info */}
-            {selected && (() => {
-              const patientData = patients.find(p => p.id === selected.patient_id)
-              return (
-                <div className="bg-white border border-slate-200 rounded-xl p-4">
-                  <p className="text-xs font-bold text-slate-600 uppercase mb-3">Datos del paciente</p>
-                  <div className="space-y-2 text-xs">
+            {/* Collapsible Datos del Paciente */}
+            <div className="bg-white border border-slate-200 rounded-xl">
+              <button onClick={() => setShowPatientDetails(!showPatientDetails)}
+                className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+                <p className="text-xs font-bold text-slate-600 uppercase">Datos del paciente</p>
+                {showPatientDetails ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              </button>
+              {showPatientDetails && selected && (() => {
+                const patientData = patients.find(p => p.id === selected.patient_id)
+                return (
+                  <div className="border-t border-slate-100 p-4 space-y-3 text-xs">
                     {(patientData?.cedula) && (
                       <div>
                         <p className="font-semibold text-slate-500">Cédula</p>
@@ -1052,42 +1060,131 @@ function ConsultationsPage() {
                         <p className="text-slate-800 break-all">{patientData.email}</p>
                       </div>
                     )}
+                    {patientData?.blood_type && (
+                      <div>
+                        <p className="font-semibold text-slate-500">Tipo de sangre</p>
+                        <p className="text-slate-800">{patientData.blood_type}</p>
+                      </div>
+                    )}
+                    {patientData?.allergies && (
+                      <div>
+                        <p className="font-semibold text-slate-500">Alergias</p>
+                        <p className="text-slate-800">{patientData.allergies}</p>
+                      </div>
+                    )}
+                    {patientData?.chronic_conditions && (
+                      <div>
+                        <p className="font-semibold text-slate-500">Condiciones crónicas</p>
+                        <p className="text-slate-800">{patientData.chronic_conditions}</p>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )
-            })()}
+                )
+              })()}
+            </div>
 
-            {/* Action Buttons */}
+            {/* Collapsible Pago */}
+            <div className="bg-white border border-slate-200 rounded-xl">
+              <button onClick={() => setShowPaymentDetails(!showPaymentDetails)}
+                className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+                <p className="text-xs font-bold text-slate-600 uppercase">Pago</p>
+                {showPaymentDetails ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              </button>
+              {!showPaymentDetails && (
+                <div className="border-t border-slate-100 px-4 py-3">
+                  <span className={`text-xs font-bold px-2 py-1 rounded-full inline-flex items-center gap-1 ${ps.color}`}>
+                    <span className={`w-1 h-1 rounded-full ${ps.dot}`} />{ps.label}
+                  </span>
+                </div>
+              )}
+              {showPaymentDetails && (
+                <div className="border-t border-slate-100 p-4 space-y-3">
+                  <div className="space-y-2">
+                    {(Object.entries(PAYMENT_STATUS) as [Consultation['payment_status'], typeof PAYMENT_STATUS.unpaid][]).map(([key, val]) => (
+                      <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key }))}
+                        className={`w-full text-left py-2 px-3 rounded-lg text-xs font-bold border-2 transition-all ${report.payment_status === key ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full inline-block mr-2 ${report.payment_status === key ? val.dot : 'bg-slate-300'}`} />{val.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {appointmentData && (appointmentData.payment_method || appointmentData.plan_price) && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2 text-xs">
+                      {appointmentData.plan_name && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-600">Plan:</span>
+                          <span className="font-semibold text-slate-900">{appointmentData.plan_name}</span>
+                        </div>
+                      )}
+                      {appointmentData.plan_price !== null && appointmentData.plan_price !== undefined && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-600">Monto:</span>
+                          <span className="font-semibold text-slate-900">${appointmentData.plan_price.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {appointmentData.payment_method && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-600">Método:</span>
+                          <span className="font-semibold text-slate-900 text-right">{appointmentData.payment_method.replace(/_/g, ' ')}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {appointmentData?.payment_receipt_url && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <a href={appointmentData.payment_receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                        <FileText className="w-3 h-3" /> Ver comprobante
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Save Button */}
             <button onClick={saveReport} disabled={isPending}
               className="w-full flex items-center justify-center gap-2 g-bg px-4 py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
               {saved ? <><CheckCircle className="w-4 h-4" /> Guardado</> : isPending ? 'Guardando...' : <><Save className="w-4 h-4" /> Guardar</>}
             </button>
 
-            {/* PDF Include Toggles */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Incluir en PDF</p>
+            {/* Acciones Card (PDF toggles + buttons) */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Acciones</p>
+
+              {/* PDF Include Toggles */}
               <div className="space-y-2">
                 <button type="button" onClick={() => setIncludeRecipe(v => !v)} className="w-full flex items-center gap-2.5 group text-left p-2 rounded-lg hover:bg-slate-50">
                   <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${includeRecipe ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
                     {includeRecipe && <CheckCircle className="w-2.5 h-2.5 text-white" />}
                   </div>
-                  <span className={`text-xs font-medium transition-colors ${includeRecipe ? 'text-slate-800' : 'text-slate-400'}`}>Recipe</span>
+                  <span className={`text-xs font-medium transition-colors ${includeRecipe ? 'text-slate-800' : 'text-slate-400'}`}>Recipe en PDF</span>
                 </button>
 
                 <button type="button" onClick={() => setIncludePrescripciones(v => !v)} className="w-full flex items-center gap-2.5 group text-left p-2 rounded-lg hover:bg-slate-50">
                   <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${includePrescripciones ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
                     {includePrescripciones && <CheckCircle className="w-2.5 h-2.5 text-white" />}
                   </div>
-                  <span className={`text-xs font-medium transition-colors ${includePrescripciones ? 'text-slate-800' : 'text-slate-400'}`}>Prescripciones</span>
+                  <span className={`text-xs font-medium transition-colors ${includePrescripciones ? 'text-slate-800' : 'text-slate-400'}`}>Prescripciones en PDF</span>
+                </button>
+              </div>
+
+              {/* PDF + Print + Share buttons */}
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={generatePDF}
+                  className="flex items-center justify-center gap-1.5 border border-slate-300 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <FileText className="w-3.5 h-3.5" /> PDF
+                </button>
+                <button onClick={() => window.print()}
+                  className="flex items-center justify-center gap-1.5 border border-slate-300 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <Printer className="w-3.5 h-3.5" /> Imprimir
+                </button>
+                <button onClick={() => setShowShare(true)}
+                  className="flex items-center justify-center gap-1.5 border border-slate-300 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <Share2 className="w-3.5 h-3.5" /> Compartir
                 </button>
               </div>
             </div>
-
-            {/* Main PDF Button */}
-            <button onClick={generatePDF}
-              className="w-full flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
-              <Printer className="w-4 h-4" /> PDF Informe
-            </button>
           </div>
         </div>
 
