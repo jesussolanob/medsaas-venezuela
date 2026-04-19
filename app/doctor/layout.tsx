@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Calendar, ClipboardList, Users,
   DollarSign, Settings, LogOut, Activity, Menu, MessageSquarePlus,
-  Building2, Package, Receipt
+  Building2, Package, Receipt, FileEdit
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -24,6 +24,7 @@ const navItems: NavItem[] = [
   { name: 'Cobros',        href: '/doctor/cobros',        icon: Receipt,         featureKey: 'finances' },
   { name: 'Consultorios',  href: '/doctor/offices',       icon: Building2,       featureKey: 'dashboard' },
   { name: 'Servicios',     href: '/doctor/services',      icon: Package,         featureKey: 'dashboard' },
+  { name: 'Plantillas',   href: '/doctor/templates',     icon: FileEdit,        featureKey: 'dashboard' },
 ]
 
 function isPathActive(pathname: string, href: string) {
