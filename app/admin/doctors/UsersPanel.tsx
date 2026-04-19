@@ -7,40 +7,7 @@ import ClinicDetailDrawer from './ClinicDetailDrawer'
 import DoctorActionButton from './DoctorActionButton'
 import NewClinicModal from './NewClinicModal'
 import { clsx } from 'clsx'
-
-const PLAN_LABELS: Record<string, string> = {
-  trial: 'Trial',
-  basic: 'Basic',
-  professional: 'Professional',
-  clinic: 'Centro de Salud',
-  enterprise: 'Centro de Salud',
-  centro_salud: 'Centro de Salud',
-}
-
-const PLAN_COLORS: Record<string, string> = {
-  trial: 'bg-slate-100 text-slate-600',
-  basic: 'bg-blue-50 text-blue-600',
-  professional: 'bg-teal-50 text-teal-600',
-  clinic: 'bg-violet-50 text-violet-600',
-  enterprise: 'bg-violet-50 text-violet-600',
-}
-
-const STATUS_COLORS: Record<string, { suffix: string; color: string }> = {
-  active: { suffix: '', color: '' },
-  trial: { suffix: ' · Trial', color: 'bg-amber-50 text-amber-700' },
-  trialing: { suffix: ' · Trial', color: 'bg-amber-50 text-amber-700' },
-  suspended: { suffix: ' · Suspendida', color: 'bg-red-50 text-red-700' },
-  past_due: { suffix: ' · Vencido', color: 'bg-orange-50 text-orange-700' },
-  pending_payment: { suffix: ' · Pendiente', color: 'bg-orange-50 text-orange-700' },
-}
-
-function getPlanTag(plan?: string | null, status?: string | null): { label: string; color: string } {
-  const planKey = plan || 'trial'
-  const planName = PLAN_LABELS[planKey] || planKey.charAt(0).toUpperCase() + planKey.slice(1)
-  const statusInfo = STATUS_COLORS[status || 'trial'] || STATUS_COLORS.trial
-  const color = statusInfo.color || PLAN_COLORS[planKey] || PLAN_COLORS.trial
-  return { label: planName + (statusInfo.suffix || ''), color }
-}
+import { getPlanLabel, getPlanColor, getStatusLabel, getStatusColor } from '@/lib/subscription'
 
 interface Doctor {
   id: string
@@ -214,11 +181,17 @@ export default function UsersPanel() {
                         {(() => {
                           const subs = doctor.subscriptions
                           const sub = Array.isArray(subs) ? subs[0] : subs
-                          const tag = getPlanTag(sub?.plan, sub?.status)
+                          const plan = sub?.plan || 'trial'
+                          const status = sub?.status || 'trial'
                           return (
-                            <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${tag.color}`}>
-                              {tag.label}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getPlanColor(plan)}`}>
+                                {getPlanLabel(plan)}
+                              </span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getStatusColor(status)}`}>
+                                {getStatusLabel(status)}
+                              </span>
+                            </div>
                           )
                         })()}
                       </td>
@@ -327,11 +300,17 @@ export default function UsersPanel() {
                       </td>
                       <td className="px-4 sm:px-6 py-4">
                         {(() => {
-                          const tag = getPlanTag(clinic.subscription_plan, clinic.subscription_status)
+                          const plan = clinic.subscription_plan || 'clinic'
+                          const status = clinic.subscription_status || 'trial'
                           return (
-                            <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${tag.color}`}>
-                              {tag.label}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getPlanColor(plan)}`}>
+                                {getPlanLabel(plan)}
+                              </span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getStatusColor(status)}`}>
+                                {getStatusLabel(status)}
+                              </span>
+                            </div>
                           )
                         })()}
                       </td>

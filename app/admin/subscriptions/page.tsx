@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react'
+import { getAllSubscriptions, getPlanLabel, getPlanColor } from '@/lib/subscription'
 import SubscriptionActionButtons from './SubscriptionActionButtons'
 
 export default async function SubscriptionsPage() {
@@ -9,31 +9,14 @@ export default async function SubscriptionsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const admin = createAdminClient()
-  const { data: subscriptions } = await admin
-    .from('subscriptions')
-    .select('*, profiles:doctor_id(full_name, email, specialty)')
-    .order('created_at', { ascending: false })
+  const subscriptions = await getAllSubscriptions()
 
   const statusConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
-    active:    { label: 'Activo',    icon: CheckCircle,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    trial:     { label: 'Trial',     icon: Clock,        color: 'text-amber-600',   bg: 'bg-amber-50' },
-    suspended: { label: 'Suspendido',icon: XCircle,      color: 'text-red-500',     bg: 'bg-red-50' },
-    cancelled: { label: 'Cancelado', icon: XCircle,      color: 'text-slate-400',   bg: 'bg-slate-50' },
-    past_due:  { label: 'Vencido',   icon: AlertCircle,  color: 'text-orange-500',  bg: 'bg-orange-50' },
-  }
-
-  const planColors: Record<string, string> = {
-    trial:        'bg-slate-100 text-slate-600',
-    basic:        'bg-blue-50 text-blue-600',
-    professional: 'bg-teal-50 text-teal-600',
-    clinic:       'bg-violet-50 text-violet-600',
-    enterprise:   'bg-violet-50 text-violet-600',
-  }
-
-  const planLabels: Record<string, string> = {
-    trial: 'Trial', basic: 'Basic', professional: 'Professional',
-    clinic: 'Centro de Salud', enterprise: 'Centro de Salud',
+    active:    { label: 'Activo',     icon: CheckCircle,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    trial:     { label: 'Trial',      icon: Clock,        color: 'text-amber-600',   bg: 'bg-amber-50' },
+    suspended: { label: 'Suspendido', icon: XCircle,      color: 'text-red-500',     bg: 'bg-red-50' },
+    cancelled: { label: 'Cancelado',  icon: XCircle,      color: 'text-slate-400',   bg: 'bg-slate-50' },
+    past_due:  { label: 'Vencido',    icon: AlertCircle,  color: 'text-orange-500',  bg: 'bg-orange-50' },
   }
 
   return (
@@ -83,7 +66,7 @@ export default async function SubscriptionsPage() {
             ) : (
               subscriptions.map((sub) => {
                 const config = statusConfig[sub.status] ?? statusConfig.cancelled
-                const planColor = planColors[sub.plan] ?? planColors.trial
+                const planColor = getPlanColor(sub.plan)
                 const vence = sub.current_period_end
                   ? new Date(sub.current_period_end).toLocaleDateString('es-VE')
                   : '—'
@@ -102,7 +85,7 @@ export default async function SubscriptionsPage() {
                     </td>
                     <td className="px-4 sm:px-6 py-4">
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${planColor} whitespace-nowrap`}>
-                        {planLabels[sub.plan] || sub.plan}
+                        {getPlanLabel(sub.plan)}
                       </span>
                     </td>
                     <td className="px-4 sm:px-6 py-4">
