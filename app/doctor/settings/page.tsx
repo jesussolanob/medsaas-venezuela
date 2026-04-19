@@ -139,6 +139,7 @@ function SettingsPageInner() {
 
   // Share message template
   const [shareMessageTemplate, setShareMessageTemplate] = useState('Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}')
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
   // Integrations
   const [whatsappToken, setWhatsappToken] = useState('')
@@ -697,6 +698,37 @@ function SettingsPageInner() {
                     {v.tag}
                   </button>
                 ))}
+                <div className="relative ml-1">
+                  <button
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="px-2 py-1 bg-amber-50 text-amber-700 rounded-md text-[11px] font-semibold hover:bg-amber-100 transition-colors border border-amber-200"
+                    title="Agregar emoji"
+                  >
+                    😊 Emojis
+                  </button>
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-full left-0 mb-2 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-50 w-[280px]">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-bold text-slate-700">Emojis</p>
+                        <button onClick={() => setShowEmojiPicker(false)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                      </div>
+                      <div className="grid grid-cols-8 gap-1">
+                        {['👋','😊','🙏','💪','❤️','✅','📋','💊','🏥','🩺','📅','⏰','📧','📱','👨‍⚕️','👩‍⚕️','🔬','💉','🌡️','😷','🤝','👍','⭐','🎯','📌','✨','🔔','💬','📝','🗓️','💰','🏃'].map(emoji => (
+                          <button
+                            key={emoji}
+                            onClick={() => {
+                              setShareMessageTemplate(prev => prev + emoji)
+                              setShowEmojiPicker(false)
+                            }}
+                            className="text-lg hover:bg-slate-100 rounded p-1 transition-colors flex items-center justify-center"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
                 <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Vista previa</p>

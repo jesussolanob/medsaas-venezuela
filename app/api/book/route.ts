@@ -385,6 +385,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Best-effort: sync appointment to Google Calendar if doctor has it connected
+    try {
+      const { data: doctorProfile } = await admin
+        .from('profiles')
+        .select('google_refresh_token')
+        .eq('id', doctorId)
+        .single()
+      if (doctorProfile?.google_refresh_token) {
+        const syncUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/integrations/google/sync`
+        // Fire-and-forget: don't block the response
+        fetch(syncUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': req.headers.get('cookie') || '',
+          },
+          body: JSON.stringify({
+            summary: `Consulta - ${patientName}`,
+            description: `Plan: ${planName || 'N/A'} | Motivo: ${chiefComplaint || 'Consulta médica'}`,
+            startTime: scheduledAt,
+            patientName,
+          }),
+        }).catch(err => console.warn('Google Calendar sync failed:', err))
+      }
+    } catch { /* ignore sync errors */ }
+
     return NextResponse.json({
       success: true,
       appointmentId: appt.id,

@@ -205,11 +205,15 @@ export default function AgendaPage() {
   // Nueva consulta desde agenda
   const [showNewConsulta, setShowNewConsulta] = useState(false)
   const [patients, setPatients] = useState<{ id: string; full_name: string; phone: string | null }[]>([])
+  const [pricingPlans, setPricingPlans] = useState<{ id: string; name: string; price_usd: number; duration_minutes: number }[]>([])
   const [newConsulta, setNewConsulta] = useState({
     patient_id: '',
     date: '',
     time: '',
     reason: '',
+    plan_id: '',
+    payment_method: 'efectivo' as string,
+    payment_reference: '',
   })
   const [creatingConsulta, setCreatingConsulta] = useState(false)
 
@@ -249,6 +253,15 @@ export default function AgendaPage() {
       .eq('doctor_id', user.id)
       .order('full_name')
     setPatients(patientsList || [])
+
+    // Load pricing plans for "nueva consulta" modal
+    const { data: plans } = await supabase
+      .from('pricing_plans')
+      .select('id, name, price_usd, duration_minutes')
+      .eq('doctor_id', user.id)
+      .eq('is_active', true)
+      .order('price_usd')
+    setPricingPlans(plans || [])
 
     // 2. Load CONFIRMED consultations (only recent + future — last 30 days + next 60 days)
     const pastCutoff = new Date()
@@ -603,8 +616,13 @@ export default function AgendaPage() {
       toast.error('Completa paciente, fecha y hora')
       return
     }
+    if (!newConsulta.plan_id) {
+      toast.error('Selecciona un plan de consulta')
+      return
+    }
     setCreatingConsulta(true)
     try {
+      const selectedPlan = pricingPlans.find(p => p.id === newConsulta.plan_id)
       const consultationDate = new Date(`${newConsulta.date}T${newConsulta.time}:00`).toISOString()
       const res = await fetch('/api/doctor/consultations', {
         method: 'POST',
@@ -613,13 +631,17 @@ export default function AgendaPage() {
           patient_id: newConsulta.patient_id,
           chief_complaint: newConsulta.reason || null,
           consultation_date: consultationDate,
+          amount: selectedPlan?.price_usd || 0,
+          plan_name: selectedPlan?.name || null,
+          payment_method: newConsulta.payment_method || null,
+          payment_reference: newConsulta.payment_reference || null,
         }),
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Error al crear')
       toast.success('Consulta creada y agregada a la agenda')
       setShowNewConsulta(false)
-      setNewConsulta({ patient_id: '', date: '', time: '', reason: '' })
+      setNewConsulta({ patient_id: '', date: '', time: '', reason: '', plan_id: '', payment_method: 'efectivo', payment_reference: '' })
       await loadData()
     } catch (err: any) {
       console.error(err)
@@ -636,6 +658,9 @@ export default function AgendaPage() {
       date: dateToYMD(date),
       time: time || '09:00',
       reason: '',
+      plan_id: '',
+      payment_method: 'efectivo',
+      payment_reference: '',
     })
     setShowNewConsulta(true)
   }
@@ -1284,7 +1309,72 @@ export default function AgendaPage() {
                   </div>
                 )}
 
-                {/* Step 4: Reason (optional) */}
+                {/* Step 4: Select plan */}
+                {newConsulta.time && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan de consulta <span className="text-red-400">*</span></label>
+                    {pricingPlans.length === 0 ? (
+                      <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-700">
+                        No tienes planes configurados. <a href="/doctor/services" className="font-bold underline">Configura tus servicios</a>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2">
+                        {pricingPlans.map(plan => (
+                          <button
+                            key={plan.id}
+                            onClick={() => setNewConsulta(prev => ({ ...prev, plan_id: plan.id }))}
+                            className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${
+                              newConsulta.plan_id === plan.id
+                                ? 'border-teal-400 bg-teal-50'
+                                : 'border-slate-200 hover:border-slate-300 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-slate-800">{plan.name}</span>
+                              <span className="text-sm font-bold text-teal-600">${plan.price_usd.toFixed(2)}</span>
+                            </div>
+                            <span className="text-xs text-slate-400">{plan.duration_minutes} min</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 5: Payment method + reference */}
+                {newConsulta.plan_id && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Método de pago <span className="text-red-400">*</span></label>
+                      <select
+                        value={newConsulta.payment_method}
+                        onChange={e => setNewConsulta(prev => ({ ...prev, payment_method: e.target.value }))}
+                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                      >
+                        <option value="efectivo">Efectivo USD</option>
+                        <option value="efectivo_bs">Efectivo Bs</option>
+                        <option value="pago_movil">Pago Móvil</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="zelle">Zelle</option>
+                        <option value="binance">Binance</option>
+                        <option value="pos">POS / Punto de venta</option>
+                        <option value="seguro">Seguro</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Referencia / Nro. comprobante</label>
+                      <input
+                        type="text"
+                        value={newConsulta.payment_reference}
+                        onChange={e => setNewConsulta(prev => ({ ...prev, payment_reference: e.target.value }))}
+                        placeholder="Ej: #12345, último 4 dígitos..."
+                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 6: Reason (optional) */}
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Motivo de consulta <span className="text-slate-300 font-normal">(opcional)</span></label>
                   <input
@@ -1297,12 +1387,19 @@ export default function AgendaPage() {
                 </div>
 
                 {/* Summary */}
-                {newConsulta.patient_id && newConsulta.date && newConsulta.time && (
-                  <div className="bg-emerald-50 rounded-lg p-3 text-sm text-emerald-700">
-                    <span className="font-semibold">Resumen:</span>{' '}
-                    {patients.find(p => p.id === newConsulta.patient_id)?.full_name} —{' '}
-                    {new Date(newConsulta.date + 'T12:00:00').toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })} a las {newConsulta.time}
-                    {newConsulta.reason && ` · ${newConsulta.reason}`}
+                {newConsulta.patient_id && newConsulta.date && newConsulta.time && newConsulta.plan_id && (
+                  <div className="bg-emerald-50 rounded-lg p-3 text-sm text-emerald-700 space-y-1">
+                    <div>
+                      <span className="font-semibold">Resumen:</span>{' '}
+                      {patients.find(p => p.id === newConsulta.patient_id)?.full_name} —{' '}
+                      {new Date(newConsulta.date + 'T12:00:00').toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })} a las {newConsulta.time}
+                    </div>
+                    <div className="text-xs">
+                      <span className="font-semibold">Plan:</span> {pricingPlans.find(p => p.id === newConsulta.plan_id)?.name} — ${pricingPlans.find(p => p.id === newConsulta.plan_id)?.price_usd.toFixed(2)}
+                      {' · '}<span className="font-semibold">Pago:</span> {newConsulta.payment_method.replace(/_/g, ' ')}
+                      {newConsulta.payment_reference && ` · Ref: ${newConsulta.payment_reference}`}
+                    </div>
+                    {newConsulta.reason && <div className="text-xs"><span className="font-semibold">Motivo:</span> {newConsulta.reason}</div>}
                   </div>
                 )}
 
@@ -1316,7 +1413,7 @@ export default function AgendaPage() {
                   </button>
                   <button
                     onClick={createConsultaFromAgenda}
-                    disabled={!newConsulta.patient_id || !newConsulta.date || !newConsulta.time || creatingConsulta}
+                    disabled={!newConsulta.patient_id || !newConsulta.date || !newConsulta.time || !newConsulta.plan_id || creatingConsulta}
                     className="flex-1 py-2.5 g-bg text-white rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {creatingConsulta ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}

@@ -69,6 +69,7 @@ export async function getPatients(doctorId: string): Promise<Patient[]> {
 export type AddPatientInput = {
   full_name: string
   age?: number
+  birth_date?: string
   phone?: string
   cedula?: string
   email?: string
@@ -85,6 +86,7 @@ export async function addPatient(doctorId: string, input: AddPatientInput): Prom
     doctor_id: doctorId,
     full_name: input.full_name,
     age: input.age ?? null,
+    birth_date: input.birth_date ?? null,
     phone: input.phone ?? null,
     cedula: input.cedula ?? null,
     email: input.email ?? null,

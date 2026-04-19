@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Receipt, Search, Download, DollarSign, CheckCircle, Clock,
   XCircle, Calendar, ArrowRight, Loader2, RefreshCw, Filter,
-  TrendingUp, Banknote, X, CreditCard, FileText, ExternalLink
+  TrendingUp, Banknote, X, CreditCard, FileText, ExternalLink, Upload
 } from 'lucide-react'
 
 type CobrosTab = 'pending' | 'approved' | 'cancelled'
@@ -51,6 +51,50 @@ export default function CobrosPage() {
   const [showExport, setShowExport] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
+
+  async function handleReceiptUpload(file: File) {
+    if (!selectedPayment) return
+    setUploadingReceipt(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const ext = file.name.split('.').pop() || 'jpg'
+      const filePath = `receipts/${user.id}/${selectedPayment.id}.${ext}`
+
+      const { error: uploadErr } = await supabase.storage
+        .from('payment-receipts')
+        .upload(filePath, file, { upsert: true, contentType: file.type })
+
+      if (uploadErr) {
+        // Try creating the bucket if it doesn't exist
+        await supabase.storage.createBucket('payment-receipts', { public: true })
+        const { error: retryErr } = await supabase.storage
+          .from('payment-receipts')
+          .upload(filePath, file, { upsert: true, contentType: file.type })
+        if (retryErr) throw retryErr
+      }
+
+      const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(filePath)
+      const publicUrl = urlData.publicUrl
+
+      // Update the appointment with the receipt URL
+      await supabase.from('appointments')
+        .update({ payment_receipt_url: publicUrl })
+        .eq('id', selectedPayment.id)
+
+      // Update local state
+      setSelectedPayment(prev => prev ? { ...prev, payment_receipt_url: publicUrl } : null)
+      setPayments(prev => prev.map(p => p.id === selectedPayment.id ? { ...p, payment_receipt_url: publicUrl } : p))
+    } catch (err) {
+      console.error('Error uploading receipt:', err)
+      alert('Error al subir el comprobante')
+    } finally {
+      setUploadingReceipt(false)
+    }
+  }
 
   // Fetch BCV rate
   useEffect(() => {
@@ -431,7 +475,21 @@ export default function CobrosPage() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-400 italic">Sin comprobante adjunto</p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-slate-400 italic">Sin comprobante adjunto</p>
+                    <label className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-300 hover:border-teal-400 hover:bg-teal-50/50 cursor-pointer transition-all ${uploadingReceipt ? 'opacity-60 pointer-events-none' : ''}`}>
+                      {uploadingReceipt ? (
+                        <><Loader2 className="w-4 h-4 animate-spin text-teal-500" /> <span className="text-sm text-teal-600 font-medium">Subiendo...</span></>
+                      ) : (
+                        <><Upload className="w-4 h-4 text-slate-400" /> <span className="text-sm text-slate-600 font-medium">Subir comprobante</span></>
+                      )}
+                      <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) handleReceiptUpload(file)
+                        e.target.value = ''
+                      }} />
+                    </label>
+                  </div>
                 )}
               </div>
 

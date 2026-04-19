@@ -38,4 +38,27 @@ CREATE INDEX IF NOT EXISTS idx_quick_items_type ON doctor_quick_items(doctor_id,
 ALTER TABLE doctor_quick_items ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Doctor manages own quick items" ON doctor_quick_items
-  FOR ALL USING (doctor_id = auth.uid());
+  FOR ALL USING (doctor_id = auth.uid())
+  WITH CHECK (doctor_id = auth.uid());
+
+-- ============================================================================
+-- Fix RLS policies missing WITH CHECK (causes INSERT failures)
+-- ============================================================================
+
+-- Fix prescriptions RLS
+DROP POLICY IF EXISTS "Médico ve sus recetas" ON prescriptions;
+CREATE POLICY "Médico gestiona sus recetas" ON prescriptions
+  FOR ALL USING (doctor_id = auth.uid())
+  WITH CHECK (doctor_id = auth.uid());
+
+-- Fix consultations RLS (ensure INSERT works)
+DROP POLICY IF EXISTS "Médico ve sus consultas" ON consultations;
+CREATE POLICY "Médico gestiona sus consultas" ON consultations
+  FOR ALL USING (doctor_id = auth.uid())
+  WITH CHECK (doctor_id = auth.uid());
+
+-- Fix ehr_records RLS
+DROP POLICY IF EXISTS "Médico ve sus registros" ON ehr_records;
+CREATE POLICY "Médico gestiona sus registros" ON ehr_records
+  FOR ALL USING (doctor_id = auth.uid())
+  WITH CHECK (doctor_id = auth.uid());

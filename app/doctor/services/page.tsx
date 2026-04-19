@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Package, Plus, Pencil, Trash2, DollarSign, Clock,
-  Save, X, Loader2, ToggleLeft, ToggleRight, Eye, EyeOff, Tag
+  Save, X, Loader2, ToggleLeft, ToggleRight, Eye, EyeOff, Tag,
+  FileText, Pill, Stethoscope
 } from 'lucide-react'
 
 type ServiceItem = {
@@ -17,6 +18,14 @@ type ServiceItem = {
   show_in_booking: boolean
   description: string
   type: 'plan' | 'service'
+}
+
+type QuickItem = {
+  id: string
+  item_type: 'exam' | 'medication'
+  name: string
+  category: string | null
+  details: string | null
 }
 
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white'
@@ -38,6 +47,15 @@ export default function ServicesPage() {
   const [type, setType] = useState<'plan' | 'service'>('plan')
   const [showInBooking, setShowInBooking] = useState(true)
 
+  // Quick items (Prescripciones = exams, Recetas = medications)
+  const [quickExams, setQuickExams] = useState<QuickItem[]>([])
+  const [quickMeds, setQuickMeds] = useState<QuickItem[]>([])
+  const [newExamName, setNewExamName] = useState('')
+  const [newExamCategory, setNewExamCategory] = useState('')
+  const [newMedName, setNewMedName] = useState('')
+  const [newMedDetails, setNewMedDetails] = useState('')
+  const [savingQuickItem, setSavingQuickItem] = useState(false)
+
   const fetchServices = useCallback(async () => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -55,10 +73,54 @@ export default function ServicesPage() {
       description: d.description || '',
       type: d.type || 'plan',
     })))
+
+    // Fetch quick items
+    const { data: quickItems } = await supabase
+      .from('doctor_quick_items')
+      .select('id, item_type, name, category, details')
+      .eq('doctor_id', user.id)
+      .order('name')
+    if (quickItems) {
+      setQuickExams(quickItems.filter(i => i.item_type === 'exam'))
+      setQuickMeds(quickItems.filter(i => i.item_type === 'medication'))
+    }
+
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchServices() }, [fetchServices])
+
+  async function addQuickItem(itemType: 'exam' | 'medication') {
+    const itemName = itemType === 'exam' ? newExamName.trim() : newMedName.trim()
+    if (!itemName) return
+    setSavingQuickItem(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from('doctor_quick_items').insert({
+        doctor_id: user.id,
+        item_type: itemType,
+        name: itemName,
+        category: itemType === 'exam' ? (newExamCategory.trim() || null) : null,
+        details: itemType === 'medication' ? (newMedDetails.trim() || null) : null,
+      })
+      if (itemType === 'exam') { setNewExamName(''); setNewExamCategory('') }
+      else { setNewMedName(''); setNewMedDetails('') }
+      fetchServices()
+    } catch (err) {
+      console.error('Error adding quick item:', err)
+    } finally {
+      setSavingQuickItem(false)
+    }
+  }
+
+  async function deleteQuickItem(id: string) {
+    if (!confirm('¿Eliminar este elemento?')) return
+    const supabase = createClient()
+    await supabase.from('doctor_quick_items').delete().eq('id', id)
+    fetchServices()
+  }
 
   function openNew(itemType: 'plan' | 'service' = 'plan') {
     setEditing(null)
@@ -277,6 +339,90 @@ export default function ServicesPage() {
           ))}
         </div>
       )}
+
+      {/* ── Prescripciones (Exámenes frecuentes) ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Stethoscope className="w-5 h-5 text-teal-500" />
+          <h2 className="text-sm font-bold text-slate-900">Prescripciones</h2>
+          <span className="text-xs text-slate-400">Exámenes que comúnmente prescribes</span>
+        </div>
+        <p className="text-xs text-slate-500">Guarda los exámenes que usualmente mandas a hacer. En la consulta podrás seleccionarlos rápidamente.</p>
+
+        {/* Add new exam */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input value={newExamName} onChange={e => setNewExamName(e.target.value)}
+            placeholder="Nombre del examen (ej: Hematología completa)" className={inp + ' flex-1'} />
+          <input value={newExamCategory} onChange={e => setNewExamCategory(e.target.value)}
+            placeholder="Categoría (opcional)" className={inp + ' sm:w-40'} />
+          <button onClick={() => addQuickItem('exam')} disabled={savingQuickItem || !newExamName.trim()}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors shrink-0">
+            <Plus className="w-4 h-4" /> Agregar
+          </button>
+        </div>
+
+        {/* Exam list */}
+        {quickExams.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-4">No tienes exámenes guardados aún</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {quickExams.map(exam => (
+              <div key={exam.id} className="flex items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl group">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{exam.name}</p>
+                  {exam.category && <p className="text-xs text-slate-400">{exam.category}</p>}
+                </div>
+                <button onClick={() => deleteQuickItem(exam.id)}
+                  className="p-1 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Recetas (Medicamentos frecuentes) ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Pill className="w-5 h-5 text-teal-500" />
+          <h2 className="text-sm font-bold text-slate-900">Recetas</h2>
+          <span className="text-xs text-slate-400">Medicamentos que comúnmente recetas</span>
+        </div>
+        <p className="text-xs text-slate-500">Guarda los medicamentos que usualmente recetas. En la consulta podrás seleccionarlos rápidamente.</p>
+
+        {/* Add new medication */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input value={newMedName} onChange={e => setNewMedName(e.target.value)}
+            placeholder="Nombre del medicamento (ej: Losartán 50mg)" className={inp + ' flex-1'} />
+          <input value={newMedDetails} onChange={e => setNewMedDetails(e.target.value)}
+            placeholder="Detalles (dosis, frecuencia)" className={inp + ' sm:w-52'} />
+          <button onClick={() => addQuickItem('medication')} disabled={savingQuickItem || !newMedName.trim()}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors shrink-0">
+            <Plus className="w-4 h-4" /> Agregar
+          </button>
+        </div>
+
+        {/* Medication list */}
+        {quickMeds.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-4">No tienes medicamentos guardados aún</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {quickMeds.map(med => (
+              <div key={med.id} className="flex items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl group">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{med.name}</p>
+                  {med.details && <p className="text-xs text-slate-400">{med.details}</p>}
+                </div>
+                <button onClick={() => deleteQuickItem(med.id)}
+                  className="p-1 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Form modal */}
       {showForm && (

@@ -67,6 +67,21 @@ type Prescripcion = {
   notes: string
 }
 
+type QuickItem = {
+  id: string
+  item_type: 'exam' | 'medication'
+  name: string
+  category: string | null
+  details: string | null
+}
+
+type SavedPrescription = {
+  id: string
+  medications: Medication[]
+  notes: string | null
+  created_at: string
+}
+
 export default function ConsultationsPageWrapper() {
   return (
     <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400 text-sm">Cargando...</div>}>
@@ -105,12 +120,25 @@ function ConsultationsPage() {
   // New consultation modal
   const [showNewConsultation, setShowNewConsultation] = useState(false)
   const [patients, setPatients] = useState<Patient[]>([])
+  const [pricingPlans, setPricingPlans] = useState<{ id: string; name: string; price_usd: number; duration_minutes: number }[]>([])
+  // Helper to get local datetime string for datetime-local input
+  const getLocalDateTimeString = () => {
+    const now = new Date()
+    const offset = now.getTimezoneOffset()
+    const local = new Date(now.getTime() - offset * 60000)
+    return local.toISOString().slice(0, 16)
+  }
+
   const [newConsultation, setNewConsultation] = useState({
     patient_id: '',
-    consultation_date: new Date().toISOString().slice(0, 16),
+    consultation_date: getLocalDateTimeString(),
     reason: '',
+    plan_id: '',
+    payment_reference: '',
     amount: '',
-    payment_method: 'efectivo' as 'efectivo' | 'transferencia' | 'pago_movil' | 'zelle' | 'seguro',
+    payment_method: 'efectivo' as 'efectivo' | 'transferencia' | 'pago_movil' | 'zelle' | 'binance' | 'pos' | 'seguro',
+    comments: '',
+    sendEmail: true,
   })
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false)
 
@@ -144,6 +172,35 @@ function ConsultationsPage() {
   const [doctorName, setDoctorName] = useState('')
   const [shareTemplate, setShareTemplate] = useState('Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}')
 
+  // Template configs for PDFs
+  type TemplateConfig = {
+    logo_url: string | null
+    signature_url: string | null
+    font_family: string
+    header_text: string
+    footer_text: string
+    show_logo: boolean
+    show_signature: boolean
+    primary_color: string
+  }
+  const defaultTemplateConfig: TemplateConfig = {
+    logo_url: null, signature_url: null, font_family: 'Inter',
+    header_text: '', footer_text: '', show_logo: true, show_signature: true, primary_color: '#0891b2',
+  }
+  const [templateConfigs, setTemplateConfigs] = useState<Record<string, TemplateConfig>>({
+    informe: { ...defaultTemplateConfig },
+    recipe: { ...defaultTemplateConfig },
+    prescripciones: { ...defaultTemplateConfig },
+    reposo: { ...defaultTemplateConfig },
+  })
+
+  // Quick items from templates (doctor_quick_items)
+  const [quickExams, setQuickExams] = useState<QuickItem[]>([])
+  const [quickMeds, setQuickMeds] = useState<QuickItem[]>([])
+
+  // Saved prescriptions for current consultation
+  const [savedPrescriptions, setSavedPrescriptions] = useState<SavedPrescription[]>([])
+
   const today = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
@@ -168,6 +225,55 @@ function ConsultationsPage() {
           .select('id, full_name, phone, email, cedula, age, sex, blood_type, allergies, chronic_conditions')
           .eq('doctor_id', user.id)
         setPatients(patientsData ?? [])
+
+        // Cargar quick items (exámenes y medicamentos frecuentes)
+        const { data: quickItems } = await supabase
+          .from('doctor_quick_items')
+          .select('id, item_type, name, category, details')
+          .eq('doctor_id', user.id)
+          .order('name')
+        if (quickItems) {
+          setQuickExams(quickItems.filter(i => i.item_type === 'exam'))
+          setQuickMeds(quickItems.filter(i => i.item_type === 'medication'))
+        }
+
+        // Cargar planes de precios del doctor
+        const { data: plansData } = await supabase
+          .from('pricing_plans')
+          .select('id, name, price_usd, duration_minutes')
+          .eq('doctor_id', user.id)
+          .eq('is_active', true)
+          .order('price_usd')
+        setPricingPlans(plansData ?? [])
+
+        // Cargar configuraciones de plantillas para PDFs
+        const { data: tplData } = await supabase
+          .from('doctor_templates')
+          .select('template_type, logo_url, signature_url, font_family, header_text, footer_text, show_logo, show_signature, primary_color')
+          .eq('doctor_id', user.id)
+        if (tplData) {
+          const configs: Record<string, TemplateConfig> = {
+            informe: { ...defaultTemplateConfig },
+            recipe: { ...defaultTemplateConfig },
+            prescripciones: { ...defaultTemplateConfig },
+            reposo: { ...defaultTemplateConfig },
+          }
+          tplData.forEach((t: any) => {
+            if (configs[t.template_type]) {
+              configs[t.template_type] = {
+                logo_url: t.logo_url || null,
+                signature_url: t.signature_url || null,
+                font_family: t.font_family || 'Inter',
+                header_text: t.header_text || '',
+                footer_text: t.footer_text || '',
+                show_logo: t.show_logo ?? true,
+                show_signature: t.show_signature ?? true,
+                primary_color: t.primary_color || '#0891b2',
+              }
+            }
+          })
+          setTemplateConfigs(configs)
+        }
 
         // Cargar consultas
         const { data } = await supabase
@@ -276,7 +382,42 @@ function ConsultationsPage() {
       setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
       setAppointmentData(null)
     }
-    setRecipe({ medications: [], notes: '' })
+    // Load saved prescriptions/recipes for this consultation
+    try {
+      const supabase = createClient()
+      const { data: savedRx } = await supabase
+        .from('prescriptions')
+        .select('id, medications, notes, created_at')
+        .eq('consultation_id', c.id)
+        .order('created_at', { ascending: false })
+      if (savedRx && savedRx.length > 0) {
+        setSavedPrescriptions(savedRx as SavedPrescription[])
+        // Load the most recent recipe's medications into the recipe editor
+        const latest = savedRx[0]
+        const meds = (latest.medications as Medication[]) || []
+        setRecipe({ medications: meds, notes: latest.notes || '' })
+        // Load exams from saved prescriptions (those that look like exams)
+        const examItems = savedRx
+          .filter(rx => rx.notes?.startsWith('Examen:'))
+          .map(rx => {
+            const meds = (rx.medications as Medication[]) || []
+            return { exam_name: meds[0]?.name || '', notes: meds[0]?.indications || '' }
+          })
+        if (examItems.length > 0) {
+          setPrescripciones(examItems)
+        } else {
+          setPrescripciones([])
+        }
+      } else {
+        setSavedPrescriptions([])
+        setRecipe({ medications: [], notes: '' })
+        setPrescripciones([])
+      }
+    } catch {
+      setSavedPrescriptions([])
+      setRecipe({ medications: [], notes: '' })
+      setPrescripciones([])
+    }
     setView('consultation')
     setSaved(false)
     setConsultationTab('informe')
@@ -287,8 +428,17 @@ function ConsultationsPage() {
       alert('Completa paciente y fecha')
       return
     }
+    if (!newConsultation.plan_id) {
+      alert('Selecciona un plan o servicio')
+      return
+    }
     setIsCreatingConsultation(true)
     try {
+      // Find selected plan details
+      const selectedPlan = pricingPlans.find(p => p.id === newConsultation.plan_id)
+      const planAmount = selectedPlan?.price_usd || 0
+      const planName = selectedPlan?.name || ''
+
       // 1. Create consultation via API
       const res = await fetch('/api/doctor/consultations', {
         method: 'POST',
@@ -296,8 +446,12 @@ function ConsultationsPage() {
         body: JSON.stringify({
           patient_id: newConsultation.patient_id,
           chief_complaint: newConsultation.reason || null,
+          notes: newConsultation.comments || null,
           consultation_date: new Date(newConsultation.consultation_date).toISOString(),
-          amount: parseFloat(newConsultation.amount) || 0,
+          amount: planAmount,
+          plan_name: planName,
+          payment_method: newConsultation.payment_method,
+          payment_reference: newConsultation.payment_reference || null,
         }),
       })
       const result = await res.json()
@@ -305,17 +459,43 @@ function ConsultationsPage() {
 
       // 2. If there's an amount and payment method, register the payment
       const consultationId = result.consultation?.id
-      if (consultationId && newConsultation.amount && parseFloat(newConsultation.amount) > 0) {
+      if (consultationId && planAmount > 0) {
         await fetch('/api/doctor/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             consultation_id: consultationId,
             patient_id: newConsultation.patient_id,
-            amount: parseFloat(newConsultation.amount),
+            amount: planAmount,
             payment_method: newConsultation.payment_method,
+            payment_reference: newConsultation.payment_reference || null,
           }),
         })
+      }
+
+      // 3. Send email notification to patient if enabled
+      if (newConsultation.sendEmail) {
+        const patient = patients.find(p => p.id === newConsultation.patient_id)
+        if (patient?.email) {
+          try {
+            await fetch('/api/doctor/send-consultation-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                patientEmail: patient.email,
+                patientName: patient.full_name,
+                doctorName,
+                consultationDate: newConsultation.consultation_date,
+                reason: newConsultation.reason || 'Consulta médica',
+                comments: newConsultation.comments || '',
+                consultationCode: result.consultation?.consultation_code || '',
+              }),
+            })
+          } catch (emailErr) {
+            console.error('Error sending email:', emailErr)
+            // Don't block consultation creation if email fails
+          }
+        }
       }
 
       // 3. Reload consultation list
@@ -346,10 +526,14 @@ function ConsultationsPage() {
       setShowNewConsultation(false)
       setNewConsultation({
         patient_id: '',
-        consultation_date: new Date().toISOString().slice(0, 16),
+        consultation_date: getLocalDateTimeString(),
         reason: '',
+        plan_id: '',
+        payment_reference: '',
         amount: '',
         payment_method: 'efectivo',
+        comments: '',
+        sendEmail: true,
       })
     } catch (err) {
       console.error('Error creating consultation:', err)
@@ -380,6 +564,13 @@ function ConsultationsPage() {
       })
 
       if (error) throw error
+      // Reload saved prescriptions
+      const { data: savedRx } = await supabase
+        .from('prescriptions')
+        .select('id, medications, notes, created_at')
+        .eq('consultation_id', selected.id)
+        .order('created_at', { ascending: false })
+      setSavedPrescriptions((savedRx || []) as SavedPrescription[])
       setShowRecipe(false)
       alert('Receta guardada')
     } catch (err) {
@@ -390,31 +581,37 @@ function ConsultationsPage() {
     }
   }
 
-  function generatePDF() {
-    if (!selected) return
+  // Helper to build PDF HTML using template config
+  function buildPdfHtml(templateType: string, title: string, bodyContent: string, patientName: string, code: string, dateStr: string) {
+    const cfg = templateConfigs[templateType] || defaultTemplateConfig
+    const color = cfg.primary_color || '#0891b2'
+    const font = cfg.font_family || 'Inter'
 
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
-
-    const htmlContent = `
-<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html>
 <head>
-  <title>Informe Médico - ${selected.consultation_code}</title>
+  <title>${title} - ${code}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=${font.replace(/ /g, '+')}:wght@400;600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: '${font}', 'Segoe UI', Arial, sans-serif; }
     body { padding: 40px; color: #1e293b; line-height: 1.6; }
-    .header { border-bottom: 3px solid #0891b2; padding-bottom: 20px; margin-bottom: 30px; }
-    .header h1 { color: #0891b2; font-size: 24px; }
+    .header { border-bottom: 3px solid ${color}; padding-bottom: 20px; margin-bottom: 30px; display: flex; align-items: center; justify-content: space-between; }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .header-logo img { max-height: 60px; max-width: 180px; object-fit: contain; }
+    .header h1 { color: ${color}; font-size: 24px; }
     .header p { color: #64748b; font-size: 12px; margin-top: 4px; }
+    .header-text { font-size: 11px; color: #64748b; text-align: right; max-width: 250px; }
     .meta { display: flex; gap: 40px; margin-bottom: 30px; flex-wrap: wrap; }
-    .meta-item { }
     .meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: 700; }
     .meta-value { font-size: 14px; font-weight: 600; color: #1e293b; margin-top: 2px; }
     .section { margin-bottom: 24px; }
-    .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #0891b2; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; }
+    .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: ${color}; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; }
     .section-content { font-size: 13px; color: #334155; }
     .section-content ul, .section-content ol { padding-left: 20px; }
+    .signature { margin-top: 40px; text-align: center; }
+    .signature img { max-height: 80px; margin-bottom: 8px; }
+    .signature-line { width: 200px; border-top: 1px solid #94a3b8; margin: 0 auto; padding-top: 6px; }
+    .signature p { font-size: 11px; color: #64748b; }
     .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; }
     .footer p { font-size: 10px; color: #94a3b8; }
     .code { font-family: monospace; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
@@ -423,44 +620,74 @@ function ConsultationsPage() {
 </head>
 <body>
   <div class="header">
-    <h1>Delta</h1>
-    <p>Informe Médico</p>
+    <div class="header-left">
+      ${cfg.show_logo && cfg.logo_url ? '<div class="header-logo"><img src="' + cfg.logo_url + '" alt="Logo" /></div>' : ''}
+      <div>
+        <h1>${cfg.header_text ? cfg.header_text.split('\\n')[0] || 'Delta' : 'Delta'}</h1>
+        <p>${title}</p>
+      </div>
+    </div>
+    ${cfg.header_text && cfg.header_text.includes('\\n') ? '<div class="header-text">' + cfg.header_text.split('\\n').slice(1).join('<br/>') + '</div>' : ''}
   </div>
 
   <div class="meta">
-    <div class="meta-item">
-      <div class="meta-label">Paciente</div>
-      <div class="meta-value">${selected.patient_name}</div>
-    </div>
-    <div class="meta-item">
-      <div class="meta-label">Código</div>
-      <div class="meta-value code">${selected.consultation_code}</div>
-    </div>
-    <div class="meta-item">
-      <div class="meta-label">Fecha</div>
-      <div class="meta-value">${new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
-    </div>
+    <div class="meta-item"><div class="meta-label">Paciente</div><div class="meta-value">${patientName}</div></div>
+    <div class="meta-item"><div class="meta-label">Código</div><div class="meta-value code">${code}</div></div>
+    <div class="meta-item"><div class="meta-label">Fecha</div><div class="meta-value">${dateStr}</div></div>
+    <div class="meta-item"><div class="meta-label">Doctor</div><div class="meta-value">${doctorName}</div></div>
   </div>
 
-  ${report.chief_complaint ? '<div class="section"><div class="section-title">Motivo de Consulta</div><div class="section-content">' + report.chief_complaint + '</div></div>' : ''}
+  ${bodyContent}
 
-  ${report.notes ? '<div class="section"><div class="section-title">Informe Médico</div><div class="section-content">' + report.notes + '</div></div>' : ''}
-
-  ${report.diagnosis ? '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>' : ''}
-
-  ${includeRecipe && report.treatment ? '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' + report.treatment + '</div></div>' : ''}
-
-  ${includePrescripciones && prescripciones.length > 0 ? '<div class="section"><div class="section-title">Prescripciones</div><div class="section-content"><ul>' + prescripciones.filter(p => p.exam_name.trim()).map(p => '<li>' + p.exam_name + (p.notes ? ' - ' + p.notes : '') + '</li>').join('') + '</ul></div></div>' : ''}
+  ${cfg.show_signature && cfg.signature_url ? '<div class="signature"><img src="' + cfg.signature_url + '" alt="Firma" /><div class="signature-line"><p>' + doctorName + '</p></div></div>' : ''}
 
   <div class="footer">
-    <p>Documento generado por Delta · ${new Date().toLocaleDateString('es-VE')}</p>
-    <p>${selected.consultation_code}</p>
+    ${cfg.footer_text ? '<p>' + cfg.footer_text + '</p>' : '<p>Documento generado por Delta</p>'}
+    <p>${code} · ${new Date().toLocaleDateString('es-VE')}</p>
   </div>
 
   <script>window.onload = function() { window.print(); }</script>
 </body>
 </html>`
+  }
 
+  function generatePDF() {
+    if (!selected) return
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+
+    let bodyContent = ''
+    if (report.chief_complaint) bodyContent += '<div class="section"><div class="section-title">Motivo de Consulta</div><div class="section-content">' + report.chief_complaint + '</div></div>'
+    if (report.notes) bodyContent += '<div class="section"><div class="section-title">Informe Médico</div><div class="section-content">' + report.notes + '</div></div>'
+    if (report.diagnosis) bodyContent += '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>'
+
+    if (includeRecipe) {
+      if (recipe.medications.length > 0) {
+        bodyContent += '<div class="section"><div class="section-title">Medicamentos</div><div class="section-content">'
+        bodyContent += recipe.medications.map((m: Medication, i: number) =>
+          '<div style="margin-bottom:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px">' +
+          '<div style="font-weight:700;color:#1e293b">' + (i+1) + '. ' + (m.name || '') + '</div>' +
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">' +
+          (m.dose ? '<span style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' + m.dose + '</span>' : '') +
+          (m.frequency ? '<span style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' + m.frequency + '</span>' : '') +
+          (m.duration ? '<span style="font-size:12px;color:#475569"><strong>Duración:</strong> ' + m.duration + '</span>' : '') +
+          '</div>' +
+          (m.indications ? '<div style="font-size:12px;color:#64748b;margin-top:2px"><em>' + m.indications + '</em></div>' : '') +
+          '</div>'
+        ).join('')
+        bodyContent += '</div></div>'
+      }
+      if (report.treatment) bodyContent += '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' + report.treatment + '</div></div>'
+    }
+
+    if (includePrescripciones && prescripciones.length > 0) {
+      bodyContent += '<div class="section"><div class="section-title">Prescripciones</div><div class="section-content"><ul>' + prescripciones.filter(p => p.exam_name.trim()).map(p => '<li>' + p.exam_name + (p.notes ? ' - ' + p.notes : '') + '</li>').join('') + '</ul></div></div>'
+    }
+
+    const htmlContent = buildPdfHtml('informe', 'Informe Médico', bodyContent, selected.patient_name, selected.consultation_code, dateStr)
     printWindow.document.write(htmlContent)
     printWindow.document.close()
   }
@@ -612,19 +839,78 @@ function ConsultationsPage() {
                         </label>
                       </div>
                       <div className="flex gap-2 pt-2">
-                        <button onClick={() => {
+                        <button onClick={async () => {
                           const docs: string[] = []
-                          if (shareItems.informe) docs.push('informe médico')
-                          if (shareItems.recipe) docs.push('receta')
-                          if (shareItems.prescripciones) docs.push('prescripciones')
-                          if (shareItems.reposo) docs.push('constancia de reposo')
+                          const docLinks: string[] = []
+                          const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
+
+                          // Generate and upload PDFs for selected documents
+                          const uploadDoc = async (templateType: string, title: string, bodyContent: string) => {
+                            try {
+                              const html = buildPdfHtml(templateType, title, bodyContent, selected.patient_name, selected.consultation_code, dateStr)
+                              const res = await fetch('/api/doctor/share-pdf', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  htmlContent: html,
+                                  fileName: `${templateType}-${selected.consultation_code}`,
+                                  consultationCode: selected.consultation_code,
+                                }),
+                              })
+                              const data = await res.json()
+                              if (data.url) return data.url
+                            } catch (err) { console.error('Upload error:', err) }
+                            return null
+                          }
+
+                          if (shareItems.informe) {
+                            docs.push('informe médico')
+                            let body = ''
+                            if (report.chief_complaint) body += '<div class="section"><div class="section-title">Motivo</div><div class="section-content">' + report.chief_complaint + '</div></div>'
+                            if (report.notes) body += '<div class="section"><div class="section-title">Informe</div><div class="section-content">' + report.notes + '</div></div>'
+                            if (report.diagnosis) body += '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>'
+                            const url = await uploadDoc('informe', 'Informe Médico', body)
+                            if (url) docLinks.push(url)
+                          }
+                          if (shareItems.recipe && recipe.medications.length > 0) {
+                            docs.push('receta')
+                            let body = '<div class="section"><div class="section-title">Medicamentos</div>'
+                            body += recipe.medications.map((m, i) =>
+                              '<div style="margin-bottom:10px;padding:8px;border:1px solid #e2e8f0;border-radius:6px"><strong>' + (i+1) + '. ' + m.name + '</strong>' +
+                              (m.dose ? ' | Dosis: ' + m.dose : '') + (m.frequency ? ' | Freq: ' + m.frequency : '') + (m.duration ? ' | Dur: ' + m.duration : '') +
+                              (m.indications ? '<br><em>' + m.indications + '</em>' : '') + '</div>'
+                            ).join('') + '</div>'
+                            const url = await uploadDoc('recipe', 'Receta Médica', body)
+                            if (url) docLinks.push(url)
+                          }
+                          if (shareItems.prescripciones && prescripciones.length > 0) {
+                            docs.push('prescripciones')
+                            const body = '<div class="section"><div class="section-title">Exámenes</div><div class="section-content"><ul>' +
+                              prescripciones.filter(p => p.exam_name.trim()).map(p => '<li>' + p.exam_name + (p.notes ? ' - ' + p.notes : '') + '</li>').join('') + '</ul></div></div>'
+                            const url = await uploadDoc('prescripciones', 'Prescripciones', body)
+                            if (url) docLinks.push(url)
+                          }
+                          if (shareItems.reposo && reposoDiagnosis) {
+                            docs.push('constancia de reposo')
+                            const body = '<div class="section"><div class="section-title">Reposo</div><div class="section-content">Diagnóstico: ' + reposoDiagnosis + '<br>Días: ' + reposoDays + '</div></div>'
+                            const url = await uploadDoc('reposo', 'Constancia de Reposo', body)
+                            if (url) docLinks.push(url)
+                          }
+
                           if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
-                          const message = shareTemplate
+
+                          let message = shareTemplate
                             .replace('{paciente}', selected.patient_name)
                             .replace('{fecha}', new Date(selected.consultation_date).toLocaleDateString('es-VE'))
                             .replace('{documentos}', docs.join(', '))
                             .replace('{doctor}', doctorName)
                             .replace('{codigo}', selected.consultation_code || '')
+
+                          // Append document links
+                          if (docLinks.length > 0) {
+                            message += '\n\n' + docLinks.map((url, i) => `${docs[i] || 'Documento'}: ${url}`).join('\n')
+                          }
+
                           const phone = selected.patient_phone?.replace(/\D/g, '')
                           if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank')
                           else alert('Este paciente no tiene teléfono registrado')
@@ -729,9 +1015,28 @@ function ConsultationsPage() {
                       </div>
                       <button onClick={() => setShowRecipe(true)}
                         className="flex items-center gap-2 px-3 py-1.5 g-bg rounded-lg text-xs font-bold text-white hover:opacity-90">
-                        <Pill className="w-3.5 h-3.5" /> Generar receta
+                        <Pill className="w-3.5 h-3.5" /> {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
                       </button>
                     </div>
+
+                    {/* Show saved medications summary */}
+                    {recipe.medications.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Medicamentos en receta ({recipe.medications.length})</p>
+                        {recipe.medications.map((med, idx) => (
+                          <div key={idx} className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                            <p className="text-sm font-bold text-teal-900">{med.name}</p>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                              {med.dose && <span className="text-xs text-teal-700">Dosis: {med.dose}</span>}
+                              {med.frequency && <span className="text-xs text-teal-700">Frecuencia: {med.frequency}</span>}
+                              {med.duration && <span className="text-xs text-teal-700">Duración: {med.duration}</span>}
+                            </div>
+                            {med.indications && <p className="text-xs text-teal-600 mt-1">{med.indications}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                       <Pill className="w-3.5 h-3.5 text-slate-400" /> Tratamiento / Indicaciones
                     </label>
@@ -740,13 +1045,29 @@ function ConsultationsPage() {
                     <div className="flex gap-2 pt-2">
                       <button onClick={() => setShowRecipe(true)}
                         className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
-                        <Pill className="w-4 h-4" /> Generar receta
+                        <Pill className="w-4 h-4" /> {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
                       </button>
                       <button onClick={() => {
                         const printWindow = window.open('', '_blank')
                         if (!printWindow) return
-                        const htmlContent = `<!DOCTYPE html><html><head><title>Receta - ${selected.consultation_code}</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif}body{padding:40px;color:#1e293b;line-height:1.6}.header{border-bottom:3px solid #0891b2;padding-bottom:20px;margin-bottom:30px}.header h1{color:#0891b2;font-size:24px}.header p{color:#64748b;font-size:12px;margin-top:4px}.meta{display:flex;gap:40px;margin-bottom:30px;flex-wrap:wrap}.meta-item{}.meta-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700}.meta-value{font-size:14px;font-weight:600;color:#1e293b;margin-top:2px}.section{margin-bottom:24px}.section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#0891b2;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:12px}.section-content{font-size:13px;color:#334155}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;text-align:center}.footer p{font-size:10px;color:#94a3b8}@media print{body{padding:20px}}</style></head><body><div class="header"><h1>Delta</h1><p>Receta Médica</p></div><div class="meta"><div class="meta-item"><div class="meta-label">Paciente</div><div class="meta-value">${selected.patient_name}</div></div><div class="meta-item"><div class="meta-label">Código</div><div class="meta-value">${selected.consultation_code}</div></div><div class="meta-item"><div class="meta-label">Fecha</div><div class="meta-value">${new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}</div></div></div><div class="section"><div class="section-title">Indicaciones</div><div class="section-content">${report.treatment || 'Sin indicaciones registradas'}</div></div><div class="footer"><p>Documento generado por Delta · ${new Date().toLocaleDateString('es-VE')}</p></div><script>window.onload=function(){window.print()}</script></body></html>`
-                        printWindow.document.write(htmlContent)
+                        let bodyContent = ''
+                        if (recipe.medications.length > 0) {
+                          bodyContent += '<div class="section"><div class="section-title">Medicamentos</div>'
+                          bodyContent += recipe.medications.map((m, i) =>
+                            '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">' +
+                            '<div style="font-size:14px;font-weight:700;color:#1e293b">' + (i+1) + '. ' + (m.name || 'Sin nombre') + '</div>' +
+                            '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">' +
+                            (m.dose ? '<div style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' + m.dose + '</div>' : '') +
+                            (m.frequency ? '<div style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' + m.frequency + '</div>' : '') +
+                            (m.duration ? '<div style="font-size:12px;color:#475569"><strong>Duración:</strong> ' + m.duration + '</div>' : '') +
+                            '</div>' +
+                            (m.indications ? '<div style="font-size:12px;color:#64748b;margin-top:4px"><em>' + m.indications + '</em></div>' : '') +
+                            '</div>'
+                          ).join('') + '</div>'
+                        }
+                        if (report.treatment) bodyContent += '<div class="section"><div class="section-title">Indicaciones generales</div><div class="section-content">' + report.treatment + '</div></div>'
+                        const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
+                        printWindow.document.write(buildPdfHtml('recipe', 'Receta Médica', bodyContent, selected.patient_name, selected.consultation_code, dateStr))
                         printWindow.document.close()
                       }}
                         className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
@@ -766,6 +1087,22 @@ function ConsultationsPage() {
                       </div>
                     </div>
                     <p className="text-xs text-slate-500">Exámenes e indicaciones que el médico ordena al paciente (laboratorio, imágenes, etc.)</p>
+
+                    {/* Quick exams from templates */}
+                    {quickExams.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 mb-2">Exámenes frecuentes (clic para agregar):</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {quickExams.map(q => (
+                            <button key={q.id}
+                              onClick={() => setPrescripciones(prev => [...prev, { exam_name: q.name, notes: q.details || '' }])}
+                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium">
+                              + {q.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-3">
                       {prescripciones.map((p, idx) => (
@@ -815,8 +1152,14 @@ function ConsultationsPage() {
                                 created_at: new Date().toISOString(),
                               })
                             }
+                            // Reload saved prescriptions
+                            const { data: savedRx } = await supabase
+                              .from('prescriptions')
+                              .select('id, medications, notes, created_at')
+                              .eq('consultation_id', selected.id)
+                              .order('created_at', { ascending: false })
+                            setSavedPrescriptions((savedRx || []) as SavedPrescription[])
                             alert('Prescripciones guardadas')
-                            setPrescripciones([])
                           } catch (err) {
                             console.error('Error saving prescriptions:', err)
                             alert('Error al guardar prescripciones')
@@ -833,8 +1176,11 @@ function ConsultationsPage() {
                           if (exams.length === 0) return
                           const printWindow = window.open('', '_blank')
                           if (!printWindow) return
-                          const htmlContent = `<!DOCTYPE html><html><head><title>Prescripciones - ${selected.consultation_code}</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif}body{padding:40px;color:#1e293b;line-height:1.6}.header{border-bottom:3px solid #0891b2;padding-bottom:20px;margin-bottom:30px}.header h1{color:#0891b2;font-size:24px}.header p{color:#64748b;font-size:12px;margin-top:4px}.meta{display:flex;gap:40px;margin-bottom:30px;flex-wrap:wrap}.meta-item{}.meta-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700}.meta-value{font-size:14px;font-weight:600;color:#1e293b;margin-top:2px}.exam{margin-bottom:16px;padding:12px 16px;border:1px solid #e2e8f0;border-radius:8px}.exam-name{font-size:14px;font-weight:600;color:#1e293b}.exam-notes{font-size:12px;color:#64748b;margin-top:4px}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;text-align:center}.footer p{font-size:10px;color:#94a3b8}@media print{body{padding:20px}}</style></head><body><div class="header"><h1>Delta</h1><p>Prescripción de Exámenes</p></div><div class="meta"><div class="meta-item"><div class="meta-label">Paciente</div><div class="meta-value">${selected.patient_name}</div></div><div class="meta-item"><div class="meta-label">Código</div><div class="meta-value">${selected.consultation_code}</div></div><div class="meta-item"><div class="meta-label">Fecha</div><div class="meta-value">${new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}</div></div></div><h3 style="font-size:14px;color:#0891b2;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:16px">Exámenes solicitados</h3>${exams.map((e, i) => `<div class="exam"><div class="exam-name">${i + 1}. ${e.exam_name}</div>${e.notes ? `<div class="exam-notes">${e.notes}</div>` : ''}</div>`).join('')}<div class="footer"><p>Documento generado por Delta · ${new Date().toLocaleDateString('es-VE')}</p></div><script>window.onload=function(){window.print()}</script></body></html>`
-                          printWindow.document.write(htmlContent)
+                          const bodyContent = '<div class="section"><div class="section-title">Exámenes Solicitados</div><div class="section-content">' +
+                            exams.map((e, i) => '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px"><div style="font-size:14px;font-weight:600;color:#1e293b">' + (i + 1) + '. ' + e.exam_name + '</div>' + (e.notes ? '<div style="font-size:12px;color:#64748b;margin-top:4px">' + e.notes + '</div>' : '') + '</div>').join('') +
+                            '</div></div>'
+                          const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
+                          printWindow.document.write(buildPdfHtml('prescripciones', 'Prescripción de Exámenes', bodyContent, selected.patient_name, selected.consultation_code, dateStr))
                           printWindow.document.close()
                         }}
                           className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
@@ -907,8 +1253,12 @@ function ConsultationsPage() {
                       }
                       const printWindow = window.open('', '_blank')
                       if (!printWindow) return
-                      const htmlContent = `<!DOCTYPE html><html><head><title>Reposo - ${selected.consultation_code}</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif}body{padding:40px;color:#1e293b;line-height:1.6}.header{border-bottom:3px solid #0891b2;padding-bottom:20px;margin-bottom:30px}.header h1{color:#0891b2;font-size:24px}.header p{color:#64748b;font-size:12px;margin-top:4px}.meta{display:flex;gap:40px;margin-bottom:30px;flex-wrap:wrap}.meta-item{}.meta-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700}.meta-value{font-size:14px;font-weight:600;color:#1e293b;margin-top:2px}.section{margin-bottom:24px}.section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#0891b2;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:12px}.section-content{font-size:13px;color:#334155}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;text-align:center}.footer p{font-size:10px;color:#94a3b8}@media print{body{padding:20px}}</style></head><body><div class="header"><h1>Delta</h1><p>Constancia de Reposo</p></div><div class="meta"><div class="meta-item"><div class="meta-label">Paciente</div><div class="meta-value">${selected.patient_name}</div></div><div class="meta-item"><div class="meta-label">Código</div><div class="meta-value">${selected.consultation_code}</div></div><div class="meta-item"><div class="meta-label">Fecha emisión</div><div class="meta-value">${new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}</div></div></div><div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">${reposoDiagnosis}</div></div><div class="section"><div class="section-title">Período de Reposo</div><div class="section-content">Desde: ${new Date(reposoFrom).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}<br>Hasta: ${new Date(reposoTo).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}<br>Duración: ${reposoDays} días</div></div><div class="footer"><p>Documento generado por Delta · ${new Date().toLocaleDateString('es-VE')}</p></div><script>window.onload=function(){window.print()}</script></body></html>`
-                      printWindow.document.write(htmlContent)
+                      const bodyContent = '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + reposoDiagnosis + '</div></div>' +
+                        '<div class="section"><div class="section-title">Período de Reposo</div><div class="section-content">Desde: ' +
+                        new Date(reposoFrom).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' }) + '<br>Hasta: ' +
+                        new Date(reposoTo).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' }) + '<br>Duración: ' + reposoDays + ' días</div></div>'
+                      const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
+                      printWindow.document.write(buildPdfHtml('reposo', 'Constancia de Reposo', bodyContent, selected.patient_name, selected.consultation_code, dateStr))
                       printWindow.document.close()
                     }}
                       className="w-full flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
@@ -1245,6 +1595,25 @@ function ConsultationsPage() {
                 ))}
               </div>
 
+              {/* Quick medications from templates */}
+              {quickMeds.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-2">Medicamentos frecuentes (clic para agregar):</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {quickMeds.map(q => (
+                      <button key={q.id}
+                        onClick={() => setRecipe(p => ({
+                          ...p,
+                          medications: [...p.medications, { name: q.name, dose: q.details || '', frequency: '', duration: '', indications: '' }]
+                        }))}
+                        className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium">
+                        + {q.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <button onClick={addMedication} className="w-full border-2 border-dashed border-teal-300 rounded-xl py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50">
                 + Agregar medicamento
               </button>
@@ -1417,25 +1786,75 @@ function ConsultationsPage() {
                     className={fi} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1.5 block">Monto USD</label>
-                    <input type="number" placeholder="0.00" value={newConsultation.amount}
-                      onChange={e => setNewConsultation(p => ({ ...p, amount: e.target.value }))}
-                      className={fi} />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1.5 block">Método pago</label>
-                    <select value={newConsultation.payment_method} onChange={e => setNewConsultation(p => ({ ...p, payment_method: e.target.value as any }))}
-                      className={fi}>
-                      <option value="efectivo">Efectivo</option>
-                      <option value="transferencia">Transferencia</option>
-                      <option value="pago_movil">Pago Móvil</option>
-                      <option value="zelle">Zelle</option>
-                      <option value="seguro">Seguro</option>
-                    </select>
+                {/* Plan / Servicio selector */}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Plan / Servicio</label>
+                  {pricingPlans.length === 0 ? (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">No tienes planes configurados. Ve a Servicios para crear tus planes de precio.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {pricingPlans.map(plan => (
+                        <button key={plan.id} type="button"
+                          onClick={() => setNewConsultation(p => ({ ...p, plan_id: plan.id, amount: String(plan.price_usd) }))}
+                          className={`text-left p-3 rounded-xl border-2 transition-all ${newConsultation.plan_id === plan.id ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
+                          <div className="text-sm font-bold text-slate-800">{plan.name}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{plan.duration_minutes} min</div>
+                          <div className="text-base font-extrabold text-teal-600 mt-1">${plan.price_usd}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment method */}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Método de pago</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: 'efectivo', label: 'Efectivo', icon: '💵' },
+                      { value: 'pago_movil', label: 'Pago Móvil', icon: '📱' },
+                      { value: 'transferencia', label: 'Transferencia', icon: '🏦' },
+                      { value: 'zelle', label: 'Zelle', icon: '💸' },
+                      { value: 'binance', label: 'Binance', icon: '🪙' },
+                      { value: 'pos', label: 'POS', icon: '💳' },
+                      { value: 'seguro', label: 'Seguro', icon: '🏥' },
+                    ].map(m => (
+                      <button key={m.value} type="button"
+                        onClick={() => setNewConsultation(p => ({ ...p, payment_method: m.value as any }))}
+                        className={`flex items-center gap-2 p-2.5 rounded-xl border-2 text-sm font-medium transition-all ${newConsultation.payment_method === m.value ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}>
+                        <span>{m.icon}</span>
+                        <span>{m.label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
+
+                {/* Payment reference */}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Referencia de pago</label>
+                  <input type="text" placeholder="Nro. de referencia, confirmación, etc." value={newConsultation.payment_reference}
+                    onChange={e => setNewConsultation(p => ({ ...p, payment_reference: e.target.value }))}
+                    className={fi} />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Comentarios / Notas</label>
+                  <textarea placeholder="Notas adicionales sobre la consulta..." value={newConsultation.comments}
+                    onChange={e => setNewConsultation(p => ({ ...p, comments: e.target.value }))}
+                    rows={3}
+                    className={fi + ' resize-none'} />
+                </div>
+
+                {/* Email notification toggle */}
+                <label className="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <input type="checkbox" checked={newConsultation.sendEmail}
+                    onChange={e => setNewConsultation(p => ({ ...p, sendEmail: e.target.checked }))}
+                    className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
+                  <div>
+                    <span className="text-sm font-semibold text-slate-700">Enviar correo al paciente</span>
+                    <p className="text-xs text-slate-500">Se enviará un email con los detalles de la consulta</p>
+                  </div>
+                </label>
               </div>
 
               <div className="flex gap-3">

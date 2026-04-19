@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Users, Calendar, FileText, TrendingUp,
   Bell, DollarSign, ArrowRight, Activity,
-  CheckCircle, Clock, AlertCircle, ClipboardList
+  CheckCircle, Clock, AlertCircle, ClipboardList,
+  ChevronLeft, ChevronRight as ChevronRightIcon
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -44,6 +45,19 @@ export default function DoctorDashboard() {
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
   const [financesEnabled, setFinancesEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  // Month filter state (year-month)
+  const now = new Date()
+  const [selectedMonth, setSelectedMonth] = useState({ year: now.getFullYear(), month: now.getMonth() })
+
+  const goToPrevMonth = () => {
+    setSelectedMonth(prev => prev.month === 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: prev.month - 1 })
+  }
+  const goToNextMonth = () => {
+    setSelectedMonth(prev => prev.month === 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: prev.month + 1 })
+  }
+  const isCurrentMonth = selectedMonth.year === now.getFullYear() && selectedMonth.month === now.getMonth()
+  const monthLabel = new Date(selectedMonth.year, selectedMonth.month).toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })
 
   useEffect(() => {
     async function fetchData() {
@@ -109,9 +123,9 @@ export default function DoctorDashboard() {
         new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
       )
 
-      // Get this month's financial data
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      // Get selected month's financial data
+      const monthStart = new Date(selectedMonth.year, selectedMonth.month, 1)
+      const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0)
       monthEnd.setHours(23, 59, 59, 999)
 
       const { data: monthlyAppointments } = await supabase
@@ -122,8 +136,19 @@ export default function DoctorDashboard() {
         .gte('scheduled_at', monthStart.toISOString())
         .lte('scheduled_at', monthEnd.toISOString())
 
-      const totalRevenue = monthlyAppointments?.reduce((sum, apt) => sum + (apt.plan_price || 0), 0) || 0
-      const appointmentCount = monthlyAppointments?.length || 0
+      // Also count consultations with payments for the selected month
+      const { data: monthlyConsultations } = await supabase
+        .from('consultations')
+        .select('amount')
+        .eq('doctor_id', user.id)
+        .gte('consultation_date', monthStart.toISOString())
+        .lte('consultation_date', monthEnd.toISOString())
+        .in('payment_status', ['approved', 'pending_approval'])
+
+      const apptRevenue = monthlyAppointments?.reduce((sum, apt) => sum + (apt.plan_price || 0), 0) || 0
+      const consultRevenue = monthlyConsultations?.reduce((sum, c) => sum + (c.amount || 0), 0) || 0
+      const totalRevenue = apptRevenue + consultRevenue
+      const appointmentCount = (monthlyAppointments?.length || 0) + (monthlyConsultations?.length || 0)
 
       // Check if finances feature is enabled for this plan
       let isFinancesEnabled = false
@@ -146,7 +171,7 @@ export default function DoctorDashboard() {
       setLoading(false)
     }
     fetchData()
-  }, [])
+  }, [selectedMonth])
 
   const daysLeft = subscription?.current_period_end
     ? Math.ceil((new Date(subscription.current_period_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -386,7 +411,16 @@ export default function DoctorDashboard() {
           <div className="bg-white border border-slate-200 rounded-xl p-6">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="w-5 h-5 text-teal-500" />
-              <h2 className="text-sm font-semibold text-slate-900">Finanzas del Mes</h2>
+              <h2 className="text-sm font-semibold text-slate-900">Finanzas</h2>
+              <div className="ml-auto flex items-center gap-1">
+                <button onClick={goToPrevMonth} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-medium text-slate-600 min-w-[110px] text-center capitalize">{monthLabel}</span>
+                <button onClick={goToNextMonth} disabled={isCurrentMonth} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">

@@ -50,7 +50,18 @@ export default function PatientsPage() {
   const [isPending, startTransition] = useTransition()
 
   // New patient form
-  const [newPat, setNewPat] = useState({ full_name: '', age: '', phone: '', cedula: '', email: '', sex: '', notes: '', source: '' })
+  const [newPat, setNewPat] = useState({ full_name: '', age: '', birth_date: '', phone: '', cedula: '', email: '', sex: '', notes: '', source: '' })
+
+  // Auto-calculate age from birth_date
+  const calcAgeFromBirthDate = (dateStr: string): string => {
+    if (!dateStr) return ''
+    const birth = new Date(dateStr)
+    const today = new Date()
+    let age = today.getFullYear() - birth.getFullYear()
+    const m = today.getMonth() - birth.getMonth()
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+    return age >= 0 ? String(age) : ''
+  }
   const [patError, setPatError] = useState('')
 
   // New consultation form
@@ -113,6 +124,7 @@ export default function PatientsPage() {
       const res = await addPatient(doctorId, {
         full_name: newPat.full_name,
         age: newPat.age ? parseInt(newPat.age) : undefined,
+        birth_date: newPat.birth_date || undefined,
         phone: newPat.phone || undefined,
         cedula: newPat.cedula || undefined,
         email: newPat.email || undefined,
@@ -122,7 +134,7 @@ export default function PatientsPage() {
       })
       if (!res.success) { setPatError(res.error); return }
       setShowAddModal(false)
-      setNewPat({ full_name: '', age: '', phone: '', cedula: '', email: '', sex: '', notes: '', source: '' })
+      setNewPat({ full_name: '', age: '', birth_date: '', phone: '', cedula: '', email: '', sex: '', notes: '', source: '' })
       if (doctorId) getPatients(doctorId).then(setPatients)
     })
   }
@@ -655,10 +667,21 @@ export default function PatientsPage() {
                 <input value={newPat.full_name} onChange={e => setNewPat(p => ({ ...p, full_name: e.target.value }))} placeholder="María González" className={fi} />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Fecha de nacimiento</label>
+                  <input type="date" value={newPat.birth_date}
+                    onChange={e => {
+                      const bd = e.target.value
+                      const calculatedAge = calcAgeFromBirthDate(bd)
+                      setNewPat(p => ({ ...p, birth_date: bd, age: calculatedAge }))
+                    }}
+                    className={fi} />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Edad</label>
                   <input type="number" min="0" max="150" value={newPat.age} onChange={e => setNewPat(p => ({ ...p, age: e.target.value }))} placeholder="35" className={fi} />
+                  {newPat.birth_date && <p className="text-xs text-slate-400 mt-1">Calculada automáticamente</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Sexo</label>

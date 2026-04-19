@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const body = await req.json()
-  const { patient_id, appointment_id, chief_complaint, consultation_date, amount, currency } = body
+  const { patient_id, appointment_id, chief_complaint, notes, consultation_date, amount, currency, plan_name, payment_method, payment_reference } = body
 
   if (!patient_id) {
     return NextResponse.json({ error: 'patient_id requerido' }, { status: 400 })
@@ -63,10 +63,14 @@ export async function POST(req: NextRequest) {
     patient_id,
     doctor_id: user.id,
     chief_complaint: chief_complaint || null,
+    notes: notes || null,
     consultation_date: consultation_date || new Date().toISOString(),
-    payment_status: 'unpaid',
+    payment_status: amount > 0 ? 'pending_approval' : 'unpaid',
     amount: amount || 0,
     currency: currency || 'USD',
+    plan_name: plan_name || null,
+    payment_method: payment_method || null,
+    payment_reference: payment_reference || null,
   }
 
   if (appointment_id) {

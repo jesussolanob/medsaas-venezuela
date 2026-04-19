@@ -204,9 +204,48 @@ export default function FinancesPage() {
     return currentDate.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })
   }
 
-  const downloadCSV = (type: 'income' | 'expenses') => {
+  const downloadCSV = (type: 'income' | 'expenses' | 'all') => {
     let csv = ''
-    if (type === 'income') {
+    if (type === 'all') {
+      // Unified table with all movements
+      csv = 'Tipo,Descripción,Detalle,Monto USD,Método/Categoría,Fecha,Estado\n'
+      const incRows = tab === 'income' ? incomes : filteredData.filteredIncomes
+      const expRows = tab === 'expenses' ? expenses : filteredData.filteredExpenses
+      // Combine and sort by date
+      const allMovements: { type: string; desc: string; detail: string; amount: number; method: string; date: string; status: string }[] = []
+      incRows.forEach(i => {
+        allMovements.push({
+          type: 'Ingreso',
+          desc: i.patient_name,
+          detail: i.consultation_code || '',
+          amount: i.amount_usd,
+          method: i.payment_method,
+          date: i.date,
+          status: 'Cobrado',
+        })
+      })
+      expRows.forEach(e => {
+        allMovements.push({
+          type: 'Egreso',
+          desc: e.vendor_name,
+          detail: e.concept,
+          amount: -e.amount,
+          method: e.notes || 'Otros',
+          date: e.due_date,
+          status: e.paid ? 'Pagado' : 'Pendiente',
+        })
+      })
+      allMovements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      allMovements.forEach(m => {
+        csv += `"${m.type}","${m.desc}","${m.detail}",${m.amount},"${m.method}","${new Date(m.date).toLocaleDateString('es-VE')}","${m.status}"\n`
+      })
+      // Add totals row
+      const totalInc = incRows.reduce((s, i) => s + (i.amount_usd || 0), 0)
+      const totalExp = expRows.reduce((s, e) => s + (e.amount || 0), 0)
+      csv += `\n"","","TOTAL INGRESOS",${totalInc},"","",""\n`
+      csv += `"","","TOTAL EGRESOS",-${totalExp},"","",""\n`
+      csv += `"","","BALANCE",${totalInc - totalExp},"","",""\n`
+    } else if (type === 'income') {
       csv = 'Paciente,Monto USD,Método de pago,Fecha,Código\n'
       const rows = tab === 'income' ? incomes : filteredData.filteredIncomes
       rows.forEach(i => {
@@ -223,7 +262,7 @@ export default function FinancesPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${type === 'income' ? 'ingresos' : 'gastos'}_${periodLabel().replace(/\s/g, '_')}.csv`
+    a.download = `${type === 'all' ? 'movimientos' : type === 'income' ? 'ingresos' : 'gastos'}_${periodLabel().replace(/\s/g, '_')}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -388,23 +427,31 @@ export default function FinancesPage() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
-        {[
-          { value: 'overview' as const, label: 'Resumen' },
-          { value: 'income' as const, label: 'Ingresos' },
-          { value: 'expenses' as const, label: 'Gastos' },
-        ].map(t => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              tab === t.value ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs + Download all */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+          {[
+            { value: 'overview' as const, label: 'Resumen' },
+            { value: 'income' as const, label: 'Ingresos' },
+            { value: 'expenses' as const, label: 'Gastos' },
+          ].map(t => (
+            <button
+              key={t.value}
+              onClick={() => setTab(t.value)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                tab === t.value ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => downloadCSV('all')}
+          className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-sm font-semibold hover:bg-teal-100 transition-colors"
+        >
+          <Download className="w-4 h-4" /> Descargar movimientos (CSV)
+        </button>
       </div>
 
       {/* Income Table */}
