@@ -444,7 +444,7 @@ export default function BookingClient({
         ) : (
           <div className="space-y-2">
             <p className="text-xs text-slate-500">¿Quieres crear una cuenta para ver tu historial?</p>
-            <a href="/patient/register" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
+            <a href="/login" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
               Crear cuenta
             </a>
           </div>

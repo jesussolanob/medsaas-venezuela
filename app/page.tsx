@@ -394,7 +394,7 @@ export default function LandingPage() {
                 </Link>
               </div>
               <p className="text-sm text-slate-400">
-                ¿Eres paciente? <Link href="/patient/login" className="font-semibold text-teal-500 hover:text-teal-600 transition-colors">Accede a tu portal →</Link>
+                ¿Eres paciente? <Link href="/login" className="font-semibold text-teal-500 hover:text-teal-600 transition-colors">Accede a tu portal →</Link>
               </p>
             </div>
           </div>
@@ -428,7 +428,7 @@ export default function LandingPage() {
               <h4 className="text-sm font-bold text-slate-900">Cuenta</h4>
               <Link href="/login" className="block text-sm text-slate-500 hover:text-slate-900 transition-colors">Iniciar sesión</Link>
               <Link href="/register" className="block text-sm text-slate-500 hover:text-slate-900 transition-colors">Registrarme gratis</Link>
-              <Link href="/patient/login" className="block text-sm text-slate-500 hover:text-slate-900 transition-colors">Portal del paciente</Link>
+              <Link href="/login" className="block text-sm text-slate-500 hover:text-slate-900 transition-colors">Portal del paciente</Link>
             </div>
           </div>
 
