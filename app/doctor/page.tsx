@@ -71,49 +71,23 @@ export default function DoctorDashboard() {
       const tomorrow = new Date(today)
       tomorrow.setDate(tomorrow.getDate() + 1)
 
+      // Single source of truth: appointments table
       const { data: appointments } = await supabase
         .from('appointments')
         .select('id, patient_name, scheduled_at, status')
         .eq('doctor_id', user.id)
+        .in('status', ['scheduled', 'confirmed', 'completed'])
         .gte('scheduled_at', today.toISOString())
         .lt('scheduled_at', tomorrow.toISOString())
         .order('scheduled_at', { ascending: true })
 
-      // Also get today's confirmed consultations
-      const { data: consultations } = await supabase
-        .from('consultations')
-        .select('id, patients(full_name), consultation_date')
-        .eq('doctor_id', user.id)
-        .gte('consultation_date', today.toISOString())
-        .lt('consultation_date', tomorrow.toISOString())
-        .order('consultation_date', { ascending: true })
-
-      // Merge appointments and consultations, avoiding duplicates
-      const consultationsList: Appointment[] = (consultations || []).map(c => ({
-        id: c.id,
-        patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
-        scheduled_at: c.consultation_date,
-        status: 'confirmed',
-        source: 'consultation'
-      }))
-
-      // Only include appointments that don't have a matching consultation (same patient + similar time)
-      const appointmentsList: Appointment[] = (appointments || []).filter(a => {
-        return !consultationsList.some(c => {
-          const timeDiff = Math.abs(new Date(c.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
-          return c.patient_name === a.patient_name && timeDiff < 3600000
-        })
-      }).map(a => ({
+      const allAppointments: Appointment[] = (appointments || []).map(a => ({
         id: a.id,
         patient_name: a.patient_name,
         scheduled_at: a.scheduled_at,
         status: a.status,
         source: 'appointment'
       }))
-
-      const allAppointments = [...consultationsList, ...appointmentsList].sort((a, b) =>
-        new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
-      )
 
       // Get selected month's financial data
       const monthStart = new Date(selectedMonth.year, selectedMonth.month, 1)

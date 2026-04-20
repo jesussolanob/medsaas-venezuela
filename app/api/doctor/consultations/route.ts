@@ -117,3 +117,120 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ success: true, consultation: data })
 }
+
+// DELETE /api/doctor/consultations?id=xxx
+// Deletes a consultation AND its linked appointment (cascade delete from both sides)
+export async function DELETE(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+  const { searchParams } = new URL(req.url)
+  const consultationId = searchParams.get('id')
+
+  if (!consultationId) {
+    return NextResponse.json({ error: 'id requerido' }, { status: 400 })
+  }
+
+  const admin = createAdminClient()
+
+  // 1. Get consultation and verify ownership
+  const { data: consultation, error: findErr } = await admin
+    .from('consultations')
+    .select('id, doctor_id, appointment_id')
+    .eq('id', consultationId)
+    .single()
+
+  if (findErr || !consultation) {
+    return NextResponse.json({ error: 'Consulta no encontrada' }, { status: 404 })
+  }
+
+  if (consultation.doctor_id !== user.id) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  }
+
+  try {
+    // 2. Delete linked EHR records and prescriptions
+    await admin.from('ehr_records').delete().eq('consultation_id', consultationId)
+    await admin.from('prescriptions').delete().eq('consultation_id', consultationId)
+
+    // 3. Delete the consultation
+    await admin.from('consultations').delete().eq('id', consultationId)
+
+    // 4. If linked to an appointment, delete or revert it
+    if (consultation.appointment_id) {
+      // Get appointment details before deleting
+      const { data: appt } = await admin
+        .from('appointments')
+        .select('id, google_event_id, package_id')
+        .eq('id', consultation.appointment_id)
+        .single()
+
+      if (appt) {
+        // Delete Google Calendar event (best-effort)
+        if (appt.google_event_id) {
+          try {
+            const { data: profile } = await admin
+              .from('profiles')
+              .select('google_refresh_token')
+              .eq('id', user.id)
+              .single()
+
+            if (profile?.google_refresh_token) {
+              const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                  client_id: process.env.GOOGLE_CLIENT_ID || '',
+                  client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+                  refresh_token: profile.google_refresh_token,
+                  grant_type: 'refresh_token',
+                }),
+              })
+              if (tokenRes.ok) {
+                const { access_token } = await tokenRes.json()
+                if (access_token) {
+                  await fetch(
+                    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${appt.google_event_id}?sendUpdates=all`,
+                    { method: 'DELETE', headers: { Authorization: `Bearer ${access_token}` } }
+                  )
+                }
+              }
+            }
+          } catch { /* best-effort */ }
+        }
+
+        // Revert package session if applicable
+        if (appt.package_id) {
+          const { data: pkg } = await admin
+            .from('patient_packages')
+            .select('id, used_sessions, total_sessions, status')
+            .eq('id', appt.package_id)
+            .single()
+          if (pkg) {
+            const newUsed = Math.max(0, pkg.used_sessions - 1)
+            const updateData: Record<string, unknown> = { used_sessions: newUsed }
+            if (pkg.status === 'completed' && newUsed < pkg.total_sessions) {
+              updateData.status = 'active'
+            }
+            await admin.from('patient_packages').update(updateData).eq('id', appt.package_id)
+          }
+        }
+
+        // Delete the linked appointment
+        await admin.from('appointments').delete().eq('id', consultation.appointment_id)
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      deleted: {
+        consultation: consultationId,
+        appointment: consultation.appointment_id || null,
+      },
+    })
+  } catch (err: any) {
+    console.error('[DELETE consultation] Error:', err)
+    return NextResponse.json({ error: err?.message || 'Error al eliminar' }, { status: 500 })
+  }
+}

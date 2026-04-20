@@ -81,16 +81,10 @@ export default function CobrosPage() {
       const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(filePath)
       const publicUrl = urlData.publicUrl
 
-      // Update the record with the receipt URL
-      if (selectedPayment._source === 'consultation') {
-        await supabase.from('consultations')
-          .update({ payment_reference: publicUrl })
-          .eq('id', selectedPayment.id)
-      } else {
-        await supabase.from('appointments')
-          .update({ payment_receipt_url: publicUrl })
-          .eq('id', selectedPayment.id)
-      }
+      // Update the appointment record with the receipt URL
+      await supabase.from('appointments')
+        .update({ payment_receipt_url: publicUrl })
+        .eq('id', selectedPayment.id)
 
       // Update local state
       setSelectedPayment(prev => prev ? { ...prev, payment_receipt_url: publicUrl } : null)
@@ -111,24 +105,22 @@ export default function CobrosPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    // ── Single source of truth: appointments table ──
+    // All financial data comes ONLY from appointments to avoid double-counting.
+    // Consultations are for clinical data only.
     let statusFilter: string[]
-    let consultationStatusFilter: string[]
     switch (tab) {
       case 'pending':
         statusFilter = ['scheduled', 'pending', 'confirmed']
-        consultationStatusFilter = ['pending_approval', 'unpaid']
         break
       case 'approved':
         statusFilter = ['completed']
-        consultationStatusFilter = ['approved']
         break
       case 'cancelled':
         statusFilter = ['cancelled']
-        consultationStatusFilter = ['cancelled']
         break
     }
 
-    // 1. Fetch appointments
     const { data: apptData } = await supabase
       .from('appointments')
       .select('id, patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, payment_receipt_url')
@@ -137,35 +129,7 @@ export default function CobrosPage() {
       .order('scheduled_at', { ascending: false })
       .limit(200)
 
-    // 2. Fetch consultations that have NO linked appointment (doctor-created only)
-    const { data: consData } = await supabase
-      .from('consultations')
-      .select('id, consultation_code, consultation_date, plan_name, amount, payment_method, payment_status, payment_reference, patients(full_name)')
-      .eq('doctor_id', user.id)
-      .is('appointment_id', null)
-      .in('payment_status', consultationStatusFilter)
-      .order('consultation_date', { ascending: false })
-      .limit(200)
-
-    // 3. Map consultations to Payment type
-    const consultationPayments: Payment[] = (consData || []).map((c: any) => ({
-      id: c.id,
-      patient_name: !Array.isArray(c.patients) && c.patients ? c.patients.full_name : 'Paciente',
-      plan_name: c.plan_name || null,
-      plan_price: c.amount || 0,
-      payment_method: c.payment_method || null,
-      status: c.payment_status === 'approved' ? 'completed' : c.payment_status === 'cancelled' ? 'cancelled' : 'scheduled',
-      scheduled_at: c.consultation_date,
-      appointment_code: c.consultation_code || undefined,
-      payment_receipt_url: c.payment_reference || null,
-      _source: 'consultation' as const,
-    }))
-
-    // 4. Merge and sort by date descending
-    const merged = [...(apptData || []).map(a => ({ ...a, _source: 'appointment' as const })), ...consultationPayments]
-    merged.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
-
-    setPayments(merged)
+    setPayments((apptData || []).map(a => ({ ...a, _source: 'appointment' as const })))
     setLoading(false)
   }, [tab])
 
@@ -230,12 +194,18 @@ export default function CobrosPage() {
     setUpdatingStatus(true)
     const supabase = createClient()
 
-    if (selectedPayment?._source === 'consultation') {
-      // Map appointment status to consultation payment_status
-      const paymentStatus = newStatus === 'completed' ? 'approved' : newStatus === 'cancelled' ? 'cancelled' : 'pending_approval'
-      await supabase.from('consultations').update({ payment_status: paymentStatus }).eq('id', id)
-    } else {
-      await supabase.from('appointments').update({ status: newStatus }).eq('id', id)
+    // All payments come from appointments table (single source of truth)
+    await supabase.from('appointments').update({ status: newStatus }).eq('id', id)
+
+    // Also update linked consultation if exists
+    if (newStatus === 'completed') {
+      await supabase.from('consultations')
+        .update({ payment_status: 'approved' })
+        .eq('appointment_id', id)
+    } else if (newStatus === 'cancelled') {
+      await supabase.from('consultations')
+        .update({ payment_status: 'cancelled' })
+        .eq('appointment_id', id)
     }
 
     setUpdatingStatus(false)

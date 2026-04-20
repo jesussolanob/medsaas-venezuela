@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 
@@ -168,6 +168,10 @@ function ConsultationsPage() {
   // Prescripciones (exámenes que el médico ordena)
   const [prescripciones, setPrescripciones] = useState<Prescripcion[]>([])
   const [isSavingPrescripciones, setIsSavingPrescripciones] = useState(false)
+
+  // Delete confirmation
+  const [confirmDeleteConsulta, setConfirmDeleteConsulta] = useState<Consultation | null>(null)
+  const [deletingConsulta, setDeletingConsulta] = useState(false)
 
   // AI assistant state
   const [aiResult, setAiResult] = useState('')
@@ -443,6 +447,26 @@ function ConsultationsPage() {
       setLoading(false)
     })
   }, [openId])
+
+  async function deleteConsultationCascade(c: Consultation) {
+    setDeletingConsulta(true)
+    try {
+      const res = await fetch(`/api/doctor/consultations?id=${c.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al eliminar')
+
+      // Remove from local state and go back to list
+      setConsultations(prev => prev.filter(con => con.id !== c.id))
+      setSelected(null)
+      setView('list')
+      setConfirmDeleteConsulta(null)
+      alert('Consulta eliminada correctamente')
+    } catch (err: any) {
+      console.error('Delete error:', err)
+      alert(err?.message || 'Error al eliminar la consulta')
+    }
+    setDeletingConsulta(false)
+  }
 
   async function openConsultation(c: Consultation) {
     // Fetch fresh data from DB to ensure we have latest notes/diagnosis/treatment
@@ -972,6 +996,10 @@ function ConsultationsPage() {
                 <button onClick={generatePDF}
                   className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                   <Printer className="w-4 h-4" /> Imprimir
+                </button>
+                <button onClick={() => selected && setConfirmDeleteConsulta(selected)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-red-200 rounded-lg text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors">
+                  <Trash2 className="w-4 h-4" /> Eliminar
                 </button>
                 {/* Share Button */}
                 <div className="relative">
@@ -2173,6 +2201,38 @@ function ConsultationsPage() {
                 </button>
                 <button onClick={createNewConsultation} disabled={isCreatingConsultation} className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
                   {isCreatingConsultation ? 'Creando...' : <><Plus className="w-4 h-4" /> Crear consulta</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
+        {confirmDeleteConsulta && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-red-500" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-900">Eliminar consulta</h2>
+              </div>
+              <p className="text-sm text-slate-600">
+                ¿Estás seguro de eliminar la consulta de <span className="font-bold">{confirmDeleteConsulta.patient_name}</span> ({confirmDeleteConsulta.consultation_code})?
+              </p>
+              <p className="text-xs text-slate-400">
+                Se eliminará la consulta, cita vinculada en agenda, historial clínico, recetas, registros financieros y el evento de Google Calendar asociado.
+              </p>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setConfirmDeleteConsulta(null)} className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => deleteConsultationCascade(confirmDeleteConsulta)}
+                  disabled={deletingConsulta}
+                  className="flex-1 py-2.5 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deletingConsulta ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deletingConsulta ? 'Eliminando...' : 'Eliminar'}
                 </button>
               </div>
             </div>

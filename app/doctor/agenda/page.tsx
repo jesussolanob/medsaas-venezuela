@@ -207,6 +207,10 @@ export default function AgendaPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ message: string; success: boolean } | null>(null)
 
+  // Delete confirmation
+  const [deletingAppt, setDeletingAppt] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<CalendarAppointment | null>(null)
+
   // Nueva consulta desde agenda
   const [showNewConsulta, setShowNewConsulta] = useState(false)
   const [patients, setPatients] = useState<{ id: string; full_name: string; phone: string | null }[]>([])
@@ -616,6 +620,36 @@ export default function AgendaPage() {
     setSyncing(false)
     // Auto-hide result after 6 seconds
     setTimeout(() => setSyncResult(null), 6000)
+  }
+
+  // ── Delete appointment (cascade) ─────────────────────────────────────────
+
+  async function deleteAppointmentCascade(appt: CalendarAppointment) {
+    setDeletingAppt(appt.id)
+    try {
+      if (appt.source === 'consultation') {
+        // Delete via consultation endpoint (cascades to appointment, EHR, prescriptions, GCal)
+        const res = await fetch(`/api/doctor/consultations?id=${appt.id}`, { method: 'DELETE' })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Error al eliminar')
+      } else {
+        // Delete via appointment endpoint (cascades to consultations, EHR, prescriptions, GCal)
+        const res = await fetch(`/api/doctor/appointments?id=${appt.id}`, { method: 'DELETE' })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Error al eliminar')
+      }
+
+      // Remove from local state
+      setAllAppointments(prev => prev.filter(a => a.id !== appt.id))
+      setPendingAppointments(prev => prev.filter(a => a.id !== appt.id))
+      setDetailAppt(null)
+      setConfirmDelete(null)
+      toast.success('Cita eliminada correctamente')
+    } catch (err: any) {
+      console.error('Delete error:', err)
+      toast.error(err?.message || 'Error al eliminar la cita')
+    }
+    setDeletingAppt(null)
   }
 
   // ── Get appointments for a specific date ─────────────────────────────────
@@ -1110,7 +1144,43 @@ export default function AgendaPage() {
                   <Stethoscope className="w-4 h-4" />
                   Ir a consulta
                 </button>
+                <button onClick={() => setConfirmDelete(detailAppt)} className="py-2 px-3 border border-red-200 rounded-lg text-sm font-semibold text-red-500 hover:bg-red-50 flex items-center justify-center gap-1">
+                  <Trash2 className="w-4 h-4" />
+                </button>
                 <button onClick={() => setDetailAppt(null)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
+        {confirmDelete && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-red-500" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-900">Eliminar cita</h2>
+              </div>
+              <p className="text-sm text-slate-600">
+                ¿Estás seguro de eliminar la cita de <span className="font-bold">{confirmDelete.patient_name}</span> del {new Date(confirmDelete.isoDate).toLocaleDateString('es-VE')} a las {confirmDelete.time}?
+              </p>
+              <p className="text-xs text-slate-400">
+                Se eliminará la cita, consulta vinculada, historial clínico, recetas y el evento de Google Calendar asociado.
+              </p>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => deleteAppointmentCascade(confirmDelete)}
+                  disabled={deletingAppt === confirmDelete.id}
+                  className="flex-1 py-2.5 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deletingAppt === confirmDelete.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deletingAppt === confirmDelete.id ? 'Eliminando...' : 'Eliminar'}
+                </button>
               </div>
             </div>
           </div>
