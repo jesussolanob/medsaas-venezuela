@@ -5,7 +5,8 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Calendar, ClipboardList, Users,
   Settings, LogOut, Activity, Menu, MessageSquarePlus,
-  Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft, TrendingUp, Bell, Megaphone
+  Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft, TrendingUp, Bell,
+  ChevronDown, Stethoscope, DollarSign, Megaphone
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -13,7 +14,7 @@ import { CheckCircle } from 'lucide-react'
 import DoctorNotificationToast from './DoctorNotificationToast'
 
 type NavItem = { name: string; href: string; icon: any }
-type NavSection = { label: string; items: NavItem[] }
+type NavSection = { key: string; label: string; icon: any; items: NavItem[] }
 
 const topItems: NavItem[] = [
   { name: 'Inicio', href: '/doctor',       icon: LayoutDashboard },
@@ -22,7 +23,9 @@ const topItems: NavItem[] = [
 
 const navSections: NavSection[] = [
   {
+    key: 'consultorio',
     label: 'Consultorio',
+    icon: Stethoscope,
     items: [
       { name: 'Pacientes',    href: '/doctor/patients',      icon: Users },
       { name: 'Consultas',    href: '/doctor/consultations', icon: ClipboardList },
@@ -31,7 +34,9 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    key: 'finanzas',
     label: 'Finanzas',
+    icon: DollarSign,
     items: [
       { name: 'Finanzas',  href: '/doctor/finances', icon: TrendingUp },
       { name: 'Cobros',    href: '/doctor/cobros',   icon: Receipt },
@@ -39,7 +44,9 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    key: 'marketing',
     label: 'Marketing',
+    icon: Megaphone,
     items: [
       { name: 'Recordatorios', href: '/doctor/reminders', icon: Bell },
     ],
@@ -84,6 +91,30 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
   // On desktop: sidebar visible when pinned OR hovered
   const sidebarVisible = pinned || hovered
+
+  // Collapsible nav sections — auto-open if active route is inside
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
+
+  // Initialize open sections based on current path
+  useEffect(() => {
+    const initial: Record<string, boolean> = {}
+    navSections.forEach(section => {
+      const hasActive = section.items.some(item => isPathActive(pathname, item.href))
+      initial[section.key] = hasActive
+    })
+    setOpenSections(prev => {
+      // Only auto-open, don't close sections the user manually opened
+      const merged = { ...prev }
+      Object.entries(initial).forEach(([key, active]) => {
+        if (active) merged[key] = true
+      })
+      return merged
+    })
+  }, [pathname])
+
+  const toggleSection = (key: string) => {
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   async function handleLogout() {
     const supabase = createClient()
@@ -179,35 +210,63 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               })}
             </div>
 
-            {/* Sections */}
-            {navSections.map(section => (
-              <div key={section.label} className="mt-5">
-                <p className="px-3 mb-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  {section.label}
-                </p>
-                <div className="space-y-0.5">
-                  {section.items.map(item => {
-                    const active = isPathActive(pathname, item.href)
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setMobileOpen(false)}
-                        className={clsx(
-                          'nav-item-doc flex items-center gap-3 px-3 py-2 rounded-r-lg text-sm transition-all',
-                          active
-                            ? 'nav-active-doc text-teal-600 font-semibold'
-                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                        )}
-                      >
-                        <item.icon className={clsx('w-4 h-4 shrink-0', active && 'text-teal-500')} />
-                        {item.name}
-                      </Link>
-                    )
-                  })}
+            {/* Collapsible sections */}
+            {navSections.map(section => {
+              const isOpen = openSections[section.key] ?? false
+              const sectionHasActive = section.items.some(item => isPathActive(pathname, item.href))
+              return (
+                <div key={section.key} className="mt-3">
+                  <button
+                    onClick={() => toggleSection(section.key)}
+                    className={clsx(
+                      'w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all',
+                      sectionHasActive
+                        ? 'text-teal-600 font-semibold'
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    )}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <section.icon className={clsx('w-4 h-4 shrink-0', sectionHasActive ? 'text-teal-500' : 'text-slate-400')} />
+                      {section.label}
+                    </span>
+                    <ChevronDown className={clsx(
+                      'w-3.5 h-3.5 transition-transform duration-200',
+                      isOpen ? 'rotate-0' : '-rotate-90',
+                      sectionHasActive ? 'text-teal-400' : 'text-slate-300'
+                    )} />
+                  </button>
+                  <div
+                    className="overflow-hidden transition-all duration-200"
+                    style={{
+                      maxHeight: isOpen ? `${section.items.length * 40}px` : '0px',
+                      opacity: isOpen ? 1 : 0,
+                    }}
+                  >
+                    <div className="pl-3 mt-0.5 space-y-0.5">
+                      {section.items.map(item => {
+                        const active = isPathActive(pathname, item.href)
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setMobileOpen(false)}
+                            className={clsx(
+                              'nav-item-doc flex items-center gap-3 px-3 py-2 rounded-r-lg text-[13px] transition-all',
+                              active
+                                ? 'nav-active-doc text-teal-600 font-semibold'
+                                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                            )}
+                          >
+                            <item.icon className={clsx('w-3.5 h-3.5 shrink-0', active ? 'text-teal-500' : 'text-slate-300')} />
+                            {item.name}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </nav>
 
           {/* Subscription badge + footer */}
