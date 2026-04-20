@@ -9,7 +9,6 @@ export default async function AdminDashboard() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: kpis } = await supabase.rpc('bi_platform_kpis')
   const adminClient = createAdminClient()
 
   // ── Fetch pending approvals (trial doctors) ──
@@ -74,13 +73,39 @@ export default async function AdminDashboard() {
     console.error('Error fetching subscription stats:', err)
   }
 
-  // ── Per-doctor activity this month ──
+  // ── Stats: all direct queries (no RPC dependency) ──
+  const now = new Date()
+
+  // Today range
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString()
+
+  // Month range
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
+
+  // Citas de hoy (appointments + consultations sin appointment)
+  let citasHoy = 0
+  try {
+    const { data: apptsToday } = await adminClient
+      .from('appointments')
+      .select('id')
+      .gte('scheduled_at', todayStart)
+      .lte('scheduled_at', todayEnd)
+
+    const { data: consToday } = await adminClient
+      .from('consultations')
+      .select('id')
+      .is('appointment_id', null)
+      .gte('consultation_date', todayStart)
+      .lte('consultation_date', todayEnd)
+
+    citasHoy = (apptsToday?.length || 0) + (consToday?.length || 0)
+  } catch {}
+
+  // Consultas este mes
   let totalCitasMonth = 0
   try {
-    const now = new Date()
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
-
     const { data: apptCounts } = await adminClient
       .from('appointments')
       .select('id')
@@ -97,16 +122,41 @@ export default async function AdminDashboard() {
     totalCitasMonth = (apptCounts?.length || 0) + (consCounts?.length || 0)
   } catch {}
 
-  // ── Citas de hoy ──
-  const citasHoy = kpis?.appts_today ?? 0
+  // Total doctores activos
+  let totalDoctors = 0
+  try {
+    const { count } = await adminClient
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('role', 'doctor')
+      .eq('is_active', true)
+
+    totalDoctors = count ?? 0
+  } catch {}
+
+  // Suscripciones activas y trials
+  let activeSubscriptions = 0
+  let trialSubscriptions = 0
+  try {
+    const { count: activeCount } = await adminClient
+      .from('subscriptions')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'active')
+
+    const { count: trialCount } = await adminClient
+      .from('subscriptions')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['trial', 'trialing'])
+
+    activeSubscriptions = (activeCount ?? 0) + (trialCount ?? 0)
+    trialSubscriptions = trialCount ?? 0
+  } catch {}
 
   // ── Format greeting ──
-  const now = new Date()
   const hour = now.getHours()
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches'
   const dateStr = now.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
-  const totalDoctors = kpis?.total_doctors ?? 0
   const pendingCount = pendingApprovals?.length ?? 0
 
   // Accent colors for avatars
@@ -158,8 +208,8 @@ export default async function AdminDashboard() {
         {[
           { label: 'Especialistas activos', value: totalDoctors, delta: `+${newThisMonth} este mes`, icon: '👤' },
           { label: 'Consultas hoy', value: citasHoy, delta: 'Tiempo real', deltaColor: '#0891B2', icon: '📅' },
-          { label: 'Consultas este mes', value: totalCitasMonth || (kpis?.appts_this_month ?? 0), delta: momGrowth > 0 ? `+${momGrowth}% vs. mes anterior` : 'Sin cambio', icon: '❤️' },
-          { label: 'Suscripciones activas', value: kpis?.active_subscriptions ?? 0, delta: `${kpis?.trial_subscriptions ?? 0} en trial`, icon: '📋' },
+          { label: 'Consultas este mes', value: totalCitasMonth, delta: momGrowth > 0 ? `+${momGrowth}% vs. mes anterior` : 'Sin cambio', icon: '❤️' },
+          { label: 'Suscripciones activas', value: activeSubscriptions, delta: `${trialSubscriptions} en trial`, icon: '📋' },
         ].map(stat => (
           <div key={stat.label} className="rounded-[22px] bg-white p-5" style={{ border: '1px solid #E8ECF0' }}>
             <div className="flex items-center justify-between mb-3.5">
@@ -289,7 +339,7 @@ export default async function AdminDashboard() {
             Consultas totales (mes)
           </span>
           <p className="text-4xl font-bold mt-2" style={{ color: '#0F1A2A' }}>
-            {(totalCitasMonth || (kpis?.appts_this_month ?? 0)).toLocaleString('es-VE')}
+            {totalCitasMonth.toLocaleString('es-VE')}
           </p>
           <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Appointments + Consultas directas</p>
           <Link href="/admin/finances" className="text-xs font-semibold mt-3" style={{ color: '#0891B2' }}>
