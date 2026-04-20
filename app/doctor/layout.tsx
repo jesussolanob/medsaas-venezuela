@@ -9,23 +9,20 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
-import {
-  buildSubscriptionInfo, isMvpFeatureEnabled,
-  getPlanLabel, getStatusLabel, type SubscriptionInfo
-} from '@/lib/subscription'
+import { CheckCircle } from 'lucide-react'
 
-type NavItem = { name: string; href: string; icon: any; featureKey: string }
+type NavItem = { name: string; href: string; icon: any }
 
 const navItems: NavItem[] = [
-  { name: 'Inicio',        href: '/doctor',               icon: LayoutDashboard, featureKey: 'dashboard' },
-  { name: 'Agenda',        href: '/doctor/agenda',        icon: Calendar,        featureKey: 'agenda' },
-  { name: 'Pacientes',     href: '/doctor/patients',      icon: Users,           featureKey: 'patients' },
-  { name: 'Consultas',     href: '/doctor/consultations', icon: ClipboardList,   featureKey: 'consultations' },
-  { name: 'Finanzas',      href: '/doctor/finances',      icon: TrendingUp,      featureKey: 'finances' },
-  { name: 'Cobros',        href: '/doctor/cobros',        icon: Receipt,         featureKey: 'finances' },
-  { name: 'Consultorios',  href: '/doctor/offices',       icon: Building2,       featureKey: 'dashboard' },
-  { name: 'Servicios',     href: '/doctor/services',      icon: Package,         featureKey: 'dashboard' },
-  { name: 'Plantillas',   href: '/doctor/templates',     icon: FileEdit,        featureKey: 'dashboard' },
+  { name: 'Inicio',        href: '/doctor',               icon: LayoutDashboard },
+  { name: 'Agenda',        href: '/doctor/agenda',        icon: Calendar },
+  { name: 'Pacientes',     href: '/doctor/patients',      icon: Users },
+  { name: 'Consultas',     href: '/doctor/consultations', icon: ClipboardList },
+  { name: 'Finanzas',      href: '/doctor/finances',      icon: TrendingUp },
+  { name: 'Cobros',        href: '/doctor/cobros',        icon: Receipt },
+  { name: 'Consultorios',  href: '/doctor/offices',       icon: Building2 },
+  { name: 'Servicios',     href: '/doctor/services',      icon: Package },
+  { name: 'Plantillas',   href: '/doctor/templates',     icon: FileEdit },
 ]
 
 function isPathActive(pathname: string, href: string) {
@@ -37,7 +34,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [subInfo, setSubInfo] = useState<SubscriptionInfo | null>(null)
 
   // Collapsible sidebar state
   const [pinned, setPinned] = useState(true)
@@ -62,31 +58,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   // On desktop: sidebar visible when pinned OR hovered
   const sidebarVisible = pinned || hovered
 
-  // Fetch subscription info once on mount
-  useEffect(() => {
-    const supabase = createClient()
-
-    async function loadSubscription() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-
-        const { data: subscription } = await supabase
-          .from('subscriptions')
-          .select('plan, status, current_period_end')
-          .eq('doctor_id', user.id)
-          .maybeSingle()
-
-        setSubInfo(buildSubscriptionInfo(subscription))
-      } catch (error) {
-        console.error('Error fetching subscription:', error)
-        setSubInfo(buildSubscriptionInfo(null))
-      }
-    }
-
-    loadSubscription()
-  }, [])
-
   async function handleLogout() {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -95,8 +66,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
   const activeTitle = navItems.find(i => isPathActive(pathname, i.href))?.name
     ?? (pathname.includes('/settings') ? 'Configuración' : pathname.includes('/suggestions') ? 'Sugerencias' : 'Portal Médico')
-
-  const isActive = subInfo?.isActive ?? false
 
   return (
     <>
@@ -162,21 +131,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
             {navItems.map(item => {
               const active = isPathActive(pathname, item.href)
-              const enabled = isMvpFeatureEnabled(item.featureKey, isActive)
-
-              if (!enabled) {
-                return (
-                  <div
-                    key={item.href}
-                    className="nav-item-doc flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm text-slate-300 cursor-not-allowed"
-                    title="Activa tu suscripción para acceder"
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {item.name}
-                  </div>
-                )
-              }
-
               return (
                 <Link
                   key={item.href}
@@ -198,16 +152,13 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
           {/* Subscription badge + footer */}
           <div className="px-3 py-4 border-t border-slate-100 space-y-2">
-            {subInfo && (
-              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
-                <p className="text-[10px] text-slate-400 uppercase font-semibold">Tu acceso</p>
-                <p className="text-xs font-bold text-slate-700">{subInfo.planLabel}</p>
-                <p className="text-[10px] text-slate-400">
-                  {subInfo.statusLabel}
-                  {subInfo.daysRemaining >= 0 && ` · ${subInfo.daysRemaining}d restantes`}
-                </p>
+            <div className="px-3 py-2 rounded-lg bg-teal-50 border border-teal-200">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5 text-teal-500" />
+                <p className="text-xs font-bold text-teal-700">Beta Privada</p>
               </div>
-            )}
+              <p className="text-[10px] text-slate-400 mt-0.5">Acceso completo</p>
+            </div>
 
             <Link
               href="/doctor/suggestions"

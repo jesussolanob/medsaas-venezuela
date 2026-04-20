@@ -89,7 +89,7 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
   }
 
   revalidatePath('/admin/doctors')
-  revalidatePath('/admin/subscriptions')
+  revalidatePath('/admin/approvals')
 
   return { success: true, doctorId: userId }
 }
@@ -193,7 +193,7 @@ export async function registerClinic(input: RegisterClinicInput): Promise<Regist
   })
 
   revalidatePath('/admin/doctors')
-  revalidatePath('/admin/subscriptions')
+  revalidatePath('/admin/approvals')
 
   return { success: true, doctorId: userId }
 }

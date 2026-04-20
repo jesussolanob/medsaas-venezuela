@@ -94,7 +94,7 @@ function SettingsPageInner() {
   const initialTab = (searchParams.get('tab') as TabId) || 'profile'
 
   // Profile
-  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.', country: 'Venezuela', state: '', city: '', office_address: '', allows_online: true })
+  const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.', allows_online: true })
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -175,7 +175,7 @@ function SettingsPageInner() {
         .eq('id', user.id).single()
 
       if (data) {
-        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.', country: data.country ?? 'Venezuela', state: data.state ?? '', city: data.city ?? '', office_address: data.office_address ?? '', allows_online: data.allows_online !== false })
+        setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.', allows_online: data.allows_online !== false })
         setAvatarUrl(data.avatar_url ?? null)
         setLogoUrl(data.logo_url ?? null)
         setWhatsappToken(data.whatsapp_token ?? '')
@@ -226,10 +226,6 @@ function SettingsPageInner() {
       phone: profile.phone,
       specialty: profile.specialty,
       professional_title: profile.professional_title,
-      country: profile.country,
-      state: profile.state,
-      city: profile.city,
-      office_address: profile.office_address || null,
       allows_online: profile.allows_online,
       share_message_template: shareMessageTemplate || null,
     }).eq('id', user.id)
@@ -570,36 +566,6 @@ function SettingsPageInner() {
                       {ESPECIALIDADES.map(esp => <option key={esp} value={esp}>{esp}</option>)}
                     </select>
                   </div>
-                  <div className="pt-2 border-t border-slate-100">
-                    <p className="text-sm font-semibold text-slate-700 mb-3">Ubicación del consultorio</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">País</label>
-                        <input value={profile.country} onChange={e => setProfile(p => ({ ...p, country: e.target.value }))} className={fi} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Estado</label>
-                        <input value={profile.state} onChange={e => setProfile(p => ({ ...p, state: e.target.value }))} placeholder="Ej: Distrito Capital, Zulia, Carabobo" className={fi} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Ciudad</label>
-                        <input value={profile.city} onChange={e => setProfile(p => ({ ...p, city: e.target.value }))} placeholder="Ej: Caracas, Maracaibo, Valencia" className={fi} />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Office address */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <p className="text-sm font-semibold text-slate-700 mb-3">Dirección del consultorio</p>
-                    <input
-                      value={profile.office_address}
-                      onChange={e => setProfile(p => ({ ...p, office_address: e.target.value }))}
-                      placeholder="Ej: Torre Médica El Ávila, Piso 8, Consultorio 803, Caracas"
-                      className={fi}
-                    />
-                    <p className="text-xs text-slate-400 mt-1.5">Se mostrará al paciente cuando reserve cita presencial</p>
-                  </div>
-
                   {/* Online consultations toggle */}
                   <div className="pt-2 border-t border-slate-100">
                     <div className="flex items-center justify-between">

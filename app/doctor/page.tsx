@@ -18,12 +18,6 @@ type Profile = {
   professional_title: string | null
 }
 
-type Subscription = {
-  plan: string
-  status: string
-  current_period_end: string | null
-}
-
 type Appointment = {
   id: string
   patient_name: string
@@ -40,7 +34,6 @@ type FinancialData = {
 export default function DoctorDashboard() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
   const [loading, setLoading] = useState(true)
@@ -68,14 +61,6 @@ export default function DoctorDashboard() {
         .from('profiles')
         .select('full_name, specialty, email, professional_title')
         .eq('id', user.id)
-        .single()
-
-      const { data: sub } = await supabase
-        .from('subscriptions')
-        .select('plan, status, current_period_end')
-        .eq('doctor_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
         .single()
 
       // Get today's appointments
@@ -147,17 +132,12 @@ export default function DoctorDashboard() {
       const appointmentCount = (completedAppts || []).length
 
       setProfile(prof)
-      setSubscription(sub)
       setTodayAppointments(allAppointments)
       setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount })
       setLoading(false)
     }
     fetchData()
   }, [selectedMonth])
-
-  const daysLeft = subscription?.current_period_end
-    ? Math.ceil((new Date(subscription.current_period_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-    : null
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -244,27 +224,6 @@ export default function DoctorDashboard() {
       `}</style>
 
       <div className="max-w-5xl mx-auto space-y-8">
-        {/* Subscription banner */}
-        {subscription && daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && (
-          <div className={`rounded-xl px-4 sm:px-5 py-3 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 border ${daysLeft <= 3 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-            <AlertCircle className={`w-5 h-5 shrink-0 ${daysLeft <= 3 ? 'text-red-500' : 'text-amber-500'}`} />
-            <div className="flex-1">
-              <p className={`text-sm font-semibold ${daysLeft <= 3 ? 'text-red-700' : 'text-amber-700'}`}>
-                Tu suscripción vence en {daysLeft} día{daysLeft !== 1 ? 's' : ''}
-              </p>
-              <p className={`text-xs mt-0.5 ${daysLeft <= 3 ? 'text-red-500' : 'text-amber-500'}`}>
-                Renueva tu plan para mantener el acceso sin interrupciones.
-              </p>
-            </div>
-            <Link
-              href="/doctor/plans"
-              className="text-xs font-semibold text-white bg-teal-500 hover:bg-teal-600 px-3 sm:px-4 py-1.5 rounded-lg transition-colors shrink-0"
-            >
-              Renovar
-            </Link>
-          </div>
-        )}
-
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
           <div className="flex-1">
@@ -277,26 +236,14 @@ export default function DoctorDashboard() {
             )}
           </div>
 
-          {/* Subscription badge */}
-          {subscription && (
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 shrink-0">
-              {subscription.status === 'trial' || subscription.status === 'active' ? (
-                <CheckCircle className="w-4 h-4 text-emerald-500" />
-              ) : (
-                <Clock className="w-4 h-4 text-amber-400" />
-              )}
-              <div>
-                <p className="text-xs font-semibold text-slate-700 capitalize">
-                  Plan {subscription.plan === 'clinic' ? 'Centro de Salud' : subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)}
-                </p>
-                <p className="text-[10px] text-slate-400 capitalize">
-                  {subscription.status === 'trial' ? 'Período de prueba' :
-                   subscription.status === 'active' ? 'Activo' :
-                   subscription.status === 'past_due' ? 'Pago pendiente' : subscription.status}
-                </p>
-              </div>
+          {/* Beta badge */}
+          <div className="flex items-center gap-2 bg-white border border-teal-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 shrink-0">
+            <CheckCircle className="w-4 h-4 text-teal-500" />
+            <div>
+              <p className="text-xs font-semibold text-teal-700">Beta Privada</p>
+              <p className="text-[10px] text-slate-400">Acceso completo</p>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Hero welcome card */}
