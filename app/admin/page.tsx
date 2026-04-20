@@ -127,8 +127,10 @@ export default async function AdminDashboard() {
     console.error('Error fetching subscription stats:', err)
   }
 
-  // Fetch per-doctor activity: appointments + consultations this month
-  let doctorActivity: { id: string; name: string; specialty: string | null; appt_count: number; cons_count: number }[] = []
+  // Fetch per-doctor activity this month
+  // Una cita es una cita — ya sea creada por booking (appointments) o por el doctor (consultations).
+  // Lo que cambia es el estado, no la naturaleza.
+  let doctorActivity: { id: string; name: string; specialty: string | null; total_citas: number }[] = []
   try {
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -152,7 +154,7 @@ export default async function AdminDashboard() {
         .gte('scheduled_at', startOfMonth)
         .lte('scheduled_at', endOfMonth)
 
-      // Count consultations per doctor this month (doctor-created, no appointment_id)
+      // Count consultations created directly by doctor (no appointment_id) this month
       const { data: consCounts } = await adminClient
         .from('consultations')
         .select('doctor_id')
@@ -161,28 +163,26 @@ export default async function AdminDashboard() {
         .gte('consultation_date', startOfMonth)
         .lte('consultation_date', endOfMonth)
 
-      // Build counts
-      const apptMap: Record<string, number> = {}
-      const consMap: Record<string, number> = {}
-      ;(apptCounts || []).forEach(a => { apptMap[a.doctor_id] = (apptMap[a.doctor_id] || 0) + 1 })
-      ;(consCounts || []).forEach(c => { consMap[c.doctor_id] = (consMap[c.doctor_id] || 0) + 1 })
+      // Build combined counts
+      const totalMap: Record<string, number> = {}
+      ;(apptCounts || []).forEach(a => { totalMap[a.doctor_id] = (totalMap[a.doctor_id] || 0) + 1 })
+      ;(consCounts || []).forEach(c => { totalMap[c.doctor_id] = (totalMap[c.doctor_id] || 0) + 1 })
 
       doctorActivity = allDoctors
         .map(d => ({
           id: d.id,
           name: d.full_name || 'Sin nombre',
           specialty: d.specialty,
-          appt_count: apptMap[d.id] || 0,
-          cons_count: consMap[d.id] || 0,
+          total_citas: totalMap[d.id] || 0,
         }))
-        .sort((a, b) => (b.appt_count + b.cons_count) - (a.appt_count + a.cons_count))
+        .sort((a, b) => b.total_citas - a.total_citas)
     }
   } catch (err) {
     console.error('Error fetching doctor activity:', err)
   }
 
-  // Total consultations this month (for KPI)
-  const totalConsultationsMonth = doctorActivity.reduce((sum, d) => sum + d.appt_count + d.cons_count, 0)
+  // Total citas this month (for KPI)
+  const totalCitasMonth = doctorActivity.reduce((sum, d) => sum + d.total_citas, 0)
 
   const stats = [
     {
@@ -206,9 +206,9 @@ export default async function AdminDashboard() {
     },
     {
       label: 'Citas este mes',
-      value: totalConsultationsMonth || (kpis?.appts_this_month ?? 0),
+      value: totalCitasMonth || (kpis?.appts_this_month ?? 0),
       icon: TrendingUp,
-      change: 'Citas + Consultas',
+      change: 'Todas las fuentes',
       color: 'text-violet-600',
       bg: 'bg-violet-50',
       border: 'border-violet-100',
@@ -331,13 +331,11 @@ export default async function AdminDashboard() {
             <div className="grid grid-cols-12 gap-2 px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
               <div className="col-span-5">Médico</div>
               <div className="col-span-2 text-center">Citas</div>
-              <div className="col-span-2 text-center">Consultas</div>
-              <div className="col-span-3 text-center">Total</div>
+              <div className="col-span-5 text-center">Actividad</div>
             </div>
             {doctorActivity.map((doc) => {
-              const total = doc.appt_count + doc.cons_count
-              const maxTotal = Math.max(...doctorActivity.map(d => d.appt_count + d.cons_count), 1)
-              const barWidth = Math.round((total / maxTotal) * 100)
+              const maxTotal = Math.max(...doctorActivity.map(d => d.total_citas), 1)
+              const barWidth = Math.round((doc.total_citas / maxTotal) * 100)
               return (
                 <div key={doc.id} className="grid grid-cols-12 gap-2 items-center p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className="col-span-5 flex items-center gap-2 min-w-0">
@@ -350,19 +348,16 @@ export default async function AdminDashboard() {
                     </div>
                   </div>
                   <div className="col-span-2 text-center">
-                    <span className="text-sm font-bold text-blue-600">{doc.appt_count}</span>
+                    <span className="text-sm font-bold text-teal-600">{doc.total_citas}</span>
                   </div>
-                  <div className="col-span-2 text-center">
-                    <span className="text-sm font-bold text-teal-600">{doc.cons_count}</span>
-                  </div>
-                  <div className="col-span-3 flex items-center gap-2">
+                  <div className="col-span-5 flex items-center gap-2">
                     <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
                       <div
                         className="h-full rounded-full"
                         style={{ width: `${barWidth}%`, background: 'linear-gradient(90deg, #00C4CC, #0891b2)' }}
                       />
                     </div>
-                    <span className="text-xs font-bold text-slate-700 w-6 text-right">{total}</span>
+                    <span className="text-xs font-bold text-slate-700 w-6 text-right">{doc.total_citas}</span>
                   </div>
                 </div>
               )

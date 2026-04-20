@@ -37,13 +37,23 @@ export async function GET(req: NextRequest) {
     .select('*', { count: 'exact', head: true })
     .eq('doctor_id', doctorId)
 
-  // Get consultations this month
+  // Get all citas this month — from both appointments AND doctor-created consultations
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+
+  // Appointments (booked by patients)
   const { data: appointments } = await admin
     .from('appointments')
     .select('id, plan_price')
     .eq('doctor_id', doctorId)
     .gte('created_at', monthStart)
+
+  // Consultations created directly by doctor (no linked appointment)
+  const { data: doctorConsultations } = await admin
+    .from('consultations')
+    .select('id, plan_price')
+    .eq('doctor_id', doctorId)
+    .is('appointment_id', null)
+    .gte('consultation_date', monthStart)
 
   // Get subscription
   const { data: subscription } = await admin
@@ -52,13 +62,15 @@ export async function GET(req: NextRequest) {
     .eq('doctor_id', doctorId)
     .single()
 
-  const monthlyRevenue = (appointments || []).reduce((sum, a) => sum + (a.plan_price || 0), 0)
+  const apptRevenue = (appointments || []).reduce((sum, a) => sum + (a.plan_price || 0), 0)
+  const consRevenue = (doctorConsultations || []).reduce((sum, c) => sum + (c.plan_price || 0), 0)
+  const totalCitas = (appointments?.length || 0) + (doctorConsultations?.length || 0)
 
   return NextResponse.json({
     profile,
     patientCount: patientCount || 0,
-    consultationCount: appointments?.length || 0,
-    monthlyRevenue,
+    consultationCount: totalCitas,
+    monthlyRevenue: apptRevenue + consRevenue,
     subscription: subscription || null,
   })
 }

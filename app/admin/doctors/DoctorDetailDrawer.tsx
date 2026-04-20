@@ -223,7 +223,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-slate-400" />
-                    Consultas (mes)
+                    Citas (mes)
                   </span>
                   <span className="font-semibold text-slate-900">{details?.consultationCount || 0}</span>
                 </div>
