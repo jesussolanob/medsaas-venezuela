@@ -58,7 +58,6 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
   const consultationCode = genCode('CON')
-  const appointmentCode = genCode('CIT')
   const dateISO = consultation_date || new Date().toISOString()
   const finalAmount = amount || 0
 
@@ -76,7 +75,6 @@ export async function POST(req: NextRequest) {
     const { data: newAppt, error: apptErr } = await admin
       .from('appointments')
       .insert({
-        appointment_code: appointmentCode,
         doctor_id: user.id,
         patient_id,
         patient_name: patientData?.full_name || 'Paciente',
@@ -88,7 +86,6 @@ export async function POST(req: NextRequest) {
         plan_name: plan_name || null,
         plan_price: finalAmount,
         payment_method: payment_method || null,
-        payment_reference: payment_reference || null,
         appointment_mode: 'presencial',
       })
       .select('id')
@@ -124,7 +121,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ success: true, consultation: data, code: consultationCode, appointmentCode })
+  return NextResponse.json({ success: true, consultation: data, code: consultationCode, appointmentId: linkedAppointmentId })
 }
 
 // PATCH /api/doctor/consultations — Update consultation

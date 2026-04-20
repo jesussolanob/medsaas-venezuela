@@ -6,7 +6,7 @@ import {
   ArrowLeft, Save, CheckCircle, Clock, AlertCircle, MessageCircle,
   Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon
 } from 'lucide-react'
-import { getPatients, addPatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
+import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
 
 interface PatientPackageInfo {
@@ -48,6 +48,12 @@ export default function PatientsPage() {
   const [filterSource, setFilterSource] = useState<string>('all')
   const [detailTab, setDetailTab] = useState<DetailTab>('consultas')
   const [isPending, startTransition] = useTransition()
+
+  // Edit patient
+  const [editing, setEditing] = useState(false)
+  const [editPat, setEditPat] = useState({ full_name: '', age: '', birth_date: '', phone: '', cedula: '', email: '', sex: '', notes: '', blood_type: '', allergies: '', chronic_conditions: '', emergency_contact_name: '', emergency_contact_phone: '', address: '', city: '' })
+  const [editError, setEditError] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   // New patient form
   const [newPat, setNewPat] = useState({ full_name: '', age: '', birth_date: '', phone: '', cedula: '', email: '', sex: '', notes: '', source: '' })
@@ -106,6 +112,63 @@ export default function PatientsPage() {
     } catch (err) {
       console.error('Error loading package info:', err)
     }
+  }
+
+  function startEditPatient(p: Patient) {
+    setEditPat({
+      full_name: p.full_name || '',
+      age: p.age ? String(p.age) : '',
+      birth_date: p.birth_date || '',
+      phone: p.phone || '',
+      cedula: p.cedula || '',
+      email: p.email || '',
+      sex: p.sex || '',
+      notes: p.notes || '',
+      blood_type: p.blood_type || '',
+      allergies: p.allergies || '',
+      chronic_conditions: p.chronic_conditions || '',
+      emergency_contact_name: p.emergency_contact_name || '',
+      emergency_contact_phone: p.emergency_contact_phone || '',
+      address: p.address || '',
+      city: p.city || '',
+    })
+    setEditError('')
+    setEditing(true)
+  }
+
+  async function handleSaveEdit() {
+    if (!selected || !doctorId) return
+    if (!editPat.full_name.trim()) { setEditError('El nombre es obligatorio'); return }
+    setSavingEdit(true)
+    setEditError('')
+    try {
+      const res = await updatePatient(selected.id, doctorId, {
+        full_name: editPat.full_name,
+        age: editPat.age ? parseInt(editPat.age) : null,
+        birth_date: editPat.birth_date || null,
+        phone: editPat.phone || null,
+        cedula: editPat.cedula || null,
+        email: editPat.email || null,
+        sex: editPat.sex || null,
+        notes: editPat.notes || null,
+        blood_type: editPat.blood_type || null,
+        allergies: editPat.allergies || null,
+        chronic_conditions: editPat.chronic_conditions || null,
+        emergency_contact_name: editPat.emergency_contact_name || null,
+        emergency_contact_phone: editPat.emergency_contact_phone || null,
+        address: editPat.address || null,
+        city: editPat.city || null,
+      })
+      if (!res.success) { setEditError(res.error); setSavingEdit(false); return }
+      // Update local state
+      const updated = { ...selected, ...editPat, age: editPat.age ? parseInt(editPat.age) : null }
+      setSelected(updated as Patient)
+      setPatients(prev => prev.map(p => p.id === selected.id ? updated as Patient : p))
+      setEditing(false)
+    } catch (err: any) {
+      setEditError(err?.message || 'Error al guardar')
+    }
+    setSavingEdit(false)
   }
 
   function openPatient(p: Patient) {
@@ -303,12 +366,27 @@ export default function PatientsPage() {
                   </div>
                   {selected.notes && <p className="text-sm text-slate-400 mt-2 italic">{selected.notes}</p>}
                 </div>
-                <button
-                  onClick={() => { setView('new-consultation'); setConsultSuccess(''); setConsultError('') }}
-                  className="g-bg flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 sm:whitespace-nowrap shrink-0"
-                >
-                  <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {selected.auth_user_id ? (
+                    <span className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-200">
+                      <UserCheck className="w-3.5 h-3.5" /> Sincronizado
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => startEditPatient(selected)}
+                      className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors"
+                      title="Editar paciente"
+                    >
+                      <Edit3 className="w-4 h-4" /> <span className="hidden sm:inline">Editar</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setView('new-consultation'); setConsultSuccess(''); setConsultError('') }}
+                    className="g-bg flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 sm:whitespace-nowrap"
+                  >
+                    <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -732,6 +810,129 @@ export default function PatientsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT PATIENT MODAL ── */}
+      {editing && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+              <h3 className="font-bold text-slate-900">Editar paciente</h3>
+              <button onClick={() => setEditing(false)} className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {editError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{editError}</p>}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre completo <span className="text-red-400">*</span></label>
+                <input value={editPat.full_name} onChange={e => setEditPat(p => ({ ...p, full_name: e.target.value }))} className={fi} />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Fecha de nacimiento</label>
+                  <input type="date" value={editPat.birth_date}
+                    onChange={e => {
+                      const bd = e.target.value
+                      const calculatedAge = calcAgeFromBirthDate(bd)
+                      setEditPat(p => ({ ...p, birth_date: bd, age: calculatedAge }))
+                    }}
+                    className={fi} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Edad</label>
+                  <input type="number" min="0" max="150" value={editPat.age} onChange={e => setEditPat(p => ({ ...p, age: e.target.value }))} className={fi} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Sexo</label>
+                  <select value={editPat.sex} onChange={e => setEditPat(p => ({ ...p, sex: e.target.value }))} className={fi}>
+                    <option value="">Seleccionar...</option>
+                    <option value="female">Femenino</option>
+                    <option value="male">Masculino</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Teléfono</label>
+                <input type="tel" value={editPat.phone} onChange={e => setEditPat(p => ({ ...p, phone: e.target.value }))} className={fi} />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Cédula</label>
+                  <input value={editPat.cedula} onChange={e => setEditPat(p => ({ ...p, cedula: e.target.value }))} className={fi} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+                  <input type="email" value={editPat.email} onChange={e => setEditPat(p => ({ ...p, email: e.target.value }))} className={fi} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Dirección</label>
+                  <input value={editPat.address} onChange={e => setEditPat(p => ({ ...p, address: e.target.value }))} className={fi} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Ciudad</label>
+                  <input value={editPat.city} onChange={e => setEditPat(p => ({ ...p, city: e.target.value }))} className={fi} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Tipo de sangre</label>
+                  <select value={editPat.blood_type} onChange={e => setEditPat(p => ({ ...p, blood_type: e.target.value }))} className={fi}>
+                    <option value="">Seleccionar...</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Alergias</label>
+                  <input value={editPat.allergies} onChange={e => setEditPat(p => ({ ...p, allergies: e.target.value }))} placeholder="Penicilina, mariscos..." className={fi} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Condiciones crónicas</label>
+                <input value={editPat.chronic_conditions} onChange={e => setEditPat(p => ({ ...p, chronic_conditions: e.target.value }))} placeholder="Hipertensión, diabetes..." className={fi} />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Contacto emergencia (nombre)</label>
+                  <input value={editPat.emergency_contact_name} onChange={e => setEditPat(p => ({ ...p, emergency_contact_name: e.target.value }))} className={fi} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Contacto emergencia (teléfono)</label>
+                  <input type="tel" value={editPat.emergency_contact_phone} onChange={e => setEditPat(p => ({ ...p, emergency_contact_phone: e.target.value }))} className={fi} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Notas</label>
+                <textarea value={editPat.notes} onChange={e => setEditPat(p => ({ ...p, notes: e.target.value }))} rows={2} className={fi + ' resize-none'} />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditing(false)} className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+                <button type="button" onClick={handleSaveEdit} disabled={savingEdit} className="flex-1 g-bg py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
+                  {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

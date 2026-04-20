@@ -16,7 +16,8 @@ export type Patient = {
   email: string | null
   sex: string | null
   notes: string | null
-  source: string | null          // 'manual' | 'invitation' | 'whatsapp'
+  source: string | null          // 'manual' | 'invitation' | 'whatsapp' | 'booking'
+  auth_user_id?: string | null   // If set, patient registered via portal (read-only)
   birth_date?: string | null
   address?: string | null
   city?: string | null
@@ -173,6 +174,70 @@ export async function updateConsultationNotes(
     .from('consultations')
     .update(fields)
     .eq('id', consultationId)
+
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/doctor/patients')
+  return { success: true }
+}
+
+export type UpdatePatientInput = {
+  full_name?: string
+  age?: number | null
+  birth_date?: string | null
+  phone?: string | null
+  cedula?: string | null
+  email?: string | null
+  sex?: string | null
+  notes?: string | null
+  blood_type?: string | null
+  allergies?: string | null
+  chronic_conditions?: string | null
+  emergency_contact_name?: string | null
+  emergency_contact_phone?: string | null
+  address?: string | null
+  city?: string | null
+}
+
+export async function updatePatient(patientId: string, doctorId: string, input: UpdatePatientInput): Promise<ActionResult> {
+  const supabase = createAdminClient()
+
+  // Verify the patient belongs to this doctor
+  const { data: existing } = await supabase
+    .from('patients')
+    .select('id, doctor_id, auth_user_id')
+    .eq('id', patientId)
+    .single()
+
+  if (!existing || existing.doctor_id !== doctorId) {
+    return { success: false, error: 'Paciente no encontrado' }
+  }
+
+  // If patient has auth_user_id (registered via portal), don't allow editing core fields
+  if (existing.auth_user_id) {
+    return { success: false, error: 'Este paciente está sincronizado con su cuenta. No se puede editar desde aquí.' }
+  }
+
+  const updateData: Record<string, unknown> = {}
+  if (input.full_name !== undefined) updateData.full_name = input.full_name
+  if (input.age !== undefined) updateData.age = input.age
+  if (input.birth_date !== undefined) updateData.birth_date = input.birth_date
+  if (input.phone !== undefined) updateData.phone = input.phone
+  if (input.cedula !== undefined) updateData.cedula = input.cedula
+  if (input.email !== undefined) updateData.email = input.email
+  if (input.sex !== undefined) updateData.sex = input.sex
+  if (input.notes !== undefined) updateData.notes = input.notes
+  if (input.blood_type !== undefined) updateData.blood_type = input.blood_type
+  if (input.allergies !== undefined) updateData.allergies = input.allergies
+  if (input.chronic_conditions !== undefined) updateData.chronic_conditions = input.chronic_conditions
+  if (input.emergency_contact_name !== undefined) updateData.emergency_contact_name = input.emergency_contact_name
+  if (input.emergency_contact_phone !== undefined) updateData.emergency_contact_phone = input.emergency_contact_phone
+  if (input.address !== undefined) updateData.address = input.address
+  if (input.city !== undefined) updateData.city = input.city
+
+  const { error } = await supabase
+    .from('patients')
+    .update(updateData)
+    .eq('id', patientId)
 
   if (error) return { success: false, error: error.message }
   revalidatePath('/doctor/patients')
