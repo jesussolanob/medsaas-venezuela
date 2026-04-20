@@ -33,7 +33,9 @@ export default function RemindersPage() {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
-      const { data } = await supabase
+
+      // Fetch upcoming consultations
+      const { data: consults } = await supabase
         .from('consultations')
         .select('*, patients(full_name, phone, email)')
         .eq('doctor_id', user.id)
@@ -41,9 +43,9 @@ export default function RemindersPage() {
         .order('consultation_date', { ascending: true })
         .limit(50)
 
-      const mapped = (data ?? []).map(c => ({
+      const consultMapped = (consults ?? []).map(c => ({
         id: c.id,
-        consultation_code: c.consultation_code,
+        consultation_code: c.consultation_code ?? c.id.slice(0,8),
         consultation_date: c.consultation_date,
         chief_complaint: c.chief_complaint,
         patient_id: c.patient_id,
@@ -52,7 +54,39 @@ export default function RemindersPage() {
         patient_email: (c.patients as { full_name: string; phone: string | null; email: string | null } | null)?.email ?? null,
       }))
 
-      setUpcomingConsults(mapped)
+      // Fetch upcoming appointments (scheduled/confirmed)
+      const { data: appointments } = await supabase
+        .from('appointments')
+        .select('id, appointment_code, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_id')
+        .eq('doctor_id', user.id)
+        .in('status', ['scheduled', 'confirmed'])
+        .gte('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: true })
+        .limit(50)
+
+      const apptMapped = (appointments ?? []).map(a => ({
+        id: `appt-${a.id}`,
+        consultation_code: a.appointment_code ?? a.id.slice(0,8),
+        consultation_date: a.scheduled_at,
+        chief_complaint: a.chief_complaint,
+        patient_id: a.patient_id,
+        patient_name: a.patient_name ?? 'Paciente',
+        patient_phone: a.patient_phone ?? null,
+        patient_email: a.patient_email ?? null,
+      }))
+
+      // Merge avoiding duplicates (same patient + similar time)
+      const combined = [...consultMapped]
+      for (const appt of apptMapped) {
+        const isDup = consultMapped.some(c => {
+          const diff = Math.abs(new Date(c.consultation_date).getTime() - new Date(appt.consultation_date).getTime())
+          return c.patient_name === appt.patient_name && diff < 3600000
+        })
+        if (!isDup) combined.push(appt)
+      }
+      combined.sort((a, b) => new Date(a.consultation_date).getTime() - new Date(b.consultation_date).getTime())
+
+      setUpcomingConsults(combined)
       setLoading(false)
     })
   }, [])

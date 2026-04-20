@@ -385,6 +385,46 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── 4. Auto-create consultation from booking ────────────────────────────
+    // This eliminates the manual appointment→consultation step.
+    // The consultation starts as 'pending_approval' — doctor approves payment.
+    let consultationId: string | null = null
+    try {
+      const d = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const rand = Math.random().toString(36).substring(2, 6).toUpperCase()
+      const consultationCode = `CON-${d}-${rand}`
+
+      const consultInsert: Record<string, unknown> = {
+        consultation_code: consultationCode,
+        patient_id: patientId,
+        doctor_id: doctorId,
+        chief_complaint: chiefComplaint || null,
+        consultation_date: scheduledAt,
+        payment_status: validatedPackage ? 'approved' : 'pending_approval',
+        amount: validatedPackage ? 0 : (planPrice || 0),
+        currency: 'USD',
+        plan_name: planName || 'Consulta General',
+        payment_method: validatedPackage ? 'package' : (paymentMethod || null),
+        payment_reference: receiptUrl || null,
+        appointment_id: appt.id,
+      }
+
+      const { data: newConsult, error: consErr } = await admin
+        .from('consultations')
+        .insert(consultInsert)
+        .select('id')
+        .single()
+
+      if (consErr) {
+        console.warn('[Book] Auto-create consultation failed:', consErr.message)
+      } else {
+        consultationId = newConsult?.id ?? null
+        console.log('[Book] Auto-created consultation:', consultationCode)
+      }
+    } catch (e) {
+      console.warn('[Book] Consultation auto-create skipped:', e)
+    }
+
     // Best-effort: sync appointment to Google Calendar if doctor has it connected
     // NOTE: We call Google Calendar API directly here instead of going through
     // /api/integrations/google/sync because that endpoint uses cookie-based auth
@@ -511,6 +551,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       appointmentId: appt.id,
+      consultationId,
       patientId,
       packageUsed: !!validatedPackage,
       packageRemaining: validatedPackage

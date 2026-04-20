@@ -10,6 +10,7 @@ import {
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import { CheckCircle } from 'lucide-react'
+import DoctorNotificationToast from './DoctorNotificationToast'
 
 type NavItem = { name: string; href: string; icon: any }
 
@@ -234,6 +235,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             </div>
           </main>
         </div>
+        <DoctorNotificationToast />
       </div>
     </>
   )

@@ -378,52 +378,97 @@ export default function FinancesPage() {
 
       {/* Chart */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5">
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
           <BarChart3 className="w-5 h-5 text-slate-400" />
-          <h3 className="text-sm font-bold text-slate-700">Tendencia</h3>
+          <h3 className="text-sm font-bold text-slate-700">Ingresos vs Gastos</h3>
           <div className="flex items-center gap-4 ml-auto">
             <span className="flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="w-3 h-3 rounded-sm bg-emerald-400" /> Ingresos
+              <span className="w-3 h-3 rounded-sm bg-emerald-500" /> Ingresos
             </span>
             <span className="flex items-center gap-1.5 text-xs text-slate-500">
               <span className="w-3 h-3 rounded-sm bg-red-400" /> Gastos
             </span>
+            <span className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span className="w-3 h-3 rounded-sm bg-teal-200" /> Balance
+            </span>
           </div>
         </div>
         {chartData.every(p => p.income === 0 && p.expenses === 0) ? (
-          <div className="flex items-center justify-center h-40 text-sm text-slate-300">
+          <div className="flex items-center justify-center h-48 text-sm text-slate-300">
             Sin datos en este período
           </div>
         ) : (
-          <div className="flex items-end gap-3 h-48">
-            {chartData.map((p, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <div className="w-full flex gap-1 items-end h-36">
-                  <div className="flex-1 flex flex-col items-center justify-end">
-                    {p.income > 0 && (
-                      <span className="text-[9px] font-bold text-emerald-600 mb-0.5">${p.income >= 1000 ? `${(p.income/1000).toFixed(1)}k` : p.income.toFixed(0)}</span>
-                    )}
-                    <div
-                      className="w-full bg-emerald-400 rounded-t-md transition-all duration-500"
-                      style={{ height: `${Math.max((p.income / maxChartVal) * 100, p.income > 0 ? 4 : 0)}%` }}
-                      title={`$${p.income.toFixed(2)}`}
-                    />
-                  </div>
-                  <div className="flex-1 flex flex-col items-center justify-end">
-                    {p.expenses > 0 && (
-                      <span className="text-[9px] font-bold text-red-500 mb-0.5">${p.expenses >= 1000 ? `${(p.expenses/1000).toFixed(1)}k` : p.expenses.toFixed(0)}</span>
-                    )}
-                    <div
-                      className="w-full bg-red-400 rounded-t-md transition-all duration-500"
-                      style={{ height: `${Math.max((p.expenses / maxChartVal) * 100, p.expenses > 0 ? 4 : 0)}%` }}
-                      title={`$${p.expenses.toFixed(2)}`}
-                    />
-                  </div>
-                </div>
-                <span className="text-[10px] text-slate-400 font-medium">{p.label}</span>
+          <>
+            {/* Y-axis labels + Bars */}
+            <div className="flex gap-2">
+              {/* Y-axis */}
+              <div className="flex flex-col justify-between h-56 py-1 shrink-0">
+                <span className="text-[9px] text-slate-400 font-medium text-right w-10">${maxChartVal >= 1000 ? `${(maxChartVal/1000).toFixed(1)}k` : maxChartVal.toFixed(0)}</span>
+                <span className="text-[9px] text-slate-400 font-medium text-right w-10">${maxChartVal >= 1000 ? `${(maxChartVal/2000).toFixed(1)}k` : (maxChartVal/2).toFixed(0)}</span>
+                <span className="text-[9px] text-slate-400 font-medium text-right w-10">$0</span>
               </div>
-            ))}
-          </div>
+              {/* Chart area */}
+              <div className="flex-1 relative">
+                {/* Grid lines */}
+                <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                  <div className="border-b border-dashed border-slate-100" />
+                  <div className="border-b border-dashed border-slate-100" />
+                  <div className="border-b border-slate-200" />
+                </div>
+                {/* Bars */}
+                <div className="flex items-end gap-2 sm:gap-4 h-56 relative z-10">
+                  {chartData.map((p, i) => {
+                    const balance = p.income - p.expenses
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
+                        <div className="w-full flex gap-0.5 sm:gap-1 items-end h-48">
+                          {/* Income bar */}
+                          <div className="flex-1 flex flex-col items-center justify-end relative">
+                            <div className="absolute -top-5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[9px] font-bold px-2 py-1 rounded-md whitespace-nowrap z-20 pointer-events-none">
+                              +${p.income.toFixed(2)}
+                            </div>
+                            {p.income > 0 && (
+                              <span className="text-[9px] font-bold text-emerald-600 mb-0.5">${p.income >= 1000 ? `${(p.income/1000).toFixed(1)}k` : p.income.toFixed(0)}</span>
+                            )}
+                            <div
+                              className="w-full rounded-t-lg transition-all duration-700 ease-out"
+                              style={{
+                                height: `${Math.max((p.income / maxChartVal) * 100, p.income > 0 ? 5 : 0)}%`,
+                                background: 'linear-gradient(180deg, #10b981 0%, #059669 100%)',
+                              }}
+                            />
+                          </div>
+                          {/* Expense bar */}
+                          <div className="flex-1 flex flex-col items-center justify-end relative">
+                            <div className="absolute -top-5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[9px] font-bold px-2 py-1 rounded-md whitespace-nowrap z-20 pointer-events-none">
+                              -${p.expenses.toFixed(2)}
+                            </div>
+                            {p.expenses > 0 && (
+                              <span className="text-[9px] font-bold text-red-500 mb-0.5">${p.expenses >= 1000 ? `${(p.expenses/1000).toFixed(1)}k` : p.expenses.toFixed(0)}</span>
+                            )}
+                            <div
+                              className="w-full rounded-t-lg transition-all duration-700 ease-out"
+                              style={{
+                                height: `${Math.max((p.expenses / maxChartVal) * 100, p.expenses > 0 ? 5 : 0)}%`,
+                                background: 'linear-gradient(180deg, #f87171 0%, #ef4444 100%)',
+                              }}
+                            />
+                          </div>
+                        </div>
+                        {/* Label + Balance */}
+                        <span className="text-[10px] text-slate-500 font-semibold">{p.label}</span>
+                        {(p.income > 0 || p.expenses > 0) && (
+                          <span className={`text-[9px] font-bold ${balance >= 0 ? 'text-teal-600' : 'text-red-500'}`}>
+                            {balance >= 0 ? '+' : ''}{balance >= 1000 || balance <= -1000 ? `$${(balance/1000).toFixed(1)}k` : `$${balance.toFixed(0)}`}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
 

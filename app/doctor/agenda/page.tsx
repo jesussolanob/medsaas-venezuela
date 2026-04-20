@@ -559,25 +559,32 @@ export default function AgendaPage() {
 
   async function confirmReschedule() {
     if (!rescheduling || !rescheduleDate || !rescheduleTime) return
-    const supabase = createClient()
     try {
       const rescheduledDate = new Date(rescheduleDate + 'T' + rescheduleTime + ':00').toISOString()
-      await supabase
-        .from('appointments')
-        .update({ scheduled_at: rescheduledDate })
-        .eq('id', rescheduling.id)
+
+      // Call API which updates appointment + consultation + Google Calendar
+      const res = await fetch('/api/doctor/reschedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId: rescheduling.id, newDate: rescheduledDate }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Error al reagendar')
+      }
 
       setPendingAppointments(prev => prev.map(a =>
         a.id === rescheduling.id ? { ...a, scheduled_at: rescheduledDate } : a
       ))
-      toast.success('Cita reagendada')
+      toast.success('Cita reagendada (calendario actualizado)')
       setRescheduling(null)
       setRescheduleDate(null)
       setRescheduleTime(null)
       setRescheduleWeekOffset(0)
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
-      toast.error('Error al reagendar')
+      toast.error(e?.message || 'Error al reagendar')
     }
   }
 
