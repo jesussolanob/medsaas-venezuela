@@ -5,44 +5,174 @@ export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/admin/bcv-rate
- * Fetches the current BCV (Banco Central de Venezuela) exchange rate.
- * Tries multiple sources in order:
- *   0. fawazahmed0/currency-api CDN (fastest)
- *   1. BCV official website (scraping)
- *   2. pydolarve.org API
- *   3. dolarapi.com API
- * Falls back to manual entry if all fail.
+ * Fetches the current BCV (Banco Central de Venezuela) official exchange rate.
+ * Priority order (exact BCV rate first):
+ *   1. pydolarve.org API (mirrors exact BCV rate)
+ *   2. dolarapi.com API (mirrors exact BCV rate)
+ *   3. BCV official website (scraping)
+ *   4. fawazahmed0/currency-api CDN (approximate market rate — last resort)
  */
 export async function GET() {
   let rate: number | null = null
   let dateStr = ''
   let source = 'none'
 
-  // ── Source 0: fawazahmed0/currency-api CDN (fastest, no rate limits) ───
+  // ── Source 1: pydolarve.org API (exact BCV rate) ───────────────────────
   try {
-    const res = await fetch(
-      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json',
-      {
-        signal: AbortSignal.timeout(6000),
-        headers: { 'Accept': 'application/json' },
-        cache: 'no-store',
-      }
-    )
+    const res = await fetch('https://pydolarve.org/api/v2/dollar?page=bcv', {
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'DeltaMedicalCRM/1.0',
+      },
+      cache: 'no-store',
+    })
     if (res.ok) {
       const data = await res.json()
-      // Response: { date: "2026-04-19", usd: { ves: 479.65 } }
-      const vesRate = data?.usd?.ves ?? data?.ves
-      if (vesRate && vesRate > 0) {
-        rate = parseFloat(Number(vesRate).toFixed(2))
-        dateStr = data.date || ''
-        source = 'currency-api'
+      const monitors = data?.monitors
+      if (monitors?.usd?.price && monitors.usd.price > 0) {
+        rate = monitors.usd.price
+        dateStr = monitors.usd.last_update || ''
+        source = 'pydolarve.org'
       }
     }
   } catch {
-    // currency-api CDN failed, try fallback
+    // pydolarve failed, try next source
   }
 
-  // Fallback CDN endpoint
+  // ── Source 2: dolarapi.com (exact BCV/oficial rate) ────────────────────
+  if (!rate) {
+    try {
+      const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'DeltaMedicalCRM/1.0',
+        },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.promedio && data.promedio > 0) {
+          rate = data.promedio
+          dateStr = data.fechaActualizacion || ''
+          source = 'dolarapi.com'
+        } else if (data?.venta && data.venta > 0) {
+          rate = data.venta
+          dateStr = data.fechaActualizacion || ''
+          source = 'dolarapi.com'
+        } else if (data?.compra && data.compra > 0) {
+          rate = data.compra
+          dateStr = data.fechaActualizacion || ''
+          source = 'dolarapi.com'
+        }
+      }
+    } catch {
+      // dolarapi failed, try next
+    }
+  }
+
+  // ── Source 2b: dolarapi alternative endpoint ───────────────────────────
+  if (!rate) {
+    try {
+      const res = await fetch('https://ve.dolarapi.com/v1/dolares', {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const bcvEntry = Array.isArray(data)
+          ? data.find((d: { casa?: string }) => d.casa === 'oficial' || d.casa === 'bcv')
+          : null
+        if (bcvEntry?.promedio && bcvEntry.promedio > 0) {
+          rate = bcvEntry.promedio
+          dateStr = bcvEntry.fechaActualizacion || ''
+          source = 'dolarapi.com'
+        } else if (bcvEntry?.venta && bcvEntry.venta > 0) {
+          rate = bcvEntry.venta
+          dateStr = bcvEntry.fechaActualizacion || ''
+          source = 'dolarapi.com'
+        }
+      }
+    } catch {
+      // alternative endpoint failed
+    }
+  }
+
+  // ── Source 3: BCV official website (scraping) ──────────────────────────
+  if (!rate) {
+    try {
+      const res = await fetch('https://www.bcv.org.ve/', {
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'es-VE,es;q=0.9',
+        },
+        cache: 'no-store',
+      })
+
+      if (res.ok) {
+        const html = await res.text()
+
+        // BCV shows USD rate inside a div with id="dolar"
+        const usdMatch = html.match(
+          /id="dolar"[\s\S]*?<strong[^>]*>([\d.,]+)<\/strong>/i
+        )
+        if (usdMatch) {
+          const rateStr = usdMatch[1].replace(/\./g, '').replace(',', '.')
+          const parsed = parseFloat(rateStr)
+          if (parsed > 0) {
+            rate = parsed
+            source = 'bcv.org.ve'
+          }
+        }
+
+        if (!rate) {
+          const altMatch = html.match(
+            /USD[\s\S]*?<strong[^>]*>([\d.,]+)<\/strong>/i
+          )
+          if (altMatch) {
+            const rateStr = altMatch[1].replace(/\./g, '').replace(',', '.')
+            const parsed = parseFloat(rateStr)
+            if (parsed > 0) {
+              rate = parsed
+              source = 'bcv.org.ve'
+            }
+          }
+        }
+      }
+    } catch {
+      // BCV fetch failed
+    }
+  }
+
+  // ── Source 4: currency-api CDN (approximate — last resort) ─────────────
+  if (!rate) {
+    try {
+      const res = await fetch(
+        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json',
+        {
+          signal: AbortSignal.timeout(6000),
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store',
+        }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const vesRate = data?.usd?.ves ?? data?.ves
+        if (vesRate && vesRate > 0) {
+          rate = parseFloat(Number(vesRate).toFixed(2))
+          dateStr = data.date || ''
+          source = 'currency-api'
+        }
+      }
+    } catch {
+      // currency-api CDN failed, try fallback
+    }
+  }
+
   if (!rate) {
     try {
       const res = await fetch(
@@ -63,137 +193,7 @@ export async function GET() {
         }
       }
     } catch {
-      // fallback CDN also failed
-    }
-  }
-
-  // ── Source 1: BCV official website ──────────────────────────────────────
-  if (!rate) try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8000)
-
-    const res = await fetch('https://www.bcv.org.ve/', {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'es-VE,es;q=0.9',
-      },
-      cache: 'no-store', // cache for 1 hour
-    })
-    clearTimeout(timeout)
-
-    if (res.ok) {
-      const html = await res.text()
-
-      // BCV shows USD rate inside a div with id="dolar"
-      const usdMatch = html.match(
-        /id="dolar"[\s\S]*?<strong[^>]*>([\d.,]+)<\/strong>/i
-      )
-      if (usdMatch) {
-        const rateStr = usdMatch[1].replace(/\./g, '').replace(',', '.')
-        const parsed = parseFloat(rateStr)
-        if (parsed > 0) {
-          rate = parsed
-          source = 'bcv.org.ve'
-        }
-      }
-
-      // Alternative pattern
-      if (!rate) {
-        const altMatch = html.match(
-          /USD[\s\S]*?<strong[^>]*>([\d.,]+)<\/strong>/i
-        )
-        if (altMatch) {
-          const rateStr = altMatch[1].replace(/\./g, '').replace(',', '.')
-          const parsed = parseFloat(rateStr)
-          if (parsed > 0) {
-            rate = parsed
-            source = 'bcv.org.ve'
-          }
-        }
-      }
-    }
-  } catch {
-    // BCV fetch failed, try next source
-  }
-
-  // ── Source 2: pydolarve.org API ─────────────────────────────────────────
-  if (!rate) {
-    try {
-      const res = await fetch('https://pydolarve.org/api/v2/dollar?page=bcv', {
-        signal: AbortSignal.timeout(8000),
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'DeltaMedicalCRM/1.0',
-        },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const monitors = data?.monitors
-        if (monitors?.usd?.price) {
-          rate = monitors.usd.price
-          dateStr = monitors.usd.last_update || ''
-          source = 'pydolarve.org'
-        }
-      }
-    } catch {
-      // pydolarve failed, try next source
-    }
-  }
-
-  // ── Source 3: dolarapi.com (Venezuela) ──────────────────────────────────
-  if (!rate) {
-    try {
-      const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
-        signal: AbortSignal.timeout(8000),
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'DeltaMedicalCRM/1.0',
-        },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        // dolarapi returns { compra, venta, nombre, moneda, fechaActualizacion }
-        if (data?.venta && data.venta > 0) {
-          rate = data.venta
-          dateStr = data.fechaActualizacion || ''
-          source = 'dolarapi.com'
-        } else if (data?.compra && data.compra > 0) {
-          rate = data.compra
-          dateStr = data.fechaActualizacion || ''
-          source = 'dolarapi.com'
-        }
-      }
-    } catch {
-      // dolarapi failed too
-    }
-  }
-
-  // ── Source 4: alternative dolarapi endpoint ─────────────────────────────
-  if (!rate) {
-    try {
-      const res = await fetch('https://ve.dolarapi.com/v1/dolares', {
-        signal: AbortSignal.timeout(8000),
-        headers: { 'Accept': 'application/json' },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        // returns array of rates, find BCV/oficial
-        const bcvEntry = Array.isArray(data)
-          ? data.find((d: { casa?: string }) => d.casa === 'oficial' || d.casa === 'bcv')
-          : null
-        if (bcvEntry?.venta && bcvEntry.venta > 0) {
-          rate = bcvEntry.venta
-          dateStr = bcvEntry.fechaActualizacion || ''
-          source = 'dolarapi.com'
-        }
-      }
-    } catch {
-      // all failed
+      // all CDN sources failed
     }
   }
 
@@ -208,14 +208,14 @@ export async function GET() {
       })
     }
 
-    const sourceLabel = source === 'currency-api'
-      ? 'BCV (vía Currency API)'
-      : source === 'bcv.org.ve'
-        ? 'BCV Oficial'
-        : source === 'pydolarve.org'
-          ? 'BCV (vía PyDolarVe)'
-          : source === 'dolarapi.com'
-            ? 'BCV (vía DolarAPI)'
+    const sourceLabel = source === 'pydolarve.org'
+      ? 'BCV Oficial (vía PyDolarVe)'
+      : source === 'dolarapi.com'
+        ? 'BCV Oficial (vía DolarAPI)'
+        : source === 'bcv.org.ve'
+          ? 'BCV Oficial'
+          : source === 'currency-api'
+            ? 'Tasa aproximada (Currency API)'
             : 'BCV'
 
     return NextResponse.json({
