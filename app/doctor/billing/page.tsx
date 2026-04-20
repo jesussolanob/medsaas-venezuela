@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Receipt, Plus, X, Printer, Send, FileText, DollarSign, Search, User, Calendar, Trash2, ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useBcvRate } from '@/lib/useBcvRate'
 import { getProfessionalTitle } from '@/lib/professional-title'
 
 type LineItem = { id: string; description: string; qty: number; unit_price: number }
@@ -29,7 +30,7 @@ export default function BillingPage() {
   const [search, setSearch] = useState('')
   const [items, setItems] = useState<LineItem[]>([{ id: '1', description: 'Honorarios médicos', qty: 1, unit_price: 20 }])
   const [notes, setNotes] = useState('')
-  const [bcvRate, setBcvRate] = useState<number | null>(null)
+  const { rate: bcvRate } = useBcvRate()
   const [loading, setLoading] = useState(true)
   const [services, setServices] = useState<Service[]>([])
   const [docStats, setDocStats] = useState({ facturas: 0, recibos: 0, presupuestos: 0, totalFacturas: 0, totalRecibos: 0, totalPresupuestos: 0 })
@@ -88,10 +89,7 @@ export default function BillingPage() {
       setLoading(false)
     })
 
-    // BCV rate
-    fetch('https://ve.dolarapi.com/v1/dolares/oficial')
-      .then(r => r.json()).then(d => { const rate = d.promedio ?? d.precio ?? null; if (rate) setBcvRate(parseFloat(rate)) })
-      .catch(() => {})
+    // BCV rate now comes from useBcvRate() hook
   }, [])
 
   function addItem(service?: Service) {

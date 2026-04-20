@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition, useRef, useCallback, Suspense } fro
 import { useSearchParams } from 'next/navigation'
 import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useBcvRate } from '@/lib/useBcvRate'
 
 type Consultation = {
   id: string
@@ -93,6 +94,7 @@ export default function ConsultationsPageWrapper() {
 function ConsultationsPage() {
   const searchParams = useSearchParams()
   const openId = searchParams.get('open')
+  const { rate: bcvRate, toBs } = useBcvRate()
 
   const [view, setView] = useState<ViewMode>('list')
   const [selected, setSelected] = useState<Consultation | null>(null)
@@ -1691,7 +1693,10 @@ function ConsultationsPage() {
                         {appointmentData.plan_price != null && (
                           <div className="flex items-center justify-between">
                             <span className="text-slate-500">Monto:</span>
-                            <span className="font-semibold text-slate-800">${appointmentData.plan_price.toFixed(2)}</span>
+                            <div className="text-right">
+                              <span className="font-semibold text-slate-800">${appointmentData.plan_price.toFixed(2)}</span>
+                              {bcvRate && <span className="block text-[10px] text-slate-400">{toBs(appointmentData.plan_price)}</span>}
+                            </div>
                           </div>
                         )}
                         {appointmentData.payment_method && (
@@ -2095,7 +2100,10 @@ function ConsultationsPage() {
                           className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${newConsultation.plan_id === plan.id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-semibold text-slate-800">{plan.name}</span>
-                            <span className="text-sm font-bold text-teal-600">${plan.price_usd.toFixed(2)}</span>
+                            <div className="text-right">
+                              <span className="text-sm font-bold text-teal-600">${plan.price_usd.toFixed(2)}</span>
+                              {bcvRate && <span className="block text-[11px] text-slate-400">{toBs(plan.price_usd)}</span>}
+                            </div>
                           </div>
                           <span className="text-xs text-slate-400">{plan.duration_minutes} min</span>
                         </button>

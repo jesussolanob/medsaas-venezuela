@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useBcvRate } from '@/lib/useBcvRate'
 import {
   Receipt, Search, Download, DollarSign, CheckCircle, Clock,
   XCircle, Calendar, ArrowRight, Loader2, RefreshCw, Filter,
@@ -39,8 +40,7 @@ export default function CobrosPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [bcvRate, setBcvRate] = useState<number | null>(null)
-  const [bcvLoading, setBcvLoading] = useState(true)
+  const { rate: bcvRate, loading: bcvLoading, toBs } = useBcvRate()
 
   // Date range for export
   const [dateFrom, setDateFrom] = useState(() => {
@@ -103,27 +103,7 @@ export default function CobrosPage() {
     }
   }
 
-  // Fetch BCV rate
-  useEffect(() => {
-    async function fetchBcvRate() {
-      try {
-        const res = await fetch('https://pydolarve.org/api/v2/dollar?page=bcv', {
-          next: { revalidate: 3600 },
-        })
-        if (res.ok) {
-          const data = await res.json()
-          const rate = data?.monitors?.usd?.price
-          if (rate) setBcvRate(parseFloat(rate))
-        }
-      } catch {
-        // fallback rate
-        setBcvRate(null)
-      } finally {
-        setBcvLoading(false)
-      }
-    }
-    fetchBcvRate()
-  }, [])
+  // BCV rate now comes from useBcvRate() hook
 
   const fetchPayments = useCallback(async () => {
     setLoading(true)

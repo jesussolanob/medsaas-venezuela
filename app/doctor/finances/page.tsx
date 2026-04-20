@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useBcvRate } from '@/lib/useBcvRate'
 import {
   DollarSign, TrendingUp, TrendingDown, BarChart3,
   Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Search, Calendar, Download,
@@ -40,6 +41,7 @@ const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov
 type ViewMode = 'month' | 'week' | 'day'
 
 export default function FinancesPage() {
+  const { rate: bcvRate, toBs } = useBcvRate()
   const [incomes, setIncomes] = useState<Income[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -350,6 +352,7 @@ export default function FinancesPage() {
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Ingresos</p>
           </div>
           <p className="text-2xl font-bold text-emerald-600">${filteredData.totalIncome.toFixed(2)}</p>
+          {bcvRate && <p className="text-sm text-emerald-400 font-semibold">{toBs(filteredData.totalIncome)}</p>}
           <p className="text-xs text-slate-400 mt-1">{filteredData.filteredIncomes.length} pagos aprobados</p>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
@@ -360,6 +363,7 @@ export default function FinancesPage() {
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Gastos</p>
           </div>
           <p className="text-2xl font-bold text-red-500">${filteredData.totalExpenses.toFixed(2)}</p>
+          {bcvRate && <p className="text-sm text-red-300 font-semibold">{toBs(filteredData.totalExpenses)}</p>}
           <p className="text-xs text-slate-400 mt-1">{filteredData.filteredExpenses.length} gastos registrados</p>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
@@ -372,6 +376,7 @@ export default function FinancesPage() {
           <p className={`text-2xl font-bold ${filteredData.balance >= 0 ? 'text-teal-600' : 'text-amber-600'}`}>
             ${filteredData.balance.toFixed(2)}
           </p>
+          {bcvRate && <p className={`text-sm font-semibold ${filteredData.balance >= 0 ? 'text-teal-400' : 'text-amber-400'}`}>{toBs(filteredData.balance)}</p>}
           <p className="text-xs text-slate-400 mt-1">Ingresos - Gastos</p>
         </div>
       </div>
@@ -543,6 +548,7 @@ export default function FinancesPage() {
                       <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Consulta</th>
                       <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Paciente</th>
                       <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto USD</th>
+                      <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto Bs</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -552,6 +558,7 @@ export default function FinancesPage() {
                         <td className="px-5 py-3 text-xs text-slate-600">{inc.consultation_code || inc.payment_method || '—'}</td>
                         <td className="px-5 py-3 text-sm font-medium text-slate-900">{inc.patient_name}</td>
                         <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">+${inc.amount_usd?.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-xs text-slate-400 text-right">{bcvRate ? toBs(inc.amount_usd || 0) : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -559,6 +566,7 @@ export default function FinancesPage() {
                     <tr className="bg-emerald-50/50 border-t border-emerald-100">
                       <td colSpan={3} className="px-5 py-3 text-xs font-bold text-slate-700">Total</td>
                       <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">${tableTotal.toFixed(2)}</td>
+                      <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">{bcvRate ? toBs(tableTotal) : '—'}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -644,7 +652,8 @@ export default function FinancesPage() {
                     <tr className="bg-slate-50 border-b border-slate-100">
                       <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>
                       <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Gasto</th>
-                      <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto</th>
+                      <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto USD</th>
+                      <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto Bs</th>
                       <th className="w-10"></th>
                     </tr>
                   </thead>
@@ -657,6 +666,7 @@ export default function FinancesPage() {
                           {exp.notes && <p className="text-[10px] text-slate-400">{EXPENSE_CATEGORIES.find(c => c.value === exp.notes)?.label || exp.notes}</p>}
                         </td>
                         <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-${exp.amount?.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-xs text-slate-400 text-right">{bcvRate ? toBs(exp.amount || 0) : '—'}</td>
                         <td className="px-2 py-3">
                           <button onClick={() => handleDeleteExpense(exp.id)} className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -669,6 +679,7 @@ export default function FinancesPage() {
                     <tr className="bg-red-50/50 border-t border-red-100">
                       <td colSpan={2} className="px-5 py-3 text-xs font-bold text-slate-700">Total</td>
                       <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-${tableTotal.toFixed(2)}</td>
+                      <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">{bcvRate ? toBs(tableTotal) : '—'}</td>
                       <td></td>
                     </tr>
                   </tfoot>

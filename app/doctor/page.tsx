@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useBcvRate } from '@/lib/useBcvRate'
 import {
   Users, Calendar, FileText, TrendingUp,
   Bell, DollarSign, ArrowRight, Activity,
@@ -33,6 +34,7 @@ type FinancialData = {
 
 export default function DoctorDashboard() {
   const router = useRouter()
+  const { rate: bcvRate, toBs } = useBcvRate()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
@@ -358,7 +360,8 @@ export default function DoctorDashboard() {
                 <p className="text-2xl font-bold text-teal-600">
                   ${financialData.total_revenue.toFixed(2)}
                 </p>
-                <p className="text-xs text-slate-400 mt-2">USD</p>
+                {bcvRate && <p className="text-sm text-teal-500 font-semibold">{toBs(financialData.total_revenue)}</p>}
+                <p className="text-xs text-slate-400 mt-1">USD</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -371,6 +374,9 @@ export default function DoctorDashboard() {
                   <p className="text-xl font-bold text-slate-900 mt-1">
                     ${financialData.appointment_count > 0 ? (financialData.total_revenue / financialData.appointment_count).toFixed(2) : '0.00'}
                   </p>
+                  {bcvRate && financialData.appointment_count > 0 && (
+                    <p className="text-xs text-slate-400">{toBs(financialData.total_revenue / financialData.appointment_count)}</p>
+                  )}
                 </div>
               </div>
 

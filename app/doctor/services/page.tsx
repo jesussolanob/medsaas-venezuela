@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useBcvRate } from '@/lib/useBcvRate'
 import {
   Package, Plus, Pencil, Trash2, DollarSign, Clock,
   Save, X, Loader2, ToggleLeft, ToggleRight, Eye, EyeOff, Tag,
@@ -31,6 +32,7 @@ type QuickItem = {
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white'
 
 export default function ServicesPage() {
+  const { rate: bcvRate, toBs } = useBcvRate()
   const [items, setItems] = useState<ServiceItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -283,9 +285,12 @@ export default function ServicesPage() {
                 </div>
               </div>
 
-              <div className="flex items-baseline gap-1 mb-3">
-                <span className="text-xl font-bold text-teal-600">${item.price_usd.toFixed(2)}</span>
-                <span className="text-xs text-slate-400">USD</span>
+              <div className="mb-3">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-bold text-teal-600">${item.price_usd.toFixed(2)}</span>
+                  <span className="text-xs text-slate-400">USD</span>
+                </div>
+                {bcvRate && <p className="text-xs text-slate-400 mt-0.5">{toBs(item.price_usd)}</p>}
               </div>
 
               <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
