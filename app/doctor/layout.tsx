@@ -4,8 +4,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Calendar, ClipboardList, Users,
-  DollarSign, Settings, LogOut, Activity, Menu, MessageSquarePlus,
-  Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft, TrendingUp, Bell
+  Settings, LogOut, Activity, Menu, MessageSquarePlus,
+  Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft, TrendingUp, Bell, Megaphone
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -13,18 +13,43 @@ import { CheckCircle } from 'lucide-react'
 import DoctorNotificationToast from './DoctorNotificationToast'
 
 type NavItem = { name: string; href: string; icon: any }
+type NavSection = { label: string; items: NavItem[] }
 
-const navItems: NavItem[] = [
-  { name: 'Inicio',        href: '/doctor',               icon: LayoutDashboard },
-  { name: 'Agenda',        href: '/doctor/agenda',        icon: Calendar },
-  { name: 'Pacientes',     href: '/doctor/patients',      icon: Users },
-  { name: 'Consultas',     href: '/doctor/consultations', icon: ClipboardList },
-  { name: 'Finanzas',      href: '/doctor/finances',      icon: TrendingUp },
-  { name: 'Cobros',        href: '/doctor/cobros',        icon: Receipt },
-  { name: 'Consultorios',  href: '/doctor/offices',       icon: Building2 },
-  { name: 'Servicios',     href: '/doctor/services',      icon: Package },
-  { name: 'Recordatorios', href: '/doctor/reminders',      icon: Bell },
-  { name: 'Plantillas',   href: '/doctor/templates',     icon: FileEdit },
+const topItems: NavItem[] = [
+  { name: 'Inicio', href: '/doctor',       icon: LayoutDashboard },
+  { name: 'Agenda', href: '/doctor/agenda', icon: Calendar },
+]
+
+const navSections: NavSection[] = [
+  {
+    label: 'Consultorio',
+    items: [
+      { name: 'Pacientes',    href: '/doctor/patients',      icon: Users },
+      { name: 'Consultas',    href: '/doctor/consultations', icon: ClipboardList },
+      { name: 'Consultorios', href: '/doctor/offices',       icon: Building2 },
+      { name: 'Plantillas',   href: '/doctor/templates',     icon: FileEdit },
+    ],
+  },
+  {
+    label: 'Finanzas',
+    items: [
+      { name: 'Finanzas',  href: '/doctor/finances', icon: TrendingUp },
+      { name: 'Cobros',    href: '/doctor/cobros',   icon: Receipt },
+      { name: 'Servicios', href: '/doctor/services', icon: Package },
+    ],
+  },
+  {
+    label: 'Marketing',
+    items: [
+      { name: 'Recordatorios', href: '/doctor/reminders', icon: Bell },
+    ],
+  },
+]
+
+// Flat list for active title lookup
+const allNavItems: NavItem[] = [
+  ...topItems,
+  ...navSections.flatMap(s => s.items),
 ]
 
 function isPathActive(pathname: string, href: string) {
@@ -66,7 +91,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     router.push('/login')
   }
 
-  const activeTitle = navItems.find(i => isPathActive(pathname, i.href))?.name
+  const activeTitle = allNavItems.find(i => isPathActive(pathname, i.href))?.name
     ?? (pathname.includes('/settings') ? 'Configuración' : pathname.includes('/suggestions') ? 'Sugerencias' : 'Portal Médico')
 
   return (
@@ -130,26 +155,59 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {navItems.map(item => {
-              const active = isPathActive(pathname, item.href)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={clsx(
-                    'nav-item-doc flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm transition-all',
-                    active
-                      ? 'nav-active-doc text-teal-600 font-semibold'
-                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                  )}
-                >
-                  <item.icon className={clsx('w-4 h-4 shrink-0', active && 'text-teal-500')} />
-                  {item.name}
-                </Link>
-              )
-            })}
+          <nav className="flex-1 px-3 py-4 overflow-y-auto">
+            {/* Top items (Inicio, Agenda) */}
+            <div className="space-y-0.5">
+              {topItems.map(item => {
+                const active = isPathActive(pathname, item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={clsx(
+                      'nav-item-doc flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm transition-all',
+                      active
+                        ? 'nav-active-doc text-teal-600 font-semibold'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    )}
+                  >
+                    <item.icon className={clsx('w-4 h-4 shrink-0', active && 'text-teal-500')} />
+                    {item.name}
+                  </Link>
+                )
+              })}
+            </div>
+
+            {/* Sections */}
+            {navSections.map(section => (
+              <div key={section.label} className="mt-5">
+                <p className="px-3 mb-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  {section.label}
+                </p>
+                <div className="space-y-0.5">
+                  {section.items.map(item => {
+                    const active = isPathActive(pathname, item.href)
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileOpen(false)}
+                        className={clsx(
+                          'nav-item-doc flex items-center gap-3 px-3 py-2 rounded-r-lg text-sm transition-all',
+                          active
+                            ? 'nav-active-doc text-teal-600 font-semibold'
+                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                        )}
+                      >
+                        <item.icon className={clsx('w-4 h-4 shrink-0', active && 'text-teal-500')} />
+                        {item.name}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
 
           {/* Subscription badge + footer */}
