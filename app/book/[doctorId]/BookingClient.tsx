@@ -5,9 +5,29 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Calendar, Clock, User, Phone, Mail, CheckCircle, Activity,
   ChevronLeft, ChevronRight, ChevronDown, Upload, Video, MapPin,
-  CreditCard, FileText, Shield, Check, LogIn, UserPlus
+  CreditCard, FileText, Shield, Check, LogIn, UserPlus, Stethoscope
 } from 'lucide-react'
 import { getProfessionalTitle } from '@/lib/professional-title'
+import { useBcvRate } from '@/lib/useBcvRate'
+
+// ── Brand Tokens ──────────────────────────────────────────────────────────
+const BRAND = {
+  turquoise: '#06B6D4',
+  coral: '#FF8A65',
+  ink: '#0F1A2A',
+  bone: '#FAFBFC',
+  gradient: 'linear-gradient(135deg, #06B6D4 0%, #0891b2 50%, #0E7490 100%)',
+}
+
+// ── Delta Isotipo ─────────────────────────────────────────────────────────
+function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" fill="none" className={className}>
+      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" strokeWidth="26" strokeLinecap="round" fill="none"/>
+      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" strokeWidth="26" strokeLinecap="round" fill="none"/>
+    </svg>
+  )
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type DoctorProfile = { id: string; full_name: string; specialty: string; phone: string; avatar_url: string | null; professional_title?: string; state?: string | null; city?: string | null; country?: string; office_address?: string | null; allows_online?: boolean }
@@ -40,7 +60,7 @@ function groupByDate(slots: Slot[]) {
   return map
 }
 
-const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors'
+const fi = 'w-full px-4 py-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/10 bg-white transition-colors'
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   pago_movil: '📱 Pago Móvil',
@@ -79,20 +99,20 @@ function AccordionSection({
   const isFuture = !completed && !isOpen
 
   return (
-    <div className={`border rounded-xl overflow-hidden transition-all ${
-      isOpen ? 'border-teal-400 shadow-md bg-white' :
-      isPast ? 'border-emerald-200 bg-emerald-50/50' :
-      'border-slate-200 bg-slate-50/50'
+    <div className={`rounded-2xl overflow-hidden transition-all duration-300 ${
+      isOpen ? 'shadow-lg shadow-cyan-500/10 bg-white ring-1 ring-cyan-400/50' :
+      isPast ? 'bg-white ring-1 ring-emerald-200' :
+      'bg-white/60 ring-1 ring-slate-200/80'
     }`}>
       <button
         type="button"
         onClick={isPast ? onOpen : undefined}
-        className={`w-full flex items-center gap-3 px-5 py-4 text-left transition-colors ${
-          isPast ? 'cursor-pointer hover:bg-emerald-50' : isFuture ? 'cursor-default opacity-50' : ''
+        className={`w-full flex items-center gap-3.5 px-5 py-4 text-left transition-colors ${
+          isPast ? 'cursor-pointer hover:bg-emerald-50/50' : isFuture ? 'cursor-default opacity-40' : ''
         }`}
       >
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-          isPast ? 'bg-emerald-500' : isOpen ? 'bg-teal-500' : 'bg-slate-200'
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+          isPast ? 'bg-emerald-500' : isOpen ? 'bg-cyan-500' : 'bg-slate-100'
         }`}>
           {isPast ? <Check className="w-4 h-4 text-white" /> : <Icon className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-slate-400'}`} />}
         </div>
@@ -101,7 +121,7 @@ function AccordionSection({
             {step}. {title}
           </p>
           {isPast && summary && (
-            <p className="text-xs text-emerald-600 mt-0.5 truncate">{summary}</p>
+            <p className="text-xs text-emerald-600/80 mt-0.5 truncate">{summary}</p>
           )}
         </div>
         {isPast && (
@@ -109,7 +129,7 @@ function AccordionSection({
         )}
       </button>
       {isOpen && (
-        <div className="px-5 pb-5 pt-1">
+        <div className="px-5 pb-5 pt-1 animate-in fade-in duration-200">
           {children}
         </div>
       )}
@@ -131,6 +151,9 @@ export default function BookingClient({
   paymentDetails?: Record<string, any>
   bookedSlots?: string[]
 }) {
+  // BCV rate for dual currency
+  const { rate: bcvRate, toBs } = useBcvRate()
+
   // Auth state
   const [authUser, setAuthUser] = useState<any>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -166,7 +189,6 @@ export default function BookingClient({
 
   // Slot navigation
   const [weekOffset, setWeekOffset] = useState(0)
-  const mockInsurances = ['Seguros Mercantil', 'Mapfre', 'La Previsora', 'ABA Seguros']
 
   const allSlots = generateSlots()
   const grouped = groupByDate(allSlots)
@@ -257,7 +279,6 @@ export default function BookingClient({
   useEffect(() => {
     if (selectedDate && doctorOffices.length > 0) {
       const dateObj = new Date(selectedDate + 'T12:00:00')
-      // JS getDay: 0=Sun, convert to our format: 0=Mon...6=Sun
       const jsDay = dateObj.getDay()
       const dayIdx = jsDay === 0 ? 6 : jsDay - 1
       const matchingOffice = doctorOffices.find(o =>
@@ -351,7 +372,6 @@ export default function BookingClient({
       let accessToken: string | null = null
       let sessionEmail: string | null = null
 
-      // Get access token only if authenticated
       if (authUser) {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) {
@@ -368,7 +388,7 @@ export default function BookingClient({
       const patientCedula = (form.cedula.trim() || authUser?.user_metadata?.cedula || '').trim()
       const patientEmail = sessionEmail || form.email.trim()
 
-      // Upload receipt if needed (skip if using package)
+      // Upload receipt if needed
       let receiptUrl = null
       if (!usingPackage && !useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod)) {
         if (!paymentFile) {
@@ -422,7 +442,6 @@ export default function BookingClient({
         return
       }
 
-      // Update package state after successful booking
       if (usingPackage && activePackage) {
         const newUsed = activePackage.used_sessions + 1
         if (newUsed >= activePackage.total_sessions) {
@@ -439,32 +458,42 @@ export default function BookingClient({
     setSubmitting(false)
   }
 
+  // ── Shared Font Style ────────────────────────────────────────────────────
+  const fontStyle = (
+    <style>{`@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');*{font-family:'Plus Jakarta Sans',sans-serif;}`}</style>
+  )
+
   // ── Success View ──────────────────────────────────────────────────────────
   if (done) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
-        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: BRAND.bone }}>
+      {fontStyle}
+      <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 max-w-sm w-full text-center">
+        <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-5">
           <CheckCircle className="w-8 h-8 text-emerald-500" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-2">¡Cita agendada!</h2>
-        <p className="text-sm text-slate-500 mb-4">
+        <h2 className="text-xl font-bold mb-2" style={{ color: BRAND.ink }}>¡Cita agendada!</h2>
+        <p className="text-sm text-slate-500 mb-5">
           Tu consulta con <strong>{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</strong> fue registrada.
         </p>
-        <div className="bg-slate-50 rounded-xl p-4 text-left space-y-1.5 mb-5">
-          <p className="text-xs text-slate-500"><span className="font-semibold">Fecha:</span> {selectedSlot?.label} a las {selectedSlot?.time}</p>
+        <div className="rounded-xl p-4 text-left space-y-2 mb-5" style={{ background: BRAND.bone }}>
+          <p className="text-xs text-slate-600"><span className="font-semibold">Fecha:</span> {selectedSlot?.label} a las {selectedSlot?.time}</p>
           {selectedPlan && (
-            <p className="text-xs text-slate-500">
+            <div className="text-xs text-slate-600">
               <span className="font-semibold">Plan:</span> {selectedPlan.name}
-              {usingPackage ? ' (paquete prepagado)' : ` — $${selectedPlan.price_usd} USD`}
-            </p>
+              {usingPackage ? ' (paquete prepagado)' : (
+                <>
+                  {' — '}<span className="font-bold">${selectedPlan.price_usd} USD</span>
+                  {bcvRate && <span className="text-slate-400 ml-1">({toBs(selectedPlan.price_usd)})</span>}
+                </>
+              )}
+            </div>
           )}
-          <p className="text-xs text-slate-500"><span className="font-semibold">Modalidad:</span> {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}</p>
+          <p className="text-xs text-slate-600"><span className="font-semibold">Modalidad:</span> {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}</p>
           {appointmentMode === 'presencial' && selectedOffice && (
-            <p className="text-xs text-slate-500"><span className="font-semibold">Consultorio:</span> {selectedOffice.name} — {selectedOffice.address}, {selectedOffice.city}</p>
+            <p className="text-xs text-slate-600"><span className="font-semibold">Consultorio:</span> {selectedOffice.name} — {selectedOffice.address}, {selectedOffice.city}</p>
           )}
           {appointmentMode === 'presencial' && !selectedOffice && doctor.office_address && (
-            <p className="text-xs text-slate-500"><span className="font-semibold">Dirección:</span> {doctor.office_address}</p>
+            <p className="text-xs text-slate-600"><span className="font-semibold">Dirección:</span> {doctor.office_address}</p>
           )}
         </div>
         {usingPackage && activePackage && activePackage.total_sessions - activePackage.used_sessions > 0 && (
@@ -481,27 +510,31 @@ export default function BookingClient({
             </p>
           </div>
         )}
-        <p className="text-xs text-slate-400 mb-4">El médico confirmará tu cita y se pondrá en contacto contigo.</p>
+        <p className="text-xs text-slate-400 mb-5">El médico confirmará tu cita y se pondrá en contacto contigo.</p>
         {authUser ? (
-          <a href="/patient/dashboard" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
+          <a href="/patient/dashboard" className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity" style={{ background: BRAND.turquoise }}>
             Ir a mi dashboard
           </a>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs text-slate-500">¿Quieres crear una cuenta para ver tu historial?</p>
-            <a href="/login" className="inline-block g-bg px-6 py-2 rounded-lg text-white text-sm font-semibold hover:opacity-90">
+            <a href="/login" className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity" style={{ background: BRAND.turquoise }}>
               Crear cuenta
             </a>
           </div>
         )}
+        <div className="flex items-center justify-center gap-2 mt-6 opacity-40">
+          <DeltaIsotipo size={20} />
+          <span className="text-[10px] font-semibold text-slate-400">Delta Medical CRM</span>
+        </div>
       </div>
     </div>
   )
 
   // ── Auth Gate ─────────────────────────────────────────────────────────────
   if (!authReady) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }`}</style>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: BRAND.bone }}>
+      {fontStyle}
       <div className="flex items-center gap-3 text-slate-400">
         <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -515,32 +548,52 @@ export default function BookingClient({
   // ── Main Accordion View ───────────────────────────────────────────────────
   return (
     <>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+      {fontStyle}
 
-      <div className="min-h-screen bg-slate-50">
-        {/* Compact Header */}
-        <div className="g-bg">
-          <div className="max-w-lg mx-auto px-4 py-5">
+      <div className="min-h-screen" style={{ background: BRAND.bone }}>
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <div className="relative overflow-hidden" style={{ background: BRAND.gradient }}>
+          {/* Decorative circles */}
+          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full opacity-10" style={{ background: 'white' }} />
+          <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full opacity-5" style={{ background: 'white' }} />
+
+          <div className="relative max-w-lg mx-auto px-5 py-6">
+            {/* Top bar with Delta branding */}
+            <div className="flex items-center gap-2 mb-4 opacity-70">
+              <DeltaIsotipo size={22} className="brightness-200" />
+              <span className="text-[11px] font-semibold text-white/80 tracking-wide">DELTA MEDICAL</span>
+            </div>
+
             <div className="flex items-center gap-4 text-white">
-              <div className="w-14 h-14 rounded-full bg-white/20 overflow-hidden flex items-center justify-center shrink-0 border-2 border-white/30">
+              <div className="w-16 h-16 rounded-2xl bg-white/20 overflow-hidden flex items-center justify-center shrink-0 border-2 border-white/30 backdrop-blur-sm">
                 {doctor.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={doctor.avatar_url} alt={doctor.full_name} className="w-full h-full object-cover" />
                 ) : (
-                  <Activity className="w-6 h-6 text-white" />
+                  <Stethoscope className="w-7 h-7 text-white/80" />
                 )}
               </div>
               <div>
-                <h1 className="text-lg font-bold">{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</h1>
-                <p className="text-sm text-white/70">{doctor.specialty || 'Médico especialista'}</p>
+                <h1 className="text-lg font-bold leading-tight">{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</h1>
+                <p className="text-sm text-white/70 mt-0.5">{doctor.specialty || 'Médico especialista'}</p>
+                {(doctor.city || doctor.state) && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <MapPin className="w-3 h-3 text-white/50" />
+                    <p className="text-xs text-white/50">{[doctor.city, doctor.state].filter(Boolean).join(', ')}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-lg mx-auto px-4 py-6 space-y-3">
+        {/* ── Steps ──────────────────────────────────────────────────────── */}
+        <div className="max-w-lg mx-auto px-4 py-5 space-y-3">
           {error && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{error}</div>
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+              <span className="shrink-0 mt-0.5">⚠️</span>
+              <span>{error}</span>
+            </div>
           )}
 
           {/* ── Step 1: Selecciona el plan ─────────────────────────────────── */}
@@ -568,7 +621,7 @@ export default function BookingClient({
                     setActiveStep(2)
                   }}
                   className={`w-full text-left rounded-xl p-4 transition-all border-2 ${
-                    usingPackage ? 'border-violet-500 bg-violet-50' : 'border-violet-300 bg-violet-50/50 hover:border-violet-500'
+                    usingPackage ? 'border-violet-500 bg-violet-50 shadow-md shadow-violet-100' : 'border-violet-300 bg-violet-50/50 hover:border-violet-500'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -598,16 +651,16 @@ export default function BookingClient({
                       setActiveStep(2)
                     }}
                     className={`relative w-full text-left rounded-xl p-4 transition-all ${
-                      isSelected ? 'border-2 border-teal-500 bg-teal-50' :
-                      isMiddle ? 'border-2 border-teal-300 bg-white' :
-                      'border-2 border-slate-200 bg-white hover:border-teal-300'
+                      isSelected ? 'border-2 border-cyan-500 bg-cyan-50/50 shadow-md shadow-cyan-100' :
+                      isMiddle ? 'border-2 border-cyan-300 bg-white hover:border-cyan-400' :
+                      'border-2 border-slate-200 bg-white hover:border-cyan-300'
                     }`}
                   >
-                    {isMiddle && !isSelected && <span className="absolute -top-2.5 left-3 text-[10px] font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">Más elegido</span>}
+                    {isMiddle && !isSelected && <span className="absolute -top-2.5 left-3 text-[10px] font-bold bg-white px-2 py-0.5 rounded-full border border-cyan-200" style={{ color: BRAND.turquoise }}>Más elegido</span>}
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-bold text-slate-900">{plan.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <p className="font-bold" style={{ color: BRAND.ink }}>{plan.name}</p>
+                        <div className="flex items-center gap-2 mt-1">
                           <Clock className="w-3 h-3 text-slate-400" />
                           <p className="text-xs text-slate-500">{plan.duration_minutes} min</p>
                           {plan.sessions_count && plan.sessions_count > 1 && (
@@ -617,7 +670,12 @@ export default function BookingClient({
                           )}
                         </div>
                       </div>
-                      <p className="text-2xl font-extrabold text-teal-600">${plan.price_usd}</p>
+                      <div className="text-right">
+                        <p className="text-2xl font-extrabold" style={{ color: BRAND.turquoise }}>${plan.price_usd}</p>
+                        {bcvRate && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">{toBs(plan.price_usd)}</p>
+                        )}
+                      </div>
                     </div>
                   </button>
                 )
@@ -636,16 +694,16 @@ export default function BookingClient({
             onOpen={() => setActiveStep(2)}
           >
             <div className="space-y-3">
-              <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ background: BRAND.bone }}>
                 <button onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))} disabled={weekOffset === 0}
-                  className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center disabled:opacity-30">
+                  className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center disabled:opacity-30 hover:border-cyan-300 transition-colors">
                   <ChevronLeft className="w-3.5 h-3.5 text-slate-500" />
                 </button>
                 <span className="text-xs font-semibold text-slate-600">
                   {weekDates.length > 0 && `${new Date(weekDates[0]+'T12:00:00').toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })} — ${new Date(weekDates[weekDates.length - 1]+'T12:00:00').toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })}`}
                 </span>
                 <button onClick={() => setWeekOffset(weekOffset + 1)} disabled={(weekOffset + 1) * 5 >= dates.length}
-                  className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center disabled:opacity-30">
+                  className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center disabled:opacity-30 hover:border-cyan-300 transition-colors">
                   <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
                 </button>
               </div>
@@ -665,13 +723,14 @@ export default function BookingClient({
                       key={date}
                       onClick={() => {
                         setSelectedDate(date)
-                        setSelectedSlot(null) // reset time when changing date
+                        setSelectedSlot(null)
                       }}
                       className={`rounded-xl p-2.5 text-center transition-all ${
-                        isSel ? 'bg-teal-500 text-white shadow-md' :
+                        isSel ? 'text-white shadow-lg shadow-cyan-500/20' :
                         availCount === 0 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' :
-                        'bg-white border border-slate-200 hover:border-teal-300 text-slate-700'
+                        'bg-white border border-slate-200 hover:border-cyan-300 text-slate-700'
                       }`}
+                      style={isSel ? { background: BRAND.turquoise } : undefined}
                       disabled={availCount === 0}
                     >
                       <p className={`text-[10px] font-semibold uppercase ${isSel ? 'text-white/80' : 'text-slate-400'}`}>{dayName}</p>
@@ -702,11 +761,12 @@ export default function BookingClient({
                             }
                           }}
                           disabled={booked}
-                          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
                             booked ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through' :
-                            isSel ? 'bg-teal-500 text-white shadow-md' :
-                            'bg-white border border-slate-200 text-slate-700 hover:border-teal-400 hover:text-teal-600'
+                            isSel ? 'text-white shadow-md shadow-cyan-500/20' :
+                            'bg-white border border-slate-200 text-slate-700 hover:border-cyan-400'
                           }`}
+                          style={isSel ? { background: BRAND.turquoise } : undefined}
                         >
                           {slot.time}
                         </button>
@@ -733,15 +793,15 @@ export default function BookingClient({
                 <button
                   onClick={() => { setAppointmentMode('presencial'); setActiveStep(4) }}
                   className={`p-4 rounded-xl border-2 text-left transition-all ${
-                    appointmentMode === 'presencial' ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
+                    appointmentMode === 'presencial' ? 'border-cyan-500 bg-cyan-50/50 shadow-md shadow-cyan-100' : 'border-slate-200 bg-white hover:border-cyan-300'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
-                      <MapPin className="w-5 h-5 text-teal-600" />
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: appointmentMode === 'presencial' ? '#06B6D410' : '#f1f5f9' }}>
+                      <MapPin className="w-5 h-5" style={{ color: appointmentMode === 'presencial' ? BRAND.turquoise : '#94a3b8' }} />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-900">Presencial</p>
+                      <p className="font-bold" style={{ color: BRAND.ink }}>Presencial</p>
                       <p className="text-xs text-slate-500">En el consultorio</p>
                     </div>
                   </div>
@@ -751,15 +811,15 @@ export default function BookingClient({
                   <button
                     onClick={() => { setAppointmentMode('online'); setSelectedOffice(null); setActiveStep(4) }}
                     className={`p-4 rounded-xl border-2 text-left transition-all ${
-                      appointmentMode === 'online' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'
+                      appointmentMode === 'online' ? 'border-blue-500 bg-blue-50/50 shadow-md shadow-blue-100' : 'border-slate-200 bg-white hover:border-blue-300'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                        <Video className="w-5 h-5 text-blue-600" />
+                      <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: appointmentMode === 'online' ? '#3b82f610' : '#f1f5f9' }}>
+                        <Video className="w-5 h-5" style={{ color: appointmentMode === 'online' ? '#3b82f6' : '#94a3b8' }} />
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900">Online</p>
+                        <p className="font-bold" style={{ color: BRAND.ink }}>Online</p>
                         <p className="text-xs text-slate-500">Videollamada</p>
                       </div>
                     </div>
@@ -769,13 +829,13 @@ export default function BookingClient({
 
               {/* Show assigned office for the selected date */}
               {appointmentMode === 'presencial' && selectedOffice && (
-                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+                <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4">
                   <div className="flex items-start gap-3">
-                    <MapPin className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                    <MapPin className="w-4 h-4 shrink-0 mt-0.5" style={{ color: BRAND.turquoise }} />
                     <div>
-                      <p className="text-sm font-bold text-teal-800">{selectedOffice.name}</p>
-                      <p className="text-xs text-teal-600 mt-0.5">{selectedOffice.address}, {selectedOffice.city}</p>
-                      {selectedOffice.phone && <p className="text-xs text-teal-500 mt-0.5">{selectedOffice.phone}</p>}
+                      <p className="text-sm font-bold" style={{ color: BRAND.ink }}>{selectedOffice.name}</p>
+                      <p className="text-xs text-cyan-700 mt-0.5">{selectedOffice.address}, {selectedOffice.city}</p>
+                      {selectedOffice.phone && <p className="text-xs text-cyan-600 mt-0.5">{selectedOffice.phone}</p>}
                     </div>
                   </div>
                 </div>
@@ -806,11 +866,10 @@ export default function BookingClient({
           >
             <div className="space-y-4">
               {authUser ? (
-                /* Already authenticated — show summary and continue */
                 <div className="space-y-3">
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
                         <Check className="w-4 h-4 text-emerald-600" />
                       </div>
                       <div>
@@ -818,7 +877,7 @@ export default function BookingClient({
                         <p className="text-xs text-emerald-600">{authUser.email}</p>
                       </div>
                     </div>
-                    <div className="space-y-1 ml-11">
+                    <div className="space-y-1 ml-12">
                       <p className="text-xs text-slate-600"><span className="font-semibold">Nombre:</span> {form.full_name || authUser.user_metadata?.full_name}</p>
                       {(form.phone || authUser.user_metadata?.phone) && (
                         <p className="text-xs text-slate-600"><span className="font-semibold">Teléfono:</span> {form.phone || authUser.user_metadata?.phone}</p>
@@ -828,27 +887,27 @@ export default function BookingClient({
                   <button
                     type="button"
                     onClick={() => setActiveStep(usingPackage ? 6 : 5)}
-                    className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors"
+                    className="w-full py-3 rounded-xl text-sm font-bold transition-all text-white hover:opacity-90"
+                    style={{ background: BRAND.turquoise }}
                   >
                     Continuar
                   </button>
                 </div>
               ) : !guestMode && !authMode ? (
-                /* Choice: login or continue as guest */
                 <div className="space-y-3">
                   <p className="text-sm text-slate-600">Puedes iniciar sesión para acceder a tus paquetes prepagados, o continuar como invitado.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setAuthMode('login')}
-                      className="p-4 rounded-xl border-2 border-teal-300 bg-white hover:border-teal-500 text-left transition-all"
+                      className="p-4 rounded-xl border-2 border-cyan-300 bg-white hover:border-cyan-500 text-left transition-all"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
-                          <LogIn className="w-5 h-5 text-teal-600" />
+                        <div className="w-11 h-11 rounded-xl bg-cyan-50 flex items-center justify-center shrink-0">
+                          <LogIn className="w-5 h-5" style={{ color: BRAND.turquoise }} />
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900">Iniciar sesión</p>
+                          <p className="font-bold" style={{ color: BRAND.ink }}>Iniciar sesión</p>
                           <p className="text-xs text-slate-500">Accede a tus paquetes</p>
                         </div>
                       </div>
@@ -856,14 +915,14 @@ export default function BookingClient({
                     <button
                       type="button"
                       onClick={() => setGuestMode(true)}
-                      className="p-4 rounded-xl border-2 border-slate-200 bg-white hover:border-teal-300 text-left transition-all"
+                      className="p-4 rounded-xl border-2 border-slate-200 bg-white hover:border-cyan-300 text-left transition-all"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                          <UserPlus className="w-5 h-5 text-slate-500" />
+                        <div className="w-11 h-11 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                          <UserPlus className="w-5 h-5 text-slate-400" />
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900">Continuar como invitado</p>
+                          <p className="font-bold" style={{ color: BRAND.ink }}>Continuar como invitado</p>
                           <p className="text-xs text-slate-500">Sin crear cuenta</p>
                         </div>
                       </div>
@@ -871,81 +930,78 @@ export default function BookingClient({
                   </div>
                 </div>
               ) : authMode === 'login' ? (
-                /* Login form */
                 <form onSubmit={handleAuthLogin} className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email</label>
                     <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={fi} required placeholder="tu@email.com" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Contraseña</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Contraseña</label>
                     <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className={fi} required placeholder="••••••••" />
                   </div>
-                  <button type="submit" disabled={submitting} className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-60">
+                  <button type="submit" disabled={submitting} className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 disabled:opacity-60" style={{ background: BRAND.turquoise }}>
                     {submitting ? 'Verificando...' : 'Iniciar sesión'}
                   </button>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setAuthMode('register')} className="text-xs text-teal-600 hover:underline">Crear cuenta nueva</button>
+                    <button type="button" onClick={() => setAuthMode('register')} className="text-xs font-semibold hover:underline" style={{ color: BRAND.turquoise }}>Crear cuenta nueva</button>
                     <span className="text-xs text-slate-300">|</span>
                     <button type="button" onClick={() => { setAuthMode(null); setGuestMode(true) }} className="text-xs text-slate-500 hover:underline">Continuar sin cuenta</button>
                   </div>
                 </form>
               ) : authMode === 'register' ? (
-                /* Register form */
                 <form onSubmit={handleAuthRegister} className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nombre completo</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nombre completo</label>
                     <input type="text" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className={fi} required placeholder="Tu nombre" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cédula</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Cédula</label>
                     <input type="text" value={form.cedula} onChange={e => setForm(f => ({ ...f, cedula: e.target.value }))} className={fi} placeholder="V-12345678" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Teléfono</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Teléfono</label>
                     <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={fi} placeholder="0412-1234567" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email</label>
                     <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={fi} required placeholder="tu@email.com" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Contraseña</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Contraseña</label>
                     <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className={fi} required placeholder="Mínimo 6 caracteres" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Confirmar contraseña</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirmar contraseña</label>
                     <input type="password" value={form.passwordConfirm} onChange={e => setForm(f => ({ ...f, passwordConfirm: e.target.value }))} className={fi} required placeholder="Repite tu contraseña" />
                   </div>
-                  <button type="submit" disabled={submitting} className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-60">
+                  <button type="submit" disabled={submitting} className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 disabled:opacity-60" style={{ background: BRAND.turquoise }}>
                     {submitting ? 'Registrando...' : 'Crear cuenta y continuar'}
                   </button>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setAuthMode('login')} className="text-xs text-teal-600 hover:underline">Ya tengo cuenta</button>
+                    <button type="button" onClick={() => setAuthMode('login')} className="text-xs font-semibold hover:underline" style={{ color: BRAND.turquoise }}>Ya tengo cuenta</button>
                     <span className="text-xs text-slate-300">|</span>
                     <button type="button" onClick={() => { setAuthMode(null); setGuestMode(true) }} className="text-xs text-slate-500 hover:underline">Continuar sin cuenta</button>
                   </div>
                 </form>
               ) : (
-                /* Guest form */
                 <div className="space-y-3">
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                     <p className="text-xs text-amber-700"><span className="font-semibold">Nota:</span> Como invitado no podrás usar paquetes prepagados ni ver tu historial.</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Nombre completo <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nombre completo <span className="text-red-500">*</span></label>
                     <input type="text" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className={fi} required placeholder="Tu nombre completo" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email <span className="text-red-500">*</span></label>
                     <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={fi} required placeholder="tu@email.com" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Teléfono</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Teléfono</label>
                     <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={fi} placeholder="0412-1234567" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Cédula</label>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Cédula</label>
                     <input type="text" value={form.cedula} onChange={e => setForm(f => ({ ...f, cedula: e.target.value }))} className={fi} placeholder="V-12345678" />
                   </div>
                   <button
@@ -958,11 +1014,12 @@ export default function BookingClient({
                       setError('')
                       setActiveStep(usingPackage ? 6 : 5)
                     }}
-                    className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors"
+                    className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
+                    style={{ background: BRAND.turquoise }}
                   >
                     Continuar
                   </button>
-                  <button type="button" onClick={() => { setGuestMode(false); setAuthMode('login') }} className="text-xs text-teal-600 hover:underline">
+                  <button type="button" onClick={() => { setGuestMode(false); setAuthMode('login') }} className="text-xs font-semibold hover:underline" style={{ color: BRAND.turquoise }}>
                     Prefiero iniciar sesión
                   </button>
                 </div>
@@ -985,7 +1042,19 @@ export default function BookingClient({
             onOpen={() => setActiveStep(5)}
           >
             <div className="space-y-4">
-              {/* Payment methods */}
+              {/* Amount reminder */}
+              {selectedPlan && (
+                <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: BRAND.bone }}>
+                  <span className="text-xs font-semibold text-slate-500">Monto a pagar</span>
+                  <div className="text-right">
+                    <span className="text-sm font-bold" style={{ color: BRAND.ink }}>${selectedPlan.price_usd} USD</span>
+                    {bcvRate && (
+                      <span className="block text-[11px] text-slate-400">{toBs(selectedPlan.price_usd)}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   {(paymentMethods.length > 0
@@ -994,8 +1063,8 @@ export default function BookingClient({
                   ).map(method => (
                     <button key={method} type="button"
                       onClick={() => setSelectedPaymentMethod(method as PaymentMethod)}
-                      className={`p-3 rounded-lg border-2 text-left text-sm font-semibold transition-all ${
-                        selectedPaymentMethod === method ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-teal-300'
+                      className={`p-3 rounded-xl border-2 text-left text-sm font-semibold transition-all ${
+                        selectedPaymentMethod === method ? 'border-cyan-500 bg-cyan-50/50 shadow-sm' : 'border-slate-200 bg-white hover:border-cyan-300'
                       }`}>
                       {PAYMENT_LABELS[method as PaymentMethod] || method}
                     </button>
@@ -1004,7 +1073,7 @@ export default function BookingClient({
 
                 {/* Show payment details for transfer methods */}
                 {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && paymentDetails?.[selectedPaymentMethod] && (
-                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 space-y-1 text-xs">
+                  <div className="rounded-xl p-3.5 border border-slate-200 space-y-1 text-xs" style={{ background: BRAND.bone }}>
                     <p className="font-bold text-slate-700">Datos para transferencia:</p>
                     {Object.entries(paymentDetails[selectedPaymentMethod] || {}).map(([key, val]) => (
                       val ? <p key={key} className="text-slate-600"><span className="font-semibold capitalize">{key}:</span> {String(val)}</p> : null
@@ -1014,12 +1083,12 @@ export default function BookingClient({
 
                 {/* Receipt upload */}
                 {selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-2">
+                  <div className="border border-dashed border-slate-300 rounded-xl p-4 space-y-2" style={{ background: `${BRAND.coral}08` }}>
                     <p className="text-sm font-medium text-slate-700">Comprobante de pago <span className="text-red-500">*</span></p>
-                    <label className="flex items-center justify-center border-2 border-dashed border-orange-300 rounded-lg p-4 cursor-pointer hover:bg-orange-100 transition-colors">
+                    <label className="flex items-center justify-center border-2 border-dashed rounded-xl p-4 cursor-pointer hover:bg-white/50 transition-colors" style={{ borderColor: `${BRAND.coral}40` }}>
                       <input type="file" accept="image/*,application/pdf" onChange={e => setPaymentFile(e.target.files?.[0] || null)} className="hidden" />
                       <div className="text-center">
-                        <Upload className="w-5 h-5 text-orange-500 mx-auto mb-1" />
+                        <Upload className="w-5 h-5 mx-auto mb-1" style={{ color: BRAND.coral }} />
                         <p className="text-sm font-medium text-slate-700">{paymentFile ? paymentFile.name : 'Sube comprobante (JPG, PNG, PDF)'}</p>
                       </div>
                     </label>
@@ -1029,8 +1098,8 @@ export default function BookingClient({
 
                 {/* Cash note */}
                 {selectedPaymentMethod && !requiresReceipt(selectedPaymentMethod as PaymentMethod) && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <p className="text-xs text-green-700"><span className="font-semibold">Nota:</span> Pagarás el día de la consulta ({PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]})</p>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <p className="text-xs text-emerald-700"><span className="font-semibold">Nota:</span> Pagarás el día de la consulta ({PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]})</p>
                   </div>
                 )}
               </div>
@@ -1040,7 +1109,8 @@ export default function BookingClient({
                 <button
                   type="button"
                   onClick={() => setActiveStep(6)}
-                  className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-bold transition-colors"
+                  className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
+                  style={{ background: BRAND.turquoise }}
                 >
                   Continuar
                 </button>
@@ -1061,44 +1131,49 @@ export default function BookingClient({
           >
             <div className="space-y-4">
               {/* Summary card */}
-              <div className={`rounded-xl p-4 space-y-2 text-sm border ${usingPackage ? 'bg-violet-50 border-violet-200' : 'bg-teal-50 border-teal-200'}`}>
+              <div className={`rounded-xl p-4 space-y-3 text-sm ${usingPackage ? 'bg-violet-50 border border-violet-200' : 'bg-cyan-50/50 border border-cyan-200'}`}>
                 <div className="flex items-center justify-between">
-                  <span className={`font-semibold ${usingPackage ? 'text-violet-700' : 'text-teal-700'}`}>{selectedPlan?.name}</span>
+                  <span className={`font-bold ${usingPackage ? 'text-violet-700' : ''}`} style={!usingPackage ? { color: BRAND.ink } : undefined}>{selectedPlan?.name}</span>
                   {usingPackage && activePackage ? (
                     <span className="text-xs font-bold text-violet-700 bg-violet-100 px-2.5 py-1 rounded-full">
                       Paquete ({activePackage.used_sessions + 1}/{activePackage.total_sessions})
                     </span>
                   ) : (
-                    <span className="text-teal-800 font-bold">${selectedPlan?.price_usd} USD</span>
+                    <div className="text-right">
+                      <span className="font-bold" style={{ color: BRAND.ink }}>${selectedPlan?.price_usd} USD</span>
+                      {bcvRate && selectedPlan && (
+                        <span className="block text-[11px] text-slate-400">{toBs(selectedPlan.price_usd)}</span>
+                      )}
+                    </div>
                   )}
                 </div>
-                <div className={`flex items-center gap-2 text-xs ${usingPackage ? 'text-violet-600' : 'text-teal-600'}`}>
+                <div className={`flex items-center gap-2 text-xs ${usingPackage ? 'text-violet-600' : 'text-cyan-700'}`}>
                   <Calendar className="w-3.5 h-3.5" />
                   <span>{selectedSlot?.label} a las {selectedSlot?.time}</span>
                 </div>
-                <div className={`flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-lg w-fit ${
-                  appointmentMode === 'online' ? 'bg-blue-100 text-blue-700' : usingPackage ? 'bg-violet-100 text-violet-700' : 'bg-teal-100 text-teal-700'
+                <div className={`flex items-center gap-2 text-xs font-semibold px-2.5 py-1.5 rounded-lg w-fit ${
+                  appointmentMode === 'online' ? 'bg-blue-100 text-blue-700' : usingPackage ? 'bg-violet-100 text-violet-700' : 'bg-cyan-100 text-cyan-700'
                 }`}>
                   {appointmentMode === 'online' ? <Video className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
                   {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}
                 </div>
                 {!usingPackage && (
-                  <div className="flex items-center gap-2 text-xs text-teal-600">
+                  <div className="flex items-center gap-2 text-xs text-cyan-700">
                     <CreditCard className="w-3.5 h-3.5" />
                     <span>{useInsurance ? `Seguro: ${selectedInsurance}` : PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]}</span>
                   </div>
                 )}
                 {usingPackage && (
-                  <p className="text-xs text-violet-600">Ya pagado con tu paquete activo</p>
+                  <p className="text-xs text-violet-600 font-medium">Ya pagado con tu paquete activo</p>
                 )}
               </div>
 
               {/* Patient info */}
-              <div className="bg-slate-50 rounded-lg p-3 space-y-1">
-                <p className="text-xs text-slate-500"><span className="font-semibold">Paciente:</span> {form.full_name || authUser?.user_metadata?.full_name}</p>
-                <p className="text-xs text-slate-500"><span className="font-semibold">Email:</span> {authUser?.email || form.email}</p>
+              <div className="rounded-xl p-3.5 space-y-1" style={{ background: BRAND.bone }}>
+                <p className="text-xs text-slate-600"><span className="font-semibold">Paciente:</span> {form.full_name || authUser?.user_metadata?.full_name}</p>
+                <p className="text-xs text-slate-600"><span className="font-semibold">Email:</span> {authUser?.email || form.email}</p>
                 {(form.phone || authUser?.user_metadata?.phone) && (
-                  <p className="text-xs text-slate-500"><span className="font-semibold">Teléfono:</span> {form.phone || authUser?.user_metadata?.phone}</p>
+                  <p className="text-xs text-slate-600"><span className="font-semibold">Teléfono:</span> {form.phone || authUser?.user_metadata?.phone}</p>
                 )}
                 {!authUser && (
                   <p className="text-[10px] text-amber-600 mt-1 font-medium">Agendando como invitado</p>
@@ -1121,7 +1196,8 @@ export default function BookingClient({
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="w-full g-bg py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all"
+                style={{ background: BRAND.gradient }}
               >
                 {submitting ? (
                   <>
@@ -1140,6 +1216,12 @@ export default function BookingClient({
               </button>
             </div>
           </AccordionSection>
+
+          {/* ── Footer branding ──────────────────────────────────────────── */}
+          <div className="flex items-center justify-center gap-2 py-4 opacity-30">
+            <DeltaIsotipo size={18} />
+            <span className="text-[10px] font-semibold text-slate-400">Delta Medical CRM</span>
+          </div>
         </div>
       </div>
     </>
