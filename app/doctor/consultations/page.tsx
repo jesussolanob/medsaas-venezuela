@@ -145,6 +145,18 @@ function ConsultationsPage() {
   })
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false)
 
+  // Schedule / time slot state for new consultation
+  type AvailabilitySlot = { day_of_week: number; start_time: string; end_time: string; is_enabled: boolean }
+  type BlockedSlot = { blocked_date: string; start_time?: string; end_time?: string }
+  const [scheduleSlots, setScheduleSlots] = useState<AvailabilitySlot[]>([])
+  const [blockedDates, setBlockedDates] = useState<BlockedSlot[]>([])
+  const [slotDuration, setSlotDuration] = useState(30)
+  const [bookedTimes, setBookedTimes] = useState<string[]>([])
+  const [selectedDate, setSelectedDate] = useState<string>('')
+  const [selectedTime, setSelectedTime] = useState<string>('')
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [scheduleLoaded, setScheduleLoaded] = useState(false)
+
   // Recipe modal
   const [showRecipe, setShowRecipe] = useState(false)
   const [recipe, setRecipe] = useState<Recipe>({ medications: [], notes: '' })
@@ -209,6 +221,81 @@ function ConsultationsPage() {
 
   const today = new Date().toISOString().split('T')[0]
 
+  // Generate available dates (next 30 days, based on doctor's schedule)
+  const availableDates = (() => {
+    const dates: { date: string; label: string; dayOfWeek: number }[] = []
+    const now = new Date()
+    for (let d = 0; d <= 30; d++) {
+      const dt = new Date(now)
+      dt.setDate(now.getDate() + d)
+      const dow = dt.getDay() // 0=Sunday
+      const dateStr = dt.toISOString().split('T')[0]
+      // If schedule is loaded, only show days that have availability
+      if (scheduleLoaded && scheduleSlots.length > 0) {
+        const hasSlots = scheduleSlots.some(s => s.day_of_week === dow && s.is_enabled)
+        if (!hasSlots) continue
+      } else {
+        // Default: skip Sundays
+        if (dow === 0) continue
+      }
+      // Skip blocked dates
+      if (blockedDates.some(b => b.blocked_date === dateStr)) continue
+      const label = dt.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' })
+      dates.push({ date: dateStr, label, dayOfWeek: dow })
+    }
+    return dates
+  })()
+
+  // Generate time slots for selected date
+  const timeSlotsForDate = (() => {
+    if (!selectedDate) return []
+    const dateObj = new Date(selectedDate + 'T00:00:00')
+    const dow = dateObj.getDay()
+    const duration = slotDuration || 30
+
+    let daySlots: { start: string; end: string }[] = []
+    if (scheduleLoaded && scheduleSlots.length > 0) {
+      daySlots = scheduleSlots
+        .filter(s => s.day_of_week === dow && s.is_enabled)
+        .map(s => ({ start: s.start_time, end: s.end_time }))
+    } else {
+      // Default schedule
+      daySlots = [
+        { start: '08:00', end: '12:00' },
+        { start: '14:00', end: '18:00' },
+      ]
+    }
+
+    const slots: string[] = []
+    daySlots.forEach(range => {
+      const [sh, sm] = range.start.split(':').map(Number)
+      const [eh, em] = range.end.split(':').map(Number)
+      let current = sh * 60 + sm
+      const endMin = eh * 60 + em
+      while (current + duration <= endMin) {
+        const h = Math.floor(current / 60)
+        const m = current % 60
+        slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+        current += duration
+      }
+    })
+
+    return slots
+  })()
+
+  // Check if a time slot is booked
+  const isTimeBooked = (date: string, time: string) => {
+    const slotTime = new Date(`${date}T${time}:00`).getTime()
+    const bufferMs = (slotDuration || 30) * 60 * 1000
+    return bookedTimes.some(bt => {
+      const bookedTime = new Date(bt).getTime()
+      return Math.abs(bookedTime - slotTime) < bufferMs
+    })
+  }
+
+  // Week navigation for dates
+  const weekDates = availableDates.slice(weekOffset * 5, weekOffset * 5 + 5)
+
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
@@ -254,6 +341,39 @@ function ConsultationsPage() {
           .eq('is_active', true)
           .order('price_usd')
         setPricingPlans(plansData ?? [])
+
+        // Cargar horario del doctor para bloques de citas
+        try {
+          const schedRes = await fetch('/api/doctor/schedule')
+          if (schedRes.ok) {
+            const schedData = await schedRes.json()
+            setScheduleSlots(schedData.slots || [])
+            setBlockedDates(schedData.blocked || [])
+            setSlotDuration(schedData.config?.slot_duration || 30)
+            setScheduleLoaded(true)
+          }
+        } catch { /* schedule not configured */ }
+
+        // Cargar citas existentes para marcar slots ocupados
+        const startOfRange = new Date()
+        const endOfRange = new Date(Date.now() + 30 * 86400000)
+        const { data: existingAppts } = await supabase
+          .from('appointments')
+          .select('scheduled_at')
+          .eq('doctor_id', user.id)
+          .gte('scheduled_at', startOfRange.toISOString())
+          .lte('scheduled_at', endOfRange.toISOString())
+        const { data: existingCons } = await supabase
+          .from('consultations')
+          .select('consultation_date')
+          .eq('doctor_id', user.id)
+          .gte('consultation_date', startOfRange.toISOString())
+          .lte('consultation_date', endOfRange.toISOString())
+        const booked = [
+          ...(existingAppts || []).map(a => a.scheduled_at),
+          ...(existingCons || []).map(c => c.consultation_date),
+        ]
+        setBookedTimes(booked)
 
         // Cargar configuraciones de plantillas para PDFs
         const { data: tplData } = await supabase
@@ -1868,12 +1988,88 @@ function ConsultationsPage() {
                   )}
                 </div>
 
-                {/* Step 2: Date and time */}
-                <div className="space-y-2">
+                {/* Step 2: Date and time slot selection */}
+                <div className="space-y-3">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fecha y hora</label>
-                  <input type="datetime-local" value={newConsultation.consultation_date}
-                    onChange={e => setNewConsultation(p => ({ ...p, consultation_date: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none" />
+
+                  {/* Date selector */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <button type="button" onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))} disabled={weekOffset === 0}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition-colors">
+                        <ChevronDown className="w-4 h-4 rotate-90" />
+                      </button>
+                      <span className="text-xs text-slate-400">Selecciona un día</span>
+                      <button type="button" onClick={() => setWeekOffset(weekOffset + 1)} disabled={weekOffset * 5 + 5 >= availableDates.length}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition-colors">
+                        <ChevronDown className="w-4 h-4 -rotate-90" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {weekDates.map(d => {
+                        const isSelected = selectedDate === d.date
+                        const isToday = d.date === today
+                        return (
+                          <button key={d.date} type="button"
+                            onClick={() => { setSelectedDate(d.date); setSelectedTime(''); setNewConsultation(p => ({ ...p, consultation_date: '' })) }}
+                            className={`py-2 px-1 rounded-xl text-center transition-all border-2 ${
+                              isSelected
+                                ? 'border-teal-400 bg-teal-50 text-teal-700'
+                                : 'border-slate-100 bg-white hover:border-teal-200 text-slate-600'
+                            }`}>
+                            <p className="text-[10px] font-medium capitalize">{d.label.split(' ')[0]}</p>
+                            <p className={`text-sm font-bold ${isToday ? 'text-teal-600' : ''}`}>{d.label.split(' ').slice(1).join(' ')}</p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Time slot grid */}
+                  {selectedDate && (
+                    <div>
+                      <p className="text-xs text-slate-400 mb-2">Horarios disponibles</p>
+                      {timeSlotsForDate.length === 0 ? (
+                        <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-700">
+                          No hay horarios disponibles para este día. Configura tu disponibilidad en Agenda.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                          {timeSlotsForDate.map(time => {
+                            const booked = isTimeBooked(selectedDate, time)
+                            const isSelected = selectedTime === time
+                            return (
+                              <button key={time} type="button"
+                                disabled={booked}
+                                onClick={() => {
+                                  setSelectedTime(time)
+                                  const dateTimeISO = new Date(`${selectedDate}T${time}:00`).toISOString()
+                                  setNewConsultation(p => ({ ...p, consultation_date: dateTimeISO }))
+                                }}
+                                className={`py-2 px-2 rounded-lg text-xs font-semibold transition-all ${
+                                  booked
+                                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through'
+                                    : isSelected
+                                    ? 'bg-teal-500 text-white shadow-md'
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-600'
+                                }`}>
+                                {time}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {selectedDate && selectedTime && (
+                    <div className="flex items-center gap-2 bg-teal-50 rounded-lg px-3 py-2">
+                      <CheckCircle className="w-4 h-4 text-teal-500" />
+                      <span className="text-sm font-semibold text-teal-700">
+                        {new Date(`${selectedDate}T${selectedTime}:00`).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })} a las {selectedTime}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Step 3: Reason */}
