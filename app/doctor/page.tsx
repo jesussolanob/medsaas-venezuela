@@ -133,19 +133,18 @@ export default function DoctorDashboard() {
       const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0)
       monthEnd.setHours(23, 59, 59, 999)
 
-      // Financial data: from consultations (single source of truth)
-      // Count ALL consultations that have an amount (regardless of payment_status)
-      const { data: monthlyConsultations } = await supabase
-        .from('consultations')
-        .select('amount, payment_status')
+      // Financial data: same source as /doctor/finances page
+      // Uses appointments with status='completed' and plan_price as amount
+      const { data: completedAppts } = await supabase
+        .from('appointments')
+        .select('plan_price')
         .eq('doctor_id', user.id)
-        .gte('consultation_date', monthStart.toISOString())
-        .lte('consultation_date', monthEnd.toISOString())
+        .eq('status', 'completed')
+        .gte('scheduled_at', monthStart.toISOString())
+        .lte('scheduled_at', monthEnd.toISOString())
 
-      // Sum all consultations with an amount > 0 (income tracker, not just "approved")
-      const paidConsultations = (monthlyConsultations || []).filter(c => Number(c.amount) > 0)
-      const totalRevenue = paidConsultations.reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
-      const appointmentCount = paidConsultations.length
+      const totalRevenue = (completedAppts || []).reduce((sum, a) => sum + (Number(a.plan_price) || 0), 0)
+      const appointmentCount = (completedAppts || []).length
 
       setProfile(prof)
       setSubscription(sub)
