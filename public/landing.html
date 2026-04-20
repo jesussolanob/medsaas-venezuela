@@ -215,6 +215,25 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
   transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .nav-links a:hover::after { width: 100%; }
+.nav-cta-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-login {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: var(--dh-r-pill);
+  background: transparent;
+  color: var(--dh-ink);
+  border: 1.5px solid var(--dh-gray-200);
+  transition: all 0.2s;
+}
+.nav-login:hover {
+  border-color: var(--dh-ink);
+  transform: translateY(-1px);
+}
 .nav-cta {
   font-size: 14px;
   font-weight: 600;
@@ -1202,6 +1221,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       <a href="#especialidades">Especialidades</a>
     </div>
     <div class="nav-cta-wrap">
+      <a href="/login" class="nav-login">Iniciar sesión</a>
       <a href="/register" class="nav-cta">Comenzar gratis</a>
     </div>
     <button class="nav-mobile-toggle" onclick="document.querySelector('.nav-links').classList.toggle('show-mobile')">
