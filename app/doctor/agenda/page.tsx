@@ -216,6 +216,7 @@ export default function AgendaPage() {
     payment_reference: '',
   })
   const [creatingConsulta, setCreatingConsulta] = useState(false)
+  const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([])
 
   const weekDates = getWeekDates(weekOffset)
   const monthCells = getMonthDates(monthYear.year, monthYear.month)
@@ -262,6 +263,16 @@ export default function AgendaPage() {
       .eq('is_active', true)
       .order('price_usd')
     setPricingPlans(plans || [])
+
+    // Load doctor's active payment methods from profile
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('payment_methods')
+      .eq('id', user.id)
+      .single()
+    if (profileData?.payment_methods && Array.isArray(profileData.payment_methods)) {
+      setDoctorPaymentMethods(profileData.payment_methods)
+    }
 
     // 2. Load CONFIRMED consultations (only recent + future — last 30 days + next 60 days)
     const pastCutoff = new Date()
@@ -1351,14 +1362,18 @@ export default function AgendaPage() {
                         onChange={e => setNewConsulta(prev => ({ ...prev, payment_method: e.target.value }))}
                         className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                       >
-                        <option value="efectivo">Efectivo USD</option>
-                        <option value="efectivo_bs">Efectivo Bs</option>
-                        <option value="pago_movil">Pago Móvil</option>
-                        <option value="transferencia">Transferencia</option>
-                        <option value="zelle">Zelle</option>
-                        <option value="binance">Binance</option>
-                        <option value="pos">POS / Punto de venta</option>
-                        <option value="seguro">Seguro</option>
+                        {[
+                          { value: 'efectivo', label: 'Efectivo USD' },
+                          { value: 'efectivo_bs', label: 'Efectivo Bs' },
+                          { value: 'pago_movil', label: 'Pago Móvil' },
+                          { value: 'transferencia', label: 'Transferencia' },
+                          { value: 'zelle', label: 'Zelle' },
+                          { value: 'binance', label: 'Binance' },
+                          { value: 'pos', label: 'POS / Punto de venta' },
+                          { value: 'seguro', label: 'Seguro' },
+                        ].filter(m => doctorPaymentMethods.length === 0 || doctorPaymentMethods.includes(m.value)).map(m => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
                       </select>
                     </div>
                     <div>

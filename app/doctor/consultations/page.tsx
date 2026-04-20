@@ -172,6 +172,9 @@ function ConsultationsPage() {
   const [doctorName, setDoctorName] = useState('')
   const [shareTemplate, setShareTemplate] = useState('Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}')
 
+  // Doctor's active payment methods from settings
+  const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([])
+
   // Template configs for PDFs
   type TemplateConfig = {
     logo_url: string | null
@@ -211,12 +214,15 @@ function ConsultationsPage() {
         // Cargar perfil del doctor (nombre + template de mensaje)
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('full_name, professional_title, share_message_template')
+          .select('full_name, professional_title, share_message_template, payment_methods')
           .eq('id', user.id)
           .single()
         if (profileData) {
           setDoctorName(`${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim())
           if (profileData.share_message_template) setShareTemplate(profileData.share_message_template)
+          if (profileData.payment_methods && Array.isArray(profileData.payment_methods)) {
+            setDoctorPaymentMethods(profileData.payment_methods)
+          }
         }
 
         // Cargar pacientes con datos médicos
@@ -1818,7 +1824,7 @@ function ConsultationsPage() {
                       { value: 'binance', label: 'Binance', icon: '🪙' },
                       { value: 'pos', label: 'POS', icon: '💳' },
                       { value: 'seguro', label: 'Seguro', icon: '🏥' },
-                    ].map(m => (
+                    ].filter(m => doctorPaymentMethods.length === 0 || doctorPaymentMethods.includes(m.value)).map(m => (
                       <button key={m.value} type="button"
                         onClick={() => setNewConsultation(p => ({ ...p, payment_method: m.value as any }))}
                         className={`flex items-center gap-2 p-2.5 rounded-xl border-2 text-sm font-medium transition-all ${newConsultation.payment_method === m.value ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}>
