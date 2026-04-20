@@ -99,6 +99,7 @@ function ConsultationsPage() {
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [patientSearchText, setPatientSearchText] = useState('')
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -1819,88 +1820,135 @@ function ConsultationsPage() {
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Selecciona paciente</label>
-                  <select value={newConsultation.patient_id} onChange={e => setNewConsultation(p => ({ ...p, patient_id: e.target.value }))}
-                    className={fi}>
-                    <option value="">-- Elige paciente --</option>
-                    {patients.map(p => (
-                      <option key={p.id} value={p.id}>{p.full_name}</option>
-                    ))}
-                  </select>
+                {/* Step 1: Patient search (identical to agenda) */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Paciente <span className="text-red-400">*</span></label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar paciente..."
+                      value={newConsultation.patient_id ? patients.find(p => p.id === newConsultation.patient_id)?.full_name || patientSearchText : patientSearchText}
+                      onChange={e => {
+                        setPatientSearchText(e.target.value)
+                        if (newConsultation.patient_id) setNewConsultation(p => ({ ...p, patient_id: '' }))
+                      }}
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                    />
+                    {newConsultation.patient_id && (
+                      <button onClick={() => { setNewConsultation(p => ({ ...p, patient_id: '' })); setPatientSearchText('') }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {!newConsultation.patient_id && patientSearchText.length > 0 && (
+                    <div className="border border-slate-200 rounded-lg max-h-36 overflow-y-auto">
+                      {patients.filter(p => p.full_name.toLowerCase().includes(patientSearchText.toLowerCase())).length === 0 ? (
+                        <p className="text-xs text-slate-400 p-3 text-center">No se encontro paciente</p>
+                      ) : (
+                        patients.filter(p => p.full_name.toLowerCase().includes(patientSearchText.toLowerCase())).slice(0, 8).map(p => (
+                          <button key={p.id}
+                            onClick={() => { setNewConsultation(prev => ({ ...prev, patient_id: p.id })); setPatientSearchText('') }}
+                            className="w-full text-left px-3 py-2 hover:bg-teal-50 text-sm text-slate-700 border-b border-slate-100 last:border-b-0 flex items-center justify-between">
+                            <span className="font-medium">{p.full_name}</span>
+                            {p.phone && <span className="text-xs text-slate-400">{p.phone}</span>}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  {newConsultation.patient_id && (
+                    <div className="flex items-center gap-2 bg-teal-50 rounded-lg px-3 py-2">
+                      <CheckCircle className="w-4 h-4 text-teal-500" />
+                      <span className="text-sm font-semibold text-teal-700">
+                        {patients.find(p => p.id === newConsultation.patient_id)?.full_name}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Fecha y hora</label>
+                {/* Step 2: Date and time */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fecha y hora</label>
                   <input type="datetime-local" value={newConsultation.consultation_date}
                     onChange={e => setNewConsultation(p => ({ ...p, consultation_date: e.target.value }))}
-                    className={fi} />
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none" />
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Motivo de consulta</label>
-                  <input type="text" placeholder="Ej: Revisión general, dolor de cabeza..." value={newConsultation.reason}
+                {/* Step 3: Reason */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Motivo de consulta</label>
+                  <input type="text" placeholder="Ej: Revision general, dolor de cabeza..." value={newConsultation.reason}
                     onChange={e => setNewConsultation(p => ({ ...p, reason: e.target.value }))}
-                    className={fi} />
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none" />
                 </div>
 
-                {/* Plan / Servicio selector */}
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Plan / Servicio</label>
+                {/* Step 4: Plan selector */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan de consulta <span className="text-red-400">*</span></label>
                   {pricingPlans.length === 0 ? (
-                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">No tienes planes configurados. Ve a Servicios para crear tus planes de precio.</p>
+                    <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-700">
+                      No tienes planes configurados. <a href="/doctor/services" className="font-bold underline">Configura tus servicios</a>
+                    </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       {pricingPlans.map(plan => (
                         <button key={plan.id} type="button"
                           onClick={() => setNewConsultation(p => ({ ...p, plan_id: plan.id, amount: String(plan.price_usd) }))}
-                          className={`text-left p-3 rounded-xl border-2 transition-all ${newConsultation.plan_id === plan.id ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
-                          <div className="text-sm font-bold text-slate-800">{plan.name}</div>
-                          <div className="text-xs text-slate-500 mt-0.5">{plan.duration_minutes} min</div>
-                          <div className="text-base font-extrabold text-teal-600 mt-1">${plan.price_usd}</div>
+                          className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${newConsultation.plan_id === plan.id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-slate-800">{plan.name}</span>
+                            <span className="text-sm font-bold text-teal-600">${plan.price_usd.toFixed(2)}</span>
+                          </div>
+                          <span className="text-xs text-slate-400">{plan.duration_minutes} min</span>
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
 
-                {/* Payment method */}
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Método de pago <span className="text-red-400">*</span></label>
-                  <select
-                    value={newConsultation.payment_method}
-                    onChange={e => setNewConsultation(p => ({ ...p, payment_method: e.target.value as any }))}
-                    className={fi}>
-                    <option value="">-- Selecciona método de pago --</option>
-                    {[
-                      { value: 'efectivo', label: 'Efectivo USD' },
-                      { value: 'efectivo_bs', label: 'Efectivo Bs' },
-                      { value: 'pago_movil', label: 'Pago Móvil' },
-                      { value: 'transferencia', label: 'Transferencia' },
-                      { value: 'zelle', label: 'Zelle' },
-                      { value: 'binance', label: 'Binance' },
-                      { value: 'pos', label: 'POS / Punto de venta' },
-                      { value: 'seguro', label: 'Seguro' },
-                    ].filter(m => doctorPaymentMethods.length === 0 || doctorPaymentMethods.includes(m.value)).map(m => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </select>
-                </div>
+                {/* Step 5: Payment method + reference */}
+                {newConsultation.plan_id && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Metodo de pago <span className="text-red-400">*</span></label>
+                      <select
+                        value={newConsultation.payment_method}
+                        onChange={e => setNewConsultation(p => ({ ...p, payment_method: e.target.value as any }))}
+                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none">
+                        <option value="">-- Selecciona metodo de pago --</option>
+                        {[
+                          { value: 'efectivo', label: 'Efectivo USD' },
+                          { value: 'efectivo_bs', label: 'Efectivo Bs' },
+                          { value: 'pago_movil', label: 'Pago Movil' },
+                          { value: 'transferencia', label: 'Transferencia' },
+                          { value: 'zelle', label: 'Zelle' },
+                          { value: 'binance', label: 'Binance' },
+                          { value: 'pos', label: 'POS / Punto de venta' },
+                          { value: 'seguro', label: 'Seguro' },
+                        ].filter(m => doctorPaymentMethods.length === 0 || doctorPaymentMethods.includes(m.value)).map(m => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Referencia / Nro. comprobante</label>
+                      <input type="text" value={newConsultation.payment_reference}
+                        onChange={e => setNewConsultation(p => ({ ...p, payment_reference: e.target.value }))}
+                        placeholder="Ej: #12345, ultimo 4 digitos..."
+                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none" />
+                    </div>
+                  </div>
+                )}
 
-                {/* Payment reference */}
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Referencia de pago</label>
-                  <input type="text" placeholder="Nro. de referencia, confirmación, etc." value={newConsultation.payment_reference}
-                    onChange={e => setNewConsultation(p => ({ ...p, payment_reference: e.target.value }))}
-                    className={fi} />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Comentarios / Notas</label>
+                {/* Step 6: Comments */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Comentarios / Notas</label>
                   <textarea placeholder="Notas adicionales sobre la consulta..." value={newConsultation.comments}
                     onChange={e => setNewConsultation(p => ({ ...p, comments: e.target.value }))}
                     rows={3}
-                    className={fi + ' resize-none'} />
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none" />
                 </div>
 
                 {/* Email notification toggle */}
@@ -1910,7 +1958,7 @@ function ConsultationsPage() {
                     className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
                   <div>
                     <span className="text-sm font-semibold text-slate-700">Enviar correo al paciente</span>
-                    <p className="text-xs text-slate-500">Se enviará un email con los detalles de la consulta</p>
+                    <p className="text-xs text-slate-500">Se enviara un email con los detalles de la consulta</p>
                   </div>
                 </label>
               </div>

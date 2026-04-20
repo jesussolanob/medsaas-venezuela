@@ -168,9 +168,10 @@ function SettingsPageInner() {
       setDoctorId(user.id)
 
       // profile
+      // Load profile — use * to avoid errors if some columns don't exist yet
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, email, phone, specialty, avatar_url, logo_url, professional_title, whatsapp_token, whatsapp_phone_id, google_refresh_token, payment_methods, payment_details, sound_notifications, state, city, country, office_address, allows_online, share_message_template')
+        .select('*')
         .eq('id', user.id).single()
 
       if (data) {
@@ -1038,7 +1039,7 @@ function SettingsPageInner() {
                   <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">No conectado</span>
                 )}
               </div>
-              <button onClick={() => window.open('/api/integrations/google/auth', '_blank')} className="w-full px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-colors">
+              <button onClick={() => { window.location.href = '/api/integrations/google/auth' }} className="w-full px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-colors">
                 {googleToken ? 'Reconectar Google Calendar' : 'Conectar Google Calendar'}
               </button>
             </div>

@@ -66,18 +66,16 @@ export async function POST(req: NextRequest) {
     // Convert to Buffer for proper upload
     const htmlBuffer = Buffer.from(viewerHtml, 'utf-8')
 
-    const filePath = `shared-docs/${user.id}/${consultationCode || 'doc'}/${fileName}.html`
+    const docPath = `${user.id}/${consultationCode || 'doc'}/${fileName}.html`
 
     // Ensure bucket exists
     try {
-      await admin.storage.createBucket('shared-docs', {
-        public: true,
-      })
+      await admin.storage.createBucket('shared-docs', { public: true })
     } catch { /* bucket may already exist */ }
 
     const { error: uploadErr } = await admin.storage
       .from('shared-docs')
-      .upload(filePath, htmlBuffer, {
+      .upload(docPath, htmlBuffer, {
         contentType: 'text/html; charset=utf-8',
         upsert: true,
         cacheControl: '0',
@@ -88,9 +86,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Error al subir documento' }, { status: 500 })
     }
 
-    const { data: urlData } = admin.storage.from('shared-docs').getPublicUrl(filePath)
+    // Return URL to our own viewer endpoint (guarantees correct HTML rendering)
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_URL || 'https://medsaas-venezuela.vercel.app'
+    const viewerUrl = `${baseUrl}/api/doctor/view-doc?path=${encodeURIComponent(docPath)}`
 
-    return NextResponse.json({ success: true, url: urlData.publicUrl })
+    return NextResponse.json({ success: true, url: viewerUrl })
   } catch (err: any) {
     console.error('Share PDF error:', err)
     return NextResponse.json({ error: err?.message || 'Error al compartir' }, { status: 500 })

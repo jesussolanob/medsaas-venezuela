@@ -128,27 +128,19 @@ export default function DoctorDashboard() {
       const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0)
       monthEnd.setHours(23, 59, 59, 999)
 
-      const { data: monthlyAppointments } = await supabase
-        .from('appointments')
-        .select('plan_price')
-        .eq('doctor_id', user.id)
-        .eq('status', 'completed')
-        .gte('scheduled_at', monthStart.toISOString())
-        .lte('scheduled_at', monthEnd.toISOString())
-
-      // Also count consultations with payments for the selected month
+      // Financial data: only from consultations (single source of truth)
+      // Consultations with payment_status = 'approved' are confirmed income
       const { data: monthlyConsultations } = await supabase
         .from('consultations')
-        .select('amount')
+        .select('amount, payment_status')
         .eq('doctor_id', user.id)
         .gte('consultation_date', monthStart.toISOString())
         .lte('consultation_date', monthEnd.toISOString())
-        .in('payment_status', ['approved', 'pending_approval'])
 
-      const apptRevenue = monthlyAppointments?.reduce((sum, apt) => sum + (apt.plan_price || 0), 0) || 0
-      const consultRevenue = monthlyConsultations?.reduce((sum, c) => sum + (c.amount || 0), 0) || 0
-      const totalRevenue = apptRevenue + consultRevenue
-      const appointmentCount = (monthlyAppointments?.length || 0) + (monthlyConsultations?.length || 0)
+      // Only approved consultations count as income
+      const approvedConsultations = (monthlyConsultations || []).filter(c => c.payment_status === 'approved')
+      const totalRevenue = approvedConsultations.reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
+      const appointmentCount = approvedConsultations.length
 
       // Check if finances feature is enabled for this plan
       let isFinancesEnabled = false
