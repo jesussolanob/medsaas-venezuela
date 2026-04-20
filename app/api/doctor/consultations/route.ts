@@ -42,7 +42,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ data: data ?? [], total: count ?? 0 })
 }
 
-// POST /api/doctor/consultations — Create consultation (optionally linked to appointment)
+// POST /api/doctor/consultations — Create consultation ALWAYS linked to an appointment
+// Rule: every consultation has an appointment. Appointment = financial truth, Consultation = clinical truth.
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -57,40 +58,73 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
   const consultationCode = genCode('CON')
+  const appointmentCode = genCode('CIT')
+  const dateISO = consultation_date || new Date().toISOString()
+  const finalAmount = amount || 0
 
-  const insertData: Record<string, unknown> = {
-    consultation_code: consultationCode,
-    patient_id,
-    doctor_id: user.id,
-    chief_complaint: chief_complaint || null,
-    notes: notes || null,
-    consultation_date: consultation_date || new Date().toISOString(),
-    payment_status: amount > 0 ? 'pending_approval' : 'unpaid',
-    amount: amount || 0,
-    currency: currency || 'USD',
-    plan_name: plan_name || null,
-    payment_method: payment_method || null,
-    payment_reference: payment_reference || null,
+  let linkedAppointmentId = appointment_id || null
+
+  // If no appointment provided, auto-create one (single source of truth for finances + agenda)
+  if (!linkedAppointmentId) {
+    // Look up patient name for the appointment record
+    const { data: patientData } = await admin
+      .from('patients')
+      .select('full_name, phone, email')
+      .eq('id', patient_id)
+      .single()
+
+    const { data: newAppt, error: apptErr } = await admin
+      .from('appointments')
+      .insert({
+        appointment_code: appointmentCode,
+        doctor_id: user.id,
+        patient_id,
+        patient_name: patientData?.full_name || 'Paciente',
+        patient_phone: patientData?.phone || null,
+        patient_email: patientData?.email || null,
+        scheduled_at: dateISO,
+        status: 'confirmed',
+        source: 'manual',
+        plan_name: plan_name || null,
+        plan_price: finalAmount,
+        payment_method: payment_method || null,
+        payment_reference: payment_reference || null,
+        appointment_mode: 'presencial',
+      })
+      .select('id')
+      .single()
+
+    if (apptErr) return NextResponse.json({ error: apptErr.message }, { status: 500 })
+    linkedAppointmentId = newAppt.id
+  } else {
+    // Existing appointment — update status to confirmed
+    await admin.from('appointments').update({ status: 'confirmed' }).eq('id', linkedAppointmentId)
   }
 
-  if (appointment_id) {
-    insertData.appointment_id = appointment_id
-  }
-
+  // Create the consultation linked to the appointment
   const { data, error } = await admin
     .from('consultations')
-    .insert(insertData)
+    .insert({
+      consultation_code: consultationCode,
+      patient_id,
+      doctor_id: user.id,
+      appointment_id: linkedAppointmentId,
+      chief_complaint: chief_complaint || null,
+      notes: notes || null,
+      consultation_date: dateISO,
+      payment_status: finalAmount > 0 ? 'pending_approval' : 'unpaid',
+      amount: finalAmount,
+      currency: currency || 'USD',
+      plan_name: plan_name || null,
+      payment_method: payment_method || null,
+      payment_reference: payment_reference || null,
+    })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // If linked to appointment, update appointment status
-  if (appointment_id) {
-    await admin.from('appointments').update({ status: 'confirmed' }).eq('id', appointment_id)
-  }
-
-  return NextResponse.json({ success: true, consultation: data, code: consultationCode })
+  return NextResponse.json({ success: true, consultation: data, code: consultationCode, appointmentCode })
 }
 
 // PATCH /api/doctor/consultations — Update consultation

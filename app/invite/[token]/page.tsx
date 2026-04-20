@@ -124,20 +124,44 @@ export default function InviteBookingPage() {
     const patientId = patient?.id
 
     if (patientId) {
-      // Create consultation
       const consultDate = new Date(`${selectedSlot.date}T${selectedSlot.time}:00`)
-      const code = `CON-${selectedSlot.date.replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`
+      const dateStr = selectedSlot.date.replace(/-/g, '')
+      const rand = Math.floor(1000 + Math.random() * 9000)
+      const appointmentCode = `CIT-${dateStr}-${rand}`
+      const consultationCode = `CON-${dateStr}-${rand}`
 
-      await supabase.from('consultations').insert({
-        consultation_code: code,
-        patient_id: patientId,
+      // 1. Create appointment (financial + agenda source of truth)
+      const { data: appt } = await supabase.from('appointments').insert({
+        appointment_code: appointmentCode,
         doctor_id: invitation.doctor_id,
+        patient_id: patientId,
+        patient_name: form.full_name,
+        patient_phone: form.phone || null,
+        patient_email: form.email || null,
+        scheduled_at: consultDate.toISOString(),
+        status: 'confirmed',
+        source: 'invitation',
+        plan_name: 'Consulta por invitación',
+        plan_price: 0,
+        payment_method: null,
+        appointment_mode: 'presencial',
         chief_complaint: form.notes || 'Consulta agendada por invitación',
-        payment_status: 'unpaid',
-        consultation_date: consultDate.toISOString(),
-      })
+      }).select('id').single()
 
-      // Mark invitation as used
+      // 2. Create consultation linked to appointment (clinical container)
+      if (appt) {
+        await supabase.from('consultations').insert({
+          consultation_code: consultationCode,
+          patient_id: patientId,
+          doctor_id: invitation.doctor_id,
+          appointment_id: appt.id,
+          chief_complaint: form.notes || 'Consulta agendada por invitación',
+          payment_status: 'unpaid',
+          consultation_date: consultDate.toISOString(),
+        })
+      }
+
+      // 3. Mark invitation as used
       await supabase
         .from('doctor_invitations')
         .update({ used_at: new Date().toISOString() })

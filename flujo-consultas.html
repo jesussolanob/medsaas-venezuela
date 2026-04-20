@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Medical CRM — Flujo Unificado de Citas</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: #FAFBFC; color: #0F1A2A; padding: 40px 20px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  .header { text-align: center; margin-bottom: 48px; }
+  .header .logo { display: inline-flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .header .logo svg { width: 48px; height: 48px; }
+  .header h1 { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, #06B6D4, #0891b2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .header p { color: #64748b; font-size: 14px; margin-top: 6px; }
+  .section-title { font-size: 20px; font-weight: 800; margin: 48px 0 24px; padding-left: 16px; border-left: 4px solid #06B6D4; }
+
+  /* Rule banner */
+  .rule-banner { background: linear-gradient(135deg, #06B6D4, #0891b2); border-radius: 20px; padding: 32px; color: white; margin-bottom: 32px; position: relative; overflow: hidden; }
+  .rule-banner::after { content: ''; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: rgba(255,255,255,0.08); }
+  .rule-banner h2 { font-size: 22px; font-weight: 800; margin-bottom: 12px; }
+  .rule-banner p { font-size: 14px; line-height: 1.7; opacity: 0.9; }
+  .rule-banner .tag-row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .rule-banner .tag-row span { background: rgba(255,255,255,0.2); padding: 4px 14px; border-radius: 99px; font-size: 12px; font-weight: 700; }
+
+  /* Flow cards */
+  .flow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .flow-card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: box-shadow 0.2s; }
+  .flow-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.07); }
+  .flow-card .card-header { padding: 18px 22px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #f1f5f9; }
+  .flow-card .icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .flow-card h3 { font-size: 15px; font-weight: 700; }
+  .flow-card .badge { font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 99px; margin-left: auto; white-space: nowrap; background: #d1fae5; color: #047857; letter-spacing: 0.3px; }
+  .flow-card .card-body { padding: 18px 22px; }
+  .flow-card .trigger { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .flow-card .trigger-text { font-size: 12px; color: #475569; margin-bottom: 14px; line-height: 1.5; }
+
+  .steps { position: relative; padding-left: 26px; }
+  .steps::before { content: ''; position: absolute; left: 9px; top: 7px; bottom: 7px; width: 2px; background: #e2e8f0; }
+  .step { position: relative; margin-bottom: 12px; font-size: 12px; line-height: 1.5; color: #334155; }
+  .step:last-child { margin-bottom: 0; }
+  .step::before { content: ''; position: absolute; left: -20px; top: 5px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #06B6D4; background: white; }
+  .step.ok::before { background: #06B6D4; }
+  .step.green::before { border-color: #10b981; background: #10b981; }
+  .step strong { font-weight: 700; }
+  .step code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 10px; font-family: monospace; color: #0891b2; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #f1f5f9; }
+  .tag { font-size: 9px; font-weight: 700; padding: 3px 9px; border-radius: 99px; }
+  .tag.ok { background: #d1fae5; color: #047857; }
+  .tag.info { background: #dbeafe; color: #1d4ed8; }
+  .tag.gcal { background: #ede9fe; color: #6d28d9; }
+  .tag.na { background: #f1f5f9; color: #94a3b8; }
+
+  .bg-booking { background: linear-gradient(135deg, #06B6D4, #0891b2); color: white; }
+  .bg-accept { background: #d1fae5; color: #047857; }
+  .bg-agenda { background: #dbeafe; color: #1d4ed8; }
+  .bg-consult { background: #fce7f3; color: #be185d; }
+  .bg-gcal { background: #ede9fe; color: #6d28d9; }
+  .bg-invite { background: #fef3c7; color: #92400e; }
+
+  /* Table */
+  .summary-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 20px; background: white; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; }
+  .summary-table th { background: #f8fafc; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; padding: 12px 14px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+  .summary-table td { font-size: 12px; padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  .summary-table tr:last-child td { border-bottom: none; }
+  .summary-table .yes { color: #047857; font-weight: 700; }
+  .summary-table .no { color: #94a3b8; }
+  .summary-table .source-tag { display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: #f1f5f9; color: #475569; font-family: monospace; }
+
+  /* Mind map */
+  .mindmap { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px 20px; margin-top: 20px; overflow-x: auto; }
+
+  /* Before/After */
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+  .comp-card { border-radius: 16px; padding: 24px; }
+  .comp-before { background: #fef2f2; border: 1px solid #fecaca; }
+  .comp-after { background: #ecfdf5; border: 1px solid #a7f3d0; }
+  .comp-card h3 { font-size: 16px; font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .comp-before h3 { color: #991b1b; }
+  .comp-after h3 { color: #047857; }
+  .comp-card ul { list-style: none; padding: 0; }
+  .comp-card li { font-size: 12px; line-height: 1.8; padding-left: 20px; position: relative; }
+  .comp-before li::before { content: '✗'; position: absolute; left: 0; color: #ef4444; font-weight: 700; }
+  .comp-after li::before { content: '✓'; position: absolute; left: 0; color: #10b981; font-weight: 700; }
+  .comp-before li { color: #7f1d1d; }
+  .comp-after li { color: #064e3b; }
+
+  @media (max-width: 768px) {
+    .flow-grid { grid-template-columns: 1fr; }
+    .comparison { grid-template-columns: 1fr; }
+    body { padding: 20px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="logo">
+      <svg viewBox="0 0 200 200" fill="none">
+        <path d="M100 30 C60 30, 30 60, 30 100 C30 140, 60 170, 100 170" stroke="#06B6D4" stroke-width="12" stroke-linecap="round" fill="none"/>
+        <path d="M100 50 C130 70, 150 90, 150 110 C150 140, 120 160, 100 170" stroke="#FF8A65" stroke-width="10" stroke-linecap="round" fill="none"/>
+        <circle cx="100" cy="100" r="6" fill="#06B6D4"/>
+      </svg>
+      <h1>Delta Medical CRM</h1>
+    </div>
+    <p>Flujo Unificado — Todas las citas crean appointment + consultation</p>
+  </div>
+
+  <!-- RULE -->
+  <div class="rule-banner">
+    <h2>Regla Universal</h2>
+    <p>Toda consulta SIEMPRE tiene un appointment vinculado. El <strong>appointment</strong> es la fuente de verdad financiera y de agenda. La <strong>consultation</strong> es el contenedor clínico. No existen consultas huérfanas.</p>
+    <div class="tag-row">
+      <span>appointment = dinero + agenda</span>
+      <span>consultation = clínica + informes</span>
+      <span>siempre vinculados</span>
+    </div>
+  </div>
+
+  <!-- BEFORE / AFTER -->
+  <h2 class="section-title">Antes vs. Después</h2>
+  <div class="comparison">
+    <div class="comp-card comp-before">
+      <h3>❌ Antes</h3>
+      <ul>
+        <li>Crear consulta desde agenda → solo <code>consultations</code></li>
+        <li>Crear consulta desde módulo → solo <code>consultations</code></li>
+        <li>Link de invitación → solo <code>consultations</code></li>
+        <li>Consultas invisibles en cobros y finanzas</li>
+        <li>Consultas invisibles en la agenda (módulo consultas)</li>
+        <li>Cascade delete no limpiaba registros financieros</li>
+        <li>Eventos de Google Calendar aparecían como cobros</li>
+      </ul>
+    </div>
+    <div class="comp-card comp-after">
+      <h3>✅ Después</h3>
+      <ul>
+        <li>Toda consulta auto-crea un appointment vinculado</li>
+        <li>Aparece en agenda, cobros y consultas siempre</li>
+        <li>Invitación crea appointment + consultation</li>
+        <li>Cascade delete limpia todo desde cualquier lado</li>
+        <li>Google Calendar = solo bloqueador de agenda</li>
+        <li>Un solo punto de verdad financiera: appointments</li>
+        <li>Sync elimina eventos borrados de GCal automáticamente</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- MIND MAP -->
+  <h2 class="section-title">Mapa de Flujos</h2>
+  <div class="mindmap">
+    <svg viewBox="0 0 1060 540" width="100%" style="max-width:1060px">
+      <!-- Center -->
+      <rect x="390" y="220" width="280" height="80" rx="18" fill="#06B6D4"/>
+      <text x="530" y="252" text-anchor="middle" fill="white" font-weight="800" font-size="16" font-family="Plus Jakarta Sans, sans-serif">APPOINTMENT</text>
+      <text x="530" y="272" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="11" font-family="Plus Jakarta Sans, sans-serif">+ CONSULTATION vinculada</text>
+      <text x="530" y="290" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="10" font-family="Plus Jakarta Sans, sans-serif">Siempre juntas · Nunca huérfanas</text>
+
+      <!-- Outputs (bottom) -->
+      <rect x="140" y="460" width="160" height="52" rx="12" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+      <text x="220" y="483" text-anchor="middle" fill="#1d4ed8" font-weight="700" font-size="12" font-family="Plus Jakarta Sans, sans-serif">📅 Agenda</text>
+      <text x="220" y="500" text-anchor="middle" fill="#1d4ed8" font-size="9" font-family="Plus Jakarta Sans, sans-serif">Lee appointments</text>
+
+      <rect x="370" y="460" width="160" height="52" rx="12" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+      <text x="450" y="483" text-anchor="middle" fill="#047857" font-weight="700" font-size="12" font-family="Plus Jakarta Sans, sans-serif">🩺 Consultas</text>
+      <text x="450" y="500" text-anchor="middle" fill="#047857" font-size="9" font-family="Plus Jakarta Sans, sans-serif">Lee consultations</text>
+
+      <rect x="600" y="460" width="160" height="52" rx="12" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>
+      <text x="680" y="483" text-anchor="middle" fill="#92400e" font-weight="700" font-size="12" font-family="Plus Jakarta Sans, sans-serif">💰 Cobros</text>
+      <text x="680" y="500" text-anchor="middle" fill="#92400e" font-size="9" font-family="Plus Jakarta Sans, sans-serif">Lee appointments</text>
+
+      <rect x="830" y="460" width="160" height="52" rx="12" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.5"/>
+      <text x="910" y="483" text-anchor="middle" fill="#6d28d9" font-weight="700" font-size="12" font-family="Plus Jakarta Sans, sans-serif">📆 Google Cal</text>
+      <text x="910" y="500" text-anchor="middle" fill="#6d28d9" font-size="9" font-family="Plus Jakarta Sans, sans-serif">Sync push/pull</text>
+
+      <!-- Lines from center to outputs -->
+      <line x1="440" y1="300" x2="220" y2="460" stroke="#93c5fd" stroke-width="2" stroke-dasharray="5,3"/>
+      <line x1="500" y1="300" x2="450" y2="460" stroke="#6ee7b7" stroke-width="2" stroke-dasharray="5,3"/>
+      <line x1="560" y1="300" x2="680" y2="460" stroke="#fcd34d" stroke-width="2" stroke-dasharray="5,3"/>
+      <line x1="620" y1="300" x2="910" y2="460" stroke="#c4b5fd" stroke-width="2" stroke-dasharray="5,3"/>
+
+      <!-- Flow 1: Booking (top-left) -->
+      <line x1="420" y1="220" x2="170" y2="90" stroke="#06B6D4" stroke-width="2.5"/>
+      <rect x="40" y="32" width="260" height="100" rx="14" fill="white" stroke="#06B6D4" stroke-width="2"/>
+      <rect x="40" y="32" width="260" height="30" rx="14" fill="#06B6D4"/>
+      <rect x="40" y="48" width="260" height="14" fill="#06B6D4"/>
+      <text x="170" y="52" text-anchor="middle" fill="white" font-weight="700" font-size="11" font-family="Plus Jakarta Sans, sans-serif">🌐 Booking Público</text>
+      <text x="170" y="78" text-anchor="middle" fill="#475569" font-size="10" font-family="Plus Jakarta Sans, sans-serif">/book/[doctorId] → POST /api/book</text>
+      <text x="170" y="96" text-anchor="middle" fill="#06B6D4" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Crea APPOINTMENT (scheduled)</text>
+      <text x="170" y="112" text-anchor="middle" fill="#047857" font-weight="600" font-size="9" font-family="Plus Jakarta Sans, sans-serif">Doctor acepta → crea CONSULTATION</text>
+      <text x="170" y="125" text-anchor="middle" fill="#64748b" font-size="8" font-family="Plus Jakarta Sans, sans-serif">source: 'booking'</text>
+
+      <!-- Flow 2: Nueva Consulta Agenda (top-center) -->
+      <line x1="510" y1="220" x2="530" y2="90" stroke="#1d4ed8" stroke-width="2.5"/>
+      <rect x="370" y="26" width="260" height="100" rx="14" fill="white" stroke="#1d4ed8" stroke-width="2"/>
+      <rect x="370" y="26" width="260" height="30" rx="14" fill="#1d4ed8"/>
+      <rect x="370" y="42" width="260" height="14" fill="#1d4ed8"/>
+      <text x="500" y="46" text-anchor="middle" fill="white" font-weight="700" font-size="11" font-family="Plus Jakarta Sans, sans-serif">📅 Nueva Consulta (Agenda)</text>
+      <text x="500" y="72" text-anchor="middle" fill="#475569" font-size="10" font-family="Plus Jakarta Sans, sans-serif">POST /api/doctor/consultations</text>
+      <text x="500" y="90" text-anchor="middle" fill="#06B6D4" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Auto-crea APPOINTMENT</text>
+      <text x="500" y="106" text-anchor="middle" fill="#047857" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Crea CONSULTATION vinculada</text>
+      <text x="500" y="119" text-anchor="middle" fill="#64748b" font-size="8" font-family="Plus Jakarta Sans, sans-serif">source: 'manual' · status: 'confirmed'</text>
+
+      <!-- Flow 3: Nueva Consulta Módulo (top-right) -->
+      <line x1="640" y1="220" x2="870" y2="90" stroke="#be185d" stroke-width="2.5"/>
+      <rect x="720" y="26" width="260" height="100" rx="14" fill="white" stroke="#be185d" stroke-width="2"/>
+      <rect x="720" y="26" width="260" height="30" rx="14" fill="#be185d"/>
+      <rect x="720" y="42" width="260" height="14" fill="#be185d"/>
+      <text x="850" y="46" text-anchor="middle" fill="white" font-weight="700" font-size="11" font-family="Plus Jakarta Sans, sans-serif">🩺 Nueva Consulta (Módulo)</text>
+      <text x="850" y="72" text-anchor="middle" fill="#475569" font-size="10" font-family="Plus Jakarta Sans, sans-serif">POST /api/doctor/consultations</text>
+      <text x="850" y="90" text-anchor="middle" fill="#06B6D4" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Auto-crea APPOINTMENT</text>
+      <text x="850" y="106" text-anchor="middle" fill="#047857" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Crea CONSULTATION vinculada</text>
+      <text x="850" y="119" text-anchor="middle" fill="#64748b" font-size="8" font-family="Plus Jakarta Sans, sans-serif">source: 'manual' · status: 'confirmed'</text>
+
+      <!-- Flow 4: Invitación (left) -->
+      <line x1="390" y1="270" x2="130" y2="310" stroke="#92400e" stroke-width="2.5"/>
+      <rect x="10" y="270" width="230" height="100" rx="14" fill="white" stroke="#92400e" stroke-width="2"/>
+      <rect x="10" y="270" width="230" height="30" rx="14" fill="#92400e"/>
+      <rect x="10" y="286" width="230" height="14" fill="#92400e"/>
+      <text x="125" y="290" text-anchor="middle" fill="white" font-weight="700" font-size="11" font-family="Plus Jakarta Sans, sans-serif">✉️ Link de Invitación</text>
+      <text x="125" y="316" text-anchor="middle" fill="#475569" font-size="10" font-family="Plus Jakarta Sans, sans-serif">/invite/[token]</text>
+      <text x="125" y="334" text-anchor="middle" fill="#06B6D4" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Crea APPOINTMENT</text>
+      <text x="125" y="350" text-anchor="middle" fill="#047857" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Crea CONSULTATION vinculada</text>
+      <text x="125" y="363" text-anchor="middle" fill="#64748b" font-size="8" font-family="Plus Jakarta Sans, sans-serif">source: 'invitation' · status: 'confirmed'</text>
+
+      <!-- Flow 5: Google Calendar (right) -->
+      <line x1="670" y1="270" x2="850" y2="310" stroke="#6d28d9" stroke-width="2.5"/>
+      <rect x="760" y="270" width="250" height="100" rx="14" fill="white" stroke="#6d28d9" stroke-width="2"/>
+      <rect x="760" y="270" width="250" height="30" rx="14" fill="#6d28d9"/>
+      <rect x="760" y="286" width="250" height="14" fill="#6d28d9"/>
+      <text x="885" y="290" text-anchor="middle" fill="white" font-weight="700" font-size="11" font-family="Plus Jakarta Sans, sans-serif">📆 Google Calendar Sync</text>
+      <text x="885" y="316" text-anchor="middle" fill="#475569" font-size="10" font-family="Plus Jakarta Sans, sans-serif">POST /api/doctor/calendar-sync</text>
+      <text x="885" y="334" text-anchor="middle" fill="#6d28d9" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">✓ Crea APPOINTMENT (blocker)</text>
+      <text x="885" y="350" text-anchor="middle" fill="#64748b" font-size="10" font-family="Plus Jakarta Sans, sans-serif">Sin consultation (no es clínica)</text>
+      <text x="885" y="363" text-anchor="middle" fill="#64748b" font-size="8" font-family="Plus Jakarta Sans, sans-serif">source: 'google_calendar' · excluido de cobros</text>
+
+      <!-- Legend -->
+      <rect x="340" y="390" width="380" height="38" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+      <circle cx="380" cy="409" r="7" fill="#06B6D4"/>
+      <text x="392" y="413" fill="#0891b2" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">appointment</text>
+      <circle cx="485" cy="409" r="7" fill="#10b981"/>
+      <text x="497" y="413" fill="#047857" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">consultation</text>
+      <circle cx="600" cy="409" r="7" fill="#ede9fe" stroke="#6d28d9"/>
+      <text x="612" y="413" fill="#6d28d9" font-weight="700" font-size="10" font-family="Plus Jakarta Sans, sans-serif">blocker (solo agenda)</text>
+    </svg>
+  </div>
+
+  <!-- FLOW CARDS -->
+  <h2 class="section-title">Detalle de Cada Flujo</h2>
+  <div class="flow-grid">
+
+    <div class="flow-card">
+      <div class="card-header">
+        <div class="icon bg-booking">🌐</div>
+        <div><h3>Booking Público</h3><span style="font-size:10px;color:#64748b">/book/[doctorId]</span></div>
+        <span class="badge">✓ COMPLETO</span>
+      </div>
+      <div class="card-body">
+        <p class="trigger">Flujo</p>
+        <div class="steps">
+          <div class="step ok">Paciente llena formulario de booking (plan, fecha, pago)</div>
+          <div class="step ok"><strong>Crea APPOINTMENT</strong> → <code>source: 'booking'</code> · <code>status: 'scheduled'</code></div>
+          <div class="step ok">Crea evento en Google Calendar con Meet link (si online)</div>
+          <div class="step">Aparece como "pendiente" en agenda del doctor</div>
+          <div class="step green">Doctor acepta → <strong>crea CONSULTATION</strong> vinculada con <code>appointment_id</code></div>
+          <div class="step green">Appointment → <code>status: 'confirmed'</code></div>
+        </div>
+        <div class="tags">
+          <span class="tag ok">Agenda ✓</span>
+          <span class="tag ok">Consultas ✓</span>
+          <span class="tag ok">Cobros ✓</span>
+          <span class="tag gcal">Google Cal ✓</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-card">
+      <div class="card-header">
+        <div class="icon bg-agenda">📅</div>
+        <div><h3>Nueva Consulta (Agenda)</h3><span style="font-size:10px;color:#64748b">Agenda → "Nueva consulta"</span></div>
+        <span class="badge">✓ CORREGIDO</span>
+      </div>
+      <div class="card-body">
+        <p class="trigger">Flujo</p>
+        <div class="steps">
+          <div class="step ok">Doctor selecciona paciente, fecha, hora, plan y método de pago</div>
+          <div class="step ok">Llama a <code>POST /api/doctor/consultations</code></div>
+          <div class="step green"><strong>Auto-crea APPOINTMENT</strong> → <code>source: 'manual'</code> · <code>status: 'confirmed'</code></div>
+          <div class="step green"><strong>Crea CONSULTATION</strong> vinculada con <code>appointment_id</code></div>
+          <div class="step green">Aparece en agenda, cobros Y consultas</div>
+        </div>
+        <div class="tags">
+          <span class="tag ok">Agenda ✓</span>
+          <span class="tag ok">Consultas ✓</span>
+          <span class="tag ok">Cobros ✓</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-card">
+      <div class="card-header">
+        <div class="icon bg-consult">🩺</div>
+        <div><h3>Nueva Consulta (Módulo)</h3><span style="font-size:10px;color:#64748b">Consultas → "Nueva consulta"</span></div>
+        <span class="badge">✓ CORREGIDO</span>
+      </div>
+      <div class="card-body">
+        <p class="trigger">Flujo</p>
+        <div class="steps">
+          <div class="step ok">Doctor selecciona paciente, fecha, hora, plan desde módulo de consultas</div>
+          <div class="step ok">Llama a <code>POST /api/doctor/consultations</code></div>
+          <div class="step green"><strong>Auto-crea APPOINTMENT</strong> → <code>source: 'manual'</code> · <code>status: 'confirmed'</code></div>
+          <div class="step green"><strong>Crea CONSULTATION</strong> vinculada con <code>appointment_id</code></div>
+          <div class="step green">Aparece en agenda, cobros Y consultas</div>
+        </div>
+        <div class="tags">
+          <span class="tag ok">Agenda ✓</span>
+          <span class="tag ok">Consultas ✓</span>
+          <span class="tag ok">Cobros ✓</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-card">
+      <div class="card-header">
+        <div class="icon bg-invite">✉️</div>
+        <div><h3>Link de Invitación</h3><span style="font-size:10px;color:#64748b">/invite/[token]</span></div>
+        <span class="badge">✓ CORREGIDO</span>
+      </div>
+      <div class="card-body">
+        <p class="trigger">Flujo</p>
+        <div class="steps">
+          <div class="step ok">Paciente abre link, elige horario, confirma datos</div>
+          <div class="step ok">Crea o encuentra paciente con <code>source: 'invitation'</code></div>
+          <div class="step green"><strong>Crea APPOINTMENT</strong> → <code>source: 'invitation'</code> · <code>status: 'confirmed'</code></div>
+          <div class="step green"><strong>Crea CONSULTATION</strong> vinculada con <code>appointment_id</code></div>
+          <div class="step">Marca invitación como usada</div>
+        </div>
+        <div class="tags">
+          <span class="tag ok">Agenda ✓</span>
+          <span class="tag ok">Consultas ✓</span>
+          <span class="tag ok">Cobros ✓</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-card">
+      <div class="card-header">
+        <div class="icon bg-gcal">📆</div>
+        <div><h3>Google Calendar Sync</h3><span style="font-size:10px;color:#64748b">Solo bloqueador de agenda</span></div>
+        <span class="badge" style="background:#ede9fe;color:#6d28d9">BLOCKER</span>
+      </div>
+      <div class="card-body">
+        <p class="trigger">Flujo</p>
+        <div class="steps">
+          <div class="step ok">Doctor hace clic en "Sync Calendar"</div>
+          <div class="step ok"><strong>PUSH:</strong> sube citas locales a Google Calendar</div>
+          <div class="step ok"><strong>PULL:</strong> importa eventos externos como appointment</div>
+          <div class="step ok"><code>source: 'google_calendar'</code> → excluido de cobros/finanzas</div>
+          <div class="step green"><strong>CLEANUP:</strong> si evento se borró de GCal, se borra de la app</div>
+          <div class="step">No crea consultation (no es consulta clínica)</div>
+        </div>
+        <div class="tags">
+          <span class="tag ok">Agenda ✓ (blocker)</span>
+          <span class="tag na">Consultas ✗ (correcto)</span>
+          <span class="tag na">Cobros ✗ (correcto)</span>
+          <span class="tag gcal">Limpieza auto ✓</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-card">
+      <div class="card-header">
+        <div class="icon" style="background:#fee2e2;color:#dc2626">🗑</div>
+        <div><h3>Eliminar (Cascade)</h3><span style="font-size:10px;color:#64748b">Desde agenda o consultas</span></div>
+        <span class="badge">✓ COMPLETO</span>
+      </div>
+      <div class="card-body">
+        <p class="trigger">Flujo</p>
+        <div class="steps">
+          <div class="step ok">Doctor hace clic en "Eliminar" (agenda o consultas)</div>
+          <div class="step ok">Confirma en modal de confirmación</div>
+          <div class="step ok">Borra <strong>consultation</strong> + <strong>EHR</strong> + <strong>prescriptions</strong></div>
+          <div class="step ok">Borra <strong>appointment</strong> (desaparece de agenda y cobros)</div>
+          <div class="step ok">Borra evento de <strong>Google Calendar</strong></div>
+          <div class="step ok">Revierte sesión de <strong>paquete</strong> si aplica</div>
+        </div>
+        <div class="tags">
+          <span class="tag ok">Limpia agenda ✓</span>
+          <span class="tag ok">Limpia cobros ✓</span>
+          <span class="tag ok">Limpia GCal ✓</span>
+          <span class="tag ok">Limpia EHR ✓</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUMMARY TABLE -->
+  <h2 class="section-title">Tabla Resumen</h2>
+  <div style="overflow-x:auto">
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Flujo</th>
+          <th>Appointment</th>
+          <th>Consultation</th>
+          <th>Source</th>
+          <th>Agenda</th>
+          <th>Consultas</th>
+          <th>Cobros</th>
+          <th>Google Cal</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Booking público</strong></td>
+          <td class="yes">✓ crea</td>
+          <td class="yes">✓ al aceptar</td>
+          <td><span class="source-tag">booking</span></td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+        </tr>
+        <tr>
+          <td><strong>Nueva (Agenda)</strong></td>
+          <td class="yes">✓ auto-crea</td>
+          <td class="yes">✓ crea</td>
+          <td><span class="source-tag">manual</span></td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="no">— (sync)</td>
+        </tr>
+        <tr>
+          <td><strong>Nueva (Consultas)</strong></td>
+          <td class="yes">✓ auto-crea</td>
+          <td class="yes">✓ crea</td>
+          <td><span class="source-tag">manual</span></td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="no">— (sync)</td>
+        </tr>
+        <tr>
+          <td><strong>Link invitación</strong></td>
+          <td class="yes">✓ crea</td>
+          <td class="yes">✓ crea</td>
+          <td><span class="source-tag">invitation</span></td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="no">— (sync)</td>
+        </tr>
+        <tr>
+          <td><strong>Google Calendar</strong></td>
+          <td class="yes">✓ importa</td>
+          <td class="no">—</td>
+          <td><span class="source-tag">google_calendar</span></td>
+          <td class="yes">✓ blocker</td>
+          <td class="no">—</td>
+          <td class="no">— excluido</td>
+          <td class="yes">✓ bidireccional</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="text-align:center;margin-top:48px;padding:24px;color:#94a3b8;font-size:11px">
+    Delta Medical CRM — Flujo unificado v2 · Abril 2026
+  </div>
+</div>
+</body>
+</html>
