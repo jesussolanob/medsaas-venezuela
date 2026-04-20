@@ -43,7 +43,6 @@ export default function DoctorDashboard() {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
-  const [financesEnabled, setFinancesEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Month filter state (year-month)
@@ -134,8 +133,8 @@ export default function DoctorDashboard() {
       const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0)
       monthEnd.setHours(23, 59, 59, 999)
 
-      // Financial data: only from consultations (single source of truth)
-      // Consultations with payment_status = 'approved' are confirmed income
+      // Financial data: from consultations (single source of truth)
+      // Count ALL consultations that have an amount (regardless of payment_status)
       const { data: monthlyConsultations } = await supabase
         .from('consultations')
         .select('amount, payment_status')
@@ -143,29 +142,15 @@ export default function DoctorDashboard() {
         .gte('consultation_date', monthStart.toISOString())
         .lte('consultation_date', monthEnd.toISOString())
 
-      // Only approved consultations count as income
-      const approvedConsultations = (monthlyConsultations || []).filter(c => c.payment_status === 'approved')
-      const totalRevenue = approvedConsultations.reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
-      const appointmentCount = approvedConsultations.length
-
-      // Check if finances feature is enabled for this plan
-      let isFinancesEnabled = false
-      if (sub?.plan) {
-        const { data: features } = await supabase
-          .from('plan_features')
-          .select('feature_key')
-          .eq('plan', sub.plan)
-          .eq('feature_key', 'finances')
-          .eq('enabled', true)
-          .maybeSingle()
-        isFinancesEnabled = !!features
-      }
+      // Sum all consultations with an amount > 0 (income tracker, not just "approved")
+      const paidConsultations = (monthlyConsultations || []).filter(c => Number(c.amount) > 0)
+      const totalRevenue = paidConsultations.reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
+      const appointmentCount = paidConsultations.length
 
       setProfile(prof)
       setSubscription(sub)
       setTodayAppointments(allAppointments)
       setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount })
-      setFinancesEnabled(isFinancesEnabled)
       setLoading(false)
     }
     fetchData()
@@ -443,23 +428,13 @@ export default function DoctorDashboard() {
                 </div>
               </div>
 
-              {financesEnabled ? (
-                <Link
-                  href="/doctor/cobros"
-                  className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
-                >
-                  Ver más detalles
-                  <ArrowRight className="w-3 h-3" />
-                </Link>
-              ) : (
-                <Link
-                  href="/doctor/plans"
-                  className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1 pt-2"
-                >
-                  Upgrade para ver finanzas
-                  <ArrowRight className="w-3 h-3" />
-                </Link>
-              )}
+              <Link
+                href="/doctor/finances"
+                className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
+              >
+                Ver más detalles
+                <ArrowRight className="w-3 h-3" />
+              </Link>
             </div>
           </div>
         </div>
