@@ -51,7 +51,7 @@ export default function PatientsPage() {
 
   // Edit patient
   const [editing, setEditing] = useState(false)
-  const [editPat, setEditPat] = useState({ full_name: '', age: '', birth_date: '', phone: '', cedula: '', email: '', sex: '', notes: '', blood_type: '', allergies: '', chronic_conditions: '', emergency_contact_name: '', emergency_contact_phone: '', address: '', city: '' })
+  const [editPat, setEditPat] = useState({ full_name: '', age: '', birth_date: '', phone: '', cedula: '', email: '', sex: '', notes: '', blood_type: '', allergies: '', chronic_conditions: '', emergency_contact_name: '', emergency_contact_phone: '', address: '', city: '', source: '' })
   const [editError, setEditError] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
@@ -169,6 +169,7 @@ export default function PatientsPage() {
       emergency_contact_phone: p.emergency_contact_phone || '',
       address: p.address || '',
       city: p.city || '',
+      source: p.source || '',
     })
     setEditError('')
     setEditing(true)
@@ -196,6 +197,7 @@ export default function PatientsPage() {
         emergency_contact_phone: editPat.emergency_contact_phone || null,
         address: editPat.address || null,
         city: editPat.city || null,
+        source: editPat.source || null,
       })
       if (!res.success) { setEditError(res.error); setSavingEdit(false); return }
       // Update local state
@@ -1044,6 +1046,16 @@ export default function PatientsPage() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Notas</label>
                 <textarea value={editPat.notes} onChange={e => setEditPat(p => ({ ...p, notes: e.target.value }))} rows={2} className={fi + ' resize-none'} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Canal de captación</label>
+                <select value={editPat.source} onChange={e => setEditPat(p => ({ ...p, source: e.target.value }))} className={fi}>
+                  <option value="">Seleccionar canal...</option>
+                  {CHANNEL_OPTIONS.map(ch => (
+                    <option key={ch.value} value={ch.value}>{ch.label}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex gap-3 pt-2">

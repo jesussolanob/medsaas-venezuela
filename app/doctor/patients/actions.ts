@@ -196,6 +196,7 @@ export type UpdatePatientInput = {
   emergency_contact_phone?: string | null
   address?: string | null
   city?: string | null
+  source?: string | null
 }
 
 export async function updatePatient(patientId: string, doctorId: string, input: UpdatePatientInput): Promise<ActionResult> {
@@ -233,6 +234,7 @@ export async function updatePatient(patientId: string, doctorId: string, input: 
   if (input.emergency_contact_phone !== undefined) updateData.emergency_contact_phone = input.emergency_contact_phone
   if (input.address !== undefined) updateData.address = input.address
   if (input.city !== undefined) updateData.city = input.city
+  if (input.source !== undefined) updateData.source = input.source
 
   const { error } = await supabase
     .from('patients')
