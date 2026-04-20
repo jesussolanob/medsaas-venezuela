@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings, Stethoscope, Upload, Loader2, Package } from 'lucide-react'
+import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings, Stethoscope, Upload, Loader2, Package, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const toast = { success: (msg: string) => alert(msg), error: (msg: string) => alert(msg) }
@@ -202,6 +202,10 @@ export default function AgendaPage() {
   const [detailAppt, setDetailAppt] = useState<CalendarAppointment | null>(null)
   const [showConfigPanel, setShowConfigPanel] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled'>('all')
+
+  // Google Calendar Sync
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ message: string; success: boolean } | null>(null)
 
   // Nueva consulta desde agenda
   const [showNewConsulta, setShowNewConsulta] = useState(false)
@@ -588,6 +592,32 @@ export default function AgendaPage() {
     }
   }
 
+  // ── Google Calendar Sync ─────────────────────────────────────────────────
+
+  async function handleCalendarSync() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/doctor/calendar-sync', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setSyncResult({ message: data.error || 'Error en sync', success: false })
+        toast.error(data.error || 'Error al sincronizar')
+      } else {
+        setSyncResult({ message: data.message, success: true })
+        toast.success(data.message || 'Sincronización completada')
+        // Reload appointments to reflect changes
+        loadData()
+      }
+    } catch (err: any) {
+      setSyncResult({ message: err?.message || 'Error de conexión', success: false })
+      toast.error('Error al sincronizar con Google Calendar')
+    }
+    setSyncing(false)
+    // Auto-hide result after 6 seconds
+    setTimeout(() => setSyncResult(null), 6000)
+  }
+
   // ── Get appointments for a specific date ─────────────────────────────────
 
   function getApptsByDate(d: Date): CalendarAppointment[] {
@@ -715,14 +745,44 @@ export default function AgendaPage() {
               {' · '}{allAppointments.length} consultas
             </p>
           </div>
-          <button
-            onClick={() => openNewConsultaForDate(selectedDate)}
-            className="flex items-center gap-2 px-4 py-2 g-bg text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity shrink-0 shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Nueva consulta
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleCalendarSync}
+              disabled={syncing}
+              title="Sincronizar con Google Calendar"
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border ${
+                syncing
+                  ? 'bg-blue-50 border-blue-200 text-blue-500 cursor-wait'
+                  : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50'
+              }`}
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{syncing ? 'Sincronizando...' : 'Sync Calendar'}</span>
+            </button>
+            <button
+              onClick={() => openNewConsultaForDate(selectedDate)}
+              className="flex items-center gap-2 px-4 py-2 g-bg text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva consulta
+            </button>
+          </div>
         </div>
+
+        {/* Sync result banner */}
+        {syncResult && (
+          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium ${
+            syncResult.success
+              ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+              : 'bg-red-50 border border-red-200 text-red-700'
+          }`}>
+            {syncResult.success ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+            <span className="flex-1">{syncResult.message}</span>
+            <button onClick={() => setSyncResult(null)} className="opacity-50 hover:opacity-100">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* ═══ CALENDAR TAB ═══ */}
         {tab === 'calendar' && (

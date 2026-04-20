@@ -389,10 +389,9 @@ export async function POST(req: NextRequest) {
     // The doctor reviews the pending appointment in the agenda and accepts it,
     // which creates the consultation. This prevents duplicate entries on the calendar.
 
-    // Best-effort: sync appointment to Google Calendar if doctor has it connected
-    // NOTE: We call Google Calendar API directly here instead of going through
-    // /api/integrations/google/sync because that endpoint uses cookie-based auth
-    // which would authenticate the PATIENT (the one booking), not the DOCTOR.
+    // ── Sync to Google Calendar + auto-create Meet link ───────────────────
+    // Awaited (not fire-and-forget) so the meet_link is available in the response.
+    let meetLink: string | null = null
     try {
       const { data: doctorProfile } = await admin
         .from('profiles')
@@ -401,7 +400,6 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (doctorProfile?.google_refresh_token) {
-        // Exchange refresh token for access token
         const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -414,18 +412,20 @@ export async function POST(req: NextRequest) {
         })
 
         if (tokenRes.ok) {
-          const tokenData = await tokenRes.json()
-          const gcalAccessToken = tokenData.access_token
+          const { access_token: gcalAccessToken } = await tokenRes.json()
 
           if (gcalAccessToken) {
             const startDt = new Date(scheduledAt)
-            const endDt = new Date(startDt.getTime() + 30 * 60000) // 30 min default
-
+            const endDt = new Date(startDt.getTime() + 30 * 60000)
             const isOnline = appointmentMode === 'online'
 
             const event: Record<string, unknown> = {
               summary: `Consulta - ${finalName}`,
-              description: `Plan: ${planName || 'N/A'} | Motivo: ${chiefComplaint || 'Consulta médica'}${isOnline ? '\n\n📹 Consulta Online — el link de Google Meet está incluido en este evento.' : ''}`,
+              description: [
+                `Plan: ${planName || 'Consulta General'}`,
+                chiefComplaint ? `Motivo: ${chiefComplaint}` : null,
+                isOnline ? '📹 Consulta Online — el link de Google Meet está incluido en este evento.' : null,
+              ].filter(Boolean).join(' | '),
               start: { dateTime: startDt.toISOString(), timeZone: 'America/Caracas' },
               end: { dateTime: endDt.toISOString(), timeZone: 'America/Caracas' },
               reminders: {
@@ -435,19 +435,20 @@ export async function POST(req: NextRequest) {
                   { method: 'popup', minutes: 10 },
                 ],
               },
-              // Send email invitations to the patient
               guestsCanModify: false,
               guestsCanSeeOtherGuests: false,
+              extendedProperties: {
+                private: { deltaAppointmentId: appt.id },
+              },
             }
 
-            // Add patient as attendee so they receive the calendar invite
             if (finalEmail) {
               event.attendees = [
                 { email: finalEmail, displayName: finalName, responseStatus: 'needsAction' },
               ]
             }
 
-            // For online appointments, create a Google Meet conference
+            // ALWAYS create Meet link for online appointments
             if (isOnline) {
               event.conferenceData = {
                 createRequest: {
@@ -457,55 +458,41 @@ export async function POST(req: NextRequest) {
               }
             }
 
-            // Use conferenceDataVersion=1 to enable Meet creation
             const calendarUrl = isOnline
               ? 'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all'
               : 'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all'
 
-            // Fire-and-forget: don't block the booking response
-            fetch(calendarUrl, {
+            const gcalRes = await fetch(calendarUrl, {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${gcalAccessToken}`,
+                Authorization: `Bearer ${gcalAccessToken}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify(event),
-            }).then(async (res) => {
-              if (!res.ok) {
-                const errText = await res.text()
-                console.error('[Book] Google Calendar event creation failed:', errText)
-              } else {
-                const createdEvent = await res.json()
-                console.log('[Book] Google Calendar event created successfully:', createdEvent.id)
+            })
 
-                // If a Meet link was generated, save it to the appointment
-                const meetLink = createdEvent.hangoutLink || createdEvent.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri
-                if (meetLink && appt?.id) {
-                  try {
-                    await admin
-                      .from('appointments')
-                      .update({ meet_link: meetLink, google_event_id: createdEvent.id })
-                      .eq('id', appt.id)
-                  } catch {
-                    // meet_link column may not exist yet
-                    console.warn('[Book] Could not save meet_link — column may not exist')
-                  }
-                }
+            if (gcalRes.ok) {
+              const createdEvent = await gcalRes.json()
+              console.log('[Book] GCal event created:', createdEvent.id)
 
-                // Also save google_event_id even without meet
-                if (!meetLink && createdEvent.id && appt?.id) {
-                  try {
-                    await admin
-                      .from('appointments')
-                      .update({ google_event_id: createdEvent.id })
-                      .eq('id', appt.id)
-                  } catch { /* column may not exist */ }
-                }
+              meetLink = createdEvent.hangoutLink ||
+                createdEvent.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri ||
+                null
+
+              const updateData: Record<string, unknown> = { google_event_id: createdEvent.id }
+              if (meetLink) updateData.meet_link = meetLink
+
+              try {
+                await admin.from('appointments').update(updateData).eq('id', appt.id)
+              } catch {
+                console.warn('[Book] Could not save google_event_id/meet_link')
               }
-            }).catch(err => console.warn('[Book] Google Calendar sync error:', err))
+            } else {
+              console.error('[Book] GCal create failed:', await gcalRes.text())
+            }
           }
         } else {
-          console.warn('[Book] Could not refresh Google token:', await tokenRes.text())
+          console.warn('[Book] Could not refresh Google token')
         }
       }
     } catch (err) {
@@ -516,6 +503,7 @@ export async function POST(req: NextRequest) {
       success: true,
       appointmentId: appt.id,
       patientId,
+      meetLink,
       packageUsed: !!validatedPackage,
       packageRemaining: validatedPackage
         ? validatedPackage.total_sessions - validatedPackage.used_sessions - 1
