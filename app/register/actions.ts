@@ -202,6 +202,41 @@ export async function registerClinic(input: RegisterClinicInput): Promise<Regist
 export type BCVRateResult = { rate: number; updated: string } | null
 
 export async function getBCVRate(): Promise<BCVRateResult> {
+  // Source 1: fawazahmed0/currency-api CDN (fastest, no rate limits)
+  try {
+    const res = await fetch(
+      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd/ves.min.json',
+      { next: { revalidate: 3600 } }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      if (data?.ves && data.ves > 0) {
+        return {
+          rate: parseFloat(Number(data.ves).toFixed(2)),
+          updated: data.date ?? new Date().toLocaleDateString('es-VE'),
+        }
+      }
+    }
+  } catch { /* try next source */ }
+
+  // Source 1b: currency-api fallback CDN
+  try {
+    const res = await fetch(
+      'https://latest.currency-api.pages.dev/v1/currencies/usd/ves.min.json',
+      { next: { revalidate: 3600 } }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      if (data?.ves && data.ves > 0) {
+        return {
+          rate: parseFloat(Number(data.ves).toFixed(2)),
+          updated: data.date ?? new Date().toLocaleDateString('es-VE'),
+        }
+      }
+    }
+  } catch { /* try next source */ }
+
+  // Source 2: dolarapi.com
   try {
     const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
       next: { revalidate: 3600 },
@@ -214,19 +249,20 @@ export async function getBCVRate(): Promise<BCVRateResult> {
       rate: parseFloat(rate),
       updated: data.fechaActualizacion ?? new Date().toLocaleDateString('es-VE'),
     }
+  } catch { /* try next source */ }
+
+  // Source 3: pydolarve.org
+  try {
+    const res2 = await fetch('https://pydolarve.org/api/v1/dollar?page=bcv&monitor=usd', {
+      next: { revalidate: 3600 },
+    })
+    if (!res2.ok) throw new Error('fetch2 failed')
+    const d2 = await res2.json()
+    const rate2 = d2.monitors?.usd?.price ?? d2.price ?? null
+    if (!rate2) throw new Error('no rate2')
+    return { rate: parseFloat(rate2), updated: new Date().toLocaleDateString('es-VE') }
   } catch {
-    try {
-      const res2 = await fetch('https://pydolarve.org/api/v1/dollar?page=bcv&monitor=usd', {
-        next: { revalidate: 3600 },
-      })
-      if (!res2.ok) throw new Error('fetch2 failed')
-      const d2 = await res2.json()
-      const rate2 = d2.monitors?.usd?.price ?? d2.price ?? null
-      if (!rate2) throw new Error('no rate2')
-      return { rate: parseFloat(rate2), updated: new Date().toLocaleDateString('es-VE') }
-    } catch {
-      return null
-    }
+    return null
   }
 }
 

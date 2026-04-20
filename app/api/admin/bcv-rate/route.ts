@@ -14,6 +14,53 @@ export async function GET() {
   let dateStr = ''
   let source = 'none'
 
+  // ── Source 0: fawazahmed0/currency-api CDN (fastest, no rate limits) ───
+  try {
+    const res = await fetch(
+      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd/ves.min.json',
+      {
+        signal: AbortSignal.timeout(6000),
+        headers: { 'Accept': 'application/json' },
+        next: { revalidate: 3600 },
+      }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      // Response: { date: "2026-04-19", ves: 92.1234 }
+      if (data?.ves && data.ves > 0) {
+        rate = parseFloat(Number(data.ves).toFixed(2))
+        dateStr = data.date || ''
+        source = 'currency-api'
+      }
+    }
+  } catch {
+    // currency-api CDN failed, try fallback
+  }
+
+  // Fallback CDN endpoint
+  if (!rate) {
+    try {
+      const res = await fetch(
+        'https://latest.currency-api.pages.dev/v1/currencies/usd/ves.min.json',
+        {
+          signal: AbortSignal.timeout(6000),
+          headers: { 'Accept': 'application/json' },
+          next: { revalidate: 3600 },
+        }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.ves && data.ves > 0) {
+          rate = parseFloat(Number(data.ves).toFixed(2))
+          dateStr = data.date || ''
+          source = 'currency-api'
+        }
+      }
+    } catch {
+      // fallback CDN also failed
+    }
+  }
+
   // ── Source 1: BCV official website ──────────────────────────────────────
   try {
     const controller = new AbortController()
@@ -155,13 +202,15 @@ export async function GET() {
       })
     }
 
-    const sourceLabel = source === 'bcv.org.ve'
-      ? 'BCV Oficial'
-      : source === 'pydolarve.org'
-        ? 'BCV (vía PyDolarVe)'
-        : source === 'dolarapi.com'
-          ? 'BCV (vía DolarAPI)'
-          : 'BCV'
+    const sourceLabel = source === 'currency-api'
+      ? 'BCV (vía Currency API)'
+      : source === 'bcv.org.ve'
+        ? 'BCV Oficial'
+        : source === 'pydolarve.org'
+          ? 'BCV (vía PyDolarVe)'
+          : source === 'dolarapi.com'
+            ? 'BCV (vía DolarAPI)'
+            : 'BCV'
 
     return NextResponse.json({
       rate,
