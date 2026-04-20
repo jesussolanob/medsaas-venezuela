@@ -23,18 +23,32 @@ async function getAccessToken(refreshToken: string): Promise<string | null> {
 }
 
 // POST: Sync a new appointment to Google Calendar
+// Supports two modes:
+// 1. Cookie-based auth (doctor calling from frontend)
+// 2. Server-to-server with doctorId in body (called from /api/book or other internal routes)
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-
   const admin = createAdminClient()
+  const body = await req.json()
+  const { summary, description, startTime, endTime, patientName, doctorId: bodyDoctorId } = body
+
+  let targetDoctorId: string | null = null
+
+  if (bodyDoctorId) {
+    // Server-to-server mode: trust the doctorId from internal API calls
+    targetDoctorId = bodyDoctorId
+  } else {
+    // Cookie-based auth: doctor calling from frontend
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    targetDoctorId = user.id
+  }
 
   // Get doctor's Google refresh token
   const { data: profile } = await admin
     .from('profiles')
     .select('google_refresh_token, full_name, professional_title')
-    .eq('id', user.id)
+    .eq('id', targetDoctorId)
     .single()
 
   if (!profile?.google_refresh_token) {
@@ -45,9 +59,6 @@ export async function POST(req: NextRequest) {
   if (!accessToken) {
     return NextResponse.json({ error: 'Token de Google expirado. Reconecta Google Calendar en Configuración.' }, { status: 401 })
   }
-
-  const body = await req.json()
-  const { summary, description, startTime, endTime, patientName } = body
 
   if (!startTime || !summary) {
     return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })

@@ -386,30 +386,75 @@ export async function POST(req: NextRequest) {
     }
 
     // Best-effort: sync appointment to Google Calendar if doctor has it connected
+    // NOTE: We call Google Calendar API directly here instead of going through
+    // /api/integrations/google/sync because that endpoint uses cookie-based auth
+    // which would authenticate the PATIENT (the one booking), not the DOCTOR.
     try {
       const { data: doctorProfile } = await admin
         .from('profiles')
         .select('google_refresh_token')
         .eq('id', doctorId)
         .single()
+
       if (doctorProfile?.google_refresh_token) {
-        const syncUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/integrations/google/sync`
-        // Fire-and-forget: don't block the response
-        fetch(syncUrl, {
+        // Exchange refresh token for access token
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cookie': req.headers.get('cookie') || '',
-          },
-          body: JSON.stringify({
-            summary: `Consulta - ${patientName}`,
-            description: `Plan: ${planName || 'N/A'} | Motivo: ${chiefComplaint || 'Consulta médica'}`,
-            startTime: scheduledAt,
-            patientName,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: process.env.GOOGLE_CLIENT_ID || '',
+            client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+            refresh_token: doctorProfile.google_refresh_token,
+            grant_type: 'refresh_token',
           }),
-        }).catch(err => console.warn('Google Calendar sync failed:', err))
+        })
+
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json()
+          const gcalAccessToken = tokenData.access_token
+
+          if (gcalAccessToken) {
+            const startDt = new Date(scheduledAt)
+            const endDt = new Date(startDt.getTime() + 30 * 60000) // 30 min default
+
+            const event = {
+              summary: `Consulta - ${finalName}`,
+              description: `Plan: ${planName || 'N/A'} | Motivo: ${chiefComplaint || 'Consulta médica'}`,
+              start: { dateTime: startDt.toISOString(), timeZone: 'America/Caracas' },
+              end: { dateTime: endDt.toISOString(), timeZone: 'America/Caracas' },
+              reminders: {
+                useDefault: false,
+                overrides: [
+                  { method: 'popup', minutes: 30 },
+                  { method: 'popup', minutes: 10 },
+                ],
+              },
+            }
+
+            // Fire-and-forget: don't block the booking response
+            fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${gcalAccessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(event),
+            }).then(async (res) => {
+              if (!res.ok) {
+                const errText = await res.text()
+                console.error('[Book] Google Calendar event creation failed:', errText)
+              } else {
+                console.log('[Book] Google Calendar event created successfully')
+              }
+            }).catch(err => console.warn('[Book] Google Calendar sync error:', err))
+          }
+        } else {
+          console.warn('[Book] Could not refresh Google token:', await tokenRes.text())
+        }
       }
-    } catch { /* ignore sync errors */ }
+    } catch (err) {
+      console.warn('[Book] Google Calendar sync skipped:', err)
+    }
 
     return NextResponse.json({
       success: true,

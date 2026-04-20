@@ -102,15 +102,7 @@ export default function DoctorDashboard() {
         .lt('consultation_date', tomorrow.toISOString())
         .order('consultation_date', { ascending: true })
 
-      // Merge appointments and consultations into a single list
-      const appointmentsList: Appointment[] = (appointments || []).map(a => ({
-        id: a.id,
-        patient_name: a.patient_name,
-        scheduled_at: a.scheduled_at,
-        status: a.status,
-        source: 'appointment'
-      }))
-
+      // Merge appointments and consultations, avoiding duplicates
       const consultationsList: Appointment[] = (consultations || []).map(c => ({
         id: c.id,
         patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
@@ -119,7 +111,21 @@ export default function DoctorDashboard() {
         source: 'consultation'
       }))
 
-      const allAppointments = [...appointmentsList, ...consultationsList].sort((a, b) =>
+      // Only include appointments that don't have a matching consultation (same patient + similar time)
+      const appointmentsList: Appointment[] = (appointments || []).filter(a => {
+        return !consultationsList.some(c => {
+          const timeDiff = Math.abs(new Date(c.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
+          return c.patient_name === a.patient_name && timeDiff < 3600000
+        })
+      }).map(a => ({
+        id: a.id,
+        patient_name: a.patient_name,
+        scheduled_at: a.scheduled_at,
+        status: a.status,
+        source: 'appointment'
+      }))
+
+      const allAppointments = [...consultationsList, ...appointmentsList].sort((a, b) =>
         new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
       )
 

@@ -324,8 +324,18 @@ export default function AgendaPage() {
       .eq('status', 'confirmed')
       .order('scheduled_at', { ascending: true })
 
+    // Deduplicate: remove confirmed appointments that already have a linked consultation
+    const consultAppointmentIds = new Set((consults ?? []).filter(c => c.appointment_id).map(c => c.appointment_id))
     const confirmedAppts: CalendarAppointment[] = (confirmed ?? [])
-      .filter(a => !consultAppts.some(c => c.isoDate === a.scheduled_at && c.patient_name === a.patient_name))
+      .filter(a => {
+        // Skip if this appointment already has a consultation linked
+        if (consultAppointmentIds.has(a.id)) return false
+        // Also skip if same patient + similar time (within 1 hour)
+        return !consultAppts.some(c => {
+          const timeDiff = Math.abs(new Date(c.isoDate).getTime() - new Date(a.scheduled_at).getTime())
+          return c.patient_name === a.patient_name && timeDiff < 3600000
+        })
+      })
       .map(a => {
         const d = new Date(a.scheduled_at)
         const timeStr = toHHMM(d)
