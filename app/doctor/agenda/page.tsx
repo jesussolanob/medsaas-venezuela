@@ -226,6 +226,8 @@ export default function AgendaPage() {
   })
   const [creatingConsulta, setCreatingConsulta] = useState(false)
   const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([])
+  const [newReceiptFile, setNewReceiptFile] = useState<File | null>(null)
+  const requiresReceiptForNew = (method: string) => !['efectivo', 'efectivo_bs', 'pos', ''].includes(method)
 
   const weekDates = getWeekDates(weekOffset)
   const monthCells = getMonthDates(monthYear.year, monthYear.month)
@@ -718,6 +720,23 @@ export default function AgendaPage() {
     try {
       const selectedPlan = pricingPlans.find(p => p.id === newConsulta.plan_id)
       const consultationDate = new Date(`${newConsulta.date}T${newConsulta.time}:00`).toISOString()
+
+      // Upload receipt if provided
+      let receiptUrl: string | null = null
+      if (newReceiptFile) {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const ext = newReceiptFile.name.split('.').pop()
+          const path = `${user.id}/${newConsulta.patient_id}/${Date.now()}.${ext}`
+          const { error: uploadErr } = await supabase.storage.from('payment-receipts').upload(path, newReceiptFile, { upsert: false })
+          if (!uploadErr) {
+            const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
+            receiptUrl = publicUrl.publicUrl
+          }
+        }
+      }
+
       const res = await fetch('/api/doctor/consultations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -729,12 +748,14 @@ export default function AgendaPage() {
           plan_name: selectedPlan?.name || null,
           payment_method: newConsulta.payment_method || null,
           payment_reference: newConsulta.payment_reference || null,
+          payment_receipt_url: receiptUrl,
         }),
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Error al crear')
       toast.success('Consulta creada y agregada a la agenda')
       setShowNewConsulta(false)
+      setNewReceiptFile(null)
       setNewConsulta({ patient_id: '', date: '', time: '', reason: '', plan_id: '', payment_method: '', payment_reference: '' })
       await loadData()
     } catch (err: any) {
@@ -1559,6 +1580,21 @@ export default function AgendaPage() {
                         className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                       />
                     </div>
+
+                    {/* Comprobante upload */}
+                    {newConsulta.payment_method && requiresReceiptForNew(newConsulta.payment_method) && (
+                      <div className="border border-dashed border-slate-300 rounded-xl p-4 space-y-2 bg-slate-50/50">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Adjuntar comprobante <span className="text-xs font-normal normal-case text-slate-400">(opcional)</span></p>
+                        <label className="flex items-center justify-center border-2 border-dashed border-teal-300/50 rounded-xl p-3 cursor-pointer hover:bg-white/80 transition-colors">
+                          <input type="file" accept="image/*,application/pdf" onChange={e => setNewReceiptFile(e.target.files?.[0] || null)} className="hidden" />
+                          <div className="text-center">
+                            <Upload className="w-4 h-4 mx-auto mb-1 text-teal-500" />
+                            <p className="text-xs font-medium text-slate-600">{newReceiptFile ? newReceiptFile.name : 'JPG, PNG o PDF'}</p>
+                          </div>
+                        </label>
+                        {newReceiptFile && <p className="text-xs text-slate-500">{(newReceiptFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                      </div>
+                    )}
                   </div>
                 )}
 

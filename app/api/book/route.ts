@@ -263,6 +263,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No se pudo obtener el ID del paciente' }, { status: 500 })
     }
 
+    // Fetch BCV rate for Bs calculation
+    let bcvRate: number | null = null
+    try {
+      const bcvRes = await fetch(new URL('/api/admin/bcv-rate', req.url).toString())
+      if (bcvRes.ok) {
+        const bcvData = await bcvRes.json()
+        if (bcvData.rate && bcvData.rate > 0) bcvRate = bcvData.rate
+      }
+    } catch { /* best-effort */ }
+
     // ── 2. Create appointment ───────────────────────────────────────────────
     const appointmentData: Record<string, unknown> = {
       doctor_id: doctorId,
@@ -280,6 +290,8 @@ export async function POST(req: NextRequest) {
       insurance_name: insuranceName || null,
       payment_receipt_url: receiptUrl || null,
       appointment_mode: appointmentMode || 'presencial',
+      bcv_rate: bcvRate,
+      amount_bs: bcvRate ? parseFloat(((validatedPackage ? 0 : (planPrice || 20)) * bcvRate).toFixed(2)) : null,
     }
     // Only set auth_user_id if user is authenticated
     if (user) {

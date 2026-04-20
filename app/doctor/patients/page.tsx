@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X, ChevronRight,
   ArrowLeft, Save, CheckCircle, Clock, AlertCircle, MessageCircle,
-  Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon
+  Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon, Upload
 } from 'lucide-react'
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
@@ -71,19 +71,57 @@ export default function PatientsPage() {
   const [patError, setPatError] = useState('')
 
   // New consultation form
-  const [newConsult, setNewConsult] = useState<{ chief_complaint: string; notes: string; diagnosis: string; treatment: string; payment_status: 'unpaid' | 'pending_approval' | 'approved' }>({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid' })
+  const [newConsult, setNewConsult] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid' as 'unpaid' | 'pending_approval' | 'approved', plan_id: '', payment_method: '', payment_reference: '' })
   const [consultError, setConsultError] = useState('')
   const [consultSuccess, setConsultSuccess] = useState('')
   const [packageInfo, setPackageInfo] = useState<Record<string, PatientPackageInfo>>({})
 
+  // Pricing plans + payment methods for new consultation
+  const [pricingPlans, setPricingPlans] = useState<{ id: string; name: string; price_usd: number; duration_minutes: number }[]>([])
+  const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([])
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
+
+  const PAYMENT_METHODS = [
+    { value: 'efectivo', label: 'Efectivo USD' },
+    { value: 'efectivo_bs', label: 'Efectivo Bs' },
+    { value: 'pago_movil', label: 'Pago Móvil' },
+    { value: 'transferencia', label: 'Transferencia' },
+    { value: 'zelle', label: 'Zelle' },
+    { value: 'binance', label: 'Binance' },
+    { value: 'pos', label: 'POS / Punto de venta' },
+    { value: 'seguro', label: 'Seguro' },
+  ]
+
+  const requiresReceipt = (method: string) => !['efectivo', 'efectivo_bs', 'pos', ''].includes(method)
+
   useEffect(() => {
-    getDoctorId().then(id => {
+    getDoctorId().then(async (id) => {
       if (!id) return
       setDoctorId(id)
       getPatients(id).then(p => { setPatients(p); setLoading(false) })
 
       // Load package info
       loadPackageInfo(id)
+
+      // Load pricing plans and payment methods
+      const supabase = createClient()
+      const { data: plans } = await supabase
+        .from('pricing_plans')
+        .select('id, name, price_usd, duration_minutes')
+        .eq('doctor_id', id)
+        .eq('is_active', true)
+        .order('price_usd')
+      setPricingPlans(plans || [])
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('payment_methods')
+        .eq('id', id)
+        .single()
+      if (profileData?.payment_methods && Array.isArray(profileData.payment_methods)) {
+        setDoctorPaymentMethods(profileData.payment_methods)
+      }
     })
   }, [])
 
@@ -202,22 +240,58 @@ export default function PatientsPage() {
     })
   }
 
-  function handleCreateConsultation(e: React.FormEvent) {
+  async function handleCreateConsultation(e: React.FormEvent) {
     e.preventDefault()
     if (!selected || !doctorId) return
     if (!newConsult.chief_complaint.trim()) { setConsultError('Ingresa el motivo de consulta'); return }
     setConsultError('')
-    startTransition(async () => {
-      const res = await createConsultation(doctorId, {
-        patient_id: selected.id,
-        ...newConsult,
+    setUploadingReceipt(true)
+
+    try {
+      // Find selected plan details
+      const selectedPlan = pricingPlans.find(p => p.id === newConsult.plan_id)
+      const planAmount = selectedPlan?.price_usd || 0
+      const planName = selectedPlan?.name || ''
+
+      // Upload receipt if provided
+      let receiptUrl: string | null = null
+      if (receiptFile) {
+        const supabase = createClient()
+        const ext = receiptFile.name.split('.').pop()
+        const path = `${doctorId}/${selected.id}/${Date.now()}.${ext}`
+        const { error: uploadErr } = await supabase.storage.from('payment-receipts').upload(path, receiptFile, { upsert: false })
+        if (uploadErr) { setConsultError(`Error al subir comprobante: ${uploadErr.message}`); setUploadingReceipt(false); return }
+        const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
+        receiptUrl = publicUrl.publicUrl
+      }
+
+      // Create consultation via API (auto-creates linked appointment)
+      const res = await fetch('/api/doctor/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: selected.id,
+          chief_complaint: newConsult.chief_complaint,
+          notes: newConsult.notes || null,
+          amount: planAmount,
+          plan_name: planName,
+          payment_method: newConsult.payment_method || null,
+          payment_reference: newConsult.payment_reference || null,
+          payment_receipt_url: receiptUrl,
+        }),
       })
-      if (!res.success) { setConsultError(res.error); return }
-      setConsultSuccess(`Consulta creada: ${res.code}`)
-      setNewConsult({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid' })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Error al crear consulta')
+
+      setConsultSuccess(`Consulta creada: ${result.code}`)
+      setNewConsult({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid', plan_id: '', payment_method: '', payment_reference: '' })
+      setReceiptFile(null)
       setView('detail')
       getConsultations(selected.id).then(setConsultations)
-    })
+    } catch (err: any) {
+      setConsultError(err?.message || 'Error al crear consulta')
+    }
+    setUploadingReceipt(false)
   }
 
   function handleStatusChange(consultId: string, status: 'unpaid' | 'pending_approval' | 'approved') {
@@ -686,13 +760,73 @@ export default function PatientsPage() {
             )}
 
             <form onSubmit={handleCreateConsultation} className="space-y-4">
+              {/* Motivo de consulta */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Motivo de consulta <span className="text-red-400">*</span></label>
                 <input value={newConsult.chief_complaint} onChange={e => setNewConsult(p => ({ ...p, chief_complaint: e.target.value }))} placeholder="Ej: Dolor de cabeza persistente..." className={fi} />
               </div>
+
+              {/* Plan / Servicio */}
+              {pricingPlans.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Plan o servicio</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {pricingPlans.map(plan => (
+                      <button
+                        key={plan.id} type="button"
+                        onClick={() => setNewConsult(p => ({ ...p, plan_id: p.plan_id === plan.id ? '' : plan.id }))}
+                        className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${newConsult.plan_id === plan.id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+                      >
+                        <p className="text-sm font-semibold text-slate-800">{plan.name}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">${plan.price_usd} USD · {plan.duration_minutes} min</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Método de pago + referencia (shown when plan selected) */}
+              {newConsult.plan_id && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Método de pago</label>
+                    <select
+                      value={newConsult.payment_method}
+                      onChange={e => setNewConsult(p => ({ ...p, payment_method: e.target.value }))}
+                      className={fi}
+                    >
+                      <option value="">-- Selecciona método de pago --</option>
+                      {PAYMENT_METHODS.filter(m => doctorPaymentMethods.length === 0 || doctorPaymentMethods.includes(m.value)).map(m => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Referencia / Nro. comprobante</label>
+                    <input value={newConsult.payment_reference} onChange={e => setNewConsult(p => ({ ...p, payment_reference: e.target.value }))} placeholder="Ej: #12345, últimos 4 dígitos..." className={fi} />
+                  </div>
+
+                  {/* Comprobante upload */}
+                  {newConsult.payment_method && requiresReceipt(newConsult.payment_method) && (
+                    <div className="border border-dashed border-slate-300 rounded-xl p-4 space-y-2 bg-slate-50/50">
+                      <p className="text-sm font-medium text-slate-700">Adjuntar comprobante <span className="text-xs text-slate-400">(opcional)</span></p>
+                      <label className="flex items-center justify-center border-2 border-dashed border-teal-300/50 rounded-xl p-4 cursor-pointer hover:bg-white/80 transition-colors">
+                        <input type="file" accept="image/*,application/pdf" onChange={e => setReceiptFile(e.target.files?.[0] || null)} className="hidden" />
+                        <div className="text-center">
+                          <Upload className="w-5 h-5 mx-auto mb-1 text-teal-500" />
+                          <p className="text-sm font-medium text-slate-700">{receiptFile ? receiptFile.name : 'Sube comprobante (JPG, PNG, PDF)'}</p>
+                        </div>
+                      </label>
+                      {receiptFile && <p className="text-xs text-slate-500">{receiptFile.name} ({(receiptFile.size / 1024 / 1024).toFixed(2)} MB)</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Notas clínicas */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Notas de la consulta</label>
-                <textarea value={newConsult.notes} onChange={e => setNewConsult(p => ({ ...p, notes: e.target.value }))} rows={4} placeholder="Anamnesis, síntomas, observaciones..." className={fi + ' resize-none'} />
+                <textarea value={newConsult.notes} onChange={e => setNewConsult(p => ({ ...p, notes: e.target.value }))} rows={3} placeholder="Anamnesis, síntomas, observaciones..." className={fi + ' resize-none'} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -704,23 +838,9 @@ export default function PatientsPage() {
                   <input value={newConsult.treatment} onChange={e => setNewConsult(p => ({ ...p, treatment: e.target.value }))} placeholder="Ej: Metoprolol 50mg..." className={fi} />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Estado del pago</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {(Object.entries(PAYMENT_STATUS) as [string, typeof PAYMENT_STATUS['unpaid']][]).map(([k, v]) => (
-                    <button
-                      key={k} type="button"
-                      onClick={() => setNewConsult(p => ({ ...p, payment_status: k as 'unpaid' | 'pending_approval' | 'approved' }))}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${newConsult.payment_status === k ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
-                    >
-                      {v.icon} {v.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <button type="submit" disabled={isPending} className="g-bg w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-                {isPending ? <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Guardando...</> : <><Save className="w-4 h-4" />Guardar consulta</>}
+              <button type="submit" disabled={uploadingReceipt} className="g-bg w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
+                {uploadingReceipt ? <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Guardando...</> : <><Save className="w-4 h-4" />Guardar consulta</>}
               </button>
             </form>
           </div>

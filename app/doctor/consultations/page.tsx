@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 
@@ -146,6 +146,8 @@ function ConsultationsPage() {
     sendEmail: true,
   })
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false)
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const requiresReceipt = (method: string) => !['efectivo', 'efectivo_bs', 'pos', ''].includes(method)
 
   // Schedule / time slot state for new consultation
   type AvailabilitySlot = { day_of_week: number; start_time: string; end_time: string; is_enabled: boolean }
@@ -594,6 +596,22 @@ function ConsultationsPage() {
       const planAmount = selectedPlan?.price_usd || 0
       const planName = selectedPlan?.name || ''
 
+      // Upload receipt if provided
+      let receiptUrl: string | null = null
+      if (receiptFile) {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const ext = receiptFile.name.split('.').pop()
+          const path = `${user.id}/${newConsultation.patient_id}/${Date.now()}.${ext}`
+          const { error: uploadErr } = await supabase.storage.from('payment-receipts').upload(path, receiptFile, { upsert: false })
+          if (!uploadErr) {
+            const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
+            receiptUrl = publicUrl.publicUrl
+          }
+        }
+      }
+
       // 1. Create consultation via API
       const res = await fetch('/api/doctor/consultations', {
         method: 'POST',
@@ -607,6 +625,7 @@ function ConsultationsPage() {
           plan_name: planName,
           payment_method: newConsultation.payment_method,
           payment_reference: newConsultation.payment_reference || null,
+          payment_receipt_url: receiptUrl,
         }),
       })
       const result = await res.json()
@@ -679,6 +698,7 @@ function ConsultationsPage() {
       }
 
       setShowNewConsultation(false)
+      setReceiptFile(null)
       setNewConsultation({
         patient_id: '',
         consultation_date: getLocalDateTimeString(),
@@ -2171,6 +2191,21 @@ function ConsultationsPage() {
                         placeholder="Ej: #12345, ultimo 4 digitos..."
                         className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none" />
                     </div>
+
+                    {/* Comprobante upload */}
+                    {newConsultation.payment_method && requiresReceipt(newConsultation.payment_method) && (
+                      <div className="border border-dashed border-slate-300 rounded-xl p-4 space-y-2 bg-slate-50/50">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Adjuntar comprobante <span className="text-xs font-normal normal-case text-slate-400">(opcional)</span></p>
+                        <label className="flex items-center justify-center border-2 border-dashed border-teal-300/50 rounded-xl p-3 cursor-pointer hover:bg-white/80 transition-colors">
+                          <input type="file" accept="image/*,application/pdf" onChange={e => setReceiptFile(e.target.files?.[0] || null)} className="hidden" />
+                          <div className="text-center">
+                            <Upload className="w-4 h-4 mx-auto mb-1 text-teal-500" />
+                            <p className="text-xs font-medium text-slate-600">{receiptFile ? receiptFile.name : 'JPG, PNG o PDF'}</p>
+                          </div>
+                        </label>
+                        {receiptFile && <p className="text-xs text-slate-500">{(receiptFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                      </div>
+                    )}
                   </div>
                 )}
 

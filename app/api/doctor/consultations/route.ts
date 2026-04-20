@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
   const body = await req.json()
-  const { patient_id, appointment_id, chief_complaint, notes, consultation_date, amount, currency, plan_name, payment_method, payment_reference } = body
+  const { patient_id, appointment_id, chief_complaint, notes, consultation_date, amount, currency, plan_name, payment_method, payment_reference, payment_receipt_url } = body
 
   if (!patient_id) {
     return NextResponse.json({ error: 'patient_id requerido' }, { status: 400 })
@@ -60,6 +60,17 @@ export async function POST(req: NextRequest) {
   const consultationCode = genCode('CON')
   const dateISO = consultation_date || new Date().toISOString()
   const finalAmount = amount || 0
+
+  // Fetch BCV rate for Bs calculation
+  let bcvRate: number | null = null
+  try {
+    const bcvRes = await fetch(new URL('/api/admin/bcv-rate', req.url).toString())
+    if (bcvRes.ok) {
+      const bcvData = await bcvRes.json()
+      if (bcvData.rate && bcvData.rate > 0) bcvRate = bcvData.rate
+    }
+  } catch { /* best-effort */ }
+  const amountBs = bcvRate && finalAmount ? parseFloat((finalAmount * bcvRate).toFixed(2)) : null
 
   let linkedAppointmentId = appointment_id || null
 
@@ -86,7 +97,10 @@ export async function POST(req: NextRequest) {
         plan_name: plan_name || null,
         plan_price: finalAmount,
         payment_method: payment_method || null,
+        payment_receipt_url: payment_receipt_url || null,
         appointment_mode: 'presencial',
+        bcv_rate: bcvRate,
+        amount_bs: amountBs,
       })
       .select('id')
       .single()
@@ -115,6 +129,8 @@ export async function POST(req: NextRequest) {
       plan_name: plan_name || null,
       payment_method: payment_method || null,
       payment_reference: payment_reference || null,
+      bcv_rate: bcvRate,
+      amount_bs: amountBs,
     })
     .select()
     .single()
