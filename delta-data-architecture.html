@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Medical CRM — Arquitectura de Datos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; overflow-x: hidden; }
+
+  /* Navigation */
+  .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(15,23,42,0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0,196,204,0.15); }
+  .nav-inner { max-width: 1400px; margin: 0 auto; padding: 12px 32px; display: flex; align-items: center; gap: 24px; overflow-x: auto; }
+  .nav-logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .nav-logo-icon { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #00C4CC, #0891b2); display: flex; align-items: center; justify-content: center; font-weight: 800; color: white; font-size: 14px; }
+  .nav-logo span { font-weight: 700; font-size: 15px; background: linear-gradient(135deg, #00C4CC, #0891b2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .nav-links { display: flex; gap: 4px; }
+  .nav-link { padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; color: #94a3b8; cursor: pointer; transition: all 0.2s; white-space: nowrap; border: none; background: none; }
+  .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+  .nav-link.active { color: #00C4CC; background: rgba(0,196,204,0.1); }
+
+  /* Sections */
+  .section { min-height: 100vh; padding: 100px 32px 60px; max-width: 1400px; margin: 0 auto; }
+  .section-title { font-size: 36px; font-weight: 800; margin-bottom: 8px; background: linear-gradient(135deg, #00C4CC, #0891b2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .section-subtitle { font-size: 15px; color: #64748b; margin-bottom: 40px; max-width: 600px; }
+
+  /* Hero */
+  .hero { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 100vh; padding-top: 60px; }
+  .hero .section-title { font-size: 52px; line-height: 1.1; }
+  .hero .section-subtitle { max-width: 700px; font-size: 17px; margin-top: 16px; }
+  .hero-stats { display: flex; gap: 32px; margin-top: 48px; flex-wrap: wrap; justify-content: center; }
+  .hero-stat { text-align: center; }
+  .hero-stat-value { font-size: 42px; font-weight: 800; color: #00C4CC; }
+  .hero-stat-label { font-size: 12px; color: #64748b; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* Cards */
+  .card { background: rgba(30,41,59,0.6); border: 1px solid rgba(100,116,139,0.15); border-radius: 16px; padding: 28px; backdrop-filter: blur(10px); }
+  .card-grid { display: grid; gap: 20px; }
+  .card-grid-2 { grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); }
+  .card-grid-3 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card-title { font-size: 16px; font-weight: 700; color: #f1f5f9; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .card-title .icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+
+  /* Table Schema */
+  .schema-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .schema-table th { text-align: left; padding: 8px 12px; color: #94a3b8; font-weight: 600; border-bottom: 1px solid rgba(100,116,139,0.2); text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
+  .schema-table td { padding: 6px 12px; border-bottom: 1px solid rgba(100,116,139,0.08); color: #cbd5e1; }
+  .schema-table tr:hover td { background: rgba(0,196,204,0.03); }
+  .col-name { font-weight: 600; color: #f1f5f9; font-family: 'Consolas', monospace; }
+  .col-type { color: #00C4CC; font-family: 'Consolas', monospace; font-size: 11px; }
+  .col-fk { color: #f59e0b; font-size: 10px; font-weight: 600; }
+  .col-pk { color: #10b981; font-size: 10px; font-weight: 600; }
+
+  /* Flow diagrams */
+  .flow-container { background: rgba(15,23,42,0.8); border: 1px solid rgba(100,116,139,0.15); border-radius: 16px; padding: 32px; overflow-x: auto; }
+  .flow-row { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; min-width: max-content; justify-content: center; }
+  .flow-step { padding: 14px 20px; border-radius: 12px; font-size: 12px; font-weight: 600; text-align: center; min-width: 130px; position: relative; }
+  .flow-step.start { background: linear-gradient(135deg, #00C4CC, #0891b2); color: white; }
+  .flow-step.process { background: rgba(30,41,59,0.9); border: 1px solid rgba(0,196,204,0.3); color: #e2e8f0; }
+  .flow-step.decision { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #fbbf24; transform: rotate(0deg); }
+  .flow-step.db { background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.4); color: #c4b5fd; }
+  .flow-step.end { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #6ee7b7; }
+  .flow-step.error { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; }
+  .flow-step small { display: block; font-size: 10px; font-weight: 400; margin-top: 4px; opacity: 0.7; }
+  .flow-arrow { color: #475569; font-size: 18px; flex-shrink: 0; }
+  .flow-section { margin-bottom: 32px; }
+  .flow-label { font-size: 13px; font-weight: 700; color: #94a3b8; margin-bottom: 14px; padding-left: 4px; display: flex; align-items: center; gap: 8px; }
+  .flow-label .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* Mind map */
+  .mindmap-container { width: 100%; overflow-x: auto; }
+  .mindmap-svg { width: 100%; min-height: 500px; }
+  .mindmap-svg text { font-family: 'Inter', sans-serif; }
+
+  /* Issues */
+  .issue-card { padding: 20px; border-radius: 12px; margin-bottom: 12px; }
+  .issue-critical { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); }
+  .issue-warning { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); }
+  .issue-info { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); }
+  .issue-success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); }
+  .issue-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .issue-tag.critical { background: rgba(239,68,68,0.2); color: #fca5a5; }
+  .issue-tag.warning { background: rgba(245,158,11,0.2); color: #fcd34d; }
+  .issue-tag.info { background: rgba(59,130,246,0.2); color: #93c5fd; }
+  .issue-tag.success { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .issue-title { font-size: 14px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px; }
+  .issue-desc { font-size: 12px; color: #94a3b8; line-height: 1.6; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; flex-wrap: wrap; }
+  .tab { padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #94a3b8; cursor: pointer; border: 1px solid rgba(100,116,139,0.15); background: transparent; transition: all 0.2s; }
+  .tab:hover { color: #e2e8f0; border-color: rgba(100,116,139,0.3); }
+  .tab.active { color: #00C4CC; background: rgba(0,196,204,0.1); border-color: rgba(0,196,204,0.3); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Badge */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+  .badge-teal { background: rgba(0,196,204,0.15); color: #00C4CC; }
+  .badge-purple { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+  .badge-amber { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .badge-red { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .badge-green { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+
+  /* Vertical flow */
+  .vflow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .vflow-step { width: 100%; max-width: 500px; padding: 16px 20px; border-radius: 12px; font-size: 13px; text-align: center; position: relative; }
+  .vflow-arrow { color: #475569; font-size: 20px; padding: 4px 0; }
+  .vflow-branch { display: flex; gap: 16px; width: 100%; max-width: 700px; }
+  .vflow-branch > div { flex: 1; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .section { padding: 80px 16px 40px; }
+    .hero .section-title { font-size: 32px; }
+    .card-grid-2, .card-grid-3 { grid-template-columns: 1fr; }
+    .flow-row { justify-content: flex-start; }
+  }
+
+  /* Animations */
+  .fade-in { opacity: 0; transform: translateY(20px); transition: all 0.6s ease-out; }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+  /* Table group */
+  .table-group { margin-bottom: 32px; }
+  .table-group-title { font-size: 13px; font-weight: 700; color: #00C4CC; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .table-group-title::after { content: ''; flex: 1; height: 1px; background: rgba(0,196,204,0.15); }
+
+  /* Metric bar */
+  .metric-bar { height: 6px; border-radius: 3px; background: rgba(100,116,139,0.15); overflow: hidden; margin-top: 8px; }
+  .metric-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #00C4CC, #0891b2); }
+
+  /* Connector lines for mind map */
+  .mm-center { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 40px; }
+  .mm-row { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+  .mm-node { padding: 12px 20px; border-radius: 12px; font-size: 12px; font-weight: 600; text-align: center; min-width: 120px; }
+  .mm-node.root { background: linear-gradient(135deg, #00C4CC, #0891b2); color: white; font-size: 16px; padding: 16px 32px; }
+  .mm-node.branch { background: rgba(30,41,59,0.9); border: 2px solid; }
+  .mm-children { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .mm-child { font-size: 11px; color: #94a3b8; padding: 4px 0; text-align: left; padding-left: 12px; border-left: 2px solid rgba(100,116,139,0.2); }
+
+  .mm-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<div class="nav">
+  <div class="nav-inner">
+    <div class="nav-logo">
+      <div class="nav-logo-icon">D</div>
+      <span>Data Architecture</span>
+    </div>
+    <div class="nav-links">
+      <button class="nav-link active" onclick="scrollToSection('hero')">Inicio</button>
+      <button class="nav-link" onclick="scrollToSection('mindmap')">Mapa Mental</button>
+      <button class="nav-link" onclick="scrollToSection('schemas')">Esquemas</button>
+      <button class="nav-link" onclick="scrollToSection('forms')">Formularios</button>
+      <button class="nav-link" onclick="scrollToSection('flows')">Flujos</button>
+      <button class="nav-link" onclick="scrollToSection('duplicates')">Duplicados</button>
+      <button class="nav-link" onclick="scrollToSection('improvements')">Mejoras</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hero -->
+<div class="section hero" id="hero">
+  <div class="section-title fade-in">Arquitectura de Datos</div>
+  <div class="section-subtitle fade-in" style="text-align:center">
+    Análisis completo de la estructura de base de datos, flujos de datos, duplicaciones y oportunidades de mejora para Delta Medical CRM.
+  </div>
+  <div class="hero-stats fade-in">
+    <div class="hero-stat"><div class="hero-stat-value">30+</div><div class="hero-stat-label">Tablas</div></div>
+    <div class="hero-stat"><div class="hero-stat-value">12</div><div class="hero-stat-label">APIs</div></div>
+    <div class="hero-stat"><div class="hero-stat-value">5</div><div class="hero-stat-label">Flujos críticos</div></div>
+    <div class="hero-stat"><div class="hero-stat-value">8</div><div class="hero-stat-label">Duplicaciones</div></div>
+  </div>
+</div>
+
+<!-- Mind Map -->
+<div class="section" id="mindmap">
+  <div class="section-title fade-in">Mapa Mental — Estructura General</div>
+  <div class="section-subtitle fade-in">Visión panorámica de cómo se relacionan los módulos y tablas del sistema.</div>
+
+  <div class="card fade-in" style="padding: 40px; overflow-x: auto;">
+    <div class="mm-center">
+      <!-- Root -->
+      <div class="mm-node root">Delta Medical CRM</div>
+
+      <!-- Level 1 -->
+      <div class="mm-row" style="gap: 24px;">
+        <!-- Auth & Users -->
+        <div class="mm-group">
+          <div class="mm-node branch" style="border-color: #8b5cf6;">
+            <span style="color: #c4b5fd;">👤 Auth & Usuarios</span>
+          </div>
+          <div class="mm-children">
+            <div class="mm-child"><strong style="color:#c4b5fd">profiles</strong> — datos de usuario</div>
+            <div class="mm-child"><strong style="color:#c4b5fd">admin_roles</strong> — roles admin</div>
+            <div class="mm-child"><strong style="color:#c4b5fd">clinics</strong> — multi-tenant</div>
+            <div class="mm-child"><strong style="color:#c4b5fd">clinic_invitations</strong> — invitaciones</div>
+          </div>
+        </div>
+
+        <!-- Clinical -->
+        <div class="mm-group">
+          <div class="mm-node branch" style="border-color: #00C4CC;">
+            <span style="color: #00C4CC;">🩺 Consultorio</span>
+          </div>
+          <div class="mm-children">
+            <div class="mm-child"><strong style="color:#00C4CC">patients</strong> — pacientes del doctor</div>
+            <div class="mm-child"><strong style="color:#00C4CC">consultations</strong> — consultas médicas</div>
+            <div class="mm-child"><strong style="color:#00C4CC">appointments</strong> — citas agendadas</div>
+            <div class="mm-child"><strong style="color:#00C4CC">prescriptions</strong> — recetas (JSONB)</div>
+            <div class="mm-child"><strong style="color:#00C4CC">ehr_records</strong> — historial clínico</div>
+            <div class="mm-child"><strong style="color:#00C4CC">patient_packages</strong> — paquetes prepagados</div>
+          </div>
+        </div>
+
+        <!-- Scheduling -->
+        <div class="mm-group">
+          <div class="mm-node branch" style="border-color: #3b82f6;">
+            <span style="color: #93c5fd;">📅 Agenda</span>
+          </div>
+          <div class="mm-children">
+            <div class="mm-child"><strong style="color:#93c5fd">doctor_schedule_config</strong> — config horarios</div>
+            <div class="mm-child"><strong style="color:#93c5fd">doctor_availability</strong> — disponibilidad/día</div>
+            <div class="mm-child"><strong style="color:#93c5fd">doctor_blocked_slots</strong> — bloqueos</div>
+            <div class="mm-child"><strong style="color:#93c5fd">waitlist</strong> — lista de espera</div>
+          </div>
+        </div>
+
+        <!-- Finanzas -->
+        <div class="mm-group">
+          <div class="mm-node branch" style="border-color: #f59e0b;">
+            <span style="color: #fcd34d;">💰 Finanzas</span>
+          </div>
+          <div class="mm-children">
+            <div class="mm-child"><strong style="color:#fcd34d">subscription_payments</strong> — pagos suscripción</div>
+            <div class="mm-child"><strong style="color:#fcd34d">subscriptions</strong> — estado suscripción</div>
+            <div class="mm-child"><strong style="color:#fcd34d">billing_documents</strong> — facturas</div>
+            <div class="mm-child"><strong style="color:#fcd34d">pricing_plans</strong> — planes del doctor</div>
+            <div class="mm-child"><strong style="color:#fcd34d">payment_accounts</strong> — cuentas de pago</div>
+          </div>
+        </div>
+
+        <!-- Marketing -->
+        <div class="mm-group">
+          <div class="mm-node branch" style="border-color: #10b981;">
+            <span style="color: #6ee7b7;">📣 Marketing</span>
+          </div>
+          <div class="mm-children">
+            <div class="mm-child"><strong style="color:#6ee7b7">appointment_reminders_config</strong> — config</div>
+            <div class="mm-child"><strong style="color:#6ee7b7">doctor_invitations</strong> — links únicos</div>
+            <div class="mm-child"><strong style="color:#6ee7b7">leads</strong> — prospectos</div>
+            <div class="mm-child"><strong style="color:#6ee7b7">patient_messages</strong> — mensajería</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Schemas -->
+<div class="section" id="schemas">
+  <div class="section-title fade-in">Esquemas de Base de Datos</div>
+  <div class="section-subtitle fade-in">Detalle de las tablas principales, sus columnas, tipos y relaciones.</div>
+
+  <div class="tabs fade-in">
+    <button class="tab active" onclick="showTab('tab-core')">Core Clínico</button>
+    <button class="tab" onclick="showTab('tab-scheduling')">Agenda</button>
+    <button class="tab" onclick="showTab('tab-finance')">Finanzas</button>
+    <button class="tab" onclick="showTab('tab-auth')">Auth & Config</button>
+  </div>
+
+  <!-- Core -->
+  <div class="tab-content active" id="tab-core">
+    <div class="card-grid card-grid-2 fade-in">
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(0,196,204,0.15);color:#00C4CC">P</div> patients</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="col-pk">PK</span></td></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → profiles</span></td></tr>
+          <tr><td class="col-name">auth_user_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → auth.users</span></td></tr>
+          <tr><td class="col-name">full_name</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">cedula</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">phone</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">email</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">age</td><td class="col-type">int</td><td></td></tr>
+          <tr><td class="col-name">sex</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">source</td><td class="col-type">text</td><td>booking | manual</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(0,196,204,0.15);color:#00C4CC">C</div> consultations</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="col-pk">PK</span></td></tr>
+          <tr><td class="col-name">consultation_code</td><td class="col-type">text</td><td>Código único</td></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → profiles</span></td></tr>
+          <tr><td class="col-name">patient_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → patients</span></td></tr>
+          <tr><td class="col-name">appointment_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → appointments</span></td></tr>
+          <tr><td class="col-name">chief_complaint</td><td class="col-type">text</td><td><span class="badge badge-red">Duplicado</span></td></tr>
+          <tr><td class="col-name">diagnosis</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">treatment</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">notes</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">payment_status</td><td class="col-type">text</td><td>unpaid | pending | approved</td></tr>
+          <tr><td class="col-name">plan_name</td><td class="col-type">text</td><td><span class="badge badge-red">Duplicado</span></td></tr>
+          <tr><td class="col-name">amount</td><td class="col-type">numeric</td><td></td></tr>
+          <tr><td class="col-name">payment_method</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">consultation_date</td><td class="col-type">timestamptz</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(245,158,11,0.15);color:#f59e0b">A</div> appointments</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="col-pk">PK</span></td></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → profiles</span></td></tr>
+          <tr><td class="col-name">patient_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → patients</span></td></tr>
+          <tr><td class="col-name">consultation_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → consultations</span></td></tr>
+          <tr><td class="col-name">patient_name</td><td class="col-type">text</td><td><span class="badge badge-red">Desnormalizado</span></td></tr>
+          <tr><td class="col-name">patient_phone</td><td class="col-type">text</td><td><span class="badge badge-red">Desnormalizado</span></td></tr>
+          <tr><td class="col-name">patient_email</td><td class="col-type">text</td><td><span class="badge badge-red">Desnormalizado</span></td></tr>
+          <tr><td class="col-name">scheduled_at</td><td class="col-type">timestamptz</td><td></td></tr>
+          <tr><td class="col-name">status</td><td class="col-type">text</td><td>scheduled | confirmed | cancelled</td></tr>
+          <tr><td class="col-name">plan_name</td><td class="col-type">text</td><td><span class="badge badge-red">Duplicado</span></td></tr>
+          <tr><td class="col-name">plan_price</td><td class="col-type">numeric</td><td></td></tr>
+          <tr><td class="col-name">payment_method</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">chief_complaint</td><td class="col-type">text</td><td><span class="badge badge-red">Duplicado</span></td></tr>
+          <tr><td class="col-name">appointment_mode</td><td class="col-type">text</td><td>presencial | online</td></tr>
+          <tr><td class="col-name">package_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → patient_packages</span></td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(139,92,246,0.15);color:#8b5cf6">R</div> prescriptions</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="col-pk">PK</span></td></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → profiles</span></td></tr>
+          <tr><td class="col-name">patient_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → patients</span></td></tr>
+          <tr><td class="col-name">consultation_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → consultations</span></td></tr>
+          <tr><td class="col-name">medications</td><td class="col-type">jsonb[]</td><td>Array de medicamentos</td></tr>
+          <tr><td class="col-name">notes</td><td class="col-type">text</td><td></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scheduling -->
+  <div class="tab-content" id="tab-scheduling">
+    <div class="card-grid card-grid-3 fade-in">
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(59,130,246,0.15);color:#3b82f6">S</div> doctor_schedule_config</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid FK</td></tr>
+          <tr><td class="col-name">slot_duration</td><td class="col-type">int</td></tr>
+          <tr><td class="col-name">buffer_minutes</td><td class="col-type">int</td></tr>
+          <tr><td class="col-name">advance_booking_days</td><td class="col-type">int</td></tr>
+          <tr><td class="col-name">auto_approve</td><td class="col-type">boolean</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(59,130,246,0.15);color:#3b82f6">A</div> doctor_availability</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid FK</td></tr>
+          <tr><td class="col-name">day_of_week</td><td class="col-type">int (0-6)</td></tr>
+          <tr><td class="col-name">start_time</td><td class="col-type">time</td></tr>
+          <tr><td class="col-name">end_time</td><td class="col-type">time</td></tr>
+          <tr><td class="col-name">is_enabled</td><td class="col-type">boolean</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(59,130,246,0.15);color:#3b82f6">B</div> doctor_blocked_slots</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid FK</td></tr>
+          <tr><td class="col-name">blocked_date</td><td class="col-type">date</td></tr>
+          <tr><td class="col-name">start_time</td><td class="col-type">time</td></tr>
+          <tr><td class="col-name">end_time</td><td class="col-type">time</td></tr>
+          <tr><td class="col-name">reason</td><td class="col-type">text</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Finance -->
+  <div class="tab-content" id="tab-finance">
+    <div class="card-grid card-grid-2 fade-in">
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(245,158,11,0.15);color:#f59e0b">$</div> subscriptions</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → profiles</span></td></tr>
+          <tr><td class="col-name">plan</td><td class="col-type">text</td><td>trial | basic | professional | clinic</td></tr>
+          <tr><td class="col-name">status</td><td class="col-type">text</td><td>trial | active | suspended</td></tr>
+          <tr><td class="col-name">current_period_end</td><td class="col-type">timestamptz</td><td>Fecha de vencimiento</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(245,158,11,0.15);color:#f59e0b">P</div> subscription_payments</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → profiles</span></td></tr>
+          <tr><td class="col-name">amount</td><td class="col-type">numeric</td><td></td></tr>
+          <tr><td class="col-name">method</td><td class="col-type">text</td><td>Pago Móvil, Zelle, etc.</td></tr>
+          <tr><td class="col-name">status</td><td class="col-type">text</td><td>submitted | verified | rejected</td></tr>
+          <tr><td class="col-name">verified_by</td><td class="col-type">uuid</td><td><span class="col-fk">FK → profiles (admin)</span></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(245,158,11,0.15);color:#f59e0b">B</div> billing_documents</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK</span></td></tr>
+          <tr><td class="col-name">patient_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK</span></td></tr>
+          <tr><td class="col-name">document_type</td><td class="col-type">text</td><td>factura | recibo | presupuesto</td></tr>
+          <tr><td class="col-name">amount</td><td class="col-type">numeric</td><td></td></tr>
+          <tr><td class="col-name">pdf_url</td><td class="col-type">text</td><td></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(245,158,11,0.15);color:#f59e0b">K</div> pricing_plans</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">doctor_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK</span></td></tr>
+          <tr><td class="col-name">name</td><td class="col-type">text</td><td>Nombre del servicio</td></tr>
+          <tr><td class="col-name">price_usd</td><td class="col-type">numeric</td><td></td></tr>
+          <tr><td class="col-name">duration_minutes</td><td class="col-type">int</td><td></td></tr>
+          <tr><td class="col-name">sessions_count</td><td class="col-type">int</td><td>Para paquetes</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth -->
+  <div class="tab-content" id="tab-auth">
+    <div class="card-grid card-grid-2 fade-in">
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(139,92,246,0.15);color:#8b5cf6">U</div> profiles</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">id</td><td class="col-type">uuid</td><td><span class="col-pk">PK = auth.users.id</span></td></tr>
+          <tr><td class="col-name">full_name</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">email</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">role</td><td class="col-type">text</td><td>doctor | patient | super_admin</td></tr>
+          <tr><td class="col-name">specialty</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">payment_methods</td><td class="col-type">jsonb</td><td>Métodos activos</td></tr>
+          <tr><td class="col-name">payment_details</td><td class="col-type">jsonb</td><td>Datos de cada método</td></tr>
+          <tr><td class="col-name">clinic_id</td><td class="col-type">uuid</td><td><span class="col-fk">FK → clinics</span></td></tr>
+          <tr><td class="col-name">is_active</td><td class="col-type">boolean</td><td>Admin puede suspender</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title"><div class="icon" style="background:rgba(139,92,246,0.15);color:#8b5cf6">C</div> plan_configs & plan_features</div>
+        <table class="schema-table">
+          <tr><th>Columna</th><th>Tipo</th><th>Nota</th></tr>
+          <tr><td class="col-name">plan_key</td><td class="col-type">text</td><td><span class="col-pk">PK</span> trial|basic|professional|clinic</td></tr>
+          <tr><td class="col-name">name</td><td class="col-type">text</td><td></td></tr>
+          <tr><td class="col-name">price</td><td class="col-type">numeric</td><td></td></tr>
+          <tr><td class="col-name">is_active</td><td class="col-type">boolean</td><td></td></tr>
+          <tr><td colspan="3" style="padding-top:12px;border-top:1px solid rgba(100,116,139,0.2)"><strong style="color:#c4b5fd">plan_features</strong></td></tr>
+          <tr><td class="col-name">plan</td><td class="col-type">text</td><td><span class="col-fk">FK → plan_configs</span></td></tr>
+          <tr><td class="col-name">feature_key</td><td class="col-type">text</td><td>dashboard, agenda, finances...</td></tr>
+          <tr><td class="col-name">enabled</td><td class="col-type">boolean</td><td></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Forms -->
+<div class="section" id="forms">
+  <div class="section-title fade-in">Formularios y Tablas que Alimentan</div>
+  <div class="section-subtitle fade-in">Cada formulario de ingreso de datos y las tablas de base de datos que escribe.</div>
+
+  <div class="card-grid card-grid-2 fade-in">
+    <div class="card">
+      <div class="card-title"><div class="icon" style="background:rgba(0,196,204,0.15);color:#00C4CC">1</div> Booking Público (/book)</div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Paciente agenda cita desde el link público del doctor.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="badge badge-teal">patients INSERT</span>
+        <span class="badge badge-teal">appointments INSERT</span>
+        <span class="badge badge-teal">consultations INSERT</span>
+        <span class="badge badge-purple">patient_packages UPDATE</span>
+        <span class="badge badge-amber">Google Calendar SYNC</span>
+      </div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div>
+      <p style="font-size:10px;color:#64748b;margin-top:4px">Complejidad: Alta — 5 tablas afectadas</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><div class="icon" style="background:rgba(0,196,204,0.15);color:#00C4CC">2</div> Nueva Consulta (Doctor)</div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Doctor crea consulta manualmente desde su panel.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="badge badge-teal">consultations INSERT</span>
+        <span class="badge badge-purple">appointments UPDATE (status)</span>
+      </div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:40%"></div></div>
+      <p style="font-size:10px;color:#64748b;margin-top:4px">Complejidad: Baja — 1-2 tablas</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><div class="icon" style="background:rgba(139,92,246,0.15);color:#8b5cf6">3</div> Registro de Médico</div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Nuevo doctor se registra en la plataforma.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="badge badge-purple">profiles INSERT</span>
+        <span class="badge badge-amber">subscriptions INSERT (trial)</span>
+        <span class="badge badge-purple">auth.users UPDATE metadata</span>
+      </div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:60%"></div></div>
+      <p style="font-size:10px;color:#64748b;margin-top:4px">Complejidad: Media — 3 tablas</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><div class="icon" style="background:rgba(245,158,11,0.15);color:#f59e0b">4</div> Aprobación de Pago (Admin)</div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Admin verifica comprobante y extiende suscripción.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="badge badge-amber">subscription_payments UPDATE</span>
+        <span class="badge badge-amber">subscriptions UPDATE (extend)</span>
+        <span class="badge badge-purple">clinics UPDATE (si aplica)</span>
+      </div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:60%"></div></div>
+      <p style="font-size:10px;color:#64748b;margin-top:4px">Complejidad: Media — cascading updates</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><div class="icon" style="background:rgba(59,130,246,0.15);color:#3b82f6">5</div> Config. de Agenda (Doctor)</div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Doctor configura su disponibilidad semanal.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="badge badge-teal">doctor_schedule_config UPSERT</span>
+        <span class="badge badge-red">doctor_availability DELETE ALL</span>
+        <span class="badge badge-teal">doctor_availability INSERT (bulk)</span>
+      </div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:50%"></div></div>
+      <p style="font-size:10px;color:#64748b;margin-top:4px">Complejidad: Media — delete + re-insert pattern</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><div class="icon" style="background:rgba(16,185,129,0.15);color:#10b981">6</div> Nuevo Paciente (Doctor)</div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:12px">Doctor agrega paciente manualmente a su lista.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="badge badge-green">patients INSERT</span>
+      </div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:20%"></div></div>
+      <p style="font-size:10px;color:#64748b;margin-top:4px">Complejidad: Baja — 1 tabla</p>
+    </div>
+  </div>
+</div>
+
+<!-- Flows -->
+<div class="section" id="flows">
+  <div class="section-title fade-in">Flujos de Datos</div>
+  <div class="section-subtitle fade-in">Diagrama paso a paso de los 5 flujos críticos del sistema.</div>
+
+  <div class="tabs fade-in">
+    <button class="tab active" onclick="showTab('flow-cita')">Flujo de Cita</button>
+    <button class="tab" onclick="showTab('flow-consulta')">Consulta Médica</button>
+    <button class="tab" onclick="showTab('flow-pago')">Proceso de Pago</button>
+    <button class="tab" onclick="showTab('flow-recordatorio')">Recordatorios</button>
+    <button class="tab" onclick="showTab('flow-informe')">Informes</button>
+  </div>
+
+  <!-- Flow: Cita -->
+  <div class="tab-content active" id="flow-cita">
+    <div class="flow-container fade-in">
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#00C4CC"></div> Paso 1 — Paciente inicia booking</div>
+        <div class="flow-row">
+          <div class="flow-step start">Paciente abre<br>/book/[doctorId]<small>Link público</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Selecciona plan<small>pricing_plans</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Elige fecha y hora<small>doctor_availability + blocked_slots</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Modalidad<small>presencial | online</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Método de pago<small>Sube comprobante</small></div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#8b5cf6"></div> Paso 2 — API /api/book procesa</div>
+        <div class="flow-row">
+          <div class="flow-step decision">Paciente existe?<small>patients (email + doctor_id)</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">INSERT patients<small>Si es nuevo</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step decision">Slot disponible?<small>Valida duplicados ±15min</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">INSERT appointments<small>status = 'scheduled'</small></div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#f59e0b"></div> Paso 3 — Auto-creación de consulta + sync</div>
+        <div class="flow-row">
+          <div class="flow-step db">INSERT consultations<small>Auto-creada con appointment_id</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step decision">Tiene paquete?<small>patient_packages</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">UPDATE packages<small>used_sessions++ (optimistic lock)</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Google Calendar<small>Evento + Meet (si online)</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step end">Cita creada<small>5 tablas afectadas</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow: Consulta -->
+  <div class="tab-content" id="flow-consulta">
+    <div class="flow-container fade-in">
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#00C4CC"></div> Ruta A — Doctor crea consulta manualmente</div>
+        <div class="flow-row">
+          <div class="flow-step start">Doctor abre<br>Consultas<small>/doctor/consultations</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Selecciona paciente<small>patients table</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Elige fecha + slot<small>doctor_availability</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Plan + método pago<small>pricing_plans</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">INSERT consultations<small>Sin appointment_id</small></div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#8b5cf6"></div> Ruta B — Desde cita existente (booking)</div>
+        <div class="flow-row">
+          <div class="flow-step start">Cita del booking<small>appointments + consultations</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Doctor abre consulta<small>consulta ya existe</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Llena diagnóstico,<br>tratamiento, receta<small>Datos clínicos</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">UPDATE consultations<small>diagnosis, treatment</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">INSERT prescriptions<small>medications JSONB</small></div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#10b981"></div> Resultado final</div>
+        <div class="flow-row">
+          <div class="flow-step end">Consulta completa<small>consultations + prescriptions + ehr_records</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Generar PDF<small>/api/doctor/share-pdf</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Compartir WhatsApp<small>wa.me deep link</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow: Pago -->
+  <div class="tab-content" id="flow-pago">
+    <div class="flow-container fade-in">
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#f59e0b"></div> Pago de consulta (paciente → doctor)</div>
+        <div class="flow-row">
+          <div class="flow-step start">Paciente paga<small>Pago Móvil, Zelle, etc.</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Sube comprobante<small>En booking o cobros</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">appointments<small>payment_receipt_url</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">consultations<small>payment_status = 'pending'</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step decision">Doctor verifica<small>Panel de cobros</small></div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#10b981"></div> Verificación del doctor</div>
+        <div class="flow-row">
+          <div class="flow-step process">Doctor revisa<br>comprobante<small>/doctor/cobros</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">UPDATE consultations<small>payment_status = 'approved'</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step end">Pago confirmado<small>Refleja en finanzas</small></div>
+        </div>
+      </div>
+      <div class="flow-section" style="margin-top:24px;padding-top:24px;border-top:1px solid rgba(100,116,139,0.15)">
+        <div class="flow-label"><div class="dot" style="background:#8b5cf6"></div> Pago de suscripción (doctor → plataforma)</div>
+        <div class="flow-row">
+          <div class="flow-step start">Doctor paga plan<small>Sube comprobante</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">INSERT<br>subscription_payments<small>status = 'submitted'</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step decision">Admin revisa<small>/admin/approvals</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">UPDATE subscriptions<small>status='active', extend period</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step end">Suscripción activa<small>+30 días</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow: Recordatorio -->
+  <div class="tab-content" id="flow-recordatorio">
+    <div class="flow-container fade-in">
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#10b981"></div> Flujo actual — Manual via /doctor/reminders</div>
+        <div class="flow-row">
+          <div class="flow-step start">Doctor abre<br>Recordatorios<small>/doctor/reminders</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Ve citas próximas<small>appointments + consultations</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Selecciona citas<small>Checkbox múltiple</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step decision">WhatsApp o Email?</div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#00C4CC"></div> Envío</div>
+        <div class="flow-row">
+          <div class="flow-step process">WhatsApp<small>wa.me/[phone]?text=...</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step end">Abre WhatsApp Web<small>Doctor envía manualmente</small></div>
+        </div>
+        <div class="flow-row" style="margin-top:12px">
+          <div class="flow-step process">Email<small>mailto:[email]?subject=...</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step end">Abre cliente email<small>Doctor envía manualmente</small></div>
+        </div>
+      </div>
+      <div class="flow-section" style="margin-top:24px;padding-top:24px;border-top:1px solid rgba(100,116,139,0.15)">
+        <div class="flow-label"><div class="dot" style="background:#ef4444"></div> Pendiente — Automatización</div>
+        <div class="flow-row">
+          <div class="flow-step error">Sin implementar<small>appointment_reminders_config existe</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step error">Edge Function<small>No creada aún</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step error">WhatsApp API<small>No integrada</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow: Informe -->
+  <div class="tab-content" id="flow-informe">
+    <div class="flow-container fade-in">
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#8b5cf6"></div> Generación de informe médico</div>
+        <div class="flow-row">
+          <div class="flow-step start">Consulta completa<small>consultations (diagnosis, treatment)</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">READ prescriptions<small>medications JSONB</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Genera HTML<small>Plantilla del doctor</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">POST /api/doctor/share-pdf<small>Convierte a PDF</small></div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#10b981"></div> Distribución</div>
+        <div class="flow-row">
+          <div class="flow-step process">Supabase Storage<small>Guarda PDF</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step process">Genera token acceso<small>shared-docs table</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step decision">Compartir por?</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step end">WhatsApp / Email<small>Link con token temporal</small></div>
+        </div>
+      </div>
+      <div class="flow-section">
+        <div class="flow-label"><div class="dot" style="background:#f59e0b"></div> Portal del paciente</div>
+        <div class="flow-row">
+          <div class="flow-step process">Paciente inicia sesión<small>/patient</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">READ consultations<small>Filtrado por auth_user_id</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step db">READ prescriptions<small>Recetas del paciente</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step end">Ve informes y recetas<small>/patient/reports</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicates -->
+<div class="section" id="duplicates">
+  <div class="section-title fade-in">Datos Duplicados Detectados</div>
+  <div class="section-subtitle fade-in">Campos y datos que existen en múltiples tablas, creando riesgo de inconsistencia.</div>
+
+  <div class="fade-in" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="issue-card issue-critical">
+      <span class="issue-tag critical">Crítico</span>
+      <div class="issue-title">appointments vs consultations — Dos tablas para el mismo concepto</div>
+      <div class="issue-desc">
+        El booking crea AMBOS registros: un <code>appointment</code> y una <code>consultation</code>. Campos duplicados entre ambas:
+        <code>chief_complaint</code>, <code>plan_name</code>, <code>payment_method</code>, <code>scheduled_at</code> = <code>consultation_date</code>.
+        El doctor puede actualizar uno sin actualizar el otro, causando divergencia. Además, el FK es bidireccional
+        (<code>appointments.consultation_id</code> y <code>consultations.appointment_id</code>), lo cual es redundante.
+      </div>
+    </div>
+
+    <div class="issue-card issue-critical">
+      <span class="issue-tag critical">Crítico</span>
+      <div class="issue-title">Datos del paciente desnormalizados en appointments</div>
+      <div class="issue-desc">
+        <code>appointments</code> almacena <code>patient_name</code>, <code>patient_phone</code>, <code>patient_email</code>,
+        <code>patient_cedula</code> directamente en la fila. Estos mismos datos existen en la tabla <code>patients</code>.
+        Si el paciente actualiza su teléfono o email, las citas anteriores quedan con datos obsoletos.
+        Originalmente diseñado para citas de invitados (sin cuenta), pero ahora los invitados también crean registro en <code>patients</code>.
+      </div>
+    </div>
+
+    <div class="issue-card issue-warning">
+      <span class="issue-tag warning">Advertencia</span>
+      <div class="issue-title">plan_name almacenado en 3 lugares distintos</div>
+      <div class="issue-desc">
+        El nombre del plan/servicio se guarda en: <code>appointments.plan_name</code>, <code>consultations.plan_name</code>,
+        y la fuente de verdad es <code>pricing_plans.name</code>. Si el doctor renombra un plan, las citas históricas quedan
+        con el nombre viejo (esto podría ser intencional para preservar historial, pero no está documentado).
+      </div>
+    </div>
+
+    <div class="issue-card issue-warning">
+      <span class="issue-tag warning">Advertencia</span>
+      <div class="issue-title">Pagos fragmentados en múltiples tablas</div>
+      <div class="issue-desc">
+        No existe un ledger unificado de pagos. Los datos financieros están en: <code>subscription_payments</code> (pagos de suscripción),
+        <code>consultations.payment_status</code> + <code>consultations.amount</code> (pagos de consulta),
+        <code>billing_documents</code> (facturas), y <code>accounts_payable</code>. Para conocer la posición financiera
+        completa de un doctor se necesita hacer JOIN de 4+ tablas.
+      </div>
+    </div>
+
+    <div class="issue-card issue-warning">
+      <span class="issue-tag warning">Advertencia</span>
+      <div class="issue-title">Pacientes duplicados potenciales</div>
+      <div class="issue-desc">
+        Un invitado puede agendar cita → se crea registro en <code>patients</code> con <code>source='booking'</code>.
+        Si luego se registra en el portal de pacientes → se crea en <code>profiles</code> con <code>role='patient'</code>.
+        El campo <code>patients.auth_user_id</code> se vincula solo si el email coincide al momento del booking,
+        pero no hay proceso de reconciliación posterior.
+      </div>
+    </div>
+
+    <div class="issue-card issue-info">
+      <span class="issue-tag info">Info</span>
+      <div class="issue-title">FK bidireccional appointments ↔ consultations</div>
+      <div class="issue-desc">
+        <code>appointments.consultation_id</code> apunta a <code>consultations</code>, y
+        <code>consultations.appointment_id</code> apunta a <code>appointments</code>. Solo se necesita una dirección.
+        Esto complica las queries y aumenta la posibilidad de registros desincronizados.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Improvements -->
+<div class="section" id="improvements">
+  <div class="section-title fade-in">Oportunidades de Mejora</div>
+  <div class="section-subtitle fade-in">Recomendaciones de arquitectura para escalar a alto tráfico y mantener consistencia de datos.</div>
+
+  <div class="card-grid card-grid-2 fade-in">
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Arquitectura</span>
+      <div class="issue-title">1. Unificar appointments + consultations</div>
+      <div class="issue-desc">
+        Crear una sola tabla <code>visits</code> que represente cualquier encuentro médico, con un campo <code>origin</code>
+        (booking | doctor_created) y <code>status</code> (scheduled → confirmed → in_progress → completed → cancelled).
+        Elimina la duplicación de campos y la confusión sobre cuál tabla es la fuente de verdad.
+        La migración puede hacerse gradualmente: mantener ambas tablas con un trigger de sincronización,
+        luego migrar las queries una por una.
+      </div>
+    </div>
+
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Performance</span>
+      <div class="issue-title">2. Índices compuestos para queries frecuentes</div>
+      <div class="issue-desc">
+        Las queries más comunes son: citas por doctor + fecha, consultas por doctor + mes, pacientes por doctor.
+        Crear índices compuestos: <code>CREATE INDEX idx_visits_doctor_date ON visits(doctor_id, scheduled_at DESC)</code>,
+        <code>CREATE INDEX idx_patients_doctor ON patients(doctor_id, created_at DESC)</code>.
+        Agregar índice parcial para slots disponibles: <code>WHERE status != 'cancelled'</code>.
+      </div>
+    </div>
+
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Integridad</span>
+      <div class="issue-title">3. Eliminar datos desnormalizados de appointments</div>
+      <div class="issue-desc">
+        Remover <code>patient_name</code>, <code>patient_phone</code>, <code>patient_email</code>, <code>patient_cedula</code>
+        de la tabla appointments. Siempre hacer JOIN con <code>patients</code> via <code>patient_id</code>.
+        Para citas de invitados sin cuenta, el booking ya crea registro en <code>patients</code>,
+        así que la desnormalización ya no es necesaria.
+      </div>
+    </div>
+
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Finanzas</span>
+      <div class="issue-title">4. Ledger unificado de transacciones</div>
+      <div class="issue-desc">
+        Crear tabla <code>transactions</code> (id, doctor_id, patient_id, visit_id, type (consultation_payment | subscription | refund),
+        amount, currency, method, status, reference, created_at).
+        Todas las operaciones financieras escriben aquí. Las vistas agregadas
+        (<code>doctor_monthly_revenue</code>, <code>platform_mrr</code>) se construyen sobre esta tabla.
+      </div>
+    </div>
+
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Escalabilidad</span>
+      <div class="issue-title">5. Particionamiento por fecha para alto tráfico</div>
+      <div class="issue-desc">
+        Para escalar a miles de médicos: particionar <code>visits</code> por <code>scheduled_at</code> (mensual),
+        <code>transactions</code> por <code>created_at</code>. Supabase soporta table partitioning nativo con PostgreSQL.
+        Esto mantiene las queries del mes actual rápidas sin tocar datos históricos.
+      </div>
+    </div>
+
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Automatización</span>
+      <div class="issue-title">6. Recordatorios automáticos con Edge Functions</div>
+      <div class="issue-desc">
+        Implementar Supabase Edge Function con cron que consulte citas próximas (24h, 2h antes),
+        cruce con <code>appointment_reminders_config</code> del doctor, y envíe via WhatsApp Business API
+        o Resend/SendGrid para email. Registrar cada envío en <code>reminder_logs</code> para trazabilidad.
+        La tabla <code>appointment_reminders_config</code> ya existe — solo falta la función de ejecución.
+      </div>
+    </div>
+
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Seguridad</span>
+      <div class="issue-title">7. Auditoría de cambios (audit log)</div>
+      <div class="issue-desc">
+        Para compliance médico, crear tabla <code>audit_log</code> (table_name, record_id, action, old_data JSONB,
+        new_data JSONB, user_id, timestamp). Usar trigger genérico en tablas sensibles: consultations, prescriptions,
+        ehr_records. Esto permite reconstruir el historial clínico de cualquier paciente y es requisito
+        para certificaciones de salud digital.
+      </div>
+    </div>
+
+    <div class="issue-card issue-success">
+      <span class="issue-tag success">Resiliencia</span>
+      <div class="issue-title">8. Idempotencia en operaciones críticas</div>
+      <div class="issue-desc">
+        El booking ya usa optimistic lock para paquetes, pero otras operaciones no son idempotentes.
+        Agregar <code>idempotency_key</code> al endpoint de booking y pagos para prevenir doble-submit.
+        Usar transacciones de base de datos (<code>BEGIN...COMMIT</code>) para operaciones multi-tabla
+        como la aprobación de pagos que toca <code>subscription_payments</code> + <code>subscriptions</code> + <code>clinics</code>.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div style="text-align:center;padding:60px 32px;color:#475569;font-size:12px;border-top:1px solid rgba(100,116,139,0.1);">
+  <p style="margin-bottom:8px"><strong style="color:#00C4CC">Delta Medical CRM</strong> — Análisis de Arquitectura de Datos</p>
+  <p>Generado: Abril 2026 &middot; 30+ tablas &middot; 12 APIs &middot; 5 flujos críticos</p>
+</div>
+
+<script>
+// Scroll to section
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Tab switching
+function showTab(tabId) {
+  // Find parent section
+  const targetTab = document.getElementById(tabId);
+  if (!targetTab) return;
+  const parent = targetTab.parentElement;
+
+  // Hide all tab contents in same parent
+  parent.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+  parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+  // Show target
+  targetTab.classList.add('active');
+
+  // Activate button
+  parent.querySelectorAll('.tab').forEach(t => {
+    if (t.getAttribute('onclick')?.includes(tabId)) t.classList.add('active');
+  });
+}
+
+// Nav active state on scroll
+const sections = ['hero', 'mindmap', 'schemas', 'forms', 'flows', 'duplicates', 'improvements'];
+window.addEventListener('scroll', () => {
+  const scrollY = window.scrollY + 120;
+  let current = 'hero';
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.offsetTop <= scrollY) current = id;
+  });
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.classList.remove('active');
+    if (link.getAttribute('onclick')?.includes(current)) link.classList.add('active');
+  });
+});
+
+// Fade in on scroll
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Activity, AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react'
+import { AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Suspense } from 'react'
 
@@ -18,9 +18,19 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
+/* Delta Isotipo — Lazo Abierto */
+function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" fill="none" className={className}>
+      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" strokeWidth="26" strokeLinecap="round" fill="none"/>
+      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" strokeWidth="26" strokeLinecap="round" fill="none"/>
+    </svg>
+  )
+}
+
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+    <Suspense fallback={<div className="min-h-screen" style={{ background: '#FAFBFC' }} />}>
       <LoginInner />
     </Suspense>
   )
@@ -33,7 +43,6 @@ function LoginInner() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(authError === 'auth' ? 'Error de autenticación. Intenta de nuevo.' : '')
 
-  // Email/password form
   const [showEmailForm, setShowEmailForm] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -49,15 +58,10 @@ function LoginInner() {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            prompt: 'select_account',
-          },
+          queryParams: { prompt: 'select_account' },
         },
       })
-      if (error) {
-        setError(error.message)
-        setLoading(false)
-      }
+      if (error) { setError(error.message); setLoading(false) }
     } catch (err: any) {
       setError(err?.message || 'Error al conectar con Google')
       setLoading(false)
@@ -66,10 +70,7 @@ function LoginInner() {
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault()
-    if (!email || !password) {
-      setError('Ingresa tu email y contraseña')
-      return
-    }
+    if (!email || !password) { setError('Ingresa tu email y contraseña'); return }
     setEmailLoading(true)
     setError('')
 
@@ -88,7 +89,6 @@ function LoginInner() {
         return
       }
 
-      // Check profile to determine redirect
       const { data: profile } = await supabase
         .from('profiles')
         .select('role, phone')
@@ -113,116 +113,148 @@ function LoginInner() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        * { font-family: 'Inter', sans-serif; }
-        .g-bg { background: linear-gradient(135deg, #00C4CC 0%, #0891b2 50%, #0e7490 100%); }
-        .card-shadow { box-shadow: 0 25px 50px -12px rgba(0,196,204,0.15), 0 10px 25px -5px rgba(0,0,0,0.08); }
-        .btn-google { transition: all 0.2s; }
-        .btn-google:hover { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(0,0,0,0.12); }
-        .btn-google:active { transform: translateY(0); }
-        .btn-primary { background: linear-gradient(135deg, #00C4CC 0%, #0891b2 100%); transition: all 0.2s; }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,196,204,0.4); }
-        .btn-primary:active { transform: translateY(0); }
-        .input-focus:focus { border-color: #00C4CC; box-shadow: 0 0 0 3px rgba(0,196,204,0.15); outline: none; }
-        .float-orb { animation: float 6s ease-in-out infinite; }
-        .float-orb-2 { animation: float 8s ease-in-out infinite reverse; }
-        @keyframes float {
-          0%, 100% { transform: translateY(0px) rotate(0deg); }
-          50% { transform: translateY(-20px) rotate(5deg); }
-        }
-        .fade-in { animation: fadeIn 0.5s ease forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        .login-root * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+        .login-root { --dh-turquoise: #06B6D4; --dh-turquoise-700: #0891B2; --dh-turquoise-100: #CFFAFE; --dh-turquoise-50: #ECFEFF; --dh-coral: #FF8A65; --dh-coral-600: #F26F4A; --dh-ink: #0F1A2A; --dh-gray-50: #F4F6F8; --dh-gray-100: #E8ECF0; --dh-gray-400: #97A3AF; --dh-gray-600: #5A6773; --dh-bone: #FAFBFC; }
+        .login-left { background: linear-gradient(160deg, #ECFEFF 0%, #FAFBFC 40%, #FFFFFF 100%); }
+        .btn-google-dh { transition: all 0.2s; }
+        .btn-google-dh:hover { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(0,0,0,0.08); }
+        .btn-primary-dh { background: var(--dh-ink); color: #fff; transition: all 0.2s; }
+        .btn-primary-dh:hover { background: var(--dh-turquoise-700); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(6,182,212,0.3); }
+        .input-dh:focus { border-color: var(--dh-turquoise); box-shadow: 0 0 0 3px rgba(6,182,212,0.12); outline: none; }
+        .float-1 { animation: f1 7s ease-in-out infinite; }
+        .float-2 { animation: f2 9s ease-in-out infinite; }
+        @keyframes f1 { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-16px) rotate(3deg); } }
+        @keyframes f2 { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-10px) rotate(-2deg); } }
+        .fade-up { animation: fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        .store-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--dh-gray-100); color: var(--dh-gray-400); font-size: 11px; font-weight: 500; }
+        .store-pill svg { width: 14px; height: 14px; }
       `}</style>
 
-      <div className="min-h-screen bg-slate-50 flex">
-        {/* Left Panel — Branding */}
-        <div className="hidden lg:flex lg:w-1/2 g-bg relative overflow-hidden flex-col justify-between p-12">
-          <div className="float-orb absolute top-20 right-20 w-64 h-64 rounded-full bg-white/10 blur-3xl pointer-events-none" />
-          <div className="float-orb-2 absolute bottom-20 left-10 w-48 h-48 rounded-full bg-cyan-300/20 blur-2xl pointer-events-none" />
+      <div className="login-root min-h-screen flex">
+        {/* Left Panel — Brand */}
+        <div className="login-left hidden lg:flex lg:w-[52%] relative overflow-hidden flex-col justify-between p-12 xl:p-16">
+          {/* Background isotipo decorativo */}
+          <svg className="absolute -right-20 -bottom-20 opacity-[0.04]" width="500" height="500" viewBox="0 0 200 200" fill="none">
+            <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" strokeWidth="26" strokeLinecap="round" fill="none"/>
+            <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" strokeWidth="26" strokeLinecap="round" fill="none"/>
+          </svg>
 
+          {/* Top: Logo + Beta badge */}
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-                <Activity className="w-5 h-5 text-white" />
-              </div>
+              <DeltaIsotipo size={38} />
               <div>
-                <p className="text-white font-bold text-lg leading-none">Delta</p>
-                <p className="text-white/70 text-xs font-medium">Health Tech</p>
+                <p className="font-extrabold text-lg leading-none tracking-tight" style={{ color: 'var(--dh-ink)' }}>
+                  Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
+                </p>
+                <p className="text-[10px] font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--dh-gray-400)' }}>
+                  Health Tech
+                </p>
               </div>
+              <span className="ml-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}>
+                Beta Privada
+              </span>
             </div>
           </div>
 
-          <div className="relative z-10 space-y-6">
-            <div className="space-y-3">
-              <p className="text-white/80 text-sm font-medium uppercase tracking-widest">Bienvenido</p>
-              <h1 className="text-4xl font-bold text-white leading-tight">
-                Tu consulta,<br />
-                más inteligente<br />
-                que nunca.
-              </h1>
-              <p className="text-white/70 text-base max-w-sm">
-                Gestiona pacientes, citas, historial clínico y finanzas desde un solo lugar.
-              </p>
-            </div>
-
-            <div className="flex gap-8 pt-4">
-              <div>
-                <p className="text-white text-2xl font-bold">+120</p>
-                <p className="text-white/60 text-xs">Médicos activos</p>
-              </div>
-              <div>
-                <p className="text-white text-2xl font-bold">98%</p>
-                <p className="text-white/60 text-xs">Satisfacción</p>
-              </div>
-              <div>
-                <p className="text-white text-2xl font-bold">4.9★</p>
-                <p className="text-white/60 text-xs">Valoración</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative z-10 bg-white/10 backdrop-blur rounded-2xl p-5 border border-white/20">
-            <p className="text-white/90 text-sm leading-relaxed italic">
-              &ldquo;Delta transformó mi consulta. Ahora tengo todo bajo control y mis pacientes están más satisfechos.&rdquo;
+          {/* Center: Message */}
+          <div className="relative z-10 space-y-6 max-w-md">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--dh-turquoise-700)' }}>
+              Beta privada · Acceso completo
             </p>
-            <div className="flex items-center gap-3 mt-3">
-              <div className="w-8 h-8 rounded-full bg-white/30 flex items-center justify-center text-white font-semibold text-sm">
-                CM
+            <h1 className="text-4xl xl:text-[44px] font-extrabold leading-[1.1] tracking-tight" style={{ color: 'var(--dh-ink)' }}>
+              Tu especialista,<br />
+              a un <span style={{ color: 'var(--dh-turquoise)' }}>lazo</span> de<br />
+              distancia.
+            </h1>
+            <p className="text-base leading-relaxed max-w-sm" style={{ color: 'var(--dh-gray-600)' }}>
+              Gestiona pacientes, agenda, historial clínico y finanzas desde un solo lugar.
+            </p>
+
+            <div className="flex gap-8 pt-2">
+              <div>
+                <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>500+</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--dh-gray-400)' }}>Especialistas</p>
               </div>
               <div>
-                <p className="text-white text-xs font-semibold">Dr. Carlos Méndez</p>
-                <p className="text-white/60 text-xs">Cardiólogo · Caracas</p>
+                <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>12</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--dh-gray-400)' }}>Especialidades</p>
               </div>
+              <div>
+                <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>24/7</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--dh-gray-400)' }}>Disponibilidad</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom: Testimonial + App Stores */}
+          <div className="relative z-10 space-y-4">
+            <div className="rounded-2xl p-5 border" style={{ background: 'rgba(255,255,255,0.7)', borderColor: 'var(--dh-gray-100)' }}>
+              <p className="text-sm leading-relaxed italic" style={{ color: 'var(--dh-gray-600)' }}>
+                &ldquo;Delta transformó mi consulta. Ahora tengo todo bajo control y mis pacientes están más satisfechos.&rdquo;
+              </p>
+              <div className="flex items-center gap-3 mt-3">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-xs" style={{ background: 'var(--dh-turquoise)' }}>
+                  CM
+                </div>
+                <div>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-ink)' }}>Dr. Carlos Méndez</p>
+                  <p className="text-[10px]" style={{ color: 'var(--dh-gray-400)' }}>Cardiólogo · Caracas</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="store-pill">
+                <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 14, height: 14 }}><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                Pronto en App Store
+              </span>
+              <span className="store-pill">
+                <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 14, height: 14 }}><path d="M3.18 23.71c.46.27 1.03.3 1.52.09l.05-.02L17.53 17l-3.72-3.73L3.18 23.71zM.44 1.32c-.28.4-.44.9-.44 1.45v18.46c0 .55.16 1.05.44 1.45L11.5 12 .44 1.32zm21.16 9.37l-3.65-2.04-3.9 3.85 3.9 3.85 3.65-2.04c.68-.38 1.1-1.08 1.1-1.86 0-.78-.42-1.48-1.1-1.76zM4.75.29L17.53 7l-3.72 3.73L3.18.29C3.64.02 4.21-.01 4.7.2l.05.09z"/></svg>
+                Pronto en Google Play
+              </span>
+              <span className="store-pill" style={{ borderColor: 'var(--dh-turquoise-100)', color: 'var(--dh-turquoise-700)' }}>
+                Próximamente planes disponibles
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Right Panel — Login */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="w-full max-w-md fade-in">
+        {/* Right Panel — Login Form */}
+        <div className="flex-1 flex items-center justify-center p-8" style={{ background: 'var(--dh-bone)' }}>
+          <div className="w-full max-w-md fade-up">
 
             {/* Mobile logo */}
             <div className="flex lg:hidden items-center gap-3 mb-8 justify-center">
-              <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
-                <Activity className="w-5 h-5 text-white" />
-              </div>
+              <DeltaIsotipo size={38} />
               <div>
-                <p className="font-bold text-lg text-slate-900 leading-none">Delta</p>
-                <p className="text-slate-400 text-xs">Health Tech</p>
+                <p className="font-extrabold text-lg leading-none tracking-tight" style={{ color: 'var(--dh-ink)' }}>
+                  Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
+                </p>
+                <p className="text-[10px] font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--dh-gray-400)' }}>
+                  Health Tech
+                </p>
               </div>
             </div>
 
             {/* Card */}
-            <div className="bg-white rounded-2xl card-shadow p-8 border border-slate-100">
+            <div className="rounded-2xl p-8 border" style={{ background: '#FFFFFF', borderColor: 'var(--dh-gray-100)', boxShadow: '0 4px 12px rgba(15,26,42,0.04), 0 1px 3px rgba(15,26,42,0.03)' }}>
               <div className="mb-7 text-center">
-                <h2 className="text-2xl font-bold text-slate-900">Bienvenido a Delta</h2>
-                <p className="text-slate-500 text-sm mt-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-3" style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--dh-turquoise)' }} />
+                  Beta Privada
+                </span>
+                <h2 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--dh-ink)' }}>
+                  Bienvenido a Delta
+                </h2>
+                <p className="text-sm mt-2" style={{ color: 'var(--dh-gray-400)' }}>
                   Inicia sesión o crea tu cuenta
                 </p>
               </div>
 
               {error && (
-                <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+                <div className="mb-5 rounded-xl px-4 py-3 flex items-start gap-2" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
                   <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                   <p className="text-red-700 text-sm">{error}</p>
                 </div>
@@ -232,11 +264,12 @@ function LoginInner() {
               <button
                 onClick={handleGoogleLogin}
                 disabled={loading}
-                className="btn-google w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="btn-google-dh w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl border-2 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-ink)', background: '#fff' }}
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                    <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--dh-gray-400)' }} />
                     Conectando con Google...
                   </>
                 ) : (
@@ -249,16 +282,17 @@ function LoginInner() {
 
               {/* Divider */}
               <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs text-slate-400 font-medium">o</span>
-                <div className="flex-1 h-px bg-slate-200" />
+                <div className="flex-1 h-px" style={{ background: 'var(--dh-gray-100)' }} />
+                <span className="text-xs font-medium" style={{ color: 'var(--dh-gray-400)' }}>o</span>
+                <div className="flex-1 h-px" style={{ background: 'var(--dh-gray-100)' }} />
               </div>
 
-              {/* Email/Password Toggle */}
+              {/* Email/Password */}
               {!showEmailForm ? (
                 <button
                   onClick={() => setShowEmailForm(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-semibold transition-all"
+                  style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-gray-600)' }}
                 >
                   <Mail className="w-4 h-4" />
                   Iniciar con email y contraseña
@@ -266,9 +300,9 @@ function LoginInner() {
               ) : (
                 <form onSubmit={handleEmailLogin} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Correo electrónico</label>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--dh-ink)' }}>Correo electrónico</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--dh-gray-400)' }} />
                       <input
                         type="email"
                         value={email}
@@ -276,15 +310,16 @@ function LoginInner() {
                         required
                         disabled={emailLoading}
                         placeholder="medico@ejemplo.com"
-                        className="input-focus w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-slate-50 transition-all disabled:opacity-60"
+                        className="input-dh w-full pl-10 pr-4 py-3 border rounded-xl text-sm transition-all disabled:opacity-60"
+                        style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-ink)', background: 'var(--dh-gray-50)' }}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Contraseña</label>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--dh-ink)' }}>Contraseña</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--dh-gray-400)' }} />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={password}
@@ -292,12 +327,14 @@ function LoginInner() {
                         required
                         disabled={emailLoading}
                         placeholder="••••••••"
-                        className="input-focus w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-slate-50 transition-all disabled:opacity-60"
+                        className="input-dh w-full pl-10 pr-10 py-3 border rounded-xl text-sm transition-all disabled:opacity-60"
+                        style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-ink)', background: 'var(--dh-gray-50)' }}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        className="absolute right-3 top-1/2 -translate-y-1/2"
+                        style={{ color: 'var(--dh-gray-400)' }}
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -307,7 +344,7 @@ function LoginInner() {
                   <button
                     type="submit"
                     disabled={emailLoading}
-                    className="btn-primary w-full py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="btn-primary-dh w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {emailLoading ? (
                       <>
@@ -325,7 +362,8 @@ function LoginInner() {
                   <button
                     type="button"
                     onClick={() => { setShowEmailForm(false); setError('') }}
-                    className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                    className="w-full text-xs transition-colors"
+                    style={{ color: 'var(--dh-gray-400)' }}
                   >
                     ← Volver a opciones de login
                   </button>
@@ -334,18 +372,18 @@ function LoginInner() {
 
               {/* Role badges */}
               <div className="mt-5 flex gap-2 justify-center">
-                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Médicos</span>
-                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Pacientes</span>
-                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">Admin</span>
+                <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ color: 'var(--dh-turquoise-700)', background: 'var(--dh-turquoise-50)' }}>Especialistas</span>
+                <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ color: 'var(--dh-coral-600)', background: '#FFF5F0' }}>Pacientes</span>
+                <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ color: 'var(--dh-gray-600)', background: 'var(--dh-gray-50)' }}>Admin</span>
               </div>
 
-              <p className="text-center text-xs text-slate-400 mt-4">
+              <p className="text-center text-xs mt-4" style={{ color: 'var(--dh-gray-400)' }}>
                 Si es tu primera vez con Google, se creará tu cuenta automáticamente.
               </p>
             </div>
 
-            <p className="text-center text-xs text-slate-400 mt-5">
-              <Link href="/" className="hover:text-slate-600 transition-colors">
+            <p className="text-center text-xs mt-5" style={{ color: 'var(--dh-gray-400)' }}>
+              <Link href="/" className="hover:opacity-70 transition-opacity">
                 ← Volver al inicio
               </Link>
             </p>
