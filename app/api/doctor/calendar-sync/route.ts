@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const stats = { pushed: 0, pulled: 0, meetLinksCreated: 0, errors: 0 }
+    const stats = { pushed: 0, pulled: 0, meetLinksCreated: 0, cleaned: 0, errors: 0 }
 
     // ════════════════════════════════════════════════════════════════════════
     // PHASE 1 — PUSH: Local appointments/consultations → Google Calendar
@@ -362,10 +362,55 @@ export async function POST(req: NextRequest) {
       stats.errors++
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // PHASE 3 — CLEANUP: Remove local appointments whose GCal event was deleted
+    // Only cleans up events imported FROM Google Calendar (source = 'google_calendar')
+    // ════════════════════════════════════════════════════════════════════════
+
+    const { data: gcalAppointments } = await admin
+      .from('appointments')
+      .select('id, google_event_id')
+      .eq('doctor_id', doctorId)
+      .eq('source', 'google_calendar')
+      .not('google_event_id', 'is', null)
+
+    if (gcalAppointments && gcalAppointments.length > 0 && listRes.ok) {
+      // Build set of all active GCal event IDs from the list we already fetched
+      const listData2 = await fetch(listUrl.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }).then(r => r.ok ? r.json() : { items: [] })
+
+      const activeGCalIds = new Set((listData2.items || []).map((e: any) => e.id))
+
+      for (const appt of gcalAppointments) {
+        if (!activeGCalIds.has(appt.google_event_id)) {
+          // Event no longer exists in GCal → delete the local appointment
+          try {
+            // Delete linked consultations/EHR/prescriptions if any
+            const { data: linkedCons } = await admin
+              .from('consultations')
+              .select('id')
+              .eq('appointment_id', appt.id)
+            if (linkedCons && linkedCons.length > 0) {
+              const conIds = linkedCons.map(c => c.id)
+              await admin.from('ehr_records').delete().in('consultation_id', conIds)
+              await admin.from('prescriptions').delete().in('consultation_id', conIds)
+              await admin.from('consultations').delete().eq('appointment_id', appt.id)
+            }
+            await admin.from('appointments').delete().eq('id', appt.id)
+            stats.cleaned++
+          } catch (err) {
+            console.error('[CalSync] Cleanup error for', appt.id, err)
+            stats.errors++
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       stats,
-      message: `Sync completado: ${stats.pushed} subidas, ${stats.pulled} importadas, ${stats.meetLinksCreated} Meet links creados${stats.errors > 0 ? `, ${stats.errors} errores` : ''}`,
+      message: `Sync completado: ${stats.pushed} subidas, ${stats.pulled} importadas, ${stats.meetLinksCreated} Meet links, ${stats.cleaned} eliminadas${stats.errors > 0 ? `, ${stats.errors} errores` : ''}`,
     })
   } catch (err: any) {
     console.error('[CalSync] Unexpected error:', err)

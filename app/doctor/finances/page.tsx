@@ -68,11 +68,13 @@ export default function FinancesPage() {
       if (!user) return
 
       // Load completed appointments as income (same source as Cobros "aprobados")
+      // Exclude google_calendar events — they are schedule blockers, not financial items
       const { data: appointments } = await supabase
         .from('appointments')
         .select('id, patient_name, plan_price, payment_method, scheduled_at, appointment_code')
         .eq('doctor_id', user.id)
         .eq('status', 'completed')
+        .neq('source', 'google_calendar')
         .order('scheduled_at', { ascending: false })
 
       setIncomes((appointments || []).map(a => ({

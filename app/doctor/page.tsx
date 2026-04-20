@@ -95,12 +95,13 @@ export default function DoctorDashboard() {
       monthEnd.setHours(23, 59, 59, 999)
 
       // Financial data: same source as /doctor/finances page
-      // Uses appointments with status='completed' and plan_price as amount
+      // Exclude google_calendar events (schedule blockers, not financial)
       const { data: completedAppts } = await supabase
         .from('appointments')
         .select('plan_price')
         .eq('doctor_id', user.id)
         .eq('status', 'completed')
+        .neq('source', 'google_calendar')
         .gte('scheduled_at', monthStart.toISOString())
         .lte('scheduled_at', monthEnd.toISOString())
 

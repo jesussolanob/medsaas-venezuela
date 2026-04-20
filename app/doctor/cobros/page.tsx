@@ -123,9 +123,10 @@ export default function CobrosPage() {
 
     const { data: apptData } = await supabase
       .from('appointments')
-      .select('id, patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, payment_receipt_url')
+      .select('id, patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, payment_receipt_url, source')
       .eq('doctor_id', user.id)
       .in('status', statusFilter)
+      .neq('source', 'google_calendar')
       .order('scheduled_at', { ascending: false })
       .limit(200)
 
@@ -158,6 +159,7 @@ export default function CobrosPage() {
       .from('appointments')
       .select('patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code')
       .eq('doctor_id', user.id)
+      .neq('source', 'google_calendar')
       .gte('scheduled_at', `${dateFrom}T00:00:00`)
       .lte('scheduled_at', `${dateTo}T23:59:59`)
       .order('scheduled_at', { ascending: false })
