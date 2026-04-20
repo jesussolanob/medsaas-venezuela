@@ -5,11 +5,12 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Users, CheckSquare,
   Settings, LogOut, Menu, MessageSquarePlus, DollarSign,
-  Pin, PanelLeftClose, PanelLeft, Bell, Sparkles
+  Pin, PanelLeftClose, PanelLeft, Bell
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import AdminNotifications from './AdminNotifications'
+import SearchCommandPalette from './SearchCommandPalette'
 
 const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
@@ -202,11 +203,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <h1 className="text-sm font-semibold" style={{ color: '#2A3340' }}>{activeTitle}</h1>
             </div>
             <div className="flex items-center gap-3 sm:gap-4">
-              {/* Search pill */}
-              <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: '#F4F6F8', minWidth: 220 }}>
-                <Sparkles className="w-4 h-4" style={{ color: '#97A3AF' }} />
-                <span className="text-sm" style={{ color: '#97A3AF' }}>Buscar...</span>
-              </div>
+              <SearchCommandPalette />
               <AdminNotifications />
             </div>
           </header>

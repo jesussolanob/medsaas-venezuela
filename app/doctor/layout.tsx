@@ -6,12 +6,13 @@ import {
   LayoutDashboard, Calendar, ClipboardList, Users,
   Settings, LogOut, Menu, MessageSquarePlus,
   Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft, TrendingUp, Bell,
-  ChevronDown, Stethoscope, DollarSign, Megaphone, Search, Sparkles
+  ChevronDown, Stethoscope, DollarSign, Megaphone
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import { CheckCircle } from 'lucide-react'
 import DoctorNotificationToast from './DoctorNotificationToast'
+import SearchCommandPalette from './SearchCommandPalette'
 
 type NavItem = { name: string; href: string; icon: any }
 type NavSection = { key: string; label: string; icon: any; items: NavItem[] }
@@ -360,11 +361,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               <h1 className="text-sm font-semibold" style={{ color: '#2A3340' }}>{activeTitle}</h1>
             </div>
             <div className="flex items-center gap-3">
-              {/* Search pill */}
-              <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: '#F4F6F8', minWidth: 220 }}>
-                <Sparkles className="w-4 h-4" style={{ color: '#97A3AF' }} />
-                <span className="text-sm" style={{ color: '#97A3AF' }}>Buscar...</span>
-              </div>
+              <SearchCommandPalette />
               {/* Notification bell */}
               <div className="relative p-2 rounded-full cursor-pointer" style={{ color: '#5A6773' }}>
                 <Bell className="w-[18px] h-[18px]" />

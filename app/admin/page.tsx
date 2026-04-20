@@ -1,51 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { Users, Calendar, CreditCard, TrendingUp, Activity, Stethoscope } from 'lucide-react'
 import Link from 'next/link'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
-
-// Styles for animations
-const styles = `
-  @keyframes pulse-dot {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
-  }
-  .pulse-dot {
-    animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-  .blur-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.2;
-  }
-`
-
-// Plan names displayed to the user
-const PLAN_LABELS: Record<string, string> = {
-  trial: 'Beta Privada',
-  basic: 'Beta Privada',
-  professional: 'Beta Privada',
-  enterprise: 'Beta Privada',
-  centro_salud: 'Beta Privada',
-  clinic: 'Beta Privada',
-}
-
-function getPlanTag(plan?: string | null, status?: string | null): { label: string; color: string } {
-  const planName = PLAN_LABELS[plan || ''] || 'Basic'
-
-  // Status determines the color/badge style
-  if (status === 'suspended') return { label: `${planName} · Suspendida`, color: 'bg-red-50 text-red-700' }
-  if (status === 'active') return { label: planName, color: 'bg-teal-50 text-teal-700' }
-  if (status === 'past_due' || status === 'pending_payment') return { label: `${planName} · Pendiente`, color: 'bg-orange-50 text-orange-700' }
-  // trial or default — everyone has at least trial
-  return { label: `${planName} · Trial`, color: 'bg-amber-50 text-amber-700' }
-}
 
 export default async function AdminDashboard() {
   const supabase = await createClient()
@@ -53,34 +10,30 @@ export default async function AdminDashboard() {
   if (!user) redirect('/login')
 
   const { data: kpis } = await supabase.rpc('bi_platform_kpis')
-
-  // Use admin client for all queries to bypass RLS
   const adminClient = createAdminClient()
 
-  // Fetch recent doctors (simple query, no joins)
-  const { data: recentDoctors } = await adminClient
-    .from('profiles')
-    .select('id, full_name, specialty, email, created_at')
-    .eq('role', 'doctor')
+  // ── Fetch pending approvals (trial doctors) ──
+  const { data: pendingApprovals } = await adminClient
+    .from('subscriptions')
+    .select('doctor_id, plan, status, created_at')
+    .eq('status', 'trial')
     .order('created_at', { ascending: false })
     .limit(5)
 
-  // Fetch subscriptions for ALL recent doctors (source of truth for plan + status)
-  const recentDoctorIds = (recentDoctors || []).map(d => d.id)
-  const { data: doctorSubscriptions } = recentDoctorIds.length > 0
+  const approvalDoctorIds = (pendingApprovals || []).map(a => a.doctor_id)
+  const { data: approvalProfiles } = approvalDoctorIds.length > 0
     ? await adminClient
-      .from('subscriptions')
-      .select('doctor_id, plan, status')
-      .in('doctor_id', recentDoctorIds)
+        .from('profiles')
+        .select('id, full_name, specialty')
+        .in('id', approvalDoctorIds)
     : { data: [] }
 
-  // Build subscription lookup: doctor_id → { plan, status }
-  const subMap: Record<string, { plan: string; status: string }> = {}
-  ;(doctorSubscriptions || []).forEach(s => {
-    subMap[s.doctor_id] = { plan: s.plan, status: s.status }
+  const profileMap: Record<string, { name: string; specialty: string }> = {}
+  ;(approvalProfiles || []).forEach(p => {
+    profileMap[p.id] = { name: p.full_name || 'Sin nombre', specialty: p.specialty || 'General' }
   })
 
-  // Fetch subscription stats for MoM calculation
+  // ── Subscription MoM stats ──
   let momGrowth = 0
   let newThisMonth = 0
 
@@ -93,9 +46,8 @@ export default async function AdminDashboard() {
     if (subscriptions) {
       const now = new Date()
       const monthCounts: Record<string, number> = {}
-      const months = []
+      const months: string[] = []
 
-      // Initialize last 6 months
       for (let i = 5; i >= 0; i--) {
         const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
         const monthKey = date.toISOString().slice(0, 7)
@@ -103,13 +55,9 @@ export default async function AdminDashboard() {
         months.push(monthKey)
       }
 
-      // Count subscriptions created in each month
       subscriptions.forEach((sub) => {
-        const createdDate = new Date(sub.created_at)
-        const monthKey = createdDate.toISOString().slice(0, 7)
-        if (monthKey in monthCounts) {
-          monthCounts[monthKey]++
-        }
+        const monthKey = new Date(sub.created_at).toISOString().slice(0, 7)
+        if (monthKey in monthCounts) monthCounts[monthKey]++
       })
 
       const currentMonthCount = monthCounts[months[months.length - 1]] || 0
@@ -120,284 +68,233 @@ export default async function AdminDashboard() {
       } else if (currentMonthCount > 0) {
         momGrowth = 100
       }
-
       newThisMonth = currentMonthCount
     }
   } catch (err) {
     console.error('Error fetching subscription stats:', err)
   }
 
-  // Fetch per-doctor activity this month
-  // Una cita es una cita — ya sea creada por booking (appointments) o por el doctor (consultations).
-  // Lo que cambia es el estado, no la naturaleza.
-  let doctorActivity: { id: string; name: string; specialty: string | null; total_citas: number }[] = []
+  // ── Per-doctor activity this month ──
+  let totalCitasMonth = 0
   try {
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
 
-    // Get all doctors
-    const { data: allDoctors } = await adminClient
-      .from('profiles')
-      .select('id, full_name, specialty')
-      .eq('role', 'doctor')
-      .order('full_name')
+    const { data: apptCounts } = await adminClient
+      .from('appointments')
+      .select('id')
+      .gte('scheduled_at', startOfMonth)
+      .lte('scheduled_at', endOfMonth)
 
-    if (allDoctors && allDoctors.length > 0) {
-      const doctorIds = allDoctors.map(d => d.id)
+    const { data: consCounts } = await adminClient
+      .from('consultations')
+      .select('id')
+      .is('appointment_id', null)
+      .gte('consultation_date', startOfMonth)
+      .lte('consultation_date', endOfMonth)
 
-      // Count appointments per doctor this month
-      const { data: apptCounts } = await adminClient
-        .from('appointments')
-        .select('doctor_id')
-        .in('doctor_id', doctorIds)
-        .gte('scheduled_at', startOfMonth)
-        .lte('scheduled_at', endOfMonth)
+    totalCitasMonth = (apptCounts?.length || 0) + (consCounts?.length || 0)
+  } catch {}
 
-      // Count consultations created directly by doctor (no appointment_id) this month
-      const { data: consCounts } = await adminClient
-        .from('consultations')
-        .select('doctor_id')
-        .in('doctor_id', doctorIds)
-        .is('appointment_id', null)
-        .gte('consultation_date', startOfMonth)
-        .lte('consultation_date', endOfMonth)
+  // ── Citas de hoy ──
+  const citasHoy = kpis?.appts_today ?? 0
 
-      // Build combined counts
-      const totalMap: Record<string, number> = {}
-      ;(apptCounts || []).forEach(a => { totalMap[a.doctor_id] = (totalMap[a.doctor_id] || 0) + 1 })
-      ;(consCounts || []).forEach(c => { totalMap[c.doctor_id] = (totalMap[c.doctor_id] || 0) + 1 })
+  // ── Format greeting ──
+  const now = new Date()
+  const hour = now.getHours()
+  const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches'
+  const dateStr = now.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
-      doctorActivity = allDoctors
-        .map(d => ({
-          id: d.id,
-          name: d.full_name || 'Sin nombre',
-          specialty: d.specialty,
-          total_citas: totalMap[d.id] || 0,
-        }))
-        .sort((a, b) => b.total_citas - a.total_citas)
-    }
-  } catch (err) {
-    console.error('Error fetching doctor activity:', err)
-  }
+  const totalDoctors = kpis?.total_doctors ?? 0
+  const pendingCount = pendingApprovals?.length ?? 0
 
-  // Total citas this month (for KPI)
-  const totalCitasMonth = doctorActivity.reduce((sum, d) => sum + d.total_citas, 0)
-
-  const stats = [
-    {
-      label: 'Médicos activos',
-      value: kpis?.total_doctors ?? 0,
-      icon: Users,
-      change: '+3 este mes',
-      color: 'text-teal-600',
-      bg: 'bg-teal-50',
-      border: 'border-teal-100',
-    },
-    {
-      label: 'Citas hoy',
-      value: kpis?.appts_today ?? 0,
-      icon: Calendar,
-      change: 'Tiempo real',
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-      border: 'border-blue-100',
-      pulseIndicator: true,
-    },
-    {
-      label: 'Citas este mes',
-      value: totalCitasMonth || (kpis?.appts_this_month ?? 0),
-      icon: TrendingUp,
-      change: 'Todas las fuentes',
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
-      border: 'border-violet-100',
-    },
-    {
-      label: 'Suscripciones activas',
-      value: kpis?.active_subscriptions ?? 0,
-      icon: CreditCard,
-      change: `${kpis?.trial_subscriptions ?? 0} en trial`,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
-      border: 'border-amber-100',
-    },
-  ]
-
-  // Format current date
-  const today = new Date()
-  const dateStr = today.toLocaleDateString('es-VE', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
+  // Accent colors for avatars
+  const avatarColors = ['#06B6D4', '#FF8A65', '#2A3340', '#0891B2', '#F26F4A']
 
   return (
-    <div className="space-y-4 sm:space-y-6 lg:space-y-8">
-      <style>{styles}</style>
-
-      {/* Welcome Hero Card */}
-      <div className="relative rounded-xl overflow-hidden p-6 sm:p-8 text-white" style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 50%, #0e7490 100%)' }}>
-        {/* Decorative blur orbs */}
-        <div className="blur-orb" style={{ width: '200px', height: '200px', background: '#ffffff', top: '-50px', right: '-50px' }}></div>
-        <div className="blur-orb" style={{ width: '150px', height: '150px', background: '#0891b2', bottom: '-30px', left: '-30px' }}></div>
+    <div className="space-y-6">
+      {/* ── Hero Banner ── */}
+      <div className="relative overflow-hidden rounded-[24px] p-8 lg:p-10 text-white" style={{ background: 'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)' }}>
+        {/* Background isotipo */}
+        <svg className="absolute -right-20 -top-10 opacity-[0.12]" width="340" height="340" viewBox="0 0 120 120" fill="none">
+          <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="#fff" strokeWidth="14" strokeLinecap="round" fill="none"/>
+          <path d="M58 92 C 78 92, 92 78, 88 60" stroke="#FF8A65" strokeWidth="14" strokeLinecap="round" fill="none"/>
+        </svg>
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-4">
-            <Activity className="w-6 h-6" />
-            <h1 className="text-2xl sm:text-3xl font-semibold">Bienvenido de nuevo</h1>
-          </div>
-          <p className="text-sm sm:text-base opacity-90 mb-6">Resumen general de la plataforma · {dateStr}</p>
-
+          <p className="text-xs tracking-[0.1em] uppercase opacity-70 mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+            {dateStr}
+          </p>
+          <h1 className="text-3xl lg:text-[42px] font-bold tracking-tight leading-tight" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            {greeting}, Delta.
+          </h1>
+          <p className="text-base opacity-85 mt-2 mb-6 max-w-xl leading-relaxed">
+            {pendingCount > 0 ? `${pendingCount} aprobaciones pendientes` : 'Sin aprobaciones pendientes'}
+            {newThisMonth > 0 ? `, ${newThisMonth} especialista${newThisMonth !== 1 ? 's' : ''} nuevo${newThisMonth !== 1 ? 's' : ''} este mes` : ''}
+            {momGrowth > 0 ? ` y +${momGrowth}% de crecimiento MoM.` : '.'}
+          </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/admin/doctors"
-              className="inline-flex items-center px-4 py-2 bg-white text-teal-600 rounded-lg font-medium text-sm hover:bg-slate-50 transition-colors"
+              href="/admin/approvals"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold transition-all"
+              style={{ background: '#fff', color: '#0891B2' }}
             >
-              Ver Médicos
+              Revisar aprobaciones →
             </Link>
             <Link
-              href="/admin/approvals"
-              className="inline-flex items-center px-4 py-2 bg-white/20 text-white rounded-lg font-medium text-sm hover:bg-white/30 transition-colors border border-white/30"
+              href="/admin/doctors"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold transition-all"
+              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}
             >
-              Aprobaciones
+              Ver especialistas
             </Link>
           </div>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className={`rounded-xl border ${stat.border} bg-white p-4 sm:p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 min-w-0`}>
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 uppercase tracking-wider truncate">{stat.label}</span>
-                {stat.pulseIndicator && (
-                  <div className="w-2 h-2 rounded-full bg-blue-500 pulse-dot flex-shrink-0"></div>
-                )}
-              </div>
-              <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center flex-shrink-0`}>
-                <stat.icon className={`w-4 h-4 ${stat.color}`} />
+      {/* ── Stat Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Especialistas activos', value: totalDoctors, delta: `+${newThisMonth} este mes`, icon: '👤' },
+          { label: 'Consultas hoy', value: citasHoy, delta: 'Tiempo real', deltaColor: '#0891B2', icon: '📅' },
+          { label: 'Consultas este mes', value: totalCitasMonth || (kpis?.appts_this_month ?? 0), delta: momGrowth > 0 ? `+${momGrowth}% vs. mes anterior` : 'Sin cambio', icon: '❤️' },
+          { label: 'Suscripciones activas', value: kpis?.active_subscriptions ?? 0, delta: `${kpis?.trial_subscriptions ?? 0} en trial`, icon: '📋' },
+        ].map(stat => (
+          <div key={stat.label} className="rounded-[22px] bg-white p-5" style={{ border: '1px solid #E8ECF0' }}>
+            <div className="flex items-center justify-between mb-3.5">
+              <span className="text-[11px] uppercase tracking-[0.08em] font-medium" style={{ color: '#97A3AF', fontFamily: "'JetBrains Mono', monospace" }}>{stat.label}</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#ECFEFF', color: '#0891B2' }}>
+                <span className="text-sm">{stat.icon}</span>
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-semibold text-slate-900">{stat.value}</p>
-            <p className="text-xs text-slate-400 mt-1">{stat.change}</p>
+            <p className="text-4xl font-bold tracking-tight" style={{ color: '#0F1A2A', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              {typeof stat.value === 'number' ? stat.value.toLocaleString('es-VE') : stat.value}
+            </p>
+            {stat.delta && (
+              <p className="text-xs font-semibold mt-2" style={{ color: stat.deltaColor || '#10B981' }}>{stat.delta}</p>
+            )}
           </div>
         ))}
       </div>
 
-      {/* Segunda fila: Chart + Métrica de Crecimiento */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-        {/* Subscriptions Chart - Takes 2 columns on large screens */}
-        <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-slate-600">Suscripciones Mes a Mes</h3>
-            <span className="text-xs bg-teal-50 text-teal-600 px-2 py-1 rounded-full border border-teal-100">Últimos 6 meses</span>
+      {/* ── Bottom Grid: Chart + Approvals ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Chart — 3 cols */}
+        <div className="lg:col-span-3 rounded-[22px] bg-white p-6" style={{ border: '1px solid #E8ECF0' }}>
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <p className="text-base font-bold" style={{ color: '#0F1A2A' }}>Suscripciones · últimos 6 meses</p>
+              <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Crecimiento de la plataforma</p>
+            </div>
+            {momGrowth > 0 && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: '#D1FAE5', color: '#047857' }}>
+                ↑ +{momGrowth}%
+              </span>
+            )}
           </div>
           <AdminSubscriptionChart />
         </div>
 
-        {/* Growth MoM Metric */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0 flex flex-col justify-center">
-          <div className="flex items-center justify-between mb-3 sm:mb-4">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-medium">Crecimiento MoM</span>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-            </div>
+        {/* Approvals — 2 cols */}
+        <div className="lg:col-span-2 rounded-[22px] bg-white p-6" style={{ border: '1px solid #E8ECF0' }}>
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-base font-bold" style={{ color: '#0F1A2A' }}>Aprobaciones pendientes</p>
+            {pendingCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: '#FFE5DA', color: '#F26F4A' }}>
+                {pendingCount} nueva{pendingCount !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
-          <p className="text-2xl sm:text-3xl font-semibold text-slate-900">{momGrowth >= 0 ? '+' : ''}{momGrowth}%</p>
-          <p className="text-xs text-slate-400 mt-1">Vs. mes anterior</p>
-          <p className="text-xs text-emerald-600 font-semibold mt-3">{newThisMonth} nueva{newThisMonth !== 1 ? 's' : ''} suscripción{newThisMonth !== 1 ? 'es' : ''}</p>
+
+          {pendingCount === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-sm" style={{ color: '#97A3AF' }}>No hay aprobaciones pendientes</p>
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {(pendingApprovals || []).map((approval, i) => {
+                const profile = profileMap[approval.doctor_id]
+                const name = profile?.name || 'Doctor'
+                const spec = profile?.specialty || 'General'
+                const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+                const color = avatarColors[i % avatarColors.length]
+                return (
+                  <div
+                    key={approval.doctor_id}
+                    className="flex items-center gap-3 py-3"
+                    style={{ borderBottom: i < (pendingApprovals?.length || 0) - 1 ? '1px solid #E8ECF0' : 'none' }}
+                  >
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                      style={{ background: color }}
+                    >
+                      {initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold truncate" style={{ color: '#0F1A2A' }}>{name}</p>
+                      <p className="text-[11px] truncate" style={{ color: '#97A3AF' }}>{spec}</p>
+                    </div>
+                    <Link
+                      href="/admin/approvals"
+                      className="px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all shrink-0"
+                      style={{ background: '#ECFEFF', color: '#0891B2' }}
+                    >
+                      Revisar
+                    </Link>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {pendingCount > 0 && (
+            <Link
+              href="/admin/approvals"
+              className="block text-center text-xs font-semibold mt-4 pt-3 transition-colors"
+              style={{ color: '#0891B2', borderTop: '1px solid #E8ECF0' }}
+            >
+              Ver todas las aprobaciones →
+            </Link>
+          )}
         </div>
       </div>
 
-      {/* Actividad por médico este mes */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Stethoscope className="w-4 h-4 text-teal-500" />
-            <h3 className="text-sm font-semibold text-slate-600">Actividad por médico — {today.toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })}</h3>
-          </div>
-          <span className="text-xs bg-violet-50 text-violet-600 px-2 py-1 rounded-full border border-violet-100">{doctorActivity.length} médicos</span>
+      {/* ── Growth MoM card ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="rounded-[22px] bg-white p-6 flex flex-col justify-center" style={{ border: '1px solid #E8ECF0' }}>
+          <span className="text-[11px] uppercase tracking-[0.08em] font-medium" style={{ color: '#97A3AF', fontFamily: "'JetBrains Mono', monospace" }}>
+            Crecimiento MoM
+          </span>
+          <p className="text-4xl font-bold mt-2" style={{ color: '#0F1A2A' }}>{momGrowth >= 0 ? '+' : ''}{momGrowth}%</p>
+          <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Vs. mes anterior</p>
+          <p className="text-xs font-semibold mt-3" style={{ color: '#10B981' }}>
+            {newThisMonth} nueva{newThisMonth !== 1 ? 's' : ''} suscripción{newThisMonth !== 1 ? 'es' : ''}
+          </p>
         </div>
 
-        {doctorActivity.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-8">No hay actividad este mes</p>
-        ) : (
-          <div className="space-y-1.5">
-            {/* Header */}
-            <div className="grid grid-cols-12 gap-2 px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-              <div className="col-span-5">Médico</div>
-              <div className="col-span-2 text-center">Citas</div>
-              <div className="col-span-5 text-center">Actividad</div>
-            </div>
-            {doctorActivity.map((doc) => {
-              const maxTotal = Math.max(...doctorActivity.map(d => d.total_citas), 1)
-              const barWidth = Math.round((doc.total_citas / maxTotal) * 100)
-              return (
-                <div key={doc.id} className="grid grid-cols-12 gap-2 items-center p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                  <div className="col-span-5 flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-[10px] flex-shrink-0">
-                      {doc.name.charAt(0)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-800 truncate">{doc.name}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{doc.specialty || '—'}</p>
-                    </div>
-                  </div>
-                  <div className="col-span-2 text-center">
-                    <span className="text-sm font-bold text-teal-600">{doc.total_citas}</span>
-                  </div>
-                  <div className="col-span-5 flex items-center gap-2">
-                    <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${barWidth}%`, background: 'linear-gradient(90deg, #00C4CC, #0891b2)' }}
-                      />
-                    </div>
-                    <span className="text-xs font-bold text-slate-700 w-6 text-right">{doc.total_citas}</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Últimos médicos registrados */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 min-w-0">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-slate-600">Últimos médicos registrados</h3>
-          <a href="/admin/doctors" className="text-xs text-teal-600 hover:text-teal-700 font-semibold">Ver todos</a>
+        <div className="rounded-[22px] bg-white p-6 flex flex-col justify-center" style={{ border: '1px solid #E8ECF0' }}>
+          <span className="text-[11px] uppercase tracking-[0.08em] font-medium" style={{ color: '#97A3AF', fontFamily: "'JetBrains Mono', monospace" }}>
+            Total especialistas
+          </span>
+          <p className="text-4xl font-bold mt-2" style={{ color: '#0F1A2A' }}>{totalDoctors}</p>
+          <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Registrados en la plataforma</p>
+          <Link href="/admin/doctors" className="text-xs font-semibold mt-3" style={{ color: '#0891B2' }}>
+            Ver listado completo →
+          </Link>
         </div>
-        <div className="space-y-2">
-          {(recentDoctors || []).map((doctor) => {
-            const sub = subMap[doctor.id]
-            const tag = getPlanTag(sub?.plan, sub?.status)
-            return (
-              <div key={doctor.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-xs flex-shrink-0">
-                    {doctor.full_name?.charAt(0) || '?'}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">{doctor.full_name}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{doctor.specialty}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tag.color}`}>
-                    {tag.label}
-                  </span>
-                  <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                    {new Date(doctor.created_at).toLocaleDateString('es-VE', { month: 'short', day: 'numeric' })}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
+
+        <div className="rounded-[22px] bg-white p-6 flex flex-col justify-center" style={{ border: '1px solid #E8ECF0' }}>
+          <span className="text-[11px] uppercase tracking-[0.08em] font-medium" style={{ color: '#97A3AF', fontFamily: "'JetBrains Mono', monospace" }}>
+            Consultas totales (mes)
+          </span>
+          <p className="text-4xl font-bold mt-2" style={{ color: '#0F1A2A' }}>
+            {(totalCitasMonth || (kpis?.appts_this_month ?? 0)).toLocaleString('es-VE')}
+          </p>
+          <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Appointments + Consultas directas</p>
+          <Link href="/admin/finances" className="text-xs font-semibold mt-3" style={{ color: '#0891B2' }}>
+            Ver finanzas →
+          </Link>
         </div>
       </div>
     </div>
