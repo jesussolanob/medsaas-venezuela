@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 
+// Force dynamic — never statically cache this route
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/admin/bcv-rate
  * Fetches the current BCV (Banco Central de Venezuela) exchange rate.
  * Tries multiple sources in order:
+ *   0. fawazahmed0/currency-api CDN (fastest)
  *   1. BCV official website (scraping)
  *   2. pydolarve.org API
  *   3. dolarapi.com API
@@ -21,7 +25,7 @@ export async function GET() {
       {
         signal: AbortSignal.timeout(6000),
         headers: { 'Accept': 'application/json' },
-        next: { revalidate: 3600 },
+        cache: 'no-store',
       }
     )
     if (res.ok) {
@@ -45,7 +49,7 @@ export async function GET() {
         {
           signal: AbortSignal.timeout(6000),
           headers: { 'Accept': 'application/json' },
-          next: { revalidate: 3600 },
+          cache: 'no-store',
         }
       )
       if (res.ok) {
@@ -62,7 +66,7 @@ export async function GET() {
   }
 
   // ── Source 1: BCV official website ──────────────────────────────────────
-  try {
+  if (!rate) try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8000)
 
@@ -73,7 +77,7 @@ export async function GET() {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'es-VE,es;q=0.9',
       },
-      next: { revalidate: 3600 }, // cache for 1 hour
+      cache: 'no-store', // cache for 1 hour
     })
     clearTimeout(timeout)
 
@@ -121,7 +125,7 @@ export async function GET() {
           'Accept': 'application/json',
           'User-Agent': 'DeltaMedicalCRM/1.0',
         },
-        next: { revalidate: 3600 },
+        cache: 'no-store',
       })
       if (res.ok) {
         const data = await res.json()
@@ -146,7 +150,7 @@ export async function GET() {
           'Accept': 'application/json',
           'User-Agent': 'DeltaMedicalCRM/1.0',
         },
-        next: { revalidate: 3600 },
+        cache: 'no-store',
       })
       if (res.ok) {
         const data = await res.json()
@@ -172,7 +176,7 @@ export async function GET() {
       const res = await fetch('https://ve.dolarapi.com/v1/dolares', {
         signal: AbortSignal.timeout(8000),
         headers: { 'Accept': 'application/json' },
-        next: { revalidate: 3600 },
+        cache: 'no-store',
       })
       if (res.ok) {
         const data = await res.json()

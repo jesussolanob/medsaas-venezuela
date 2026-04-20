@@ -206,7 +206,7 @@ export async function getBCVRate(): Promise<BCVRateResult> {
   try {
     const res = await fetch(
       'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd/ves.min.json',
-      { next: { revalidate: 3600 } }
+      { cache: 'no-store' }
     )
     if (res.ok) {
       const data = await res.json()
@@ -223,7 +223,7 @@ export async function getBCVRate(): Promise<BCVRateResult> {
   try {
     const res = await fetch(
       'https://latest.currency-api.pages.dev/v1/currencies/usd/ves.min.json',
-      { next: { revalidate: 3600 } }
+      { cache: 'no-store' }
     )
     if (res.ok) {
       const data = await res.json()
@@ -253,7 +253,7 @@ export async function getBCVRate(): Promise<BCVRateResult> {
 
   // Source 3: pydolarve.org
   try {
-    const res2 = await fetch('https://pydolarve.org/api/v1/dollar?page=bcv&monitor=usd', {
+    const res2 = await fetch('https://pydolarve.org/api/v2/dollar?page=bcv', {
       next: { revalidate: 3600 },
     })
     if (!res2.ok) throw new Error('fetch2 failed')
