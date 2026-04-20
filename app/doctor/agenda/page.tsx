@@ -41,6 +41,7 @@ type CalendarAppointment = {
   patient_phone?: string | null
   patient_email?: string | null
   patient_cedula?: string | null
+  meet_link?: string | null
 }
 
 type PendingAppointment = {
@@ -319,7 +320,7 @@ export default function AgendaPage() {
     // 4. Load CONFIRMED appointments (already accepted, show in calendar)
     const { data: confirmed } = await supabase
       .from('appointments')
-      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, plan_name, plan_price, status, appointment_code')
+      .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, plan_name, plan_price, status, appointment_code, meet_link')
       .eq('doctor_id', user.id)
       .eq('status', 'confirmed')
       .order('scheduled_at', { ascending: true })
@@ -354,6 +355,7 @@ export default function AgendaPage() {
           plan_price: a.plan_price,
           patient_phone: a.patient_phone,
           patient_email: a.patient_email,
+          meet_link: a.meet_link,
         }
       })
 
@@ -1008,6 +1010,29 @@ export default function AgendaPage() {
                     {detailAppt.status === 'scheduled' ? 'Pendiente' : detailAppt.status === 'confirmed' ? 'Confirmada' : detailAppt.status === 'completed' ? 'Completada' : 'Cancelada'}
                   </span>
                 </div>
+
+                {/* Google Meet link */}
+                {detailAppt.meet_link && (
+                  <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-teal-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                        <div>
+                          <p className="text-sm font-semibold text-teal-700">Google Meet</p>
+                          <p className="text-xs text-teal-500">Videollamada activa</p>
+                        </div>
+                      </div>
+                      <a
+                        href={detailAppt.meet_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-teal-500 hover:bg-teal-600 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        Abrir Meet
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2 pt-4">

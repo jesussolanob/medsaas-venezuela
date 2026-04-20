@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Clock, User, Filter } from 'lucide-react'
+import { Calendar, Clock, User, Filter, Video, MapPin } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Appointment {
@@ -15,6 +15,8 @@ interface Appointment {
   doctor_id: string
   doctor_name?: string
   doctor_specialty?: string
+  appointment_mode?: string
+  meet_link?: string
 }
 
 type FilterStatus = 'all' | 'future' | 'past'
@@ -171,6 +173,47 @@ export default function AppointmentsPage() {
                   </span>
                   <span className="text-teal-600 font-semibold">${apt.plan_price} USD</span>
                 </div>
+
+                {/* Appointment mode badge */}
+                {apt.appointment_mode && (
+                  <div className="flex items-center gap-2">
+                    {apt.appointment_mode === 'online' ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">
+                        <Video className="w-3.5 h-3.5" />
+                        Consulta Online
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-50 px-2.5 py-1 rounded-full">
+                        <MapPin className="w-3.5 h-3.5" />
+                        Presencial
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Google Meet link for online appointments */}
+                {apt.meet_link && !isPast && (apt.status === 'scheduled' || apt.status === 'confirmed') && (
+                  <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-3 sm:p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Video className="w-5 h-5 text-teal-600" />
+                        <div>
+                          <p className="text-sm font-semibold text-teal-700">Videollamada disponible</p>
+                          <p className="text-xs text-teal-500">Google Meet — haz clic para unirte</p>
+                        </div>
+                      </div>
+                      <a
+                        href={apt.meet_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                      >
+                        <Video className="w-4 h-4" />
+                        Unirme a la llamada
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 {apt.chief_complaint && (
                   <div className="pt-3 border-t border-slate-100">

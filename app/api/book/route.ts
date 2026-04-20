@@ -417,9 +417,11 @@ export async function POST(req: NextRequest) {
             const startDt = new Date(scheduledAt)
             const endDt = new Date(startDt.getTime() + 30 * 60000) // 30 min default
 
-            const event = {
+            const isOnline = appointmentMode === 'online'
+
+            const event: Record<string, unknown> = {
               summary: `Consulta - ${finalName}`,
-              description: `Plan: ${planName || 'N/A'} | Motivo: ${chiefComplaint || 'Consulta médica'}`,
+              description: `Plan: ${planName || 'N/A'} | Motivo: ${chiefComplaint || 'Consulta médica'}${isOnline ? '\n\n📹 Consulta Online — el link de Google Meet está incluido en este evento.' : ''}`,
               start: { dateTime: startDt.toISOString(), timeZone: 'America/Caracas' },
               end: { dateTime: endDt.toISOString(), timeZone: 'America/Caracas' },
               reminders: {
@@ -429,10 +431,35 @@ export async function POST(req: NextRequest) {
                   { method: 'popup', minutes: 10 },
                 ],
               },
+              // Send email invitations to the patient
+              guestsCanModify: false,
+              guestsCanSeeOtherGuests: false,
             }
 
+            // Add patient as attendee so they receive the calendar invite
+            if (finalEmail) {
+              event.attendees = [
+                { email: finalEmail, displayName: finalName, responseStatus: 'needsAction' },
+              ]
+            }
+
+            // For online appointments, create a Google Meet conference
+            if (isOnline) {
+              event.conferenceData = {
+                createRequest: {
+                  requestId: `delta-${appt.id}-${Date.now()}`,
+                  conferenceSolutionKey: { type: 'hangoutsMeet' },
+                },
+              }
+            }
+
+            // Use conferenceDataVersion=1 to enable Meet creation
+            const calendarUrl = isOnline
+              ? 'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all'
+              : 'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all'
+
             // Fire-and-forget: don't block the booking response
-            fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+            fetch(calendarUrl, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${gcalAccessToken}`,
@@ -444,7 +471,32 @@ export async function POST(req: NextRequest) {
                 const errText = await res.text()
                 console.error('[Book] Google Calendar event creation failed:', errText)
               } else {
-                console.log('[Book] Google Calendar event created successfully')
+                const createdEvent = await res.json()
+                console.log('[Book] Google Calendar event created successfully:', createdEvent.id)
+
+                // If a Meet link was generated, save it to the appointment
+                const meetLink = createdEvent.hangoutLink || createdEvent.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri
+                if (meetLink && appt?.id) {
+                  try {
+                    await admin
+                      .from('appointments')
+                      .update({ meet_link: meetLink, google_event_id: createdEvent.id })
+                      .eq('id', appt.id)
+                  } catch {
+                    // meet_link column may not exist yet
+                    console.warn('[Book] Could not save meet_link — column may not exist')
+                  }
+                }
+
+                // Also save google_event_id even without meet
+                if (!meetLink && createdEvent.id && appt?.id) {
+                  try {
+                    await admin
+                      .from('appointments')
+                      .update({ google_event_id: createdEvent.id })
+                      .eq('id', appt.id)
+                  } catch { /* column may not exist */ }
+                }
               }
             }).catch(err => console.warn('[Book] Google Calendar sync error:', err))
           }
