@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition, useRef, Suspense } from 'react'
+import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -102,6 +102,8 @@ function ConsultationsPage() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
+  const [autoSaving, setAutoSaving] = useState(false)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('informe')
 
   // Report fields (editable during consultation)
@@ -734,6 +736,41 @@ function ConsultationsPage() {
       setTimeout(() => setSaved(false), 2500)
     })
   }
+
+  // Auto-save: debounce 3 seconds after any report field changes
+  const reportRef = useRef(report)
+  reportRef.current = report
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+
+  useEffect(() => {
+    if (!selected) return
+    // Don't auto-save if the report hasn't been loaded yet (initial open)
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (!selectedRef.current) return
+      const r = reportRef.current
+      // Only save if there's some content
+      if (!r.chief_complaint && !r.notes && !r.diagnosis && !r.treatment) return
+      setAutoSaving(true)
+      const supabase = createClient()
+      supabase.from('consultations').update({
+        chief_complaint: r.chief_complaint,
+        notes: r.notes,
+        diagnosis: r.diagnosis,
+        treatment: r.treatment,
+        payment_status: r.payment_status,
+      }).eq('id', selectedRef.current.id).then(() => {
+        setAutoSaving(false)
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+        // Update local list
+        setConsultations(prev => prev.map(c => c.id === selectedRef.current?.id ? { ...c, ...r } : c))
+      })
+    }, 3000)
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report.chief_complaint, report.notes, report.diagnosis, report.treatment, report.payment_status, selected?.id])
 
   async function callAI(action: 'summarize' | 'improve' | 'patient_history', content?: string) {
     if (!selected) return
@@ -1384,10 +1421,25 @@ function ConsultationsPage() {
               )}
             </div>
 
-            {/* Saved to EHR note */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-start gap-3">
-              <CheckCircle className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-slate-600">Al guardar, el informe queda registrado en el <strong>historial clínico</strong> del paciente y en las finanzas del consultorio.</p>
+            {/* Save button + auto-save status */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {autoSaving ? (
+                    <><Loader2 className="w-4 h-4 text-teal-500 animate-spin" /><span className="text-xs text-teal-600 font-medium">Guardando...</span></>
+                  ) : saved ? (
+                    <><CheckCircle className="w-4 h-4 text-green-500" /><span className="text-xs text-green-600 font-medium">Guardado</span></>
+                  ) : (
+                    <><Clock className="w-4 h-4 text-slate-400" /><span className="text-xs text-slate-500">Auto-guardado activo</span></>
+                  )}
+                </div>
+                <button onClick={saveReport} disabled={isPending || autoSaving}
+                  className="flex items-center gap-2 g-bg px-4 py-2 rounded-lg text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
+                  {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Guardar consulta
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">Los cambios se guardan automaticamente. El informe queda registrado en el historial clinico del paciente.</p>
             </div>
           </div>
 
@@ -1814,25 +1866,25 @@ function ConsultationsPage() {
 
                 {/* Payment method */}
                 <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Método de pago</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">Método de pago <span className="text-red-400">*</span></label>
+                  <select
+                    value={newConsultation.payment_method}
+                    onChange={e => setNewConsultation(p => ({ ...p, payment_method: e.target.value as any }))}
+                    className={fi}>
+                    <option value="">-- Selecciona método de pago --</option>
                     {[
-                      { value: 'efectivo', label: 'Efectivo', icon: '💵' },
-                      { value: 'pago_movil', label: 'Pago Móvil', icon: '📱' },
-                      { value: 'transferencia', label: 'Transferencia', icon: '🏦' },
-                      { value: 'zelle', label: 'Zelle', icon: '💸' },
-                      { value: 'binance', label: 'Binance', icon: '🪙' },
-                      { value: 'pos', label: 'POS', icon: '💳' },
-                      { value: 'seguro', label: 'Seguro', icon: '🏥' },
+                      { value: 'efectivo', label: 'Efectivo USD' },
+                      { value: 'efectivo_bs', label: 'Efectivo Bs' },
+                      { value: 'pago_movil', label: 'Pago Móvil' },
+                      { value: 'transferencia', label: 'Transferencia' },
+                      { value: 'zelle', label: 'Zelle' },
+                      { value: 'binance', label: 'Binance' },
+                      { value: 'pos', label: 'POS / Punto de venta' },
+                      { value: 'seguro', label: 'Seguro' },
                     ].filter(m => doctorPaymentMethods.length === 0 || doctorPaymentMethods.includes(m.value)).map(m => (
-                      <button key={m.value} type="button"
-                        onClick={() => setNewConsultation(p => ({ ...p, payment_method: m.value as any }))}
-                        className={`flex items-center gap-2 p-2.5 rounded-xl border-2 text-sm font-medium transition-all ${newConsultation.payment_method === m.value ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}>
-                        <span>{m.icon}</span>
-                        <span>{m.label}</span>
-                      </button>
+                      <option key={m.value} value={m.value}>{m.label}</option>
                     ))}
-                  </div>
+                  </select>
                 </div>
 
                 {/* Payment reference */}

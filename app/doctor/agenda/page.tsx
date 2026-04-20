@@ -212,7 +212,7 @@ export default function AgendaPage() {
     time: '',
     reason: '',
     plan_id: '',
-    payment_method: 'efectivo' as string,
+    payment_method: '' as string,
     payment_reference: '',
   })
   const [creatingConsulta, setCreatingConsulta] = useState(false)
@@ -652,7 +652,7 @@ export default function AgendaPage() {
       if (!res.ok) throw new Error(result.error || 'Error al crear')
       toast.success('Consulta creada y agregada a la agenda')
       setShowNewConsulta(false)
-      setNewConsulta({ patient_id: '', date: '', time: '', reason: '', plan_id: '', payment_method: 'efectivo', payment_reference: '' })
+      setNewConsulta({ patient_id: '', date: '', time: '', reason: '', plan_id: '', payment_method: '', payment_reference: '' })
       await loadData()
     } catch (err: any) {
       console.error(err)
@@ -670,7 +670,7 @@ export default function AgendaPage() {
       time: time || '09:00',
       reason: '',
       plan_id: '',
-      payment_method: 'efectivo',
+      payment_method: '',
       payment_reference: '',
     })
     setShowNewConsulta(true)
@@ -1360,8 +1360,9 @@ export default function AgendaPage() {
                       <select
                         value={newConsulta.payment_method}
                         onChange={e => setNewConsulta(prev => ({ ...prev, payment_method: e.target.value }))}
-                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                       >
+                        <option value="">-- Selecciona método de pago --</option>
                         {[
                           { value: 'efectivo', label: 'Efectivo USD' },
                           { value: 'efectivo_bs', label: 'Efectivo Bs' },

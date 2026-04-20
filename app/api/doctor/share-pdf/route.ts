@@ -18,12 +18,9 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createAdminClient()
 
-    // Wrap the HTML content in a viewer that looks professional when opened from a link
-    // Remove the auto-print script and add a toolbar with Print/Download button
+    // Wrap the HTML content in a professional viewer with print/download buttons
     const viewerHtml = htmlContent
-      // Remove auto-print script so it doesn't trigger when opening from WhatsApp
       .replace(/<script>window\.onload\s*=\s*function\(\)\s*\{\s*window\.print\(\);\s*\}<\/script>/g, '')
-      // Inject a floating toolbar and enhanced styles for mobile-friendly viewing
       .replace('</head>', `
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
@@ -57,29 +54,33 @@ export async function POST(req: NextRequest) {
     }
   </style>
 </head>`)
-      // Add toolbar right after <body>
       .replace('<body>', `<body>
   <div class="doc-toolbar">
-    <div class="brand">Delta Medical CRM<span>Documento Médico</span></div>
+    <div class="brand">Delta Medical CRM<span>Documento Medico</span></div>
     <div class="actions">
-      <button onclick="window.print()">🖨️ Imprimir</button>
-      <button class="primary" onclick="window.print()">📄 Guardar PDF</button>
+      <button onclick="window.print()">Imprimir</button>
+      <button class="primary" onclick="window.print()">Guardar PDF</button>
     </div>
   </div>`)
 
-    // Store as HTML file in Supabase Storage
+    // Convert to Buffer for proper upload
+    const htmlBuffer = Buffer.from(viewerHtml, 'utf-8')
+
     const filePath = `shared-docs/${user.id}/${consultationCode || 'doc'}/${fileName}.html`
 
     // Ensure bucket exists
     try {
-      await admin.storage.createBucket('shared-docs', { public: true })
+      await admin.storage.createBucket('shared-docs', {
+        public: true,
+      })
     } catch { /* bucket may already exist */ }
 
     const { error: uploadErr } = await admin.storage
       .from('shared-docs')
-      .upload(filePath, viewerHtml, {
-        contentType: 'text/html',
+      .upload(filePath, htmlBuffer, {
+        contentType: 'text/html; charset=utf-8',
         upsert: true,
+        cacheControl: '0',
       })
 
     if (uploadErr) {
