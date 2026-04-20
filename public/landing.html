@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Health Tech — Tu especialista, a un lazo de distancia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DELTA HEALTH TECH — Brand Tokens
+   ============================================================ */
+:root {
+  --dh-turquoise:        #06B6D4;
+  --dh-turquoise-700:    #0891B2;
+  --dh-turquoise-500:    #22D3EE;
+  --dh-turquoise-100:    #CFFAFE;
+  --dh-turquoise-50:     #ECFEFF;
+  --dh-white:            #FFFFFF;
+  --dh-bone:             #FAFBFC;
+  --dh-gray-50:          #F4F6F8;
+  --dh-gray-100:         #E8ECF0;
+  --dh-gray-200:         #D6DCE3;
+  --dh-gray-400:         #97A3AF;
+  --dh-gray-600:         #5A6773;
+  --dh-gray-800:         #2A3340;
+  --dh-ink:              #0F1A2A;
+  --dh-coral:            #FF8A65;
+  --dh-coral-600:        #F26F4A;
+  --dh-coral-100:        #FFE5DA;
+  --dh-success:          #10B981;
+  --dh-warning:          #F59E0B;
+  --dh-error:            #EF4444;
+  --dh-font-display:     "Plus Jakarta Sans", system-ui, sans-serif;
+  --dh-font-body:        "Plus Jakarta Sans", system-ui, sans-serif;
+  --dh-r-sm: 8px;
+  --dh-r-md: 14px;
+  --dh-r-lg: 22px;
+  --dh-r-xl: 32px;
+  --dh-r-pill: 999px;
+  --dh-shadow-sm: 0 1px 2px rgba(15,26,42,.06), 0 1px 3px rgba(15,26,42,.04);
+  --dh-shadow-md: 0 4px 12px rgba(15,26,42,.06), 0 2px 6px rgba(15,26,42,.04);
+  --dh-shadow-lg: 0 18px 40px rgba(6,182,212,.10), 0 6px 14px rgba(15,26,42,.06);
+}
+
+/* ============================================================
+   Reset
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { font-family: var(--dh-font-body); color: var(--dh-ink); background: var(--dh-white); overflow-x: hidden; }
+img { max-width: 100%; display: block; }
+a { text-decoration: none; color: inherit; }
+button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
+
+/* ============================================================
+   Animations
+   ============================================================ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slideLeft {
+  from { opacity: 0; transform: translateX(60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(6,182,212,0.3); }
+  50% { box-shadow: 0 0 0 20px rgba(6,182,212,0); }
+}
+@keyframes rotate-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes dash-draw {
+  from { stroke-dashoffset: 200; }
+  to { stroke-dashoffset: 0; }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-50px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-left.visible { opacity: 1; transform: translateX(0); }
+.reveal-right {
+  opacity: 0;
+  transform: translateX(50px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-right.visible { opacity: 1; transform: translateX(0); }
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-scale.visible { opacity: 1; transform: scale(1); }
+
+.delay-1 { transition-delay: 0.1s; }
+.delay-2 { transition-delay: 0.2s; }
+.delay-3 { transition-delay: 0.3s; }
+.delay-4 { transition-delay: 0.4s; }
+.delay-5 { transition-delay: 0.5s; }
+.delay-6 { transition-delay: 0.6s; }
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.section-pad {
+  padding: 100px 0;
+}
+@media (max-width: 768px) {
+  .section-pad { padding: 64px 0; }
+}
+
+/* ============================================================
+   Isotipo SVG (reusable)
+   ============================================================ */
+.delta-iso {
+  display: inline-block;
+}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  transition: background 0.3s, box-shadow 0.3s, backdrop-filter 0.3s;
+}
+.nav.scrolled {
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--dh-shadow-sm);
+}
+.nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.nav-logo svg { height: 36px; width: auto; }
+.nav-wordmark {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--dh-ink);
+  letter-spacing: -0.02em;
+}
+.nav-wordmark span { color: var(--dh-turquoise); }
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.nav-links a {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dh-gray-600);
+  transition: color 0.2s;
+  position: relative;
+}
+.nav-links a:hover { color: var(--dh-ink); }
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--dh-turquoise);
+  border-radius: 1px;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav-links a:hover::after { width: 100%; }
+.nav-cta {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: var(--dh-r-pill);
+  background: var(--dh-ink);
+  color: var(--dh-white);
+  transition: all 0.2s;
+}
+.nav-cta:hover {
+  background: var(--dh-turquoise-700);
+  transform: translateY(-1px);
+}
+.nav-mobile-toggle {
+  display: none;
+  background: none;
+  padding: 8px;
+}
+.nav-mobile-toggle svg { width: 24px; height: 24px; color: var(--dh-ink); }
+
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .nav-mobile-toggle { display: block; }
+  .nav-cta-wrap { display: none; }
+}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  background: var(--dh-white);
+  padding-top: 80px;
+}
+.hero-bg-iso {
+  position: absolute;
+  right: -5%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 55%;
+  max-width: 700px;
+  opacity: 0.05;
+  pointer-events: none;
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+.hero-content {
+  animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+}
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dh-turquoise-700);
+  margin-bottom: 24px;
+  background: var(--dh-turquoise-50);
+  padding: 8px 16px;
+  border-radius: var(--dh-r-pill);
+}
+.hero-eyebrow .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dh-turquoise);
+  animation: pulse-glow 2s infinite;
+}
+.hero-title {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: clamp(36px, 5vw, 60px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--dh-ink);
+  margin-bottom: 24px;
+}
+.hero-title .highlight {
+  color: var(--dh-turquoise);
+  position: relative;
+}
+.hero-title .highlight::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: var(--dh-turquoise-100);
+  border-radius: 4px;
+  z-index: -1;
+}
+.hero-desc {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--dh-gray-600);
+  margin-bottom: 36px;
+  max-width: 480px;
+}
+.hero-ctas {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.hero-stats {
+  display: flex;
+  gap: 40px;
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid var(--dh-gray-100);
+}
+.hero-stat-value {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: 32px;
+  color: var(--dh-ink);
+  letter-spacing: -0.02em;
+}
+.hero-stat-label {
+  font-size: 13px;
+  color: var(--dh-gray-400);
+  margin-top: 2px;
+}
+.hero-visual {
+  position: relative;
+  animation: fadeIn 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
+}
+.hero-card-main {
+  background: var(--dh-white);
+  border: 1px solid var(--dh-gray-100);
+  border-radius: var(--dh-r-xl);
+  padding: 32px;
+  box-shadow: var(--dh-shadow-lg);
+  position: relative;
+  z-index: 2;
+}
+.hero-card-main .card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.hero-card-main .avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--dh-turquoise-100), var(--dh-turquoise-50));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hero-card-main .avatar svg { width: 24px; height: 24px; color: var(--dh-turquoise); }
+.hero-card-main .card-name {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--dh-ink);
+}
+.hero-card-main .card-specialty {
+  font-size: 13px;
+  color: var(--dh-gray-400);
+}
+.hero-card-main .card-slots {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.hero-card-main .slot {
+  padding: 8px 14px;
+  border-radius: var(--dh-r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--dh-gray-50);
+  color: var(--dh-gray-600);
+  border: 1px solid var(--dh-gray-100);
+}
+.hero-card-main .slot.active {
+  background: var(--dh-turquoise-50);
+  color: var(--dh-turquoise-700);
+  border-color: var(--dh-turquoise);
+}
+.hero-card-main .card-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--dh-r-md);
+  background: var(--dh-turquoise);
+  color: var(--dh-white);
+  font-weight: 700;
+  font-size: 15px;
+  text-align: center;
+  transition: background 0.2s;
+}
+.hero-card-main .card-btn:hover { background: var(--dh-turquoise-700); }
+
+/* Floating cards around hero */
+.hero-float-1 {
+  position: absolute;
+  top: -20px;
+  right: -30px;
+  background: var(--dh-white);
+  border: 1px solid var(--dh-gray-100);
+  border-radius: var(--dh-r-lg);
+  padding: 14px 18px;
+  box-shadow: var(--dh-shadow-md);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 3;
+  animation: float 4s ease-in-out infinite;
+}
+.hero-float-1 .check-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(16,185,129,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hero-float-1 .check-circle svg { width: 16px; height: 16px; color: var(--dh-success); }
+.hero-float-1 span { font-size: 13px; font-weight: 600; color: var(--dh-ink); }
+
+.hero-float-2 {
+  position: absolute;
+  bottom: 30px;
+  left: -40px;
+  background: var(--dh-white);
+  border: 1px solid var(--dh-gray-100);
+  border-radius: var(--dh-r-lg);
+  padding: 14px 18px;
+  box-shadow: var(--dh-shadow-md);
+  z-index: 3;
+  animation: float 5s ease-in-out 1s infinite;
+}
+.hero-float-2 .stars { color: var(--dh-warning); font-size: 14px; margin-bottom: 4px; }
+.hero-float-2 span { font-size: 12px; font-weight: 600; color: var(--dh-gray-600); }
+
+/* Decorative circle */
+.hero-deco-circle {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  border: 1px solid var(--dh-turquoise-100);
+  top: -40px;
+  left: -60px;
+  z-index: 1;
+  animation: rotate-slow 40s linear infinite;
+}
+.hero-deco-circle::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--dh-turquoise);
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 900px) {
+  .hero-grid { grid-template-columns: 1fr; text-align: center; }
+  .hero-desc { margin-left: auto; margin-right: auto; }
+  .hero-ctas { justify-content: center; }
+  .hero-stats { justify-content: center; }
+  .hero-visual { max-width: 400px; margin: 40px auto 0; }
+  .hero-float-1 { right: -10px; top: -10px; }
+  .hero-float-2 { left: -10px; }
+  .hero-bg-iso { width: 90%; right: -20%; opacity: 0.03; }
+}
+
+/* ============================================================
+   SECTION: Para Especialistas
+   ============================================================ */
+.for-specialists {
+  background: var(--dh-gray-50);
+  position: relative;
+  overflow: hidden;
+}
+.for-specialists::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--dh-gray-200), transparent);
+}
+.split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+}
+.split-content .eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dh-turquoise-700);
+  margin-bottom: 16px;
+}
+.split-content h2 {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: clamp(28px, 3.5vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--dh-ink);
+  margin-bottom: 20px;
+}
+.split-content p {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--dh-gray-600);
+  margin-bottom: 32px;
+}
+.feature-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 36px;
+}
+.feature-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  font-size: 15px;
+  color: var(--dh-gray-800);
+}
+.feature-list .icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--dh-turquoise-50);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.feature-list .icon-wrap svg { width: 18px; height: 18px; color: var(--dh-turquoise); }
+.feature-list strong { font-weight: 700; color: var(--dh-ink); }
+
+.split-visual {
+  position: relative;
+}
+.dashboard-preview {
+  background: var(--dh-white);
+  border: 1px solid var(--dh-gray-100);
+  border-radius: var(--dh-r-xl);
+  box-shadow: var(--dh-shadow-lg);
+  overflow: hidden;
+}
+.dashboard-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--dh-gray-100);
+}
+.dashboard-topbar .dot-r { width: 10px; height: 10px; border-radius: 50%; }
+.dashboard-body {
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+.mini-stat {
+  background: var(--dh-gray-50);
+  border-radius: var(--dh-r-md);
+  padding: 16px;
+  text-align: center;
+}
+.mini-stat .val {
+  font-weight: 800;
+  font-size: 24px;
+  color: var(--dh-ink);
+}
+.mini-stat .lbl {
+  font-size: 11px;
+  color: var(--dh-gray-400);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dashboard-chart {
+  grid-column: 1 / -1;
+  height: 120px;
+  background: linear-gradient(180deg, var(--dh-turquoise-50) 0%, transparent 100%);
+  border-radius: var(--dh-r-md);
+  position: relative;
+  overflow: hidden;
+}
+.dashboard-chart svg { position: absolute; bottom: 0; width: 100%; }
+
+@media (max-width: 900px) {
+  .split-grid { grid-template-columns: 1fr; gap: 40px; }
+  .split-visual { order: -1; max-width: 500px; margin: 0 auto; }
+}
+
+/* ============================================================
+   SECTION: Para Pacientes
+   ============================================================ */
+.for-patients {
+  background: var(--dh-white);
+  position: relative;
+}
+
+/* ============================================================
+   SECTION: Como Funciona
+   ============================================================ */
+.how-it-works {
+  background: var(--dh-ink);
+  color: var(--dh-white);
+  position: relative;
+  overflow: hidden;
+}
+.how-it-works .bg-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image: radial-gradient(var(--dh-turquoise) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+.how-section-header {
+  text-align: center;
+  margin-bottom: 64px;
+}
+.how-section-header .eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dh-turquoise-500);
+  margin-bottom: 16px;
+}
+.how-section-header h2 {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: clamp(28px, 3.5vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--dh-white);
+  margin-bottom: 16px;
+}
+.how-section-header p {
+  font-size: 17px;
+  color: var(--dh-gray-400);
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  position: relative;
+  z-index: 2;
+}
+.step-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--dh-r-lg);
+  padding: 32px 24px;
+  text-align: center;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.step-card:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(6,182,212,0.3);
+  transform: translateY(-4px);
+}
+.step-number {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--dh-turquoise);
+  color: var(--dh-white);
+  font-weight: 800;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+.step-card h3 {
+  font-weight: 700;
+  font-size: 17px;
+  margin-bottom: 10px;
+  color: var(--dh-white);
+}
+.step-card p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--dh-gray-400);
+}
+.step-connector {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .steps-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .steps-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+}
+
+/* ============================================================
+   SECTION: Especialidades
+   ============================================================ */
+.specialties {
+  background: var(--dh-gray-50);
+  position: relative;
+  overflow: hidden;
+}
+.specialties-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+.specialties-header .eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dh-turquoise-700);
+  margin-bottom: 16px;
+}
+.specialties-header h2 {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: clamp(28px, 3.5vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--dh-ink);
+}
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+.spec-card {
+  background: var(--dh-white);
+  border: 1px solid var(--dh-gray-100);
+  border-radius: var(--dh-r-lg);
+  padding: 24px 16px;
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: default;
+}
+.spec-card:hover {
+  border-color: var(--dh-turquoise);
+  box-shadow: var(--dh-shadow-md);
+  transform: translateY(-3px);
+}
+.spec-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+.spec-card h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dh-ink);
+}
+
+/* ============================================================
+   SECTION: Testimonials
+   ============================================================ */
+.testimonials {
+  background: var(--dh-white);
+  position: relative;
+}
+.testimonials-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+.testimonials-header .eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dh-turquoise-700);
+  margin-bottom: 16px;
+}
+.testimonials-header h2 {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: clamp(28px, 3.5vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--dh-ink);
+}
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.testimonial-card {
+  background: var(--dh-gray-50);
+  border: 1px solid var(--dh-gray-100);
+  border-radius: var(--dh-r-lg);
+  padding: 32px;
+  transition: all 0.3s;
+}
+.testimonial-card:hover {
+  box-shadow: var(--dh-shadow-md);
+  transform: translateY(-3px);
+}
+.testimonial-stars {
+  color: var(--dh-warning);
+  font-size: 15px;
+  margin-bottom: 16px;
+  letter-spacing: 2px;
+}
+.testimonial-text {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--dh-gray-600);
+  margin-bottom: 24px;
+  font-style: italic;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.testimonial-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--dh-white);
+}
+.testimonial-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--dh-ink);
+}
+.testimonial-role {
+  font-size: 12px;
+  color: var(--dh-gray-400);
+}
+
+@media (max-width: 900px) {
+  .testimonials-grid { grid-template-columns: 1fr; max-width: 500px; margin: 0 auto; }
+}
+
+/* ============================================================
+   CTA Banner
+   ============================================================ */
+.cta-banner {
+  background: var(--dh-turquoise);
+  position: relative;
+  overflow: hidden;
+  padding: 80px 0;
+}
+.cta-banner .bg-circles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.cta-banner .bg-circles .c {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.cta-inner {
+  text-align: center;
+  position: relative;
+  z-index: 2;
+}
+.cta-inner h2 {
+  font-family: var(--dh-font-display);
+  font-weight: 800;
+  font-size: clamp(28px, 4vw, 44px);
+  color: var(--dh-white);
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+.cta-inner p {
+  font-size: 17px;
+  color: rgba(255,255,255,0.8);
+  margin-bottom: 36px;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
+}
+.cta-buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.btn-white {
+  padding: 16px 32px;
+  border-radius: var(--dh-r-pill);
+  background: var(--dh-white);
+  color: var(--dh-turquoise-700);
+  font-weight: 700;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+.btn-white:hover { transform: translateY(-2px); box-shadow: var(--dh-shadow-lg); }
+.btn-outline-white {
+  padding: 16px 32px;
+  border-radius: var(--dh-r-pill);
+  background: transparent;
+  color: var(--dh-white);
+  font-weight: 600;
+  font-size: 16px;
+  border: 2px solid rgba(255,255,255,0.4);
+  transition: all 0.2s;
+}
+.btn-outline-white:hover { border-color: var(--dh-white); background: rgba(255,255,255,0.1); }
+
+/* ============================================================
+   APP STORES BADGES
+   ============================================================ */
+.app-stores {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.app-stores .coming-soon-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dh-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  width: 100%;
+  margin-bottom: -4px;
+}
+.store-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--dh-r-md);
+  background: var(--dh-ink);
+  color: var(--dh-white);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  opacity: 0.85;
+}
+.store-badge:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.store-badge svg { width: 18px; height: 18px; flex-shrink: 0; }
+.store-badge .store-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.store-badge .store-text small {
+  font-size: 9px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.footer-stores {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.footer-store-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--dh-r-sm);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--dh-gray-400);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.footer-store-badge:hover {
+  border-color: var(--dh-turquoise);
+  color: var(--dh-white);
+}
+.footer-store-badge svg { width: 14px; height: 14px; }
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.footer {
+  background: var(--dh-ink);
+  color: var(--dh-gray-400);
+  padding: 64px 0 32px;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 48px;
+  margin-bottom: 48px;
+}
+.footer-brand .logo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.footer-brand .logo-row svg { height: 32px; }
+.footer-brand .brand-name {
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--dh-white);
+}
+.footer-brand .brand-name span { color: var(--dh-turquoise); }
+.footer-brand p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--dh-gray-400);
+  max-width: 280px;
+  margin-bottom: 20px;
+}
+.footer-social {
+  display: flex;
+  gap: 12px;
+}
+.footer-social a {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.footer-social a:hover { background: var(--dh-turquoise); }
+.footer-social a svg { width: 16px; height: 16px; color: var(--dh-gray-400); }
+.footer-social a:hover svg { color: var(--dh-white); }
+
+.footer-col h4 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dh-white);
+  margin-bottom: 20px;
+}
+.footer-col a {
+  display: block;
+  font-size: 14px;
+  color: var(--dh-gray-400);
+  padding: 6px 0;
+  transition: color 0.2s;
+}
+.footer-col a:hover { color: var(--dh-turquoise-500); }
+
+.footer-bottom {
+  padding-top: 32px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footer-bottom p {
+  font-size: 13px;
+  color: var(--dh-gray-600);
+}
+.footer-bottom .footer-links {
+  display: flex;
+  gap: 24px;
+}
+.footer-bottom .footer-links a {
+  font-size: 13px;
+  color: var(--dh-gray-600);
+  transition: color 0.2s;
+}
+.footer-bottom .footer-links a:hover { color: var(--dh-gray-400); }
+
+@media (max-width: 768px) {
+  .footer-grid { grid-template-columns: 1fr 1fr; }
+  .footer-bottom { flex-direction: column; text-align: center; }
+}
+
+/* ============================================================
+   Buttons (shared)
+   ============================================================ */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 28px;
+  border-radius: var(--dh-r-pill);
+  background: var(--dh-ink);
+  color: var(--dh-white);
+  font-weight: 700;
+  font-size: 15px;
+  transition: all 0.2s;
+  border: none;
+}
+.btn-primary:hover { background: var(--dh-turquoise-700); transform: translateY(-2px); }
+.btn-coral {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 28px;
+  border-radius: var(--dh-r-pill);
+  background: var(--dh-coral);
+  color: var(--dh-white);
+  font-weight: 700;
+  font-size: 15px;
+  transition: all 0.2s;
+  border: none;
+}
+.btn-coral:hover { background: var(--dh-coral-600); transform: translateY(-2px); }
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 28px;
+  border-radius: var(--dh-r-pill);
+  background: transparent;
+  color: var(--dh-ink);
+  font-weight: 600;
+  font-size: 15px;
+  border: 1.5px solid var(--dh-gray-200);
+  transition: all 0.2s;
+}
+.btn-ghost:hover { border-color: var(--dh-ink); }
+
+/* Arrow icon in buttons */
+.btn-arrow { transition: transform 0.2s; }
+.btn-primary:hover .btn-arrow,
+.btn-coral:hover .btn-arrow { transform: translateX(3px); }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     NAV
+     ============================================================ -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <!-- Isotipo inline -->
+      <svg width="36" height="36" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Curva guía (turquesa) — el especialista -->
+        <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="26" stroke-linecap="round" fill="none"/>
+        <!-- Curva receptiva (coral) — el paciente -->
+        <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="26" stroke-linecap="round" fill="none"/>
+      </svg>
+      <span class="nav-wordmark">delta<span>.</span></span>
+    </a>
+    <div class="nav-links">
+      <a href="#especialistas">Especialistas</a>
+      <a href="#pacientes">Pacientes</a>
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#especialidades">Especialidades</a>
+    </div>
+    <div class="nav-cta-wrap">
+      <a href="/register" class="nav-cta">Comenzar gratis</a>
+    </div>
+    <button class="nav-mobile-toggle" onclick="document.querySelector('.nav-links').classList.toggle('show-mobile')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="hero" id="hero">
+  <!-- Background isotipo -->
+  <div class="hero-bg-iso">
+    <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="26" stroke-linecap="round" fill="none" opacity="0.12"/>
+      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="26" stroke-linecap="round" fill="none" opacity="0.08"/>
+    </svg>
+  </div>
+
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-content">
+        <div class="hero-eyebrow">
+          <span class="dot"></span>
+          Beta Privada · Acceso completo
+        </div>
+        <h1 class="hero-title">
+          Tu especialista,<br>
+          a un <span class="highlight">lazo</span> de distancia
+        </h1>
+        <p class="hero-desc">
+          La primera plataforma venezolana que conecta especialistas de salud con sus pacientes. Agenda, historias clínicas, cobros y más en un solo lugar.
+        </p>
+        <div class="hero-ctas">
+          <a href="/register" class="btn-primary">
+            Soy especialista
+            <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a href="/patient/register" class="btn-coral">
+            Soy paciente
+            <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+        <div class="hero-stats">
+          <div>
+            <div class="hero-stat-value">500+</div>
+            <div class="hero-stat-label">Especialistas</div>
+          </div>
+          <div>
+            <div class="hero-stat-value">12K+</div>
+            <div class="hero-stat-label">Pacientes</div>
+          </div>
+          <div>
+            <div class="hero-stat-value">98%</div>
+            <div class="hero-stat-label">Satisfacción</div>
+          </div>
+        </div>
+        <!-- App Store badges -->
+        <div class="app-stores">
+          <span class="coming-soon-label">Próximamente</span>
+          <a href="#" class="store-badge" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            <span class="store-text"><small>Disponible en</small>App Store</span>
+          </a>
+          <a href="#" class="store-badge" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.71c.46.27 1.03.3 1.52.09l.05-.02L17.53 17l-3.72-3.73L3.18 23.71zM.44 1.32c-.28.4-.44.9-.44 1.45v18.46c0 .55.16 1.05.44 1.45L11.5 12 .44 1.32zm21.16 9.37l-3.65-2.04-3.9 3.85 3.9 3.85 3.65-2.04c.68-.38 1.1-1.08 1.1-1.86 0-.78-.42-1.48-1.1-1.76zM4.75.29L17.53 7l-3.72 3.73L3.18.29C3.64.02 4.21-.01 4.7.2l.05.09z"/></svg>
+            <span class="store-text"><small>Disponible en</small>Google Play</span>
+          </a>
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:14px;background:var(--dh-turquoise-50);color:var(--dh-turquoise-700);font-size:12px;font-weight:600;border:1px solid var(--dh-turquoise-100);">Próximamente planes disponibles</span>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-deco-circle"></div>
+        <div class="hero-card-main">
+          <div class="card-header">
+            <div class="avatar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg>
+            </div>
+            <div>
+              <div class="card-name">Dra. Ana Bracamonte</div>
+              <div class="card-specialty">Medicina Interna</div>
+            </div>
+          </div>
+          <div class="card-slots">
+            <div class="slot">9:00 AM</div>
+            <div class="slot active">10:30 AM</div>
+            <div class="slot">2:00 PM</div>
+            <div class="slot">4:30 PM</div>
+          </div>
+          <div class="card-btn">Agendar consulta</div>
+        </div>
+        <!-- Floating elements -->
+        <div class="hero-float-1">
+          <div class="check-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <span>Cita confirmada</span>
+        </div>
+        <div class="hero-float-2">
+          <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+          <span>4.9 calificación promedio</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PARA ESPECIALISTAS
+     ============================================================ -->
+<section class="for-specialists section-pad" id="especialistas">
+  <div class="container">
+    <div class="split-grid">
+      <div class="split-content reveal-left">
+        <div class="eyebrow">Para especialistas</div>
+        <h2>Todo tu consultorio,<br>en una sola pantalla</h2>
+        <p>
+          Gestiona tu agenda, pacientes, historias clínicas, cobros y recordatorios desde cualquier dispositivo. Sin papeles, sin complicaciones.
+        </p>
+        <ul class="feature-list">
+          <li>
+            <div class="icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </div>
+            <div><strong>Agenda inteligente</strong><br><span style="color:var(--dh-gray-400);font-size:13px">Horarios, disponibilidad y bloqueos configurables</span></div>
+          </li>
+          <li>
+            <div class="icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            </div>
+            <div><strong>Historia clínica digital</strong><br><span style="color:var(--dh-gray-400);font-size:13px">Diagnóstico, tratamiento, recetas y exámenes</span></div>
+          </li>
+          <li>
+            <div class="icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            </div>
+            <div><strong>Cobros y finanzas</strong><br><span style="color:var(--dh-gray-400);font-size:13px">Pago Móvil, Zelle, Binance, efectivo y más</span></div>
+          </li>
+          <li>
+            <div class="icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+            </div>
+            <div><strong>Recordatorios automáticos</strong><br><span style="color:var(--dh-gray-400);font-size:13px">WhatsApp y email a tus pacientes</span></div>
+          </li>
+        </ul>
+        <a href="/register" class="btn-primary">
+          Registrarme gratis
+          <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+      <div class="split-visual reveal-right">
+        <div class="dashboard-preview">
+          <div class="dashboard-topbar">
+            <div class="dot-r" style="background:#EF4444"></div>
+            <div class="dot-r" style="background:#F59E0B"></div>
+            <div class="dot-r" style="background:#10B981"></div>
+            <span style="font-size:12px;color:var(--dh-gray-400);margin-left:12px;font-weight:600">Delta — Portal Médico</span>
+          </div>
+          <div class="dashboard-body">
+            <div class="mini-stat">
+              <div class="val" style="color:var(--dh-turquoise)">24</div>
+              <div class="lbl">Citas hoy</div>
+            </div>
+            <div class="mini-stat">
+              <div class="val">148</div>
+              <div class="lbl">Pacientes</div>
+            </div>
+            <div class="mini-stat">
+              <div class="val" style="color:var(--dh-success)">$2.4K</div>
+              <div class="lbl">Este mes</div>
+            </div>
+            <div class="dashboard-chart">
+              <svg viewBox="0 0 400 100" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="#06B6D4" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0 80 Q50 60, 100 50 T200 30 T300 40 T400 20 L400 100 L0 100Z" fill="url(#chartGrad)"/>
+                <path d="M0 80 Q50 60, 100 50 T200 30 T300 40 T400 20" fill="none" stroke="#06B6D4" stroke-width="2"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PARA PACIENTES
+     ============================================================ -->
+<section class="for-patients section-pad" id="pacientes">
+  <div class="container">
+    <div class="split-grid">
+      <div class="split-visual reveal-left" style="order:0">
+        <div class="dashboard-preview" style="max-width:420px">
+          <div class="dashboard-topbar">
+            <div class="dot-r" style="background:#EF4444"></div>
+            <div class="dot-r" style="background:#F59E0B"></div>
+            <div class="dot-r" style="background:#10B981"></div>
+            <span style="font-size:12px;color:var(--dh-gray-400);margin-left:12px;font-weight:600">Portal del Paciente</span>
+          </div>
+          <div style="padding:24px">
+            <!-- Next appointment card -->
+            <div style="background:var(--dh-turquoise-50);border-radius:var(--dh-r-md);padding:20px;margin-bottom:16px;border:1px solid var(--dh-turquoise-100)">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--dh-turquoise-700);margin-bottom:8px">Próxima cita</div>
+              <div style="font-weight:700;font-size:15px;color:var(--dh-ink)">Dr. Carlos Méndez</div>
+              <div style="font-size:13px;color:var(--dh-gray-600);margin-top:2px">Cardiología — Hoy, 3:00 PM</div>
+            </div>
+            <!-- Quick actions -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="background:var(--dh-gray-50);border-radius:var(--dh-r-sm);padding:16px;text-align:center">
+                <div style="font-size:20px;margin-bottom:6px">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--dh-turquoise)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+                </div>
+                <div style="font-size:12px;font-weight:600;color:var(--dh-ink)">Informes</div>
+              </div>
+              <div style="background:var(--dh-gray-50);border-radius:var(--dh-r-sm);padding:16px;text-align:center">
+                <div style="font-size:20px;margin-bottom:6px">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--dh-coral)" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0016.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 002 8.5c0 2.3 1.5 4.05 3 5.5l7 7 7-7z"/></svg>
+                </div>
+                <div style="font-size:12px;font-weight:600;color:var(--dh-ink)">Recetas</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="split-content reveal-right">
+        <div class="eyebrow" style="color:var(--dh-coral-600)">Para pacientes</div>
+        <h2>Tu salud, organizada<br>y siempre accesible</h2>
+        <p>
+          Agenda citas con tu especialista en segundos, accede a tus informes médicos y recetas desde tu celular, y recibe recordatorios automáticos.
+        </p>
+        <ul class="feature-list">
+          <li>
+            <div class="icon-wrap" style="background:var(--dh-coral-100)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--dh-coral)" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            </div>
+            <div><strong>Agenda desde tu celular</strong><br><span style="color:var(--dh-gray-400);font-size:13px">Elige horario, modalidad y paga online</span></div>
+          </li>
+          <li>
+            <div class="icon-wrap" style="background:var(--dh-coral-100)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--dh-coral)" stroke-width="2"><path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+            </div>
+            <div><strong>Historial completo</strong><br><span style="color:var(--dh-gray-400);font-size:13px">Informes, recetas y diagnósticos en un solo lugar</span></div>
+          </li>
+          <li>
+            <div class="icon-wrap" style="background:var(--dh-coral-100)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--dh-coral)" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
+            </div>
+            <div><strong>Nunca olvides tu cita</strong><br><span style="color:var(--dh-gray-400);font-size:13px">Recordatorios por WhatsApp y email</span></div>
+          </li>
+        </ul>
+        <a href="/patient/register" class="btn-coral">
+          Crear mi cuenta
+          <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CÓMO FUNCIONA
+     ============================================================ -->
+<section class="how-it-works section-pad" id="como-funciona">
+  <div class="bg-pattern"></div>
+  <div class="container" style="position:relative;z-index:2">
+    <div class="how-section-header reveal">
+      <div class="eyebrow">Cómo funciona</div>
+      <h2>Simple, rápido y seguro</h2>
+      <p>En 4 pasos tu consultorio digital está listo para recibir pacientes.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card reveal delay-1">
+        <div class="step-number">1</div>
+        <h3>Crea tu perfil</h3>
+        <p>Regístrate con tu especialidad, configura tus datos profesionales y métodos de pago.</p>
+      </div>
+      <div class="step-card reveal delay-2">
+        <div class="step-number">2</div>
+        <h3>Configura tu agenda</h3>
+        <p>Define tus horarios disponibles, duración de consultas y días de descanso.</p>
+      </div>
+      <div class="step-card reveal delay-3">
+        <div class="step-number">3</div>
+        <h3>Comparte tu link</h3>
+        <p>Envía tu link personalizado por WhatsApp, Instagram o redes sociales.</p>
+      </div>
+      <div class="step-card reveal delay-4">
+        <div class="step-number">4</div>
+        <h3>Recibe pacientes</h3>
+        <p>Tus pacientes agendan, pagan y reciben confirmación automáticamente.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     ESPECIALIDADES
+     ============================================================ -->
+<section class="specialties section-pad" id="especialidades">
+  <div class="container">
+    <div class="specialties-header reveal">
+      <div class="eyebrow">Especialidades</div>
+      <h2>Para todo tipo de especialistas</h2>
+    </div>
+    <div class="spec-grid">
+      <div class="spec-card reveal delay-1">
+        <div class="spec-icon" style="background:var(--dh-turquoise-50)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--dh-turquoise)" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0016.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 002 8.5c0 2.3 1.5 4.05 3 5.5l7 7 7-7z"/></svg>
+        </div>
+        <h4>Cardiología</h4>
+      </div>
+      <div class="spec-card reveal delay-1">
+        <div class="spec-icon" style="background:var(--dh-coral-100)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--dh-coral)" stroke-width="2"><path d="M12 2a10 10 0 110 20 10 10 0 010-20zM12 8v4M12 16h.01"/></svg>
+        </div>
+        <h4>Dermatología</h4>
+      </div>
+      <div class="spec-card reveal delay-2">
+        <div class="spec-icon" style="background:rgba(139,92,246,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h4>Neurología</h4>
+      </div>
+      <div class="spec-card reveal delay-2">
+        <div class="spec-icon" style="background:rgba(16,185,129,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        </div>
+        <h4>Pediatría</h4>
+      </div>
+      <div class="spec-card reveal delay-3">
+        <div class="spec-icon" style="background:rgba(245,158,11,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>
+        </div>
+        <h4>Psicología</h4>
+      </div>
+      <div class="spec-card reveal delay-3">
+        <div class="spec-icon" style="background:rgba(236,72,153,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg>
+        </div>
+        <h4>Ginecología</h4>
+      </div>
+      <div class="spec-card reveal delay-4">
+        <div class="spec-icon" style="background:var(--dh-turquoise-50)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--dh-turquoise)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h4>Medicina General</h4>
+      </div>
+      <div class="spec-card reveal delay-4">
+        <div class="spec-icon" style="background:rgba(99,102,241,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366F1" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/></svg>
+        </div>
+        <h4>Nutrición</h4>
+      </div>
+      <div class="spec-card reveal delay-5">
+        <div class="spec-icon" style="background:rgba(245,158,11,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
+        <h4>Odontología</h4>
+      </div>
+      <div class="spec-card reveal delay-5">
+        <div class="spec-icon" style="background:rgba(139,92,246,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        </div>
+        <h4>Fisioterapia</h4>
+      </div>
+      <div class="spec-card reveal delay-6">
+        <div class="spec-icon" style="background:rgba(16,185,129,0.1)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+        </div>
+        <h4>Psiquiatría</h4>
+      </div>
+      <div class="spec-card reveal delay-6">
+        <div class="spec-icon" style="background:var(--dh-gray-50);border:1px dashed var(--dh-gray-200)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--dh-gray-400)" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+        <h4 style="color:var(--dh-gray-400)">Y muchas más</h4>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     TESTIMONIOS
+     ============================================================ -->
+<section class="testimonials section-pad">
+  <div class="container">
+    <div class="testimonials-header reveal">
+      <div class="eyebrow">Testimonios</div>
+      <h2>Lo que dicen nuestros especialistas</h2>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card reveal delay-1">
+        <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <p class="testimonial-text">"Delta transformó mi consulta. Antes perdía tiempo organizando citas por WhatsApp, ahora mis pacientes agendan solos y yo me concentro en lo que importa."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" style="background:var(--dh-turquoise)">CM</div>
+          <div>
+            <div class="testimonial-name">Dr. Carlos Méndez</div>
+            <div class="testimonial-role">Cardiólogo — Caracas</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal delay-2">
+        <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <p class="testimonial-text">"El sistema de cobros me salvó la vida. Puedo ver quién pagó, quién no, y llevar mis finanzas al día sin una hoja de Excel."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" style="background:var(--dh-coral)">LR</div>
+          <div>
+            <div class="testimonial-name">Dra. Laura Rodríguez</div>
+            <div class="testimonial-role">Dermatóloga — Valencia</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal delay-3">
+        <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <p class="testimonial-text">"Mis pacientes me dicen que agendar es facilísimo. El recordatorio por WhatsApp redujo las inasistencias casi a cero."</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" style="background:var(--dh-turquoise-700)">MG</div>
+          <div>
+            <div class="testimonial-name">Psic. María González</div>
+            <div class="testimonial-role">Psicóloga — Maracaibo</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CTA BANNER
+     ============================================================ -->
+<section class="cta-banner">
+  <div class="bg-circles">
+    <div class="c" style="width:300px;height:300px;top:-100px;right:-50px"></div>
+    <div class="c" style="width:200px;height:200px;bottom:-80px;left:-40px"></div>
+    <div class="c" style="width:150px;height:150px;top:50%;left:50%;transform:translate(-50%,-50%)"></div>
+  </div>
+  <div class="container">
+    <div class="cta-inner reveal">
+      <h2>Comienza hoy, es gratis</h2>
+      <p>Únete a la comunidad de especialistas que ya confían en Delta para gestionar su consulta digital.</p>
+      <div class="cta-buttons">
+        <a href="/register" class="btn-white">Soy especialista</a>
+        <a href="/patient/register" class="btn-outline-white">Soy paciente</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="logo-row">
+          <svg width="32" height="32" viewBox="0 0 200 200" fill="none">
+            <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="26" stroke-linecap="round" fill="none"/>
+            <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="26" stroke-linecap="round" fill="none"/>
+          </svg>
+          <span class="brand-name">delta<span>.</span></span>
+        </div>
+        <p>La primera plataforma venezolana de salud digital que conecta especialistas con pacientes.</p>
+        <div class="footer-stores">
+          <a href="#" class="footer-store-badge" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            Pronto
+          </a>
+          <a href="#" class="footer-store-badge" onclick="return false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.71c.46.27 1.03.3 1.52.09l.05-.02L17.53 17l-3.72-3.73L3.18 23.71zM.44 1.32c-.28.4-.44.9-.44 1.45v18.46c0 .55.16 1.05.44 1.45L11.5 12 .44 1.32zm21.16 9.37l-3.65-2.04-3.9 3.85 3.9 3.85 3.65-2.04c.68-.38 1.1-1.08 1.1-1.86 0-.78-.42-1.48-1.1-1.76zM4.75.29L17.53 7l-3.72 3.73L3.18.29C3.64.02 4.21-.01 4.7.2l.05.09z"/></svg>
+            Pronto
+          </a>
+        </div>
+        <div class="footer-social">
+          <a href="#" aria-label="Instagram">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+          </a>
+          <a href="#" aria-label="Twitter">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 3a10.9 10.9 0 01-3.14 1.53 4.48 4.48 0 00-7.86 3v1A10.66 10.66 0 013 4s-4 9 5 13a11.64 11.64 0 01-7 2c9 5 20 0 20-11.5a4.5 4.5 0 00-.08-.83A7.72 7.72 0 0023 3z"/></svg>
+          </a>
+          <a href="#" aria-label="LinkedIn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-4 0v7h-4v-7a6 6 0 016-6zM2 9h4v12H2zM4 6a2 2 0 100-4 2 2 0 000 4z"/></svg>
+          </a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>Producto</h4>
+        <a href="#especialistas">Para especialistas</a>
+        <a href="#pacientes">Para pacientes</a>
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#especialidades">Especialidades</a>
+      </div>
+      <div class="footer-col">
+        <h4>Soporte</h4>
+        <a href="#">Centro de ayuda</a>
+        <a href="#">Contacto</a>
+        <a href="#">Guía de inicio</a>
+        <a href="#">Estado del sistema</a>
+      </div>
+      <div class="footer-col">
+        <h4>Contacto</h4>
+        <a href="mailto:hola@deltahealth.tech">hola@deltahealth.tech</a>
+        <a href="#">+58 414 520 9751</a>
+        <a href="#">Caracas, Venezuela</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Delta Health Tech. Todos los derechos reservados.</p>
+      <div class="footer-links">
+        <a href="#">Privacidad</a>
+        <a href="#">Términos</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+// Nav scroll effect
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 40);
+});
+
+// Intersection Observer for reveal animations
+const observerOptions = {
+  threshold: 0.1,
+  rootMargin: '0px 0px -60px 0px'
+};
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, observerOptions);
+
+document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale').forEach(el => {
+  observer.observe(el);
+});
+
+// Smooth scroll for nav links
+document.querySelectorAll('a[href^="#"]').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// Parallax effect for hero floating elements
+window.addEventListener('scroll', () => {
+  const scrollY = window.scrollY;
+  const hero = document.querySelector('.hero');
+  if (!hero) return;
+  const heroHeight = hero.offsetHeight;
+  if (scrollY < heroHeight) {
+    const factor = scrollY / heroHeight;
+    const float1 = document.querySelector('.hero-float-1');
+    const float2 = document.querySelector('.hero-float-2');
+    if (float1) float1.style.transform = `translateY(${factor * -30}px)`;
+    if (float2) float2.style.transform = `translateY(${factor * -20}px)`;
+  }
+});
+</script>
+</body>
+</html>
