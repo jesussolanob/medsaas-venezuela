@@ -37,23 +37,25 @@ export async function GET(req: NextRequest) {
     .select('*', { count: 'exact', head: true })
     .eq('doctor_id', doctorId)
 
-  // Get all citas this month — from both appointments AND doctor-created consultations
+  // Get all citas this month from consultations table (single source of truth)
+  // Includes both doctor-created and booking-created consultations
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
 
-  // Appointments (booked by patients)
+  const { data: allConsultations } = await admin
+    .from('consultations')
+    .select('id, plan_price, consultation_date, created_at')
+    .eq('doctor_id', doctorId)
+    .or(`consultation_date.gte.${monthStart},created_at.gte.${monthStart}`)
+
+  // Also count appointments that might not have a consultation yet
   const { data: appointments } = await admin
     .from('appointments')
-    .select('id, plan_price')
+    .select('id, plan_price, consultation_id')
     .eq('doctor_id', doctorId)
     .gte('created_at', monthStart)
 
-  // Consultations created directly by doctor (no linked appointment)
-  const { data: doctorConsultations } = await admin
-    .from('consultations')
-    .select('id, plan_price')
-    .eq('doctor_id', doctorId)
-    .is('appointment_id', null)
-    .gte('consultation_date', monthStart)
+  // Appointments without a linked consultation (not yet converted)
+  const orphanAppointments = (appointments || []).filter(a => !a.consultation_id)
 
   // Get subscription
   const { data: subscription } = await admin
@@ -62,15 +64,15 @@ export async function GET(req: NextRequest) {
     .eq('doctor_id', doctorId)
     .single()
 
-  const apptRevenue = (appointments || []).reduce((sum, a) => sum + (a.plan_price || 0), 0)
-  const consRevenue = (doctorConsultations || []).reduce((sum, c) => sum + (c.plan_price || 0), 0)
-  const totalCitas = (appointments?.length || 0) + (doctorConsultations?.length || 0)
+  const consRevenue = (allConsultations || []).reduce((sum, c) => sum + (c.plan_price || 0), 0)
+  const orphanRevenue = orphanAppointments.reduce((sum, a) => sum + (a.plan_price || 0), 0)
+  const totalCitas = (allConsultations?.length || 0) + orphanAppointments.length
 
   return NextResponse.json({
     profile,
     patientCount: patientCount || 0,
     consultationCount: totalCitas,
-    monthlyRevenue: apptRevenue + consRevenue,
+    monthlyRevenue: consRevenue + orphanRevenue,
     subscription: subscription || null,
   })
 }
