@@ -21,7 +21,7 @@ export async function GET() {
   // ── Source 0: fawazahmed0/currency-api CDN (fastest, no rate limits) ───
   try {
     const res = await fetch(
-      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd/ves.min.json',
+      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json',
       {
         signal: AbortSignal.timeout(6000),
         headers: { 'Accept': 'application/json' },
@@ -30,9 +30,10 @@ export async function GET() {
     )
     if (res.ok) {
       const data = await res.json()
-      // Response: { date: "2026-04-19", ves: 92.1234 }
-      if (data?.ves && data.ves > 0) {
-        rate = parseFloat(Number(data.ves).toFixed(2))
+      // Response: { date: "2026-04-19", usd: { ves: 479.65 } }
+      const vesRate = data?.usd?.ves ?? data?.ves
+      if (vesRate && vesRate > 0) {
+        rate = parseFloat(Number(vesRate).toFixed(2))
         dateStr = data.date || ''
         source = 'currency-api'
       }
@@ -45,7 +46,7 @@ export async function GET() {
   if (!rate) {
     try {
       const res = await fetch(
-        'https://latest.currency-api.pages.dev/v1/currencies/usd/ves.min.json',
+        'https://latest.currency-api.pages.dev/v1/currencies/usd.min.json',
         {
           signal: AbortSignal.timeout(6000),
           headers: { 'Accept': 'application/json' },
@@ -54,8 +55,9 @@ export async function GET() {
       )
       if (res.ok) {
         const data = await res.json()
-        if (data?.ves && data.ves > 0) {
-          rate = parseFloat(Number(data.ves).toFixed(2))
+        const vesRate = data?.usd?.ves ?? data?.ves
+        if (vesRate && vesRate > 0) {
+          rate = parseFloat(Number(vesRate).toFixed(2))
           dateStr = data.date || ''
           source = 'currency-api'
         }

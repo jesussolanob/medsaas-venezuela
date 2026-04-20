@@ -205,14 +205,16 @@ export async function getBCVRate(): Promise<BCVRateResult> {
   // Source 1: fawazahmed0/currency-api CDN (fastest, no rate limits)
   try {
     const res = await fetch(
-      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd/ves.min.json',
+      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json',
       { cache: 'no-store' }
     )
     if (res.ok) {
       const data = await res.json()
-      if (data?.ves && data.ves > 0) {
+      // Response: { date: "2026-04-19", usd: { ves: 479.65 } }
+      const vesRate = data?.usd?.ves ?? data?.ves
+      if (vesRate && vesRate > 0) {
         return {
-          rate: parseFloat(Number(data.ves).toFixed(2)),
+          rate: parseFloat(Number(vesRate).toFixed(2)),
           updated: data.date ?? new Date().toLocaleDateString('es-VE'),
         }
       }
@@ -222,14 +224,15 @@ export async function getBCVRate(): Promise<BCVRateResult> {
   // Source 1b: currency-api fallback CDN
   try {
     const res = await fetch(
-      'https://latest.currency-api.pages.dev/v1/currencies/usd/ves.min.json',
+      'https://latest.currency-api.pages.dev/v1/currencies/usd.min.json',
       { cache: 'no-store' }
     )
     if (res.ok) {
       const data = await res.json()
-      if (data?.ves && data.ves > 0) {
+      const vesRate = data?.usd?.ves ?? data?.ves
+      if (vesRate && vesRate > 0) {
         return {
-          rate: parseFloat(Number(data.ves).toFixed(2)),
+          rate: parseFloat(Number(vesRate).toFixed(2)),
           updated: data.date ?? new Date().toLocaleDateString('es-VE'),
         }
       }
