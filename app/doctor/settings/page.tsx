@@ -468,6 +468,25 @@ function SettingsPageInner() {
           <p className="text-sm text-slate-500">Perfil, métodos de pago, notificaciones y más</p>
         </div>
 
+        {/* Link destacado a plantillas de consulta (Actualización 2) */}
+        <a
+          href="/doctor/settings/consultation-blocks"
+          className="block p-4 rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+              <FileBadge className="w-5 h-5 text-teal-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-slate-900">Bloques de consulta</p>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Configura qué secciones aparecen en tus consultas (prescripción, tareas, plan alimenticio, ejercicios, etc.) y cómo se llaman según tu especialidad.
+              </p>
+            </div>
+            <span className="text-teal-600 text-sm font-semibold">Configurar →</span>
+          </div>
+        </a>
+
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
           {tabs.map(t => (

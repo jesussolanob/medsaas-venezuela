@@ -1157,6 +1157,85 @@ export default function AgendaPage() {
                 )}
               </div>
 
+              {/* ═══ ACCIONES DE ESTADO DE LA CITA ═══ */}
+              {detailAppt.status !== 'completed' && detailAppt.status !== 'cancelled' && (
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Acciones de estado</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detailAppt.status === 'scheduled' && (
+                      <button
+                        onClick={async () => {
+                          const r = await fetch('/api/doctor/appointment-status', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'confirmed' }),
+                          })
+                          const j = await r.json()
+                          if (!r.ok) { alert(j.error || 'Error'); return }
+                          setDetailAppt({ ...detailAppt, status: 'confirmed' })
+                          window.location.reload()
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-bold rounded-lg border border-teal-200"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" /> Confirmar
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        if (!confirm('¿Marcar esta cita como atendida (completada)? Esto la contará como ingreso.')) return
+                        const r = await fetch('/api/doctor/appointment-status', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'completed' }),
+                        })
+                        const j = await r.json()
+                        if (!r.ok) { alert(j.error || 'Error'); return }
+                        setDetailAppt(null)
+                        window.location.reload()
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" /> Marcar como atendida
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const reason = prompt('¿Razón de la cancelación? (opcional)')
+                        if (reason === null) return
+                        const r = await fetch('/api/doctor/appointment-status', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'cancelled', reason }),
+                        })
+                        const j = await r.json()
+                        if (!r.ok) { alert(j.error || 'Error'); return }
+                        setDetailAppt(null)
+                        window.location.reload()
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200"
+                    >
+                      Cancelar cita
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('¿Marcar como "paciente no asistió"? No se restituirán paquetes.')) return
+                        const r = await fetch('/api/doctor/appointment-status', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'no_show' }),
+                        })
+                        const j = await r.json()
+                        if (!r.ok) { alert(j.error || 'Error'); return }
+                        setDetailAppt(null)
+                        window.location.reload()
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-lg border border-orange-200"
+                    >
+                      No asistió
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2 pt-4">
                 <button onClick={() => {
                   router.push(`/doctor/consultations?open=${detailAppt.id}`)

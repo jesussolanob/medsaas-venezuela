@@ -164,6 +164,7 @@ const ALLOWED_PATCH_FIELDS = new Set([
   'started_at',
   'ended_at',
   'duration_minutes',
+  'blocks_data',      // valores de los bloques dinámicos (jsonb)
 ])
 
 const VALID_PAYMENT_STATUSES = new Set(['pending', 'approved', 'cancelled'])

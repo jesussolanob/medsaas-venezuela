@@ -1,0 +1,30 @@
+{
+  "file": "025_blocks_data.sql",
+  "executed_at": "2026-04-21T04:38:01.876Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "status",
+        "has_column"
+      ],
+      "rows": [
+        {
+          "status": "ok",
+          "has_column": "1"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1590
+}

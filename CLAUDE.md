@@ -40,10 +40,11 @@ Nombre comercial: **Delta Medical CRM**.
 
 ### /doctor — App del Médico
 - layout.tsx → Sidebar con feature gating basado en plan_features
-- page.tsx → Dashboard con citas del día, finanzas del mes, banner suscripción
-- /agenda → Calendario (semana/mes/día) + disponibilidad + panel de aprobaciones
+- page.tsx → Dashboard con 3 KPIs (ingresos, pacientes, atendidos) + citas del día + finanzas
+- /agenda → Calendario + modal detalle con botones: Confirmar / Marcar atendida / Cancelar / No asistió
 - /patients → Lista de pacientes
-- /consultations → Consultas médicas
+- /consultations → Listado de consultas médicas
+- /consultations/[id] → **NUEVO** Vista con bloques dinámicos según plantilla del doctor
 - /ehr → Historial clínico electrónico
 - /finances → Finanzas del médico (gated por plan_features)
 - /billing → Facturación
@@ -52,8 +53,10 @@ Nombre comercial: **Delta Medical CRM**.
 - /reminders → Recordatorios
 - /messages → Mensajes con pacientes
 - /invitations → Invitaciones por link único
-- /plans → Planes de precios del médico
+- /services → **ÚNICA PÁGINA** de tarifas/planes del doctor (ex pricing_plans)
 - /settings → Configuración del médico (perfil, booking, pagos)
+- /settings/consultation-blocks → **NUEVO** Configurar bloques de consulta personalizados
+- ~~/plans~~ → REDIRIGE a /doctor/services (consolidado)
 
 ### /patient — Portal del Paciente
 - layout.tsx → Sidebar con navegación paciente
