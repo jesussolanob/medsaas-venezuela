@@ -25,7 +25,8 @@ type AvailabilitySlot = {
 }
 
 type CalendarAppointment = {
-  id: string
+  id: string              // cuando source='consultation' este es consultations.id, NO appointments.id
+  appointment_id?: string | null  // el ID real de la fila en appointments (para RPCs)
   patient_name: string
   date: string            // YYYY-MM-DD
   isoDate: string         // full ISO
@@ -309,6 +310,7 @@ export default function AgendaPage() {
       const timeStr = toHHMM(d)
       return {
         id: c.id,
+        appointment_id: c.appointment_id ?? null,  // ← ID real en appointments para RPCs
         patient_name: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).full_name : 'Paciente',
         date: dateToYMD(d),
         isoDate: c.consultation_date,
@@ -1169,10 +1171,11 @@ export default function AgendaPage() {
                     {detailAppt.status === 'scheduled' && (
                       <button
                         onClick={async () => {
+                          const apptId = detailAppt.appointment_id || detailAppt.id
                           const r = await fetch('/api/doctor/appointment-status', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'confirmed' }),
+                            body: JSON.stringify({ appointment_id: apptId, new_status: 'confirmed' }),
                           })
                           const j = await r.json()
                           if (!r.ok) { alert(j.error || 'Error'); return }
@@ -1291,11 +1294,13 @@ export default function AgendaPage() {
                     onClick={async () => {
                       setStatusSaving(true)
                       try {
+                        // Si la fila del calendario viene de consultations, resolver appointment_id real
+                        const apptId = statusAction.appt.appointment_id || statusAction.appt.id
                         const r = await fetch('/api/doctor/appointment-status', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            appointment_id: statusAction.appt.id,
+                            appointment_id: apptId,
                             new_status: statusAction.type,
                             reason: statusReason || undefined,
                           }),

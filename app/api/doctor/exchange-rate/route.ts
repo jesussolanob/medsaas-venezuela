@@ -46,33 +46,38 @@ export async function GET(request: Request) {
     })
   }
 
-  // ── Caso 2: EUR BCV (extraer desde pydolarve o dolarapi) ─────────────────
+  // ── Caso 2: EUR BCV ──────────────────────────────────────────────────────
+  // pydolarve.org tiene endpoint específico para EUR: /api/v2/euro?page=bcv
   if (mode === 'eur_bcv') {
+    // Fuente 1: pydolarve.org/api/v2/euro (BCV oficial EUR)
     try {
-      const res = await fetch('https://pydolarve.org/api/v2/dollar?page=bcv', {
+      const res = await fetch('https://pydolarve.org/api/v2/euro?page=bcv', {
         signal: AbortSignal.timeout(8000),
-        headers: { 'Accept': 'application/json' },
+        headers: { 'Accept': 'application/json', 'User-Agent': 'DeltaMedicalCRM/1.0' },
         cache: 'no-store',
       })
       if (res.ok) {
         const data = await res.json()
-        const eur = data?.monitors?.eur
-        if (eur?.price && eur.price > 0) {
+        const monitors = data?.monitors
+        // BCV oficial viene como monitors.bcv o monitors.eur según versión
+        const priceEntry = monitors?.bcv || monitors?.eur || monitors?.oficial
+        if (priceEntry?.price && priceEntry.price > 0) {
           return NextResponse.json({
-            rate: eur.price,
+            rate: priceEntry.price,
             mode: 'eur_bcv',
             label: 'EUR → BsS (BCV oficial)',
-            date: eur.last_update || '',
+            date: priceEntry.last_update || priceEntry.fecha || '',
             source: 'pydolarve.org',
           })
         }
       }
-    } catch { /* fallback abajo */ }
+    } catch { /* siguiente fuente */ }
 
+    // Fuente 2: ve.dolarapi.com/v1/euro/oficial
     try {
       const res = await fetch('https://ve.dolarapi.com/v1/euro/oficial', {
         signal: AbortSignal.timeout(8000),
-        headers: { 'Accept': 'application/json' },
+        headers: { 'Accept': 'application/json', 'User-Agent': 'DeltaMedicalCRM/1.0' },
         cache: 'no-store',
       })
       if (res.ok) {
@@ -88,16 +93,63 @@ export async function GET(request: Request) {
           })
         }
       }
+    } catch { /* siguiente fuente */ }
+
+    // Fuente 3: ve.dolarapi.com/v1/euros (listado)
+    try {
+      const res = await fetch('https://ve.dolarapi.com/v1/euros', {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const oficial = Array.isArray(data)
+          ? data.find((d: any) => d.casa === 'oficial' || d.casa === 'bcv')
+          : null
+        const price = oficial?.promedio || oficial?.venta || oficial?.compra
+        if (price && price > 0) {
+          return NextResponse.json({
+            rate: price,
+            mode: 'eur_bcv',
+            label: 'EUR → BsS (BCV oficial)',
+            date: oficial.fechaActualizacion || '',
+            source: 'dolarapi.com',
+          })
+        }
+      }
+    } catch { /* siguiente fuente */ }
+
+    // Fuente 4: currency-api CDN (EUR/VES aproximado como último recurso)
+    try {
+      const res = await fetch(
+        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.min.json',
+        { signal: AbortSignal.timeout(6000), headers: { 'Accept': 'application/json' }, cache: 'no-store' }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const vesRate = data?.eur?.ves ?? data?.ves
+        if (vesRate && vesRate > 0) {
+          return NextResponse.json({
+            rate: parseFloat(Number(vesRate).toFixed(2)),
+            mode: 'eur_bcv',
+            label: 'EUR → BsS (tasa aproximada)',
+            date: data.date || '',
+            source: 'currency-api',
+          })
+        }
+      }
     } catch { /* sin fuente */ }
 
+    // Si todas las fuentes EUR fallan, NO caer a USD — devolver error explícito
     return NextResponse.json({
       rate: null,
       mode: 'eur_bcv',
       label: 'EUR → BsS (no disponible)',
       date: '',
       source: 'none',
-      message: 'No se pudo obtener la tasa EUR. Configura una tasa personalizada o usa USD.',
-    })
+      message: 'No se pudo obtener la tasa EUR del BCV. Configura una tasa personalizada mientras tanto.',
+    }, { status: 503 })
   }
 
   // ── Caso 3 (default): USD BCV — delegamos al endpoint existente ──────────
