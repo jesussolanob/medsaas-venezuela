@@ -1,0 +1,164 @@
+{
+  "file": "028_doctor_templates_schema.sql",
+  "executed_at": "2026-04-21T12:43:23.401Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 13,
+      "fields": [
+        "column_name",
+        "data_type",
+        "column_default"
+      ],
+      "rows": [
+        {
+          "column_name": "id",
+          "data_type": "uuid",
+          "column_default": "gen_random_uuid()"
+        },
+        {
+          "column_name": "doctor_id",
+          "data_type": "uuid",
+          "column_default": null
+        },
+        {
+          "column_name": "template_type",
+          "data_type": "text",
+          "column_default": null
+        },
+        {
+          "column_name": "logo_url",
+          "data_type": "text",
+          "column_default": null
+        },
+        {
+          "column_name": "signature_url",
+          "data_type": "text",
+          "column_default": null
+        },
+        {
+          "column_name": "font_family",
+          "data_type": "text",
+          "column_default": "'Inter'::text"
+        },
+        {
+          "column_name": "header_text",
+          "data_type": "text",
+          "column_default": "''::text"
+        },
+        {
+          "column_name": "footer_text",
+          "data_type": "text",
+          "column_default": "''::text"
+        },
+        {
+          "column_name": "show_logo",
+          "data_type": "boolean",
+          "column_default": "true"
+        },
+        {
+          "column_name": "show_signature",
+          "data_type": "boolean",
+          "column_default": "true"
+        },
+        {
+          "column_name": "primary_color",
+          "data_type": "text",
+          "column_default": "'#0891b2'::text"
+        },
+        {
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone",
+          "column_default": "now()"
+        },
+        {
+          "column_name": "updated_at",
+          "data_type": "timestamp with time zone",
+          "column_default": "now()"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 3,
+      "fields": [
+        "section",
+        "conname",
+        "def"
+      ],
+      "rows": [
+        {
+          "section": "check_constraint",
+          "conname": "doctor_templates_doctor_id_fkey",
+          "def": "FOREIGN KEY (doctor_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+        },
+        {
+          "section": "check_constraint",
+          "conname": "doctor_templates_doctor_id_template_type_key",
+          "def": "UNIQUE (doctor_id, template_type)"
+        },
+        {
+          "section": "check_constraint",
+          "conname": "doctor_templates_pkey",
+          "def": "PRIMARY KEY (id)"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 6,
+      "fields": [
+        "section",
+        "typname",
+        "values"
+      ],
+      "rows": [
+        {
+          "section": "enum_types_for_template_type",
+          "typname": "_doctor_templates",
+          "values": "{NULL}"
+        },
+        {
+          "section": "enum_types_for_template_type",
+          "typname": "_package_templates",
+          "values": "{NULL}"
+        },
+        {
+          "section": "enum_types_for_template_type",
+          "typname": "_pg_ts_template",
+          "values": "{NULL}"
+        },
+        {
+          "section": "enum_types_for_template_type",
+          "typname": "doctor_templates",
+          "values": "{NULL}"
+        },
+        {
+          "section": "enum_types_for_template_type",
+          "typname": "package_templates",
+          "values": "{NULL}"
+        },
+        {
+          "section": "enum_types_for_template_type",
+          "typname": "pg_ts_template",
+          "values": "{NULL}"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "doctor_id",
+        "template_type",
+        "created_at"
+      ],
+      "rows": []
+    }
+  ],
+  "error": null,
+  "duration_ms": 1721
+}

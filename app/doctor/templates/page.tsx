@@ -7,7 +7,14 @@ import {
   FileText, Pill, ClipboardList, Bed, Eye, Type, Image as ImageIcon
 } from 'lucide-react'
 
-type TemplateType = 'informe' | 'recipe' | 'prescripciones' | 'reposo'
+// ── TIPOS DINÁMICOS ─────────────────────────────────────────────────────
+// Ahora TemplateType es cualquier block_key que el doctor tenga activo.
+// Las tabs de plantilla PDF se generan desde los mismos bloques que el doctor
+// configuró en /doctor/settings/consultation-blocks. Así no hay desalineación
+// entre las secciones del formulario de consulta y los PDFs generables.
+type TemplateType = string
+
+type TemplateTab = { key: string; label: string; icon: any; description: string }
 
 type TemplateConfig = {
   logo_url: string | null
@@ -31,11 +38,35 @@ const DEFAULT_CONFIG: TemplateConfig = {
   primary_color: '#0891b2',
 }
 
-const TEMPLATE_TABS: { key: TemplateType; label: string; icon: any; description: string }[] = [
-  { key: 'informe', label: 'Informe', icon: FileText, description: 'Informe médico completo con diagnóstico y tratamiento' },
-  { key: 'recipe', label: 'Recipe', icon: Pill, description: 'Receta médica con medicamentos y dosis' },
-  { key: 'prescripciones', label: 'Prescripciones', icon: ClipboardList, description: 'Órdenes de exámenes de laboratorio e imágenes' },
-  { key: 'reposo', label: 'Reposo Médico', icon: Bed, description: 'Constancia de reposo médico para el paciente' },
+// Mapa de iconos por block_key canónico; fallback a FileText si no está mapeado
+const ICON_MAP: Record<string, any> = {
+  prescription:    Pill,
+  recipe:          Pill,
+  nutrition_plan:  FileText,
+  exercises:       FileText,
+  tasks:           ClipboardList,
+  rest:            Bed,
+  reposo:          Bed,
+  requested_exams: ClipboardList,
+  prescripciones:  ClipboardList,
+  diagnosis:       FileText,
+  treatment:       FileText,
+  indications:     FileText,
+  recommendations: FileText,
+  chief_complaint: FileText,
+  history:         FileText,
+  physical_exam:   FileText,
+  internal_notes:  FileText,
+  next_followup:   FileText,
+  informe:         FileText,
+}
+
+// Fallback para doctores sin bloques configurados (retrocompat con datos viejos)
+const FALLBACK_TABS: TemplateTab[] = [
+  { key: 'informe',        label: 'Informe',        icon: FileText,       description: 'Informe médico completo con diagnóstico y tratamiento' },
+  { key: 'recipe',         label: 'Recipe',         icon: Pill,           description: 'Receta médica con medicamentos y dosis' },
+  { key: 'prescripciones', label: 'Prescripciones', icon: ClipboardList,  description: 'Órdenes de exámenes de laboratorio e imágenes' },
+  { key: 'reposo',         label: 'Reposo Médico',  icon: Bed,            description: 'Constancia de reposo médico para el paciente' },
 ]
 
 const FONT_OPTIONS = [
@@ -50,13 +81,10 @@ const FONT_OPTIONS = [
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white'
 
 export default function TemplatesPage() {
+  // Tabs dinámicas según los bloques printables del doctor
+  const [templateTabs, setTemplateTabs] = useState<TemplateTab[]>(FALLBACK_TABS)
   const [activeTab, setActiveTab] = useState<TemplateType>('informe')
-  const [configs, setConfigs] = useState<Record<TemplateType, TemplateConfig>>({
-    informe: { ...DEFAULT_CONFIG },
-    recipe: { ...DEFAULT_CONFIG },
-    prescripciones: { ...DEFAULT_CONFIG },
-    reposo: { ...DEFAULT_CONFIG },
-  })
+  const [configs, setConfigs] = useState<Record<string, TemplateConfig>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -68,7 +96,7 @@ export default function TemplatesPage() {
   const logoRef = useRef<HTMLInputElement>(null)
   const signatureRef = useRef<HTMLInputElement>(null)
 
-  const config = configs[activeTab]
+  const config = configs[activeTab] || DEFAULT_CONFIG
 
   useEffect(() => {
     loadTemplates()
@@ -90,30 +118,84 @@ export default function TemplatesPage() {
       setDoctorSpecialty(profile.specialty || '')
     }
 
-    // Load saved templates
+    // ── 1) Cargar bloques del doctor vía API para resolver la cascada
+    //     doctor_consultation_blocks → specialty_default_blocks → catalog
+    let dynamicTabs: TemplateTab[] = FALLBACK_TABS
+    try {
+      const r = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' })
+      const j = await r.json()
+      const catalog: any[] = j.catalog || []
+      const doctorCfg: any[] = j.doctor_config || []
+      const specialtyDef: any[] = j.specialty_defaults || []
+      const catalogMap = new Map(catalog.map((c: any) => [c.key, c]))
+      const doctorMap = new Map(doctorCfg.map((c: any) => [c.block_key, c]))
+      const specialtyMap = new Map(specialtyDef.map((s: any) => [s.block_key, s]))
+
+      // Un bloque aparece como tab de plantilla PDF si:
+      //   - Está enabled (en doctor_config o specialty_default)
+      //   - Es printable (default true según catalog o override doctor)
+      //   - NO es un bloque de texto interno (internal_notes)
+      const result: TemplateTab[] = []
+      for (const cat of catalog) {
+        const doctorEntry: any = doctorMap.get(cat.key)
+        const specialtyEntry: any = specialtyMap.get(cat.key)
+        const enabled = doctorEntry ? doctorEntry.enabled : (specialtyEntry ? specialtyEntry.enabled : false)
+        if (!enabled) continue
+
+        const printable = doctorEntry?.printable ?? (cat as any).default_printable
+        if (printable === false) continue
+        if (cat.key === 'internal_notes') continue
+
+        const label = doctorEntry?.custom_label || cat.default_label
+        const order = doctorEntry?.sort_order ?? specialtyEntry?.sort_order ?? 99
+        result.push({
+          key: cat.key,
+          label,
+          icon: ICON_MAP[cat.key] || FileText,
+          description: (cat as any).description || `Plantilla PDF: ${label}`,
+          // @ts-ignore - order es interno para sort
+          order,
+        })
+      }
+      // Si el doctor no tiene ningún bloque configurado, usamos FALLBACK
+      if (result.length > 0) {
+        // @ts-ignore
+        result.sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
+        dynamicTabs = result.map(({ key, label, icon, description }) => ({ key, label, icon, description }))
+      }
+    } catch (err) {
+      console.warn('[Templates] no se pudieron cargar bloques, usando fallback:', err)
+    }
+    setTemplateTabs(dynamicTabs)
+
+    // Si la tab activa no está en los tabs dinámicos, mover al primero
+    if (!dynamicTabs.find(t => t.key === activeTab)) {
+      setActiveTab(dynamicTabs[0]?.key || 'informe')
+    }
+
+    // ── 2) Cargar plantillas guardadas
     const { data } = await supabase
       .from('doctor_templates')
       .select('*')
       .eq('doctor_id', user.id)
 
-    if (data && data.length > 0) {
-      const loaded = { ...configs }
+    const initialConfigs: Record<string, TemplateConfig> = {}
+    for (const t of dynamicTabs) initialConfigs[t.key] = { ...DEFAULT_CONFIG }
+    if (data) {
       data.forEach((t: any) => {
-        if (loaded[t.template_type as TemplateType]) {
-          loaded[t.template_type as TemplateType] = {
-            logo_url: t.logo_url,
-            signature_url: t.signature_url,
-            font_family: t.font_family || 'Inter',
-            header_text: t.header_text || '',
-            footer_text: t.footer_text || '',
-            show_logo: t.show_logo !== false,
-            show_signature: t.show_signature !== false,
-            primary_color: t.primary_color || '#0891b2',
-          }
+        initialConfigs[t.template_type] = {
+          logo_url: t.logo_url,
+          signature_url: t.signature_url,
+          font_family: t.font_family || 'Inter',
+          header_text: t.header_text || '',
+          footer_text: t.footer_text || '',
+          show_logo: t.show_logo !== false,
+          show_signature: t.show_signature !== false,
+          primary_color: t.primary_color || '#0891b2',
         }
       })
-      setConfigs(loaded)
     }
+    setConfigs(initialConfigs)
 
     setLoading(false)
   }
@@ -215,7 +297,7 @@ export default function TemplatesPage() {
       const currentConfig = configs[activeTab]
       const newConfigs = { ...configs }
 
-      for (const tab of TEMPLATE_TABS) {
+      for (const tab of templateTabs) {
         newConfigs[tab.key] = { ...currentConfig }
 
         const payload = {
@@ -256,7 +338,8 @@ export default function TemplatesPage() {
     }
   }
 
-  const tabInfo = TEMPLATE_TABS.find(t => t.key === activeTab)!
+  // Fallback defensivo: si activeTab no está en los tabs actuales, usamos el primero
+  const tabInfo = templateTabs.find(t => t.key === activeTab) || templateTabs[0] || FALLBACK_TABS[0]
 
   if (loading) {
     return (
@@ -298,7 +381,7 @@ export default function TemplatesPage() {
 
         {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {TEMPLATE_TABS.map(tab => {
+          {templateTabs.map(tab => {
             const Icon = tab.icon
             const isActive = activeTab === tab.key
             return (
