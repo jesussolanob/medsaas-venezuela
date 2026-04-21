@@ -1,0 +1,171 @@
+{
+  "file": "015_fix_profiles_rls_policies.sql",
+  "executed_at": "2026-04-21T02:36:51.347Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 7,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "roles",
+        "qual"
+      ],
+      "rows": [
+        {
+          "section": "PRE_policies",
+          "policyname": "Super admin deletes profiles",
+          "cmd": "DELETE",
+          "roles": "{authenticated}",
+          "qual": "(EXISTS ( SELECT 1\n   FROM profiles p2\n  WHERE ((p2.id = auth.uid()) AND (p2.role = 'super_admin'::user_role))))"
+        },
+        {
+          "section": "PRE_policies",
+          "policyname": "User inserts own profile",
+          "cmd": "INSERT",
+          "roles": "{authenticated}",
+          "qual": null
+        },
+        {
+          "section": "PRE_policies",
+          "policyname": "Public reads doctor profiles",
+          "cmd": "SELECT",
+          "roles": "{public}",
+          "qual": "(role = 'doctor'::user_role)"
+        },
+        {
+          "section": "PRE_policies",
+          "policyname": "Super admin reads all profiles",
+          "cmd": "SELECT",
+          "roles": "{authenticated}",
+          "qual": "(EXISTS ( SELECT 1\n   FROM profiles p2\n  WHERE ((p2.id = auth.uid()) AND (p2.role = 'super_admin'::user_role))))"
+        },
+        {
+          "section": "PRE_policies",
+          "policyname": "User reads own profile",
+          "cmd": "SELECT",
+          "roles": "{authenticated}",
+          "qual": "(id = auth.uid())"
+        },
+        {
+          "section": "PRE_policies",
+          "policyname": "Super admin updates profiles",
+          "cmd": "UPDATE",
+          "roles": "{authenticated}",
+          "qual": "(EXISTS ( SELECT 1\n   FROM profiles p2\n  WHERE ((p2.id = auth.uid()) AND (p2.role = 'super_admin'::user_role))))"
+        },
+        {
+          "section": "PRE_policies",
+          "policyname": "User updates own profile",
+          "cmd": "UPDATE",
+          "roles": "{authenticated}",
+          "qual": "(id = auth.uid())"
+        }
+      ]
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 6,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "roles",
+        "qual"
+      ],
+      "rows": [
+        {
+          "section": "POST_policies",
+          "policyname": "Super admin deletes profiles",
+          "cmd": "DELETE",
+          "roles": "{authenticated}",
+          "qual": "(EXISTS ( SELECT 1\n   FROM profiles p2\n  WHERE ((p2.id = auth.uid()) AND (p2.role = 'super_admin'::user_role))))"
+        },
+        {
+          "section": "POST_policies",
+          "policyname": "User inserts own profile",
+          "cmd": "INSERT",
+          "roles": "{authenticated}",
+          "qual": null
+        },
+        {
+          "section": "POST_policies",
+          "policyname": "Anon reads doctor profiles",
+          "cmd": "SELECT",
+          "roles": "{anon}",
+          "qual": "(role = 'doctor'::user_role)"
+        },
+        {
+          "section": "POST_policies",
+          "policyname": "Authenticated reads any profile",
+          "cmd": "SELECT",
+          "roles": "{authenticated}",
+          "qual": "true"
+        },
+        {
+          "section": "POST_policies",
+          "policyname": "Super admin updates profiles",
+          "cmd": "UPDATE",
+          "roles": "{authenticated}",
+          "qual": "(EXISTS ( SELECT 1\n   FROM profiles p2\n  WHERE ((p2.id = auth.uid()) AND (p2.role = 'super_admin'::user_role))))"
+        },
+        {
+          "section": "POST_policies",
+          "policyname": "User updates own profile",
+          "cmd": "UPDATE",
+          "roles": "{authenticated}",
+          "qual": "(id = auth.uid())"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "rls_enabled"
+      ],
+      "rows": [
+        {
+          "section": "POST_rls_status",
+          "rls_enabled": true
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1635
+}

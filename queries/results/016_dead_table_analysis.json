@@ -1,0 +1,15 @@
+{
+  "file": "016_dead_table_analysis.sql",
+  "executed_at": "2026-04-21T02:41:24.808Z",
+  "mode": "READ_ONLY",
+  "status": "error",
+  "results": [],
+  "error": {
+    "message": "column \"tablename\" does not exist",
+    "code": "42703",
+    "position": "213",
+    "hint": null,
+    "detail": null
+  },
+  "duration_ms": 1655
+}

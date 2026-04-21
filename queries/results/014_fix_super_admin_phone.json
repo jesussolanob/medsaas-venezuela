@@ -1,0 +1,106 @@
+{
+  "file": "014_fix_super_admin_phone.sql",
+  "executed_at": "2026-04-21T02:35:26.709Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "id",
+        "email",
+        "full_name",
+        "role",
+        "phone",
+        "reviewed_by_admin"
+      ],
+      "rows": [
+        {
+          "section": "PRE",
+          "id": "d38a04ef-898e-4dd1-b5e5-ed78e400b9f2",
+          "email": "jesussolano4@gmail.com",
+          "full_name": "Jesús Enrique Solano Bracamonte",
+          "role": "super_admin",
+          "phone": "+584245683132",
+          "reviewed_by_admin": false
+        }
+      ]
+    },
+    {
+      "command": "UPDATE",
+      "rowCount": 1,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "UPDATE",
+      "rowCount": 1,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 5,
+      "fields": [
+        "section",
+        "id",
+        "email",
+        "full_name",
+        "role",
+        "phone",
+        "reviewed_by_admin"
+      ],
+      "rows": [
+        {
+          "section": "POST",
+          "id": "3ff16b2c-09ac-476e-b557-82da60e05e07",
+          "email": "anasolanob07@gmail.com",
+          "full_name": "Ana Maria Solano Bracamonte",
+          "role": "doctor",
+          "phone": "4145209751",
+          "reviewed_by_admin": true
+        },
+        {
+          "section": "POST",
+          "id": "c987a8c2-298e-4536-aa8f-e3d2ff3ee323",
+          "email": "fonicaproducciones@gmail.com",
+          "full_name": "Paola Vega",
+          "role": "doctor",
+          "phone": "+584147553418",
+          "reviewed_by_admin": true
+        },
+        {
+          "section": "POST",
+          "id": "5df8262a-31bc-4026-b2db-2d458566397d",
+          "email": "ing.jesussolanob@gmail.com",
+          "full_name": "Jesus Enrique Solano",
+          "role": "doctor",
+          "phone": "+58 412-2460783",
+          "reviewed_by_admin": true
+        },
+        {
+          "section": "POST",
+          "id": "ae63a9d0-63db-473f-bc51-b8571a1cffb9",
+          "email": "paoladg7@gmail.com",
+          "full_name": "Paola Di Girolamo",
+          "role": "doctor",
+          "phone": "+584147553418",
+          "reviewed_by_admin": true
+        },
+        {
+          "section": "POST",
+          "id": "d38a04ef-898e-4dd1-b5e5-ed78e400b9f2",
+          "email": "jesussolano4@gmail.com",
+          "full_name": "Jesús Enrique Solano Bracamonte",
+          "role": "super_admin",
+          "phone": "+584245683132",
+          "reviewed_by_admin": true
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1551
+}

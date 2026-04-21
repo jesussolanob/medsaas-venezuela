@@ -1,0 +1,123 @@
+{
+  "file": "018_drop_dead_tables.sql",
+  "executed_at": "2026-04-21T02:42:26.963Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 4,
+      "fields": [
+        "section",
+        "relname",
+        "has_data"
+      ],
+      "rows": [
+        {
+          "section": "PRE_check",
+          "relname": "doctor_patient_links",
+          "has_data": "0"
+        },
+        {
+          "section": "PRE_check",
+          "relname": "payments",
+          "has_data": "0"
+        },
+        {
+          "section": "PRE_check",
+          "relname": "waitlist",
+          "has_data": "0"
+        },
+        {
+          "section": "PRE_check",
+          "relname": "appointment_reminders_config",
+          "has_data": "0"
+        }
+      ]
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "still_alive"
+      ],
+      "rows": [
+        {
+          "section": "POST_check",
+          "still_alive": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "total"
+      ],
+      "rows": [
+        {
+          "section": "POST_total_tables",
+          "total": "35"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1466
+}

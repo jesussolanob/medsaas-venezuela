@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "sql:watch": "node scripts/sql-watch.mjs",
-    "sql:run": "node scripts/sql-run.mjs"
+    "sql:run": "node scripts/sql-run.mjs",
+    "qa:setup": "node scripts/create-qa-users.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
@@ -30,6 +34,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@playwright/test": "^1.55.1",
     "chokidar": "^4.0.1",
     "dotenv": "^16.4.5",
     "eslint": "^9",

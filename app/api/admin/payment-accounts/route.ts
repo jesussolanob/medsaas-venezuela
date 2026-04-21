@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSuperAdmin } from '@/lib/auth-guards'
 
 /**
  * GET /api/admin/payment-accounts
@@ -37,9 +38,8 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    const guard = await requireSuperAdmin()
+    if (!guard.ok) return guard.response
 
     const body = await request.json()
     const { type, bank_name, account_holder, phone, rif, notes } = body
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Titular y tipo son requeridos' }, { status: 400 })
     }
 
-    const admin = createAdminClient()
+    const { admin } = guard
     const { data, error } = await admin
       .from('payment_accounts')
       .insert({
@@ -81,15 +81,14 @@ export async function POST(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    const guard = await requireSuperAdmin()
+    if (!guard.ok) return guard.response
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
-    const admin = createAdminClient()
+    const { admin } = guard
     const { error } = await admin
       .from('payment_accounts')
       .update({ is_active: false })

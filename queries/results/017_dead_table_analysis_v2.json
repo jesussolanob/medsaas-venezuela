@@ -1,0 +1,358 @@
+{
+  "file": "017_dead_table_analysis_v2.sql",
+  "executed_at": "2026-04-21T02:41:33.418Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 39,
+      "fields": [
+        "section",
+        "tbl",
+        "row_count",
+        "size"
+      ],
+      "rows": [
+        {
+          "section": "A_table_rows",
+          "tbl": "public.plan_features",
+          "row_count": "52",
+          "size": "80 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.patients",
+          "row_count": "7",
+          "size": "128 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.profiles",
+          "row_count": "5",
+          "size": "80 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.consultations",
+          "row_count": "4",
+          "size": "216 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.plan_configs",
+          "row_count": "4",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.pricing_plans",
+          "row_count": "4",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.reminders_settings",
+          "row_count": "4",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.subscriptions",
+          "row_count": "4",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.appointments",
+          "row_count": "3",
+          "size": "184 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_insurances",
+          "row_count": "3",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.consultation_payments",
+          "row_count": "2",
+          "size": "112 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.plan_promotions",
+          "row_count": "2",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.admin_roles",
+          "row_count": "1",
+          "size": "64 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_offices",
+          "row_count": "1",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_quick_items",
+          "row_count": "1",
+          "size": "64 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.invoices",
+          "row_count": "1",
+          "size": "64 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.accounts_payable",
+          "row_count": "0",
+          "size": "64 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.appointment_reminders_config",
+          "row_count": "0",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.billing_documents",
+          "row_count": "0",
+          "size": "64 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.clinic_invitations",
+          "row_count": "0",
+          "size": "24 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.clinics",
+          "row_count": "0",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_availability",
+          "row_count": "0",
+          "size": "24 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_blocked_slots",
+          "row_count": "0",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_invitations",
+          "row_count": "0",
+          "size": "24 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_patient_links",
+          "row_count": "0",
+          "size": "16 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_schedule_config",
+          "row_count": "0",
+          "size": "16 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_services",
+          "row_count": "0",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_suggestions",
+          "row_count": "0",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.doctor_templates",
+          "row_count": "0",
+          "size": "48 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.ehr_records",
+          "row_count": "0",
+          "size": "16 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.lead_messages",
+          "row_count": "0",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.leads",
+          "row_count": "0",
+          "size": "24 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.patient_messages",
+          "row_count": "0",
+          "size": "64 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.patient_packages",
+          "row_count": "0",
+          "size": "64 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.payments",
+          "row_count": "0",
+          "size": "16 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.prescriptions",
+          "row_count": "0",
+          "size": "80 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.reminders_queue",
+          "row_count": "0",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.subscription_payments",
+          "row_count": "0",
+          "size": "32 kB"
+        },
+        {
+          "section": "A_table_rows",
+          "tbl": "public.waitlist",
+          "row_count": "0",
+          "size": "16 kB"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 23,
+      "fields": [
+        "section",
+        "tablename"
+      ],
+      "rows": [
+        {
+          "section": "B_empty_tables",
+          "tablename": "accounts_payable"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "appointment_reminders_config"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "billing_documents"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "clinic_invitations"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "clinics"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_availability"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_blocked_slots"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_invitations"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_patient_links"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_schedule_config"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_services"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_suggestions"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "doctor_templates"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "ehr_records"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "lead_messages"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "leads"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "patient_messages"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "patient_packages"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "payments"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "prescriptions"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "reminders_queue"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "subscription_payments"
+        },
+        {
+          "section": "B_empty_tables",
+          "tablename": "waitlist"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 614
+}

@@ -1,16 +1,12 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSuperAdmin } from '@/lib/auth-guards'
 
-// GET /api/admin/doctors — List all doctors with their subscriptions (admin only)
+// GET /api/admin/doctors — List all doctors with their subscriptions (super_admin only)
 export async function GET() {
   try {
-    // Verify caller is admin
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-
-    const admin = createAdminClient()
+    const guard = await requireSuperAdmin()
+    if (!guard.ok) return guard.response
+    const { admin } = guard
 
     // Use admin client to bypass RLS and get accurate subscription data
     const { data: doctors, error } = await admin
