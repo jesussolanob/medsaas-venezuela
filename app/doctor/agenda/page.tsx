@@ -33,7 +33,7 @@ type CalendarAppointment = {
   time: string            // HH:MM
   endTime: string         // HH:MM (calculado)
   chief_complaint?: string
-  status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled'
+  status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
   source: 'consultation' | 'appointment'
   consultation_code?: string
   appointment_code?: string
@@ -202,7 +202,7 @@ export default function AgendaPage() {
   const [rescheduleWeekOffset, setRescheduleWeekOffset] = useState(0)
   const [detailAppt, setDetailAppt] = useState<CalendarAppointment | null>(null)
   const [showConfigPanel, setShowConfigPanel] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'>('all')
 
   // Google Calendar Sync
   const [syncing, setSyncing] = useState(false)
@@ -296,9 +296,15 @@ export default function AgendaPage() {
     const futureCutoff = new Date()
     futureCutoff.setDate(futureCutoff.getDate() + 60)
 
+    // Cargar consultas con el STATUS real del appointment vinculado (join)
     const { data: consults } = await supabase
       .from('consultations')
-      .select('id, consultation_code, consultation_date, chief_complaint, payment_status, appointment_id, amount, patients(full_name, phone, email)')
+      .select(`
+        id, consultation_code, consultation_date, chief_complaint, payment_status,
+        appointment_id, amount,
+        patients(full_name, phone, email),
+        appointments:appointment_id(status)
+      `)
       .eq('doctor_id', user.id)
       .gte('consultation_date', pastCutoff.toISOString())
       .lte('consultation_date', futureCutoff.toISOString())
@@ -308,16 +314,19 @@ export default function AgendaPage() {
     const consultAppts: CalendarAppointment[] = (consults ?? []).map(c => {
       const d = new Date(c.consultation_date)
       const timeStr = toHHMM(d)
+      // Status real: si tiene appointment vinculado, usamos su status; si no, 'confirmed' por legado.
+      const apptObj = Array.isArray((c as any).appointments) ? (c as any).appointments[0] : (c as any).appointments
+      const realStatus = (apptObj?.status as CalendarAppointment['status']) || 'confirmed'
       return {
         id: c.id,
-        appointment_id: c.appointment_id ?? null,  // ← ID real en appointments para RPCs
+        appointment_id: c.appointment_id ?? null,
         patient_name: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).full_name : 'Paciente',
         date: dateToYMD(d),
         isoDate: c.consultation_date,
         time: timeStr,
         endTime: addMinutes(timeStr, slotDuration),
         chief_complaint: c.chief_complaint ?? undefined,
-        status: 'confirmed' as const,
+        status: realStatus,
         source: 'consultation' as const,
         consultation_code: c.consultation_code,
         patient_phone: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).phone : null,
@@ -333,12 +342,15 @@ export default function AgendaPage() {
       .eq('status', 'scheduled')
       .order('scheduled_at', { ascending: true })
 
-    // 4. Load CONFIRMED appointments (already accepted, show in calendar)
+    // 4. Load ALL active-lifecycle appointments (confirmed, completed, cancelled, no_show)
+    //    para que los filtros del calendario funcionen correctamente. Pending ya se carga en #3.
     const { data: confirmed } = await supabase
       .from('appointments')
       .select('id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, plan_name, plan_price, status, appointment_code, meet_link')
       .eq('doctor_id', user.id)
-      .eq('status', 'confirmed')
+      .in('status', ['confirmed', 'completed', 'cancelled', 'no_show'])
+      .gte('scheduled_at', pastCutoff.toISOString())
+      .lte('scheduled_at', futureCutoff.toISOString())
       .order('scheduled_at', { ascending: true })
 
     // Deduplicate: remove confirmed appointments that already have a linked consultation
@@ -881,26 +893,21 @@ export default function AgendaPage() {
                 className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 transition-colors shrink-0">Hoy</button>
             </div>
 
-            {/* Status filter */}
+            {/* Filtros: Cita (Agendada/Aprobada/Rechazada) + Consulta (Asistió/No asistió) */}
             <div className="flex flex-wrap gap-1.5">
               {([
-                { key: 'all', label: 'Todas', color: 'slate' },
-                { key: 'scheduled', label: 'Agendadas', color: 'amber' },
-                { key: 'confirmed', label: 'Confirmadas', color: 'blue' },
-                { key: 'completed', label: 'Completadas', color: 'emerald' },
-                { key: 'cancelled', label: 'Canceladas', color: 'red' },
+                { key: 'all',       label: 'Todas',       active: 'bg-slate-800   text-white border-slate-800' },
+                { key: 'scheduled', label: 'Agendadas',   active: 'bg-amber-500   text-white border-amber-500' },
+                { key: 'confirmed', label: 'Aprobadas',   active: 'bg-teal-500    text-white border-teal-500' },
+                { key: 'cancelled', label: 'Rechazadas',  active: 'bg-red-500     text-white border-red-500' },
+                { key: 'completed', label: 'Asistió',     active: 'bg-emerald-500 text-white border-emerald-500' },
+                { key: 'no_show',   label: 'No asistió',  active: 'bg-orange-500  text-white border-orange-500' },
               ] as const).map(f => (
                 <button
                   key={f.key}
                   onClick={() => setStatusFilter(f.key)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                    statusFilter === f.key
-                      ? f.key === 'all' ? 'bg-slate-800 text-white border-slate-800'
-                        : f.key === 'scheduled' ? 'bg-amber-500 text-white border-amber-500'
-                        : f.key === 'confirmed' ? 'bg-blue-500 text-white border-blue-500'
-                        : f.key === 'completed' ? 'bg-emerald-500 text-white border-emerald-500'
-                        : 'bg-red-500 text-white border-red-500'
-                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                    statusFilter === f.key ? f.active : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   {f.label}
