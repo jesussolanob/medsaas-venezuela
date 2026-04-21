@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
 
       const { data: pkg, error: pkgErr } = await admin
         .from('patient_packages')
-        .select('id, used_sessions, total_sessions, auth_user_id, status, doctor_id')
+        .select('id, used_sessions, total_sessions, auth_user_id, patient_id, status, doctor_id')
         .eq('id', packageId)
         .single()
 
@@ -132,8 +132,19 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      // Verify ownership
-      if (pkg.auth_user_id !== user.id) {
+      // Verify ownership (by auth_user_id or patient_id linked to this auth user)
+      let ownershipValid = pkg.auth_user_id === user.id
+      if (!ownershipValid && pkg.patient_id) {
+        // Check if user is linked to this patient record
+        const { data: patientRecord } = await admin
+          .from('patients')
+          .select('id')
+          .eq('id', pkg.patient_id)
+          .eq('auth_user_id', user.id)
+          .maybeSingle()
+        ownershipValid = !!patientRecord
+      }
+      if (!ownershipValid) {
         return NextResponse.json(
           { error: 'Este paquete no te pertenece.' },
           { status: 403 }

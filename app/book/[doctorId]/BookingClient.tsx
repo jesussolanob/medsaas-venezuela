@@ -37,6 +37,11 @@ type PaymentMethod = 'pago_movil' | 'transferencia' | 'zelle' | 'binance' | 'cas
 type ActivePackage = { id: string; plan_name: string; total_sessions: number; used_sessions: number }
 type DoctorOffice = { id: string; name: string; address: string; city: string; phone: string; schedule: { day: number; enabled: boolean; start: string; end: string }[]; slot_duration: number; buffer_minutes: number }
 
+/** Total price for a plan: price_usd is per-session, multiply by sessions_count */
+function planTotal(plan: PricingPlan): number {
+  return plan.price_usd * (plan.sessions_count && plan.sessions_count > 1 ? plan.sessions_count : 1)
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function generateSlots(): Slot[] {
   const slots: Slot[] = []
@@ -205,11 +210,13 @@ export default function BookingClient({
     })
   }
 
-  // Fetch active packages for this doctor
+  // Fetch active packages for this doctor (try auth_user_id first, then patient_id)
   const fetchActivePackages = async (userId: string) => {
     try {
       const supabase = createClient()
-      const { data: pkgs } = await supabase
+
+      // Try by auth_user_id first
+      const { data: pkgByAuth } = await supabase
         .from('patient_packages')
         .select('id, plan_name, total_sessions, used_sessions')
         .eq('auth_user_id', userId)
@@ -219,8 +226,33 @@ export default function BookingClient({
         .limit(1)
         .maybeSingle()
 
-      if (pkgs && pkgs.used_sessions < pkgs.total_sessions) {
-        setActivePackage(pkgs)
+      if (pkgByAuth && pkgByAuth.used_sessions < pkgByAuth.total_sessions) {
+        setActivePackage(pkgByAuth)
+        return
+      }
+
+      // Fallback: find patient record by auth_user_id and query by patient_id
+      const { data: patientRecord } = await supabase
+        .from('patients')
+        .select('id')
+        .eq('auth_user_id', userId)
+        .eq('doctor_id', doctor.id)
+        .maybeSingle()
+
+      if (patientRecord) {
+        const { data: pkgByPatient } = await supabase
+          .from('patient_packages')
+          .select('id, plan_name, total_sessions, used_sessions')
+          .eq('patient_id', patientRecord.id)
+          .eq('doctor_id', doctor.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (pkgByPatient && pkgByPatient.used_sessions < pkgByPatient.total_sessions) {
+          setActivePackage(pkgByPatient)
+        }
       }
     } catch (err) {
       console.error('Error fetching packages:', err)
@@ -425,7 +457,7 @@ export default function BookingClient({
           scheduledAt: dateTime.toISOString(),
           chiefComplaint: form.notes.trim() || null,
           planName: selectedPlan?.name ?? 'Consulta General',
-          planPrice: selectedPlan?.price_usd ?? 20,
+          planPrice: selectedPlan ? planTotal(selectedPlan) : 20,
           sessionsCount: selectedPlan?.sessions_count || 1,
           paymentMethod: usingPackage ? 'package' : useInsurance ? 'insurance' : selectedPaymentMethod,
           insuranceName: useInsurance ? selectedInsurance : null,
@@ -482,8 +514,8 @@ export default function BookingClient({
               <span className="font-semibold">Plan:</span> {selectedPlan.name}
               {usingPackage ? ' (paquete prepagado)' : (
                 <>
-                  {' — '}<span className="font-bold">${selectedPlan.price_usd} USD</span>
-                  {bcvRate && <span className="text-slate-400 ml-1">({toBs(selectedPlan.price_usd)})</span>}
+                  {' — '}<span className="font-bold">${planTotal(selectedPlan)} USD</span>
+                  {bcvRate && <span className="text-slate-400 ml-1">({toBs(planTotal(selectedPlan))})</span>}
                 </>
               )}
             </div>
@@ -605,7 +637,7 @@ export default function BookingClient({
             summary={
               usingPackage && activePackage
                 ? `${activePackage.plan_name} (paquete: ${activePackage.used_sessions}/${activePackage.total_sessions} usadas)`
-                : selectedPlan ? `${selectedPlan.name} — $${selectedPlan.price_usd} USD` : undefined
+                : selectedPlan ? `${selectedPlan.name} — $${planTotal(selectedPlan)} USD` : undefined
             }
             completed={!!selectedPlan && activeStep > 1}
             onOpen={() => setActiveStep(1)}
@@ -671,9 +703,9 @@ export default function BookingClient({
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-extrabold" style={{ color: BRAND.turquoise }}>${plan.price_usd}</p>
+                        <p className="text-2xl font-extrabold" style={{ color: BRAND.turquoise }}>${planTotal(plan)}</p>
                         {bcvRate && (
-                          <p className="text-[11px] text-slate-400 mt-0.5">{toBs(plan.price_usd)}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{toBs(planTotal(plan))}</p>
                         )}
                       </div>
                     </div>
@@ -1047,9 +1079,9 @@ export default function BookingClient({
                 <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: BRAND.bone }}>
                   <span className="text-xs font-semibold text-slate-500">Monto a pagar</span>
                   <div className="text-right">
-                    <span className="text-sm font-bold" style={{ color: BRAND.ink }}>${selectedPlan.price_usd} USD</span>
+                    <span className="text-sm font-bold" style={{ color: BRAND.ink }}>${planTotal(selectedPlan)} USD</span>
                     {bcvRate && (
-                      <span className="block text-[11px] text-slate-400">{toBs(selectedPlan.price_usd)}</span>
+                      <span className="block text-[11px] text-slate-400">{toBs(planTotal(selectedPlan))}</span>
                     )}
                   </div>
                 </div>
@@ -1140,9 +1172,9 @@ export default function BookingClient({
                     </span>
                   ) : (
                     <div className="text-right">
-                      <span className="font-bold" style={{ color: BRAND.ink }}>${selectedPlan?.price_usd} USD</span>
+                      <span className="font-bold" style={{ color: BRAND.ink }}>${selectedPlan ? planTotal(selectedPlan) : 0} USD</span>
                       {bcvRate && selectedPlan && (
-                        <span className="block text-[11px] text-slate-400">{toBs(selectedPlan.price_usd)}</span>
+                        <span className="block text-[11px] text-slate-400">{toBs(planTotal(selectedPlan))}</span>
                       )}
                     </div>
                   )}
