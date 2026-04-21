@@ -94,12 +94,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8482,
+                      "duration": 7463,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:01:39.688Z",
+                      "startTime": "2026-04-21T03:12:36.842Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -128,12 +128,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4221,
+                      "duration": 4271,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:01:48.291Z",
+                      "startTime": "2026-04-21T03:12:44.427Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -162,12 +162,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4448,
+                      "duration": 4078,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:01:52.516Z",
+                      "startTime": "2026-04-21T03:12:48.702Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -182,7 +182,7 @@
             },
             {
               "title": "1.4 Login con credenciales inválidas falla",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -195,63 +195,18 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 16292,
-                      "error": {
-                        "message": "TimeoutError: locator.fill: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByPlaceholder(/email|correo/i)\u001b[22m\n",
-                        "stack": "TimeoutError: locator.fill: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByPlaceholder(/email|correo/i)\u001b[22m\n\n    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/01-auth.spec.ts:27:50",
-                        "location": {
-                          "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/01-auth.spec.ts",
-                          "column": 50,
-                          "line": 27
-                        },
-                        "snippet": "\u001b[0m \u001b[90m 25 |\u001b[39m     \u001b[36mconst\u001b[39m emailToggle \u001b[33m=\u001b[39m page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[35m/continuar con email|usar email/i\u001b[39m })\n \u001b[90m 26 |\u001b[39m     \u001b[36mif\u001b[39m (\u001b[36mawait\u001b[39m emailToggle\u001b[33m.\u001b[39misVisible()\u001b[33m.\u001b[39m\u001b[36mcatch\u001b[39m(() \u001b[33m=>\u001b[39m \u001b[36mfalse\u001b[39m)) \u001b[36mawait\u001b[39m emailToggle\u001b[33m.\u001b[39mclick()\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 27 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByPlaceholder(\u001b[35m/email|correo/i\u001b[39m)\u001b[33m.\u001b[39mfill(\u001b[32m'noexiste@delta.test'\u001b[39m)\n \u001b[90m    |\u001b[39m                                                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 28 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByPlaceholder(\u001b[35m/contraseña|password/i\u001b[39m)\u001b[33m.\u001b[39mfill(\u001b[32m'wrongpass123'\u001b[39m)\n \u001b[90m 29 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[35m/iniciar sesión|entrar|login/i\u001b[39m })\u001b[33m.\u001b[39mclick()\n \u001b[90m 30 |\u001b[39m     \u001b[90m// Debe mostrar error y NO redirigir\u001b[39m\u001b[0m"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/01-auth.spec.ts",
-                            "column": 50,
-                            "line": 27
-                          },
-                          "message": "TimeoutError: locator.fill: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByPlaceholder(/email|correo/i)\u001b[22m\n\n\n\u001b[0m \u001b[90m 25 |\u001b[39m     \u001b[36mconst\u001b[39m emailToggle \u001b[33m=\u001b[39m page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[35m/continuar con email|usar email/i\u001b[39m })\n \u001b[90m 26 |\u001b[39m     \u001b[36mif\u001b[39m (\u001b[36mawait\u001b[39m emailToggle\u001b[33m.\u001b[39misVisible()\u001b[33m.\u001b[39m\u001b[36mcatch\u001b[39m(() \u001b[33m=>\u001b[39m \u001b[36mfalse\u001b[39m)) \u001b[36mawait\u001b[39m emailToggle\u001b[33m.\u001b[39mclick()\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 27 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByPlaceholder(\u001b[35m/email|correo/i\u001b[39m)\u001b[33m.\u001b[39mfill(\u001b[32m'noexiste@delta.test'\u001b[39m)\n \u001b[90m    |\u001b[39m                                                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 28 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByPlaceholder(\u001b[35m/contraseña|password/i\u001b[39m)\u001b[33m.\u001b[39mfill(\u001b[32m'wrongpass123'\u001b[39m)\n \u001b[90m 29 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByRole(\u001b[32m'button'\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[35m/iniciar sesión|entrar|login/i\u001b[39m })\u001b[33m.\u001b[39mclick()\n \u001b[90m 30 |\u001b[39m     \u001b[90m// Debe mostrar error y NO redirigir\u001b[39m\u001b[0m\n\u001b[2m    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/01-auth.spec.ts:27:50\u001b[22m"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 5053,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:01:56.967Z",
+                      "startTime": "2026-04-21T03:12:52.783Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/01-auth-Flujo-1-Autenticac-37e90-redenciales-inválidas-falla-chromium/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/01-auth-Flujo-1-Autenticac-37e90-redenciales-inválidas-falla-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/01-auth-Flujo-1-Autenticac-37e90-redenciales-inválidas-falla-chromium/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/01-auth-Flujo-1-Autenticac-37e90-redenciales-inválidas-falla-chromium/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/01-auth.spec.ts",
-                        "column": 50,
-                        "line": 27
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "791b3c4e0869e77b2651-6cd675f8877ae823aa42",
@@ -272,15 +227,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 11137,
+                      "duration": 9957,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:02:13.511Z",
+                      "startTime": "2026-04-21T03:12:57.840Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -290,7 +245,7 @@
               ],
               "id": "791b3c4e0869e77b2651-a66927695609011544ca",
               "file": "01-auth.spec.ts",
-              "line": 35,
+              "line": 36,
               "column": 7
             },
             {
@@ -306,15 +261,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9203,
+                      "duration": 9301,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:02:24.712Z",
+                      "startTime": "2026-04-21T03:13:07.801Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -324,7 +279,7 @@
               ],
               "id": "791b3c4e0869e77b2651-64724902a4745bbbfd43",
               "file": "01-auth.spec.ts",
-              "line": 43,
+              "line": 44,
               "column": 7
             },
             {
@@ -340,15 +295,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9783,
+                      "duration": 9947,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:02:33.920Z",
+                      "startTime": "2026-04-21T03:13:17.105Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -358,7 +313,7 @@
               ],
               "id": "791b3c4e0869e77b2651-9021048f15a980bb4a16",
               "file": "01-auth.spec.ts",
-              "line": 50,
+              "line": 51,
               "column": 7
             },
             {
@@ -374,15 +329,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6644,
+                      "duration": 6211,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:02:43.706Z",
+                      "startTime": "2026-04-21T03:13:27.056Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -392,7 +347,7 @@
               ],
               "id": "791b3c4e0869e77b2651-7e1ea427a41dbc9acb75",
               "file": "01-auth.spec.ts",
-              "line": 57,
+              "line": 58,
               "column": 7
             },
             {
@@ -408,15 +363,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2104,
+                      "duration": 2174,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:02:50.353Z",
+                      "startTime": "2026-04-21T03:13:33.270Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -426,7 +381,7 @@
               ],
               "id": "791b3c4e0869e77b2651-fe4877da1105b82018fd",
               "file": "01-auth.spec.ts",
-              "line": 65,
+              "line": 66,
               "column": 7
             }
           ]
@@ -448,7 +403,7 @@
           "specs": [
             {
               "title": "2.1 Dashboard admin carga sin error",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -459,65 +414,20 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 7667,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).not.\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('main, body')\nExpected pattern: not \u001b[32m/error|undefined/i\u001b[39m\nError: strict mode violation: locator('main, body') resolved to 2 elements:\n    1) <body class=\"min-h-full flex flex-col\">…</body> aka locator('body')\n    2) <main class=\"flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full\">…</main> aka getByRole('main')\n\nCall log:\n\u001b[2m  - Expect \"not toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('main, body')\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).not.\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('main, body')\nExpected pattern: not \u001b[32m/error|undefined/i\u001b[39m\nError: strict mode violation: locator('main, body') resolved to 2 elements:\n    1) <body class=\"min-h-full flex flex-col\">…</body> aka locator('body')\n    2) <main class=\"flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full\">…</main> aka getByRole('main')\n\nCall log:\n\u001b[2m  - Expect \"not toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('main, body')\u001b[22m\n\n    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts:12:50",
-                        "location": {
-                          "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts",
-                          "column": 50,
-                          "line": 12
-                        },
-                        "snippet": "\u001b[0m \u001b[90m 10 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m'/admin'\u001b[39m)\n \u001b[90m 11 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[35m/\\/admin/\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 12 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'main, body'\u001b[39m))\u001b[33m.\u001b[39mnot\u001b[33m.\u001b[39mtoContainText(\u001b[35m/error|undefined/i\u001b[39m)\n \u001b[90m    |\u001b[39m                                                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 13 |\u001b[39m   })\n \u001b[90m 14 |\u001b[39m\n \u001b[90m 15 |\u001b[39m   test(\u001b[32m'2.2 Lista de doctores carga'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\u001b[0m"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts",
-                            "column": 50,
-                            "line": 12
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).not.\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('main, body')\nExpected pattern: not \u001b[32m/error|undefined/i\u001b[39m\nError: strict mode violation: locator('main, body') resolved to 2 elements:\n    1) <body class=\"min-h-full flex flex-col\">…</body> aka locator('body')\n    2) <main class=\"flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 w-full\">…</main> aka getByRole('main')\n\nCall log:\n\u001b[2m  - Expect \"not toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('main, body')\u001b[22m\n\n\n\u001b[0m \u001b[90m 10 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m'/admin'\u001b[39m)\n \u001b[90m 11 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[35m/\\/admin/\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 12 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'main, body'\u001b[39m))\u001b[33m.\u001b[39mnot\u001b[33m.\u001b[39mtoContainText(\u001b[35m/error|undefined/i\u001b[39m)\n \u001b[90m    |\u001b[39m                                                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 13 |\u001b[39m   })\n \u001b[90m 14 |\u001b[39m\n \u001b[90m 15 |\u001b[39m   test(\u001b[32m'2.2 Lista de doctores carga'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\u001b[0m\n\u001b[2m    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts:12:50\u001b[22m"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 7115,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:02:52.464Z",
+                      "startTime": "2026-04-21T03:13:35.450Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-b1dfc-board-admin-carga-sin-error-chromium/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-b1dfc-board-admin-carga-sin-error-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-b1dfc-board-admin-carga-sin-error-chromium/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-b1dfc-board-admin-carga-sin-error-chromium/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts",
-                        "column": 50,
-                        "line": 12
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "55d164b620f227ae3129-800210ddaa0d5e3c4203",
@@ -538,15 +448,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6062,
+                      "duration": 6076,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:03:00.425Z",
+                      "startTime": "2026-04-21T03:13:42.569Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -556,12 +466,12 @@
               ],
               "id": "55d164b620f227ae3129-7c6c46b9823b66d04ed0",
               "file": "02-admin.spec.ts",
-              "line": 15,
+              "line": 16,
               "column": 7
             },
             {
-              "title": "2.3 Página de planes muestra los 4 planes",
-              "ok": false,
+              "title": "2.3 Página de planes carga sin errores",
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -572,70 +482,25 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 14542,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('body')\nExpected pattern: \u001b[32m/b[áa]sico|basic/i\u001b[39m\nReceived string:  \u001b[31m\"Delta.Super AdminDashboardMédicosAprobacionesFinanzasSugerenciasConfiguraciónSistema operativoCerrar sesiónAdminBuscar módulo...⌘KBeta PrivadaDelta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.Plan actualBeta Privada (Gratis)Planes en sistema4 activos / 4 totalConfiguración del BetaAjusta los parámetros del periodo de pruebaActivoDías de trial para nuevos registrosLos médicos tienen este número de días de prueba antes de que su cuenta sea suspendida o aprobada manualmente.Descripción del planAcceso gratuito por 15 díasPrecio (USD)Durante la beta privada el precio es $0. Cámbialo cuando lances los planes de pago.¿Cómo funciona la beta privada?El médico se registra en /register y recibe un periodo trialAparece en Aprobaciones con estado \\\"Trial\\\"El admin aprueba y activa su cuenta por 1 añoEl médico accede a todas las funciones sin costo\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('body')\u001b[22m\n\u001b[2m    9 × locator resolved to <body class=\"min-h-full flex flex-col\">…</body>\u001b[22m\n\u001b[2m      - unexpected value \"Delta.Super AdminDashboardMédicosAprobacionesFinanzasSugerenciasConfiguraciónSistema operativoCerrar sesiónAdminBuscar módulo...⌘KBeta PrivadaDelta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.Plan actualBeta Privada (Gratis)Planes en sistema4 activos / 4 totalConfiguración del BetaAjusta los parámetros del periodo de pruebaActivoDías de trial para nuevos registrosLos médicos tienen este número de días de prueba antes de que su cuenta sea suspendida o aprobada manualmente.Descripción del planAcceso gratuito por 15 díasPrecio (USD)Durante la beta privada el precio es $0. Cámbialo cuando lances los planes de pago.¿Cómo funciona la beta privada?El médico se registra en /register y recibe un periodo trialAparece en Aprobaciones con estado \"Trial\"El admin aprueba y activa su cuenta por 1 añoEl médico accede a todas las funciones sin costo\"\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('body')\nExpected pattern: \u001b[32m/b[áa]sico|basic/i\u001b[39m\nReceived string:  \u001b[31m\"Delta.Super AdminDashboardMédicosAprobacionesFinanzasSugerenciasConfiguraciónSistema operativoCerrar sesiónAdminBuscar módulo...⌘KBeta PrivadaDelta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.Plan actualBeta Privada (Gratis)Planes en sistema4 activos / 4 totalConfiguración del BetaAjusta los parámetros del periodo de pruebaActivoDías de trial para nuevos registrosLos médicos tienen este número de días de prueba antes de que su cuenta sea suspendida o aprobada manualmente.Descripción del planAcceso gratuito por 15 díasPrecio (USD)Durante la beta privada el precio es $0. Cámbialo cuando lances los planes de pago.¿Cómo funciona la beta privada?El médico se registra en /register y recibe un periodo trialAparece en Aprobaciones con estado \\\"Trial\\\"El admin aprueba y activa su cuenta por 1 añoEl médico accede a todas las funciones sin costo\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('body')\u001b[22m\n\u001b[2m    9 × locator resolved to <body class=\"min-h-full flex flex-col\">…</body>\u001b[22m\n\u001b[2m      - unexpected value \"Delta.Super AdminDashboardMédicosAprobacionesFinanzasSugerenciasConfiguraciónSistema operativoCerrar sesiónAdminBuscar módulo...⌘KBeta PrivadaDelta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.Plan actualBeta Privada (Gratis)Planes en sistema4 activos / 4 totalConfiguración del BetaAjusta los parámetros del periodo de pruebaActivoDías de trial para nuevos registrosLos médicos tienen este número de días de prueba antes de que su cuenta sea suspendida o aprobada manualmente.Descripción del planAcceso gratuito por 15 díasPrecio (USD)Durante la beta privada el precio es $0. Cámbialo cuando lances los planes de pago.¿Cómo funciona la beta privada?El médico se registra en /register y recibe un periodo trialAparece en Aprobaciones con estado \"Trial\"El admin aprueba y activa su cuenta por 1 añoEl médico accede a todas las funciones sin costo\"\u001b[22m\n\n    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts:26:40",
-                        "location": {
-                          "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts",
-                          "column": 40,
-                          "line": 26
-                        },
-                        "snippet": "\u001b[0m \u001b[90m 24 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForLoadState(\u001b[32m'networkidle'\u001b[39m)\n \u001b[90m 25 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/trial/i\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 26 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/b[áa]sico|basic/i\u001b[39m)\n \u001b[90m    |\u001b[39m                                        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 27 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/profesional|professional/i\u001b[39m)\n \u001b[90m 28 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/cl[íi]nica/i\u001b[39m)\n \u001b[90m 29 |\u001b[39m   })\u001b[0m"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts",
-                            "column": 40,
-                            "line": 26
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('body')\nExpected pattern: \u001b[32m/b[áa]sico|basic/i\u001b[39m\nReceived string:  \u001b[31m\"Delta.Super AdminDashboardMédicosAprobacionesFinanzasSugerenciasConfiguraciónSistema operativoCerrar sesiónAdminBuscar módulo...⌘KBeta PrivadaDelta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.Plan actualBeta Privada (Gratis)Planes en sistema4 activos / 4 totalConfiguración del BetaAjusta los parámetros del periodo de pruebaActivoDías de trial para nuevos registrosLos médicos tienen este número de días de prueba antes de que su cuenta sea suspendida o aprobada manualmente.Descripción del planAcceso gratuito por 15 díasPrecio (USD)Durante la beta privada el precio es $0. Cámbialo cuando lances los planes de pago.¿Cómo funciona la beta privada?El médico se registra en /register y recibe un periodo trialAparece en Aprobaciones con estado \\\"Trial\\\"El admin aprueba y activa su cuenta por 1 añoEl médico accede a todas las funciones sin costo\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('body')\u001b[22m\n\u001b[2m    9 × locator resolved to <body class=\"min-h-full flex flex-col\">…</body>\u001b[22m\n\u001b[2m      - unexpected value \"Delta.Super AdminDashboardMédicosAprobacionesFinanzasSugerenciasConfiguraciónSistema operativoCerrar sesiónAdminBuscar módulo...⌘KBeta PrivadaDelta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.Plan actualBeta Privada (Gratis)Planes en sistema4 activos / 4 totalConfiguración del BetaAjusta los parámetros del periodo de pruebaActivoDías de trial para nuevos registrosLos médicos tienen este número de días de prueba antes de que su cuenta sea suspendida o aprobada manualmente.Descripción del planAcceso gratuito por 15 díasPrecio (USD)Durante la beta privada el precio es $0. Cámbialo cuando lances los planes de pago.¿Cómo funciona la beta privada?El médico se registra en /register y recibe un periodo trialAparece en Aprobaciones con estado \"Trial\"El admin aprueba y activa su cuenta por 1 añoEl médico accede a todas las funciones sin costo\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 24 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForLoadState(\u001b[32m'networkidle'\u001b[39m)\n \u001b[90m 25 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/trial/i\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 26 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/b[áa]sico|basic/i\u001b[39m)\n \u001b[90m    |\u001b[39m                                        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 27 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/profesional|professional/i\u001b[39m)\n \u001b[90m 28 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'body'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[35m/cl[íi]nica/i\u001b[39m)\n \u001b[90m 29 |\u001b[39m   })\u001b[0m\n\u001b[2m    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts:26:40\u001b[22m"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 9387,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:03:06.545Z",
+                      "startTime": "2026-04-21T03:13:48.648Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-0d544-planes-muestra-los-4-planes-chromium/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-0d544-planes-muestra-los-4-planes-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-0d544-planes-muestra-los-4-planes-chromium/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/02-admin-Flujo-2-Admin-—-g-0d544-planes-muestra-los-4-planes-chromium/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/02-admin.spec.ts",
-                        "column": 40,
-                        "line": 26
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
-              "id": "55d164b620f227ae3129-296ebcad5462d0dcd102",
+              "id": "55d164b620f227ae3129-9f9a9a94ce8135dfc2e6",
               "file": "02-admin.spec.ts",
-              "line": 22,
+              "line": 23,
               "column": 7
             },
             {
@@ -651,15 +516,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9573,
+                      "duration": 10134,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:03:21.376Z",
+                      "startTime": "2026-04-21T03:13:58.039Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -669,7 +534,7 @@
               ],
               "id": "55d164b620f227ae3129-4cfbdfdac4b34d2b6449",
               "file": "02-admin.spec.ts",
-              "line": 31,
+              "line": 32,
               "column": 7
             },
             {
@@ -685,15 +550,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9010,
+                      "duration": 8862,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:03:31.003Z",
+                      "startTime": "2026-04-21T03:14:08.177Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -703,7 +568,7 @@
               ],
               "id": "55d164b620f227ae3129-431a6e808bb389ad4526",
               "file": "02-admin.spec.ts",
-              "line": 38,
+              "line": 39,
               "column": 7
             },
             {
@@ -719,15 +584,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9090,
+                      "duration": 8799,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:03:40.017Z",
+                      "startTime": "2026-04-21T03:14:17.043Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -737,7 +602,7 @@
               ],
               "id": "55d164b620f227ae3129-58bf250897ba28fc873c",
               "file": "02-admin.spec.ts",
-              "line": 44,
+              "line": 45,
               "column": 7
             },
             {
@@ -753,15 +618,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 10255,
+                      "duration": 9079,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:03:49.111Z",
+                      "startTime": "2026-04-21T03:14:25.846Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -771,7 +636,7 @@
               ],
               "id": "55d164b620f227ae3129-030c38ddd6de63535367",
               "file": "02-admin.spec.ts",
-              "line": 50,
+              "line": 51,
               "column": 7
             },
             {
@@ -787,15 +652,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5554,
+                      "duration": 5478,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:03:59.371Z",
+                      "startTime": "2026-04-21T03:14:34.929Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -805,7 +670,7 @@
               ],
               "id": "55d164b620f227ae3129-19918e95f575b45ef4cf",
               "file": "02-admin.spec.ts",
-              "line": 56,
+              "line": 57,
               "column": 7
             },
             {
@@ -821,15 +686,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5732,
+                      "duration": 5054,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:04.929Z",
+                      "startTime": "2026-04-21T03:14:40.411Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -839,7 +704,7 @@
               ],
               "id": "55d164b620f227ae3129-6bd646179a73cf868575",
               "file": "02-admin.spec.ts",
-              "line": 62,
+              "line": 63,
               "column": 7
             },
             {
@@ -855,15 +720,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5241,
+                      "duration": 5052,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:10.665Z",
+                      "startTime": "2026-04-21T03:14:45.468Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -873,7 +738,7 @@
               ],
               "id": "55d164b620f227ae3129-6610453f6cd7a6826242",
               "file": "02-admin.spec.ts",
-              "line": 67,
+              "line": 68,
               "column": 7
             }
           ]
@@ -906,15 +771,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4331,
+                      "duration": 4170,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:15.914Z",
+                      "startTime": "2026-04-21T03:14:50.526Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -940,15 +805,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7757,
+                      "duration": 7767,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:20.249Z",
+                      "startTime": "2026-04-21T03:14:54.699Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -974,15 +839,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9209,
+                      "duration": 9161,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:28.010Z",
+                      "startTime": "2026-04-21T03:15:02.470Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1008,15 +873,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8939,
+                      "duration": 9156,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:37.224Z",
+                      "startTime": "2026-04-21T03:15:11.634Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1042,15 +907,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8533,
+                      "duration": 9276,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:46.167Z",
+                      "startTime": "2026-04-21T03:15:20.794Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1076,15 +941,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8520,
+                      "duration": 8685,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:04:54.704Z",
+                      "startTime": "2026-04-21T03:15:30.073Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1110,15 +975,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6778,
+                      "duration": 6829,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:03.228Z",
+                      "startTime": "2026-04-21T03:15:38.762Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1144,15 +1009,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7206,
+                      "duration": 7268,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:10.009Z",
+                      "startTime": "2026-04-21T03:15:45.595Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1178,15 +1043,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7750,
+                      "duration": 8009,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:17.219Z",
+                      "startTime": "2026-04-21T03:15:52.867Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1212,15 +1077,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9126,
+                      "duration": 8806,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:24.972Z",
+                      "startTime": "2026-04-21T03:16:00.881Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1246,15 +1111,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4749,
+                      "duration": 4296,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:34.102Z",
+                      "startTime": "2026-04-21T03:16:09.691Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1297,15 +1162,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4204,
+                      "duration": 4421,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:38.857Z",
+                      "startTime": "2026-04-21T03:16:13.993Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1331,15 +1196,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8604,
+                      "duration": 9258,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:43.065Z",
+                      "startTime": "2026-04-21T03:16:18.417Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1365,15 +1230,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9390,
+                      "duration": 9212,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:05:51.672Z",
+                      "startTime": "2026-04-21T03:16:27.679Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1399,15 +1264,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 10038,
+                      "duration": 8782,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:01.066Z",
+                      "startTime": "2026-04-21T03:16:36.895Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1433,15 +1298,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8709,
+                      "duration": 8780,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:11.108Z",
+                      "startTime": "2026-04-21T03:16:45.680Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1467,15 +1332,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8921,
+                      "duration": 9751,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:19.820Z",
+                      "startTime": "2026-04-21T03:16:54.463Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1501,15 +1366,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9041,
+                      "duration": 9165,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:28.750Z",
+                      "startTime": "2026-04-21T03:17:04.218Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1535,15 +1400,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9465,
+                      "duration": 9343,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:37.806Z",
+                      "startTime": "2026-04-21T03:17:13.387Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1586,15 +1451,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2163,
+                      "duration": 2449,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:47.284Z",
+                      "startTime": "2026-04-21T03:17:22.736Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1620,15 +1485,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 454,
+                      "duration": 545,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:49.452Z",
+                      "startTime": "2026-04-21T03:17:25.188Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1654,15 +1519,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 799,
+                      "duration": 706,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:49.911Z",
+                      "startTime": "2026-04-21T03:17:25.738Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1694,7 +1559,7 @@
           "specs": [
             {
               "title": "6.1 Doctor NO puede listar suscripciones de otros doctores via API",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -1705,65 +1570,20 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 4237,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m200\u001b[39m\nReceived array: \u001b[31m[401, 403, 404]\u001b[39m",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m200\u001b[39m\nReceived array: \u001b[31m[401, 403, 404]\u001b[39m\n    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts:9:29",
-                        "location": {
-                          "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts",
-                          "column": 29,
-                          "line": 9
-                        },
-                        "snippet": "\u001b[0m \u001b[90m  7 |\u001b[39m     \u001b[90m// Intentar acceso directo a endpoint admin\u001b[39m\n \u001b[90m  8 |\u001b[39m     \u001b[36mconst\u001b[39m r \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mrequest\u001b[33m.\u001b[39m\u001b[36mget\u001b[39m(\u001b[32m'/api/admin/doctors'\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m  9 |\u001b[39m     expect([\u001b[35m401\u001b[39m\u001b[33m,\u001b[39m \u001b[35m403\u001b[39m\u001b[33m,\u001b[39m \u001b[35m404\u001b[39m])\u001b[33m.\u001b[39mtoContain(r\u001b[33m.\u001b[39mstatus())\n \u001b[90m    |\u001b[39m                             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 10 |\u001b[39m   })\n \u001b[90m 11 |\u001b[39m\n \u001b[90m 12 |\u001b[39m   test(\u001b[32m'6.2 Paciente NO puede listar pacientes via API'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\u001b[0m"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts",
-                            "column": 29,
-                            "line": 9
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m200\u001b[39m\nReceived array: \u001b[31m[401, 403, 404]\u001b[39m\n\n\u001b[0m \u001b[90m  7 |\u001b[39m     \u001b[90m// Intentar acceso directo a endpoint admin\u001b[39m\n \u001b[90m  8 |\u001b[39m     \u001b[36mconst\u001b[39m r \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mrequest\u001b[33m.\u001b[39m\u001b[36mget\u001b[39m(\u001b[32m'/api/admin/doctors'\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m  9 |\u001b[39m     expect([\u001b[35m401\u001b[39m\u001b[33m,\u001b[39m \u001b[35m403\u001b[39m\u001b[33m,\u001b[39m \u001b[35m404\u001b[39m])\u001b[33m.\u001b[39mtoContain(r\u001b[33m.\u001b[39mstatus())\n \u001b[90m    |\u001b[39m                             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 10 |\u001b[39m   })\n \u001b[90m 11 |\u001b[39m\n \u001b[90m 12 |\u001b[39m   test(\u001b[32m'6.2 Paciente NO puede listar pacientes via API'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\u001b[0m\n\u001b[2m    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts:9:29\u001b[22m"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 4220,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:50.717Z",
+                      "startTime": "2026-04-21T03:17:26.450Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-6f303-s-de-otros-doctores-via-API-chromium/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-6f303-s-de-otros-doctores-via-API-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-6f303-s-de-otros-doctores-via-API-chromium/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-6f303-s-de-otros-doctores-via-API-chromium/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts",
-                        "column": 29,
-                        "line": 9
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "d1f45d144b86d8857884-650ae2972eaa1ea031cb",
@@ -1772,8 +1592,8 @@
               "column": 7
             },
             {
-              "title": "6.2 Paciente NO puede listar pacientes via API",
-              "ok": false,
+              "title": "6.2 Paciente NO puede listar appointments via API doctor",
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -1784,68 +1604,23 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 4,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 4447,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m405\u001b[39m\nReceived array: \u001b[31m[401, 403]\u001b[39m",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m405\u001b[39m\nReceived array: \u001b[31m[401, 403]\u001b[39m\n    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts:15:24",
-                        "location": {
-                          "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts",
-                          "column": 24,
-                          "line": 15
-                        },
-                        "snippet": "\u001b[0m \u001b[90m 13 |\u001b[39m     \u001b[36mawait\u001b[39m loginAs(page\u001b[33m,\u001b[39m \u001b[32m'patient'\u001b[39m)\n \u001b[90m 14 |\u001b[39m     \u001b[36mconst\u001b[39m r \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mrequest\u001b[33m.\u001b[39m\u001b[36mget\u001b[39m(\u001b[32m'/api/doctor/appointments'\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 15 |\u001b[39m     expect([\u001b[35m401\u001b[39m\u001b[33m,\u001b[39m \u001b[35m403\u001b[39m])\u001b[33m.\u001b[39mtoContain(r\u001b[33m.\u001b[39mstatus())\n \u001b[90m    |\u001b[39m                        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 16 |\u001b[39m   })\n \u001b[90m 17 |\u001b[39m\n \u001b[90m 18 |\u001b[39m   test(\u001b[32m'6.3 Sin login: /api/doctor/consultations devuelve 401'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ request }) \u001b[33m=>\u001b[39m {\u001b[0m"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts",
-                            "column": 24,
-                            "line": 15
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected value: \u001b[32m405\u001b[39m\nReceived array: \u001b[31m[401, 403]\u001b[39m\n\n\u001b[0m \u001b[90m 13 |\u001b[39m     \u001b[36mawait\u001b[39m loginAs(page\u001b[33m,\u001b[39m \u001b[32m'patient'\u001b[39m)\n \u001b[90m 14 |\u001b[39m     \u001b[36mconst\u001b[39m r \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mrequest\u001b[33m.\u001b[39m\u001b[36mget\u001b[39m(\u001b[32m'/api/doctor/appointments'\u001b[39m)\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 15 |\u001b[39m     expect([\u001b[35m401\u001b[39m\u001b[33m,\u001b[39m \u001b[35m403\u001b[39m])\u001b[33m.\u001b[39mtoContain(r\u001b[33m.\u001b[39mstatus())\n \u001b[90m    |\u001b[39m                        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 16 |\u001b[39m   })\n \u001b[90m 17 |\u001b[39m\n \u001b[90m 18 |\u001b[39m   test(\u001b[32m'6.3 Sin login: /api/doctor/consultations devuelve 401'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ request }) \u001b[33m=>\u001b[39m {\u001b[0m\n\u001b[2m    at /Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts:15:24\u001b[22m"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 4179,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:06:55.332Z",
+                      "startTime": "2026-04-21T03:17:30.673Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-305ca-de-listar-pacientes-via-API-chromium/test-failed-1.png"
-                        },
-                        {
-                          "name": "video",
-                          "contentType": "video/webm",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-305ca-de-listar-pacientes-via-API-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-305ca-de-listar-pacientes-via-API-chromium/error-context.md"
-                        },
-                        {
-                          "name": "trace",
-                          "contentType": "application/zip",
-                          "path": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/results/artifacts/06-cross-rbac-Flujo-6-Cros-305ca-de-listar-pacientes-via-API-chromium/trace.zip"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/jesussolanob/Desktop/medsaas-venezuela/tests/e2e/06-cross-rbac.spec.ts",
-                        "column": 24,
-                        "line": 15
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
-              "id": "d1f45d144b86d8857884-4c8db993eae1a9673390",
+              "id": "d1f45d144b86d8857884-9cdc245805b3b046b7f2",
               "file": "06-cross-rbac.spec.ts",
               "line": 12,
               "column": 7
@@ -1863,15 +1638,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 5,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 562,
+                      "duration": 431,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:07:00.092Z",
+                      "startTime": "2026-04-21T03:17:34.855Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1881,7 +1656,7 @@
               ],
               "id": "d1f45d144b86d8857884-0a4d7b261d87630e1338",
               "file": "06-cross-rbac.spec.ts",
-              "line": 18,
+              "line": 19,
               "column": 7
             },
             {
@@ -1897,15 +1672,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 5,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 343,
+                      "duration": 403,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:07:00.662Z",
+                      "startTime": "2026-04-21T03:17:35.292Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1915,7 +1690,7 @@
               ],
               "id": "d1f45d144b86d8857884-429d3848d364a96ce534",
               "file": "06-cross-rbac.spec.ts",
-              "line": 23,
+              "line": 24,
               "column": 7
             },
             {
@@ -1931,15 +1706,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 5,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4760,
+                      "duration": 5281,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-04-21T03:07:01.014Z",
+                      "startTime": "2026-04-21T03:17:35.702Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1949,7 +1724,7 @@
               ],
               "id": "d1f45d144b86d8857884-27f1deadf249b485e8ab",
               "file": "06-cross-rbac.spec.ts",
-              "line": 28,
+              "line": 29,
               "column": 7
             }
           ]
@@ -1959,11 +1734,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-04-21T03:01:39.470Z",
-    "duration": 326373.256,
-    "expected": 41,
+    "startTime": "2026-04-21T03:12:36.622Z",
+    "duration": 304481.65599999996,
+    "expected": 46,
     "skipped": 0,
-    "unexpected": 5,
+    "unexpected": 0,
     "flaky": 0
   }
 }
