@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
     p_appointment_id: appointment_id,
     p_new_status: new_status,
     p_reason: reason || null,
+    p_actor_id: guard.user.id,   // ← actor explícito para que funcione con service_role
   })
 
   if (error) {

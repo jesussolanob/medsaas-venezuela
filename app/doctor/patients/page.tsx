@@ -16,13 +16,14 @@ interface PatientPackageInfo {
   usedSessions: number
 }
 
+// Estados de PAGO: solo 2 — Pendiente | Aprobado. No existe "Cancelado" ni "Rechazado".
 const PAYMENT_STATUS = {
-  pending:           { label: 'Pendiente',  color: 'bg-amber-100 text-amber-700',   icon: <Clock className="w-3 h-3" /> },
-  approved:          { label: 'Aprobada',   color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle className="w-3 h-3" /> },
-  cancelled:         { label: 'Cancelada',  color: 'bg-red-100 text-red-700',       icon: <AlertCircle className="w-3 h-3" /> },
-  // Aliases legacy (mantienen compat con datos viejos)
-  unpaid:            { label: 'Pendiente',  color: 'bg-amber-100 text-amber-700',   icon: <Clock className="w-3 h-3" /> },
-  pending_approval:  { label: 'Pendiente',  color: 'bg-amber-100 text-amber-700',   icon: <Clock className="w-3 h-3" /> },
+  pending:  { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     icon: <Clock className="w-3 h-3" /> },
+  approved: { label: 'Aprobado',  color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle className="w-3 h-3" /> },
+  // Aliases legacy (mapean a pending para datos viejos)
+  unpaid:            { label: 'Pendiente', color: 'bg-amber-100 text-amber-700', icon: <Clock className="w-3 h-3" /> },
+  pending_approval:  { label: 'Pendiente', color: 'bg-amber-100 text-amber-700', icon: <Clock className="w-3 h-3" /> },
+  cancelled:         { label: 'Pendiente', color: 'bg-amber-100 text-amber-700', icon: <Clock className="w-3 h-3" /> },
 }
 
 const SOURCE_LABELS: Record<string, string> = { manual: 'Manual', invitation: 'Invitación', whatsapp: 'WhatsApp', consultorio: 'Consultorio', redes_sociales: 'Redes Sociales', seguro: 'Seguro', otro: 'Otro' }
@@ -74,7 +75,7 @@ export default function PatientsPage() {
   const [patError, setPatError] = useState('')
 
   // New consultation form
-  const [newConsult, setNewConsult] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'pending' as 'pending' | 'approved' | 'cancelled', plan_id: '', payment_method: '', payment_reference: '' })
+  const [newConsult, setNewConsult] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'pending' as 'pending' | 'approved', plan_id: '', payment_method: '', payment_reference: '' })
   const [consultError, setConsultError] = useState('')
   const [consultSuccess, setConsultSuccess] = useState('')
   const [packageInfo, setPackageInfo] = useState<Record<string, PatientPackageInfo>>({})
@@ -299,7 +300,7 @@ export default function PatientsPage() {
     setUploadingReceipt(false)
   }
 
-  function handleStatusChange(consultId: string, status: 'pending' | 'approved' | 'cancelled') {
+  function handleStatusChange(consultId: string, status: 'pending' | 'approved') {
     startTransition(async () => {
       await updateConsultationStatus(consultId, status)
       if (selected) getConsultations(selected.id).then(setConsultations)
@@ -645,16 +646,15 @@ export default function PatientsPage() {
                               <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${st.color}`}>
                                 {st.icon} {st.label}
                               </span>
-                              {/* Status change — 3 estados normalizados */}
+                              {/* Estado de pago — solo 2 estados. Un pago no se cancela. */}
                               <select
-                                value={['pending','approved','cancelled'].includes(c.payment_status as string) ? c.payment_status : 'pending'}
-                                onChange={e => handleStatusChange(c.id, e.target.value as 'pending' | 'approved' | 'cancelled')}
+                                value={c.payment_status === 'approved' ? 'approved' : 'pending'}
+                                onChange={e => handleStatusChange(c.id, e.target.value as 'pending' | 'approved')}
                                 disabled={isPending}
                                 className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 text-slate-600 cursor-pointer"
                               >
                                 <option value="pending">Pendiente</option>
-                                <option value="approved">Aprobada</option>
-                                <option value="cancelled">Cancelada</option>
+                                <option value="approved">Aprobado</option>
                               </select>
                             </div>
                           </div>

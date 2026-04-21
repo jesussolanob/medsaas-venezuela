@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Save, CheckCircle2, AlertCircle, ChevronUp, ChevronDown, GripVertical } from 'lucide-react'
+import { Loader2, Save, CheckCircle2, AlertCircle, ChevronUp, ChevronDown, GripVertical, ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 
 type CatalogEntry = {
   key: string
@@ -134,6 +135,14 @@ export default function ConsultationBlocksConfigPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {/* Breadcrumb / back */}
+      <Link
+        href="/doctor/templates"
+        className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 font-medium"
+      >
+        <ArrowLeft className="w-4 h-4" /> Volver a Plantillas
+      </Link>
+
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Bloques de consulta</h1>
         <p className="text-slate-500 text-sm mt-1">

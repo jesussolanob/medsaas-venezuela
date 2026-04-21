@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
     p_appointment_id: appointmentId,
     p_new_scheduled_at: newDate,
     p_reason: reason,
+    p_actor_id: user.id,   // ← actor explícito para service_role
   })
 
   if (rpcErr) {

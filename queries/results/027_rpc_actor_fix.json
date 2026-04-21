@@ -1,0 +1,46 @@
+{
+  "file": "027_rpc_actor_fix.sql",
+  "executed_at": "2026-04-21T12:30:40.722Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "status"
+      ],
+      "rows": [
+        {
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1516
+}

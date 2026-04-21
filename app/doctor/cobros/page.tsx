@@ -9,7 +9,7 @@ import {
   TrendingUp, Banknote, X, CreditCard, FileText, ExternalLink, Upload
 } from 'lucide-react'
 
-type CobrosTab = 'pending' | 'approved' | 'cancelled'
+type CobrosTab = 'pending' | 'approved'
 
 type Payment = {
   id: string
@@ -116,9 +116,6 @@ export default function CobrosPage() {
       case 'approved':
         statusFilter = ['completed']
         break
-      case 'cancelled':
-        statusFilter = ['cancelled']
-        break
     }
 
     const { data: apptData } = await supabase
@@ -223,10 +220,10 @@ export default function CobrosPage() {
     hour: '2-digit', minute: '2-digit', hour12: true
   })
 
+  // Tabs del módulo de Cobros — solo 2 estados de pago
   const tabs: { key: CobrosTab; label: string; icon: any; color: string }[] = [
     { key: 'pending', label: 'Pendientes', icon: Clock, color: 'amber' },
-    { key: 'approved', label: 'Aprobadas', icon: CheckCircle, color: 'emerald' },
-    { key: 'cancelled', label: 'Canceladas', icon: XCircle, color: 'red' },
+    { key: 'approved', label: 'Aprobados', icon: CheckCircle, color: 'emerald' },
   ]
 
   return (
@@ -493,24 +490,22 @@ export default function CobrosPage() {
                 )}
               </div>
 
-              {/* Current status */}
+              {/* Current status — solo 2 estados de PAGO */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-400 uppercase">Estado actual</p>
+                <p className="text-xs font-semibold text-slate-400 uppercase">Estado del pago</p>
                 <span className={`inline-flex text-sm font-semibold px-3 py-1.5 rounded-full ${
                   selectedPayment.status === 'completed'
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : selectedPayment.status === 'cancelled'
-                    ? 'bg-red-50 text-red-600 border border-red-200'
                     : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}>
-                  {selectedPayment.status === 'completed' ? 'Aprobada' : selectedPayment.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
+                  {selectedPayment.status === 'completed' ? 'Aprobado' : 'Pendiente'}
                 </span>
               </div>
 
-              {/* Change status */}
+              {/* Change status — SOLO 2 opciones (el pago no se cancela, o está pendiente o aprobado) */}
               <div className="space-y-3 pt-2">
-                <p className="text-xs font-semibold text-slate-400 uppercase">Cambiar estado</p>
-                <div className="grid grid-cols-3 gap-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase">Cambiar estado del pago</p>
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => updatePaymentStatus(selectedPayment.id, 'scheduled')}
                     disabled={updatingStatus || selectedPayment.status === 'scheduled' || selectedPayment.status === 'pending'}
@@ -524,13 +519,6 @@ export default function CobrosPage() {
                     className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-emerald-200 text-emerald-600 hover:bg-emerald-50"
                   >
                     <CheckCircle className="w-3.5 h-3.5" /> Aprobar
-                  </button>
-                  <button
-                    onClick={() => updatePaymentStatus(selectedPayment.id, 'cancelled')}
-                    disabled={updatingStatus || selectedPayment.status === 'cancelled'}
-                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-red-200 text-red-600 hover:bg-red-50"
-                  >
-                    <XCircle className="w-3.5 h-3.5" /> Cancelar
                   </button>
                 </div>
                 {updatingStatus && (
