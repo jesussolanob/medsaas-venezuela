@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Health Tech — Beta Privada</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --turquoise: #06B6D4;
+  --turquoise-dark: #0891B2;
+  --turquoise-deeper: #0E7490;
+  --coral: #FF8A65;
+  --coral-light: #FFAB91;
+  --ink: #0F1A2A;
+  --bone: #FAFBFC;
+  --slate-50: #F8FAFC;
+  --slate-100: #F1F5F9;
+  --slate-200: #E2E8F0;
+  --slate-300: #CBD5E1;
+  --slate-400: #94A3B8;
+  --slate-500: #64748B;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1E293B;
+  --gradient: linear-gradient(135deg, #06B6D4 0%, #0891b2 50%, #0E7490 100%);
+  --gradient-warm: linear-gradient(135deg, #FF8A65 0%, #FF7043 100%);
+  --gradient-hero: linear-gradient(160deg, #06B6D4 0%, #0891b2 40%, #0E7490 70%, #164E63 100%);
+}
+html { scroll-behavior: smooth; }
+body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bone); color: var(--ink); overflow-x: hidden; }
+
+/* Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInLeft {
+  from { opacity: 0; transform: translateX(-40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes fadeInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-on-scroll { opacity: 0; transform: translateY(40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-on-scroll.visible { opacity: 1; transform: translateY(0); }
+.animate-delay-1 { transition-delay: 0.1s; }
+.animate-delay-2 { transition-delay: 0.2s; }
+.animate-delay-3 { transition-delay: 0.3s; }
+.animate-delay-4 { transition-delay: 0.4s; }
+
+/* Hero */
+.hero {
+  min-height: 100vh;
+  background: var(--gradient-hero);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 800px;
+  height: 800px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,138,101,0.15) 0%, transparent 70%);
+  animation: float 8s ease-in-out infinite;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: -30%;
+  left: -10%;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(6,182,212,0.2) 0%, transparent 70%);
+  animation: float 10s ease-in-out infinite reverse;
+}
+.hero-content { position: relative; z-index: 2; max-width: 900px; padding: 2rem; animation: fadeInUp 1s ease-out; }
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 100px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 2rem;
+  animation: slideDown 0.8s ease-out;
+}
+.hero-badge .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--coral);
+  position: relative;
+}
+.hero-badge .dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--coral);
+  animation: pulse-ring 2s infinite;
+}
+.hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 900;
+  color: white;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin-bottom: 1.5rem;
+}
+.hero h1 .accent { color: var(--coral-light); }
+.hero p { font-size: clamp(1rem, 2vw, 1.25rem); color: rgba(255,255,255,0.8); line-height: 1.7; max-width: 600px; margin: 0 auto 2.5rem; font-weight: 400; }
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  color: var(--turquoise-dark);
+  font-weight: 700;
+  font-size: 16px;
+  padding: 16px 36px;
+  border-radius: 16px;
+  text-decoration: none;
+  transition: all 0.3s;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+}
+.hero-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+.hero-scroll {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  animation: float 3s ease-in-out infinite;
+}
+.hero-scroll svg { display: block; margin: 8px auto 0; }
+
+/* Section base */
+section { padding: 100px 24px; }
+.section-inner { max-width: 1100px; margin: 0 auto; }
+.section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--turquoise);
+  margin-bottom: 1rem;
+}
+.section-label .icon-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+.section-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+.section-subtitle { font-size: 1.1rem; color: var(--slate-500); line-height: 1.7; max-width: 600px; }
+
+/* Isotipo */
+.delta-iso {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Feature grid */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  margin-top: 3.5rem;
+}
+.feature-card {
+  background: white;
+  border: 1px solid var(--slate-200);
+  border-radius: 20px;
+  padding: 32px;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(6,182,212,0.1);
+  border-color: var(--turquoise);
+}
+.feature-card .icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+.feature-card h3 { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
+.feature-card p { font-size: 0.9rem; color: var(--slate-500); line-height: 1.7; }
+
+/* Steps */
+.steps { counter-reset: step; }
+.step-item {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 32px;
+  padding: 40px 0;
+  border-bottom: 1px solid var(--slate-200);
+  align-items: start;
+}
+.step-item:last-child { border-bottom: none; }
+.step-number {
+  counter-increment: step;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  background: var(--gradient);
+  flex-shrink: 0;
+}
+.step-number::before { content: counter(step); }
+.step-content h3 { font-size: 1.2rem; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.step-content p { font-size: 0.95rem; color: var(--slate-500); line-height: 1.7; }
+
+/* Mockup screens */
+.mockup-container {
+  background: white;
+  border: 1px solid var(--slate-200);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.06);
+  margin-top: 2rem;
+}
+.mockup-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--slate-50);
+  border-bottom: 1px solid var(--slate-200);
+}
+.mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+.mockup-dot.red { background: #FF5F57; }
+.mockup-dot.yellow { background: #FEBC2E; }
+.mockup-dot.green { background: #28C840; }
+.mockup-url {
+  flex: 1;
+  margin-left: 12px;
+  background: white;
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--slate-400);
+  font-family: 'Inter', monospace;
+}
+.mockup-body { padding: 0; }
+
+/* App mockup inside */
+.app-mock {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 440px;
+}
+.app-sidebar {
+  background: white;
+  border-right: 1px solid var(--slate-200);
+  padding: 20px 16px;
+}
+.app-sidebar .logo-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--slate-100);
+}
+.app-sidebar .logo-text { font-weight: 800; font-size: 14px; color: var(--ink); }
+.app-sidebar .logo-text span { color: var(--turquoise); }
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate-500);
+  margin-bottom: 4px;
+  transition: all 0.2s;
+}
+.sidebar-item.active {
+  background: linear-gradient(135deg, rgba(6,182,212,0.1), rgba(6,182,212,0.05));
+  color: var(--turquoise-dark);
+  font-weight: 600;
+}
+.sidebar-item .si-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--slate-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+.sidebar-item.active .si-icon { background: rgba(6,182,212,0.15); }
+.app-main { background: var(--slate-50); padding: 24px; overflow: hidden; }
+.app-main h2 { font-size: 18px; font-weight: 700; color: var(--ink); margin-bottom: 16px; }
+
+/* Dashboard cards */
+.dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.dash-card {
+  background: white;
+  border: 1px solid var(--slate-200);
+  border-radius: 12px;
+  padding: 16px;
+}
+.dash-card .label { font-size: 11px; color: var(--slate-400); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+.dash-card .value { font-size: 24px; font-weight: 800; color: var(--ink); margin-top: 4px; }
+.dash-card .value.turquoise { color: var(--turquoise); }
+.dash-card .change { font-size: 11px; color: #10B981; font-weight: 600; margin-top: 2px; }
+
+/* Appointment list */
+.appt-list { background: white; border: 1px solid var(--slate-200); border-radius: 12px; overflow: hidden; }
+.appt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--slate-100);
+  font-size: 13px;
+}
+.appt-row:last-child { border-bottom: none; }
+.appt-time { font-weight: 700; color: var(--turquoise-dark); width: 55px; font-size: 12px; }
+.appt-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--gradient);
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 11px;
+}
+.appt-name { font-weight: 600; color: var(--ink); flex: 1; }
+.appt-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+.badge-confirmed { background: #D1FAE5; color: #065F46; }
+.badge-pending { background: #FEF3C7; color: #92400E; }
+
+/* Plans */
+.plans-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 3rem; }
+.plan-card {
+  background: white;
+  border: 2px solid var(--slate-200);
+  border-radius: 20px;
+  padding: 36px 28px;
+  text-align: center;
+  transition: all 0.4s;
+  position: relative;
+}
+.plan-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
+.plan-card.popular {
+  border-color: var(--turquoise);
+  box-shadow: 0 0 0 1px var(--turquoise);
+}
+.plan-card.popular::before {
+  content: 'Más popular';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gradient);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 16px;
+  border-radius: 100px;
+}
+.plan-name { font-size: 1.1rem; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.plan-price { font-size: 2.5rem; font-weight: 900; color: var(--turquoise); margin-bottom: 4px; }
+.plan-price span { font-size: 0.9rem; font-weight: 500; color: var(--slate-400); }
+.plan-period { font-size: 0.85rem; color: var(--slate-400); margin-bottom: 20px; }
+.plan-features { list-style: none; text-align: left; margin-bottom: 24px; }
+.plan-features li {
+  padding: 8px 0;
+  font-size: 0.9rem;
+  color: var(--slate-600);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--slate-100);
+}
+.plan-features li:last-child { border-bottom: none; }
+.plan-features li .check { color: var(--turquoise); font-weight: 700; }
+.plan-features li.disabled { color: var(--slate-300); }
+.plan-features li.disabled .check { color: var(--slate-300); }
+.plan-btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.plan-btn.primary { background: var(--gradient); color: white; }
+.plan-btn.outline { background: white; color: var(--turquoise); border: 2px solid var(--turquoise); }
+
+/* Booking flow */
+.booking-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 2rem; }
+.booking-step {
+  background: white;
+  border: 1px solid var(--slate-200);
+  border-radius: 16px;
+  padding: 24px 20px;
+  text-align: center;
+  position: relative;
+}
+.booking-step .step-num {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--gradient); color: white;
+  font-weight: 800; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+}
+.booking-step h4 { font-size: 0.95rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.booking-step p { font-size: 0.8rem; color: var(--slate-400); line-height: 1.5; }
+.booking-step .emoji { font-size: 28px; margin-bottom: 8px; }
+
+/* CTA section */
+.cta-section {
+  background: var(--gradient-hero);
+  text-align: center;
+  padding: 100px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 500px; height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,138,101,0.2) 0%, transparent 60%);
+}
+.cta-section h2 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  color: white;
+  margin-bottom: 1rem;
+  position: relative;
+  z-index: 1;
+}
+.cta-section p { color: rgba(255,255,255,0.8); font-size: 1.1rem; margin-bottom: 2rem; position: relative; z-index: 1; }
+.cta-section .hero-cta { position: relative; z-index: 1; }
+
+/* Two col layout */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+.two-col.reverse { direction: rtl; }
+.two-col.reverse > * { direction: ltr; }
+
+/* Phone mockup */
+.phone-mock {
+  width: 280px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 32px;
+  border: 6px solid var(--slate-800);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  animation: float 6s ease-in-out infinite;
+}
+.phone-notch {
+  width: 120px;
+  height: 28px;
+  background: var(--slate-800);
+  border-radius: 0 0 16px 16px;
+  margin: 0 auto;
+}
+.phone-screen { padding: 16px; background: var(--slate-50); min-height: 400px; }
+.phone-header {
+  background: var(--gradient);
+  margin: -16px -16px 16px;
+  padding: 20px 16px;
+  color: white;
+}
+.phone-header h3 { font-size: 16px; font-weight: 700; }
+.phone-header p { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+
+/* Stat callout */
+.stat-row { display: flex; gap: 20px; margin-top: 2rem; }
+.stat-box { text-align: center; flex: 1; }
+.stat-box .num { font-size: 2.5rem; font-weight: 900; color: var(--turquoise); }
+.stat-box .label { font-size: 0.85rem; color: var(--slate-500); margin-top: 4px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .two-col, .two-col.reverse { grid-template-columns: 1fr; gap: 40px; }
+  .app-mock { grid-template-columns: 1fr; }
+  .app-sidebar { display: none; }
+  .step-item { grid-template-columns: 56px 1fr; gap: 20px; }
+  .step-number { width: 48px; height: 48px; font-size: 1.2rem; }
+  .dash-grid { grid-template-columns: 1fr; }
+  .stat-row { flex-direction: column; gap: 16px; }
+  section { padding: 60px 20px; }
+}
+
+/* Nav */
+.nav-float {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transform: translateY(-100%);
+  transition: transform 0.4s;
+}
+.nav-float.visible { transform: translateY(0); }
+.nav-logo { display: flex; align-items: center; gap: 10px; }
+.nav-logo span { font-weight: 800; font-size: 15px; color: var(--ink); }
+.nav-logo span em { font-style: normal; color: var(--turquoise); }
+.nav-links { display: flex; gap: 24px; }
+.nav-links a { font-size: 13px; font-weight: 600; color: var(--slate-500); text-decoration: none; transition: color 0.2s; }
+.nav-links a:hover { color: var(--turquoise); }
+</style>
+</head>
+<body>
+
+<!-- Floating Nav -->
+<nav class="nav-float" id="nav">
+  <div class="nav-logo">
+    <svg width="28" height="28" viewBox="0 0 200 200" fill="none">
+      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="28" stroke-linecap="round" fill="none"/>
+      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="28" stroke-linecap="round" fill="none"/>
+    </svg>
+    <span>Delta <em>Health Tech</em></span>
+  </div>
+  <div class="nav-links">
+    <a href="#features">Funciones</a>
+    <a href="#setup">Configuración</a>
+    <a href="#plans">Planes</a>
+    <a href="#booking">Citas</a>
+    <a href="#ehr">Historia clínica</a>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- HERO -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Beta Privada 2026
+    </div>
+    <h1>
+      Tu consultorio,<br>
+      <span class="accent">en la nube.</span>
+    </h1>
+    <p>
+      Delta Health Tech es el CRM médico todo-en-uno diseñado para especialistas en Venezuela.
+      Agenda, pacientes, finanzas e historia clínica — en una sola plataforma.
+    </p>
+    <a href="https://medsaas-venezuela.vercel.app/register" class="hero-cta" target="_blank">
+      <svg width="20" height="20" viewBox="0 0 200 200" fill="none">
+        <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="28" stroke-linecap="round" fill="none"/>
+        <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="28" stroke-linecap="round" fill="none"/>
+      </svg>
+      Crear mi cuenta gratis
+    </a>
+  </div>
+  <div class="hero-scroll">
+    Desliza para explorar
+    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0l-6-6m6 6l6-6"/></svg>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- WHAT IS DELTA -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="features">
+  <div class="section-inner">
+    <div class="animate-on-scroll">
+      <div class="section-label"><span class="icon-dot"></span> El proyecto</div>
+      <h2 class="section-title">Todo lo que necesitas<br>para tu práctica médica</h2>
+      <p class="section-subtitle">
+        Delta Health Tech centraliza la gestión completa de tu consultorio: desde la primera cita hasta el cobro,
+        con historia clínica electrónica, recordatorios automáticos y un portal para tus pacientes.
+      </p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card animate-on-scroll animate-delay-1">
+        <div class="icon-box" style="background: rgba(6,182,212,0.1);">📅</div>
+        <h3>Agenda inteligente</h3>
+        <p>Calendario semanal, mensual y diario con disponibilidad configurable, sincronización con Google Calendar y Google Meet automático para consultas online.</p>
+      </div>
+      <div class="feature-card animate-on-scroll animate-delay-2">
+        <div class="icon-box" style="background: rgba(255,138,101,0.1);">👥</div>
+        <h3>Gestión de pacientes</h3>
+        <p>Base de datos completa de tus pacientes: datos personales, médicos, alergias, contactos de emergencia y canal de captación. Edita todo desde un solo lugar.</p>
+      </div>
+      <div class="feature-card animate-on-scroll animate-delay-3">
+        <div class="icon-box" style="background: rgba(16,185,129,0.1);">💰</div>
+        <h3>Finanzas en doble moneda</h3>
+        <p>Cobros en USD y Bs con tasa BCV del día automática. Métodos: Pago Móvil, Zelle, Binance, transferencia, efectivo y POS. Comprobantes adjuntos.</p>
+      </div>
+      <div class="feature-card animate-on-scroll animate-delay-1">
+        <div class="icon-box" style="background: rgba(139,92,246,0.1);">🏥</div>
+        <h3>Historia clínica (EHR)</h3>
+        <p>Registros electrónicos por consulta: diagnóstico, tratamiento, recetas, órdenes de exámenes y reposos. Todo en formato profesional e imprimible.</p>
+      </div>
+      <div class="feature-card animate-on-scroll animate-delay-2">
+        <div class="icon-box" style="background: rgba(236,72,153,0.1);">🔗</div>
+        <h3>Booking público</h3>
+        <p>Link personalizado para que tus pacientes agenden online. Seleccionan plan, horario, modalidad y pagan — sin necesidad de llamadas.</p>
+      </div>
+      <div class="feature-card animate-on-scroll animate-delay-3">
+        <div class="icon-box" style="background: rgba(245,158,11,0.1);">📊</div>
+        <h3>Reportes y facturación</h3>
+        <p>Dashboard con métricas del mes, reportería con filtros de fecha y facturación profesional. CRM de leads para seguimiento de prospectos.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- APP PREVIEW -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section style="background: white;">
+  <div class="section-inner">
+    <div style="text-align: center;" class="animate-on-scroll">
+      <div class="section-label" style="justify-content:center;"><span class="icon-dot"></span> Vista previa</div>
+      <h2 class="section-title">Diseñado para médicos venezolanos</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        Interfaz limpia y moderna. Todo a un clic de distancia.
+      </p>
+    </div>
+
+    <div class="mockup-container animate-on-scroll" style="margin-top: 3rem;">
+      <div class="mockup-bar">
+        <div class="mockup-dot red"></div>
+        <div class="mockup-dot yellow"></div>
+        <div class="mockup-dot green"></div>
+        <div class="mockup-url">medsaas-venezuela.vercel.app/doctor</div>
+      </div>
+      <div class="mockup-body">
+        <div class="app-mock">
+          <div class="app-sidebar">
+            <div class="logo-area">
+              <svg width="24" height="24" viewBox="0 0 200 200" fill="none">
+                <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="28" stroke-linecap="round" fill="none"/>
+                <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="28" stroke-linecap="round" fill="none"/>
+              </svg>
+              <div class="logo-text">Delta <span>Health</span></div>
+            </div>
+            <div class="sidebar-item active"><div class="si-icon">🏠</div> Dashboard</div>
+            <div class="sidebar-item"><div class="si-icon">📅</div> Agenda</div>
+            <div class="sidebar-item"><div class="si-icon">👥</div> Pacientes</div>
+            <div class="sidebar-item"><div class="si-icon">📋</div> Consultas</div>
+            <div class="sidebar-item"><div class="si-icon">🏥</div> Historia clínica</div>
+            <div class="sidebar-item"><div class="si-icon">💰</div> Finanzas</div>
+            <div class="sidebar-item"><div class="si-icon">📑</div> Facturación</div>
+            <div class="sidebar-item"><div class="si-icon">📊</div> Reportes</div>
+            <div class="sidebar-item"><div class="si-icon">💬</div> Mensajes</div>
+            <div class="sidebar-item"><div class="si-icon">⚙️</div> Configuración</div>
+          </div>
+          <div class="app-main">
+            <h2>Buenos días, Dra. Solano 👋</h2>
+            <div class="dash-grid">
+              <div class="dash-card">
+                <div class="label">Citas hoy</div>
+                <div class="value turquoise">8</div>
+                <div class="change">↑ 2 más que ayer</div>
+              </div>
+              <div class="dash-card">
+                <div class="label">Ingresos del mes</div>
+                <div class="value">$1,240</div>
+                <div class="change" style="color: var(--slate-400);">Bs. 54,560.00</div>
+              </div>
+              <div class="dash-card">
+                <div class="label">Pacientes nuevos</div>
+                <div class="value">12</div>
+                <div class="change">↑ 20% vs. mes pasado</div>
+              </div>
+            </div>
+            <div style="font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 10px;">Citas del día</div>
+            <div class="appt-list">
+              <div class="appt-row">
+                <div class="appt-time">8:00 AM</div>
+                <div class="appt-avatar">MG</div>
+                <div class="appt-name">María González</div>
+                <div class="appt-badge badge-confirmed">Confirmada</div>
+              </div>
+              <div class="appt-row">
+                <div class="appt-time">9:00 AM</div>
+                <div class="appt-avatar">JP</div>
+                <div class="appt-name">José Pérez</div>
+                <div class="appt-badge badge-confirmed">Confirmada</div>
+              </div>
+              <div class="appt-row">
+                <div class="appt-time">10:30 AM</div>
+                <div class="appt-avatar">OL</div>
+                <div class="appt-name">Osmariel López</div>
+                <div class="appt-badge badge-pending">Por aprobar</div>
+              </div>
+              <div class="appt-row">
+                <div class="appt-time">11:30 AM</div>
+                <div class="appt-avatar">CR</div>
+                <div class="appt-name">Carlos Rodríguez</div>
+                <div class="appt-badge badge-confirmed">Confirmada</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- SETUP GUIDE -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="setup">
+  <div class="section-inner">
+    <div class="two-col">
+      <div>
+        <div class="animate-on-scroll">
+          <div class="section-label"><span class="icon-dot"></span> Configuración</div>
+          <h2 class="section-title">Listo en 5 minutos</h2>
+          <p class="section-subtitle">Crear tu cuenta y configurar tu consultorio es rápido y sencillo. Estos son los pasos:</p>
+        </div>
+
+        <div class="steps animate-on-scroll">
+          <div class="step-item">
+            <div class="step-number"></div>
+            <div class="step-content">
+              <h3>Crea tu cuenta</h3>
+              <p>Ve a <strong>medsaas-venezuela.vercel.app/register</strong>. Ingresa tu nombre, email, especialidad y selecciona tu plan. Recibirás un email de verificación.</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-number"></div>
+            <div class="step-content">
+              <h3>Configura tu perfil</h3>
+              <p>En <strong>Configuración → Perfil</strong>, completa tu título profesional, dirección del consultorio, ciudad y foto. Esto se muestra en tu link de booking.</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-number"></div>
+            <div class="step-content">
+              <h3>Agrega tus consultorios</h3>
+              <p>En <strong>Configuración → Consultorios</strong>, crea uno o más consultorios con dirección, horario de atención y duración de las citas. Cada uno tiene su propia disponibilidad.</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-number"></div>
+            <div class="step-content">
+              <h3>Crea tus planes de precio</h3>
+              <p>En <strong>Configuración → Planes</strong>, define tus servicios: nombre, precio en USD, duración y si es paquete de varias sesiones. Activa los que quieras mostrar en booking.</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-number"></div>
+            <div class="step-content">
+              <h3>Configura tus métodos de pago</h3>
+              <p>En <strong>Configuración → Pagos</strong>, activa los métodos que aceptas: Pago Móvil, Zelle, Binance, transferencia, efectivo o POS. Agrega tus datos bancarios.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="animate-on-scroll">
+        <div class="phone-mock">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="phone-header">
+              <h3>⚙️ Configuración</h3>
+              <p>Tu consultorio Delta</p>
+            </div>
+            <div style="space-y: 12px;">
+              <div style="background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+                <div style="font-size: 11px; color: var(--slate-400); text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em;">Perfil</div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 4px;">Dra. Ana María Solano</div>
+                <div style="font-size: 11px; color: var(--slate-500);">Dermatología · Caracas</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+                <div style="font-size: 11px; color: var(--slate-400); text-transform: uppercase; font-weight: 600;">Consultorio</div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 4px;">Consultorio Las Mercedes</div>
+                <div style="font-size: 11px; color: var(--slate-500);">Lun-Vie · 8:00 AM - 5:00 PM</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+                <div style="font-size: 11px; color: var(--slate-400); text-transform: uppercase; font-weight: 600;">Planes activos</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: var(--ink);">Consulta general</span>
+                  <span style="font-size: 12px; font-weight: 800; color: var(--turquoise);">$30</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: var(--ink);">Pack 4 sesiones</span>
+                  <span style="font-size: 12px; font-weight: 800; color: var(--turquoise);">$100</span>
+                </div>
+              </div>
+              <div style="background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px;">
+                <div style="font-size: 11px; color: var(--slate-400); text-transform: uppercase; font-weight: 600;">Métodos de pago</div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+                  <span style="font-size: 10px; font-weight: 600; background: rgba(6,182,212,0.1); color: var(--turquoise-dark); padding: 4px 10px; border-radius: 100px;">Pago Móvil</span>
+                  <span style="font-size: 10px; font-weight: 600; background: rgba(6,182,212,0.1); color: var(--turquoise-dark); padding: 4px 10px; border-radius: 100px;">Zelle</span>
+                  <span style="font-size: 10px; font-weight: 600; background: rgba(6,182,212,0.1); color: var(--turquoise-dark); padding: 4px 10px; border-radius: 100px;">Binance</span>
+                  <span style="font-size: 10px; font-weight: 600; background: rgba(6,182,212,0.1); color: var(--turquoise-dark); padding: 4px 10px; border-radius: 100px;">Efectivo</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- PLANS -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="plans" style="background: white;">
+  <div class="section-inner">
+    <div style="text-align: center;" class="animate-on-scroll">
+      <div class="section-label" style="justify-content: center;"><span class="icon-dot"></span> Planes</div>
+      <h2 class="section-title">Elige tu plan</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        Comienza gratis con 15 días de prueba. Sin tarjeta de crédito. Cancela cuando quieras.
+      </p>
+    </div>
+
+    <div class="plans-grid">
+      <div class="plan-card animate-on-scroll animate-delay-1">
+        <div class="plan-name">Trial</div>
+        <div class="plan-price">$0 <span>USD</span></div>
+        <div class="plan-period">15 días gratis</div>
+        <ul class="plan-features">
+          <li><span class="check">✓</span> Dashboard</li>
+          <li><span class="check">✓</span> Agenda básica</li>
+          <li><span class="check">✓</span> Hasta 20 pacientes</li>
+          <li><span class="check">✓</span> Consultas</li>
+          <li class="disabled"><span class="check">✗</span> Finanzas</li>
+          <li class="disabled"><span class="check">✗</span> Reportes</li>
+        </ul>
+        <button class="plan-btn outline">Comenzar gratis</button>
+      </div>
+
+      <div class="plan-card animate-on-scroll animate-delay-2">
+        <div class="plan-name">Basic</div>
+        <div class="plan-price">$10 <span>USD/mes</span></div>
+        <div class="plan-period">Facturación mensual</div>
+        <ul class="plan-features">
+          <li><span class="check">✓</span> Dashboard completo</li>
+          <li><span class="check">✓</span> Agenda + Google Calendar</li>
+          <li><span class="check">✓</span> Pacientes ilimitados</li>
+          <li><span class="check">✓</span> Consultas + EHR</li>
+          <li><span class="check">✓</span> Booking público</li>
+          <li class="disabled"><span class="check">✗</span> Reportes avanzados</li>
+        </ul>
+        <button class="plan-btn outline">Seleccionar</button>
+      </div>
+
+      <div class="plan-card popular animate-on-scroll animate-delay-3">
+        <div class="plan-name">Professional</div>
+        <div class="plan-price">$30 <span>USD/mes</span></div>
+        <div class="plan-period">Facturación mensual</div>
+        <ul class="plan-features">
+          <li><span class="check">✓</span> Todo lo de Basic</li>
+          <li><span class="check">✓</span> Finanzas completas</li>
+          <li><span class="check">✓</span> Facturación</li>
+          <li><span class="check">✓</span> Reportes avanzados</li>
+          <li><span class="check">✓</span> CRM de leads</li>
+          <li><span class="check">✓</span> Recordatorios</li>
+        </ul>
+        <button class="plan-btn primary">Seleccionar</button>
+      </div>
+
+      <div class="plan-card animate-on-scroll animate-delay-4">
+        <div class="plan-name">Clínica</div>
+        <div class="plan-price">$100 <span>USD/mes</span></div>
+        <div class="plan-period">Facturación mensual</div>
+        <ul class="plan-features">
+          <li><span class="check">✓</span> Todo lo de Professional</li>
+          <li><span class="check">✓</span> Múltiples médicos</li>
+          <li><span class="check">✓</span> Gestión de clínica</li>
+          <li><span class="check">✓</span> Roles y permisos</li>
+          <li><span class="check">✓</span> Soporte prioritario</li>
+          <li><span class="check">✓</span> Reportes por médico</li>
+        </ul>
+        <button class="plan-btn outline">Contactar</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- BOOKING FLOWS -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="booking">
+  <div class="section-inner">
+    <div style="text-align: center;" class="animate-on-scroll">
+      <div class="section-label" style="justify-content: center;"><span class="icon-dot"></span> Citas</div>
+      <h2 class="section-title">3 formas de crear citas</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        Tus pacientes pueden agendar solos, o tú puedes crear la cita desde cualquier módulo.
+      </p>
+    </div>
+
+    <!-- Flow 1: Booking público -->
+    <div style="margin-top: 3.5rem;">
+      <div class="animate-on-scroll" style="margin-bottom: 2rem;">
+        <h3 style="font-size: 1.4rem; font-weight: 800; color: var(--ink); display: flex; align-items: center; gap: 12px;">
+          <span style="width: 40px; height: 40px; border-radius: 12px; background: var(--gradient); display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 18px;">1</span>
+          Booking público — Tu paciente agenda solo
+        </h3>
+        <p style="font-size: 0.95rem; color: var(--slate-500); margin-top: 8px; margin-left: 52px;">
+          Comparte tu link personalizado: <code style="background: var(--slate-100); padding: 3px 8px; border-radius: 6px; font-size: 0.85rem;">medsaas-venezuela.vercel.app/book/tu-id</code>
+        </p>
+      </div>
+
+      <div class="booking-flow animate-on-scroll">
+        <div class="booking-step">
+          <div class="step-num">1</div>
+          <div class="emoji">🩺</div>
+          <h4>Tipo de consulta</h4>
+          <p>El paciente elige entre tus planes activos. Si tiene un paquete, lo detecta automáticamente.</p>
+        </div>
+        <div class="booking-step">
+          <div class="step-num">2</div>
+          <div class="emoji">📅</div>
+          <h4>Fecha y hora</h4>
+          <p>Ve los horarios disponibles según tu configuración de consultorio y días bloqueados.</p>
+        </div>
+        <div class="booking-step">
+          <div class="step-num">3</div>
+          <div class="emoji">🏢</div>
+          <h4>Modalidad</h4>
+          <p>Presencial u online. Si es online, se genera automáticamente un link de Google Meet.</p>
+        </div>
+        <div class="booking-step">
+          <div class="step-num">4</div>
+          <div class="emoji">💳</div>
+          <h4>Pago</h4>
+          <p>Selecciona método de pago, ingresa referencia y sube comprobante. Todo en USD con equivalente en Bs.</p>
+        </div>
+        <div class="booking-step">
+          <div class="step-num">5</div>
+          <div class="emoji">✅</div>
+          <h4>Confirmación</h4>
+          <p>Resumen completo. La cita aparece en tu agenda pendiente de aprobación.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Flow 2: Desde agenda -->
+    <div style="margin-top: 3.5rem;" class="animate-on-scroll">
+      <h3 style="font-size: 1.4rem; font-weight: 800; color: var(--ink); display: flex; align-items: center; gap: 12px;">
+        <span style="width: 40px; height: 40px; border-radius: 12px; background: var(--gradient-warm); display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 18px;">2</span>
+        Desde la agenda — Crea la cita tú mismo
+      </h3>
+      <p style="font-size: 0.95rem; color: var(--slate-500); margin-top: 8px; margin-left: 52px; margin-bottom: 1.5rem;">
+        En el módulo de <strong>Agenda</strong>, haz clic en <strong>"+ Nueva consulta"</strong>. Selecciona paciente, fecha, horario, plan, método de pago y opcionalmente adjunta el comprobante.
+      </p>
+      <div style="background: white; border: 1px solid var(--slate-200); border-radius: 16px; padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+        <div style="text-align: center;">
+          <div style="font-size: 28px; margin-bottom: 8px;">🔍</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--ink);">Busca paciente</div>
+          <div style="font-size: 11px; color: var(--slate-400); margin-top: 2px;">Autocompletado por nombre</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 28px; margin-bottom: 8px;">📅</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--ink);">Elige fecha y hora</div>
+          <div style="font-size: 11px; color: var(--slate-400); margin-top: 2px;">Slots disponibles del día</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 28px; margin-bottom: 8px;">💲</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--ink);">Plan + Pago</div>
+          <div style="font-size: 11px; color: var(--slate-400); margin-top: 2px;">Con comprobante opcional</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 28px; margin-bottom: 8px;">✅</div>
+          <div style="font-size: 13px; font-weight: 700; color: var(--ink);">Listo</div>
+          <div style="font-size: 11px; color: var(--slate-400); margin-top: 2px;">Aparece en tu calendario</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Flow 3: Desde pacientes / consultas -->
+    <div style="margin-top: 3.5rem;" class="animate-on-scroll">
+      <h3 style="font-size: 1.4rem; font-weight: 800; color: var(--ink); display: flex; align-items: center; gap: 12px;">
+        <span style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #8B5CF6, #7C3AED); display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 18px;">3</span>
+        Desde pacientes o consultas — Directo al historial
+      </h3>
+      <p style="font-size: 0.95rem; color: var(--slate-500); margin-top: 8px; margin-left: 52px;">
+        Entra al perfil de un paciente y presiona <strong>"+ Nueva consulta"</strong>. Selecciona plan, método de pago, adjunta comprobante y registra el motivo.
+        La cita y la consulta se crean vinculadas automáticamente.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- EHR / HISTORY -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="ehr" style="background: white;">
+  <div class="section-inner">
+    <div class="two-col reverse">
+      <div>
+        <div class="animate-on-scroll">
+          <div class="section-label"><span class="icon-dot"></span> Historia clínica</div>
+          <h2 class="section-title">Registro clínico completo</h2>
+          <p class="section-subtitle">
+            Cada consulta genera un expediente electrónico con todos los datos clínicos del paciente.
+            Imprime informes, recetas y reposos con un clic.
+          </p>
+        </div>
+
+        <div style="margin-top: 2rem;" class="animate-on-scroll">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div style="background: var(--slate-50); border-radius: 14px; padding: 20px;">
+              <div style="font-size: 22px; margin-bottom: 8px;">📝</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: var(--ink); margin-bottom: 4px;">Informe médico</div>
+              <div style="font-size: 0.8rem; color: var(--slate-500); line-height: 1.5;">Diagnóstico, exploración física y plan de tratamiento. Formato imprimible con membrete.</div>
+            </div>
+            <div style="background: var(--slate-50); border-radius: 14px; padding: 20px;">
+              <div style="font-size: 22px; margin-bottom: 8px;">💊</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: var(--ink); margin-bottom: 4px;">Recetas</div>
+              <div style="font-size: 0.8rem; color: var(--slate-500); line-height: 1.5;">Medicamento, dosis, frecuencia y duración. Genera PDF profesional para el paciente.</div>
+            </div>
+            <div style="background: var(--slate-50); border-radius: 14px; padding: 20px;">
+              <div style="font-size: 22px; margin-bottom: 8px;">🔬</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: var(--ink); margin-bottom: 4px;">Órdenes de exámenes</div>
+              <div style="font-size: 0.8rem; color: var(--slate-500); line-height: 1.5;">Solicita laboratorios, imágenes y estudios especializados directamente desde la consulta.</div>
+            </div>
+            <div style="background: var(--slate-50); border-radius: 14px; padding: 20px;">
+              <div style="font-size: 22px; margin-bottom: 8px;">🛏️</div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: var(--ink); margin-bottom: 4px;">Reposos</div>
+              <div style="font-size: 0.8rem; color: var(--slate-500); line-height: 1.5;">Constancias de reposo médico con datos del paciente, diagnóstico y duración.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="animate-on-scroll">
+        <div class="phone-mock" style="animation-delay: 2s;">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="phone-header" style="background: linear-gradient(135deg, #8B5CF6, #7C3AED);">
+              <h3>📋 Consulta #CON-20260419</h3>
+              <p>María González · 19 de abril, 2026</p>
+            </div>
+            <div>
+              <div style="background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+                <div style="font-size: 10px; color: var(--slate-400); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">Motivo de consulta</div>
+                <div style="font-size: 13px; color: var(--ink); margin-top: 4px;">Dolor de cabeza persistente desde hace 2 semanas</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+                <div style="font-size: 10px; color: var(--slate-400); text-transform: uppercase; font-weight: 700;">Diagnóstico</div>
+                <div style="font-size: 13px; color: var(--ink); margin-top: 4px;">Migraña tensional (G43.0)</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+                <div style="font-size: 10px; color: var(--slate-400); text-transform: uppercase; font-weight: 700;">Tratamiento</div>
+                <div style="font-size: 13px; color: var(--ink); margin-top: 4px;">Ibuprofeno 400mg c/8h × 5 días. Control en 2 semanas.</div>
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <div style="flex: 1; background: var(--gradient); color: white; text-align: center; padding: 10px; border-radius: 10px; font-size: 11px; font-weight: 700;">📄 Imprimir</div>
+                <div style="flex: 1; background: rgba(139,92,246,0.1); color: #7C3AED; text-align: center; padding: 10px; border-radius: 10px; font-size: 11px; font-weight: 700;">💊 Receta</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- PATIENT PORTAL -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-inner">
+    <div style="text-align: center;" class="animate-on-scroll">
+      <div class="section-label" style="justify-content: center;"><span class="icon-dot"></span> Portal del paciente</div>
+      <h2 class="section-title">Tus pacientes también tienen su espacio</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        Los pacientes pueden ver sus citas, informes, recetas y comunicarse contigo desde su propio portal.
+      </p>
+    </div>
+
+    <div class="stat-row animate-on-scroll" style="margin-top: 3rem;">
+      <div class="stat-box">
+        <div class="num">📅</div>
+        <div class="label" style="font-weight: 600; color: var(--ink);">Mis citas</div>
+        <div style="font-size: 0.8rem; color: var(--slate-400); margin-top: 4px;">Historial completo y próximas citas</div>
+      </div>
+      <div class="stat-box">
+        <div class="num">📋</div>
+        <div class="label" style="font-weight: 600; color: var(--ink);">Mis informes</div>
+        <div style="font-size: 0.8rem; color: var(--slate-400); margin-top: 4px;">Diagnósticos y resultados</div>
+      </div>
+      <div class="stat-box">
+        <div class="num">💊</div>
+        <div class="label" style="font-weight: 600; color: var(--ink);">Mis recetas</div>
+        <div style="font-size: 0.8rem; color: var(--slate-400); margin-top: 4px;">Medicamentos y tratamientos</div>
+      </div>
+      <div class="stat-box">
+        <div class="num">💬</div>
+        <div class="label" style="font-weight: 600; color: var(--ink);">Mensajes</div>
+        <div style="font-size: 0.8rem; color: var(--slate-400); margin-top: 4px;">Chat directo con tu doctor</div>
+      </div>
+      <div class="stat-box">
+        <div class="num">📦</div>
+        <div class="label" style="font-weight: 600; color: var(--ink);">Mis paquetes</div>
+        <div style="font-size: 0.8rem; color: var(--slate-400); margin-top: 4px;">Sesiones prepagadas con su doctor</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- CTA FINAL -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="cta-section">
+  <h2>¿Listo para transformar<br>tu consultorio?</h2>
+  <p>Únete a la beta privada. 15 días gratis, sin compromiso.</p>
+  <a href="https://medsaas-venezuela.vercel.app/register" class="hero-cta" target="_blank">
+    <svg width="20" height="20" viewBox="0 0 200 200" fill="none">
+      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="28" stroke-linecap="round" fill="none"/>
+      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="28" stroke-linecap="round" fill="none"/>
+    </svg>
+    Crear mi cuenta gratis
+  </a>
+</div>
+
+<!-- Footer -->
+<footer style="background: var(--ink); padding: 40px 24px; text-align: center;">
+  <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 16px;">
+    <svg width="32" height="32" viewBox="0 0 200 200" fill="none">
+      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" stroke-width="28" stroke-linecap="round" fill="none"/>
+      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" stroke-width="28" stroke-linecap="round" fill="none"/>
+    </svg>
+    <span style="font-size: 18px; font-weight: 800; color: white;">Delta <span style="color: var(--turquoise);">Health Tech</span></span>
+  </div>
+  <p style="font-size: 13px; color: var(--slate-400); max-width: 500px; margin: 0 auto;">
+    CRM médico diseñado para especialistas en Venezuela.
+    Agenda, pacientes, finanzas e historia clínica en una sola plataforma.
+  </p>
+  <div style="margin-top: 20px; font-size: 12px; color: var(--slate-600);">
+    © 2026 Delta Health Tech. Beta privada. Todos los derechos reservados.
+  </div>
+</footer>
+
+<script>
+// Intersection Observer for scroll animations
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+
+// Floating nav on scroll
+let lastScroll = 0;
+window.addEventListener('scroll', () => {
+  const nav = document.getElementById('nav');
+  const scrollY = window.scrollY;
+  if (scrollY > 600) {
+    nav.classList.add('visible');
+  } else {
+    nav.classList.remove('visible');
+  }
+  lastScroll = scrollY;
+});
+</script>
+</body>
+</html>

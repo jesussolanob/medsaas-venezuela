@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Play, Square, Timer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 
@@ -18,6 +18,9 @@ type Consultation = {
   patient_id: string
   patient_name: string
   patient_phone: string | null
+  started_at: string | null
+  ended_at: string | null
+  duration_minutes: number | null
 }
 
 type Patient = {
@@ -197,6 +200,15 @@ function ConsultationsPage() {
 
   // Doctor's active payment methods from settings
   const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([])
+
+  // Consultation timer state
+  const [consultationStarted, setConsultationStarted] = useState(false)
+  const [consultationEnded, setConsultationEnded] = useState(false)
+  const [consultationStartTime, setConsultationStartTime] = useState<Date | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [endingConsultation, setEndingConsultation] = useState(false)
 
   // Template configs for PDFs
   type TemplateConfig = {
@@ -431,6 +443,9 @@ function ConsultationsPage() {
           patient_id: c.patient_id,
           patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
           patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
+          started_at: c.started_at ?? null,
+          ended_at: c.ended_at ?? null,
+          duration_minutes: c.duration_minutes ?? null,
         }))
 
         setConsultations(consultationsList)
@@ -476,7 +491,7 @@ function ConsultationsPage() {
     try {
       const { data } = await supabase
         .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, appointment_id, patients(full_name, phone)')
+        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, patients(full_name, phone)')
         .eq('id', c.id)
         .single()
 
@@ -493,6 +508,9 @@ function ConsultationsPage() {
           patient_id: data.patient_id,
           patient_name: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string }).full_name : c.patient_name,
           patient_phone: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string; phone: string | null }).phone : c.patient_phone,
+          started_at: data.started_at ?? null,
+          ended_at: data.ended_at ?? null,
+          duration_minutes: data.duration_minutes ?? null,
         }
         setSelected(fresh)
         setReport({
@@ -694,6 +712,9 @@ function ConsultationsPage() {
           patient_id: c.patient_id,
           patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
           patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
+          started_at: c.started_at ?? null,
+          ended_at: c.ended_at ?? null,
+          duration_minutes: c.duration_minutes ?? null,
         })))
       }
 
@@ -903,6 +924,124 @@ function ConsultationsPage() {
       setTimeout(() => setSaved(false), 2500)
     })
   }
+
+  // ── Consultation Timer Logic ─────────────────────────────────────────────────
+
+  // Format elapsed seconds as MM:SS or HH:MM:SS
+  function formatElapsed(secs: number): string {
+    const h = Math.floor(secs / 3600)
+    const m = Math.floor((secs % 3600) / 60)
+    const s = secs % 60
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
+
+  // Start consultation timer
+  async function startConsultationTimer() {
+    if (!selected) return
+    const now = new Date()
+    setConsultationStarted(true)
+    setConsultationEnded(false)
+    setConsultationStartTime(now)
+    setElapsedSeconds(0)
+
+    // Persist started_at to DB
+    const supabase = createClient()
+    await supabase.from('consultations').update({
+      started_at: now.toISOString(),
+      ended_at: null,
+      duration_minutes: null,
+    }).eq('id', selected.id)
+
+    // Update local state
+    setSelected(prev => prev ? { ...prev, started_at: now.toISOString(), ended_at: null, duration_minutes: null } : null)
+    setConsultations(prev => prev.map(c => c.id === selected.id ? { ...c, started_at: now.toISOString(), ended_at: null, duration_minutes: null } : c))
+
+    // Start interval
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedSeconds(prev => prev + 1)
+    }, 1000)
+  }
+
+  // End consultation timer + save report
+  async function endConsultationTimer() {
+    if (!selected || !consultationStartTime) return
+    setEndingConsultation(true)
+
+    const endTime = new Date()
+    const durationMs = endTime.getTime() - consultationStartTime.getTime()
+    const durationMin = Math.round(durationMs / 60000)
+
+    // Stop the interval
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+
+    // Save to DB: ended_at, duration, and also save the report
+    const supabase = createClient()
+    await supabase.from('consultations').update({
+      ended_at: endTime.toISOString(),
+      duration_minutes: durationMin,
+      chief_complaint: report.chief_complaint,
+      notes: report.notes,
+      diagnosis: report.diagnosis,
+      treatment: report.treatment,
+      payment_status: report.payment_status,
+    }).eq('id', selected.id)
+
+    // Update local state
+    setSelected(prev => prev ? { ...prev, ended_at: endTime.toISOString(), duration_minutes: durationMin, ...report } : null)
+    setConsultations(prev => prev.map(c => c.id === selected.id ? { ...c, ended_at: endTime.toISOString(), duration_minutes: durationMin, ...report } : c))
+
+    setConsultationEnded(true)
+    setShowEndConfirm(false)
+    setEndingConsultation(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
+  }
+
+  // Cleanup timer on unmount or consultation change
+  useEffect(() => {
+    return () => {
+      if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+    }
+  }, [])
+
+  // When opening a different consultation, restore timer state
+  useEffect(() => {
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
+    if (!selected) {
+      setConsultationStarted(false)
+      setConsultationEnded(false)
+      setConsultationStartTime(null)
+      setElapsedSeconds(0)
+      return
+    }
+    if (selected.started_at && !selected.ended_at) {
+      // Consultation was started but not ended — resume timer
+      const start = new Date(selected.started_at)
+      setConsultationStarted(true)
+      setConsultationEnded(false)
+      setConsultationStartTime(start)
+      const elapsed = Math.floor((Date.now() - start.getTime()) / 1000)
+      setElapsedSeconds(elapsed)
+      timerIntervalRef.current = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1)
+      }, 1000)
+    } else if (selected.started_at && selected.ended_at) {
+      // Consultation already finished
+      setConsultationStarted(true)
+      setConsultationEnded(true)
+      setConsultationStartTime(new Date(selected.started_at))
+      setElapsedSeconds(selected.duration_minutes ? selected.duration_minutes * 60 : 0)
+    } else {
+      // Not started
+      setConsultationStarted(false)
+      setConsultationEnded(false)
+      setConsultationStartTime(null)
+      setElapsedSeconds(0)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id])
 
   // Auto-save: debounce 3 seconds after any report field changes
   const reportRef = useRef(report)
@@ -1592,6 +1731,47 @@ function ConsultationsPage() {
               )}
             </div>
 
+            {/* Consultation Timer */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+              {/* Timer display + controls */}
+              {!consultationStarted ? (
+                <button onClick={startConsultationTimer}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  <Play className="w-4 h-4" /> Iniciar consulta
+                </button>
+              ) : consultationEnded ? (
+                <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-slate-800">Consulta finalizada</p>
+                    <p className="text-xs text-slate-500">
+                      Duración: {selected.duration_minutes != null ? `${selected.duration_minutes} min` : formatElapsed(elapsedSeconds)}
+                    </p>
+                  </div>
+                  <Timer className="w-4 h-4 text-slate-400" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 px-4 py-3 bg-teal-50 border border-teal-200 rounded-lg">
+                    <div className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-teal-800">Consulta en curso</p>
+                      <p className="text-lg font-mono font-bold text-teal-700 tabular-nums">{formatElapsed(elapsedSeconds)}</p>
+                    </div>
+                    <Timer className="w-5 h-5 text-teal-400" />
+                  </div>
+                  <button onClick={() => setShowEndConfirm(true)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm font-bold text-red-600 hover:bg-red-100 transition-colors">
+                    <Square className="w-3.5 h-3.5" /> Finalizar consulta
+                  </button>
+                </div>
+              )}
+
+              {!consultationStarted && (
+                <p className="text-xs text-slate-400 text-center">Opcional: registra el tiempo de la consulta</p>
+              )}
+            </div>
+
             {/* Save button + auto-save status */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -1612,6 +1792,35 @@ function ConsultationsPage() {
               </div>
               <p className="text-xs text-slate-500">Los cambios se guardan automaticamente. El informe queda registrado en el historial clinico del paciente.</p>
             </div>
+
+            {/* End Consultation Confirmation Modal */}
+            {showEndConfirm && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowEndConfirm(false)}>
+                <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+                      <Timer className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Finalizar consulta</h3>
+                      <p className="text-sm text-slate-500">Tiempo transcurrido: {formatElapsed(elapsedSeconds)}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600">¿Deseas finalizar la consulta y guardar el informe? Se registrará la duración de la consulta.</p>
+                  <div className="flex gap-3">
+                    <button onClick={() => setShowEndConfirm(false)}
+                      className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-200 transition-colors">
+                      Cancelar
+                    </button>
+                    <button onClick={endConsultationTimer} disabled={endingConsultation}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 g-bg text-white rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-60 transition-opacity">
+                      {endingConsultation ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      Sí, finalizar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Sidebar Toggle (when hidden) */}
@@ -1659,6 +1868,15 @@ function ConsultationsPage() {
                     {isUpcoming ? 'Próxima' : 'Realizada'}
                   </span>
                 </div>
+                {selected.duration_minutes != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Duración</span>
+                    <span className="font-semibold text-slate-800 flex items-center gap-1">
+                      <Timer className="w-3 h-3 text-teal-500" />
+                      {selected.duration_minutes} min
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Patient details */}
