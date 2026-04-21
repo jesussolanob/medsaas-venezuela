@@ -1,0 +1,48 @@
+{
+  "file": "029_doctor_exchange_rate.sql",
+  "executed_at": "2026-04-21T22:50:37.119Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "UPDATE",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 3,
+      "fields": [
+        "column_name",
+        "data_type",
+        "column_default"
+      ],
+      "rows": [
+        {
+          "column_name": "custom_rate",
+          "data_type": "numeric",
+          "column_default": null
+        },
+        {
+          "column_name": "currency_mode",
+          "data_type": "text",
+          "column_default": "'usd_bcv'::text"
+        },
+        {
+          "column_name": "custom_rate_label",
+          "data_type": "text",
+          "column_default": null
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1456
+}

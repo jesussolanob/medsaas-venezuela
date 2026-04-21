@@ -468,24 +468,33 @@ function SettingsPageInner() {
           <p className="text-sm text-slate-500">Perfil, métodos de pago, notificaciones y más</p>
         </div>
 
-        {/* Link destacado a plantillas de consulta (Actualización 2) */}
-        <a
-          href="/doctor/settings/consultation-blocks"
-          className="block p-4 rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 hover:shadow-md transition-shadow"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-              <FileBadge className="w-5 h-5 text-teal-600" />
+        {/* Shortcuts a secciones avanzadas */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <a href="/doctor/settings/consultation-blocks"
+            className="block p-4 rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+                <FileBadge className="w-5 h-5 text-teal-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-900">Bloques de consulta</p>
+                <p className="text-xs text-slate-600 mt-0.5">Secciones del formulario de consulta por especialidad.</p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-slate-900">Bloques de consulta</p>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Configura qué secciones aparecen en tus consultas (prescripción, tareas, plan alimenticio, ejercicios, etc.) y cómo se llaman según tu especialidad.
-              </p>
+          </a>
+          <a href="/doctor/settings/exchange-rate"
+            className="block p-4 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+                <DollarSign className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-900">Tasa de cambio</p>
+                <p className="text-xs text-slate-600 mt-0.5">USD BCV, EUR BCV o tasa personalizada para conversiones a Bs.</p>
+              </div>
             </div>
-            <span className="text-teal-600 text-sm font-semibold">Configurar →</span>
-          </div>
-        </a>
+          </a>
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 overflow-x-auto no-scrollbar">

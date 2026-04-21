@@ -210,6 +210,10 @@ export default function AgendaPage() {
   // Delete confirmation
   const [deletingAppt, setDeletingAppt] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<CalendarAppointment | null>(null)
+  // Modal custom para cambiar estado de cita (reemplaza window.confirm)
+  const [statusAction, setStatusAction] = useState<{ type: 'completed' | 'cancelled' | 'no_show'; appt: CalendarAppointment } | null>(null)
+  const [statusReason, setStatusReason] = useState('')
+  const [statusSaving, setStatusSaving] = useState(false)
 
   // Nueva consulta desde agenda
   const [showNewConsulta, setShowNewConsulta] = useState(false)
@@ -1181,53 +1185,19 @@ export default function AgendaPage() {
                       </button>
                     )}
                     <button
-                      onClick={async () => {
-                        if (!confirm('¿Marcar esta cita como atendida (completada)? Esto la contará como ingreso.')) return
-                        const r = await fetch('/api/doctor/appointment-status', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'completed' }),
-                        })
-                        const j = await r.json()
-                        if (!r.ok) { alert(j.error || 'Error'); return }
-                        setDetailAppt(null)
-                        window.location.reload()
-                      }}
+                      onClick={() => setStatusAction({ type: 'completed', appt: detailAppt })}
                       className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg"
                     >
                       <CheckCircle className="w-3.5 h-3.5" /> Marcar como atendida
                     </button>
                     <button
-                      onClick={async () => {
-                        const reason = prompt('¿Razón de la cancelación? (opcional)')
-                        if (reason === null) return
-                        const r = await fetch('/api/doctor/appointment-status', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'cancelled', reason }),
-                        })
-                        const j = await r.json()
-                        if (!r.ok) { alert(j.error || 'Error'); return }
-                        setDetailAppt(null)
-                        window.location.reload()
-                      }}
+                      onClick={() => setStatusAction({ type: 'cancelled', appt: detailAppt })}
                       className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200"
                     >
                       Cancelar cita
                     </button>
                     <button
-                      onClick={async () => {
-                        if (!confirm('¿Marcar como "paciente no asistió"? No se restituirán paquetes.')) return
-                        const r = await fetch('/api/doctor/appointment-status', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ appointment_id: detailAppt.id, new_status: 'no_show' }),
-                        })
-                        const j = await r.json()
-                        if (!r.ok) { alert(j.error || 'Error'); return }
-                        setDetailAppt(null)
-                        window.location.reload()
-                      }}
+                      onClick={() => setStatusAction({ type: 'no_show', appt: detailAppt })}
                       className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-lg border border-orange-200"
                     >
                       No asistió
@@ -1252,6 +1222,110 @@ export default function AgendaPage() {
             </div>
           </div>
         )}
+
+        {/* ═══ STATUS ACTION MODAL (marcar atendida / cancelar / no asistió) ═══ */}
+        {statusAction && (() => {
+          const cfg = {
+            completed: {
+              title: 'Marcar como atendida',
+              desc: 'La cita se contará como ingreso y quedará cerrada.',
+              accent: 'emerald',
+              btnLabel: 'Confirmar',
+              showReason: false,
+            },
+            cancelled: {
+              title: 'Cancelar cita',
+              desc: 'Si la cita usaba un paquete prepagado, la sesión se restituirá automáticamente.',
+              accent: 'red',
+              btnLabel: 'Cancelar cita',
+              showReason: true,
+            },
+            no_show: {
+              title: 'Paciente no asistió',
+              desc: 'Se registrará como "no asistió". Si era un paquete, NO se restituye la sesión.',
+              accent: 'orange',
+              btnLabel: 'Registrar no-asistencia',
+              showReason: false,
+            },
+          }[statusAction.type]
+
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !statusSaving && setStatusAction(null)}>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    cfg.accent === 'emerald' ? 'bg-emerald-100 text-emerald-600'
+                    : cfg.accent === 'red' ? 'bg-red-100 text-red-600'
+                    : 'bg-orange-100 text-orange-600'
+                  }`}>
+                    <CheckCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">{cfg.title}</h2>
+                    <p className="text-xs text-slate-500">{statusAction.appt.patient_name}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600">{cfg.desc}</p>
+
+                {cfg.showReason && (
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Razón (opcional)</label>
+                    <textarea
+                      value={statusReason}
+                      onChange={e => setStatusReason(e.target.value)}
+                      rows={2}
+                      placeholder="Ej: el paciente reagendó"
+                      className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-teal-400 outline-none"
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => { setStatusAction(null); setStatusReason('') }}
+                    disabled={statusSaving}
+                    className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setStatusSaving(true)
+                      try {
+                        const r = await fetch('/api/doctor/appointment-status', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            appointment_id: statusAction.appt.id,
+                            new_status: statusAction.type,
+                            reason: statusReason || undefined,
+                          }),
+                        })
+                        const j = await r.json()
+                        if (!r.ok) throw new Error(j.error || 'Error')
+                        setStatusAction(null)
+                        setStatusReason('')
+                        setDetailAppt(null)
+                        window.location.reload()
+                      } catch (e: any) {
+                        alert(e.message || 'Error al actualizar')
+                      } finally {
+                        setStatusSaving(false)
+                      }
+                    }}
+                    disabled={statusSaving}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60 ${
+                      cfg.accent === 'emerald' ? 'bg-emerald-500 hover:bg-emerald-600'
+                      : cfg.accent === 'red' ? 'bg-red-500 hover:bg-red-600'
+                      : 'bg-orange-500 hover:bg-orange-600'
+                    }`}>
+                    {statusSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    {cfg.btnLabel}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
         {confirmDelete && (
