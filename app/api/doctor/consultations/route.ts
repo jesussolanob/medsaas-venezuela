@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { snapshotBlocksForConsultation } from '@/lib/consultation-blocks'
 
 function genCode(prefix: string): string {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -112,6 +113,11 @@ export async function POST(req: NextRequest) {
     await admin.from('appointments').update({ status: 'confirmed' }).eq('id', linkedAppointmentId)
   }
 
+  // Obtener specialty del doctor para el snapshot de bloques
+  const { data: docProfile } = await admin
+    .from('profiles').select('specialty').eq('id', user.id).single()
+  const blocksSnapshot = await snapshotBlocksForConsultation(user.id, docProfile?.specialty)
+
   // Create the consultation linked to the appointment
   const { data, error } = await admin
     .from('consultations')
@@ -131,6 +137,7 @@ export async function POST(req: NextRequest) {
       payment_reference: payment_reference || null,
       bcv_rate: bcvRate,
       amount_bs: amountBs,
+      blocks_snapshot: blocksSnapshot,
     })
     .select()
     .single()

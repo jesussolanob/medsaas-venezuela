@@ -7,25 +7,45 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const { appointmentId, newDate } = await req.json()
+  // Aceptamos ambas nomenclaturas por compat
+  const body = await req.json()
+  const appointmentId = body.appointmentId || body.appointment_id
+  const newDate = body.newDate || body.new_scheduled_at
+  const reason = body.reason || null
+
   if (!appointmentId || !newDate) {
     return NextResponse.json({ error: 'appointmentId y newDate requeridos' }, { status: 400 })
   }
 
   const admin = createAdminClient()
 
-  // 1. Update appointment
-  const { data: appt, error: apptErr } = await admin
-    .from('appointments')
-    .update({ scheduled_at: newDate })
-    .eq('id', appointmentId)
-    .eq('doctor_id', user.id)
-    .select('id, google_event_id, patient_name, plan_name, chief_complaint, appointment_mode, patient_email')
-    .single()
+  // 1. Usar la RPC transaccional: valida RBAC, detecta conflicto, registra log
+  const { error: rpcErr } = await admin.rpc('reschedule_appointment', {
+    p_appointment_id: appointmentId,
+    p_new_scheduled_at: newDate,
+    p_reason: reason,
+  })
 
-  if (apptErr) {
-    return NextResponse.json({ error: apptErr.message }, { status: 500 })
+  if (rpcErr) {
+    const msg = rpcErr.message || ''
+    if (msg.includes('SLOT_CONFLICT')) {
+      return NextResponse.json({ error: 'Ya hay otra cita en ese horario' }, { status: 409 })
+    }
+    if (msg.includes('UNAUTHORIZED')) {
+      return NextResponse.json({ error: 'No tienes permiso para reagendar esta cita' }, { status: 403 })
+    }
+    if (msg.includes('APPOINTMENT_NOT_FOUND')) {
+      return NextResponse.json({ error: 'Cita no encontrada' }, { status: 404 })
+    }
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
+
+  // Cargar metadata actualizada para sync externo
+  const { data: appt } = await admin
+    .from('appointments')
+    .select('id, google_event_id, patient_name, plan_name, chief_complaint, appointment_mode, patient_email')
+    .eq('id', appointmentId)
+    .single()
 
   // 2. Update linked consultation date
   try {

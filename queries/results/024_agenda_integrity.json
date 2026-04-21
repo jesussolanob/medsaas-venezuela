@@ -1,0 +1,140 @@
+{
+  "file": "024_agenda_integrity.sql",
+  "executed_at": "2026-04-21T04:22:46.590Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "log_table",
+        "rpc_reschedule",
+        "rpc_status",
+        "trg_update",
+        "trg_insert"
+      ],
+      "rows": [
+        {
+          "section": "check",
+          "log_table": "1",
+          "rpc_reschedule": "1",
+          "rpc_status": "1",
+          "trg_update": "1",
+          "trg_insert": "1"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1838
+}

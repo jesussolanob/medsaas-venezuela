@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 import {
-  LayoutDashboard, Users, UsersRound,
+  LayoutDashboard, Users, UsersRound, Package,
   Settings, LogOut, Menu, MessageSquarePlus,
   Pin, PanelLeftClose, PanelLeft, Bell
 } from 'lucide-react'
@@ -16,6 +16,7 @@ const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
   { name: 'Médicos',        href: '/admin/doctors',       icon: Users },
   { name: 'Pacientes',      href: '/admin/patients',      icon: UsersRound },
+  { name: 'Paquetes',       href: '/admin/packages',      icon: Package },
   { name: 'Sugerencias',    href: '/admin/suggestions',   icon: MessageSquarePlus },
   { name: 'Configuración',  href: '/admin/settings',      icon: Settings },
 ]

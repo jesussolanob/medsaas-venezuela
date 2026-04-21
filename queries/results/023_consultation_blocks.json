@@ -1,0 +1,172 @@
+{
+  "file": "023_consultation_blocks.sql",
+  "executed_at": "2026-04-21T04:20:02.157Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "INSERT",
+      "rowCount": 15,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "UPDATE",
+      "rowCount": 1,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "INSERT",
+      "rowCount": 44,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "catalog_count",
+          "n": "15"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "specialty_defaults_count",
+          "n": "44"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "specialties_with_defaults",
+          "n": "7"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1640
+}

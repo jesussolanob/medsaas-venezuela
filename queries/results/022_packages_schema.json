@@ -1,0 +1,176 @@
+{
+  "file": "022_packages_schema.sql",
+  "executed_at": "2026-04-21T04:16:56.194Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "REVOKE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "INSERT",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "has_templates",
+        "has_log",
+        "has_rpc_book",
+        "has_rpc_restore",
+        "has_rpc_adjust"
+      ],
+      "rows": [
+        {
+          "section": "schema_check",
+          "has_templates": "1",
+          "has_log": "1",
+          "has_rpc_book": "1",
+          "has_rpc_restore": "1",
+          "has_rpc_adjust": "1"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1821
+}
