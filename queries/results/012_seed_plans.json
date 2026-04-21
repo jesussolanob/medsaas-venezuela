@@ -1,0 +1,188 @@
+{
+  "file": "012_seed_plans.sql",
+  "executed_at": "2026-04-21T02:28:14.410Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 4,
+      "fields": [
+        "section",
+        "plan_key",
+        "name",
+        "price",
+        "is_active"
+      ],
+      "rows": [
+        {
+          "section": "PRE_plan_configs",
+          "plan_key": "trial",
+          "name": "Trial",
+          "price": "0.00",
+          "is_active": true
+        },
+        {
+          "section": "PRE_plan_configs",
+          "plan_key": "basic",
+          "name": "Basic",
+          "price": "20.00",
+          "is_active": true
+        },
+        {
+          "section": "PRE_plan_configs",
+          "plan_key": "professional",
+          "name": "Professional",
+          "price": "30.00",
+          "is_active": false
+        },
+        {
+          "section": "PRE_plan_configs",
+          "plan_key": "clinic",
+          "name": "Clínica",
+          "price": "100.00",
+          "is_active": false
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 4,
+      "fields": [
+        "section",
+        "plan",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "PRE_plan_features_count",
+          "plan": "basic",
+          "n": "13"
+        },
+        {
+          "section": "PRE_plan_features_count",
+          "plan": "enterprise",
+          "n": "13"
+        },
+        {
+          "section": "PRE_plan_features_count",
+          "plan": "professional",
+          "n": "13"
+        },
+        {
+          "section": "PRE_plan_features_count",
+          "plan": "trial",
+          "n": "13"
+        }
+      ]
+    },
+    {
+      "command": "INSERT",
+      "rowCount": 4,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DELETE",
+      "rowCount": 39,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "INSERT",
+      "rowCount": 52,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 4,
+      "fields": [
+        "section",
+        "plan_key",
+        "name",
+        "price",
+        "is_active",
+        "sort_order"
+      ],
+      "rows": [
+        {
+          "section": "POST_plan_configs",
+          "plan_key": "trial",
+          "name": "Trial Beta Privada",
+          "price": "0.00",
+          "is_active": true,
+          "sort_order": 1
+        },
+        {
+          "section": "POST_plan_configs",
+          "plan_key": "basic",
+          "name": "Básico",
+          "price": "10.00",
+          "is_active": true,
+          "sort_order": 2
+        },
+        {
+          "section": "POST_plan_configs",
+          "plan_key": "professional",
+          "name": "Profesional",
+          "price": "30.00",
+          "is_active": true,
+          "sort_order": 3
+        },
+        {
+          "section": "POST_plan_configs",
+          "plan_key": "clinic",
+          "name": "Clínica",
+          "price": "100.00",
+          "is_active": true,
+          "sort_order": 4
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 5,
+      "fields": [
+        "section",
+        "plan",
+        "enabled",
+        "disabled"
+      ],
+      "rows": [
+        {
+          "section": "POST_plan_features_by_plan",
+          "plan": "basic",
+          "enabled": "11",
+          "disabled": "2"
+        },
+        {
+          "section": "POST_plan_features_by_plan",
+          "plan": "clinic",
+          "enabled": "13",
+          "disabled": "0"
+        },
+        {
+          "section": "POST_plan_features_by_plan",
+          "plan": "enterprise",
+          "enabled": "13",
+          "disabled": "0"
+        },
+        {
+          "section": "POST_plan_features_by_plan",
+          "plan": "professional",
+          "enabled": "12",
+          "disabled": "1"
+        },
+        {
+          "section": "POST_plan_features_by_plan",
+          "plan": "trial",
+          "enabled": "11",
+          "disabled": "2"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1576
+}

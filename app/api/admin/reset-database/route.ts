@@ -4,6 +4,21 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
+  // 🚫 Endpoint deshabilitado en producción (CR-003).
+  // Para limpiar la BD, usa scripts/reset-dev-db.ts offline.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // También requerimos doble confirmación vía header:
+  const confirmHeader = request.headers.get('x-confirm-destroy')
+  if (confirmHeader !== 'DELETE_ALL_EXCEPT_ADMIN') {
+    return NextResponse.json(
+      { error: 'Missing x-confirm-destroy: DELETE_ALL_EXCEPT_ADMIN header' },
+      { status: 400 }
+    )
+  }
+
   const supabase = createAdminClient()
 
   // Verify caller is super admin

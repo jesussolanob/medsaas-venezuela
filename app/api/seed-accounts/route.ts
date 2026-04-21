@@ -2,9 +2,19 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // GET+POST /api/seed-accounts — Create test patient and doctor accounts
-// REMOVE THIS ROUTE IN PRODUCTION
-export async function GET() { return handler() }
-export async function POST() { return handler() }
+// 🚫 Deshabilitado en producción (CR-004). Sólo dev local.
+export async function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  return handler()
+}
+export async function POST() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  return handler()
+}
 async function handler() {
   const supabase = createAdminClient()
 

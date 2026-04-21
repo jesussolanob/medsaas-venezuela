@@ -1,0 +1,448 @@
+{
+  "file": "003_fix_policies_indexes_cleanup.sql",
+  "executed_at": "2026-04-21T02:18:02.495Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DELETE",
+      "rowCount": 1,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 8,
+      "fields": [
+        "section",
+        "tablename",
+        "policyname",
+        "cmd"
+      ],
+      "rows": [
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "doctor_availability",
+          "policyname": "Public reads availability",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "doctor_blocked_slots",
+          "policyname": "Public reads blocked slots",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "doctor_invitations",
+          "policyname": "Público puede leer por token",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "doctor_schedule_config",
+          "policyname": "Public reads schedule config",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "plan_configs",
+          "policyname": "Allow all for service role",
+          "cmd": "ALL"
+        },
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "plan_features",
+          "policyname": "Admins can modify plan_features",
+          "cmd": "ALL"
+        },
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "plan_features",
+          "policyname": "Authenticated users can read plan_features",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "V1_remaining_permissive",
+          "tablename": "plan_promotions",
+          "policyname": "Service role full access to promotions",
+          "cmd": "ALL"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 4,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd"
+      ],
+      "rows": [
+        {
+          "section": "V2_appointments_policies",
+          "policyname": "Médico ve sus citas",
+          "cmd": "ALL"
+        },
+        {
+          "section": "V2_appointments_policies",
+          "policyname": "Público puede crear cita",
+          "cmd": "INSERT"
+        },
+        {
+          "section": "V2_appointments_policies",
+          "policyname": "Patients see their own appointments",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "V2_appointments_policies",
+          "policyname": "Doctors update their appointments",
+          "cmd": "UPDATE"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd"
+      ],
+      "rows": [
+        {
+          "section": "V3_patient_messages_policies",
+          "policyname": "Doctor y paciente insertan sus mensajes",
+          "cmd": "INSERT"
+        },
+        {
+          "section": "V3_patient_messages_policies",
+          "policyname": "Doctor y paciente ven sus mensajes",
+          "cmd": "SELECT"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "still_there"
+      ],
+      "rows": [
+        {
+          "section": "V4_ivana_gone",
+          "still_there": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 35,
+      "fields": [
+        "section",
+        "tablename",
+        "indexname"
+      ],
+      "rows": [
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "appointments_appointment_code_key"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "appointments_pkey"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "idx_appointments_auth_user"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "idx_appointments_date"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "idx_appointments_doctor"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "idx_appointments_doctor_status"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "idx_appointments_google_event_id"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "idx_appointments_scheduled_at"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "appointments",
+          "indexname": "idx_appointments_status"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "billing_documents",
+          "indexname": "billing_documents_doc_number_key"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "billing_documents",
+          "indexname": "billing_documents_pkey"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "billing_documents",
+          "indexname": "idx_billing_documents_consultation"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "billing_documents",
+          "indexname": "idx_billing_documents_created"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "billing_documents",
+          "indexname": "idx_billing_documents_doc_type"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "billing_documents",
+          "indexname": "idx_billing_documents_doctor"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "billing_documents",
+          "indexname": "idx_billing_patient"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "consultations_consultation_code_key"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "consultations_pkey"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_appointment"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_created_at"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_date"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_doctor"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_doctor_date"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_patient"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_payment_status"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "consultations",
+          "indexname": "idx_consultations_plan_name"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "doctor_schedule_config",
+          "indexname": "doctor_schedule_config_doctor_id_key"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "doctor_schedule_config",
+          "indexname": "doctor_schedule_config_pkey"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "patient_messages",
+          "indexname": "idx_patient_messages_patient"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "patient_messages",
+          "indexname": "idx_pm_doctor"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "patient_messages",
+          "indexname": "patient_messages_pkey"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "patients",
+          "indexname": "idx_patients_auth_user"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "patients",
+          "indexname": "idx_patients_doctor"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "patients",
+          "indexname": "patients_id_number_unique"
+        },
+        {
+          "section": "V5_indexes_after",
+          "tablename": "patients",
+          "indexname": "patients_pkey"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1582
+}

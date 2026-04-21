@@ -1,0 +1,114 @@
+{
+  "file": "011_cleanup_orphan_users.sql",
+  "executed_at": "2026-04-21T02:27:40.310Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 5,
+      "fields": [
+        "section",
+        "email",
+        "id",
+        "patients",
+        "appointments",
+        "consultations",
+        "packages",
+        "subscriptions"
+      ],
+      "rows": [
+        {
+          "section": "PRE_verification",
+          "email": "juanito@gmail.com",
+          "id": "af01780b-24c5-493a-a6d8-878d84debbb3",
+          "patients": "0",
+          "appointments": "0",
+          "consultations": "0",
+          "packages": "0",
+          "subscriptions": "0"
+        },
+        {
+          "section": "PRE_verification",
+          "email": "patricio@gmail.com",
+          "id": "a57fb901-930b-42d0-899c-fc7474dadb9a",
+          "patients": "0",
+          "appointments": "0",
+          "consultations": "0",
+          "packages": "0",
+          "subscriptions": "0"
+        },
+        {
+          "section": "PRE_verification",
+          "email": "paola@gmail.com",
+          "id": "345e04d7-2f79-409e-9954-c574c34dbade",
+          "patients": "0",
+          "appointments": "0",
+          "consultations": "0",
+          "packages": "0",
+          "subscriptions": "0"
+        },
+        {
+          "section": "PRE_verification",
+          "email": "pedrom@gmail.com",
+          "id": "72e95909-4a3f-4adf-a97c-f6e8a2f12998",
+          "patients": "0",
+          "appointments": "0",
+          "consultations": "0",
+          "packages": "0",
+          "subscriptions": "0"
+        },
+        {
+          "section": "PRE_verification",
+          "email": "anasolanob07@hotmail.com",
+          "id": "c68cbfb2-5cfe-489b-85a6-6f3cdc281a65",
+          "patients": "0",
+          "appointments": "0",
+          "consultations": "0",
+          "packages": "0",
+          "subscriptions": "0"
+        }
+      ]
+    },
+    {
+      "command": "DELETE",
+      "rowCount": 5,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "remaining"
+      ],
+      "rows": [
+        {
+          "section": "POST_still_orphans",
+          "remaining": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "auth_users",
+        "profiles",
+        "subscriptions"
+      ],
+      "rows": [
+        {
+          "section": "POST_final_counts",
+          "auth_users": "5",
+          "profiles": "5",
+          "subscriptions": "4"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1540
+}

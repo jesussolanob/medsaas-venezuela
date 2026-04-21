@@ -1,0 +1,1120 @@
+{
+  "file": "009_export_missing_ddl.sql",
+  "executed_at": "2026-04-21T02:23:21.853Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 86,
+      "fields": [
+        "section",
+        "table_name",
+        "column_name",
+        "type",
+        "is_nullable",
+        "column_default",
+        "ord"
+      ],
+      "rows": [
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": "gen_random_uuid()",
+          "ord": 1
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "plan_key",
+          "type": "pg_catalog.text",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 2
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "name",
+          "type": "pg_catalog.text",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 3
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "price",
+          "type": "pg_catalog.numeric",
+          "is_nullable": "YES",
+          "column_default": "0",
+          "ord": 4
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "currency",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'USD'::text",
+          "ord": 5
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "trial_days",
+          "type": "pg_catalog.int4",
+          "is_nullable": "YES",
+          "column_default": "0",
+          "ord": 6
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "description",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 7
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "is_active",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "true",
+          "ord": 8
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "sort_order",
+          "type": "pg_catalog.int4",
+          "is_nullable": "YES",
+          "column_default": "0",
+          "ord": 9
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "created_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 10
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_configs",
+          "column_name": "updated_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 11
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_features",
+          "column_name": "id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": "gen_random_uuid()",
+          "ord": 1
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_features",
+          "column_name": "plan",
+          "type": "pg_catalog.text",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 2
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_features",
+          "column_name": "feature_key",
+          "type": "pg_catalog.text",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 3
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_features",
+          "column_name": "feature_label",
+          "type": "pg_catalog.text",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 4
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_features",
+          "column_name": "enabled",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "true",
+          "ord": 5
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_features",
+          "column_name": "created_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 6
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_features",
+          "column_name": "updated_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 7
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": "gen_random_uuid()",
+          "ord": 1
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "plan_key",
+          "type": "pg_catalog.text",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 2
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "duration_months",
+          "type": "pg_catalog.int4",
+          "is_nullable": "NO",
+          "column_default": "3",
+          "ord": 3
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "original_price_usd",
+          "type": "pg_catalog.numeric",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 4
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "promo_price_usd",
+          "type": "pg_catalog.numeric",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 5
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "label",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 6
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "is_active",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "true",
+          "ord": 7
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "starts_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 8
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "ends_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 9
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "created_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 10
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "plan_promotions",
+          "column_name": "updated_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 11
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": "uuid_generate_v4()",
+          "ord": 1
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "appointment_id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 2
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "doctor_id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 3
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "patient_id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 4
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "offset_type",
+          "type": "public.reminder_offset",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 5
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "scheduled_for",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 6
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "channel",
+          "type": "public.reminder_channel",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 7
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "message_body",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 8
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "status",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'pending'::text",
+          "ord": 9
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "attempts",
+          "type": "pg_catalog.int4",
+          "is_nullable": "YES",
+          "column_default": "0",
+          "ord": 10
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "last_attempt_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 11
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "sent_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 12
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "error_message",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 13
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_queue",
+          "column_name": "created_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 14
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": "uuid_generate_v4()",
+          "ord": 1
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "doctor_id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 2
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "enabled",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "true",
+          "ord": 3
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "channel",
+          "type": "public.reminder_channel",
+          "is_nullable": "YES",
+          "column_default": "'both'::reminder_channel",
+          "ord": 4
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "reminder_7d_enabled",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "true",
+          "ord": 5
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "reminder_24h_enabled",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "true",
+          "ord": 6
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "reminder_3h_enabled",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "true",
+          "ord": 7
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "reminder_1h_enabled",
+          "type": "pg_catalog.bool",
+          "is_nullable": "YES",
+          "column_default": "false",
+          "ord": 8
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "template_7d_whatsapp",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'Hola {patient_name}, te recordamos tu cita con el Dr. {doctor_name} el {date} a las {time}.'::text",
+          "ord": 9
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "template_24h_whatsapp",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'Hola {patient_name}, mañana tienes cita con el Dr. {doctor_name} a las {time}.'::text",
+          "ord": 10
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "template_3h_whatsapp",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'Hola {patient_name}, en 3 horas tienes cita con el Dr. {doctor_name}.'::text",
+          "ord": 11
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "quiet_hours_start",
+          "type": "pg_catalog.time",
+          "is_nullable": "YES",
+          "column_default": "'21:00:00'::time without time zone",
+          "ord": 12
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "quiet_hours_end",
+          "type": "pg_catalog.time",
+          "is_nullable": "YES",
+          "column_default": "'08:00:00'::time without time zone",
+          "ord": 13
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "created_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 14
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "reminders_settings",
+          "column_name": "updated_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 15
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": "uuid_generate_v4()",
+          "ord": 1
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "doctor_id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 2
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "subscription_id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 3
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "amount",
+          "type": "pg_catalog.numeric",
+          "is_nullable": "NO",
+          "column_default": "20.00",
+          "ord": 4
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "currency",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'USD'::text",
+          "ord": 5
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "method",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'pago_movil'::text",
+          "ord": 6
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "reference_number",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 7
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "receipt_url",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 8
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "status",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'pending'::text",
+          "ord": 9
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "verified_by",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 10
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "verified_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 11
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "rejection_reason",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 12
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "period_start",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 13
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "period_end",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 14
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscription_payments",
+          "column_name": "created_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 15
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": "uuid_generate_v4()",
+          "ord": 1
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "doctor_id",
+          "type": "pg_catalog.uuid",
+          "is_nullable": "NO",
+          "column_default": null,
+          "ord": 2
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "plan",
+          "type": "public.subscription_plan",
+          "is_nullable": "NO",
+          "column_default": "'trial'::subscription_plan",
+          "ord": 3
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "status",
+          "type": "public.subscription_status",
+          "is_nullable": "NO",
+          "column_default": "'trial'::subscription_status",
+          "ord": 4
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "price_usd",
+          "type": "pg_catalog.numeric",
+          "is_nullable": "NO",
+          "column_default": "0",
+          "ord": 5
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "billing_cycle",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": "'monthly'::text",
+          "ord": 6
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "current_period_start",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()",
+          "ord": 7
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "current_period_end",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "NO",
+          "column_default": "(now() + '30 days'::interval)",
+          "ord": 8
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "trial_ends_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "(now() + '14 days'::interval)",
+          "ord": 9
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "cancelled_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 10
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "notes",
+          "type": "pg_catalog.text",
+          "is_nullable": "YES",
+          "column_default": null,
+          "ord": 11
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "created_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 12
+        },
+        {
+          "section": "A_ddl_columns",
+          "table_name": "subscriptions",
+          "column_name": "updated_at",
+          "type": "pg_catalog.timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()",
+          "ord": 13
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 21,
+      "fields": [
+        "section",
+        "table_name",
+        "constraint_name",
+        "definition"
+      ],
+      "rows": [
+        {
+          "section": "B_constraints",
+          "table_name": "plan_configs",
+          "constraint_name": "plan_configs_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "plan_configs",
+          "constraint_name": "plan_configs_plan_key_key",
+          "definition": "UNIQUE (plan_key)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "plan_features",
+          "constraint_name": "plan_features_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "plan_features",
+          "constraint_name": "plan_features_plan_feature_key_key",
+          "definition": "UNIQUE (plan, feature_key)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "plan_promotions",
+          "constraint_name": "plan_promotions_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_queue",
+          "constraint_name": "reminders_queue_appointment_id_fkey",
+          "definition": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_queue",
+          "constraint_name": "reminders_queue_doctor_id_fkey",
+          "definition": "FOREIGN KEY (doctor_id) REFERENCES profiles(id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_queue",
+          "constraint_name": "reminders_queue_patient_id_fkey",
+          "definition": "FOREIGN KEY (patient_id) REFERENCES profiles(id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_queue",
+          "constraint_name": "reminders_queue_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_queue",
+          "constraint_name": "reminders_queue_status_check",
+          "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text, 'skipped'::text, 'cancelled'::text])))"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_settings",
+          "constraint_name": "reminders_settings_doctor_id_fkey",
+          "definition": "FOREIGN KEY (doctor_id) REFERENCES profiles(id) ON DELETE CASCADE"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_settings",
+          "constraint_name": "reminders_settings_doctor_id_key",
+          "definition": "UNIQUE (doctor_id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "reminders_settings",
+          "constraint_name": "reminders_settings_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscription_payments",
+          "constraint_name": "subscription_payments_doctor_id_fkey",
+          "definition": "FOREIGN KEY (doctor_id) REFERENCES profiles(id) ON DELETE CASCADE"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscription_payments",
+          "constraint_name": "subscription_payments_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscription_payments",
+          "constraint_name": "subscription_payments_status_check",
+          "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'verified'::text, 'rejected'::text])))"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscription_payments",
+          "constraint_name": "subscription_payments_subscription_id_fkey",
+          "definition": "FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscription_payments",
+          "constraint_name": "subscription_payments_verified_by_fkey",
+          "definition": "FOREIGN KEY (verified_by) REFERENCES profiles(id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscriptions",
+          "constraint_name": "subscriptions_doctor_id_fkey",
+          "definition": "FOREIGN KEY (doctor_id) REFERENCES profiles(id) ON DELETE CASCADE"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscriptions",
+          "constraint_name": "subscriptions_doctor_id_key",
+          "definition": "UNIQUE (doctor_id)"
+        },
+        {
+          "section": "B_constraints",
+          "table_name": "subscriptions",
+          "constraint_name": "subscriptions_pkey",
+          "definition": "PRIMARY KEY (id)"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 14,
+      "fields": [
+        "section",
+        "table_name",
+        "indexname",
+        "indexdef"
+      ],
+      "rows": [
+        {
+          "section": "C_indexes",
+          "table_name": "public.plan_configs",
+          "indexname": "plan_configs_pkey",
+          "indexdef": "CREATE UNIQUE INDEX plan_configs_pkey ON public.plan_configs USING btree (id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.plan_configs",
+          "indexname": "plan_configs_plan_key_key",
+          "indexdef": "CREATE UNIQUE INDEX plan_configs_plan_key_key ON public.plan_configs USING btree (plan_key)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.plan_features",
+          "indexname": "plan_features_pkey",
+          "indexdef": "CREATE UNIQUE INDEX plan_features_pkey ON public.plan_features USING btree (id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.plan_features",
+          "indexname": "plan_features_plan_feature_key_key",
+          "indexdef": "CREATE UNIQUE INDEX plan_features_plan_feature_key_key ON public.plan_features USING btree (plan, feature_key)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.plan_promotions",
+          "indexname": "idx_plan_promotions_active",
+          "indexdef": "CREATE INDEX idx_plan_promotions_active ON public.plan_promotions USING btree (plan_key, is_active) WHERE (is_active = true)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.plan_promotions",
+          "indexname": "plan_promotions_pkey",
+          "indexdef": "CREATE UNIQUE INDEX plan_promotions_pkey ON public.plan_promotions USING btree (id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.reminders_queue",
+          "indexname": "idx_reminders_queue_appointment",
+          "indexdef": "CREATE INDEX idx_reminders_queue_appointment ON public.reminders_queue USING btree (appointment_id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.reminders_queue",
+          "indexname": "idx_reminders_queue_worker",
+          "indexdef": "CREATE INDEX idx_reminders_queue_worker ON public.reminders_queue USING btree (scheduled_for, status) WHERE (status = 'pending'::text)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.reminders_queue",
+          "indexname": "reminders_queue_pkey",
+          "indexdef": "CREATE UNIQUE INDEX reminders_queue_pkey ON public.reminders_queue USING btree (id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.reminders_settings",
+          "indexname": "reminders_settings_doctor_id_key",
+          "indexdef": "CREATE UNIQUE INDEX reminders_settings_doctor_id_key ON public.reminders_settings USING btree (doctor_id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.reminders_settings",
+          "indexname": "reminders_settings_pkey",
+          "indexdef": "CREATE UNIQUE INDEX reminders_settings_pkey ON public.reminders_settings USING btree (id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.subscription_payments",
+          "indexname": "subscription_payments_pkey",
+          "indexdef": "CREATE UNIQUE INDEX subscription_payments_pkey ON public.subscription_payments USING btree (id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.subscriptions",
+          "indexname": "subscriptions_doctor_id_key",
+          "indexdef": "CREATE UNIQUE INDEX subscriptions_doctor_id_key ON public.subscriptions USING btree (doctor_id)"
+        },
+        {
+          "section": "C_indexes",
+          "table_name": "public.subscriptions",
+          "indexname": "subscriptions_pkey",
+          "indexdef": "CREATE UNIQUE INDEX subscriptions_pkey ON public.subscriptions USING btree (id)"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 8,
+      "fields": [
+        "section",
+        "tablename",
+        "policyname",
+        "cmd",
+        "roles",
+        "qual",
+        "with_check"
+      ],
+      "rows": [
+        {
+          "section": "D_policies",
+          "tablename": "plan_configs",
+          "policyname": "Allow all for service role",
+          "cmd": "ALL",
+          "roles": "{public}",
+          "qual": "true",
+          "with_check": "true"
+        },
+        {
+          "section": "D_policies",
+          "tablename": "plan_features",
+          "policyname": "Admins can modify plan_features",
+          "cmd": "ALL",
+          "roles": "{authenticated}",
+          "qual": "true",
+          "with_check": "true"
+        },
+        {
+          "section": "D_policies",
+          "tablename": "plan_features",
+          "policyname": "Authenticated users can read plan_features",
+          "cmd": "SELECT",
+          "roles": "{authenticated}",
+          "qual": "true",
+          "with_check": null
+        },
+        {
+          "section": "D_policies",
+          "tablename": "plan_promotions",
+          "policyname": "Public can view active promotions",
+          "cmd": "SELECT",
+          "roles": "{public}",
+          "qual": "((is_active = true) AND ((ends_at IS NULL) OR (ends_at > now())))",
+          "with_check": null
+        },
+        {
+          "section": "D_policies",
+          "tablename": "plan_promotions",
+          "policyname": "Service role full access to promotions",
+          "cmd": "ALL",
+          "roles": "{service_role}",
+          "qual": "true",
+          "with_check": "true"
+        },
+        {
+          "section": "D_policies",
+          "tablename": "subscription_payments",
+          "policyname": "doctor_own_sub_payments",
+          "cmd": "SELECT",
+          "roles": "{public}",
+          "qual": "(doctor_id = auth.uid())",
+          "with_check": null
+        },
+        {
+          "section": "D_policies",
+          "tablename": "subscription_payments",
+          "policyname": "super_admin_all_sub_payments",
+          "cmd": "ALL",
+          "roles": "{public}",
+          "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = 'super_admin'::user_role))))",
+          "with_check": null
+        },
+        {
+          "section": "D_policies",
+          "tablename": "subscriptions",
+          "policyname": "Doctors can read own subscription",
+          "cmd": "SELECT",
+          "roles": "{public}",
+          "qual": "(doctor_id = auth.uid())",
+          "with_check": null
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1937
+}

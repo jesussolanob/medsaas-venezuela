@@ -1,0 +1,15 @@
+{
+  "file": "007_unique_constraints_v2.sql",
+  "executed_at": "2026-04-21T02:20:08.532Z",
+  "mode": "READ_WRITE",
+  "status": "error",
+  "results": [],
+  "error": {
+    "message": "functions in index predicate must be marked IMMUTABLE",
+    "code": "42P17",
+    "position": null,
+    "hint": null,
+    "detail": null
+  },
+  "duration_ms": 458
+}

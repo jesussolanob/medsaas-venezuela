@@ -285,89 +285,81 @@ export async function POST(req: NextRequest) {
     } catch { /* best-effort */ }
 
     // ── 2. Create appointment ───────────────────────────────────────────────
-    const appointmentData: Record<string, unknown> = {
-      doctor_id: doctorId,
-      patient_id: patientId,
-      patient_name: finalName,
-      patient_phone: patientPhone || null,
-      patient_email: finalEmail,
-      status: 'scheduled',
-      source: 'booking',
-      scheduled_at: scheduledAt,
-      chief_complaint: chiefComplaint || null,
-      plan_name: planName || 'Consulta General',
-      plan_price: validatedPackage ? 0 : (planPrice || 20), // Package sessions are $0
-      payment_method: validatedPackage ? 'package' : (paymentMethod || 'direct'),
-      insurance_name: insuranceName || null,
-      payment_receipt_url: receiptUrl || null,
-      appointment_mode: appointmentMode || 'presencial',
-      bcv_rate: bcvRate,
-      amount_bs: bcvRate ? parseFloat(((validatedPackage ? 0 : (planPrice || 20)) * bcvRate).toFixed(2)) : null,
-    }
-    // Only set auth_user_id if user is authenticated
-    if (user) {
-      appointmentData.auth_user_id = user.id
-    }
-    if (patientCedula) appointmentData.patient_cedula = patientCedula
+    // CR-006: Si hay paquete, usamos la RPC transaccional book_with_package
+    // que serializa (FOR UPDATE) sobre el paquete. Imposible la doble-reserva.
+    let appt: { id: string } | null = null
+    let apptErr: any = null
 
-    // Pre-link to package if using one
     if (validatedPackage) {
-      appointmentData.package_id = validatedPackage.id
-      appointmentData.session_number = validatedPackage.used_sessions + 1
-    }
+      const { data: rpcData, error: rpcErr } = await admin.rpc('book_with_package', {
+        p_package_id: validatedPackage.id,
+        p_doctor_id: doctorId,
+        p_patient_id: patientId,
+        p_auth_user_id: user?.id ?? null,
+        p_scheduled_at: scheduledAt,
+        p_patient_name: finalName,
+        p_patient_phone: patientPhone || null,
+        p_patient_email: finalEmail,
+        p_plan_name: planName || 'Consulta General',
+        p_chief_complaint: chiefComplaint || null,
+        p_appointment_mode: appointmentMode || 'presencial',
+        p_bcv_rate: bcvRate,
+        p_patient_cedula: patientCedula || null,
+      })
 
-    const { data: appt, error: apptErr } = await admin
-      .from('appointments')
-      .insert(appointmentData)
-      .select('id')
-      .single()
-
-    if (apptErr || !appt) {
-      // Retry with minimal columns if some don't exist
-      if (apptErr?.message?.includes('column') || apptErr?.message?.includes('does not exist')) {
-        const minimalAppt: Record<string, unknown> = {
-          doctor_id: doctorId,
-          patient_id: patientId,
-          patient_name: finalName,
-          patient_phone: patientPhone || null,
-          patient_email: patientEmail || user.email,
-          status: 'scheduled',
-          source: 'booking',
-          scheduled_at: scheduledAt,
-          chief_complaint: chiefComplaint || null,
-          plan_name: planName || 'Consulta General',
-          plan_price: validatedPackage ? 0 : (planPrice || 20),
+      if (rpcErr) {
+        // Errores tipificados por la RPC — devolver 409/400 apropiados
+        const msg = rpcErr.message || ''
+        if (msg.includes('PACKAGE_EXHAUSTED')) {
+          return NextResponse.json({ error: 'Ya usaste todas las sesiones de tu paquete.' }, { status: 409 })
         }
-
-        const { data: retryAppt, error: retryErr } = await admin
-          .from('appointments')
-          .insert(minimalAppt)
-          .select('id')
-          .single()
-
-        if (retryErr || !retryAppt) {
-          return NextResponse.json(
-            { error: `Error al guardar cita: ${retryErr?.message || 'Unknown'}` },
-            { status: 500 }
-          )
+        if (msg.includes('PACKAGE_NOT_FOUND') || msg.includes('PACKAGE_DOCTOR_MISMATCH')) {
+          return NextResponse.json({ error: 'Paquete inválido.' }, { status: 400 })
         }
-
-        // Still handle package even on retry
-        if (validatedPackage) {
-          await updatePackageUsage(admin, validatedPackage, retryAppt.id)
+        if (msg.includes('PACKAGE_NOT_ACTIVE')) {
+          return NextResponse.json({ error: 'El paquete ya no está activo.' }, { status: 409 })
         }
-
-        return NextResponse.json({
-          success: true,
-          appointmentId: retryAppt.id,
-          patientId,
-          packageUsed: !!validatedPackage,
-          packageRemaining: validatedPackage
-            ? validatedPackage.total_sessions - validatedPackage.used_sessions - 1
-            : null,
-        })
+        return NextResponse.json({ error: `Error en book_with_package: ${msg}` }, { status: 500 })
       }
 
+      const row = Array.isArray(rpcData) ? rpcData[0] : rpcData
+      appt = row ? { id: row.appointment_id } : null
+    } else {
+      const appointmentData: Record<string, unknown> = {
+        doctor_id: doctorId,
+        patient_id: patientId,
+        patient_name: finalName,
+        patient_phone: patientPhone || null,
+        patient_email: finalEmail,
+        status: 'scheduled',
+        source: 'booking',
+        scheduled_at: scheduledAt,
+        chief_complaint: chiefComplaint || null,
+        plan_name: planName || 'Consulta General',
+        plan_price: planPrice || 20,
+        payment_method: paymentMethod || 'direct',
+        insurance_name: insuranceName || null,
+        payment_receipt_url: receiptUrl || null,
+        appointment_mode: appointmentMode || 'presencial',
+        bcv_rate: bcvRate,
+        amount_bs: bcvRate ? parseFloat(((planPrice || 20) * bcvRate).toFixed(2)) : null,
+      }
+      if (user) appointmentData.auth_user_id = user.id
+      if (patientCedula) appointmentData.patient_cedula = patientCedula
+
+      const inserted = await admin
+        .from('appointments')
+        .insert(appointmentData)
+        .select('id')
+        .single()
+      appt = inserted.data
+      apptErr = inserted.error
+    }
+
+    if (apptErr || !appt) {
+      // AL-113 fix: ya NO hacemos "retry silencioso con columnas mínimas" —
+      // eso tragaba columnas importantes (BCV, payment_method, package_id).
+      // Ahora fallamos explícitamente para que se detecte schema drift.
       return NextResponse.json(
         { error: `Error al guardar cita: ${apptErr?.message || 'Unknown'}` },
         { status: 500 }
@@ -375,9 +367,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. Handle packages ──────────────────────────────────────────────────
-    if (validatedPackage) {
-      await updatePackageUsage(admin, validatedPackage, appt.id)
-    } else if (sessionsCount && sessionsCount > 1 && user) {
+    // Nota: si validatedPackage !== null, la RPC book_with_package YA incrementó
+    //       el paquete atómicamente. Aquí solo manejamos el caso de creación
+    //       de un nuevo paquete para planes multi-sesión.
+    if (!validatedPackage && sessionsCount && sessionsCount > 1 && user) {
       // Create new package for multi-session plan (only for authenticated users)
       try {
         const { data: pkg } = await admin
@@ -396,12 +389,10 @@ export async function POST(req: NextRequest) {
           .single()
 
         if (pkg) {
-          try {
-            await admin
-              .from('appointments')
-              .update({ package_id: pkg.id, session_number: 1 })
-              .eq('id', appt.id)
-          } catch { /* column may not exist */ }
+          await admin
+            .from('appointments')
+            .update({ package_id: pkg.id, session_number: 1 })
+            .eq('id', appt!.id)
         }
       } catch (pkgErr) {
         console.warn('[API /book] package creation skipped:', pkgErr)
@@ -538,44 +529,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Atomically increment used_sessions and auto-complete if all sessions used */
-async function updatePackageUsage(
-  admin: ReturnType<typeof createAdminClient>,
-  pkg: { id: string; used_sessions: number; total_sessions: number },
-  appointmentId: string
-) {
-  const newUsed = pkg.used_sessions + 1
-  const updateData: Record<string, unknown> = { used_sessions: newUsed }
-
-  if (newUsed >= pkg.total_sessions) {
-    updateData.status = 'completed'
-  }
-
-  await admin
-    .from('patient_packages')
-    .update(updateData)
-    .eq('id', pkg.id)
-    // Safety: only update if used_sessions hasn't changed (optimistic lock)
-    .eq('used_sessions', pkg.used_sessions)
-
-  // Verify the update took effect (race condition check)
-  const { data: updated } = await admin
-    .from('patient_packages')
-    .select('used_sessions')
-    .eq('id', pkg.id)
-    .single()
-
-  if (updated && updated.used_sessions !== newUsed) {
-    console.warn(`[API /book] Package ${pkg.id} race condition detected. Expected ${newUsed}, got ${updated.used_sessions}`)
-  }
-
-  // Link appointment to package
-  try {
-    await admin
-      .from('appointments')
-      .update({ package_id: pkg.id, session_number: newUsed })
-      .eq('id', appointmentId)
-  } catch {
-    // package_id or session_number columns may not exist
-  }
-}
+// CR-006 fix: updatePackageUsage() removido.
+// La atomicidad ahora la provee la RPC public.book_with_package() vía FOR UPDATE lock.
+// Ver queries/archive/005_rpc_book_with_package.sql para la definición.

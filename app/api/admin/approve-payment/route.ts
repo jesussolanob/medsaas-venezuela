@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Verify the caller is authenticated and is a super_admin or admin
+    // Verify the caller is authenticated and is a super_admin
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -27,14 +27,14 @@ export async function POST(req: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!callerProfile || !['super_admin', 'admin'].includes(callerProfile.role)) {
+    if (!callerProfile || callerProfile.role !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Get the payment record
+    // Get the payment record (incluye status para idempotencia)
     const { data: payment, error: paymentError } = await admin
       .from('subscription_payments')
-      .select('id, doctor_id, amount, currency, method')
+      .select('id, doctor_id, amount, currency, method, status')
       .eq('id', paymentId)
       .single()
 
@@ -43,6 +43,24 @@ export async function POST(req: NextRequest) {
         { error: 'Payment not found' },
         { status: 404 }
       )
+    }
+
+    // AL-109: Idempotencia — no reaplicar si ya fue procesado
+    if (action === 'approve' && payment.status === 'verified') {
+      return NextResponse.json({
+        error: 'Este pago ya fue aprobado anteriormente',
+        alreadyApplied: true,
+        paymentId,
+        status: payment.status,
+      }, { status: 409 })
+    }
+    if (action === 'reject' && payment.status === 'rejected') {
+      return NextResponse.json({
+        error: 'Este pago ya fue rechazado anteriormente',
+        alreadyApplied: true,
+        paymentId,
+        status: payment.status,
+      }, { status: 409 })
     }
 
     // Update the payment status
@@ -118,18 +136,33 @@ export async function POST(req: NextRequest) {
           status: 'active',
         }
 
-        // If it's an admin upgrade, also update the plan and price based on payment amount
+        // If it's an admin upgrade, también actualiza el plan según plan_configs (AL-110, CR-007)
         if (isAdminUpgrade) {
-          // Determine plan based on payment amount
-          if (payment.amount === 30) {
-            updatePayload.plan = 'professional'
-            updatePayload.price_usd = 30
-          } else if (payment.amount === 100) {
-            updatePayload.plan = 'enterprise'
-            updatePayload.price_usd = 100
+          // Consulta plan_configs para encontrar el plan que corresponde al monto
+          const { data: matchingPlan } = await admin
+            .from('plan_configs')
+            .select('plan_key, price')
+            .eq('price', payment.amount)
+            .eq('is_active', true)
+            .maybeSingle()
+
+          if (matchingPlan) {
+            updatePayload.plan = matchingPlan.plan_key
+            updatePayload.price_usd = matchingPlan.price
           } else {
-            updatePayload.plan = 'basic'
-            updatePayload.price_usd = 20
+            // Fallback coherente con CLAUDE.md: clinic (no enterprise)
+            if (Number(payment.amount) === 30) {
+              updatePayload.plan = 'professional'
+              updatePayload.price_usd = 30
+            } else if (Number(payment.amount) === 100) {
+              updatePayload.plan = 'clinic'   // CR-007: clinic, NO enterprise
+              updatePayload.price_usd = 100
+            } else if (Number(payment.amount) === 10) {
+              updatePayload.plan = 'basic'
+              updatePayload.price_usd = 10
+            } else {
+              console.warn('[approve-payment] Monto sin plan mapeado:', payment.amount)
+            }
           }
         }
 

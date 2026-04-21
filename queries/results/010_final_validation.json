@@ -1,0 +1,198 @@
+{
+  "file": "010_final_validation.sql",
+  "executed_at": "2026-04-21T02:24:42.134Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n",
+        "tables"
+      ],
+      "rows": [
+        {
+          "check_name": "1_tables_no_rls",
+          "n": "0",
+          "tables": null
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n_unsafe",
+        "unsafe_policies"
+      ],
+      "rows": [
+        {
+          "check_name": "2_unsafe_permissive",
+          "n_unsafe": "0",
+          "unsafe_policies": null
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n"
+      ],
+      "rows": [
+        {
+          "check_name": "3_duplicate_policies",
+          "n": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n"
+      ],
+      "rows": [
+        {
+          "check_name": "4_duplicate_indexes",
+          "n": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n"
+      ],
+      "rows": [
+        {
+          "check_name": "5_enterprise_subs",
+          "n": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n"
+      ],
+      "rows": [
+        {
+          "check_name": "6_null_roles",
+          "n": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n"
+      ],
+      "rows": [
+        {
+          "check_name": "7_overused_packages",
+          "n": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n",
+        "emails"
+      ],
+      "rows": [
+        {
+          "check_name": "8_orphan_auth_users",
+          "n": "5",
+          "emails": [
+            "juanito@gmail.com",
+            "patricio@gmail.com",
+            "paola@gmail.com",
+            "pedrom@gmail.com",
+            "anasolanob07@hotmail.com"
+          ]
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "exists"
+      ],
+      "rows": [
+        {
+          "check_name": "9_rpc_exists",
+          "exists": "true"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "created"
+      ],
+      "rows": [
+        {
+          "check_name": "10_unique_indexes",
+          "created": "{appointments_doctor_slot_uq,patients_doctor_email_uq}"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "rls_enabled"
+      ],
+      "rows": [
+        {
+          "check_name": "11_profiles_rls",
+          "rls_enabled": "true"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "check_name",
+        "n_profiles",
+        "n_appointments",
+        "n_consultations",
+        "n_subscriptions",
+        "n_auth_users"
+      ],
+      "rows": [
+        {
+          "check_name": "12_final_summary",
+          "n_profiles": "5",
+          "n_appointments": "3",
+          "n_consultations": "4",
+          "n_subscriptions": "4",
+          "n_auth_users": "10"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1823
+}

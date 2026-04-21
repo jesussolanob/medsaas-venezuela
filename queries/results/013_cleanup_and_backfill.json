@@ -1,0 +1,162 @@
+{
+  "file": "013_cleanup_and_backfill.sql",
+  "executed_at": "2026-04-21T02:28:37.042Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "DELETE",
+      "rowCount": 13,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "INSERT",
+      "rowCount": 4,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 5,
+      "fields": [
+        "section",
+        "doctor_id",
+        "email",
+        "full_name",
+        "role",
+        "reviewed_by_admin",
+        "plan",
+        "status",
+        "expires",
+        "has_reminders_settings"
+      ],
+      "rows": [
+        {
+          "section": "doctors_and_subs",
+          "doctor_id": "3ff16b2c-09ac-476e-b557-82da60e05e07",
+          "email": "anasolanob07@gmail.com",
+          "full_name": "Ana Maria Solano Bracamonte",
+          "role": "doctor",
+          "reviewed_by_admin": true,
+          "plan": "trial",
+          "status": "active",
+          "expires": "2026-05-05T04:00:00.000Z",
+          "has_reminders_settings": true
+        },
+        {
+          "section": "doctors_and_subs",
+          "doctor_id": "c987a8c2-298e-4536-aa8f-e3d2ff3ee323",
+          "email": "fonicaproducciones@gmail.com",
+          "full_name": "Paola Vega",
+          "role": "doctor",
+          "reviewed_by_admin": true,
+          "plan": "trial",
+          "status": "active",
+          "expires": "2027-04-21T04:00:00.000Z",
+          "has_reminders_settings": true
+        },
+        {
+          "section": "doctors_and_subs",
+          "doctor_id": "5df8262a-31bc-4026-b2db-2d458566397d",
+          "email": "ing.jesussolanob@gmail.com",
+          "full_name": "Jesus Enrique Solano",
+          "role": "doctor",
+          "reviewed_by_admin": true,
+          "plan": "professional",
+          "status": "active",
+          "expires": "2026-05-20T04:00:00.000Z",
+          "has_reminders_settings": true
+        },
+        {
+          "section": "doctors_and_subs",
+          "doctor_id": "ae63a9d0-63db-473f-bc51-b8571a1cffb9",
+          "email": "paoladg7@gmail.com",
+          "full_name": "Paola Di Girolamo",
+          "role": "doctor",
+          "reviewed_by_admin": false,
+          "plan": "trial",
+          "status": "active",
+          "expires": "2027-04-21T04:00:00.000Z",
+          "has_reminders_settings": true
+        },
+        {
+          "section": "doctors_and_subs",
+          "doctor_id": "d38a04ef-898e-4dd1-b5e5-ed78e400b9f2",
+          "email": "jesussolano4@gmail.com",
+          "full_name": "Jesús Enrique Solano Bracamonte",
+          "role": "super_admin",
+          "reviewed_by_admin": false,
+          "plan": null,
+          "status": null,
+          "expires": null,
+          "has_reminders_settings": false
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 4,
+      "fields": [
+        "section",
+        "plan",
+        "enabled",
+        "disabled"
+      ],
+      "rows": [
+        {
+          "section": "plan_features_final",
+          "plan": "basic",
+          "enabled": "11",
+          "disabled": "2"
+        },
+        {
+          "section": "plan_features_final",
+          "plan": "clinic",
+          "enabled": "13",
+          "disabled": "0"
+        },
+        {
+          "section": "plan_features_final",
+          "plan": "professional",
+          "enabled": "12",
+          "disabled": "1"
+        },
+        {
+          "section": "plan_features_final",
+          "plan": "trial",
+          "enabled": "11",
+          "disabled": "2"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "auth_users",
+        "profiles",
+        "doctors",
+        "super_admins",
+        "subscriptions",
+        "reminders_settings",
+        "active_plans"
+      ],
+      "rows": [
+        {
+          "section": "summary",
+          "auth_users": "5",
+          "profiles": "5",
+          "doctors": "4",
+          "super_admins": "1",
+          "subscriptions": "4",
+          "reminders_settings": "4",
+          "active_plans": "4"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 405
+}

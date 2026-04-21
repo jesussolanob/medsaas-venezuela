@@ -7,8 +7,14 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // ── Types ────────────────────────────────────────────────────────────────────
+// Reflejan los valores reales del enum subscription_plan y subscription_status en BD.
+// enum subscription_plan     = {trial, basic, professional, enterprise, clinic}
+// enum subscription_status   = {active, suspended, cancelled, trial, past_due}
+// Nota: 'enterprise' existe en enum por legado pero CLAUDE.md dice usar 'clinic'.
+//        Mantenemos 'enterprise' como type-compat hasta migrar el enum completo.
+// Nota: 'trialing' NO existe en el enum — era dead code, se elimina del type.
 export type PlanKey = 'trial' | 'basic' | 'professional' | 'enterprise' | 'clinic'
-export type SubStatus = 'active' | 'trial' | 'trialing' | 'past_due' | 'suspended' | 'cancelled'
+export type SubStatus = 'active' | 'trial' | 'past_due' | 'suspended' | 'cancelled'
 
 export interface Subscription {
   id: string
@@ -43,7 +49,6 @@ export const PLAN_LABELS: Record<string, string> = {
 export const STATUS_LABELS: Record<string, string> = {
   active: 'Activo',
   trial: 'Pendiente de aprobación',
-  trialing: 'Pendiente de aprobación',
   past_due: 'Vencido',
   suspended: 'Suspendido',
   cancelled: 'Cancelado',
@@ -60,14 +65,13 @@ export const PLAN_COLORS: Record<string, string> = {
 export const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-600',
   trial: 'bg-amber-50 text-amber-600',
-  trialing: 'bg-amber-50 text-amber-600',
   past_due: 'bg-orange-50 text-orange-600',
   suspended: 'bg-red-50 text-red-600',
   cancelled: 'bg-slate-100 text-slate-400',
 }
 
 // Statuses that allow the doctor to use the app
-const ACTIVE_STATUSES: SubStatus[] = ['active', 'trial', 'trialing']
+const ACTIVE_STATUSES: SubStatus[] = ['active', 'trial']
 
 // MVP features — every plan gets these
 const MVP_FEATURES = ['dashboard', 'agenda', 'consultations', 'patients', 'finances', 'settings']

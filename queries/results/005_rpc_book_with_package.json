@@ -1,0 +1,72 @@
+{
+  "file": "005_rpc_book_with_package.sql",
+  "executed_at": "2026-04-21T02:19:24.681Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "REVOKE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "GRANT",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "proname",
+        "pronargs",
+        "returns"
+      ],
+      "rows": [
+        {
+          "section": "V1_rpc_created",
+          "proname": "book_with_package",
+          "pronargs": 13,
+          "returns": "TABLE(appointment_id uuid, package_remaining integer)"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 3,
+      "fields": [
+        "section",
+        "role",
+        "can_execute"
+      ],
+      "rows": [
+        {
+          "section": "V2_rpc_grants",
+          "role": "anon",
+          "can_execute": true
+        },
+        {
+          "section": "V2_rpc_grants",
+          "role": "authenticated",
+          "can_execute": true
+        },
+        {
+          "section": "V2_rpc_grants",
+          "role": "service_role",
+          "can_execute": true
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 449
+}

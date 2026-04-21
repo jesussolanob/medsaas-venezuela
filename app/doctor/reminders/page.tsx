@@ -365,7 +365,7 @@ export default function RemindersPage() {
                             {sent.map(s => (
                               <span key={s.id} className="flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">
                                 <CheckCircle className="w-2.5 h-2.5" />
-                                {s.channel === 'whatsapp' ? 'WhatsApp enviado' : 'Email enviado'}
+                                {s.channel === 'whatsapp' ? 'WhatsApp abierto' : 'Email abierto'}
                               </span>
                             ))}
                           </div>

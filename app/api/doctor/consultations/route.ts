@@ -141,6 +141,23 @@ export async function POST(req: NextRequest) {
 }
 
 // PATCH /api/doctor/consultations — Update consultation
+// AL-104 fix: allowlist de campos. NO permitir mutar doctor_id, patient_id, payment_status.
+const ALLOWED_PATCH_FIELDS = new Set([
+  'chief_complaint',
+  'notes',
+  'diagnosis',
+  'treatment',
+  'amount',
+  'currency',
+  'plan_name',
+  'payment_method',
+  'payment_reference',
+  'consultation_date',
+  'started_at',
+  'ended_at',
+  'duration_minutes',
+])
+
 export async function PATCH(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -151,10 +168,21 @@ export async function PATCH(req: NextRequest) {
 
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
 
+  // AL-104: filtrar solo campos permitidos. doctor_id, patient_id,
+  // payment_status, consultation_code, etc. quedan fuera.
+  const safeFields: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(fields)) {
+    if (ALLOWED_PATCH_FIELDS.has(k)) safeFields[k] = v
+  }
+
+  if (Object.keys(safeFields).length === 0) {
+    return NextResponse.json({ error: 'Ningún campo permitido en el body' }, { status: 400 })
+  }
+
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('consultations')
-    .update({ ...fields, updated_at: new Date().toISOString() })
+    .update({ ...safeFields, updated_at: new Date().toISOString() })
     .eq('id', id)
     .eq('doctor_id', user.id) // security: only own consultations
     .select()
@@ -198,7 +226,11 @@ export async function DELETE(req: NextRequest) {
 
   try {
     // 2. Delete linked EHR records and prescriptions
-    await admin.from('ehr_records').delete().eq('consultation_id', consultationId)
+    // CR-011 fix: ehr_records usa appointment_id (no consultation_id).
+    // prescriptions tiene ambos (consultation_id Y ehr_record_id).
+    if (consultation.appointment_id) {
+      await admin.from('ehr_records').delete().eq('appointment_id', consultation.appointment_id)
+    }
     await admin.from('prescriptions').delete().eq('consultation_id', consultationId)
 
     // 3. Delete the consultation

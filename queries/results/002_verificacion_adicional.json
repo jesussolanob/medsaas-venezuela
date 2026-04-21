@@ -1,0 +1,294 @@
+{
+  "file": "002_verificacion_adicional.sql",
+  "executed_at": "2026-04-21T02:17:03.926Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "qual",
+        "with_check"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "qual",
+        "with_check"
+      ],
+      "rows": [
+        {
+          "section": "B_patient_messages_policies",
+          "policyname": "Open patient messages",
+          "cmd": "ALL",
+          "qual": "true",
+          "with_check": null
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "qual",
+        "with_check"
+      ],
+      "rows": [
+        {
+          "section": "C_admin_roles_policies",
+          "policyname": "Admin manages roles",
+          "cmd": "ALL",
+          "qual": "true",
+          "with_check": null
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "qual",
+        "with_check"
+      ],
+      "rows": [
+        {
+          "section": "D_invoices_policies",
+          "policyname": "Admin manages invoices",
+          "cmd": "ALL",
+          "qual": "true",
+          "with_check": null
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "role",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "E_profiles_by_role",
+          "role": "doctor",
+          "n": "4"
+        },
+        {
+          "section": "E_profiles_by_role",
+          "role": "super_admin",
+          "n": "1"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "id",
+        "email",
+        "full_name"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "source",
+        "id",
+        "email",
+        "created_at",
+        "has_profile",
+        "n_patients",
+        "n_appointments",
+        "n_packages"
+      ],
+      "rows": [
+        {
+          "section": "G_ivana_profile_check",
+          "source": "auth.users",
+          "id": "db1a4f5f-b21c-40ee-bd6f-767aabd60a26",
+          "email": "ivana@gmail.com",
+          "created_at": "2026-04-17 23:17:13.766144+00",
+          "has_profile": "false",
+          "n_patients": "0",
+          "n_appointments": "0",
+          "n_packages": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 10,
+      "fields": [
+        "section",
+        "tbl",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "H_row_counts",
+          "tbl": "profiles",
+          "n": "5"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "appointments",
+          "n": "3"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "patients",
+          "n": "3"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "consultations",
+          "n": "4"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "patient_packages",
+          "n": "0"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "patient_messages",
+          "n": "0"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "subscriptions",
+          "n": "4"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "ehr_records",
+          "n": "0"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "prescriptions",
+          "n": "0"
+        },
+        {
+          "section": "H_row_counts",
+          "tbl": "leads",
+          "n": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "appt_with_consultation_id",
+        "appt_consultation_id_orphan",
+        "consultations_with_appointment_id",
+        "consultations_orphan"
+      ],
+      "rows": [
+        {
+          "section": "I_bidirectional_fk",
+          "appt_with_consultation_id": "0",
+          "appt_consultation_id_orphan": "0",
+          "consultations_with_appointment_id": "3",
+          "consultations_orphan": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 8,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "qual_preview"
+      ],
+      "rows": [
+        {
+          "section": "J_appointments_policies",
+          "policyname": "Médico ve sus citas",
+          "cmd": "ALL",
+          "qual_preview": "(doctor_id = auth.uid())"
+        },
+        {
+          "section": "J_appointments_policies",
+          "policyname": "Authenticated insert appointments",
+          "cmd": "INSERT",
+          "qual_preview": null
+        },
+        {
+          "section": "J_appointments_policies",
+          "policyname": "Patients insert their own appointments",
+          "cmd": "INSERT",
+          "qual_preview": null
+        },
+        {
+          "section": "J_appointments_policies",
+          "policyname": "Público puede crear cita",
+          "cmd": "INSERT",
+          "qual_preview": null
+        },
+        {
+          "section": "J_appointments_policies",
+          "policyname": "Patients see their own appointments",
+          "cmd": "SELECT",
+          "qual_preview": "((auth_user_id = auth.uid()) OR (doctor_id = auth.uid()))"
+        },
+        {
+          "section": "J_appointments_policies",
+          "policyname": "See own appointments",
+          "cmd": "SELECT",
+          "qual_preview": "((auth_user_id = auth.uid()) OR (doctor_id = auth.uid()))"
+        },
+        {
+          "section": "J_appointments_policies",
+          "policyname": "Doctors update appointments",
+          "cmd": "UPDATE",
+          "qual_preview": "(doctor_id = auth.uid())"
+        },
+        {
+          "section": "J_appointments_policies",
+          "policyname": "Doctors update their appointments",
+          "cmd": "UPDATE",
+          "qual_preview": "(doctor_id = auth.uid())"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "proname",
+        "pronargs",
+        "args"
+      ],
+      "rows": []
+    }
+  ],
+  "error": null,
+  "duration_ms": 1734
+}

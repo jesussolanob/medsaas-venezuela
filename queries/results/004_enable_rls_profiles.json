@@ -1,0 +1,187 @@
+{
+  "file": "004_enable_rls_profiles.sql",
+  "executed_at": "2026-04-21T02:18:56.231Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "table_name",
+        "rls_enabled"
+      ],
+      "rows": [
+        {
+          "section": "V1_rls_enabled",
+          "table_name": "profiles",
+          "rls_enabled": true
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 7,
+      "fields": [
+        "section",
+        "policyname",
+        "cmd",
+        "roles",
+        "permissive"
+      ],
+      "rows": [
+        {
+          "section": "V2_profiles_policies",
+          "policyname": "Super admin deletes profiles",
+          "cmd": "DELETE",
+          "roles": "{authenticated}",
+          "permissive": "PERMISSIVE"
+        },
+        {
+          "section": "V2_profiles_policies",
+          "policyname": "User inserts own profile",
+          "cmd": "INSERT",
+          "roles": "{authenticated}",
+          "permissive": "PERMISSIVE"
+        },
+        {
+          "section": "V2_profiles_policies",
+          "policyname": "Public reads doctor profiles",
+          "cmd": "SELECT",
+          "roles": "{public}",
+          "permissive": "PERMISSIVE"
+        },
+        {
+          "section": "V2_profiles_policies",
+          "policyname": "Super admin reads all profiles",
+          "cmd": "SELECT",
+          "roles": "{authenticated}",
+          "permissive": "PERMISSIVE"
+        },
+        {
+          "section": "V2_profiles_policies",
+          "policyname": "User reads own profile",
+          "cmd": "SELECT",
+          "roles": "{authenticated}",
+          "permissive": "PERMISSIVE"
+        },
+        {
+          "section": "V2_profiles_policies",
+          "policyname": "Super admin updates profiles",
+          "cmd": "UPDATE",
+          "roles": "{authenticated}",
+          "permissive": "PERMISSIVE"
+        },
+        {
+          "section": "V2_profiles_policies",
+          "policyname": "User updates own profile",
+          "cmd": "UPDATE",
+          "roles": "{authenticated}",
+          "permissive": "PERMISSIVE"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "tablename"
+      ],
+      "rows": []
+    }
+  ],
+  "error": null,
+  "duration_ms": 1623
+}

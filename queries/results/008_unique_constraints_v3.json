@@ -1,0 +1,43 @@
+{
+  "file": "008_unique_constraints_v3.sql",
+  "executed_at": "2026-04-21T02:20:25.658Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "CREATE",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DO",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "indexname",
+        "indexdef"
+      ],
+      "rows": [
+        {
+          "section": "V1_unique_indexes",
+          "indexname": "appointments_doctor_slot_uq",
+          "indexdef": "CREATE UNIQUE INDEX appointments_doctor_slot_uq ON public.appointments USING btree (doctor_id, scheduled_at) WHERE (status = ANY (ARRAY['scheduled'::appointment_status, 'confirmed'::appointment_status, 'pending'::appointment_status, 'accepted'::appointment_status]))"
+        },
+        {
+          "section": "V1_unique_indexes",
+          "indexname": "patients_doctor_email_uq",
+          "indexdef": "CREATE UNIQUE INDEX patients_doctor_email_uq ON public.patients USING btree (doctor_id, email) WHERE (email IS NOT NULL)"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 604
+}

@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // GET /api/debug-booking — Diagnose why booking fails
-// REMOVE THIS ROUTE IN PRODUCTION
+// 🚫 Deshabilitado en producción.
 export async function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const admin = createAdminClient()
   const results: Record<string, unknown> = {}
 

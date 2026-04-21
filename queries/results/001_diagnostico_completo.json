@@ -1,0 +1,1200 @@
+{
+  "file": "001_diagnostico_completo.sql",
+  "executed_at": "2026-04-21T02:15:37.802Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 10,
+      "fields": [
+        "section",
+        "enum_name",
+        "valid_values"
+      ],
+      "rows": [
+        {
+          "section": "A_enums",
+          "enum_name": "appointment_status",
+          "valid_values": "{scheduled,confirmed,completed,cancelled,no_show,pending,accepted}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "lead_source",
+          "valid_values": "{whatsapp,instagram,facebook,website,referral,manual}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "lead_status",
+          "valid_values": "{hot,cold,client,archived}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "payment_method",
+          "valid_values": "{pago_movil,transferencia,efectivo,zelle,otro}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "payment_status",
+          "valid_values": "{pending,verified,rejected}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "reminder_channel",
+          "valid_values": "{whatsapp,email,both}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "reminder_offset",
+          "valid_values": "{7d,24h,3h,1h}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "subscription_plan",
+          "valid_values": "{trial,basic,professional,enterprise,clinic}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "subscription_status",
+          "valid_values": "{active,suspended,cancelled,trial,past_due}"
+        },
+        {
+          "section": "A_enums",
+          "enum_name": "user_role",
+          "valid_values": "{super_admin,doctor,assistant,patient}"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 3,
+      "fields": [
+        "section",
+        "conname",
+        "definition"
+      ],
+      "rows": [
+        {
+          "section": "B_subscriptions_constraints",
+          "conname": "subscriptions_doctor_id_fkey",
+          "definition": "FOREIGN KEY (doctor_id) REFERENCES profiles(id) ON DELETE CASCADE"
+        },
+        {
+          "section": "B_subscriptions_constraints",
+          "conname": "subscriptions_doctor_id_key",
+          "definition": "UNIQUE (doctor_id)"
+        },
+        {
+          "section": "B_subscriptions_constraints",
+          "conname": "subscriptions_pkey",
+          "definition": "PRIMARY KEY (id)"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 35,
+      "fields": [
+        "section",
+        "column_name",
+        "type",
+        "is_nullable",
+        "column_default"
+      ],
+      "rows": [
+        {
+          "section": "C_profiles_columns",
+          "column_name": "id",
+          "type": "uuid",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "role",
+          "type": "user_role",
+          "is_nullable": "NO",
+          "column_default": "'patient'::user_role"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "full_name",
+          "type": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "email",
+          "type": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "phone",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "avatar_url",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "specialty",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "license_number",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "bio",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "consultation_fee",
+          "type": "numeric",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "currency",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": "'USD'::text"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "doctor_slug",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "is_active",
+          "type": "bool",
+          "is_nullable": "YES",
+          "column_default": "true"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "timezone",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": "'America/Caracas'::text"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "created_at",
+          "type": "timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "updated_at",
+          "type": "timestamptz",
+          "is_nullable": "YES",
+          "column_default": "now()"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "cedula",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "sex",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "payment_methods",
+          "type": "_text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "whatsapp_token",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "whatsapp_phone_id",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "google_refresh_token",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "logo_url",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "payment_details",
+          "type": "jsonb",
+          "is_nullable": "YES",
+          "column_default": "'{}'::jsonb"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "sound_notifications",
+          "type": "bool",
+          "is_nullable": "YES",
+          "column_default": "true"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "reviewed_by_admin",
+          "type": "bool",
+          "is_nullable": "YES",
+          "column_default": "false"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "professional_title",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": "'Dr.'::text"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "state",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "city",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "country",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": "'Venezuela'::text"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "office_address",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "allows_online",
+          "type": "bool",
+          "is_nullable": "YES",
+          "column_default": "true"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "clinic_id",
+          "type": "uuid",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "clinic_role",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": "'doctor'::text"
+        },
+        {
+          "section": "C_profiles_columns",
+          "column_name": "share_message_template",
+          "type": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 38,
+      "fields": [
+        "section",
+        "column_name",
+        "type"
+      ],
+      "rows": [
+        {
+          "section": "D_appointments_columns",
+          "column_name": "id",
+          "type": "uuid"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "doctor_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "patient_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "lead_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "title",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "scheduled_at",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "duration_minutes",
+          "type": "int4"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "status",
+          "type": "appointment_status"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "reason",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "notes",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "google_event_id",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "fee",
+          "type": "numeric"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "currency",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "cancelled_reason",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "updated_at",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "patient_name",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "patient_phone",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "patient_email",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "appointment_date",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "chief_complaint",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "plan_name",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "plan_price",
+          "type": "numeric"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "source",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "consultation_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "patient_cedula",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "plan_sessions_remaining",
+          "type": "int4"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "auth_user_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "payment_method",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "insurance_name",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "payment_receipt_url",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "package_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "session_number",
+          "type": "int4"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "appointment_mode",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "appointment_code",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "meet_link",
+          "type": "text"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "bcv_rate",
+          "type": "numeric"
+        },
+        {
+          "section": "D_appointments_columns",
+          "column_name": "amount_bs",
+          "type": "numeric"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 15,
+      "fields": [
+        "section",
+        "column_name",
+        "type"
+      ],
+      "rows": [
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "id",
+          "type": "uuid"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "doctor_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "patient_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "appointment_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "chief_complaint",
+          "type": "text"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "history",
+          "type": "text"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "physical_exam",
+          "type": "text"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "diagnosis",
+          "type": "text"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "treatment_plan",
+          "type": "text"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "ai_summary",
+          "type": "text"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "audio_url",
+          "type": "text"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "is_draft",
+          "type": "bool"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "signed_at",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D2_ehr_records_columns",
+          "column_name": "updated_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 10,
+      "fields": [
+        "section",
+        "column_name",
+        "type"
+      ],
+      "rows": [
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "id",
+          "type": "uuid"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "doctor_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "patient_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "ehr_record_id",
+          "type": "uuid"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "medications",
+          "type": "jsonb"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "notes",
+          "type": "text"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "pdf_url",
+          "type": "text"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "issued_at",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "section": "D3_prescriptions_columns",
+          "column_name": "consultation_id",
+          "type": "uuid"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "plan",
+        "status",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "E_subs_by_plan",
+          "plan": "professional",
+          "status": "active",
+          "n": "1"
+        },
+        {
+          "section": "E_subs_by_plan",
+          "plan": "trial",
+          "status": "active",
+          "n": "3"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "doctor_id",
+        "n",
+        "plans",
+        "statuses"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "id",
+        "email",
+        "full_name",
+        "role",
+        "created_at"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "doctor_id",
+        "patient_ref",
+        "appt1",
+        "t1",
+        "appt2",
+        "t2",
+        "min_apart"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "id",
+        "doctor_id",
+        "patient_id",
+        "plan_name",
+        "total_sessions",
+        "used_sessions",
+        "status",
+        "excess"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "doctor_id",
+        "norm_email",
+        "patient_ids",
+        "n"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [
+        "section",
+        "tablename",
+        "policy_names",
+        "n"
+      ],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 9,
+      "fields": [
+        "section",
+        "tablename",
+        "cols",
+        "duplicates"
+      ],
+      "rows": [
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "appointments",
+          "cols": "{appointment_code}",
+          "duplicates": "{appointments_appointment_code_key,idx_appointments_code}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "appointments",
+          "cols": "{scheduled_at}",
+          "duplicates": "{idx_appointments_scheduled,idx_appointments_scheduled_at}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "billing_documents",
+          "cols": "{consultation_id}",
+          "duplicates": "{idx_billing_consultation,idx_billing_documents_consultation}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "billing_documents",
+          "cols": "{created_at}",
+          "duplicates": "{idx_billing_created,idx_billing_documents_created}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "billing_documents",
+          "cols": "{doctor_id}",
+          "duplicates": "{idx_billing_doctor,idx_billing_documents_doctor}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "consultations",
+          "cols": "{consultation_code}",
+          "duplicates": "{consultations_consultation_code_key,idx_consultations_code}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "doctor_schedule_config",
+          "cols": "{doctor_id}",
+          "duplicates": "{doctor_schedule_config_doctor_id_key,idx_schedule_config_doctor}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "patient_messages",
+          "cols": "{patient_id}",
+          "duplicates": "{idx_patient_messages_patient,idx_pm_patient}"
+        },
+        {
+          "section": "K_duplicate_indexes",
+          "tablename": "patients",
+          "cols": "{auth_user_id}",
+          "duplicates": "{idx_patients_auth,idx_patients_auth_user}"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "tablename"
+      ],
+      "rows": [
+        {
+          "section": "L_tables_no_rls",
+          "tablename": "profiles"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 11,
+      "fields": [
+        "section",
+        "tablename",
+        "policyname",
+        "cmd"
+      ],
+      "rows": [
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "patient_messages",
+          "policyname": "Open patient messages",
+          "cmd": "ALL"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "doctor_invitations",
+          "policyname": "Público puede leer por token",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "doctor_blocked_slots",
+          "policyname": "Public reads blocked slots",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "plan_configs",
+          "policyname": "Allow all for service role",
+          "cmd": "ALL"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "admin_roles",
+          "policyname": "Admin manages roles",
+          "cmd": "ALL"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "invoices",
+          "policyname": "Admin manages invoices",
+          "cmd": "ALL"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "plan_features",
+          "policyname": "Authenticated users can read plan_features",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "plan_features",
+          "policyname": "Admins can modify plan_features",
+          "cmd": "ALL"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "doctor_availability",
+          "policyname": "Public reads availability",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "doctor_schedule_config",
+          "policyname": "Public reads schedule config",
+          "cmd": "SELECT"
+        },
+        {
+          "section": "L2_permissive_policies",
+          "tablename": "plan_promotions",
+          "policyname": "Service role full access to promotions",
+          "cmd": "ALL"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "id",
+        "email",
+        "created_at",
+        "role",
+        "full_name"
+      ],
+      "rows": [
+        {
+          "section": "M_seed_accounts",
+          "id": "3ff16b2c-09ac-476e-b557-82da60e05e07",
+          "email": "anasolanob07@gmail.com",
+          "created_at": "2026-04-20T04:00:34.834Z",
+          "role": "doctor",
+          "full_name": "Ana Maria Solano Bracamonte"
+        },
+        {
+          "section": "M_seed_accounts",
+          "id": "db1a4f5f-b21c-40ee-bd6f-767aabd60a26",
+          "email": "ivana@gmail.com",
+          "created_at": "2026-04-17T23:17:13.766Z",
+          "role": null,
+          "full_name": null
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 39,
+      "fields": [
+        "section",
+        "tablename",
+        "n_cols"
+      ],
+      "rows": [
+        {
+          "section": "N_tables_inventory",
+          "tablename": "accounts_payable",
+          "n_cols": "10"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "admin_roles",
+          "n_cols": "9"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "appointment_reminders_config",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "appointments",
+          "n_cols": "38"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "billing_documents",
+          "n_cols": "20"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "clinic_invitations",
+          "n_cols": "9"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "clinics",
+          "n_cols": "20"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "consultation_payments",
+          "n_cols": "15"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "consultations",
+          "n_cols": "26"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_availability",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_blocked_slots",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_insurances",
+          "n_cols": "6"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_invitations",
+          "n_cols": "10"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_offices",
+          "n_cols": "12"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_patient_links",
+          "n_cols": "6"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_quick_items",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_schedule_config",
+          "n_cols": "8"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_services",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_suggestions",
+          "n_cols": "9"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "doctor_templates",
+          "n_cols": "13"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "ehr_records",
+          "n_cols": "15"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "invoices",
+          "n_cols": "13"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "lead_messages",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "leads",
+          "n_cols": "22"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "patient_messages",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "patient_packages",
+          "n_cols": "10"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "patients",
+          "n_cols": "22"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "payments",
+          "n_cols": "16"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "plan_configs",
+          "n_cols": "11"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "plan_features",
+          "n_cols": "7"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "plan_promotions",
+          "n_cols": "11"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "prescriptions",
+          "n_cols": "10"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "pricing_plans",
+          "n_cols": "11"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "profiles",
+          "n_cols": "35"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "reminders_queue",
+          "n_cols": "14"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "reminders_settings",
+          "n_cols": "15"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "subscription_payments",
+          "n_cols": "15"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "subscriptions",
+          "n_cols": "13"
+        },
+        {
+          "section": "N_tables_inventory",
+          "tablename": "waitlist",
+          "n_cols": "13"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1889
+}
