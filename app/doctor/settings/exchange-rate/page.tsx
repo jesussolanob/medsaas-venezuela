@@ -17,6 +17,8 @@ export default function ExchangeRateSettingsPage() {
   const [customLabel, setCustomLabel] = useState<string>('')
   const [previewRate, setPreviewRate] = useState<number | null>(null)
   const [previewSource, setPreviewSource] = useState<string>('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string>('')
 
   async function load() {
     setLoading(true)
@@ -37,16 +39,25 @@ export default function ExchangeRateSettingsPage() {
     setLoading(false)
   }
 
-  async function loadPreview(m: Mode) {
-    setPreviewRate(null); setPreviewSource('')
+  async function loadPreview(_m: Mode) {
+    setPreviewLoading(true)
+    setPreviewRate(null)
+    setPreviewSource('')
+    setPreviewError('')
     try {
       const r = await fetch('/api/doctor/exchange-rate', { cache: 'no-store' })
       const j = await r.json()
       if (j.rate && j.rate > 0) {
         setPreviewRate(j.rate)
-        setPreviewSource(j.label || '')
+        setPreviewSource(`${j.label || ''}${j.source ? ' · ' + j.source : ''}`)
+      } else {
+        setPreviewError(j.message || 'Tasa no disponible por ahora')
       }
-    } catch {}
+    } catch (e: any) {
+      setPreviewError(e?.message || 'Error de red al consultar la tasa')
+    } finally {
+      setPreviewLoading(false)
+    }
   }
 
   useEffect(() => { load() }, [])
@@ -171,23 +182,44 @@ export default function ExchangeRateSettingsPage() {
       </div>
 
       {/* Preview de la tasa */}
-      <div className="bg-slate-50 rounded-xl p-5 flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tasa que se aplicará</p>
-          {previewRate ? (
-            <>
-              <p className="text-3xl font-bold text-slate-900 mt-1">
-                {previewRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} Bs
+      <div className="bg-slate-50 rounded-xl p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tasa que se aplicará</p>
+            {previewLoading ? (
+              <p className="text-sm text-slate-400 mt-2 flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Consultando fuentes BCV…
               </p>
-              <p className="text-xs text-slate-500 mt-1">{previewSource}</p>
-            </>
-          ) : (
-            <p className="text-sm text-slate-400 mt-2">—</p>
-          )}
+            ) : previewRate ? (
+              <>
+                <p className="text-3xl font-bold text-slate-900 mt-1">
+                  {previewRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} Bs
+                </p>
+                <p className="text-xs text-slate-500 mt-1">{previewSource}</p>
+              </>
+            ) : previewError ? (
+              <div className="mt-2 text-sm">
+                <p className="text-red-600 font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" /> No se pudo obtener la tasa
+                </p>
+                <p className="text-xs text-red-500 mt-1">{previewError}</p>
+                <p className="text-xs text-slate-500 mt-2">
+                  Mientras tanto puedes elegir "Tasa personalizada" abajo y fijarla manualmente.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 mt-2">—</p>
+            )}
+          </div>
+          <button
+            onClick={() => loadPreview(mode)}
+            disabled={previewLoading}
+            className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 hover:bg-white text-slate-700 text-sm font-semibold rounded-lg disabled:opacity-50 shrink-0"
+          >
+            {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Actualizar
+          </button>
         </div>
-        <button onClick={() => loadPreview(mode)} className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 hover:bg-white text-slate-700 text-sm font-semibold rounded-lg">
-          <RefreshCw className="w-4 h-4" /> Actualizar
-        </button>
       </div>
 
       <div className="sticky bottom-4 flex justify-end">

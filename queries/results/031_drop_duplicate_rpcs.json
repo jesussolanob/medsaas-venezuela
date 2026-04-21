@@ -1,0 +1,43 @@
+{
+  "file": "031_drop_duplicate_rpcs.sql",
+  "executed_at": "2026-04-21T23:30:00.095Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "proname",
+        "args"
+      ],
+      "rows": [
+        {
+          "section": "final_rpcs",
+          "proname": "change_appointment_status",
+          "args": "p_appointment_id uuid, p_new_status text, p_reason text DEFAULT NULL::text, p_actor_id uuid DEFAULT NULL::uuid"
+        },
+        {
+          "section": "final_rpcs",
+          "proname": "reschedule_appointment",
+          "args": "p_appointment_id uuid, p_new_scheduled_at timestamp with time zone, p_reason text DEFAULT NULL::text, p_actor_id uuid DEFAULT NULL::uuid"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1456
+}

@@ -1194,24 +1194,33 @@ export default function AgendaPage() {
                         <CheckCircle className="w-3.5 h-3.5" /> Confirmar
                       </button>
                     )}
-                    <button
-                      onClick={() => setStatusAction({ type: 'completed', appt: detailAppt })}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg"
-                    >
-                      <CheckCircle className="w-3.5 h-3.5" /> Marcar como atendida
-                    </button>
-                    <button
-                      onClick={() => setStatusAction({ type: 'cancelled', appt: detailAppt })}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200"
-                    >
-                      Cancelar cita
-                    </button>
-                    <button
-                      onClick={() => setStatusAction({ type: 'no_show', appt: detailAppt })}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-lg border border-orange-200"
-                    >
-                      No asistió
-                    </button>
+                    {/* Guard: si viene de consultations SIN appointment_id → no se puede cambiar status */}
+                    {detailAppt.source === 'consultation' && !detailAppt.appointment_id ? (
+                      <div className="w-full px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                        ⚠️ Esta consulta no tiene cita vinculada. Para cambiar el estado, crea la cita desde "Ir a consulta".
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setStatusAction({ type: 'completed', appt: detailAppt })}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> Marcar como atendida
+                        </button>
+                        <button
+                          onClick={() => setStatusAction({ type: 'cancelled', appt: detailAppt })}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200"
+                        >
+                          Cancelar cita
+                        </button>
+                        <button
+                          onClick={() => setStatusAction({ type: 'no_show', appt: detailAppt })}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-lg border border-orange-200"
+                        >
+                          No asistió
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}

@@ -1,0 +1,270 @@
+{
+  "file": "030_status_audit.sql",
+  "executed_at": "2026-04-21T23:29:17.033Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 7,
+      "fields": [
+        "section",
+        "val"
+      ],
+      "rows": [
+        {
+          "section": "A_appointment_status_enum",
+          "val": "scheduled"
+        },
+        {
+          "section": "A_appointment_status_enum",
+          "val": "confirmed"
+        },
+        {
+          "section": "A_appointment_status_enum",
+          "val": "completed"
+        },
+        {
+          "section": "A_appointment_status_enum",
+          "val": "cancelled"
+        },
+        {
+          "section": "A_appointment_status_enum",
+          "val": "no_show"
+        },
+        {
+          "section": "A_appointment_status_enum",
+          "val": "pending"
+        },
+        {
+          "section": "A_appointment_status_enum",
+          "val": "accepted"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 4,
+      "fields": [
+        "section",
+        "status",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "B_appt_status_counts",
+          "status": "completed",
+          "n": "4"
+        },
+        {
+          "section": "B_appt_status_counts",
+          "status": "confirmed",
+          "n": "3"
+        },
+        {
+          "section": "B_appt_status_counts",
+          "status": "cancelled",
+          "n": "1"
+        },
+        {
+          "section": "B_appt_status_counts",
+          "status": "scheduled",
+          "n": "1"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "payment_status",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "C_consult_payment_status",
+          "payment_status": "approved",
+          "n": "4"
+        },
+        {
+          "section": "C_consult_payment_status",
+          "payment_status": "pending",
+          "n": "3"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 7,
+      "fields": [
+        "section",
+        "proname",
+        "args"
+      ],
+      "rows": [
+        {
+          "section": "D_rpc_signatures",
+          "proname": "adjust_package_balance",
+          "args": "p_package_id uuid, p_delta integer, p_notes text"
+        },
+        {
+          "section": "D_rpc_signatures",
+          "proname": "book_with_package",
+          "args": "p_package_id uuid, p_doctor_id uuid, p_patient_id uuid, p_auth_user_id uuid, p_scheduled_at timestamp with time zone, p_patient_name text, p_patient_phone text, p_patient_email text, p_plan_name text, p_chief_complaint text DEFAULT NULL::text, p_appointment_mode text DEFAULT 'presencial'::text, p_bcv_rate numeric DEFAULT NULL::numeric, p_patient_cedula text DEFAULT NULL::text"
+        },
+        {
+          "section": "D_rpc_signatures",
+          "proname": "change_appointment_status",
+          "args": "p_appointment_id uuid, p_new_status text, p_reason text DEFAULT NULL::text"
+        },
+        {
+          "section": "D_rpc_signatures",
+          "proname": "change_appointment_status",
+          "args": "p_appointment_id uuid, p_new_status text, p_reason text DEFAULT NULL::text, p_actor_id uuid DEFAULT NULL::uuid"
+        },
+        {
+          "section": "D_rpc_signatures",
+          "proname": "reschedule_appointment",
+          "args": "p_appointment_id uuid, p_new_scheduled_at timestamp with time zone, p_reason text DEFAULT NULL::text"
+        },
+        {
+          "section": "D_rpc_signatures",
+          "proname": "reschedule_appointment",
+          "args": "p_appointment_id uuid, p_new_scheduled_at timestamp with time zone, p_reason text DEFAULT NULL::text, p_actor_id uuid DEFAULT NULL::uuid"
+        },
+        {
+          "section": "D_rpc_signatures",
+          "proname": "restore_package_session",
+          "args": "p_appointment_id uuid, p_reason text DEFAULT 'appointment_cancelled'::text"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 3,
+      "fields": [
+        "section",
+        "appointment_id",
+        "action",
+        "field_changed",
+        "old_value",
+        "new_value",
+        "created_at"
+      ],
+      "rows": [
+        {
+          "section": "E_recent_changes",
+          "appointment_id": "b1ecc7fa-1556-42cc-9109-05b0a53d5901",
+          "action": "created",
+          "field_changed": null,
+          "old_value": null,
+          "new_value": "2026-05-05 14:00:00+00",
+          "created_at": "2026-04-21T15:45:52.640Z"
+        },
+        {
+          "section": "E_recent_changes",
+          "appointment_id": "e3be8175-11ce-44d3-88f0-fc29e7772809",
+          "action": "cancelled",
+          "field_changed": "status",
+          "old_value": "confirmed",
+          "new_value": "cancelled",
+          "created_at": "2026-04-21T12:30:48.803Z"
+        },
+        {
+          "section": "E_recent_changes",
+          "appointment_id": "e3be8175-11ce-44d3-88f0-fc29e7772809",
+          "action": "created",
+          "field_changed": null,
+          "old_value": null,
+          "new_value": "2026-04-21 18:00:00+00",
+          "created_at": "2026-04-21T04:46:36.568Z"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "without_appt",
+        "total"
+      ],
+      "rows": [
+        {
+          "section": "F_orphan_consultations",
+          "without_appt": "1",
+          "total": "7"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 5,
+      "fields": [
+        "section",
+        "id",
+        "patient_name",
+        "status",
+        "scheduled_at",
+        "consult_id",
+        "payment_status",
+        "consultation_code"
+      ],
+      "rows": [
+        {
+          "section": "G_sample_appt",
+          "id": "b1ecc7fa-1556-42cc-9109-05b0a53d5901",
+          "patient_name": "Alejandro Jesus mendoza jimenez",
+          "status": "scheduled",
+          "scheduled_at": "2026-05-05T14:00:00.000Z",
+          "consult_id": null,
+          "payment_status": null,
+          "consultation_code": null
+        },
+        {
+          "section": "G_sample_appt",
+          "id": "e3be8175-11ce-44d3-88f0-fc29e7772809",
+          "patient_name": "Osmariel",
+          "status": "cancelled",
+          "scheduled_at": "2026-04-21T18:00:00.000Z",
+          "consult_id": "9b9b6cb6-d29e-4f0f-a8ed-700b0527ef7d",
+          "payment_status": "pending",
+          "consultation_code": "CON-20260421-VOPH"
+        },
+        {
+          "section": "G_sample_appt",
+          "id": "14e472bc-22d7-4b94-8aa1-4a178f26ecca",
+          "patient_name": "Ernilin Nazaro ",
+          "status": "confirmed",
+          "scheduled_at": "2026-04-21T04:02:00.000Z",
+          "consult_id": "5bdd141a-1c30-4a2c-8be0-7e0217d27ac0",
+          "payment_status": "pending",
+          "consultation_code": "CON-20260421-90PJ"
+        },
+        {
+          "section": "G_sample_appt",
+          "id": "9bb69c05-c688-43ee-ba22-a960799659ff",
+          "patient_name": "Ernilin Nazaro ",
+          "status": "completed",
+          "scheduled_at": "2026-04-20T20:00:00.000Z",
+          "consult_id": null,
+          "payment_status": null,
+          "consultation_code": null
+        },
+        {
+          "section": "G_sample_appt",
+          "id": "a9aa2a85-243d-4165-9712-080f5631b5a2",
+          "patient_name": "Alejandro Mendoza ",
+          "status": "confirmed",
+          "scheduled_at": "2026-04-22T14:00:00.000Z",
+          "consult_id": "83aa47ff-2e89-4687-8af0-ddcbebc830fe",
+          "payment_status": "pending",
+          "consultation_code": "CON-20260421-HS5I"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1760
+}
