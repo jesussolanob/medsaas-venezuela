@@ -35,13 +35,8 @@ export async function getFinanceStats(period: 'day' | 'week' | 'month') {
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: true })
 
-  // 2. Verified payments
-  const { data: payData } = await supabase
-    .from('subscription_payments')
-    .select('created_at, amount')
-    .eq('status', 'verified')
-    .gte('created_at', since.toISOString())
-    .order('created_at', { ascending: true })
+  // 2. Verified payments — flujo eliminado, devolvemos array vacío en beta
+  const payData: { created_at: string; amount: number }[] = []
 
   // 3. Specialties
   const { data: specData } = await supabase

@@ -11,27 +11,6 @@ export default async function AdminDashboard() {
 
   const adminClient = createAdminClient()
 
-  // ── Fetch pending approvals (trial doctors) ──
-  const { data: pendingApprovals } = await adminClient
-    .from('subscriptions')
-    .select('doctor_id, plan, status, created_at')
-    .eq('status', 'trial')
-    .order('created_at', { ascending: false })
-    .limit(5)
-
-  const approvalDoctorIds = (pendingApprovals || []).map(a => a.doctor_id)
-  const { data: approvalProfiles } = approvalDoctorIds.length > 0
-    ? await adminClient
-        .from('profiles')
-        .select('id, full_name, specialty')
-        .in('id', approvalDoctorIds)
-    : { data: [] }
-
-  const profileMap: Record<string, { name: string; specialty: string }> = {}
-  ;(approvalProfiles || []).forEach(p => {
-    profileMap[p.id] = { name: p.full_name || 'Sin nombre', specialty: p.specialty || 'General' }
-  })
-
   // ── Subscription MoM stats ──
   let momGrowth = 0
   let newThisMonth = 0
@@ -157,10 +136,10 @@ export default async function AdminDashboard() {
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches'
   const dateStr = now.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
-  const pendingCount = pendingApprovals?.length ?? 0
+  // pendingCount eliminado — ya no hay aprobaciones
 
   // Accent colors for avatars
-  const avatarColors = ['#06B6D4', '#FF8A65', '#2A3340', '#0891B2', '#F26F4A']
+  // avatarColors eliminado — sin sección de aprobaciones
 
   return (
     <div className="space-y-6">
@@ -180,24 +159,23 @@ export default async function AdminDashboard() {
             {greeting}, Delta.
           </h1>
           <p className="text-base opacity-85 mt-2 mb-6 max-w-xl leading-relaxed">
-            {pendingCount > 0 ? `${pendingCount} aprobaciones pendientes` : 'Sin aprobaciones pendientes'}
-            {newThisMonth > 0 ? `, ${newThisMonth} especialista${newThisMonth !== 1 ? 's' : ''} nuevo${newThisMonth !== 1 ? 's' : ''} este mes` : ''}
-            {momGrowth > 0 ? ` y +${momGrowth}% de crecimiento MoM.` : '.'}
+            {newThisMonth > 0 ? `${newThisMonth} especialista${newThisMonth !== 1 ? 's' : ''} nuevo${newThisMonth !== 1 ? 's' : ''} este mes` : 'Sin nuevos especialistas este mes'}
+            {momGrowth > 0 ? ` · +${momGrowth}% de crecimiento MoM.` : '.'}
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/admin/approvals"
+              href="/admin/doctors"
               className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold transition-all"
               style={{ background: '#fff', color: '#0891B2' }}
             >
-              Revisar aprobaciones →
+              Ver especialistas →
             </Link>
             <Link
-              href="/admin/doctors"
+              href="/admin/finances"
               className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold transition-all"
               style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}
             >
-              Ver especialistas
+              Finanzas
             </Link>
           </div>
         </div>
@@ -228,86 +206,20 @@ export default async function AdminDashboard() {
         ))}
       </div>
 
-      {/* ── Bottom Grid: Chart + Approvals ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Chart — 3 cols */}
-        <div className="lg:col-span-3 rounded-[22px] bg-white p-6" style={{ border: '1px solid #E8ECF0' }}>
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <p className="text-base font-bold" style={{ color: '#0F1A2A' }}>Suscripciones · últimos 6 meses</p>
-              <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Crecimiento de la plataforma</p>
-            </div>
-            {momGrowth > 0 && (
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: '#D1FAE5', color: '#047857' }}>
-                ↑ +{momGrowth}%
-              </span>
-            )}
+      {/* ── Chart suscripciones ── */}
+      <div className="rounded-[22px] bg-white p-6" style={{ border: '1px solid #E8ECF0' }}>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="text-base font-bold" style={{ color: '#0F1A2A' }}>Suscripciones · últimos 6 meses</p>
+            <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Crecimiento de la plataforma</p>
           </div>
-          <AdminSubscriptionChart />
-        </div>
-
-        {/* Approvals — 2 cols */}
-        <div className="lg:col-span-2 rounded-[22px] bg-white p-6" style={{ border: '1px solid #E8ECF0' }}>
-          <div className="flex items-center justify-between mb-5">
-            <p className="text-base font-bold" style={{ color: '#0F1A2A' }}>Aprobaciones pendientes</p>
-            {pendingCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: '#FFE5DA', color: '#F26F4A' }}>
-                {pendingCount} nueva{pendingCount !== 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-
-          {pendingCount === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-sm" style={{ color: '#97A3AF' }}>No hay aprobaciones pendientes</p>
-            </div>
-          ) : (
-            <div className="space-y-0">
-              {(pendingApprovals || []).map((approval, i) => {
-                const profile = profileMap[approval.doctor_id]
-                const name = profile?.name || 'Doctor'
-                const spec = profile?.specialty || 'General'
-                const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
-                const color = avatarColors[i % avatarColors.length]
-                return (
-                  <div
-                    key={approval.doctor_id}
-                    className="flex items-center gap-3 py-3"
-                    style={{ borderBottom: i < (pendingApprovals?.length || 0) - 1 ? '1px solid #E8ECF0' : 'none' }}
-                  >
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                      style={{ background: color }}
-                    >
-                      {initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold truncate" style={{ color: '#0F1A2A' }}>{name}</p>
-                      <p className="text-[11px] truncate" style={{ color: '#97A3AF' }}>{spec}</p>
-                    </div>
-                    <Link
-                      href="/admin/approvals"
-                      className="px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all shrink-0"
-                      style={{ background: '#ECFEFF', color: '#0891B2' }}
-                    >
-                      Revisar
-                    </Link>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {pendingCount > 0 && (
-            <Link
-              href="/admin/approvals"
-              className="block text-center text-xs font-semibold mt-4 pt-3 transition-colors"
-              style={{ color: '#0891B2', borderTop: '1px solid #E8ECF0' }}
-            >
-              Ver todas las aprobaciones →
-            </Link>
+          {momGrowth > 0 && (
+            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: '#D1FAE5', color: '#047857' }}>
+              ↑ +{momGrowth}%
+            </span>
           )}
         </div>
+        <AdminSubscriptionChart />
       </div>
 
       {/* ── Growth MoM card ── */}

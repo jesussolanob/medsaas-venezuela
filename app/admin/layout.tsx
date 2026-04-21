@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 import {
-  LayoutDashboard, Users, CheckSquare,
+  LayoutDashboard, Users,
   Settings, LogOut, Menu, MessageSquarePlus, DollarSign,
   Pin, PanelLeftClose, PanelLeft, Bell
 } from 'lucide-react'
@@ -15,7 +15,6 @@ import SearchCommandPalette from './SearchCommandPalette'
 const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
   { name: 'Médicos',        href: '/admin/doctors',       icon: Users },
-  { name: 'Aprobaciones',   href: '/admin/approvals',     icon: CheckSquare },
   { name: 'Finanzas',       href: '/admin/finances',      icon: DollarSign },
   { name: 'Sugerencias',    href: '/admin/suggestions',   icon: MessageSquarePlus },
   { name: 'Configuración',  href: '/admin/settings',      icon: Settings },

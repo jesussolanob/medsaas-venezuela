@@ -100,42 +100,10 @@ export default function DoctorPlansPage() {
     const file = e.target.files?.[0]
     if (!file || !userId || !selectedAction) return
 
-    setUploading(true)
-    setUploadMessage('')
-
-    try {
-      const supabase = createClient()
-      const ext = file.name.split('.').pop() ?? 'jpg'
-      const fileName = `receipts/${userId}/${Date.now()}.${ext}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('payment-receipts')
-        .upload(fileName, file)
-
-      if (uploadError) throw uploadError
-
-      const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(fileName)
-
-      // Determine if this is an upgrade or renewal
-      const isUpgrade = selectedAction.planKey !== subscription?.plan
-      const method = isUpgrade ? 'admin_upgrade' : 'pago_movil'
-
-      await supabase.from('subscription_payments').insert({
-        doctor_id: userId,
-        subscription_id: subscription?.id,
-        receipt_url: urlData.publicUrl,
-        status: 'pending',
-        amount: selectedAction.amount,
-        method,
-      })
-
-      setUploadMessage('Comprobante subido exitosamente. El administrador lo revisará en breve.')
-      setSelectedAction(null)
-    } catch (error: any) {
-      setUploadMessage('Error al subir el comprobante: ' + error.message)
-    } finally {
-      setUploading(false)
-    }
+    // Beta privada: el flujo de comprobantes y aprobaciones fue eliminado.
+    // Todos los médicos tienen acceso gratis por 1 año automáticamente.
+    setUploadMessage('En la beta privada el acceso es gratuito. No es necesario subir comprobantes.')
+    setSelectedAction(null)
   }
 
   const getStatusBadge = (status: string) => {

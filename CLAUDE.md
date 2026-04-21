@@ -32,7 +32,6 @@ Nombre comercial: **Delta Medical CRM**.
 - /plans → Activar/desactivar planes (plan_configs table)
 - /plan-features → Configurar features por plan
 - /finances → Finanzas globales
-- /approvals → Aprobaciones de pagos
 - /reminders → Configuración de recordatorios
 - /settings → Configuración general
 - /roles → Gestión de roles
@@ -104,24 +103,29 @@ Nombre comercial: **Delta Medical CRM**.
 - prescriptions → patient_id, doctor_id, medication_name, dosage, frequency, duration
 - patient_messages → patient_id, body, direction (patient_to_doctor|doctor_to_patient)
 - pricing_plans → doctor_id, name, price_usd, duration_minutes, sessions_count, is_active
-- leads, payments, reminders_settings, reminders_queue, subscription_payments, doctor_invitations
+- leads, reminders_settings, reminders_queue, doctor_invitations
+- ~~subscription_payments, payments, waitlist, doctor_patient_links, appointment_reminders_config~~ → ELIMINADAS (refactor 2026-04-21)
 
 ### Feature keys disponibles
 dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm, reminders, messages, invitations, settings
 
-## Modelo de suscripciones (4 planes)
-- **Trial**: $0, 15 días gratis, se suspende al vencer
-- **Basic**: $10 USD/mes
-- **Professional**: $30 USD/mes
-- **Clinic**: $100 USD/mes, incluye gestión de médicos
+## Modelo de suscripciones — Beta Privada (simplificado 2026-04-21)
+- **Trial Beta Privada**: $0, **1 año gratis** automático
+- **Basic**: $10 USD/mes (configurado en BD pero NO en uso durante beta)
+- **Professional**: $30 USD/mes (configurado pero NO en uso durante beta)
+- **Clinic**: $100 USD/mes (configurado pero NO en uso durante beta)
 
-### Flujo de suscripción
-1. Médico se registra → subscription status='trial', 15 días
-2. Al vencer → status='suspended', vista bloqueante
-3. Médico sube comprobante de pago → admin verifica → status='active', 30 días más
-4. Banners: amarillo <7 días, rojo <3 días
-5. Admin puede activar/desactivar planes desde /admin/plans
-6. Admin configura features por plan desde /admin/plan-features
+### Flujo de suscripción (beta privada)
+1. Médico se registra en /register → subscription status='active', plan='trial', 1 año gratis
+2. **NO hay flujo de aprobaciones** — el módulo /admin/approvals fue eliminado
+3. **NO hay flujo de comprobantes de pago** — durante beta el acceso es gratis
+4. Admin puede activar/desactivar planes desde /admin/plans (cuando se lance pago)
+5. Admin configura features por plan desde /admin/plan-features
+
+### Cuando se lance el modelo de pago (post-beta)
+- Reactivar el módulo de aprobaciones (revertir commit del 2026-04-21)
+- Reintroducir tabla subscription_payments + endpoints aprovechando backup_20260421
+- Implementar Edge Function para procesamiento de pagos automático
 
 ### Feature gating en el doctor layout
 - El sidebar lee plan_features para mostrar/ocultar módulos

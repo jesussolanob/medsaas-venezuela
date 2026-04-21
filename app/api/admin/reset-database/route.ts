@@ -58,7 +58,6 @@ export async function POST(request: Request) {
       'patients',
       'leads',
       'payments',
-      'subscription_payments',
       'subscriptions',
       'pricing_plans',
       'doctor_invitations',

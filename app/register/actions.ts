@@ -79,7 +79,6 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
   }
 
   revalidatePath('/admin/doctors')
-  revalidatePath('/admin/approvals')
 
   return { success: true, doctorId: userId }
 }
@@ -248,17 +247,17 @@ export async function registerClinic(input: RegisterClinicInput): Promise<Regist
   // 4. Create subscription
   const now = new Date()
   const expiresAt = new Date(now)
-  expiresAt.setDate(expiresAt.getDate() + 30)
+  // Beta: 1 año gratis para clínicas también, status active inmediato
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1)
 
   await supabase.from('subscriptions').insert({
     doctor_id: userId,
-    plan: 'enterprise',
-    status: 'trial',
+    plan: 'clinic',
+    status: 'active',
     current_period_end: expiresAt.toISOString(),
   })
 
   revalidatePath('/admin/doctors')
-  revalidatePath('/admin/approvals')
 
   return { success: true, doctorId: userId }
 }
@@ -334,55 +333,9 @@ export async function getBCVRate(): Promise<BCVRateResult> {
   }
 }
 
-// ── Subir comprobante de pago ─────────────────────────────────────────────────
-export type UploadReceiptResult =
-  | { success: true; receiptUrl: string }
-  | { success: false; error: string }
-
-export async function uploadPaymentReceipt(
-  doctorId: string,
-  base64Data: string,
-  fileName: string,
-  mimeType: string,
-  amount: number = 30
-): Promise<UploadReceiptResult> {
-  const supabase = createAdminClient()
-
-  const buffer = Buffer.from(base64Data, 'base64')
-  const ext = fileName.split('.').pop() ?? 'jpg'
-  const storagePath = `receipts/${doctorId}/${Date.now()}.${ext}`
-
-  const { error: uploadError } = await supabase.storage
-    .from('payment-receipts')
-    .upload(storagePath, buffer, { contentType: mimeType, upsert: true })
-
-  if (uploadError) {
-    return { success: false, error: 'No se pudo subir el comprobante: ' + uploadError.message }
-  }
-
-  const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(storagePath)
-  const receiptUrl = urlData.publicUrl
-
-  // Get the doctor's subscription ID
-  const { data: subscription } = await supabase
-    .from('subscriptions')
-    .select('id')
-    .eq('doctor_id', doctorId)
-    .single()
-
-  const { error: paymentError } = await supabase.from('subscription_payments').insert({
-    doctor_id: doctorId,
-    subscription_id: subscription?.id,
-    amount: amount,
-    method: 'pago_movil',
-    receipt_url: receiptUrl,
-    status: 'pending',
-  })
-
-  if (paymentError) console.error('Error guardando pago:', paymentError.message)
-
-  return { success: true, receiptUrl }
-}
+// uploadPaymentReceipt eliminada — el flujo de comprobantes de pago se removió
+// junto con el módulo de aprobaciones. En beta privada las suscripciones son
+// trial activo automático por 1 año.
 
 // ── Obtener planes activos ────────────────────────────────────────────────────
 export type PlanConfigPublic = {

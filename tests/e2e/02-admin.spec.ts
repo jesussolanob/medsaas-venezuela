@@ -29,11 +29,18 @@ test.describe('Flujo 2: Admin — gestión global', () => {
     await expect(page.locator('body')).toContainText(/4/)
   })
 
-  test('2.4 Página de aprobaciones carga', async ({ page }) => {
+  test('2.4 /admin/approvals redirige a /admin (flujo eliminado)', async ({ page }) => {
     await page.goto('/admin/approvals')
     await page.waitForLoadState('networkidle')
-    // No debe lanzar errores aunque no haya pagos pendientes
-    await expect(page.locator('body')).not.toContainText(/error|undefined/i)
+    // El módulo de aprobaciones fue eliminado; debe redirigir a /admin
+    await expect(page).toHaveURL(/\/admin\/?$/)
+  })
+
+  test('2.4b Endpoint /api/admin/approve-payment devuelve 410 Gone', async ({ page }) => {
+    const r = await page.request.post('/api/admin/approve-payment', {
+      data: { paymentId: 'fake', action: 'approve' },
+    })
+    expect([404, 410]).toContain(r.status())
   })
 
   test('2.5 Finanzas carga', async ({ page }) => {

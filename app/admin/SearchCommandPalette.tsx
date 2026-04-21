@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, Users, CheckSquare, DollarSign,
+  LayoutDashboard, Users, DollarSign,
   MessageSquarePlus, Settings, Sparkles, Search, ArrowRight,
   CreditCard, Tag, Bell, Shield, Package
 } from 'lucide-react'
@@ -20,7 +20,6 @@ const commands: CommandItem[] = [
   // Main
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, description: 'KPIs, gráficas y resumen general', section: 'Principal' },
   { name: 'Médicos', href: '/admin/doctors', icon: Users, description: 'Gestionar especialistas registrados', section: 'Principal' },
-  { name: 'Aprobaciones', href: '/admin/approvals', icon: CheckSquare, description: 'Revisar solicitudes pendientes', section: 'Principal' },
   { name: 'Finanzas', href: '/admin/finances', icon: DollarSign, description: 'Ingresos, pagos y reportes financieros', section: 'Principal' },
   { name: 'Sugerencias', href: '/admin/suggestions', icon: MessageSquarePlus, description: 'Feedback de especialistas', section: 'Principal' },
   // Config

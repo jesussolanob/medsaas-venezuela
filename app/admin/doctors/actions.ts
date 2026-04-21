@@ -178,25 +178,8 @@ export async function createClinic(input: CreateClinicInput): Promise<ActionResu
     console.error('Error creating clinic subscription:', subError.message)
   }
 
-  // Get the subscription ID for the clinic
-  const { data: clinicSub } = await supabase
-    .from('subscriptions')
-    .select('id')
-    .eq('doctor_id', userId)
-    .single()
-
-  // Create pending approval for clinic subscription
-  if (clinicSub) {
-    await supabase.from('subscription_payments').insert({
-      doctor_id: userId,
-      subscription_id: clinicSub.id,
-      amount: 100, // Centro de Salud plan costs $100/month
-      currency: 'USD',
-      method: 'admin_creation',
-      reference_number: `CLINIC-${Date.now()}`,
-      status: 'pending',
-    })
-  }
+  // Flujo de aprobaciones eliminado en beta privada. Las clínicas obtienen
+  // acceso inmediato igual que los médicos individuales.
 
   revalidatePath('/admin/doctors')
 

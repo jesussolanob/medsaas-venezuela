@@ -1,0 +1,66 @@
+{
+  "file": "019_drop_subscription_payments.sql",
+  "executed_at": "2026-04-21T03:28:04.093Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "rows"
+      ],
+      "rows": [
+        {
+          "section": "PRE_count",
+          "rows": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "DROP",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "still_exists",
+        "rows_in_backup"
+      ],
+      "rows": [
+        {
+          "section": "POST_check",
+          "still_exists": "0",
+          "rows_in_backup": "0"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "total_tables"
+      ],
+      "rows": [
+        {
+          "section": "POST_table_count",
+          "total_tables": "34"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1710
+}

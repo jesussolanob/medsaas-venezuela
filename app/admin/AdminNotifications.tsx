@@ -4,93 +4,72 @@ import { createClient } from '@/lib/supabase/client'
 import { Bell, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 
+/**
+ * Notificaciones del admin — beta privada.
+ * Muestra los médicos que se registraron en los últimos 7 días.
+ * Ya NO maneja flujo de aprobaciones (eliminado).
+ */
 export default function AdminNotifications() {
-  const [newDoctorsCount, setNewDoctorsCount] = useState(0)
-  const [newDoctors, setNewDoctors] = useState<any[]>([])
+  const [recentDoctors, setRecentDoctors] = useState<any[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
-    async function loadNewDoctors() {
+    async function loadRecentDoctors() {
       try {
-        const { data, error } = await supabase
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+        const { data } = await supabase
           .from('profiles')
           .select('id, full_name, email, created_at')
           .eq('role', 'doctor')
-          .eq('reviewed_by_admin', false)
+          .gte('created_at', sevenDaysAgo)
           .order('created_at', { ascending: false })
+          .limit(10)
 
-        if (error && error.code !== 'PGRST116') {
-          // PGRST116 = column doesn't exist, fallback to last 24h
-          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-          const { data: fallbackData } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, created_at')
-            .eq('role', 'doctor')
-            .gte('created_at', oneDayAgo)
-            .order('created_at', { ascending: false })
-
-          setNewDoctorsCount(fallbackData?.length || 0)
-          setNewDoctors(fallbackData || [])
-        } else {
-          setNewDoctorsCount(data?.length || 0)
-          setNewDoctors(data || [])
-        }
+        setRecentDoctors(data || [])
       } catch (err) {
-        console.error('Error loading new doctors:', err)
+        console.error('Error loading recent doctors:', err)
       }
     }
 
-    loadNewDoctors()
-
-    // Poll every 60 seconds
-    const interval = setInterval(loadNewDoctors, 60000)
+    loadRecentDoctors()
+    const interval = setInterval(loadRecentDoctors, 60000)
     return () => clearInterval(interval)
   }, [])
 
-  async function markAsReviewed(doctorId: string) {
-    try {
-      await supabase
-        .from('profiles')
-        .update({ reviewed_by_admin: true })
-        .eq('id', doctorId)
-
-      setNewDoctors(prev => prev.filter(d => d.id !== doctorId))
-      setNewDoctorsCount(prev => Math.max(0, prev - 1))
-    } catch (err) {
-      console.error('Error marking as reviewed:', err)
-    }
-  }
+  const count = recentDoctors.length
 
   return (
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+        title="Médicos nuevos (últimos 7 días)"
       >
         <Bell className="w-5 h-5" />
-        {newDoctorsCount > 0 && (
-          <span className="absolute top-1 right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full">
-            {newDoctorsCount > 9 ? '9+' : newDoctorsCount}
+        {count > 0 && (
+          <span className="absolute top-1 right-1 flex items-center justify-center w-5 h-5 bg-teal-500 text-white text-xs font-bold rounded-full">
+            {count > 9 ? '9+' : count}
           </span>
         )}
       </button>
 
-      {/* Dropdown */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-screen sm:w-80 sm:max-w-xs bg-white rounded-lg border border-slate-200 shadow-lg z-50 max-h-[60vh] sm:max-h-96 overflow-y-auto -mr-4 sm:mr-0">
           <div className="p-3 sm:p-4 border-b border-slate-200 sticky top-0 bg-white">
-            <h3 className="font-semibold text-slate-900 text-sm">Médicos nuevos</h3>
-            <p className="text-xs text-slate-500 mt-1">{newDoctorsCount} sin revisar</p>
+            <h3 className="font-semibold text-slate-900 text-sm">Médicos recientes</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              {count === 0 ? 'Sin registros' : `${count} en los últimos 7 días`}
+            </p>
           </div>
 
-          {newDoctorsCount === 0 ? (
+          {count === 0 ? (
             <div className="p-6 sm:p-8 text-center text-slate-400 text-sm">
-              No hay médicos nuevos
+              No hay médicos nuevos esta semana
             </div>
           ) : (
             <>
-              {newDoctors.map((doctor) => (
+              {recentDoctors.map((doctor) => (
                 <div
                   key={doctor.id}
                   className="px-3 sm:px-4 py-3 border-b border-slate-100 last:border-b-0 flex items-center justify-between hover:bg-slate-50 transition-colors gap-2"
@@ -107,10 +86,7 @@ export default function AdminNotifications() {
                   <Link
                     href={`/admin/doctors?focus=${doctor.id}`}
                     className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium flex-shrink-0 whitespace-nowrap"
-                    onClick={() => {
-                      setIsOpen(false)
-                      markAsReviewed(doctor.id)
-                    }}
+                    onClick={() => setIsOpen(false)}
                   >
                     Ver
                     <ChevronRight className="w-3 h-3 hidden sm:inline" />
@@ -122,7 +98,6 @@ export default function AdminNotifications() {
         </div>
       )}
 
-      {/* Close dropdown when clicking outside */}
       {isOpen && (
         <div
           className="fixed inset-0 z-40"
