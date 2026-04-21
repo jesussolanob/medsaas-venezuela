@@ -7,7 +7,7 @@ import {
   AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight,
   User, Phone, Stethoscope, ChevronDown, CheckCircle2
 } from 'lucide-react'
-import { registerDoctor } from './actions'
+import { registerDoctor, registerPatient } from './actions'
 import { createClient } from '@/lib/supabase/client'
 
 const specialties = [
@@ -86,19 +86,15 @@ export default function RegisterPage() {
     setError('')
 
     try {
-      const supabase = createClient()
-      const { data, error: signUpErr } = await supabase.auth.signUp({
+      const result = await registerPatient({
+        full_name: fullName.trim(),
         email: email.trim(),
         password: password.trim(),
-        options: {
-          data: { full_name: fullName.trim(), role: 'patient' },
-        },
+        phone: phone.trim() || undefined,
       })
 
-      if (signUpErr) {
-        setError(signUpErr.message.includes('already registered')
-          ? 'Este email ya está registrado. Intenta iniciar sesión.'
-          : signUpErr.message)
+      if (!result.success) {
+        setError(result.error)
         setLoading(false)
         return
       }
@@ -158,8 +154,8 @@ export default function RegisterPage() {
             </h1>
             <p className="text-sm" style={{ color: '#5A6773' }}>
               {role === 'especialista'
-                ? 'Revisa tu correo electrónico para verificar tu cuenta. Una vez verificada, podrás iniciar sesión y acceder a todas las funcionalidades de Delta.'
-                : 'Revisa tu correo electrónico para verificar tu cuenta. Luego podrás iniciar sesión en el portal de pacientes.'
+                ? 'Tu cuenta ha sido creada exitosamente. Ya puedes iniciar sesión y acceder a todas las funcionalidades de Delta.'
+                : 'Tu cuenta ha sido creada exitosamente. Ya puedes iniciar sesión en el portal de pacientes.'
               }
             </p>
             <Link

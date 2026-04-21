@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react'
+import { AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { resendConfirmation } from '../register/actions'
 import { Suspense } from 'react'
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -48,6 +49,7 @@ function LoginInner() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
+  const [confirmingEmail, setConfirmingEmail] = useState(false)
 
   async function handleGoogleLogin() {
     setLoading(true)
@@ -82,9 +84,60 @@ function LoginInner() {
       })
 
       if (authErr || !data.user) {
-        setError(authErr?.message === 'Invalid login credentials'
+        const msg = authErr?.message || ''
+
+        // Handle "Email not confirmed" — auto-confirm in beta and retry
+        if (msg.toLowerCase().includes('email not confirmed')) {
+          setError('Tu email no estaba confirmado. Confirmando automáticamente...')
+          setConfirmingEmail(true)
+          try {
+            const confirmResult = await resendConfirmation(email.trim())
+            if (confirmResult.success) {
+              // Retry login after confirming
+              const { data: retryData, error: retryErr } = await supabase.auth.signInWithPassword({
+                email: email.trim(),
+                password: password.trim(),
+              })
+              if (retryErr || !retryData.user) {
+                setError(retryErr?.message === 'Invalid login credentials'
+                  ? 'Correo o contraseña incorrectos.'
+                  : retryErr?.message || 'Error al iniciar sesión')
+                setEmailLoading(false)
+                setConfirmingEmail(false)
+                return
+              }
+              // Success — continue with normal flow
+              setConfirmingEmail(false)
+              const { data: retryProfile } = await supabase
+                .from('profiles')
+                .select('role, phone')
+                .eq('id', retryData.user.id)
+                .maybeSingle()
+
+              if (!retryProfile || !retryProfile.phone) {
+                router.push('/onboarding')
+              } else if (retryProfile.role === 'super_admin' || retryProfile.role === 'admin') {
+                router.push('/admin')
+              } else if (retryProfile.role === 'patient') {
+                router.push('/patient/dashboard')
+              } else {
+                router.push('/doctor')
+              }
+              return
+            } else {
+              setError('No se pudo confirmar el email. Contacta soporte.')
+            }
+          } catch {
+            setError('Error al confirmar email. Intenta de nuevo.')
+          }
+          setEmailLoading(false)
+          setConfirmingEmail(false)
+          return
+        }
+
+        setError(msg === 'Invalid login credentials'
           ? 'Correo o contraseña incorrectos.'
-          : authErr?.message || 'Error al iniciar sesión')
+          : msg || 'Error al iniciar sesión')
         setEmailLoading(false)
         return
       }
@@ -349,7 +402,7 @@ function LoginInner() {
                     {emailLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Verificando...
+                        {confirmingEmail ? 'Confirmando email...' : 'Verificando...'}
                       </>
                     ) : (
                       <>

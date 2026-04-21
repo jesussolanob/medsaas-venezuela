@@ -24,11 +24,11 @@ export type RegisterResult =
 export async function registerDoctor(input: RegisterInput): Promise<RegisterResult> {
   const supabase = createAdminClient()
 
-  // 1. Create auth user (email_confirm: false → Supabase sends verification email)
+  // 1. Create auth user (email_confirm: true → Beta: auto-confirm so they can login immediately)
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
-    email_confirm: false,
+    email_confirm: true,
     user_metadata: { full_name: input.full_name, role: 'doctor' },
   })
 
@@ -78,20 +78,85 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     console.error('Error creando suscripción:', subError.message)
   }
 
-  // 4. Send verification email via Supabase magic link
-  try {
-    await supabase.auth.admin.generateLink({
-      type: 'signup',
-      email: input.email,
-    })
-  } catch (e) {
-    console.error('Error sending verification email:', e)
-  }
-
   revalidatePath('/admin/doctors')
   revalidatePath('/admin/approvals')
 
   return { success: true, doctorId: userId }
+}
+
+// ── Register Patient (Beta: auto-confirm email) ─────────────────────────────
+
+export type RegisterPatientInput = {
+  full_name: string
+  email: string
+  password: string
+  phone?: string
+}
+
+export async function registerPatient(input: RegisterPatientInput): Promise<RegisterResult> {
+  const supabase = createAdminClient()
+
+  // Create auth user with auto-confirmed email (beta)
+  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { full_name: input.full_name, role: 'patient' },
+  })
+
+  if (authError) {
+    if (authError.message.includes('already registered')) {
+      return { success: false, error: 'Este email ya está registrado. Intenta iniciar sesión.' }
+    }
+    return { success: false, error: authError.message }
+  }
+
+  const userId = authData.user.id
+
+  // Create profile
+  const { error: profileError } = await supabase.from('profiles').upsert({
+    id: userId,
+    full_name: input.full_name,
+    email: input.email,
+    phone: input.phone || null,
+    role: 'patient',
+    is_active: true,
+  })
+
+  if (profileError) {
+    await supabase.auth.admin.deleteUser(userId)
+    return { success: false, error: profileError.message }
+  }
+
+  return { success: true, doctorId: userId }
+}
+
+// ── Confirm unconfirmed email (for existing stuck users) ─────────────────────
+
+export async function confirmUserEmail(email: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = createAdminClient()
+
+  // Find user by email
+  const { data: { users }, error: listErr } = await supabase.auth.admin.listUsers()
+  if (listErr) return { success: false, error: listErr.message }
+
+  const user = users.find(u => u.email === email)
+  if (!user) return { success: false, error: 'Usuario no encontrado' }
+
+  // Confirm email using admin API
+  const { error } = await supabase.auth.admin.updateUserById(user.id, {
+    email_confirm: true,
+  })
+
+  if (error) return { success: false, error: error.message }
+  return { success: true }
+}
+
+// ── Resend confirmation / auto-confirm for beta ──────────────────────────────
+
+export async function resendConfirmation(email: string): Promise<{ success: boolean; error?: string }> {
+  // In beta, we just auto-confirm the email
+  return confirmUserEmail(email)
 }
 
 // ── Register Clinic (Centro de Salud) ──────────────────────────────────────────
