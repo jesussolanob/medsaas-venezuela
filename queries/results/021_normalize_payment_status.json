@@ -1,0 +1,96 @@
+{
+  "file": "021_normalize_payment_status.sql",
+  "executed_at": "2026-04-21T03:46:44.806Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "payment_status",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "PRE",
+          "payment_status": "approved",
+          "n": "4"
+        },
+        {
+          "section": "PRE",
+          "payment_status": "pending_approval",
+          "n": "1"
+        }
+      ]
+    },
+    {
+      "command": "UPDATE",
+      "rowCount": 1,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "UPDATE",
+      "rowCount": 0,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "payment_status",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "POST",
+          "payment_status": "pending",
+          "n": "1"
+        },
+        {
+          "section": "POST",
+          "payment_status": "approved",
+          "n": "4"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "section",
+        "null_status"
+      ],
+      "rows": [
+        {
+          "section": "POST_null",
+          "null_status": "0"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1407
+}

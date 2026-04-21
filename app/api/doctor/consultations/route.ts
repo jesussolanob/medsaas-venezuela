@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       chief_complaint: chief_complaint || null,
       notes: notes || null,
       consultation_date: dateISO,
-      payment_status: finalAmount > 0 ? 'pending_approval' : 'unpaid',
+      payment_status: 'pending',
       amount: finalAmount,
       currency: currency || 'USD',
       plan_name: plan_name || null,
@@ -152,11 +152,14 @@ const ALLOWED_PATCH_FIELDS = new Set([
   'plan_name',
   'payment_method',
   'payment_reference',
+  'payment_status',   // permitir: pending | approved | cancelled (validado abajo)
   'consultation_date',
   'started_at',
   'ended_at',
   'duration_minutes',
 ])
+
+const VALID_PAYMENT_STATUSES = new Set(['pending', 'approved', 'cancelled'])
 
 export async function PATCH(req: NextRequest) {
   const supabase = await createClient()
@@ -169,10 +172,12 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
 
   // AL-104: filtrar solo campos permitidos. doctor_id, patient_id,
-  // payment_status, consultation_code, etc. quedan fuera.
+  // consultation_code, etc. quedan fuera. payment_status validado contra whitelist.
   const safeFields: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(fields)) {
-    if (ALLOWED_PATCH_FIELDS.has(k)) safeFields[k] = v
+    if (!ALLOWED_PATCH_FIELDS.has(k)) continue
+    if (k === 'payment_status' && typeof v === 'string' && !VALID_PAYMENT_STATUSES.has(v)) continue
+    safeFields[k] = v
   }
 
   if (Object.keys(safeFields).length === 0) {

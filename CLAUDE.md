@@ -28,13 +28,15 @@ Nombre comercial: **Delta Medical CRM**.
 - layout.tsx → Sidebar con navegación admin
 - page.tsx → Dashboard con KPIs en tiempo real
 - /doctors → Lista de médicos + NewDoctorModal + NewClinicModal
+- /patients → **NUEVO** Estadísticas globales de pacientes (edad, email, consultas)
 - /subscriptions → Gestión de suscripciones
 - /plans → Activar/desactivar planes (plan_configs table)
 - /plan-features → Configurar features por plan
-- /finances → Finanzas globales
 - /reminders → Configuración de recordatorios
-- /settings → Configuración general
+- /settings → **SIMPLIFICADO** Solo gestión de admins + tasa BCV
 - /roles → Gestión de roles
+- ~~/approvals~~ → ELIMINADO (beta privada — acceso inmediato)
+- ~~/finances~~ → ELIMINADO (beta privada — redirige a /admin)
 
 ### /doctor — App del Médico
 - layout.tsx → Sidebar con feature gating basado en plan_features

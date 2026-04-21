@@ -112,9 +112,10 @@ export default function EHRPage() {
   )
 
   const statusBadge = (status: string) => {
-    if (status === 'approved') return <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Pagado</span>
-    if (status === 'pending_approval') return <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Pendiente</span>
-    return <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Sin pago</span>
+    if (status === 'approved') return <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Aprobado</span>
+    if (status === 'pending' || status === 'pending_approval') return <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Pendiente</span>
+    if (status === 'cancelled') return <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Cancelado</span>
+    return <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">—</span>
   }
 
   // ── Vista 3: Detalle de consulta ──

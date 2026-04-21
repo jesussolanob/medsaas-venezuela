@@ -66,10 +66,12 @@ test.describe('Flujo 3: Doctor — agenda y consultas', () => {
     await expect(page.locator('body')).not.toContainText(/error|undefined/i)
   })
 
-  test('3.11 Doctor NO puede aprobar pagos (endpoint protegido)', async ({ page }) => {
+  test('3.11 Doctor NO puede aprobar pagos (endpoint eliminado)', async ({ page }) => {
     const r = await page.request.post('/api/admin/approve-payment', {
       data: { paymentId: 'fake-uuid', action: 'approve' },
     })
-    expect([401, 403, 404]).toContain(r.status())
+    // 410 = Gone (endpoint eliminado en beta privada)
+    // 401/403/404 también aceptables según ambiente
+    expect([401, 403, 404, 410]).toContain(r.status())
   })
 })

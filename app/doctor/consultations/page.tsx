@@ -14,7 +14,7 @@ type Consultation = {
   notes: string | null
   diagnosis: string | null
   treatment: string | null
-  payment_status: 'unpaid' | 'pending_approval' | 'approved'
+  payment_status: 'pending' | 'approved' | 'cancelled'
   patient_id: string
   patient_name: string
   patient_phone: string | null
@@ -56,10 +56,13 @@ type AppointmentData = {
   plan_name?: string | null
 }
 
-const PAYMENT_STATUS = {
-  unpaid: { label: 'No pagado', color: 'bg-red-100 text-red-600', dot: 'bg-red-500' },
-  pending_approval: { label: 'Pago pendiente', color: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
-  approved: { label: 'Pagado', color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+const PAYMENT_STATUS: Record<string, { label: string; color: string; dot: string }> = {
+  pending:          { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
+  approved:         { label: 'Aprobada',  color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  cancelled:        { label: 'Cancelada', color: 'bg-red-100 text-red-700',         dot: 'bg-red-500' },
+  // Alias legacy
+  unpaid:           { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
+  pending_approval: { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
 }
 
 type ViewMode = 'list' | 'consultation'
@@ -113,7 +116,7 @@ function ConsultationsPage() {
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('informe')
 
   // Report fields (editable during consultation)
-  const [report, setReport] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'unpaid' as Consultation['payment_status'] })
+  const [report, setReport] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'pending' as Consultation['payment_status'] })
 
   // PDF include toggles
   const [includeRecipe, setIncludeRecipe] = useState(true)
@@ -740,8 +743,11 @@ function ConsultationsPage() {
   }
 
   async function saveRecipe() {
-    if (!selected || recipe.medications.length === 0) {
-      alert('Agrega al menos un medicamento')
+    // Permitir receta de texto libre: basta con que haya medicamentos O notas.
+    const hasContent = (recipe.medications && recipe.medications.length > 0)
+      || (recipe.notes && recipe.notes.replace(/<[^>]*>/g, '').trim().length > 0)
+    if (!selected || !hasContent) {
+      alert('Agrega al menos un medicamento o escribe notas de la receta')
       return
     }
     setIsSavingRecipe(true)
@@ -2184,7 +2190,7 @@ function ConsultationsPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                     {hasReport && <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full hidden sm:inline-block">Con informe</span>}
-                    {c.payment_status !== 'unpaid' && <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full hidden sm:inline-block" title="Comprobante registrado">Con comprobante</span>}
+                    {(c.payment_status === 'approved') && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full hidden sm:inline-block" title="Pago aprobado">Aprobada</span>}
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${ps.color}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${ps.dot}`} /><span className="hidden sm:inline">{ps.label}</span>
                     </span>

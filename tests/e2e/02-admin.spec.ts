@@ -43,16 +43,33 @@ test.describe('Flujo 2: Admin — gestión global', () => {
     expect([404, 410]).toContain(r.status())
   })
 
-  test('2.5 Finanzas carga', async ({ page }) => {
+  test('2.5 /admin/finances redirige a /admin (eliminado en beta)', async ({ page }) => {
     await page.goto('/admin/finances')
     await page.waitForLoadState('networkidle')
-    await expect(page.locator('body')).not.toContainText(/error|undefined/i)
+    await expect(page).toHaveURL(/\/admin\/?$/)
   })
 
-  test('2.6 Settings carga', async ({ page }) => {
+  test('2.5b Pacientes (nuevo módulo) carga con estadísticas', async ({ page }) => {
+    await page.goto('/admin/patients')
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('body')).toContainText(/pacientes/i)
+    // No debe crashear
+    await expect(page.locator('body')).not.toContainText(/typeerror|cannot read/i)
+  })
+
+  test('2.6 Settings muestra admins + BCV', async ({ page }) => {
     await page.goto('/admin/settings')
     await page.waitForLoadState('networkidle')
-    await expect(page.locator('body')).not.toContainText(/error|undefined/i)
+    await expect(page.locator('body')).toContainText(/administrador/i)
+    await expect(page.locator('body')).toContainText(/bcv|tasa/i)
+  })
+
+  test('2.6b Endpoint /api/admin/admins lista admins', async ({ page }) => {
+    const r = await page.request.get('/api/admin/admins')
+    expect(r.status()).toBe(200)
+    const j = await r.json()
+    expect(Array.isArray(j.data)).toBe(true)
+    expect(j.data.length).toBeGreaterThan(0)
   })
 
   test('2.7 Suscripciones carga', async ({ page }) => {

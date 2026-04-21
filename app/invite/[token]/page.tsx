@@ -156,7 +156,7 @@ export default function InviteBookingPage() {
           doctor_id: invitation.doctor_id,
           appointment_id: appt.id,
           chief_complaint: form.notes || 'Consulta agendada por invitación',
-          payment_status: 'unpaid',
+          payment_status: 'pending',
           consultation_date: consultDate.toISOString(),
         })
       }

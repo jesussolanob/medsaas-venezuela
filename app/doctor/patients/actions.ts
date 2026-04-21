@@ -39,7 +39,7 @@ export type Consultation = {
   notes: string | null
   diagnosis: string | null
   treatment: string | null
-  payment_status: 'unpaid' | 'pending_approval' | 'approved'
+  payment_status: 'pending' | 'approved' | 'cancelled'
   consultation_date: string
   created_at: string
 }
@@ -126,7 +126,7 @@ export type CreateConsultationInput = {
   notes?: string
   diagnosis?: string
   treatment?: string
-  payment_status?: 'unpaid' | 'pending_approval' | 'approved'
+  payment_status?: 'pending' | 'approved' | 'cancelled'
 }
 
 export async function createConsultation(doctorId: string, input: CreateConsultationInput): Promise<ActionResult & { code?: string }> {
@@ -141,7 +141,7 @@ export async function createConsultation(doctorId: string, input: CreateConsulta
     notes: input.notes ?? null,
     diagnosis: input.diagnosis ?? null,
     treatment: input.treatment ?? null,
-    payment_status: input.payment_status ?? 'unpaid',
+    payment_status: input.payment_status ?? 'pending',
     consultation_date: new Date().toISOString(),
   })
 
@@ -152,7 +152,7 @@ export async function createConsultation(doctorId: string, input: CreateConsulta
 
 export async function updateConsultationStatus(
   consultationId: string,
-  status: 'unpaid' | 'pending_approval' | 'approved'
+  status: 'pending' | 'approved' | 'cancelled'
 ): Promise<ActionResult> {
   const supabase = createAdminClient()
   const { error } = await supabase

@@ -81,10 +81,10 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Update consultation payment status to pending_approval
+  // Update consultation payment status to 'pending' (normalizado)
   await admin
     .from('consultations')
-    .update({ payment_status: 'pending_approval', amount })
+    .update({ payment_status: 'pending', amount })
     .eq('id', consultation_id)
 
   return NextResponse.json({ success: true, payment: data })

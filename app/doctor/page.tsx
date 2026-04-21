@@ -32,12 +32,19 @@ type FinancialData = {
   appointment_count: number
 }
 
+type AllTimeStats = {
+  total_revenue_lifetime: number
+  total_patients: number
+  patients_attended: number
+}
+
 export default function DoctorDashboard() {
   const router = useRouter()
   const { rate: bcvRate, toBs } = useBcvRate()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
+  const [allTimeStats, setAllTimeStats] = useState<AllTimeStats>({ total_revenue_lifetime: 0, total_patients: 0, patients_attended: 0 })
   const [loading, setLoading] = useState(true)
 
   // Month filter state (year-month)
@@ -108,9 +115,42 @@ export default function DoctorDashboard() {
       const totalRevenue = (completedAppts || []).reduce((sum, a) => sum + (Number(a.plan_price) || 0), 0)
       const appointmentCount = (completedAppts || []).length
 
+      // ── All-time stats ─────────────────────────────────────────────────────
+      // Ingresos totales (lifetime) — de appointments completed
+      const { data: allCompleted } = await supabase
+        .from('appointments')
+        .select('plan_price')
+        .eq('doctor_id', user.id)
+        .eq('status', 'completed')
+        .neq('source', 'google_calendar')
+
+      const totalRevenueLifetime = (allCompleted || []).reduce(
+        (sum, a) => sum + (Number(a.plan_price) || 0), 0
+      )
+
+      // Total de pacientes únicos registrados por este doctor
+      const { count: patientCount } = await supabase
+        .from('patients')
+        .select('id', { count: 'exact', head: true })
+        .eq('doctor_id', user.id)
+
+      // Pacientes atendidos (tienen al menos una consulta aprobada/pendiente o cita completada)
+      const { data: consultedPatients } = await supabase
+        .from('consultations')
+        .select('patient_id')
+        .eq('doctor_id', user.id)
+      const uniquePatientsAttended = new Set(
+        (consultedPatients || []).map(c => c.patient_id).filter(Boolean)
+      ).size
+
       setProfile(prof)
       setTodayAppointments(allAppointments)
       setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount })
+      setAllTimeStats({
+        total_revenue_lifetime: totalRevenueLifetime,
+        total_patients: patientCount || 0,
+        patients_attended: uniquePatientsAttended,
+      })
       setLoading(false)
     }
     fetchData()
@@ -261,6 +301,48 @@ export default function DoctorDashboard() {
                 <span>Crear Consulta</span>
               </Link>
             </div>
+          </div>
+        </div>
+
+        {/* ── 3 KPI Cards: ingresos, pacientes, atendidos ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Ingresos totales</p>
+              <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
+                <DollarSign className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">
+              ${allTimeStats.total_revenue_lifetime.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            {bcvRate && (
+              <p className="text-[11px] text-slate-400 mt-1">
+                ≈ Bs {toBs(allTimeStats.total_revenue_lifetime).toLocaleString('es-VE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </p>
+            )}
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Mis pacientes</p>
+              <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{allTimeStats.total_patients.toLocaleString('es-VE')}</p>
+            <p className="text-[11px] text-slate-400 mt-1">Registrados en tu consultorio</p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Pacientes atendidos</p>
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <CheckCircle className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{allTimeStats.patients_attended.toLocaleString('es-VE')}</p>
+            <p className="text-[11px] text-slate-400 mt-1">Con al menos una consulta</p>
           </div>
         </div>
 

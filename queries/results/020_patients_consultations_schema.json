@@ -1,0 +1,354 @@
+{
+  "file": "020_patients_consultations_schema.sql",
+  "executed_at": "2026-04-21T03:46:06.096Z",
+  "mode": "READ_ONLY",
+  "status": "success",
+  "results": [
+    {
+      "command": "SELECT",
+      "rowCount": 22,
+      "fields": [
+        "section",
+        "column_name",
+        "data_type"
+      ],
+      "rows": [
+        {
+          "section": "patients_cols",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "doctor_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "full_name",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "age",
+          "data_type": "integer"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "phone",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "cedula",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "email",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "sex",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "notes",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "source",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "id_number",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "auth_user_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "birth_date",
+          "data_type": "date"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "address",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "city",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "blood_type",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "allergies",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "chronic_conditions",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "emergency_contact_name",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "emergency_contact_phone",
+          "data_type": "text"
+        },
+        {
+          "section": "patients_cols",
+          "column_name": "avatar_url",
+          "data_type": "text"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 26,
+      "fields": [
+        "section",
+        "column_name",
+        "data_type"
+      ],
+      "rows": [
+        {
+          "section": "consultations_cols",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "consultation_code",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "patient_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "doctor_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "chief_complaint",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "notes",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "diagnosis",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "treatment",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "payment_status",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "consultation_date",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "payment_method",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "insurance_name",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "insurance_auth_code",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "amount",
+          "data_type": "numeric"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "insurance_paid_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "appointment_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "currency",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "payment_reference",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "plan_name",
+          "data_type": "text"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "updated_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "bcv_rate",
+          "data_type": "numeric"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "amount_bs",
+          "data_type": "numeric"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "started_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "ended_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "consultations_cols",
+          "column_name": "duration_minutes",
+          "data_type": "integer"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 10,
+      "fields": [
+        "section",
+        "column_name",
+        "data_type"
+      ],
+      "rows": [
+        {
+          "section": "prescriptions_cols",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "doctor_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "patient_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "ehr_record_id",
+          "data_type": "uuid"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "medications",
+          "data_type": "jsonb"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "notes",
+          "data_type": "text"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "pdf_url",
+          "data_type": "text"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "issued_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "section": "prescriptions_cols",
+          "column_name": "consultation_id",
+          "data_type": "uuid"
+        }
+      ]
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 2,
+      "fields": [
+        "section",
+        "status",
+        "n"
+      ],
+      "rows": [
+        {
+          "section": "payment_statuses",
+          "status": "approved",
+          "n": "4"
+        },
+        {
+          "section": "payment_statuses",
+          "status": "pending_approval",
+          "n": "1"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1876
+}
