@@ -41,20 +41,24 @@ export default function ConsultationBlocksConfigPage() {
 
     const catalog: CatalogEntry[] = j.catalog || []
     const doctorCfg: any[] = j.doctor_config || []
-    const resolved: any[] = j.resolved || []
-    const resolvedMap = new Map(resolved.map(r => [r.key, r]))
+    const specialtyDefaults: any[] = j.specialty_defaults || []
     const cfgMap = new Map(doctorCfg.map(c => [c.block_key, c]))
+    const specialtyMap = new Map(specialtyDefaults.map(s => [s.block_key, s]))
 
-    // Construir filas: una por cada entrada del catálogo
+    // Construir filas: una por cada entrada del catálogo.
+    // Prioridad: config del doctor > defaults por especialidad > catálogo default.
     const merged: BlockRow[] = catalog.map(c => {
       const cfg = cfgMap.get(c.key)
-      const res = resolvedMap.get(c.key)
+      const spec = specialtyMap.get(c.key)
+      // Si doctor ya configuró, usa su valor; sino, usa default de especialidad; sino, false.
+      const enabled = cfg ? cfg.enabled : (spec ? spec.enabled : false)
+      const sort_order = cfg?.sort_order ?? spec?.sort_order ?? 99
       return {
         block_key: c.key,
         default_label: c.default_label,
         custom_label: cfg?.custom_label || '',
-        enabled: cfg ? cfg.enabled : (res ? res.enabled : false),
-        sort_order: cfg?.sort_order ?? res?.sort_order ?? 99,
+        enabled,
+        sort_order,
         printable: cfg?.printable ?? null,
         send_to_patient: cfg?.send_to_patient ?? null,
         content_type: c.default_content_type,

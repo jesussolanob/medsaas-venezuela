@@ -167,7 +167,8 @@ const ALLOWED_PATCH_FIELDS = new Set([
   'blocks_data',      // valores de los bloques dinámicos (jsonb)
 ])
 
-const VALID_PAYMENT_STATUSES = new Set(['pending', 'approved', 'cancelled'])
+// Estados de pago: solo pending | approved. Un pago no se "cancela", el pago nunca llegó (pending) o fue recibido (approved).
+const VALID_PAYMENT_STATUSES = new Set(['pending', 'approved'])
 
 export async function PATCH(req: NextRequest) {
   const supabase = await createClient()

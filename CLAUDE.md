@@ -114,6 +114,32 @@ Nombre comercial: **Delta Medical CRM**.
 ### Feature keys disponibles
 dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm, reminders, messages, invitations, settings
 
+### Taxonomía de estados (aclarada 2026-04-21)
+
+**Estado de CITA** (`appointments.status`):
+- `scheduled` → **Agendada** (recién creada)
+- `confirmed` → **Aprobada** (doctor confirma la cita)
+- `cancelled` → **Rechazada** (cita cancelada antes de ocurrir)
+
+**Estado de CONSULTA** (también `appointments.status`, pos-cita):
+- `completed` → **Paciente asistió** (cuenta como ingreso)
+- `no_show` → **No asistió** (no restituye paquetes)
+
+**Estado de PAGO** (`consultations.payment_status`):
+- `pending` → **Pendiente**
+- `approved` → **Aprobado**
+- ❌ NO existe `rechazado` — un pago simplemente sigue pendiente hasta que llegue
+- ❌ NO existe `cancelled` — se eliminó en migración 026
+
+**Quién cambia cada estado:**
+- Cita (scheduled→confirmed/cancelled): doctor o admin, botón en modal de agenda
+- Consulta (completed/no_show): doctor, botón "Marcar como atendida" / "No asistió"
+- Pago (pending→approved): doctor desde /doctor/cobros o dentro de la consulta
+
+**Auditoría:** todo cambio en `appointments.status` se registra en `appointment_changes_log` con actor_id, old_value, new_value, timestamp. Trigger automático.
+
+**Reagendar citas:** sólo via RPC `reschedule_appointment` que valida ownership + conflictos.
+
 ## Modelo de suscripciones — Beta Privada (simplificado 2026-04-21)
 - **Trial Beta Privada**: $0, **1 año gratis** automático
 - **Basic**: $10 USD/mes (configurado en BD pero NO en uso durante beta)

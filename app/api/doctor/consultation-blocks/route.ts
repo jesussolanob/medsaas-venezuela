@@ -21,16 +21,20 @@ export async function GET(req: NextRequest) {
   const { data: doctorProfile } = await admin
     .from('profiles').select('specialty').eq('id', doctorId).single()
 
-  const [catalogRes, doctorRes, resolved] = await Promise.all([
+  const [catalogRes, doctorRes, resolved, specialtyRes] = await Promise.all([
     admin.from('consultation_block_catalog').select('*').order('key'),
     admin.from('doctor_consultation_blocks').select('*').eq('doctor_id', doctorId),
     resolveBlocksForDoctor({ doctorId, specialty: doctorProfile?.specialty }),
+    doctorProfile?.specialty
+      ? admin.from('specialty_default_blocks').select('*').eq('specialty', doctorProfile.specialty)
+      : Promise.resolve({ data: [] }),
   ])
 
   return NextResponse.json({
     catalog: catalogRes.data || [],
     doctor_config: doctorRes.data || [],
     resolved,
+    specialty_defaults: specialtyRes.data || [],
     doctor_specialty: doctorProfile?.specialty || null,
   })
 }

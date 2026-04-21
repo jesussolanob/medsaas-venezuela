@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Play, Square, Timer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
+import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
 
 type Consultation = {
   id: string
@@ -14,13 +15,15 @@ type Consultation = {
   notes: string | null
   diagnosis: string | null
   treatment: string | null
-  payment_status: 'pending' | 'approved' | 'cancelled'
+  payment_status: 'pending' | 'approved'   // Quitamos 'cancelled' — los pagos no se cancelan
   patient_id: string
   patient_name: string
   patient_phone: string | null
   started_at: string | null
   ended_at: string | null
   duration_minutes: number | null
+  blocks_snapshot?: Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }> | null
+  blocks_data?: Record<string, unknown> | null
 }
 
 type Patient = {
@@ -56,18 +59,21 @@ type AppointmentData = {
   plan_name?: string | null
 }
 
+// Estados de PAGO únicamente (no estados de cita ni de consulta)
+// Definición del usuario: Pendiente | Aprobado. NO existe "Rechazado".
 const PAYMENT_STATUS: Record<string, { label: string; color: string; dot: string }> = {
-  pending:          { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
-  approved:         { label: 'Aprobada',  color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-  cancelled:        { label: 'Cancelada', color: 'bg-red-100 text-red-700',         dot: 'bg-red-500' },
-  // Alias legacy
-  unpaid:           { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
-  pending_approval: { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
+  pending:  { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
+  approved: { label: 'Aprobado',  color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+}
+
+// Helper para resolver aliases legacy ('unpaid','pending_approval','cancelled') a 'pending'
+function normalizePaymentStatus(s: string | null | undefined): 'pending' | 'approved' {
+  return s === 'approved' ? 'approved' : 'pending'
 }
 
 type ViewMode = 'list' | 'consultation'
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today'
-type ConsultationTab = 'informe' | 'recipe' | 'prescripciones' | 'reposo' | 'notas'
+type ConsultationTab = string  // dinámico según blocks_snapshot del doctor
 
 type Prescripcion = {
   exam_name: string
@@ -494,7 +500,7 @@ function ConsultationsPage() {
     try {
       const { data } = await supabase
         .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, patients(full_name, phone)')
+        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, blocks_snapshot, blocks_data, patients(full_name, phone)')
         .eq('id', c.id)
         .single()
 
@@ -1309,34 +1315,80 @@ function ConsultationsPage() {
 
             {/* Medical Report Form with Safari-style Tabs */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              {/* Safari-style Tab Navigation */}
-              <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200">
-                {(['informe', 'recipe', 'prescripciones', 'reposo', 'notas'] as ConsultationTab[]).map(tab => {
-                  const labels: Record<ConsultationTab, string> = {
-                    informe: 'Informe',
-                    recipe: 'Receta',
-                    prescripciones: 'Prescripciones',
-                    reposo: 'Reposo',
-                    notas: 'Notas'
+              {/* Safari-style Tab Navigation — DINÁMICAS según blocks_snapshot del doctor.
+                  Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas. */}
+              <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200 overflow-x-auto">
+                {(() => {
+                  const dynamicTabs: { key: string; label: string; isDynamic: boolean }[] = []
+                  const snapshot = (selected as Consultation).blocks_snapshot
+                  if (snapshot && snapshot.length > 0) {
+                    // Tab "Informe" siempre primero (campos clásicos: motivo, diagnóstico, tratamiento)
+                    dynamicTabs.push({ key: 'informe', label: 'Informe', isDynamic: false })
+                    // Tabs dinámicos según los bloques de la plantilla del doctor
+                    const sorted = [...snapshot].sort((a, b) => a.sort_order - b.sort_order)
+                    for (const b of sorted) {
+                      // No duplicar "informe" si el doctor lo tiene en su plantilla
+                      if (b.key === 'chief_complaint' || b.key === 'diagnosis' || b.key === 'treatment') continue
+                      dynamicTabs.push({ key: `block:${b.key}`, label: b.label, isDynamic: true })
+                    }
+                  } else {
+                    // Fallback: tabs clásicas para consultas viejas sin snapshot
+                    ;[
+                      { key: 'informe', label: 'Informe' },
+                      { key: 'recipe', label: 'Receta' },
+                      { key: 'prescripciones', label: 'Prescripciones' },
+                      { key: 'reposo', label: 'Reposo' },
+                      { key: 'notas', label: 'Notas' },
+                    ].forEach(t => dynamicTabs.push({ ...t, isDynamic: false }))
                   }
-                  return (
+                  return dynamicTabs.map(t => (
                     <button
-                      key={tab}
-                      onClick={() => setConsultationTab(tab)}
+                      key={t.key}
+                      onClick={() => setConsultationTab(t.key)}
                       className={`safari-tab text-sm font-semibold transition-all whitespace-nowrap ${
-                        consultationTab === tab
+                        consultationTab === t.key
                           ? 'active border-t border-l border-r border-slate-200 text-slate-900'
                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
-                      {labels[tab]}
+                      {t.label}
                     </button>
-                  )
-                })}
+                  ))
+                })()}
               </div>
 
-              {/* Tab Content */}
-              <div className="p-6 space-y-4">
+              {/* Renderer del bloque dinámico actual (cuando consultationTab empieza con "block:") */}
+              {consultationTab.startsWith('block:') && (selected as Consultation).blocks_snapshot && (() => {
+                const blockKey = consultationTab.replace('block:', '')
+                const snapshot = ((selected as Consultation).blocks_snapshot || []) as SnapshotBlock[]
+                const oneBlock = snapshot.filter(b => b.key === blockKey)
+                const data = (selected as Consultation).blocks_data || {}
+                return (
+                  <div className="p-6">
+                    <DynamicBlocks
+                      blocks={oneBlock}
+                      values={data}
+                      onChange={(key, value) => {
+                        // Actualizamos el state local de selected para reflejar el cambio
+                        const next = { ...data, [key]: value }
+                        ;(selected as Consultation).blocks_data = next
+                        // Re-render del componente
+                        setSelected({ ...(selected as Consultation), blocks_data: next })
+                      }}
+                      onSave={async () => {
+                        const supabase = createClient()
+                        await supabase.from('consultations')
+                          .update({ blocks_data: (selected as Consultation).blocks_data || {} })
+                          .eq('id', selected!.id)
+                        alert('Bloque guardado')
+                      }}
+                    />
+                  </div>
+                )
+              })()}
+
+              {/* Tab Content — clásico. Solo se muestra si NO estamos en tab dinámica (block:*) */}
+              <div className={`p-6 space-y-4 ${consultationTab.startsWith('block:') ? 'hidden' : ''}`}>
                 {/* Informe Tab - includes Diagnóstico field */}
                 {consultationTab === 'informe' && (
                   <div className="space-y-4">
@@ -1948,12 +2000,16 @@ function ConsultationsPage() {
                 </button>
                 {showPaymentDetails && (
                   <div className="mt-3 space-y-2">
-                    {(Object.entries(PAYMENT_STATUS) as [Consultation['payment_status'], typeof PAYMENT_STATUS.unpaid][]).map(([key, val]) => (
-                      <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key }))}
-                        className={`w-full text-left py-2 px-3 rounded-lg text-xs font-bold border-2 transition-all ${report.payment_status === key ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full inline-block mr-2 ${report.payment_status === key ? val.dot : 'bg-slate-300'}`} />{val.label}
-                      </button>
-                    ))}
+                    {(['pending','approved'] as const).map(key => {
+                      const val = PAYMENT_STATUS[key]
+                      const active = normalizePaymentStatus(report.payment_status) === key
+                      return (
+                        <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key as Consultation['payment_status'] }))}
+                          className={`w-full text-left py-2 px-3 rounded-lg text-xs font-bold border-2 transition-all ${active ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full inline-block mr-2 ${active ? val.dot : 'bg-slate-300'}`} />{val.label}
+                        </button>
+                      )
+                    })}
                     {appointmentData && (appointmentData.payment_method || appointmentData.plan_price) && (
                       <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
                         {appointmentData.plan_name && (

@@ -277,6 +277,25 @@ export default function TemplatesPage() {
           <p className="text-sm text-slate-500 mt-1">Personaliza el logo, firma, tipografía y colores de tus documentos médicos</p>
         </div>
 
+        {/* Link a configuración de BLOQUES DE CONSULTA */}
+        <a
+          href="/doctor/settings/consultation-blocks"
+          className="block p-4 rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+              <FileEdit className="w-5 h-5 text-teal-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-slate-900">Bloques de consulta (secciones del formulario)</p>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Decide qué secciones aparecen al hacer una consulta: prescripción, tareas, plan alimenticio, ejercicios, reposo, etc. Activa/desactiva y renombra según tu especialidad.
+              </p>
+            </div>
+            <span className="text-teal-600 text-sm font-semibold">Configurar →</span>
+          </div>
+        </a>
+
         {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1">
           {TEMPLATE_TABS.map(tab => {
