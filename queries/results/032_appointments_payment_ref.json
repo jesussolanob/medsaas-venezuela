@@ -1,0 +1,30 @@
+{
+  "file": "032_appointments_payment_ref.sql",
+  "executed_at": "2026-04-22T00:28:47.492Z",
+  "mode": "READ_WRITE",
+  "status": "success",
+  "results": [
+    {
+      "command": "ALTER",
+      "rowCount": null,
+      "fields": [],
+      "rows": []
+    },
+    {
+      "command": "SELECT",
+      "rowCount": 1,
+      "fields": [
+        "status",
+        "has_col"
+      ],
+      "rows": [
+        {
+          "status": "ok",
+          "has_col": "1"
+        }
+      ]
+    }
+  ],
+  "error": null,
+  "duration_ms": 1503
+}

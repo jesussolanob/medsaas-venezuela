@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 
 type Profile = {
   full_name: string
@@ -46,6 +47,8 @@ export default function DoctorDashboard() {
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
   const [allTimeStats, setAllTimeStats] = useState<AllTimeStats>({ total_revenue_lifetime: 0, total_patients: 0, patients_attended: 0 })
   const [loading, setLoading] = useState(true)
+  // Modal "Nueva consulta"
+  const [showNewFlow, setShowNewFlow] = useState(false)
 
   // Month filter state (year-month)
   const now = new Date()
@@ -293,13 +296,13 @@ export default function DoctorDashboard() {
                 <Calendar className="w-4 h-4" />
                 <span>Ver Agenda</span>
               </Link>
-              <Link
-                href="/doctor/consultations"
+              <button
+                onClick={() => setShowNewFlow(true)}
                 className="flex items-center justify-center sm:justify-start gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
               >
                 <ClipboardList className="w-4 h-4" />
                 <span>Crear Consulta</span>
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -448,6 +451,17 @@ export default function DoctorDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Modal: crear consulta (estilo acordeón) */}
+      <NewAppointmentFlow
+        open={showNewFlow}
+        onClose={() => setShowNewFlow(false)}
+        onSuccess={(id) => {
+          setShowNewFlow(false)
+          router.push(`/doctor/consultations?open=${id}`)
+        }}
+        initialContext={{ origin: 'dashboard_btn' }}
+      />
     </>
   )
 }
