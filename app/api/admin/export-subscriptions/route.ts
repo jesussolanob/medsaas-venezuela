@@ -1,86 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+// REINGENIERÍA 2026-04-22: exporta desde profiles.
+import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSuperAdmin } from '@/lib/auth-guards'
 
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-    }
+export async function GET() {
+  const guard = await requireSuperAdmin()
+  if (!guard.ok) return guard.response
 
-    const admin = createAdminClient()
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('profiles')
+    .select('id, full_name, email, specialty, plan, subscription_status, subscription_expires_at, created_at')
+    .eq('role', 'doctor')
+    .order('created_at', { ascending: false })
 
-    if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // Fetch all subscriptions with doctor info
-    const { data: subscriptions, error } = await admin
-      .from('subscriptions')
-      .select(`
-        id,
-        plan,
-        status,
-        price_usd,
-        current_period_start,
-        current_period_end,
-        created_at,
-        profiles:doctor_id(full_name, email, specialty)
-      `)
-      .order('created_at', { ascending: false })
+  const csv = [
+    ['id', 'full_name', 'email', 'specialty', 'plan', 'status', 'expires_at', 'created_at'].join(','),
+    ...(data || []).map((d: any) =>
+      [d.id, d.full_name, d.email, d.specialty || '', d.plan || 'trial', d.subscription_status || 'active', d.subscription_expires_at || '', d.created_at]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    ),
+  ].join('\n')
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    // Build CSV
-    const headers = [
-      'Médico/Clínica',
-      'Email',
-      'Especialidad',
-      'Plan',
-      'Estado',
-      'Precio USD',
-      'Fecha Inicio',
-      'Fecha Fin',
-      'Fecha Creación',
-    ]
-
-    const rows = (subscriptions || []).map((sub: any) => {
-      const doctor = Array.isArray(sub.profiles) ? sub.profiles[0] : sub.profiles
-      return [
-        doctor?.full_name || 'N/A',
-        doctor?.email || 'N/A',
-        doctor?.specialty || 'N/A',
-        sub.plan || 'N/A',
-        sub.status || 'N/A',
-        sub.price_usd != null ? `$${sub.price_usd}` : 'N/A',
-        sub.current_period_start ? new Date(sub.current_period_start).toLocaleDateString('es-VE') : 'N/A',
-        sub.current_period_end ? new Date(sub.current_period_end).toLocaleDateString('es-VE') : 'N/A',
-        sub.created_at ? new Date(sub.created_at).toLocaleDateString('es-VE') : 'N/A',
-      ]
-    })
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
-    ].join('\n')
-
-    const bom = '\uFEFF'
-    return new NextResponse(bom + csvContent, {
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="suscripciones-${new Date().toISOString().split('T')[0]}.csv"`,
-      },
-    })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
-  }
+  return new NextResponse(csv, {
+    headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename=doctors-${Date.now()}.csv` },
+  })
 }

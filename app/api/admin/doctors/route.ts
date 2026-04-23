@@ -8,10 +8,10 @@ export async function GET() {
     if (!guard.ok) return guard.response
     const { admin } = guard
 
-    // Use admin client to bypass RLS and get accurate subscription data
+    // Plan + status + expires_at ahora viven en profiles directamente
     const { data: doctors, error } = await admin
       .from('profiles')
-      .select('id, full_name, email, specialty, is_active, created_at, subscriptions(plan, status)')
+      .select('id, full_name, email, specialty, is_active, created_at, plan, subscription_status, subscription_expires_at')
       .eq('role', 'doctor')
       .order('created_at', { ascending: false })
 

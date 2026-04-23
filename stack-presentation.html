@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Medical CRM — Stack Tecnológico</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --teal-400: #2DD4BF;
+    --teal-500: #14B8A6;
+    --teal-600: #0D9488;
+    --cyan-500: #06B6D4;
+    --cyan-700: #0891B2;
+    --coral: #FF8A65;
+    --coral-dark: #F26F4A;
+    --ink: #0F1A2A;
+    --bone: #FAFBFC;
+    --gray-400: #97A3AF;
+    --gray-500: #64748B;
+    --gray-600: #475569;
+    --gray-700: #334155;
+    --gray-100: #F1F5F9;
+    --gray-200: #E2E8F0;
+  }
+  html, body {
+    height: 100%;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--ink);
+    color: var(--ink);
+    overflow: hidden;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ── Deck Container ─────────────────────────────── */
+  .deck {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Slide ──────────────────────────────────────── */
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 64px 80px;
+    background: var(--bone);
+    transition: transform 0.5s cubic-bezier(.4,0,.2,1), opacity 0.4s;
+    overflow-y: auto;
+  }
+  .slide.prev { transform: translateX(-100%); opacity: 0; }
+  .slide.current { transform: translateX(0); opacity: 1; z-index: 2; }
+  .slide.next { transform: translateX(100%); opacity: 0; }
+
+  /* Dark slides */
+  .slide.dark {
+    background: linear-gradient(135deg, #0F1A2A 0%, #1E293B 50%, #0F1A2A 100%);
+    color: #fff;
+  }
+  .slide.gradient {
+    background: linear-gradient(135deg, var(--cyan-500) 0%, var(--cyan-700) 50%, #0E7490 100%);
+    color: #fff;
+  }
+
+  /* ── Slide Header ───────────────────────────────── */
+  .slide-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(6,182,212,0.1);
+    color: var(--cyan-700);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .dark .slide-badge { background: rgba(45,212,191,0.15); color: var(--teal-400); }
+  .gradient .slide-badge { background: rgba(255,255,255,0.15); color: #fff; }
+
+  .slide h1 {
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin-bottom: 16px;
+    color: var(--ink);
+  }
+  .dark h1, .gradient h1 { color: #fff; }
+
+  .slide h2 {
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .dark h2, .gradient h2 { color: #fff; }
+
+  .slide .subtitle {
+    font-size: 18px;
+    color: var(--gray-500);
+    font-weight: 400;
+    line-height: 1.5;
+    max-width: 680px;
+    margin-bottom: 40px;
+  }
+  .dark .subtitle, .gradient .subtitle { color: rgba(255,255,255,0.75); }
+
+  /* ── Cards Grid ─────────────────────────────────── */
+  .cards {
+    display: grid;
+    gap: 16px;
+    flex: 1;
+    align-content: start;
+  }
+  .cards.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .cards.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .cards.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+  @media (max-width: 1100px) {
+    .cards.cols-3, .cards.cols-4 { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 700px) {
+    .slide { padding: 32px 28px; }
+    .slide h1 { font-size: 36px; }
+    .slide h2 { font-size: 28px; }
+    .cards.cols-2, .cards.cols-3, .cards.cols-4 { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: 16px;
+    padding: 20px 22px;
+    transition: all .2s;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px -12px rgba(0,0,0,0.12);
+    border-color: var(--teal-500);
+  }
+  .dark .card {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+  }
+  .gradient .card {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.2);
+    backdrop-filter: blur(8px);
+  }
+
+  .card .icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--cyan-500), var(--teal-500));
+    color: #fff;
+    margin-bottom: 12px;
+    font-size: 20px;
+  }
+  .card .version {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .dark .card .version { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); }
+  .gradient .card .version { background: rgba(255,255,255,0.2); color: #fff; }
+
+  .card h3 {
+    font-size: 17px; font-weight: 700; margin-bottom: 6px;
+    color: var(--ink);
+  }
+  .dark .card h3, .gradient .card h3 { color: #fff; }
+  .card p {
+    font-size: 13px; color: var(--gray-500); line-height: 1.5;
+  }
+  .dark .card p, .gradient .card p { color: rgba(255,255,255,0.7); }
+
+  /* ── Pills/Tags ─────────────────────────────────── */
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .pill {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--teal-500);
+    color: #fff;
+  }
+  .pill.alt { background: var(--coral); }
+  .pill.ink { background: var(--ink); color: #fff; }
+  .pill.outline {
+    background: transparent;
+    border: 1px solid var(--gray-200);
+    color: var(--gray-600);
+  }
+  .dark .pill.outline { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); }
+
+  /* ── Big Stats ──────────────────────────────────── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 32px;
+  }
+  @media (max-width: 700px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    text-align: center;
+    padding: 24px 16px;
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid var(--gray-200);
+  }
+  .dark .stat { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
+  .stat .number {
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--cyan-500), var(--teal-500));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stat .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gray-500);
+    font-weight: 600;
+    margin-top: 6px;
+  }
+  .dark .stat .label { color: rgba(255,255,255,0.6); }
+
+  /* ── Logo ───────────────────────────────────────── */
+  .logo {
+    display: inline-flex; align-items: center; gap: 10px;
+    margin-bottom: 40px;
+  }
+  .logo-mark {
+    width: 44px; height: 44px;
+    position: relative;
+  }
+  .logo-mark svg { width: 100%; height: 100%; }
+  .logo-text { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+  .logo-text .dot { color: var(--cyan-500); }
+  .logo-text .tag {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--gray-400); display: block;
+    margin-top: -2px;
+  }
+  .dark .logo-text, .gradient .logo-text { color: #fff; }
+  .dark .logo-text .dot, .gradient .logo-text .dot { color: var(--teal-400); }
+  .dark .logo-text .tag, .gradient .logo-text .tag { color: rgba(255,255,255,0.5); }
+
+  /* ── Title Slide ────────────────────────────────── */
+  .title-slide { justify-content: center; position: relative; overflow: hidden; }
+  .title-slide::before {
+    content: '';
+    position: absolute;
+    top: -20%; right: -10%;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(6,182,212,0.35) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .title-slide::after {
+    content: '';
+    position: absolute;
+    bottom: -30%; left: -10%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(255,138,101,0.25) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .title-slide .content { position: relative; z-index: 2; max-width: 900px; }
+  .title-slide h1 {
+    font-size: 96px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+  .title-slide .tagline {
+    font-size: 22px;
+    margin-top: 24px;
+    color: rgba(255,255,255,0.75);
+    max-width: 600px;
+  }
+  @media (max-width: 700px) { .title-slide h1 { font-size: 52px; } }
+
+  /* ── Controls ───────────────────────────────────── */
+  .controls {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 100;
+    background: rgba(15,26,42,0.85);
+    backdrop-filter: blur(12px);
+    padding: 10px 18px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 13px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  .controls button {
+    background: transparent;
+    border: none;
+    color: #fff;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .15s;
+  }
+  .controls button:hover { background: rgba(255,255,255,0.12); }
+  .controls button:disabled { opacity: 0.3; cursor: not-allowed; }
+  .controls .counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    min-width: 64px;
+    text-align: center;
+  }
+
+  /* ── Progress Bar ───────────────────────────────── */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--cyan-500), var(--teal-400));
+    z-index: 101;
+    transition: width .4s cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ── Schema slide ───────────────────────────────── */
+  .schema-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 1100px) { .schema-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 700px) { .schema-grid { grid-template-columns: 1fr; } }
+  .schema-domain {
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: 14px;
+    padding: 16px 18px;
+    border-left: 4px solid var(--cyan-500);
+  }
+  .dark .schema-domain { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); border-left-color: var(--teal-400); }
+  .schema-domain h4 {
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--cyan-700);
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .dark .schema-domain h4 { color: var(--teal-400); }
+  .schema-domain h4 .count {
+    background: var(--cyan-500);
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .schema-domain ul { list-style: none; }
+  .schema-domain li {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 0;
+    color: var(--gray-700);
+    border-bottom: 1px dashed var(--gray-200);
+  }
+  .schema-domain li:last-child { border-bottom: none; }
+  .dark .schema-domain li { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.1); }
+
+  /* Input source table */
+  .inputs-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 20px;
+    font-size: 12px;
+  }
+  .inputs-table th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--ink);
+    color: #fff;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .inputs-table th:first-child { border-top-left-radius: 10px; }
+  .inputs-table th:last-child { border-top-right-radius: 10px; }
+  .inputs-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--gray-200);
+    vertical-align: top;
+    background: #fff;
+  }
+  .dark .inputs-table td { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.08); }
+  .inputs-table .tbl-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: var(--cyan-700);
+    font-size: 11px;
+  }
+  .dark .inputs-table .tbl-name { color: var(--teal-400); }
+  .inputs-table .input-kind {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .kind-form { background: rgba(6,182,212,0.15); color: var(--cyan-700); }
+  .kind-api { background: rgba(20,184,166,0.15); color: var(--teal-600); }
+  .kind-rpc { background: rgba(255,138,101,0.15); color: var(--coral-dark); }
+  .kind-trigger { background: rgba(15,26,42,0.1); color: var(--ink); }
+  .kind-seed { background: rgba(100,116,139,0.15); color: var(--gray-700); }
+  .dark .kind-form { background: rgba(6,182,212,0.25); color: #67E8F9; }
+  .dark .kind-api { background: rgba(45,212,191,0.25); color: #5EEAD4; }
+  .dark .kind-rpc { background: rgba(255,138,101,0.25); color: #FDBA74; }
+  .dark .kind-trigger { background: rgba(255,255,255,0.12); color: #fff; }
+  .dark .kind-seed { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
+
+  /* Architecture diagram (slide 10) ────────────── */
+  .arch {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .arch-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 16px;
+    align-items: center;
+  }
+  .arch-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    text-align: right;
+    letter-spacing: 0.08em;
+  }
+  .dark .arch-label { color: rgba(255,255,255,0.5); }
+  .arch-boxes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .arch-box {
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--gray-100);
+    color: var(--ink);
+    border: 1px solid var(--gray-200);
+  }
+  .dark .arch-box {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.9);
+  }
+  .arch-box.primary { background: var(--cyan-500); color: #fff; border-color: var(--cyan-500); }
+  .arch-box.secondary { background: var(--teal-500); color: #fff; border-color: var(--teal-500); }
+  .arch-box.accent { background: var(--coral); color: #fff; border-color: var(--coral); }
+
+  /* ── Final Slide ───────────────────────────────── */
+  .final .big-logo {
+    font-size: 80px;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    margin-bottom: 16px;
+  }
+  .final .url {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    color: var(--teal-400);
+    margin-top: 16px;
+  }
+
+  /* Hint */
+  .hint {
+    position: fixed;
+    top: 20px; right: 24px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: rgba(255,255,255,0.5);
+    background: rgba(15,26,42,0.6);
+    backdrop-filter: blur(8px);
+    padding: 6px 12px;
+    border-radius: 999px;
+    z-index: 100;
+    transition: opacity .3s;
+  }
+  .hint.hidden { opacity: 0; pointer-events: none; }
+
+  /* Logo svg circle */
+  .logo-svg circle { fill: none; stroke-linecap: round; }
+
+  /* Highlight */
+  .hl { color: var(--cyan-500); font-weight: 700; }
+  .dark .hl { color: var(--teal-400); }
+  .gradient .hl { color: #fff; font-weight: 800; }
+
+  /* Code inline */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 2px 8px;
+    background: var(--gray-100);
+    color: var(--cyan-700);
+    border-radius: 4px;
+  }
+  .dark code {
+    background: rgba(255,255,255,0.08);
+    color: var(--teal-400);
+  }
+
+  /* Print */
+  @media print {
+    .controls, .progress, .hint { display: none; }
+    .slide { position: relative; page-break-after: always; height: 100vh; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress" style="width: 0%"></div>
+<div class="hint" id="hint">← → para navegar</div>
+
+<div class="deck" id="deck">
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 1 — PORTADA                                   -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide dark title-slide current">
+    <div class="content">
+      <div class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 120 120" fill="none">
+            <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="#2DD4BF" stroke-width="14" stroke-linecap="round" fill="none"/>
+            <path d="M58 92 C 78 92, 92 78, 88 60" stroke="#FF8A65" stroke-width="14" stroke-linecap="round" fill="none"/>
+            <circle cx="78" cy="72" r="4.5" fill="#FF8A65"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          Delta<span class="dot">.</span>
+          <span class="tag">Health Tech</span>
+        </div>
+      </div>
+      <div class="slide-badge">Stack Tecnológico · 2026</div>
+      <h1>Arquitectura y tecnologías<br>del SaaS médico</h1>
+      <p class="tagline">Un recorrido completo por las capas del sistema: frontend, backend, base de datos, infraestructura, integraciones y seguridad.</p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 2 — OVERVIEW / KPIs                           -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">01 · Overview</div>
+    <h1>Un sistema multi-tenant completo</h1>
+    <p class="subtitle">CRM médico omnicanal con gestión clínica, agenda tipo Google Calendar, finanzas por doctor y portal de pacientes. Todo sobre una sola base de código.</p>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="number">35</div>
+        <div class="label">Tablas en BD</div>
+      </div>
+      <div class="stat">
+        <div class="number">50+</div>
+        <div class="label">Endpoints API</div>
+      </div>
+      <div class="stat">
+        <div class="number">25+</div>
+        <div class="label">Migraciones SQL</div>
+      </div>
+      <div class="stat">
+        <div class="number">49</div>
+        <div class="label">Tests E2E</div>
+      </div>
+    </div>
+
+    <div class="cards cols-3" style="margin-top: 32px;">
+      <div class="card">
+        <div class="icon">👤</div>
+        <h3>3 roles</h3>
+        <p>super_admin, doctor, patient — RBAC en middleware + RLS en BD.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🩺</div>
+        <h3>Multi-especialidad</h3>
+        <p>Bloques de consulta dinámicos: prescripción, tareas, plan nutricional, ejercicios, etc.</p>
+      </div>
+      <div class="card">
+        <div class="icon">💊</div>
+        <h3>Paquetes prepagados</h3>
+        <p>RPC transaccional con FOR UPDATE lock, log inmutable de cada movimiento.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 3 — FRONTEND                                  -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">02 · Frontend</div>
+    <h1>Next.js 16 + React 19 + Tailwind</h1>
+    <p class="subtitle">App Router con Server Components + Client Components. SSR por defecto, hidratación selectiva, pipelining streaming.</p>
+
+    <div class="cards cols-3">
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>Next.js <span class="version">16.2.3</span></h3>
+        <p>App Router, Server Components, Server Actions, Edge Runtime.</p>
+      </div>
+      <div class="card">
+        <div class="icon">⚛️</div>
+        <h3>React <span class="version">19.2.4</span></h3>
+        <p>Hooks + suspense + concurrent rendering.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🎨</div>
+        <h3>Tailwind CSS <span class="version">4.x</span></h3>
+        <p>Utility-first, CSS variables, responsive mobile-first.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔷</div>
+        <h3>TypeScript <span class="version">5.x</span></h3>
+        <p>Strict mode, tipado end-to-end con Supabase types.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🧩</div>
+        <h3>Radix UI + shadcn/ui</h3>
+        <p>Componentes accesibles ARIA-compliant (modales, dropdowns, tabs).</p>
+      </div>
+      <div class="card">
+        <div class="icon">📊</div>
+        <h3>Recharts <span class="version">3.8.1</span></h3>
+        <p>Gráficas de líneas, barras, áreas para dashboards admin/doctor.</p>
+      </div>
+      <div class="card">
+        <div class="icon">✨</div>
+        <h3>Lucide React</h3>
+        <p>Iconografía SVG consistente en toda la UI.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🎭</div>
+        <h3>CVA + clsx + tw-merge</h3>
+        <p>Composición de variantes de componentes sin conflictos.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📱</div>
+        <h3>Responsive nativo</h3>
+        <p>Breakpoints sm/md/lg/xl + touch-first. Mobile desde día 1.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 4 — BACKEND                                   -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide dark">
+    <div class="slide-badge">03 · Backend</div>
+    <h1>API routes serverless<br>sobre Vercel Edge</h1>
+    <p class="subtitle">Cada endpoint es una función serverless aislada. Sin servidor que mantener. Autoscaling a demanda.</p>
+
+    <div class="cards cols-2">
+      <div class="card">
+        <div class="icon">🔌</div>
+        <h3>Next.js API Routes</h3>
+        <p>Endpoints REST en <code>/app/api/*</code>. Node.js runtime por defecto, Edge disponible para latencia baja.</p>
+      </div>
+      <div class="card">
+        <div class="icon">⚙️</div>
+        <h3>Server Actions</h3>
+        <p>Formularios que ejecutan código server-side sin round-trip manual. Revalidación automática de cache.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🧠</div>
+        <h3>Server Components</h3>
+        <p>Acceso directo a BD sin pasar por una API intermedia. Menos JS al cliente.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🛡️</div>
+        <h3>RBAC helper</h3>
+        <p><code>requireSuperAdmin()</code>, <code>requireRole(['doctor'])</code> — guardas centralizadas antes de cualquier operación sensible.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px; padding: 24px; background: rgba(255,255,255,0.05); border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
+      <p style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Ejemplo de endpoint protegido</p>
+      <pre style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #2DD4BF; line-height: 1.6;">export async function GET() {
+  const guard = await requireSuperAdmin()
+  if (!guard.ok) return guard.response
+  const { admin } = guard
+  // ... lógica protegida
+}</pre>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 5 — BASE DE DATOS                             -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">04 · Base de Datos</div>
+    <h1>PostgreSQL con RLS + triggers</h1>
+    <p class="subtitle">Supabase (Postgres 15) como fuente única de verdad. Security-by-default con Row Level Security en todas las tablas multi-tenant.</p>
+
+    <div class="cards cols-2">
+      <div class="card">
+        <div class="icon">🗄️</div>
+        <h3>Supabase PostgreSQL</h3>
+        <p>Base relacional hosteada, región us-west-2. Backups automáticos + PITR.</p>
+        <div class="pills">
+          <span class="pill">35 tablas</span>
+          <span class="pill outline">14 enums</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">🔐</div>
+        <h3>Row Level Security</h3>
+        <p>Activo en 100% de tablas. Policies filtran por <code>auth.uid()</code> y <code>doctor_id</code>.</p>
+        <div class="pills">
+          <span class="pill">100% coverage</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>RPCs transaccionales</h3>
+        <p><code>book_with_package</code>, <code>reschedule_appointment</code>, <code>change_appointment_status</code> — lock FOR UPDATE anti race-condition.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📝</div>
+        <h3>Audit log inmutable</h3>
+        <p>Triggers AFTER UPDATE registran cada cambio en <code>appointment_changes_log</code> y <code>package_balance_log</code>.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🎯</div>
+        <h3>Enums fuertes</h3>
+        <p><code>appointment_status</code>, <code>subscription_plan</code>, <code>user_role</code>, <code>payment_method</code>…</p>
+      </div>
+      <div class="card">
+        <div class="icon">📦</div>
+        <h3>JSONB columns</h3>
+        <p>Snapshots de config al crear consulta — inmutabilidad histórica sin joins.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 5.A — SCHEMA COMPLETO                          -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">04.1 · Schema completo</div>
+    <h1>33 tablas agrupadas en 9 dominios</h1>
+    <p class="subtitle">Vista de alto nivel de todas las tablas del sistema. Cada dominio es un contexto acotado con sus propias RPCs y políticas RLS.</p>
+
+    <div class="schema-grid">
+      <div class="schema-domain">
+        <h4>Auth & Usuarios <span class="count">2</span></h4>
+        <ul>
+          <li>profiles</li>
+          <li>doctor_invitations</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>Suscripciones <span class="count">5</span></h4>
+        <ul>
+          <li>plan_configs</li>
+          <li>plan_features</li>
+          <li>subscriptions</li>
+          <li>subscription_payments*</li>
+          <li>plan_promotions</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>Agenda & Citas <span class="count">5</span></h4>
+        <ul>
+          <li>appointments</li>
+          <li>doctor_schedule_config</li>
+          <li>doctor_availability</li>
+          <li>doctor_blocked_slots</li>
+          <li>appointment_changes_log</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>Clínico (EHR) <span class="count">7</span></h4>
+        <ul>
+          <li>consultations</li>
+          <li>ehr_records</li>
+          <li>prescriptions</li>
+          <li>consultation_block_catalog</li>
+          <li>doctor_consultation_blocks</li>
+          <li>specialty_default_blocks</li>
+          <li>patient_messages</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>Pacientes & Paquetes <span class="count">4</span></h4>
+        <ul>
+          <li>patients</li>
+          <li>patient_packages</li>
+          <li>package_templates</li>
+          <li>package_balance_log</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>Pagos & Finanzas <span class="count">3</span></h4>
+        <ul>
+          <li>consultations.payment_status</li>
+          <li>payment_accounts</li>
+          <li>invoices</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>Recordatorios <span class="count">2</span></h4>
+        <ul>
+          <li>reminders_settings</li>
+          <li>reminders_queue</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>CRM & Leads <span class="count">1</span></h4>
+        <ul>
+          <li>leads</li>
+        </ul>
+      </div>
+      <div class="schema-domain">
+        <h4>Infra & Metadata <span class="count">4</span></h4>
+        <ul>
+          <li>admins</li>
+          <li>clinics</li>
+          <li>doctor_templates</li>
+          <li>bcv_rate (config)</li>
+        </ul>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--gray-500); margin-top: 18px; font-family: 'JetBrains Mono', monospace;">* subscription_payments desactivada durante beta privada. Se reactiva con backup_20260421 cuando arranque el modelo de pago.</p>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 5.B — INPUTS: cómo obtienen información        -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide dark">
+    <div class="slide-badge">04.2 · Inputs por tabla</div>
+    <h1>De dónde viene cada dato</h1>
+    <p class="subtitle">Cada tabla se alimenta de una o varias fuentes: formularios UI, endpoints API, RPCs transaccionales, triggers automáticos o seeds de migración.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+      <div style="overflow-x: auto;">
+        <table class="inputs-table">
+          <thead>
+            <tr><th>Tabla</th><th>Fuente de entrada</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="tbl-name">profiles</td><td><span class="input-kind kind-form">FORM</span> /register, /patient/register, /admin/settings</td></tr>
+            <tr><td class="tbl-name">subscriptions</td><td><span class="input-kind kind-form">FORM</span> auto en /register + <span class="input-kind kind-api">API</span> /admin/change-plan</td></tr>
+            <tr><td class="tbl-name">plan_configs</td><td><span class="input-kind kind-seed">SEED</span> migration v24 + <span class="input-kind kind-api">API</span> /admin/plans</td></tr>
+            <tr><td class="tbl-name">plan_features</td><td><span class="input-kind kind-api">API</span> /admin/plan-features</td></tr>
+            <tr><td class="tbl-name">plan_promotions</td><td><span class="input-kind kind-api">API</span> /admin/promotions</td></tr>
+            <tr><td class="tbl-name">appointments</td><td><span class="input-kind kind-api">API</span> /api/book (público) + <span class="input-kind kind-rpc">RPC</span> book_with_package</td></tr>
+            <tr><td class="tbl-name">doctor_availability</td><td><span class="input-kind kind-api">API</span> /api/doctor/schedule</td></tr>
+            <tr><td class="tbl-name">doctor_schedule_config</td><td><span class="input-kind kind-api">API</span> /api/doctor/schedule (upsert)</td></tr>
+            <tr><td class="tbl-name">doctor_blocked_slots</td><td><span class="input-kind kind-api">API</span> /api/doctor/schedule (bloqueos)</td></tr>
+            <tr><td class="tbl-name">appointment_changes_log</td><td><span class="input-kind kind-trigger">TRIGGER</span> trg_log_appointment_insert / update</td></tr>
+            <tr><td class="tbl-name">consultations</td><td><span class="input-kind kind-api">API</span> /api/doctor/consultations + snapshot de blocks</td></tr>
+            <tr><td class="tbl-name">prescriptions</td><td><span class="input-kind kind-api">API</span> /api/doctor/consultations (bloque prescription)</td></tr>
+            <tr><td class="tbl-name">ehr_records</td><td><span class="input-kind kind-api">API</span> /api/doctor/ehr</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="inputs-table">
+          <thead>
+            <tr><th>Tabla</th><th>Fuente de entrada</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="tbl-name">consultation_block_catalog</td><td><span class="input-kind kind-seed">SEED</span> migration v25 (15 bloques)</td></tr>
+            <tr><td class="tbl-name">specialty_default_blocks</td><td><span class="input-kind kind-seed">SEED</span> migration v25 (7 especialidades × 6)</td></tr>
+            <tr><td class="tbl-name">doctor_consultation_blocks</td><td><span class="input-kind kind-api">API</span> /doctor/settings/consultation-blocks</td></tr>
+            <tr><td class="tbl-name">patients</td><td><span class="input-kind kind-api">API</span> /api/book (auto-create) + /doctor/patients</td></tr>
+            <tr><td class="tbl-name">patient_packages</td><td><span class="input-kind kind-api">API</span> /api/book (compra) + <span class="input-kind kind-rpc">RPC</span> book_with_package</td></tr>
+            <tr><td class="tbl-name">package_templates</td><td><span class="input-kind kind-api">API</span> /api/doctor/patient-packages</td></tr>
+            <tr><td class="tbl-name">package_balance_log</td><td><span class="input-kind kind-rpc">RPC</span> book_with_package / restore_package_session</td></tr>
+            <tr><td class="tbl-name">patient_messages</td><td><span class="input-kind kind-api">API</span> /api/patient/messages + /api/doctor/messages</td></tr>
+            <tr><td class="tbl-name">payment_accounts</td><td><span class="input-kind kind-api">API</span> /api/doctor/payment-accounts</td></tr>
+            <tr><td class="tbl-name">invoices</td><td><span class="input-kind kind-api">API</span> /api/doctor/billing</td></tr>
+            <tr><td class="tbl-name">reminders_settings</td><td><span class="input-kind kind-api">API</span> /api/doctor/reminders-settings</td></tr>
+            <tr><td class="tbl-name">reminders_queue</td><td><span class="input-kind kind-trigger">TRIGGER</span> AFTER INSERT appointments (post-beta)</td></tr>
+            <tr><td class="tbl-name">leads</td><td><span class="input-kind kind-api">API</span> /api/doctor/crm + web form público</td></tr>
+            <tr><td class="tbl-name">doctor_invitations</td><td><span class="input-kind kind-api">API</span> /api/doctor/invitations</td></tr>
+            <tr><td class="tbl-name">clinics</td><td><span class="input-kind kind-api">API</span> /api/admin/clinics</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap;">
+      <span class="input-kind kind-form">FORM</span><span style="font-size: 11px; color: rgba(255,255,255,0.7);">Formulario UI</span>
+      <span class="input-kind kind-api">API</span><span style="font-size: 11px; color: rgba(255,255,255,0.7);">Endpoint REST</span>
+      <span class="input-kind kind-rpc">RPC</span><span style="font-size: 11px; color: rgba(255,255,255,0.7);">PL/pgSQL con lock</span>
+      <span class="input-kind kind-trigger">TRIGGER</span><span style="font-size: 11px; color: rgba(255,255,255,0.7);">Automático en BD</span>
+      <span class="input-kind kind-seed">SEED</span><span style="font-size: 11px; color: rgba(255,255,255,0.7);">Data inicial en migración</span>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 5.C — FLUJO DE DATOS                           -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">04.3 · Flujo de datos</div>
+    <h1>Cómo entra un dato al sistema</h1>
+    <p class="subtitle">5 flujos principales cubren el 95% de los inputs. Cada uno con su mecanismo de validación, autenticación y persistencia.</p>
+
+    <div class="cards cols-2">
+      <div class="card">
+        <div class="icon">📝</div>
+        <h3>1. Formularios públicos</h3>
+        <p><b>Registro de médico / paciente, booking público.</b><br>
+        Usuario llena UI → Server Action valida con Zod → insert en <code>profiles</code> + <code>subscriptions</code> o <code>appointments</code> + <code>patients</code>. No requiere sesión previa.</p>
+        <div class="pills">
+          <span class="pill outline">/register</span>
+          <span class="pill outline">/book/[doctorId]</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">🔐</div>
+        <h3>2. APIs autenticadas</h3>
+        <p><b>CRUD del doctor y admin.</b><br>
+        Cliente llama <code>fetch('/api/doctor/*')</code> → middleware valida JWT → <code>requireRole(['doctor'])</code> → Supabase client con RLS → insert/update/delete.</p>
+        <div class="pills">
+          <span class="pill outline">50+ endpoints</span>
+          <span class="pill outline">RBAC guards</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">⚛️</div>
+        <h3>3. RPCs transaccionales</h3>
+        <p><b>Operaciones críticas con race conditions.</b><br>
+        <code>book_with_package()</code>, <code>reschedule_appointment()</code>, <code>change_appointment_status()</code> → <code>SELECT FOR UPDATE</code> bloquea fila → validaciones → update + log atómico.</p>
+        <div class="pills">
+          <span class="pill alt">FOR UPDATE lock</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>4. Triggers automáticos</h3>
+        <p><b>Auditoría e integridad implícitas.</b><br>
+        AFTER INSERT/UPDATE en <code>appointments</code> → automático log en <code>appointment_changes_log</code>. AFTER UPDATE en <code>patient_packages.used_sessions</code> → log en <code>package_balance_log</code>.</p>
+        <div class="pills">
+          <span class="pill alt">100% automático</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">🌱</div>
+        <h3>5. Seeds + Migraciones</h3>
+        <p><b>Data estática al desplegar.</b><br>
+        <code>plan_configs</code> (4 planes), <code>consultation_block_catalog</code> (15 bloques), <code>specialty_default_blocks</code> (44 rows) llegan via <code>sql_migration_v*.sql</code> versionada en git.</p>
+        <div class="pills">
+          <span class="pill outline">25+ migraciones</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">🌐</div>
+        <h3>6. Scraping externo</h3>
+        <p><b>Tasas BCV cacheadas.</b><br>
+        <code>/api/doctor/exchange-rate</code> → cascada: pydolarve.org → dolarapi.com → bcv.org.ve (HTML scraping). Resultado cacheado 10 min. Usado en <code>consultations.amount_bs</code>.</p>
+        <div class="pills">
+          <span class="pill outline">3 fuentes</span>
+          <span class="pill outline">Cache 10min</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 6 — AUTENTICACIÓN Y SEGURIDAD                 -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide gradient">
+    <div class="slide-badge">05 · Seguridad</div>
+    <h1>Autenticación y RBAC<br>en múltiples capas</h1>
+    <p class="subtitle">Defensa en profundidad: middleware valida sesión, policies RLS filtran filas, RPCs hacen checks adicionales. Cada capa independiente.</p>
+
+    <div class="cards cols-2">
+      <div class="card">
+        <div class="icon">🔑</div>
+        <h3>Supabase Auth</h3>
+        <p>Login con email+password y Google OAuth. JWT autogestionado con refresh tokens.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🍪</div>
+        <h3>@supabase/ssr</h3>
+        <p>Cookies HTTP-only seguras sincronizadas entre Server Components y Client Components.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🛡️</div>
+        <h3>Middleware RBAC</h3>
+        <p>Intercepta <code>/admin</code>, <code>/doctor</code>, <code>/patient</code> y redirige según rol.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔒</div>
+        <h3>RLS policies</h3>
+        <p>Multi-tenant: cada query solo retorna filas del doctor dueño.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 7 — INFRAESTRUCTURA                           -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">06 · Infraestructura</div>
+    <h1>Vercel + Supabase + GitHub</h1>
+    <p class="subtitle">Deploy continuo: cada push a <code>main</code> dispara build en Vercel, tests en CI, rollback con 1 click.</p>
+
+    <div class="cards cols-3">
+      <div class="card">
+        <div class="icon">▲</div>
+        <h3>Vercel</h3>
+        <p>Hosting + Edge Network global + CI/CD automático en cada push.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🟢</div>
+        <h3>Supabase Cloud</h3>
+        <p>Postgres + Auth + Storage gestionados. Región us-west-2 con latencia ≤150ms desde Venezuela.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📦</div>
+        <h3>Supabase Storage</h3>
+        <p>Buckets: payment-receipts, avatars, doctor-logos, signatures.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🐙</div>
+        <h3>GitHub</h3>
+        <p>Repo privado con branch main protegida. Vercel integrado: PR previews automáticos.</p>
+      </div>
+      <div class="card">
+        <div class="icon">💾</div>
+        <h3>Backups</h3>
+        <p>Supabase daily snapshots + backups in-schema <code>backup_20260420/21</code>.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📊</div>
+        <h3>Logs + Analytics</h3>
+        <p>Vercel logs en tiempo real. Supabase Dashboard para queries lentas.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 8 — INTEGRACIONES                             -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide dark">
+    <div class="slide-badge">07 · Integraciones</div>
+    <h1>APIs externas conectadas</h1>
+    <p class="subtitle">Cada integración encapsulada en su propio endpoint con retry, timeout y fallback.</p>
+
+    <div class="cards cols-2">
+      <div class="card">
+        <div class="icon">📅</div>
+        <h3>Google Calendar API</h3>
+        <p>Sincronización bidireccional de citas. Creación automática de Meet links para consultas online.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔑</div>
+        <h3>Google OAuth 2.0</h3>
+        <p>Login federado para doctores y pacientes. Refresh tokens para sync continuo.</p>
+      </div>
+      <div class="card">
+        <div class="icon">💱</div>
+        <h3>BCV (bcv.org.ve)</h3>
+        <p>Scraping HTML para tasa oficial USD/EUR → BsS. Cache 10min.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔄</div>
+        <h3>PyDolarVE + DolarAPI</h3>
+        <p>Fallback de tasas si BCV no responde. Cascada de 3 fuentes robusta.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🤖</div>
+        <h3>Gemini API (Google)</h3>
+        <p>IA para asistencia clínica: resumen de consultas, sugerencias de diagnóstico.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📬</div>
+        <h3>WhatsApp (próximo)</h3>
+        <p>Cola <code>reminders_queue</code> lista. Worker con Meta Cloud API en fase 3.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 9 — TESTING                                   -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">08 · Testing & QA</div>
+    <h1>Playwright E2E + SQL watcher</h1>
+    <p class="subtitle">Suite de 49 tests contra producción real. Scripts custom para ejecutar SQL contra la BD sin abrir Supabase Dashboard.</p>
+
+    <div class="cards cols-2">
+      <div class="card">
+        <div class="icon">🎭</div>
+        <h3>Playwright <span class="version">1.55</span></h3>
+        <p>Tests headless en Chromium, Firefox, Safari, móvil emulado. Screenshots + videos en cada falla.</p>
+        <div class="pills">
+          <span class="pill">49 tests · 100% pasando</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon">📋</div>
+        <h3>Cobertura por rol</h3>
+        <p>9 tests auth + 10 admin + 11 doctor + 8 paciente + 3 booking público + 6 cross-RBAC.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔍</div>
+        <h3>SQL watcher</h3>
+        <p><code>npm run sql:watch</code> — ejecuta archivos SQL en pending/, guarda resultados en JSON. READ ONLY por default.</p>
+      </div>
+      <div class="card">
+        <div class="icon">👥</div>
+        <h3>Cuentas QA</h3>
+        <p>3 cuentas fijas: <code>qa.admin@delta.test</code>, <code>qa.doctor@delta.test</code>, <code>qa.patient@delta.test</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 10 — ARQUITECTURA                             -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide dark">
+    <div class="slide-badge">09 · Arquitectura</div>
+    <h1>Visión de capas</h1>
+    <p class="subtitle">De arriba a abajo, cada pieza con una responsabilidad única.</p>
+
+    <div class="arch">
+      <div class="arch-row">
+        <div class="arch-label">Cliente</div>
+        <div class="arch-boxes">
+          <div class="arch-box primary">React 19</div>
+          <div class="arch-box primary">Tailwind</div>
+          <div class="arch-box primary">Radix UI</div>
+          <div class="arch-box primary">Lucide</div>
+          <div class="arch-box primary">Recharts</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-label">Framework</div>
+        <div class="arch-boxes">
+          <div class="arch-box secondary">Next.js 16 App Router</div>
+          <div class="arch-box secondary">Server Components</div>
+          <div class="arch-box secondary">Server Actions</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-label">Middleware</div>
+        <div class="arch-boxes">
+          <div class="arch-box">RBAC · <code>middleware.ts</code></div>
+          <div class="arch-box">Auth guards</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-label">API</div>
+        <div class="arch-boxes">
+          <div class="arch-box accent">50+ endpoints REST</div>
+          <div class="arch-box accent">Zod validation</div>
+          <div class="arch-box accent">RPCs Supabase</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-label">Auth</div>
+        <div class="arch-boxes">
+          <div class="arch-box">Supabase Auth</div>
+          <div class="arch-box">JWT</div>
+          <div class="arch-box">Google OAuth</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-label">BD</div>
+        <div class="arch-boxes">
+          <div class="arch-box primary">PostgreSQL 15</div>
+          <div class="arch-box primary">RLS policies</div>
+          <div class="arch-box primary">Triggers</div>
+          <div class="arch-box primary">PL/pgSQL RPCs</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-label">Storage</div>
+        <div class="arch-boxes">
+          <div class="arch-box">Supabase Storage</div>
+          <div class="arch-box">4 buckets</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-label">Hosting</div>
+        <div class="arch-boxes">
+          <div class="arch-box secondary">Vercel Edge</div>
+          <div class="arch-box secondary">Supabase Cloud</div>
+          <div class="arch-box secondary">GitHub CI/CD</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 11 — PATRONES Y DECISIONES                   -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-badge">10 · Patrones</div>
+    <h1>Decisiones arquitectónicas</h1>
+    <p class="subtitle">Los patrones que sostienen la escalabilidad y la mantenibilidad del sistema.</p>
+
+    <div class="cards cols-2">
+      <div class="card">
+        <div class="icon">🏢</div>
+        <h3>Multi-tenant por doctor_id</h3>
+        <p>Cada tabla principal tiene <code>doctor_id</code>. RLS filtra automáticamente: un doctor jamás ve datos de otro.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🎚️</div>
+        <h3>Feature gating</h3>
+        <p>Tabla <code>plan_features</code> controla qué módulos ve cada plan de suscripción.</p>
+      </div>
+      <div class="card">
+        <div class="icon">⚛️</div>
+        <h3>Optimistic locking</h3>
+        <p><code>FOR UPDATE</code> en RPCs críticas previene race conditions (booking concurrente del mismo slot).</p>
+      </div>
+      <div class="card">
+        <div class="icon">📜</div>
+        <h3>Audit inmutable</h3>
+        <p>Cada cambio en citas y paquetes queda registrado con actor, timestamp, valor anterior y nuevo.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📸</div>
+        <h3>Snapshots inmutables</h3>
+        <p>Las consultas guardan <code>blocks_snapshot</code> al crearse — cambios futuros del doctor no alteran consultas viejas.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🛡️</div>
+        <h3>Defense in depth</h3>
+        <p>Auth → Middleware → Route guards → RLS → RPC checks. 5 capas independientes.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔄</div>
+        <h3>Source of truth única</h3>
+        <p>La BD es la autoridad. El cliente no calcula estado, solo lee y muestra.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📦</div>
+        <h3>Schema versionado</h3>
+        <p>25+ migraciones SQL en <code>sql_migration_v*.sql</code> — reproducible desde cero.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!-- SLIDE 12 — CIERRE                                   -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <section class="slide gradient final">
+    <div style="margin: auto; text-align: center; max-width: 800px;">
+      <div class="slide-badge">Delta Medical CRM · 2026</div>
+      <div class="big-logo">Gracias.</div>
+      <p class="subtitle" style="margin: 24px auto 0; text-align: center;">
+        Sistema en producción · <span class="hl">Beta privada</span> con usuarios reales.<br>
+        Código versionado en GitHub · Deploy continuo en Vercel.
+      </p>
+      <div class="url">medsaas-venezuela.vercel.app</div>
+
+      <div class="pills" style="justify-content: center; margin-top: 40px;">
+        <span class="pill ink">Next.js 16</span>
+        <span class="pill ink">Supabase</span>
+        <span class="pill ink">TypeScript</span>
+        <span class="pill ink">Tailwind 4</span>
+        <span class="pill ink">Playwright</span>
+        <span class="pill ink">PostgreSQL</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="controls">
+  <button id="prevBtn" title="Anterior (←)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <span class="counter" id="counter">01 / 12</span>
+  <button id="nextBtn" title="Siguiente (→)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+</div>
+
+<script>
+(function() {
+  const slides = Array.from(document.querySelectorAll('.slide'))
+  const total = slides.length
+  const prevBtn = document.getElementById('prevBtn')
+  const nextBtn = document.getElementById('nextBtn')
+  const counter = document.getElementById('counter')
+  const progress = document.getElementById('progress')
+  const hint = document.getElementById('hint')
+  let current = 0
+
+  function render() {
+    slides.forEach((s, i) => {
+      s.classList.remove('prev', 'current', 'next')
+      if (i === current) s.classList.add('current')
+      else if (i < current) s.classList.add('prev')
+      else s.classList.add('next')
+    })
+    counter.textContent = String(current + 1).padStart(2, '0') + ' / ' + String(total).padStart(2, '0')
+    progress.style.width = ((current + 1) / total * 100) + '%'
+    prevBtn.disabled = current === 0
+    nextBtn.disabled = current === total - 1
+    // Update URL hash
+    history.replaceState(null, '', '#' + (current + 1))
+  }
+
+  function goTo(idx) {
+    current = Math.max(0, Math.min(total - 1, idx))
+    render()
+  }
+
+  prevBtn.onclick = () => goTo(current - 1)
+  nextBtn.onclick = () => goTo(current + 1)
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); goTo(current + 1) }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); goTo(current - 1) }
+    else if (e.key === 'Home') { e.preventDefault(); goTo(0) }
+    else if (e.key === 'End') { e.preventDefault(); goTo(total - 1) }
+    else if (e.key === 'f' || e.key === 'F') { if (!document.fullscreenElement) document.documentElement.requestFullscreen() }
+    else if (e.key === 'Escape') { if (document.fullscreenElement) document.exitFullscreen() }
+  })
+
+  // Touch swipe
+  let touchStart = null
+  document.addEventListener('touchstart', (e) => { touchStart = e.changedTouches[0].clientX })
+  document.addEventListener('touchend', (e) => {
+    if (touchStart === null) return
+    const diff = e.changedTouches[0].clientX - touchStart
+    if (Math.abs(diff) > 60) goTo(diff < 0 ? current + 1 : current - 1)
+    touchStart = null
+  })
+
+  // Hide hint after first interaction
+  let hintHidden = false
+  const hideHint = () => { if (!hintHidden) { hintHidden = true; hint.classList.add('hidden') } }
+  document.addEventListener('keydown', hideHint, { once: true })
+  document.addEventListener('click', hideHint, { once: true })
+  setTimeout(hideHint, 5000)
+
+  // Load from URL hash
+  const hash = parseInt(location.hash.slice(1), 10)
+  if (hash && hash >= 1 && hash <= total) goTo(hash - 1)
+  else render()
+})()
+</script>
+</body>
+</html>

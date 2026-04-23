@@ -38,28 +38,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Update doctor's is_active status
+    // Update is_active + subscription_status en profiles (un solo UPDATE)
     const isActive = action === 'activate'
+    const subscriptionStatus = isActive ? 'active' : 'suspended'
     const { error: profileError } = await admin
       .from('profiles')
-      .update({ is_active: isActive })
+      .update({
+        is_active: isActive,
+        subscription_status: subscriptionStatus,
+      })
       .eq('id', doctorId)
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 })
-    }
-
-    // Update subscription status accordingly
-    const subscriptionStatus = isActive ? 'active' : 'suspended'
-    const { error: subError } = await admin
-      .from('subscriptions')
-      .update({ status: subscriptionStatus })
-      .eq('doctor_id', doctorId)
-      .neq('status', 'cancelled')
-
-    if (subError) {
-      console.error('Error updating subscription:', subError)
-      // Don't fail the entire request if subscription update fails
     }
 
     return NextResponse.json({

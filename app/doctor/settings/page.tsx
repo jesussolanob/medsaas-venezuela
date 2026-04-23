@@ -191,11 +191,8 @@ function SettingsPageInner() {
       const { data: p } = await supabase.from('pricing_plans').select('*').eq('doctor_id', user.id).order('price_usd')
       if (p) setPlans(p as PricingPlan[])
 
-      // insurances
-      try {
-        const { data: ins } = await supabase.from('doctor_insurances').select('*').eq('doctor_id', user.id).order('name')
-        if (ins) setInsurances(ins.map(i => ({ id: i.id, name: i.name, credit_days: i.credit_days ?? 30, notes: i.notes ?? '' })))
-      } catch { /* tabla puede no existir */ }
+      // insurances: doctor_insurances eliminada en reingeniería 2026-04-22.
+      // Si quieres reactivar, agregar columna profiles.insurances jsonb.
 
       // services
       try {
@@ -334,27 +331,17 @@ function SettingsPageInner() {
 
   async function addInsurance(e: React.FormEvent) {
     e.preventDefault()
-    if (!newInsurance.name.trim() || !doctorId) return
-    const supabase = createClient()
-    try {
-      const { data } = await supabase.from('doctor_insurances').insert({
-        doctor_id: doctorId,
-        name: newInsurance.name.trim(),
-        credit_days: newInsurance.credit_days,
-        notes: newInsurance.notes,
-      }).select().single()
-      if (data) setInsurances(prev => [...prev, { id: data.id, name: data.name, credit_days: data.credit_days, notes: data.notes ?? '' }])
-    } catch {
-      setInsurances(prev => [...prev, { ...newInsurance }])
-    }
+    // doctor_insurances eliminada en reingeniería 2026-04-22.
+    // Mantengo state local solo en memoria (no persiste).
+    if (!newInsurance.name.trim()) return
+    setInsurances(prev => [...prev, { ...newInsurance }])
     setNewInsurance({ name: '', credit_days: 30, notes: '' })
     setShowNewInsurance(false); setInsuranceSearch(''); setShowInsDropdown(false)
   }
 
   async function removeInsurance(idx: number) {
-    const item = insurances[idx]
     setInsurances(prev => prev.filter((_, i) => i !== idx))
-    if (item.id) { const supabase = createClient(); await supabase.from('doctor_insurances').delete().eq('id', item.id) }
+    // Sin persistencia: doctor_insurances eliminada.
   }
 
   function selectInsuranceFromList(name: string) {

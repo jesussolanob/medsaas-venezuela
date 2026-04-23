@@ -11,17 +11,18 @@ export default async function AdminDashboard() {
 
   const adminClient = createAdminClient()
 
-  // ── Subscription MoM stats ──
+  // ── MoM stats: ahora basadas en profiles.created_at de doctores ──
   let momGrowth = 0
   let newThisMonth = 0
 
   try {
-    const { data: subscriptions } = await adminClient
-      .from('subscriptions')
+    const { data: doctors } = await adminClient
+      .from('profiles')
       .select('id, created_at')
+      .eq('role', 'doctor')
       .order('created_at', { ascending: true })
 
-    if (subscriptions) {
+    if (doctors) {
       const now = new Date()
       const monthCounts: Record<string, number> = {}
       const months: string[] = []
@@ -33,8 +34,8 @@ export default async function AdminDashboard() {
         months.push(monthKey)
       }
 
-      subscriptions.forEach((sub) => {
-        const monthKey = new Date(sub.created_at).toISOString().slice(0, 7)
+      doctors.forEach((d) => {
+        const monthKey = new Date(d.created_at).toISOString().slice(0, 7)
         if (monthKey in monthCounts) monthCounts[monthKey]++
       })
 
@@ -49,7 +50,7 @@ export default async function AdminDashboard() {
       newThisMonth = currentMonthCount
     }
   } catch (err) {
-    console.error('Error fetching subscription stats:', err)
+    console.error('Error fetching doctor stats:', err)
   }
 
   // ── Stats: all direct queries (no RPC dependency) ──
@@ -113,21 +114,24 @@ export default async function AdminDashboard() {
     totalDoctors = count ?? 0
   } catch {}
 
-  // Suscripciones activas y trials
+  // Suscripciones activas y trials — ahora desde profiles
   let activeSubscriptions = 0
   let trialSubscriptions = 0
   try {
     const { count: activeCount } = await adminClient
-      .from('subscriptions')
+      .from('profiles')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'active')
+      .eq('role', 'doctor')
+      .eq('subscription_status', 'active')
 
     const { count: trialCount } = await adminClient
-      .from('subscriptions')
+      .from('profiles')
       .select('id', { count: 'exact', head: true })
-      .in('status', ['trial', 'trialing'])
+      .eq('role', 'doctor')
+      .eq('plan', 'trial')
+      .eq('subscription_status', 'active')
 
-    activeSubscriptions = (activeCount ?? 0) + (trialCount ?? 0)
+    activeSubscriptions = activeCount ?? 0
     trialSubscriptions = trialCount ?? 0
   } catch {}
 

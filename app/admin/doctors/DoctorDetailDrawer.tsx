@@ -138,11 +138,6 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900">{profile?.full_name}</h3>
                 <p className="text-sm text-slate-500 mt-1">{profile?.specialty || '—'}</p>
-                {profile?.clinic_id && (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 bg-violet-50 px-2.5 py-0.5 rounded-full mt-2">
-                    <Building2 className="w-3 h-3" /> Clínica
-                  </span>
-                )}
               </div>
 
               {/* Info grid */}

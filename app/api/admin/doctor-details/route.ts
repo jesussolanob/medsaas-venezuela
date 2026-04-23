@@ -57,12 +57,14 @@ export async function GET(req: NextRequest) {
   // Appointments without a linked consultation (not yet converted)
   const orphanAppointments = (appointments || []).filter(a => !a.consultation_id)
 
-  // Get subscription
-  const { data: subscription } = await admin
-    .from('subscriptions')
-    .select('*')
-    .eq('doctor_id', doctorId)
-    .single()
+  // Plan + status + expires_at ya vienen en profile (columnas en profiles)
+  const subscription = profile
+    ? {
+        plan: profile.plan || 'trial',
+        status: profile.subscription_status || 'active',
+        current_period_end: profile.subscription_expires_at || null,
+      }
+    : null
 
   const consRevenue = (allConsultations || []).reduce((sum, c) => sum + (c.plan_price || 0), 0)
   const orphanRevenue = orphanAppointments.reduce((sum, a) => sum + (a.plan_price || 0), 0)
@@ -73,6 +75,6 @@ export async function GET(req: NextRequest) {
     patientCount: patientCount || 0,
     consultationCount: totalCitas,
     monthlyRevenue: consRevenue + orphanRevenue,
-    subscription: subscription || null,
+    subscription,
   })
 }

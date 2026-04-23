@@ -24,7 +24,7 @@ const commands: CommandItem[] = [
   { name: 'Sugerencias', href: '/admin/suggestions', icon: MessageSquarePlus, description: 'Feedback de especialistas', section: 'Principal' },
   // Config
   { name: 'Configuración', href: '/admin/settings', icon: Settings, description: 'Ajustes generales de la plataforma', section: 'Configuración' },
-  { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard, description: 'Gestionar suscripciones de médicos', section: 'Configuración' },
+  // Suscripciones eliminado — el plan se gestiona desde la lista de médicos
   { name: 'Planes', href: '/admin/plans', icon: Package, description: 'Activar o desactivar planes', section: 'Configuración' },
   { name: 'Features por Plan', href: '/admin/plan-features', icon: Shield, description: 'Configurar módulos por plan', section: 'Configuración' },
   { name: 'Promociones', href: '/admin/promotions', icon: Tag, description: 'Gestionar ofertas y descuentos', section: 'Configuración' },

@@ -15,7 +15,10 @@ interface Doctor {
   is_active: boolean
   created_at?: string
   last_sign_in_at?: string
-  subscriptions?: { plan: string; status: string; current_period_end?: string } | Array<{ plan: string; status: string; current_period_end?: string }> | null
+  // Plan, status y expiración ahora viven en profiles directamente
+  plan?: string
+  subscription_status?: string
+  subscription_expires_at?: string
 }
 
 function daysSince(dateStr?: string | null): number {

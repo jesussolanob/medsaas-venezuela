@@ -58,9 +58,8 @@ export async function POST(request: Request) {
       'patients',
       'leads',
       'payments',
-      'subscriptions',
+      // subscriptions y doctor_invitations eliminadas en reingeniería 2026-04-22
       'pricing_plans',
-      'doctor_invitations',
       'accounts_payable',
       'reminders_queue',
       'doctor_suggestions',

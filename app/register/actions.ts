@@ -41,7 +41,7 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
 
   const userId = authData.user.id
 
-  // 2. Create profile (NO clinic for basic/professional plans)
+  // 2. Create profile
   const { error: profileError } = await supabase.from('profiles').upsert({
     id: userId,
     full_name: input.full_name,
@@ -53,8 +53,6 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     professional_title: input.professional_title || 'Dr.',
     role: 'doctor',
     is_active: true,
-    clinic_id: null,
-    clinic_role: null,
   })
 
   if (profileError) {
@@ -62,20 +60,21 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     return { success: false, error: profileError.message }
   }
 
-  // 3. Create subscription — Beta: all doctors get free access for 1 year
-  const now = new Date()
-  const expiresAt = new Date(now)
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1) // Beta: 1 year free
+  // 3. Set plan + status en profiles — Beta: 1 año gratis activo
+  const expiresAt = new Date()
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1)
 
-  const { error: subError } = await supabase.from('subscriptions').insert({
-    doctor_id: userId,
-    plan: 'trial',
-    status: 'active', // Beta: active immediately
-    current_period_end: expiresAt.toISOString(),
-  })
+  const { error: planErr } = await supabase
+    .from('profiles')
+    .update({
+      plan: 'trial',
+      subscription_status: 'active',
+      subscription_expires_at: expiresAt.toISOString(),
+    })
+    .eq('id', userId)
 
-  if (subError) {
-    console.error('Error creando suscripción:', subError.message)
+  if (planErr) {
+    console.error('Error seteando plan:', planErr.message)
   }
 
   revalidatePath('/admin/doctors')
@@ -159,108 +158,9 @@ export async function resendConfirmation(email: string): Promise<{ success: bool
 }
 
 // ── Register Clinic (Centro de Salud) ──────────────────────────────────────────
-export type RegisterClinicInput = {
-  full_name: string
-  cedula: string
-  email: string
-  password: string
-  specialty: string
-  phone: string
-  sex?: string
-  professional_title?: string
-  clinic_name: string
-  clinic_address: string
-  clinic_city: string
-  clinic_state: string
-  clinic_phone: string
-  clinic_email: string
-  clinic_specialty: string
-}
-
-export async function registerClinic(input: RegisterClinicInput): Promise<RegisterResult> {
-  const supabase = createAdminClient()
-
-  // 1. Create auth user
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: { full_name: input.full_name, role: 'doctor' },
-  })
-
-  if (authError) {
-    if (authError.message.includes('already registered')) {
-      return { success: false, error: 'Este email ya está registrado. ¿Ya tienes cuenta? Inicia sesión.' }
-    }
-    return { success: false, error: authError.message }
-  }
-
-  const userId = authData.user.id
-
-  // 2. Create clinic
-  const slug = input.clinic_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-
-  const { data: clinic, error: clinicError } = await supabase
-    .from('clinics')
-    .insert({
-      name: input.clinic_name.trim(),
-      slug,
-      owner_id: userId,
-      address: input.clinic_address || null,
-      city: input.clinic_city || null,
-      state: input.clinic_state || null,
-      phone: input.clinic_phone || null,
-      email: input.clinic_email || input.email,
-      specialty: input.clinic_specialty || null,
-      subscription_plan: 'centro_salud',
-      subscription_status: 'trial',
-    })
-    .select('id')
-    .single()
-
-  if (clinicError || !clinic) {
-    await supabase.auth.admin.deleteUser(userId)
-    return { success: false, error: clinicError?.message || 'Error al crear la clínica' }
-  }
-
-  // 3. Create profile linked to clinic as admin
-  const { error: profileError } = await supabase.from('profiles').upsert({
-    id: userId,
-    full_name: input.full_name,
-    cedula: input.cedula || null,
-    email: input.email,
-    specialty: input.specialty || null,
-    phone: input.phone || null,
-    sex: input.sex || null,
-    professional_title: input.professional_title || 'Dr.',
-    role: 'doctor',
-    is_active: true,
-    clinic_id: clinic.id,
-    clinic_role: 'admin',
-  })
-
-  if (profileError) {
-    await supabase.auth.admin.deleteUser(userId)
-    return { success: false, error: profileError.message }
-  }
-
-  // 4. Create subscription
-  const now = new Date()
-  const expiresAt = new Date(now)
-  // Beta: 1 año gratis para clínicas también, status active inmediato
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1)
-
-  await supabase.from('subscriptions').insert({
-    doctor_id: userId,
-    plan: 'clinic',
-    status: 'active',
-    current_period_end: expiresAt.toISOString(),
-  })
-
-  revalidatePath('/admin/doctors')
-
-  return { success: true, doctorId: userId }
-}
+// REMOVED 2026-04-22: registerClinic + tabla clinics eliminadas en reingeniería MVP.
+// Beta privada solo soporta médicos individuales. Si el formulario /register
+// usaba este flujo, debe migrarse a registerDoctor.
 
 // ── Tasa BCV ──────────────────────────────────────────────────────────────────
 export type BCVRateResult = { rate: number; updated: string } | null

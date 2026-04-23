@@ -75,9 +75,7 @@ export async function POST(req: Request) {
           results.push({ action: 'deleted_profile', userId: dup.user.id })
         }
 
-        // Delete subscription if exists
-        await supabase.from('subscriptions').delete().eq('doctor_id', dup.user.id)
-        results.push({ action: 'deleted_subscription', userId: dup.user.id })
+        // (subscriptions tabla eliminada — plan vive en profiles ya borrado arriba)
 
         // Delete the duplicate auth user
         const { error: deleteError } = await supabase.auth.admin.deleteUser(dup.user.id)

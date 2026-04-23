@@ -101,12 +101,14 @@ async function handler() {
       const expires = new Date(now)
       expires.setDate(expires.getDate() + 30)
 
-      await supabase.from('subscriptions').insert({
-        doctor_id: doctorUserId,
-        plan: 'basic',
-        status: 'trial',
-        current_period_end: expires.toISOString(),
-      }).select().single()
+      await supabase
+        .from('profiles')
+        .update({
+          plan: 'basic',
+          subscription_status: 'active',
+          subscription_expires_at: expires.toISOString(),
+        })
+        .eq('id', doctorUserId)
     }
 
     // 6. Create patient record linking ivana@gmail.com to ivana2@gmail.com doctor

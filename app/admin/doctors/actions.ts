@@ -53,22 +53,21 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
     return { success: false, error: profileError.message }
   }
 
-  // 3. Crear suscripción según el plan
-  // Basic: trial de 30 días  |  Professional: activo por 30 días desde hoy
-  const now = new Date()
-  const expiresAt = new Date(now)
-  expiresAt.setDate(expiresAt.getDate() + 30)
+  // 3. Setear plan + status en profiles (sin tabla subscriptions)
+  const expiresAt = new Date()
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1) // Beta: 1 año
 
-  const { error: subError } = await supabase.from('subscriptions').insert({
-    doctor_id: userId,
-    plan: input.plan,
-    status: input.plan === 'basic' ? 'trial' : 'active',
-    current_period_end: expiresAt.toISOString(),
-  })
+  const { error: planErr } = await supabase
+    .from('profiles')
+    .update({
+      plan: input.plan,
+      subscription_status: 'active',
+      subscription_expires_at: expiresAt.toISOString(),
+    })
+    .eq('id', userId)
 
-  if (subError) {
-    // No revertimos la cuenta, solo logueamos el error de suscripción
-    console.error('Error creando suscripción:', subError.message)
+  if (planErr) {
+    console.error('Error seteando plan:', planErr.message)
   }
 
   revalidatePath('/admin/doctors')
@@ -76,6 +75,9 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
   return { success: true }
 }
 
+// DEPRECATED 2026-04-22: tabla clinics eliminada en reingeniería MVP.
+// Beta privada solo soporta médicos individuales. Este stub queda hasta borrar
+// NewClinicModal.tsx + ClinicDetailDrawer.tsx (ya huérfanos, sin imports).
 export type CreateClinicInput = {
   name: string
   email: string
@@ -89,99 +91,9 @@ export type CreateClinicInput = {
   admin_name: string
 }
 
-export async function createClinic(input: CreateClinicInput): Promise<ActionResult> {
-  const supabase = createAdminClient()
-
-  // 1. Create clinic admin user in Supabase Auth
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: {
-      full_name: input.admin_name,
-      role: 'doctor',
-    },
-  })
-
-  if (authError) {
-    return { success: false, error: authError.message }
-  }
-
-  const userId = authData.user.id
-
-  // 2. Create clinic record
-  const slug = input.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-
-  const { data: clinicData, error: clinicError } = await supabase
-    .from('clinics')
-    .insert({
-      name: input.name,
-      slug,
-      owner_id: userId,
-      address: input.address || null,
-      city: input.city || null,
-      state: input.state || null,
-      phone: input.phone || null,
-      email: input.email,
-      specialty: input.specialty || null,
-      subscription_plan: 'centro_salud',
-      subscription_status: 'trial',
-      max_doctors: input.max_doctors,
-      is_active: true,
-    })
-    .select()
-
-  if (clinicError) {
-    // Revert: delete auth user if clinic creation fails
-    await supabase.auth.admin.deleteUser(userId)
-    return { success: false, error: clinicError.message }
-  }
-
-  const clinicId = clinicData?.[0]?.id
-
-  // 3. Insert admin profile in profiles table linked to clinic
-  const { error: profileError } = await supabase.from('profiles').insert({
-    id: userId,
-    full_name: input.admin_name,
-    email: input.email,
-    role: 'doctor',
-    clinic_id: clinicId,
-    clinic_role: 'admin',
-    is_active: true,
-  })
-
-  if (profileError) {
-    // Revert: delete clinic and auth user
-    if (clinicId) {
-      await supabase.from('clinics').delete().eq('id', clinicId)
-    }
-    await supabase.auth.admin.deleteUser(userId)
-    return { success: false, error: profileError.message }
-  }
-
-  // 4. Create subscription for clinic (30-day trial)
-  const now = new Date()
-  const expiresAt = new Date(now)
-  expiresAt.setDate(expiresAt.getDate() + 30)
-
-  const { error: subError } = await supabase.from('subscriptions').insert({
-    doctor_id: userId,
-    plan: 'enterprise',
-    status: 'trial',
-    current_period_end: expiresAt.toISOString(),
-  })
-
-  if (subError) {
-    console.error('Error creating clinic subscription:', subError.message)
-  }
-
-  // Flujo de aprobaciones eliminado en beta privada. Las clínicas obtienen
-  // acceso inmediato igual que los médicos individuales.
-
-  revalidatePath('/admin/doctors')
-
-  return { success: true }
+export async function createClinic(_input: CreateClinicInput): Promise<ActionResult> {
+  return { success: false, error: 'Función deshabilitada: clínicas eliminadas en MVP. Usa createDoctor para registrar médicos individuales.' }
 }
+
+// Código legacy de createClinic eliminado en reingeniería 2026-04-22.
+// Referencias previas a `from('clinics')` y `clinic_id` / `clinic_role` removidas.

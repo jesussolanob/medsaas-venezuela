@@ -53,8 +53,6 @@ export async function POST(req: Request) {
           professional_title: professional_title || 'Dr.',
           sex: sex || null,
           is_active: true,
-          clinic_id: null,
-          clinic_role: null,
         })
 
       if (insertError) {
@@ -62,26 +60,19 @@ export async function POST(req: Request) {
       }
     }
 
-    // For doctors: create subscription if none exists
+    // For doctors: set plan/status/expires_at en profiles (beta: trial 1 año gratis)
     if (profileRole === 'doctor') {
-      const { data: existingSub } = await supabase
-        .from('subscriptions')
-        .select('id')
-        .eq('doctor_id', userId)
-        .maybeSingle()
+      const expiresAt = new Date()
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1)
 
-      if (!existingSub) {
-        const now = new Date()
-        const expiresAt = new Date(now)
-        expiresAt.setDate(expiresAt.getDate() + 15) // Trial: 15 days, pending admin approval
-
-        await supabase.from('subscriptions').insert({
-          doctor_id: userId,
+      await supabase
+        .from('profiles')
+        .update({
           plan: 'trial',
-          status: 'trial', // Pending admin approval
-          current_period_end: expiresAt.toISOString(),
+          subscription_status: 'active',
+          subscription_expires_at: expiresAt.toISOString(),
         })
-      }
+        .eq('id', userId)
     }
 
     // Update auth user metadata with role

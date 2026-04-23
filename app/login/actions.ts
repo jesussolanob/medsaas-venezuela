@@ -26,14 +26,12 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   const adminClient = createAdminClient()
   const { data: profile } = await adminClient
     .from('profiles')
-    .select('role, clinic_id, clinic_role')
+    .select('role')
     .eq('id', userId)
     .single()
 
   // If no profile exists, check auth user metadata for role (e.g. patients registered via /patient/register)
   const role = profile?.role ?? data.user.user_metadata?.role ?? 'doctor'
-  const clinicRole = profile?.clinic_role ?? null
-  const hasClinic = !!profile?.clinic_id
 
   // Determine destination based on clear role hierarchy
   let destination = '/doctor'
@@ -42,10 +40,8 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   } else if (role === 'patient') {
     destination = '/patient/dashboard'
   }
-  // Doctors (including clinic admins) always go to /doctor
-  // Clinic admin features accessible via sidebar link
 
-  return { success: true, role, clinicRole, hasClinic, destination }
+  return { success: true, role, destination }
 }
 
 export async function logoutUser() {
