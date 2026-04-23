@@ -53,14 +53,15 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
     return { success: false, error: profileError.message }
   }
 
-  // 3. Setear plan + status en profiles (sin tabla subscriptions)
+  // 3. Beta privada (2026-04-22): forzar plan='trial' + 1 año gratis para todos
+  // El campo input.plan se ignora hasta que se reactive el modelo de pago.
   const expiresAt = new Date()
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1) // Beta: 1 año
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1)
 
   const { error: planErr } = await supabase
     .from('profiles')
     .update({
-      plan: input.plan,
+      plan: 'trial',
       subscription_status: 'active',
       subscription_expires_at: expiresAt.toISOString(),
     })

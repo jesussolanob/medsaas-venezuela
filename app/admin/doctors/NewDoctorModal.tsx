@@ -9,8 +9,6 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  Stethoscope,
-  Zap,
 } from 'lucide-react'
 import { createDoctor, type CreateDoctorInput } from './actions'
 
@@ -36,37 +34,9 @@ const ESPECIALIDADES = [
   'Otra',
 ]
 
-const PLANES: {
-  value: 'basic' | 'professional'
-  label: string
-  badge: string
-  description: string
-  price: string
-  icon: React.ReactNode
-  color: string
-  selected: string
-}[] = [
-  {
-    value: 'basic',
-    label: 'Basic',
-    badge: 'Trial',
-    description: '30 días gratis para explorar la plataforma',
-    price: '$0 / mes',
-    icon: <Stethoscope className="w-4 h-4" />,
-    color: 'text-slate-500',
-    selected: 'border-slate-400 bg-slate-50 ring-1 ring-slate-300',
-  },
-  {
-    value: 'professional',
-    label: 'Professional',
-    badge: 'Recomendado',
-    description: 'CRM completo, agenda, finanzas e IA',
-    price: '$30 USD / mes',
-    icon: <Zap className="w-4 h-4" />,
-    color: 'text-teal-600',
-    selected: 'border-teal-500 bg-teal-50 ring-1 ring-teal-400/40',
-  },
-]
+// PLANES: bloque de selección de plan eliminado en beta privada (2026-04-22)
+// Todos los médicos nuevos arrancan en plan='trial' (1 año gratis).
+// Cuando se reactive el modelo de pago, descomentar este array y el fieldset.
 
 type FormState = CreateDoctorInput & { confirmPassword: string; cedula: string }
 
@@ -78,7 +48,7 @@ const defaultForm: FormState = {
   confirmPassword: '',
   specialty: '',
   phone: '',
-  plan: 'basic',
+  plan: 'basic', // valor placeholder; createDoctor en actions.ts lo fuerza a trial en beta
 }
 
 type FormErrors = Partial<Record<keyof FormState, string>>
@@ -323,42 +293,18 @@ export default function NewDoctorModal() {
                     </Field>
                   </fieldset>
 
-                  <fieldset>
-                    <legend className="text-xs font-semibold text-slate-400 uppercase tracking-wider pb-3">
-                      Plan de suscripción
-                    </legend>
-                    <div className="grid grid-cols-2 gap-3">
-                      {PLANES.map((plan) => {
-                        const isSelected = form.plan === plan.value
-                        return (
-                          <button
-                            key={plan.value}
-                            type="button"
-                            onClick={() => handleChange('plan', plan.value)}
-                            className={`relative flex flex-col items-start gap-1 p-4 rounded-xl border text-left transition-all
-                              ${isSelected ? plan.selected : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'}`}
-                          >
-                            <span className={`absolute top-2.5 right-2.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full
-                              ${plan.value === 'professional' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
-                              {plan.badge}
-                            </span>
-                            <span className={`flex items-center gap-1.5 font-semibold text-sm ${isSelected ? plan.color : 'text-slate-700'}`}>
-                              <span className={isSelected ? plan.color : 'text-slate-400'}>
-                                {plan.icon}
-                              </span>
-                              {plan.label}
-                            </span>
-                            <span className={`text-base font-bold ${isSelected ? plan.color : 'text-slate-600'}`}>
-                              {plan.price}
-                            </span>
-                            <span className="text-xs text-slate-400 leading-snug pr-8">
-                              {plan.description}
-                            </span>
-                          </button>
-                        )
-                      })}
+                  {/* Bloque "Plan de suscripción" eliminado en beta privada (2026-04-22).
+                      Todos los médicos arrancan en Beta Privada (1 año gratis).
+                      Cuando se lance el modelo de pago, restaurar el fieldset de planes. */}
+                  <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-teal-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-teal-900">Acceso Beta Privada</p>
+                      <p className="text-teal-700 text-xs mt-0.5">
+                        El médico tendrá acceso completo a la plataforma por 1 año, sin costo.
+                      </p>
                     </div>
-                  </fieldset>
+                  </div>
                 </form>
               )}
             </div>
@@ -437,8 +383,10 @@ function SuccessView({
   plan: 'basic' | 'professional'
   onClose: () => void
 }) {
-  const planLabel = plan === 'professional' ? 'Professional · $30 USD/mes' : 'Basic · 30 días trial'
-  const planColor = plan === 'professional' ? 'text-teal-600 bg-teal-50' : 'text-slate-600 bg-slate-100'
+  // Beta privada (2026-04-22): todos los médicos arrancan en Beta Privada (1 año gratis)
+  const planLabel = 'Beta Privada · 1 año gratis'
+  const planColor = 'text-teal-600 bg-teal-50'
+  void plan // ignorar el plan recibido, en beta privada todos son trial
 
   return (
     <div className="flex flex-col items-center text-center gap-5 py-2">
