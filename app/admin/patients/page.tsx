@@ -52,16 +52,39 @@ export default async function AdminPatientsPage() {
     .order('created_at', { ascending: false })
     .limit(200)
 
-  // Contar consultas por paciente (una sola query)
+  // Contar 2 métricas por paciente:
+  // - citasMap: TODAS las citas (scheduled + confirmed + completed + no_show, excluye cancelled)
+  // - atendidasMap: solo consultations con status='completed' o appointments completed sin consulta
   const patientIds = (patients || []).map(p => p.id)
-  const consultCountMap: Record<string, number> = {}
+  const citasMap: Record<string, number> = {}
+  const atendidasMap: Record<string, number> = {}
+
   if (patientIds.length > 0) {
-    const { data: consultRows } = await admin
-      .from('consultations')
-      .select('patient_id')
+    // Todas las citas (no canceladas ni reagendadas)
+    const { data: allAppts } = await admin
+      .from('appointments')
+      .select('patient_id, status, consultation_id')
       .in('patient_id', patientIds)
-    for (const r of consultRows || []) {
-      consultCountMap[r.patient_id] = (consultCountMap[r.patient_id] || 0) + 1
+      .not('status', 'in', '("cancelled","rescheduled")')
+
+    for (const a of allAppts || []) {
+      if (!a.patient_id) continue
+      citasMap[a.patient_id] = (citasMap[a.patient_id] || 0) + 1
+      if (a.status === 'completed') {
+        atendidasMap[a.patient_id] = (atendidasMap[a.patient_id] || 0) + 1
+      }
+    }
+
+    // También consultations completed que no estén linkeadas a una appointment
+    const { data: completedConsults } = await admin
+      .from('consultations')
+      .select('patient_id, appointment_id')
+      .in('patient_id', patientIds)
+      .eq('status', 'completed')
+
+    for (const c of completedConsults || []) {
+      if (!c.patient_id || c.appointment_id) continue // ya contada arriba
+      atendidasMap[c.patient_id] = (atendidasMap[c.patient_id] || 0) + 1
     }
   }
 
@@ -118,7 +141,8 @@ export default async function AdminPatientsPage() {
                 <th className="text-left px-5 py-3">Teléfono</th>
                 <th className="text-left px-5 py-3">Cédula</th>
                 <th className="text-right px-5 py-3">Edad</th>
-                <th className="text-right px-5 py-3">Consultas</th>
+                <th className="text-right px-5 py-3">Citas</th>
+                <th className="text-right px-5 py-3">Atendidas</th>
                 <th className="text-left px-5 py-3">Médico</th>
                 <th className="text-left px-5 py-3">Registrado</th>
               </tr>
@@ -141,8 +165,13 @@ export default async function AdminPatientsPage() {
                       <td className="px-5 py-3 text-slate-600">{p.cedula || '—'}</td>
                       <td className="px-5 py-3 text-right text-slate-600">{calcAge(p.birth_date)}</td>
                       <td className="px-5 py-3 text-right">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-semibold">
+                          {citasMap[p.id] || 0}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-semibold">
-                          {consultCountMap[p.id] || 0}
+                          {atendidasMap[p.id] || 0}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-slate-600 text-xs">
