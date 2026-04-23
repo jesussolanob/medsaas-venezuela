@@ -16,7 +16,7 @@ const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
   { name: 'Médicos',        href: '/admin/doctors',       icon: Users },
   { name: 'Pacientes',      href: '/admin/patients',      icon: UsersRound },
-  { name: 'Paquetes',       href: '/admin/packages',      icon: Package },
+  // 'Paquetes' eliminado del sidebar — pertenece al doctor, no al admin (2026-04-22)
   { name: 'Sugerencias',    href: '/admin/suggestions',   icon: MessageSquarePlus },
   { name: 'Configuración',  href: '/admin/settings',      icon: Settings },
 ]
