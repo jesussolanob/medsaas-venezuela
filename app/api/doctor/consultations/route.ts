@@ -144,7 +144,59 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ success: true, consultation: data, code: consultationCode, appointmentId: linkedAppointmentId })
+  // Crear payment + linkear todo (reingeniería 2026-04-22)
+  // Triple link: appointments ↔ consultations ↔ payments
+  let paymentId: string | null = null
+  try {
+    const { data: paymentRow, error: payErr } = await admin
+      .from('payments')
+      .insert({
+        doctor_id: user.id,
+        patient_id,
+        amount_usd: finalAmount,
+        amount_bs: amountBs,
+        bcv_rate: bcvRate,
+        currency: currency || 'USD',
+        method_snapshot: payment_method || null,
+        payment_reference: payment_reference || null,
+        payment_receipt_url: payment_receipt_url || null,
+        status: 'pending',
+      })
+      .select('id')
+      .single()
+
+    if (payErr) {
+      console.error('[Consultations POST] payment INSERT failed:', payErr.message)
+    } else {
+      paymentId = paymentRow?.id ?? null
+    }
+  } catch (e: any) {
+    console.error('[Consultations POST] payment INSERT threw:', e?.message)
+  }
+
+  // Linkear appointment con consultation_id + payment_id + service_snapshot
+  try {
+    const updates: Record<string, unknown> = {
+      consultation_id: data.id,
+      service_snapshot: {
+        name: plan_name || 'Consulta General',
+        price_usd: finalAmount,
+        mode: 'presencial',
+      },
+    }
+    if (paymentId) updates.payment_id = paymentId
+    await admin.from('appointments').update(updates).eq('id', linkedAppointmentId)
+  } catch (e: any) {
+    console.error('[Consultations POST] appointment link failed:', e?.message)
+  }
+
+  return NextResponse.json({
+    success: true,
+    consultation: data,
+    code: consultationCode,
+    appointmentId: linkedAppointmentId,
+    paymentId,
+  })
 }
 
 // PATCH /api/doctor/consultations — Update consultation
