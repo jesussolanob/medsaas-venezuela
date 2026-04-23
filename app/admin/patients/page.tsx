@@ -2,6 +2,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
+// Forzar render dinámico en cada request. Sin esto, Next.js cachea la página
+// como estática y consultas/citas se quedan en 0 hasta un nuevo deploy.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 /**
  * /admin/patients
  * Vista global de todos los pacientes registrados en la plataforma.
