@@ -48,7 +48,7 @@ export const PLAN_LABELS: Record<string, string> = {
 
 export const STATUS_LABELS: Record<string, string> = {
   active: 'Activo',
-  trial: 'Pendiente de aprobación',
+  trial: 'Activo (Trial)',  // beta privada: trial = activo, no requiere aprobación
   past_due: 'Vencido',
   suspended: 'Suspendido',
   cancelled: 'Cancelado',
@@ -142,29 +142,43 @@ export function isMvpFeatureEnabled(featureKey: string, isActive: boolean): bool
 // ── Server-side queries (use in Server Components or API routes) ─────────────
 
 /**
- * Get subscription for a doctor using admin client (bypasses RLS).
+ * Get subscription for a doctor — ahora lee desde profiles directamente
+ * (tabla subscriptions eliminada en reingeniería 2026-04-22)
  */
 export async function getSubscriptionByDoctorId(doctorId: string): Promise<SubscriptionInfo> {
   const admin = createAdminClient()
   const { data } = await admin
-    .from('subscriptions')
-    .select('*')
-    .eq('doctor_id', doctorId)
+    .from('profiles')
+    .select('plan, subscription_status, subscription_expires_at')
+    .eq('id', doctorId)
     .maybeSingle()
 
-  return buildSubscriptionInfo(data)
+  return buildSubscriptionInfo({
+    plan: data?.plan,
+    status: data?.subscription_status,
+    current_period_end: data?.subscription_expires_at,
+  })
 }
 
 /**
- * Get all subscriptions with doctor profiles (for admin pages).
+ * Get all subscriptions — ahora lee desde profiles directamente.
  */
 export async function getAllSubscriptions() {
   const admin = createAdminClient()
   const { data, error } = await admin
-    .from('subscriptions')
-    .select('*, profiles:doctor_id(full_name, email, specialty)')
+    .from('profiles')
+    .select('id, full_name, email, specialty, plan, subscription_status, subscription_expires_at, created_at')
+    .eq('role', 'doctor')
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return data || []
+  // Forma de salida compatible con consumidores legacy
+  return (data || []).map((d: any) => ({
+    doctor_id: d.id,
+    plan: d.plan || 'trial',
+    status: d.subscription_status || 'active',
+    current_period_end: d.subscription_expires_at,
+    created_at: d.created_at,
+    profiles: { full_name: d.full_name, email: d.email, specialty: d.specialty },
+  }))
 }

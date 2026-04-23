@@ -1048,7 +1048,7 @@ export default function AgendaPage() {
                                     {slotAppt.consultation_code && <span className="text-[10px] font-mono text-slate-400">{slotAppt.consultation_code}</span>}
                                   </div>
                                   <p className={`text-xs mt-0.5 ${slotAppt.status === 'scheduled' ? 'text-amber-600' : 'text-teal-600'}`}>
-                                    {slotAppt.chief_complaint || (slotAppt.status === 'scheduled' ? 'Pendiente de aprobación' : 'Confirmada')}
+                                    {slotAppt.chief_complaint || (slotAppt.status === 'scheduled' ? 'Agendada' : 'Confirmada')}
                                   </p>
                                 </button>
                               ) : (

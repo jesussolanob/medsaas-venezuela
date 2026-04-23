@@ -144,13 +144,12 @@ export default function UsersPanel() {
                   </tr>
                 ) : (
                   filteredDoctors.map((doctor) => {
-                    const subs = doctor.subscriptions
-                    const sub = Array.isArray(subs) ? subs[0] : subs
-                    const plan = sub?.plan || 'trial'
-                    const status = sub?.status || 'trial'
+                    // Plan/status/expires viven en profiles directamente (reingeniería 2026-04-22)
+                    const plan = doctor.plan || 'trial'
+                    const status = doctor.subscription_status || 'active'
                     const daysInactive = daysSince(doctor.last_sign_in_at || doctor.created_at)
-                    const vence = sub?.current_period_end
-                      ? new Date(sub.current_period_end).toLocaleDateString('es-VE')
+                    const vence = doctor.subscription_expires_at
+                      ? new Date(doctor.subscription_expires_at).toLocaleDateString('es-VE')
                       : '—'
 
                     return (
