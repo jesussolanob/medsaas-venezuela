@@ -37,7 +37,7 @@ export default function ConsultationDetailPage() {
       const supabase = createClient()
       const { data: c, error } = await supabase
         .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, payment_status, plan_name, amount, blocks_snapshot, blocks_data, patient_id')
+        .select('id, consultation_code, consultation_date, chief_complaint, payment_status, plan_name, amount, blocks_snapshot, blocks_data, patient_id, started_at, ended_at, status')
         .eq('id', params.id)
         .single()
 
@@ -49,6 +49,15 @@ export default function ConsultationDetailPage() {
 
       setConsultation(c as Consultation)
       setBlocksData(c.blocks_data || {})
+
+      // ⏱ Auto-tracking: setear started_at la primera vez que el doctor abre la consulta
+      // (Opción C aprobada: sin botón explícito, al abrir la página se inicia el cronómetro)
+      if (!c.started_at && c.status !== 'completed' && c.status !== 'no_show') {
+        await supabase
+          .from('consultations')
+          .update({ started_at: new Date().toISOString() })
+          .eq('id', params.id)
+      }
 
       // Cargar paciente
       if (c.patient_id) {
@@ -79,6 +88,16 @@ export default function ConsultationDetailPage() {
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Error al guardar')
+
+      // ⏱ Auto-tracking: cada save actualiza ended_at (último guardado = fin de la consulta)
+      try {
+        const supabase = createClient()
+        await supabase
+          .from('consultations')
+          .update({ ended_at: new Date().toISOString() })
+          .eq('id', consultation.id)
+      } catch { /* no-bloqueante */ }
+
       setMsg({ kind: 'ok', text: 'Cambios guardados' })
     } catch (e: any) {
       setMsg({ kind: 'err', text: e.message })

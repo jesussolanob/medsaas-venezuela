@@ -104,32 +104,57 @@ export default function DoctorDashboard() {
       const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0)
       monthEnd.setHours(23, 59, 59, 999)
 
-      // Financial data: same source as /doctor/finances page
-      // Exclude google_calendar events (schedule blockers, not financial)
-      const { data: completedAppts } = await supabase
-        .from('appointments')
-        .select('plan_price')
+      // Financial: ingresos = SUM(payments.amount_usd WHERE status='approved')
+      // (reingeniería 2026-04-22: source of truth = payments table)
+      const { data: approvedThisMonth } = await supabase
+        .from('payments')
+        .select('amount_usd')
         .eq('doctor_id', user.id)
-        .eq('status', 'completed')
-        .neq('source', 'google_calendar')
-        .gte('scheduled_at', monthStart.toISOString())
-        .lte('scheduled_at', monthEnd.toISOString())
+        .eq('status', 'approved')
+        .gte('created_at', monthStart.toISOString())
+        .lte('created_at', monthEnd.toISOString())
 
-      const totalRevenue = (completedAppts || []).reduce((sum, a) => sum + (Number(a.plan_price) || 0), 0)
-      const appointmentCount = (completedAppts || []).length
+      let totalRevenue = (approvedThisMonth || []).reduce((s, p) => s + (Number(p.amount_usd) || 0), 0)
+      let appointmentCount = (approvedThisMonth || []).length
+
+      // Fallback: si payments aún no tiene data (migración pendiente), suma desde appointments legacy
+      if (totalRevenue === 0 && appointmentCount === 0) {
+        const { data: completedAppts } = await supabase
+          .from('appointments')
+          .select('plan_price')
+          .eq('doctor_id', user.id)
+          .eq('status', 'completed')
+          .neq('source', 'google_calendar')
+          .gte('scheduled_at', monthStart.toISOString())
+          .lte('scheduled_at', monthEnd.toISOString())
+
+        totalRevenue = (completedAppts || []).reduce((sum, a) => sum + (Number(a.plan_price) || 0), 0)
+        appointmentCount = (completedAppts || []).length
+      }
 
       // ── All-time stats ─────────────────────────────────────────────────────
-      // Ingresos totales (lifetime) — de appointments completed
-      const { data: allCompleted } = await supabase
-        .from('appointments')
-        .select('plan_price')
+      // Lifetime revenue: payments aprobados de toda la historia
+      const { data: allApproved } = await supabase
+        .from('payments')
+        .select('amount_usd')
         .eq('doctor_id', user.id)
-        .eq('status', 'completed')
-        .neq('source', 'google_calendar')
+        .eq('status', 'approved')
 
-      const totalRevenueLifetime = (allCompleted || []).reduce(
-        (sum, a) => sum + (Number(a.plan_price) || 0), 0
-      )
+      let totalRevenueLifetime = (allApproved || []).reduce((s, p) => s + (Number(p.amount_usd) || 0), 0)
+
+      // Fallback legacy
+      if (totalRevenueLifetime === 0) {
+        const { data: allCompleted } = await supabase
+          .from('appointments')
+          .select('plan_price')
+          .eq('doctor_id', user.id)
+          .eq('status', 'completed')
+          .neq('source', 'google_calendar')
+
+        totalRevenueLifetime = (allCompleted || []).reduce(
+          (sum, a) => sum + (Number(a.plan_price) || 0), 0
+        )
+      }
 
       // Total de pacientes únicos registrados por este doctor
       const { count: patientCount } = await supabase

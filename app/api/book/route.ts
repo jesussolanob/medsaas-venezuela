@@ -368,6 +368,67 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ── 2.5 Crear payment + consultation y conectar vía FKs (reingeniería 2026-04-22)
+    // Doble escritura: columnas viejas siguen pobladas para retrocompatibilidad.
+    try {
+      const isFromPackage = !!validatedPackage
+      const paymentAmount = isFromPackage ? 0 : (planPrice || 20)
+
+      // Crear payment
+      const { data: paymentRow, error: payErr } = await admin
+        .from('payments')
+        .insert({
+          doctor_id: doctorId,
+          patient_id: patientId,
+          amount_usd: paymentAmount,
+          amount_bs: bcvRate ? parseFloat((paymentAmount * bcvRate).toFixed(2)) : null,
+          bcv_rate: bcvRate,
+          currency: 'USD',
+          method_snapshot: paymentMethod || (isFromPackage ? 'package' : 'direct'),
+          payment_reference: paymentReference || null,
+          payment_receipt_url: receiptUrl || null,
+          status: 'pending',
+          package_id: validatedPackage?.id ?? null,
+        })
+        .select('id')
+        .single()
+
+      if (payErr) console.warn('[Book] payment create skipped:', payErr.message)
+
+      // Crear consultation (status pending hasta que el doctor atienda)
+      const { data: consRow, error: consErr } = await admin
+        .from('consultations')
+        .insert({
+          doctor_id: doctorId,
+          patient_id: patientId,
+          appointment_id: appt!.id,
+          status: 'pending',
+          chief_complaint: chiefComplaint || null,
+          consultation_date: scheduledAt,
+          blocks_data: '[]',
+        })
+        .select('id')
+        .single()
+
+      if (consErr) console.warn('[Book] consultation create skipped:', consErr.message)
+
+      // Conectar appointment con payment + consultation
+      if (paymentRow?.id || consRow?.id) {
+        const updates: Record<string, unknown> = {}
+        if (paymentRow?.id) updates.payment_id = paymentRow.id
+        if (consRow?.id) updates.consultation_id = consRow.id
+        updates.service_snapshot = {
+          name: planName || 'Consulta General',
+          price_usd: planPrice || 20,
+          mode: appointmentMode || 'presencial',
+          sessions_count: sessionsCount || 1,
+        }
+        await admin.from('appointments').update(updates).eq('id', appt!.id)
+      }
+    } catch (linkErr) {
+      console.warn('[Book] payment/consultation link skipped:', linkErr)
+    }
+
     // ── 3. Handle packages ──────────────────────────────────────────────────
     // Nota: si validatedPackage !== null, la RPC book_with_package YA incrementó
     //       el paquete atómicamente. Aquí solo manejamos el caso de creación

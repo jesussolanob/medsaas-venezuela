@@ -19,12 +19,13 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  // 1. Usar la RPC transaccional: valida RBAC, detecta conflicto, registra log
-  const { error: rpcErr } = await admin.rpc('reschedule_appointment', {
+  // 1. RPC nuevo (Opción A): UPDATE old=rescheduled + INSERT new con mismo
+  //    consultation_id y payment_id. Devuelve el id de la NUEVA cita.
+  const { data: newAppointmentId, error: rpcErr } = await admin.rpc('reschedule_appointment', {
     p_appointment_id: appointmentId,
-    p_new_scheduled_at: newDate,
+    p_new_datetime: newDate,
+    p_actor_id: user.id,
     p_reason: reason,
-    p_actor_id: user.id,   // ← actor explícito para service_role
   })
 
   if (rpcErr) {
@@ -32,8 +33,8 @@ export async function POST(req: NextRequest) {
     if (msg.includes('SLOT_CONFLICT')) {
       return NextResponse.json({ error: 'Ya hay otra cita en ese horario' }, { status: 409 })
     }
-    if (msg.includes('UNAUTHORIZED')) {
-      return NextResponse.json({ error: 'No tienes permiso para reagendar esta cita' }, { status: 403 })
+    if (msg.includes('APPOINTMENT_NOT_RESCHEDULABLE')) {
+      return NextResponse.json({ error: 'Esta cita ya fue cancelada o atendida' }, { status: 409 })
     }
     if (msg.includes('APPOINTMENT_NOT_FOUND')) {
       return NextResponse.json({ error: 'Cita no encontrada' }, { status: 404 })
@@ -41,26 +42,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 
-  // Cargar metadata actualizada para sync externo
+  // Metadata para Google Calendar — leemos la NUEVA cita (que tiene los datos)
   const { data: appt } = await admin
     .from('appointments')
-    .select('id, google_event_id, patient_name, plan_name, chief_complaint, appointment_mode, patient_email')
-    .eq('id', appointmentId)
+    .select('id, google_event_id, patient_name, plan_name, chief_complaint, appointment_mode, patient_email, reschedule_of')
+    .eq('id', newAppointmentId)
     .single()
 
-  // 2. Update linked consultation date
-  try {
-    await admin
-      .from('consultations')
-      .update({ consultation_date: newDate, updated_at: new Date().toISOString() })
-      .eq('appointment_id', appointmentId)
-      .eq('doctor_id', user.id)
-  } catch {
-    // appointment_id column may not exist on consultations
+  // El google_event_id está en la cita VIEJA (la que se canceló). Lo recuperamos
+  // de la fila reschedule_of para actualizar el evento existente en GCal.
+  let googleEventId = appt?.google_event_id || null
+  if (!googleEventId && appt?.reschedule_of) {
+    const { data: oldAppt } = await admin
+      .from('appointments')
+      .select('google_event_id')
+      .eq('id', appt.reschedule_of)
+      .single()
+    googleEventId = oldAppt?.google_event_id || null
+  }
+  // Inyectar el google_event_id en la nueva cita para futuras operaciones
+  if (googleEventId && !appt?.google_event_id) {
+    await admin.from('appointments').update({ google_event_id: googleEventId }).eq('id', newAppointmentId)
   }
 
-  // 3. Update Google Calendar event (if exists)
-  if (appt?.google_event_id) {
+  // Nota: la consultation_id es la misma (no cambia al reagendar).
+  // No actualizamos consultations.consultation_date porque la consulta se mantiene
+  // como entidad estable; la fecha real de atención se setea en started_at cuando ocurre.
+
+  // 3. Update Google Calendar event (si existe — uso googleEventId que abarca ambos casos)
+  if (googleEventId) {
     try {
       const { data: profile } = await admin
         .from('profiles')
@@ -87,7 +97,7 @@ export async function POST(req: NextRequest) {
 
           // Update the existing event — sendUpdates=all notifies both doctor and patient
           const updateRes = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/primary/events/${appt.google_event_id}?sendUpdates=all`,
+            `https://www.googleapis.com/calendar/v3/calendars/primary/events/${googleEventId}?sendUpdates=all`,
             {
               method: 'PATCH',
               headers: {
@@ -113,5 +123,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, newAppointmentId, googleEventId })
 }
