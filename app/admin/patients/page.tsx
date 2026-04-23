@@ -2,10 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
-// Forzar render dinámico en cada request. Sin esto, Next.js cachea la página
-// como estática y consultas/citas se quedan en 0 hasta un nuevo deploy.
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+// Cache corto de 30s: lista refresca cada media minuto sin sacrificar velocidad
+export const revalidate = 30
 
 /**
  * /admin/patients
@@ -53,14 +51,14 @@ export default async function AdminPatientsPage() {
     .limit(200)
 
   // Contar 2 métricas por paciente:
-  // - citasMap: TODAS las citas (scheduled + confirmed + completed + no_show, excluye cancelled)
-  // - atendidasMap: solo consultations con status='completed' o appointments completed sin consulta
+  // - citasMap: appointments activas + consultations sin appointment (consultas standalone)
+  // - atendidasMap: appointments status='completed' + consultations status='completed'
   const patientIds = (patients || []).map(p => p.id)
   const citasMap: Record<string, number> = {}
   const atendidasMap: Record<string, number> = {}
 
   if (patientIds.length > 0) {
-    // Todas las citas (no canceladas ni reagendadas)
+    // 1. Appointments (todas excepto cancelled/rescheduled)
     const { data: allAppts } = await admin
       .from('appointments')
       .select('patient_id, status, consultation_id')
@@ -75,16 +73,21 @@ export default async function AdminPatientsPage() {
       }
     }
 
-    // También consultations completed que no estén linkeadas a una appointment
-    const { data: completedConsults } = await admin
+    // 2. Consultations standalone (sin appointment_id) — el doctor las creó manualmente
+    //    Cuentan como "cita" siempre, y como "atendida" solo si status='completed'
+    const { data: standaloneConsults } = await admin
       .from('consultations')
-      .select('patient_id, appointment_id')
+      .select('patient_id, status, appointment_id')
       .in('patient_id', patientIds)
-      .eq('status', 'completed')
+      .is('appointment_id', null)
+      .not('status', 'in', '("cancelled")')
 
-    for (const c of completedConsults || []) {
-      if (!c.patient_id || c.appointment_id) continue // ya contada arriba
-      atendidasMap[c.patient_id] = (atendidasMap[c.patient_id] || 0) + 1
+    for (const c of standaloneConsults || []) {
+      if (!c.patient_id) continue
+      citasMap[c.patient_id] = (citasMap[c.patient_id] || 0) + 1
+      if (c.status === 'completed') {
+        atendidasMap[c.patient_id] = (atendidasMap[c.patient_id] || 0) + 1
+      }
     }
   }
 

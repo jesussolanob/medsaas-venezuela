@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 
 export type LoginResult =
-  | { success: true; role: string; clinicRole: string | null; hasClinic: boolean; destination: string }
+  | { success: true; role: string; destination: string }
   | { success: false; error: string }
 
 export async function loginUser(email: string, password: string): Promise<LoginResult> {

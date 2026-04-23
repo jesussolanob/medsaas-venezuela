@@ -4,9 +4,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
 
-// Forzar render dinámico — KPIs deben reflejar datos en tiempo real
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+// Cache corto de 30s: KPIs frescos sin re-ejecutar todas las queries en cada request
+export const revalidate = 30
 
 export default async function AdminDashboard() {
   const supabase = await createClient()

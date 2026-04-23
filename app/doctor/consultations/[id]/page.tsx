@@ -74,6 +74,17 @@ export default function ConsultationDetailPage() {
     load()
   }, [params.id])
 
+  // Detecta si los bloques tienen contenido real (no vacíos)
+  function hasRealContent(data: Record<string, any>): boolean {
+    return Object.values(data || {}).some((v) => {
+      if (v == null) return false
+      if (typeof v === 'string') return v.trim().length > 0
+      if (Array.isArray(v)) return v.length > 0
+      if (typeof v === 'object') return Object.keys(v).length > 0
+      return Boolean(v)
+    })
+  }
+
   async function save() {
     if (!consultation) return
     setSaving(true); setMsg(null)
@@ -89,13 +100,26 @@ export default function ConsultationDetailPage() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Error al guardar')
 
-      // ⏱ Auto-tracking: cada save actualiza ended_at (último guardado = fin de la consulta)
+      // ⏱ Auto-tracking + auto-status:
+      //  - ended_at se actualiza siempre (último guardado = fin de la consulta)
+      //  - status pasa a 'completed' si los bloques tienen contenido real
+      //    (= el doctor llenó al menos 1 bloque, ya la atendió formalmente)
       try {
         const supabase = createClient()
+        const updates: Record<string, unknown> = { ended_at: new Date().toISOString() }
+        if (hasRealContent(blocksData) && consultation.status !== 'completed') {
+          updates.status = 'completed'
+          updates.consultation_date = consultation.consultation_date || new Date().toISOString()
+        }
         await supabase
           .from('consultations')
-          .update({ ended_at: new Date().toISOString() })
+          .update(updates)
           .eq('id', consultation.id)
+
+        // Refresh local state
+        if (updates.status === 'completed') {
+          setConsultation({ ...consultation, status: 'completed' })
+        }
       } catch { /* no-bloqueante */ }
 
       setMsg({ kind: 'ok', text: 'Cambios guardados' })
