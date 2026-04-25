@@ -19,6 +19,9 @@ export default function ExchangeRateSettingsPage() {
   const [previewSource, setPreviewSource] = useState<string>('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string>('')
+  // Comparativa: mostrar ambas tasas BCV (USD + EUR) para que el doctor compare
+  const [usdRate, setUsdRate] = useState<number | null>(null)
+  const [eurRateBcv, setEurRateBcv] = useState<number | null>(null)
 
   async function load() {
     setLoading(true)
@@ -60,7 +63,17 @@ export default function ExchangeRateSettingsPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  // Cargar las 2 tasas BCV en paralelo para comparación
+  async function loadComparison() {
+    try {
+      const r = await fetch('/api/admin/bcv-rate', { cache: 'no-store' })
+      const j = await r.json()
+      if (j.rate) setUsdRate(j.rate)
+      if (j.eur_rate) setEurRateBcv(j.eur_rate)
+    } catch { /* no-bloqueante */ }
+  }
+
+  useEffect(() => { load(); loadComparison() }, [])
   useEffect(() => { if (!loading) loadPreview(mode) }, [mode, loading])
 
   async function save() {
@@ -115,6 +128,38 @@ export default function ExchangeRateSettingsPage() {
           {msg.text}
         </div>
       )}
+
+      {/* Comparativa BCV en vivo */}
+      <div className="bg-gradient-to-br from-cyan-50 to-teal-50 border border-cyan-200 rounded-xl p-5">
+        <p className="text-xs font-semibold text-cyan-800 uppercase tracking-wider mb-3">
+          📊 Tasas BCV oficiales hoy
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white rounded-lg p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+              <DollarSign className="w-3.5 h-3.5" /> USD → Bs
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-1">
+              {usdRate
+                ? usdRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                : '—'}
+            </p>
+          </div>
+          <div className="bg-white rounded-lg p-4 border border-slate-200">
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+              <Euro className="w-3.5 h-3.5" /> EUR → Bs
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-1">
+              {eurRateBcv
+                ? eurRateBcv.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                : '—'}
+            </p>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-3">
+          Compara ambas y elige abajo cuál usar para convertir tus precios.
+        </p>
+      </div>
 
       {/* Selector de modo */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
