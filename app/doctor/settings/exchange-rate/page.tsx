@@ -42,25 +42,41 @@ export default function ExchangeRateSettingsPage() {
     setLoading(false)
   }
 
-  async function loadPreview(_m: Mode) {
-    setPreviewLoading(true)
-    setPreviewRate(null)
-    setPreviewSource('')
+  // Calcular preview LOCAL según el modo seleccionado (no consultar BD que aún no se guardó)
+  function recomputePreview(currentMode: Mode) {
     setPreviewError('')
-    try {
-      const r = await fetch('/api/doctor/exchange-rate', { cache: 'no-store' })
-      const j = await r.json()
-      if (j.rate && j.rate > 0) {
-        setPreviewRate(j.rate)
-        setPreviewSource(`${j.label || ''}${j.source ? ' · ' + j.source : ''}`)
+    setPreviewLoading(false)
+    if (currentMode === 'usd_bcv') {
+      if (usdRate && usdRate > 0) {
+        setPreviewRate(usdRate)
+        setPreviewSource('USD → BsS (BCV oficial)')
       } else {
-        setPreviewError(j.message || 'Tasa no disponible por ahora')
+        setPreviewRate(null)
+        setPreviewError('Tasa USD no disponible. Intenta actualizar.')
       }
-    } catch (e: any) {
-      setPreviewError(e?.message || 'Error de red al consultar la tasa')
-    } finally {
-      setPreviewLoading(false)
+    } else if (currentMode === 'eur_bcv') {
+      if (eurRateBcv && eurRateBcv > 0) {
+        setPreviewRate(eurRateBcv)
+        setPreviewSource('EUR → BsS (BCV oficial)')
+      } else {
+        setPreviewRate(null)
+        setPreviewError('Tasa EUR no disponible. Intenta actualizar.')
+      }
+    } else if (currentMode === 'custom') {
+      const n = Number(customRate)
+      if (Number.isFinite(n) && n > 0) {
+        setPreviewRate(n)
+        setPreviewSource(customLabel ? `Personalizada · ${customLabel}` : 'Tasa personalizada')
+      } else {
+        setPreviewRate(null)
+        setPreviewError('Ingresa un valor válido para la tasa personalizada')
+      }
     }
+  }
+
+  async function loadPreview(_m: Mode) {
+    // Mantenemos esta función para compat, pero ahora usa el cálculo local
+    recomputePreview(_m)
   }
 
   // Cargar las 2 tasas BCV en paralelo para comparación
@@ -74,7 +90,10 @@ export default function ExchangeRateSettingsPage() {
   }
 
   useEffect(() => { load(); loadComparison() }, [])
-  useEffect(() => { if (!loading) loadPreview(mode) }, [mode, loading])
+  // Recompute preview cuando cambia el modo, las tasas BCV cargadas, o el custom
+  useEffect(() => {
+    if (!loading) recomputePreview(mode)
+  }, [mode, loading, usdRate, eurRateBcv, customRate, customLabel])
 
   async function save() {
     setSaving(true); setMsg(null)
@@ -257,7 +276,12 @@ export default function ExchangeRateSettingsPage() {
             )}
           </div>
           <button
-            onClick={() => loadPreview(mode)}
+            onClick={async () => {
+              setPreviewLoading(true)
+              await loadComparison() // refresca tasas USD+EUR desde APIs
+              recomputePreview(mode)
+              setPreviewLoading(false)
+            }}
             disabled={previewLoading}
             className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 hover:bg-white text-slate-700 text-sm font-semibold rounded-lg disabled:opacity-50 shrink-0"
           >
