@@ -42,7 +42,11 @@ function LoginInner() {
   const router = useRouter()
   const authError = searchParams.get('error')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(authError === 'auth' ? 'Error de autenticación. Intenta de nuevo.' : '')
+  const [error, setError] = useState(
+    authError === 'auth' ? 'Error de autenticación. Intenta de nuevo.' :
+    authError === 'suspended' ? 'Tu cuenta se encuentra suspendida. Contacta al administrador.' :
+    ''
+  )
 
   const [showEmailForm, setShowEmailForm] = useState(false)
   const [email, setEmail] = useState('')
@@ -144,14 +148,24 @@ function LoginInner() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, phone')
+        .select('role, phone, is_active, subscription_status')
         .eq('id', data.user.id)
         .maybeSingle()
 
-      if (!profile || !profile.phone) {
-        router.push('/onboarding')
-      } else if (profile.role === 'super_admin' || profile.role === 'admin') {
+      // BUG-014 fix: bloquear acceso si está suspendido
+      if (profile && (profile.is_active === false || profile.subscription_status === 'suspended')) {
+        await supabase.auth.signOut()
+        setError('Tu cuenta se encuentra suspendida. Contacta al administrador.')
+        setEmailLoading(false)
+        return
+      }
+
+      // BUG-017 fix: super_admin/admin van directo a /admin sin pasar por /onboarding
+      // (no necesitan campo phone, /onboarding es para doctor/paciente)
+      if (profile?.role === 'super_admin' || profile?.role === 'admin') {
         router.push('/admin')
+      } else if (!profile || !profile.phone) {
+        router.push('/onboarding')
       } else if (profile.role === 'patient') {
         router.push('/patient/dashboard')
       } else {

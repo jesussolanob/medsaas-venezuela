@@ -256,6 +256,31 @@ export async function PATCH(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // BUG-012 fix: si se cambió payment_status, sincronizar con payments.status del pago linkeado
+  // Source of truth = payments. consultations.payment_status queda como mirror legacy hasta Fase 5.
+  if ('payment_status' in safeFields && data.appointment_id) {
+    try {
+      const newStatus = safeFields.payment_status === 'approved' ? 'approved' : 'pending'
+      // Buscar el payment_id de la appointment linkeada
+      const { data: appt } = await admin
+        .from('appointments')
+        .select('payment_id')
+        .eq('id', data.appointment_id)
+        .single()
+      if (appt?.payment_id) {
+        await admin
+          .from('payments')
+          .update({
+            status: newStatus,
+            paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
+          })
+          .eq('id', appt.payment_id)
+      }
+    } catch (syncErr) {
+      console.warn('[Consultations PATCH] payment sync skipped:', syncErr)
+    }
+  }
+
   return NextResponse.json({ success: true, consultation: data })
 }
 

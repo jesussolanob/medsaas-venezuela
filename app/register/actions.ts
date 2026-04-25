@@ -126,6 +126,30 @@ export async function registerPatient(input: RegisterPatientInput): Promise<Regi
     return { success: false, error: profileError.message }
   }
 
+  // BUG-018 fix: merge de guest → registered
+  // Si el paciente agendó como invitado antes (mismo email), hay rows en `patients`
+  // sin auth_user_id. Las linkeamos a esta nueva cuenta para que sus citas/consultas
+  // aparezcan en el dashboard del paciente recién registrado.
+  try {
+    const { data: guestPatients } = await supabase
+      .from('patients')
+      .select('id')
+      .eq('email', input.email)
+      .is('auth_user_id', null)
+
+    if (guestPatients && guestPatients.length > 0) {
+      const guestIds = guestPatients.map((p) => p.id)
+      // Linkear todas las filas de patient con el nuevo auth_user_id
+      await supabase
+        .from('patients')
+        .update({ auth_user_id: userId })
+        .in('id', guestIds)
+      console.log(`[registerPatient] Merged ${guestIds.length} guest patient(s) for ${input.email}`)
+    }
+  } catch (mergeErr) {
+    console.warn('[registerPatient] guest merge skipped:', mergeErr)
+  }
+
   return { success: true, doctorId: userId }
 }
 

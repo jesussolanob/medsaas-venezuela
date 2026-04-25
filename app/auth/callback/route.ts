@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   // Check if profile exists
   const { data: profile } = await adminClient
     .from('profiles')
-    .select('role, phone')
+    .select('role, phone, is_active, subscription_status')
     .eq('id', userId)
     .maybeSingle()
 
@@ -34,23 +34,30 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/onboarding`)
   }
 
+  // BUG-014: bloquear si está suspendido
+  if (profile.is_active === false || profile.subscription_status === 'suspended') {
+    await supabase.auth.signOut()
+    return NextResponse.redirect(`${origin}/login?error=suspended`)
+  }
+
+  // BUG-017: super_admin/admin van directo sin onboarding
+  const role = profile.role as string | null
+  if (role === 'super_admin' || role === 'admin') {
+    return NextResponse.redirect(`${origin}${next || '/admin'}`)
+  }
+
   // Existing user — check if phone is set (onboarding complete)
   if (!profile.phone) {
     return NextResponse.redirect(`${origin}/onboarding`)
   }
 
   // AL-101: ningún fallback silencioso a 'doctor'.
-  // Route based on role — explícito, con whitelist.
-  const role = profile.role as string | null
   let target: string
-  if (role === 'super_admin') {
-    target = '/admin'
-  } else if (role === 'patient') {
+  if (role === 'patient') {
     target = '/patient/dashboard'
   } else if (role === 'doctor') {
     target = '/doctor'
   } else {
-    // Role inválido/NULL → forzar onboarding en lugar de default a /doctor
     console.warn(`[auth/callback] Profile ${userId} tiene role inválido: ${role}`)
     return NextResponse.redirect(`${origin}/onboarding?error=role_missing`)
   }

@@ -193,18 +193,40 @@ export default function CobrosPage() {
     setUpdatingStatus(true)
     const supabase = createClient()
 
-    // All payments come from appointments table (single source of truth)
+    // BUG-012 fix: actualizar 3 fuentes para mantener sincronía
+    //  1. payments.status (source of truth nuevo)
+    //  2. consultations.payment_status (mirror legacy)
+    //  3. appointments.status (display de cobros legacy)
+
+    // 1. Buscar payment_id de la appointment
+    const { data: appt } = await supabase
+      .from('appointments')
+      .select('payment_id, consultation_id')
+      .eq('id', id)
+      .single()
+
+    // 2. Update appointments (legacy display)
     await supabase.from('appointments').update({ status: newStatus }).eq('id', id)
 
-    // Also update linked consultation if exists
-    if (newStatus === 'completed') {
-      await supabase.from('consultations')
-        .update({ payment_status: 'approved' })
-        .eq('appointment_id', id)
-    } else if (newStatus === 'cancelled') {
-      await supabase.from('consultations')
-        .update({ payment_status: 'cancelled' })
-        .eq('appointment_id', id)
+    // 3. Update payments (source of truth)
+    if (appt?.payment_id) {
+      const paymentStatus = newStatus === 'completed' ? 'approved' : 'pending'
+      await supabase
+        .from('payments')
+        .update({
+          status: paymentStatus,
+          paid_at: paymentStatus === 'approved' ? new Date().toISOString() : null,
+        })
+        .eq('id', appt.payment_id)
+    }
+
+    // 4. Update consultation mirror
+    if (appt?.consultation_id) {
+      const consPayStatus = newStatus === 'completed' ? 'approved' : 'pending'
+      await supabase
+        .from('consultations')
+        .update({ payment_status: consPayStatus })
+        .eq('id', appt.consultation_id)
     }
 
     setUpdatingStatus(false)
