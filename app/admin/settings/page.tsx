@@ -23,9 +23,11 @@ export default function AdminSettingsPage() {
   const [savingAdmin, setSavingAdmin] = useState(false)
   const [adminMsg, setAdminMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
-  // ── BCV ─────────────────────────────────────────────────────────────────────
+  // ── BCV (USD + EUR) ──────────────────────────────────────────────────────
   const [bcvRate, setBcvRate] = useState<number | null>(null)
   const [bcvUpdated, setBcvUpdated] = useState<string | null>(null)
+  const [eurRate, setEurRate] = useState<number | null>(null)
+  const [eurUpdated, setEurUpdated] = useState<string | null>(null)
   const [bcvLoading, setBcvLoading] = useState(false)
   const [bcvMsg, setBcvMsg] = useState<string | null>(null)
 
@@ -49,8 +51,13 @@ export default function AdminSettingsPage() {
       if (j.rate) {
         setBcvRate(j.rate)
         setBcvUpdated(j.updated || j.date || null)
-      } else {
-        setBcvMsg('No se pudo obtener la tasa BCV')
+      }
+      if (j.eur_rate) {
+        setEurRate(j.eur_rate)
+        setEurUpdated(j.eur_date || null)
+      }
+      if (!j.rate && !j.eur_rate) {
+        setBcvMsg('No se pudo obtener las tasas BCV')
       }
     } catch {
       setBcvMsg('Error al consultar BCV')
@@ -237,30 +244,47 @@ export default function AdminSettingsPage() {
           </button>
         </div>
 
-        <div className="bg-slate-50 rounded-lg p-6">
-          {bcvRate !== null ? (
-            <>
-              <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">USD → BsS</p>
-              <p className="text-4xl font-bold text-slate-900 mt-2">
-                {bcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-              </p>
-              {bcvUpdated && (
-                <p className="text-xs text-slate-400 mt-2">
-                  Actualizado: {new Date(bcvUpdated).toLocaleString('es-VE')}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* USD card */}
+          <div className="bg-slate-50 rounded-lg p-6">
+            {bcvRate !== null ? (
+              <>
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">USD → BsS</p>
+                <p className="text-4xl font-bold text-slate-900 mt-2">
+                  {bcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                 </p>
-              )}
-              <p className="text-xs text-slate-500 mt-3">
-                Fuente: Banco Central de Venezuela (bcv.org.ve). Se consulta automáticamente
-                al cargar la página. Esta tasa se usa para convertir precios USD→BsS en
-                citas, facturas y reportes.
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-slate-400">
-              {bcvMsg || 'Cargando tasa…'}
-            </p>
-          )}
+                {bcvUpdated && (
+                  <p className="text-xs text-slate-400 mt-2 truncate">{bcvUpdated}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-400">{bcvMsg || 'Cargando tasa USD…'}</p>
+            )}
+          </div>
+
+          {/* EUR card */}
+          <div className="bg-slate-50 rounded-lg p-6">
+            {eurRate !== null ? (
+              <>
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">EUR → BsS</p>
+                <p className="text-4xl font-bold text-slate-900 mt-2">
+                  {eurRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                </p>
+                {eurUpdated && (
+                  <p className="text-xs text-slate-400 mt-2 truncate">{eurUpdated}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-400">{bcvMsg || 'Cargando tasa EUR…'}</p>
+            )}
+          </div>
         </div>
+
+        <p className="text-xs text-slate-500 mt-4">
+          Fuente: Banco Central de Venezuela (bcv.org.ve) con fallback a PyDolarVe / DolarAPI.
+          Se consulta automáticamente al cargar. Estas tasas se usan para convertir precios
+          USD/EUR → BsS en citas, facturas y reportes.
+        </p>
       </section>
     </div>
   )

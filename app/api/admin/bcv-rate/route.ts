@@ -197,39 +197,106 @@ export async function GET() {
     }
   }
 
+  // ── EUR rate (pydolarve euro endpoint + bcv scraping fallback) ──────────
+  let eurRate: number | null = null
+  let eurDateStr = ''
+  let eurSource = 'none'
+
+  try {
+    const res = await fetch('https://pydolarve.org/api/v2/euro?page=bcv', {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json', 'User-Agent': 'DeltaMedicalCRM/1.0' },
+      cache: 'no-store',
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const monitors = data?.monitors
+      if (monitors?.eur?.price && monitors.eur.price > 0) {
+        eurRate = monitors.eur.price
+        eurDateStr = monitors.eur.last_update || ''
+        eurSource = 'pydolarve.org'
+      }
+    }
+  } catch { /* try next */ }
+
+  if (!eurRate) {
+    try {
+      const res = await fetch('https://ve.dolarapi.com/v1/euros/oficial', {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const val = data?.promedio || data?.venta || data?.compra
+        if (val && val > 0) {
+          eurRate = val
+          eurDateStr = data.fechaActualizacion || ''
+          eurSource = 'dolarapi.com'
+        }
+      }
+    } catch { /* try next */ }
+  }
+
+  // BCV scraping for EUR (id="euro")
+  if (!eurRate) {
+    try {
+      const res = await fetch('https://www.bcv.org.ve/', {
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html',
+        },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const html = await res.text()
+        const eurMatch = html.match(/id="euro"[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/i)
+        if (eurMatch) {
+          const parsed = parseFloat(eurMatch[1].replace(/\./g, '').replace(',', '.'))
+          if (parsed > 0) {
+            eurRate = parsed
+            eurSource = 'bcv.org.ve'
+          }
+        }
+      }
+    } catch { /* skip */ }
+  }
+
   // ── Build response ──────────────────────────────────────────────────────
+  const buildLabel = (s: string) =>
+    s === 'pydolarve.org' ? 'BCV Oficial (vía PyDolarVe)' :
+    s === 'dolarapi.com'  ? 'BCV Oficial (vía DolarAPI)' :
+    s === 'bcv.org.ve'    ? 'BCV Oficial' :
+    s === 'currency-api'  ? 'Tasa aproximada (Currency API)' : 'BCV'
+
   if (rate && rate > 0) {
     if (!dateStr) {
       dateStr = new Date().toLocaleDateString('es-VE', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       })
     }
 
-    const sourceLabel = source === 'pydolarve.org'
-      ? 'BCV Oficial (vía PyDolarVe)'
-      : source === 'dolarapi.com'
-        ? 'BCV Oficial (vía DolarAPI)'
-        : source === 'bcv.org.ve'
-          ? 'BCV Oficial'
-          : source === 'currency-api'
-            ? 'Tasa aproximada (Currency API)'
-            : 'BCV'
-
     return NextResponse.json({
+      // USD (compat retro: campos `rate`, `date`, `source`)
       rate,
-      date: `${sourceLabel} — ${dateStr}`,
+      date: `${buildLabel(source)} — ${dateStr}`,
       source,
+      // EUR (nuevos campos)
+      eur_rate: eurRate,
+      eur_date: eurRate ? `${buildLabel(eurSource)} — ${eurDateStr || dateStr}` : '',
+      eur_source: eurSource,
     })
   }
 
-  // All sources failed
+  // USD failed pero EUR puede haber funcionado igual
   return NextResponse.json({
     rate: null,
     date: '',
     source: 'none',
-    message: 'No se pudo obtener la tasa BCV automáticamente. Ingrese la tasa manualmente.',
+    eur_rate: eurRate,
+    eur_date: eurRate ? `${buildLabel(eurSource)} — ${eurDateStr}` : '',
+    eur_source: eurSource,
+    message: 'No se pudo obtener la tasa BCV USD automáticamente.',
   })
 }
