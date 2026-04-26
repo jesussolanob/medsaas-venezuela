@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
+import { formatUsd, formatBs } from '@/lib/finances'
 import {
   Users, Calendar, FileText, TrendingUp,
   Bell, DollarSign, ArrowRight, Activity,
@@ -41,7 +42,7 @@ type AllTimeStats = {
 
 export default function DoctorDashboard() {
   const router = useRouter()
-  const { rate: bcvRate, toBs } = useBcvRate()
+  const { rate: bcvRate, toBs, toBsNum } = useBcvRate()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
@@ -183,6 +184,31 @@ export default function DoctorDashboard() {
     }
     fetchData()
   }, [selectedMonth])
+
+  // REFRESH AUTOMATICO (ronda 15): cuando cambia algo en payments del doctor,
+  // re-ejecutar fetchData para que el saldo del Dashboard quede sincronizado con
+  // Cobros y Finanzas sin necesidad de reload.
+  useEffect(() => {
+    const supabase = createClient()
+    let channel: any = null
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      channel = supabase
+        .channel('dashboard-payments-watch')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
+          () => {
+            // Forzar re-render trigger con cambio de selectedMonth a si mismo es feo;
+            // mejor recargar usando setSelectedMonth (mantiene el mes actual)
+            setSelectedMonth(prev => ({ ...prev }))
+          }
+        )
+        .subscribe()
+    })()
+    return () => { if (channel) supabase.removeChannel(channel) }
+  }, [])
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -342,11 +368,11 @@ export default function DoctorDashboard() {
               </div>
             </div>
             <p className="text-2xl font-bold text-slate-900">
-              ${allTimeStats.total_revenue_lifetime.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatUsd(allTimeStats.total_revenue_lifetime)}
             </p>
             {bcvRate && (
               <p className="text-[11px] text-slate-400 mt-1">
-                ≈ Bs {toBs(allTimeStats.total_revenue_lifetime).toLocaleString('es-VE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                ≈ {formatBs(toBsNum(allTimeStats.total_revenue_lifetime))}
               </p>
             )}
           </div>
@@ -443,7 +469,7 @@ export default function DoctorDashboard() {
               <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg p-4 border border-teal-100">
                 <p className="text-xs text-slate-500 font-medium mb-1">Ingresos Totales</p>
                 <p className="text-2xl font-bold text-teal-600">
-                  ${financialData.total_revenue.toFixed(2)}
+                  {formatUsd(financialData.total_revenue)}
                 </p>
                 {bcvRate && <p className="text-sm text-teal-500 font-semibold">{toBs(financialData.total_revenue)}</p>}
                 <p className="text-xs text-slate-400 mt-1">USD</p>
@@ -457,7 +483,7 @@ export default function DoctorDashboard() {
                 <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
                   <p className="text-xs text-slate-500 font-medium">Promedio por Cita</p>
                   <p className="text-xl font-bold text-slate-900 mt-1">
-                    ${financialData.appointment_count > 0 ? (financialData.total_revenue / financialData.appointment_count).toFixed(2) : '0.00'}
+                    {formatUsd(financialData.appointment_count > 0 ? (financialData.total_revenue / financialData.appointment_count) : 0)}
                   </p>
                   {bcvRate && financialData.appointment_count > 0 && (
                     <p className="text-xs text-slate-400">{toBs(financialData.total_revenue / financialData.appointment_count)}</p>

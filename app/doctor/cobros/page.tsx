@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
+import { fetchPayments as sharedFetchPayments, formatUsd, formatBs } from '@/lib/finances'
 import {
   Receipt, Search, Download, DollarSign, CheckCircle, Clock,
   XCircle, Calendar, ArrowRight, Loader2, RefreshCw, Filter,
@@ -99,46 +100,58 @@ export default function CobrosPage() {
 
   // BCV rate now comes from useBcvRate() hook
 
+  // FUENTE UNICA (ronda 15): leer de tabla `payments` via helper compartido.
+  // Tab 'approved' = dinero real cobrado. Tab 'pending' = por cobrar.
+  // Antes leia de `appointments.status` (legacy) lo que causaba drift con el dashboard.
   const fetchPayments = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // ── Single source of truth: appointments table ──
-    // All financial data comes ONLY from appointments to avoid double-counting.
-    // Consultations are for clinical data only.
-    let statusFilter: string[]
-    switch (tab) {
-      case 'pending':
-        statusFilter = ['scheduled', 'pending', 'confirmed']
-        break
-      case 'approved':
-        statusFilter = ['completed']
-        break
-    }
+    const rows = await sharedFetchPayments(supabase, {
+      doctorId: user.id,
+      status: tab,  // 'pending' | 'approved'
+    })
 
-    // CODIGO UNIFICADO (ronda 13): joinear con consultations para mostrar el consultation_code
-    // como codigo maestro. Si no hay consulta vinculada, fallback al appointment_code.
-    const { data: apptData } = await supabase
-      .from('appointments')
-      .select('id, patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, payment_receipt_url, source, consultations(consultation_code)')
-      .eq('doctor_id', user.id)
-      .in('status', statusFilter)
-      .neq('source', 'google_calendar')
-      .order('scheduled_at', { ascending: false })
-      .limit(200)
-
-    setPayments((apptData || []).map(a => {
-      const consNested = (a as any).consultations
-      const consCode = Array.isArray(consNested) ? consNested[0]?.consultation_code : consNested?.consultation_code
-      // Sobreescribimos appointment_code con el consultation_code para que la UI ya existente lo muestre.
-      return { ...a, appointment_code: consCode || a.appointment_code, _source: 'appointment' as const }
-    }))
+    // Adaptar al shape Payment de esta vista
+    setPayments(rows.map(p => ({
+      id: p.id,
+      patient_name: p.appointment?.patient_name || 'Paciente',
+      plan_name: p.appointment?.plan_name || null,
+      plan_price: p.amount_usd,
+      payment_method: p.method_snapshot || null,
+      status: p.status,
+      scheduled_at: p.appointment?.scheduled_at || p.created_at,
+      // Codigo unificado: consultation_code como maestro, appointment_code como fallback
+      appointment_code: p.consultation?.consultation_code || p.appointment?.appointment_code || p.payment_code || '',
+      payment_receipt_url: p.appointment?.payment_receipt_url || null,
+      _source: 'appointment' as const,
+    })))
     setLoading(false)
   }, [tab])
 
   useEffect(() => { fetchPayments() }, [fetchPayments])
+
+  // REFRESH AUTOMATICO (ronda 15): si otra pestaña/vista cambia un pago en `payments`,
+  // suscribirse a Supabase Realtime y refrescar para evitar saldos stale.
+  useEffect(() => {
+    const supabase = createClient()
+    let channel: any = null
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      channel = supabase
+        .channel('cobros-payments-watch')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
+          () => { fetchPayments() }
+        )
+        .subscribe()
+    })()
+    return () => { if (channel) supabase.removeChannel(channel) }
+  }, [fetchPayments])
 
   const filtered = payments.filter(p => {
     if (!searchQuery.trim()) return true
@@ -269,7 +282,7 @@ export default function CobrosPage() {
             <DollarSign className="w-5 h-5 text-teal-500" />
             <span className="text-xs font-semibold text-slate-500 uppercase">Total USD</span>
           </div>
-          <p className="text-2xl font-bold text-slate-900">${totalUSD.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-slate-900">{formatUsd(totalUSD)}</p>
           <p className="text-xs text-slate-400 mt-1">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</p>
         </div>
 
@@ -285,7 +298,7 @@ export default function CobrosPage() {
             </div>
           ) : totalBs !== null ? (
             <>
-              <p className="text-2xl font-bold text-slate-900">Bs {totalBs.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-slate-900">{formatBs(totalBs)}</p>
               <p className="text-xs text-slate-400 mt-1">Tasa BCV: {bcvRate?.toFixed(2)} Bs/$</p>
             </>
           ) : (
@@ -405,12 +418,12 @@ export default function CobrosPage() {
                 </div>
                 <div className="col-span-1 text-right">
                   <span className="text-sm font-semibold text-slate-900">
-                    ${(p.plan_price || 0).toFixed(2)}
+                    {formatUsd(p.plan_price)}
                   </span>
                 </div>
                 <div className="col-span-1 text-right">
                   <span className="text-xs text-slate-500">
-                    {bcvRate ? `Bs ${((p.plan_price || 0) * bcvRate).toFixed(2)}` : '—'}
+                    {bcvRate ? formatBs((p.plan_price || 0) * bcvRate) : '—'}
                   </span>
                 </div>
                 <div className="col-span-1 text-center">
@@ -456,11 +469,11 @@ export default function CobrosPage() {
                 <p className="text-xs font-semibold text-slate-500">Servicio</p>
                 <p className="text-sm font-bold text-slate-800">{selectedPayment.plan_name || '—'}</p>
                 <div className="flex items-baseline gap-2 pt-1">
-                  <span className="text-2xl font-bold text-teal-600">${(selectedPayment.plan_price || 0).toFixed(2)}</span>
+                  <span className="text-2xl font-bold text-teal-600">{formatUsd(selectedPayment.plan_price)}</span>
                   <span className="text-xs text-slate-400">USD</span>
                   {bcvRate && (
                     <span className="text-sm text-slate-500 ml-2">
-                      = Bs {((selectedPayment.plan_price || 0) * bcvRate).toFixed(2)}
+                      = {formatBs((selectedPayment.plan_price || 0) * bcvRate)}
                     </span>
                   )}
                 </div>

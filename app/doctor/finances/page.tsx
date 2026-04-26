@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
+import { fetchPayments as sharedFetchPayments, formatUsd, formatBs } from '@/lib/finances'
 import {
   DollarSign, TrendingUp, TrendingDown, BarChart3,
   Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Search, Calendar, Download,
@@ -67,33 +68,21 @@ export default function FinancesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Load completed appointments as income (same source as Cobros "aprobados")
-      // Exclude google_calendar events — they are schedule blockers, not financial items
-      // CODIGO UNIFICADO (ronda 13): mostrar consultation_code (maestro), fallback al appointment_code
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select('id, patient_name, plan_price, payment_method, scheduled_at, appointment_code, consultations(consultation_code)')
-        .eq('doctor_id', user.id)
-        .eq('status', 'completed')
-        .neq('source', 'google_calendar')
-        .order('scheduled_at', { ascending: false })
-
-      setIncomes((appointments || []).map(a => {
-        // El "consultation_code" es el codigo maestro que el doctor reconoce. Si por alguna razon
-        // la cita aun no tiene consulta vinculada, caemos al appointment_code para no dejar vacio.
-        const consNested = (a as any).consultations
-        const consCode = Array.isArray(consNested)
-          ? consNested[0]?.consultation_code
-          : consNested?.consultation_code
-        return {
-          id: a.id,
-          patient_name: a.patient_name || 'Paciente',
-          amount_usd: a.plan_price || 0,
-          payment_method: a.payment_method || '',
-          date: a.scheduled_at,
-          consultation_code: consCode || a.appointment_code || '',
-        }
-      }))
+      // FUENTE UNICA (ronda 15): leemos pagos APROBADOS desde la tabla `payments`
+      // mediante el helper compartido. Garantiza que Dashboard, Cobros y Finanzas
+      // muestren EXACTAMENTE el mismo total — sin drift entre appointments.status y payments.status.
+      const paid = await sharedFetchPayments(supabase, {
+        doctorId: user.id,
+        status: 'approved',
+      })
+      setIncomes(paid.map(p => ({
+        id: p.id,
+        patient_name: p.appointment?.patient_name || 'Paciente',
+        amount_usd: Number(p.amount_usd || 0),
+        payment_method: p.method_snapshot || '',
+        date: p.appointment?.scheduled_at || p.paid_at || p.created_at,
+        consultation_code: p.consultation?.consultation_code || p.appointment?.appointment_code || p.payment_code || '',
+      })))
 
       // Load expenses
       const { data: exp } = await supabase
@@ -110,6 +99,26 @@ export default function FinancesPage() {
   }
 
   useEffect(() => { loadData() }, [])
+
+  // REFRESH AUTOMATICO (ronda 15): suscripcion realtime a payments para mantener
+  // el saldo siempre sincronizado con Dashboard y Cobros sin reload.
+  useEffect(() => {
+    let channel: any = null
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      channel = supabase
+        .channel('finances-payments-watch')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
+          () => { loadData() }
+        )
+        .subscribe()
+    })()
+    return () => { if (channel) supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Filter data by current period
   const filteredData = useMemo(() => {
@@ -362,7 +371,7 @@ export default function FinancesPage() {
             </div>
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Ingresos</p>
           </div>
-          <p className="text-2xl font-bold text-emerald-600">${filteredData.totalIncome.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-emerald-600">{formatUsd(filteredData.totalIncome)}</p>
           {bcvRate && <p className="text-sm text-emerald-400 font-semibold">{toBs(filteredData.totalIncome)}</p>}
           <p className="text-xs text-slate-400 mt-1">{filteredData.filteredIncomes.length} pagos aprobados</p>
         </div>
@@ -373,7 +382,7 @@ export default function FinancesPage() {
             </div>
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Gastos</p>
           </div>
-          <p className="text-2xl font-bold text-red-500">${filteredData.totalExpenses.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-red-500">{formatUsd(filteredData.totalExpenses)}</p>
           {bcvRate && <p className="text-sm text-red-300 font-semibold">{toBs(filteredData.totalExpenses)}</p>}
           <p className="text-xs text-slate-400 mt-1">{filteredData.filteredExpenses.length} gastos registrados</p>
         </div>
@@ -385,7 +394,7 @@ export default function FinancesPage() {
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Balance</p>
           </div>
           <p className={`text-2xl font-bold ${filteredData.balance >= 0 ? 'text-teal-600' : 'text-amber-600'}`}>
-            ${filteredData.balance.toFixed(2)}
+            {formatUsd(filteredData.balance)}
           </p>
           {bcvRate && <p className={`text-sm font-semibold ${filteredData.balance >= 0 ? 'text-teal-400' : 'text-amber-400'}`}>{toBs(filteredData.balance)}</p>}
           <p className="text-xs text-slate-400 mt-1">Ingresos - Gastos</p>
@@ -568,7 +577,7 @@ export default function FinancesPage() {
                         <td className="px-5 py-3 text-xs text-slate-600">{new Date(inc.date).toLocaleDateString('es-VE')}</td>
                         <td className="px-5 py-3 text-xs text-slate-600">{inc.consultation_code || inc.payment_method || '—'}</td>
                         <td className="px-5 py-3 text-sm font-medium text-slate-900">{inc.patient_name}</td>
-                        <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">+${inc.amount_usd?.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">+{formatUsd(inc.amount_usd)}</td>
                         <td className="px-5 py-3 text-xs text-slate-400 text-right">{bcvRate ? toBs(inc.amount_usd || 0) : '—'}</td>
                       </tr>
                     ))}
@@ -576,7 +585,7 @@ export default function FinancesPage() {
                   <tfoot>
                     <tr className="bg-emerald-50/50 border-t border-emerald-100">
                       <td colSpan={3} className="px-5 py-3 text-xs font-bold text-slate-700">Total</td>
-                      <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">${tableTotal.toFixed(2)}</td>
+                      <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">{formatUsd(tableTotal)}</td>
                       <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">{bcvRate ? toBs(tableTotal) : '—'}</td>
                     </tr>
                   </tfoot>
@@ -676,7 +685,7 @@ export default function FinancesPage() {
                           <p className="text-sm font-medium text-slate-900">{exp.concept}</p>
                           {exp.notes && <p className="text-[10px] text-slate-400">{EXPENSE_CATEGORIES.find(c => c.value === exp.notes)?.label || exp.notes}</p>}
                         </td>
-                        <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-${exp.amount?.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-{formatUsd(exp.amount)}</td>
                         <td className="px-5 py-3 text-xs text-slate-400 text-right">{bcvRate ? toBs(exp.amount || 0) : '—'}</td>
                         <td className="px-2 py-3">
                           <button onClick={() => handleDeleteExpense(exp.id)} className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
@@ -689,7 +698,7 @@ export default function FinancesPage() {
                   <tfoot>
                     <tr className="bg-red-50/50 border-t border-red-100">
                       <td colSpan={2} className="px-5 py-3 text-xs font-bold text-slate-700">Total</td>
-                      <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-${tableTotal.toFixed(2)}</td>
+                      <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">-{formatUsd(tableTotal)}</td>
                       <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">{bcvRate ? toBs(tableTotal) : '—'}</td>
                       <td></td>
                     </tr>
