@@ -190,6 +190,7 @@ export default function BookingClient({
   const [form, setForm] = useState({ full_name: '', phone: '', email: '', cedula: '', notes: '', password: '', passwordConfirm: '' })
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  const [bookedCode, setBookedCode] = useState<string>('')
   const [error, setError] = useState('')
 
   // Slot navigation
@@ -483,6 +484,8 @@ export default function BookingClient({
         }
       }
 
+      // Guardar codigo de la cita para mostrarlo en el resumen
+      setBookedCode(result.appointmentCode || '')
       setDone(true)
     } catch (err: any) {
       setError(err?.message || 'Error inesperado')
@@ -507,11 +510,20 @@ export default function BookingClient({
         <p className="text-sm text-slate-500 mb-5">
           Tu consulta con <strong>{getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}</strong> fue registrada.
         </p>
-        <div className="rounded-xl p-4 text-left space-y-2 mb-5" style={{ background: BRAND.bone }}>
-          <p className="text-xs text-slate-600"><span className="font-semibold">Fecha:</span> {selectedSlot?.label} a las {selectedSlot?.time}</p>
+        {/* === Resumen completo de la cita agendada === */}
+        <div className="rounded-xl p-4 text-left space-y-2.5 mb-5" style={{ background: BRAND.bone }}>
+          {bookedCode && (
+            <div className="flex items-center justify-between pb-2 mb-1 border-b border-slate-200">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Código de cita</span>
+              <span className="font-mono text-xs font-bold text-slate-800 bg-white px-2 py-0.5 rounded">{bookedCode}</span>
+            </div>
+          )}
+          <p className="text-xs text-slate-600">
+            <span className="font-semibold">📅 Fecha:</span> {selectedSlot?.label} a las <span className="font-bold">{selectedSlot?.time}</span>
+          </p>
           {selectedPlan && (
             <div className="text-xs text-slate-600">
-              <span className="font-semibold">Plan:</span> {selectedPlan.name}
+              <span className="font-semibold">💼 Plan:</span> {selectedPlan.name}
               {usingPackage ? ' (paquete prepagado)' : (
                 <>
                   {' — '}<span className="font-bold">${planTotal(selectedPlan)} USD</span>
@@ -520,14 +532,57 @@ export default function BookingClient({
               )}
             </div>
           )}
-          <p className="text-xs text-slate-600"><span className="font-semibold">Modalidad:</span> {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}</p>
+          <p className="text-xs text-slate-600">
+            <span className="font-semibold">{appointmentMode === 'online' ? '💻' : '🏥'} Modalidad:</span> {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}
+          </p>
           {appointmentMode === 'presencial' && selectedOffice && (
-            <p className="text-xs text-slate-600"><span className="font-semibold">Consultorio:</span> {selectedOffice.name} — {selectedOffice.address}, {selectedOffice.city}</p>
+            <>
+              <div className="text-xs text-slate-600">
+                <span className="font-semibold">📍 Consultorio:</span> {selectedOffice.name}
+              </div>
+              <div className="text-xs text-slate-600 pl-4">{selectedOffice.address}, {selectedOffice.city}</div>
+              {selectedOffice.phone && (
+                <div className="text-xs text-slate-600 pl-4">
+                  <a href={`tel:${selectedOffice.phone}`} className="text-cyan-600 hover:underline">📞 {selectedOffice.phone}</a>
+                </div>
+              )}
+            </>
           )}
           {appointmentMode === 'presencial' && !selectedOffice && doctor.office_address && (
-            <p className="text-xs text-slate-600"><span className="font-semibold">Dirección:</span> {doctor.office_address}</p>
+            <p className="text-xs text-slate-600"><span className="font-semibold">📍 Dirección:</span> {doctor.office_address}</p>
+          )}
+          {appointmentMode === 'online' && (
+            <p className="text-[10px] text-slate-500 italic">Recibirás el link de la videoconsulta por correo o WhatsApp.</p>
           )}
         </div>
+
+        {/* Botón añadir al calendario (genera URL de Google Calendar) */}
+        {selectedSlot && (
+          <a
+            href={(() => {
+              const start = new Date(`${selectedSlot.date}T${selectedSlot.time}:00`)
+              const end = new Date(start.getTime() + 30 * 60000)
+              const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+              const title = encodeURIComponent(`Consulta con ${doctor.full_name}`)
+              const details = encodeURIComponent(
+                `Plan: ${selectedPlan?.name || 'Consulta'}\n` +
+                (bookedCode ? `Código: ${bookedCode}\n` : '') +
+                (selectedOffice ? `Dirección: ${selectedOffice.address}, ${selectedOffice.city}` : '')
+              )
+              const location = encodeURIComponent(
+                appointmentMode === 'online'
+                  ? 'Videoconsulta online'
+                  : (selectedOffice ? `${selectedOffice.address}, ${selectedOffice.city}` : doctor.office_address || '')
+              )
+              return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}&location=${location}`
+            })()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 mb-3"
+          >
+            📅 Añadir a Google Calendar
+          </a>
+        )}
         {usingPackage && activePackage && activePackage.total_sessions - activePackage.used_sessions > 0 && (
           <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-4 text-left">
             <p className="text-xs text-violet-700 font-semibold">

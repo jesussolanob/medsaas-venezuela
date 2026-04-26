@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
+import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 
 interface PatientPackageInfo {
   patientId: string
@@ -59,6 +60,8 @@ export default function PatientsPage() {
   const [aiSummary, setAiSummary] = useState<string>('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
+  // Modal NewAppointmentFlow unificado (reemplaza la vista inline new-consultation)
+  const [showNewAppointmentFlow, setShowNewAppointmentFlow] = useState(false)
 
   // Edit patient
   const [editing, setEditing] = useState(false)
@@ -475,7 +478,7 @@ export default function PatientsPage() {
                     </button>
                   )}
                   <button
-                    onClick={() => { setView('new-consultation'); setConsultSuccess(''); setConsultError('') }}
+                    onClick={() => { setShowNewAppointmentFlow(true); setConsultSuccess(''); setConsultError('') }}
                     className="g-bg flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 sm:whitespace-nowrap"
                   >
                     <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
@@ -1143,6 +1146,23 @@ export default function PatientsPage() {
           </div>
         </div>
       )}
+
+      {/* === Modal Nueva Consulta UNIFICADO ===
+          Mismo NewAppointmentFlow que /agenda y /consultations.
+          Pre-rellena el paciente seleccionado, no se puede editar. */}
+      <NewAppointmentFlow
+        open={showNewAppointmentFlow}
+        onClose={() => setShowNewAppointmentFlow(false)}
+        onSuccess={() => {
+          setShowNewAppointmentFlow(false)
+          // Refrescar consultas del paciente
+          if (selected) getConsultations(selected.id).then(setConsultations)
+        }}
+        initialContext={{
+          patientId: selected?.id,
+          origin: 'patient_sheet',
+        }}
+      />
     </>
   )
 }

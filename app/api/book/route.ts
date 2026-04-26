@@ -631,9 +631,17 @@ export async function POST(req: NextRequest) {
       console.warn('[Book] Google Calendar sync skipped:', err)
     }
 
+    // Leer el appointment_code generado por el trigger SEQ para devolverlo al cliente
+    const { data: createdAppt } = await admin
+      .from('appointments')
+      .select('appointment_code')
+      .eq('id', appt.id)
+      .single()
+
     return NextResponse.json({
       success: true,
       appointmentId: appt.id,
+      appointmentCode: createdAppt?.appointment_code || null,
       patientId,
       meetLink,
       packageUsed: !!validatedPackage,

@@ -6,6 +6,7 @@ import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, C
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
+import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 
 type Consultation = {
   id: string
@@ -2515,8 +2516,22 @@ function ConsultationsPage() {
           )}
         </div>
 
-        {/* Modal: New Consultation */}
-        {showNewConsultation && (
+        {/* === Modal Nueva Consulta UNIFICADO ===
+            Usa el mismo NewAppointmentFlow que /agenda y /patients y /book.
+            Mismos pasos, misma UX, mismo header gradiente Delta. */}
+        <NewAppointmentFlow
+          open={showNewConsultation}
+          onClose={() => setShowNewConsultation(false)}
+          onSuccess={() => {
+            setShowNewConsultation(false)
+            // Refrescar listado de consultas tras crear
+            window.location.reload()
+          }}
+          initialContext={{ origin: 'dashboard_btn' }}
+        />
+
+        {/* === Modal viejo eliminado en ronda 11 (commented out, mantener un bloque vacio para no romper closures) === */}
+        {false && showNewConsultation && (
           <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-5">
               <div className="flex items-center justify-between">
