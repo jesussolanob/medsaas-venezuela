@@ -1236,6 +1236,13 @@ export default function AgendaPage() {
                 </button>
                 <button onClick={() => setDetailAppt(null)} className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
               </div>
+              {/* Cita 360° — auditoría completa de la cita en 4 pasos */}
+              <a
+                href={`/doctor/cita-360/${detailAppt.appointment_id || detailAppt.id}`}
+                className="mt-3 flex items-center justify-center gap-2 py-2 border border-cyan-200 bg-cyan-50 hover:bg-cyan-100 rounded-lg text-sm font-semibold text-cyan-700"
+              >
+                🔍 Ver Cita 360° (auditoría completa)
+              </a>
             </div>
           </div>
         )}
