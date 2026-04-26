@@ -1204,7 +1204,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
      ============================================================ -->
 <nav class="nav" id="nav">
   <div class="nav-inner">
-    <a href="#" class="nav-logo">
+    <a href="/" class="nav-logo">
       <!-- Isotipo inline -->
       <svg width="36" height="36" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
         <!-- Curva guía (turquesa) — el especialista -->
@@ -1283,11 +1283,11 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         <!-- App Store badges -->
         <div class="app-stores">
           <span class="coming-soon-label">Próximamente</span>
-          <a href="#" class="store-badge" onclick="return false">
+          <a href="#" class="store-badge" onclick="return false" title="Próximamente disponible" aria-label="App Store - Próximamente">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
             <span class="store-text"><small>Disponible en</small>App Store</span>
           </a>
-          <a href="#" class="store-badge" onclick="return false">
+          <a href="#" class="store-badge" onclick="return false" title="Próximamente disponible" aria-label="Google Play - Próximamente">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.18 23.71c.46.27 1.03.3 1.52.09l.05-.02L17.53 17l-3.72-3.73L3.18 23.71zM.44 1.32c-.28.4-.44.9-.44 1.45v18.46c0 .55.16 1.05.44 1.45L11.5 12 .44 1.32zm21.16 9.37l-3.65-2.04-3.9 3.85 3.9 3.85 3.65-2.04c.68-.38 1.1-1.08 1.1-1.86 0-.78-.42-1.48-1.1-1.76zM4.75.29L17.53 7l-3.72 3.73L3.18.29C3.64.02 4.21-.01 4.7.2l.05.09z"/></svg>
             <span class="store-text"><small>Disponible en</small>Google Play</span>
           </a>
@@ -1723,23 +1723,23 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       </div>
       <div class="footer-col">
         <h4>Soporte</h4>
-        <a href="#">Centro de ayuda</a>
-        <a href="#">Contacto</a>
-        <a href="#">Guía de inicio</a>
-        <a href="#">Estado del sistema</a>
+        <a href="/help">Centro de ayuda</a>
+        <a href="mailto:hola@deltahealth.tech">Contacto</a>
+        <a href="/help">Guía de inicio</a>
+        <a href="/status">Estado del sistema</a>
       </div>
       <div class="footer-col">
         <h4>Contacto</h4>
         <a href="mailto:hola@deltahealth.tech">hola@deltahealth.tech</a>
-        <a href="#">+58 414 520 9751</a>
-        <a href="#">Caracas, Venezuela</a>
+        <a href="https://wa.me/584145209751">+58 414 520 9751</a>
+        <span style="color:var(--dh-gray-400)">Caracas, Venezuela</span>
       </div>
     </div>
     <div class="footer-bottom">
       <p>&copy; 2026 Delta Health Tech. Todos los derechos reservados.</p>
       <div class="footer-links">
-        <a href="#">Privacidad</a>
-        <a href="#">Términos</a>
+        <a href="/privacy">Privacidad</a>
+        <a href="/terms">Términos</a>
       </div>
     </div>
   </div>

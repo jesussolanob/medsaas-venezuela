@@ -238,7 +238,7 @@ export default async function AdminDashboard() {
           <p className="text-4xl font-bold mt-2" style={{ color: '#0F1A2A' }}>{momGrowth >= 0 ? '+' : ''}{momGrowth}%</p>
           <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Vs. mes anterior</p>
           <p className="text-xs font-semibold mt-3" style={{ color: '#10B981' }}>
-            {newThisMonth} nueva{newThisMonth !== 1 ? 's' : ''} suscripción{newThisMonth !== 1 ? 'es' : ''}
+            {newThisMonth} {newThisMonth !== 1 ? 'nuevas suscripciones' : 'nueva suscripción'}
           </p>
         </div>
 
