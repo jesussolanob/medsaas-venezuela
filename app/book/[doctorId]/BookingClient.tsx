@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  Calendar, Clock, User, Phone, Mail, CheckCircle, Activity,
+  Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, AlertCircle,
   ChevronLeft, ChevronRight, ChevronDown, Upload, Video, MapPin,
   CreditCard, FileText, Shield, Check, LogIn, UserPlus, Stethoscope
 } from 'lucide-react'
@@ -161,6 +161,11 @@ export default function BookingClient({
 
   // Auth state
   const [authUser, setAuthUser] = useState<any>(null)
+  // RONDA 19a: bloqueo de UI cuando el usuario logueado es el mismo doctor o un admin
+  const [authRole, setAuthRole] = useState<string | null>(null)
+  const isOwnerDoctor = !!authUser && authUser.id === doctor.id
+  const isAdmin = authRole === 'admin' || authRole === 'super_admin'
+  const previewModeBlocked = isOwnerDoctor || isAdmin
   const [authReady, setAuthReady] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
 
@@ -268,6 +273,13 @@ export default function BookingClient({
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           setAuthUser(user)
+          // RONDA 19a: leer role para detectar doctores/admins en preview mode
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .maybeSingle()
+          setAuthRole(prof?.role ?? null)
           setForm(f => ({
             ...f,
             full_name: user.user_metadata?.full_name || f.full_name,
@@ -673,6 +685,25 @@ export default function BookingClient({
             </div>
           </div>
         </div>
+
+        {/* RONDA 19a — Banner de PREVIEW MODE para doctor dueño / admin */}
+        {previewModeBlocked && (
+          <div className="max-w-lg mx-auto px-5 pt-4">
+            <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 p-4 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0 text-yellow-700" />
+              <div className="text-sm">
+                <p className="font-bold mb-0.5">
+                  {isAdmin ? 'Modo previsualización' : 'Estás viendo tu link público'}
+                </p>
+                <p className="text-xs leading-relaxed">
+                  {isAdmin
+                    ? 'Como administrador no puedes generar registros de consulta reales desde el booking público. Esta vista es solo para previsualizar lo que ven tus pacientes.'
+                    : 'Como administrador, no puedes agendar citas para ti mismo. Cierra sesión para probarlo como un paciente real, o úsalo solo para previsualizar.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Steps ──────────────────────────────────────────────────────── */}
         <div className="max-w-lg mx-auto px-4 py-5 space-y-3">
@@ -1282,9 +1313,9 @@ export default function BookingClient({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting}
-                className="w-full py-3.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all"
-                style={{ background: BRAND.gradient }}
+                disabled={submitting || previewModeBlocked}
+                className="w-full py-3.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all"
+                style={{ background: previewModeBlocked ? '#94a3b8' : BRAND.gradient }}
               >
                 {submitting ? (
                   <>

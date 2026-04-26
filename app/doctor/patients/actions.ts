@@ -67,16 +67,25 @@ export async function getPatients(doctorId: string): Promise<Patient[]> {
   return data ?? []
 }
 
+// RONDA 19b: ampliado para soportar el PatientForm unificado.
+// Todos los campos clinicos opcionales aceptan undefined o null.
 export type AddPatientInput = {
   full_name: string
-  age?: number
-  birth_date?: string
-  phone?: string
-  cedula?: string
-  email?: string
-  sex?: string
-  notes?: string
-  source?: string
+  age?: number | null
+  birth_date?: string | null
+  phone?: string | null
+  cedula?: string | null
+  email?: string | null
+  sex?: string | null
+  notes?: string | null
+  source?: string | null
+  blood_type?: string | null
+  address?: string | null
+  city?: string | null
+  allergies?: string | null
+  chronic_conditions?: string | null
+  emergency_contact_name?: string | null
+  emergency_contact_phone?: string | null
 }
 
 export type ActionResult = { success: true } | { success: false; error: string }
@@ -94,6 +103,13 @@ export async function addPatient(doctorId: string, input: AddPatientInput): Prom
     sex: input.sex ?? null,
     notes: input.notes ?? null,
     source: input.source ?? 'manual',
+    blood_type: input.blood_type ?? null,
+    address: input.address ?? null,
+    city: input.city ?? null,
+    allergies: input.allergies ?? null,
+    chronic_conditions: input.chronic_conditions ?? null,
+    emergency_contact_name: input.emergency_contact_name ?? null,
+    emergency_contact_phone: input.emergency_contact_phone ?? null,
   })
   if (error) return { success: false, error: error.message }
   revalidatePath('/doctor/patients')

@@ -10,6 +10,7 @@ import {
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
+import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm'
 
 interface PatientPackageInfo {
   patientId: string
@@ -62,6 +63,10 @@ export default function PatientsPage() {
   const [aiError, setAiError] = useState('')
   // Modal NewAppointmentFlow unificado (reemplaza la vista inline new-consultation)
   const [showNewAppointmentFlow, setShowNewAppointmentFlow] = useState(false)
+  // RONDA 19b: PatientForm unificado para crear y editar
+  const [patientFormOpen, setPatientFormOpen] = useState(false)
+  const [patientFormInitial, setPatientFormInitial] = useState<PatientFormData | null>(null)
+  const [patientFormSaving, setPatientFormSaving] = useState(false)
 
   // Edit patient
   const [editing, setEditing] = useState(false)
@@ -239,6 +244,68 @@ export default function PatientsPage() {
     })
   }
 
+  // RONDA 19b — handler UNICO para PatientForm. UPDATE si data.id existe, INSERT si no.
+  async function handlePatientSubmit(formData: PatientFormData) {
+    if (!doctorId) return
+    setPatientFormSaving(true)
+    try {
+      if (formData.id) {
+        // EDIT — UPDATE
+        const res = await updatePatient(formData.id, doctorId, {
+          full_name: formData.full_name,
+          age: formData.age ?? null,
+          birth_date: formData.birth_date ?? null,
+          phone: formData.phone ?? null,
+          cedula: formData.cedula ?? null,
+          email: formData.email ?? null,
+          sex: formData.sex ?? null,
+          notes: formData.notes ?? null,
+          blood_type: formData.blood_type ?? null,
+          allergies: formData.allergies ?? null,
+          chronic_conditions: formData.chronic_conditions ?? null,
+          emergency_contact_name: formData.emergency_contact_name ?? null,
+          emergency_contact_phone: formData.emergency_contact_phone ?? null,
+          address: formData.address ?? null,
+          city: formData.city ?? null,
+        })
+        if (!res.success) throw new Error(res.error || 'Error al actualizar')
+        // Sincronizar local
+        setPatients(prev => prev.map(p => p.id === formData.id ? { ...p, ...formData } as Patient : p))
+        if (selected?.id === formData.id) setSelected({ ...selected, ...formData } as Patient)
+      } else {
+        // CREATE — INSERT
+        const res = await addPatient(doctorId, {
+          full_name: formData.full_name,
+          age: formData.age ?? undefined,
+          birth_date: formData.birth_date ?? undefined,
+          phone: formData.phone ?? undefined,
+          cedula: formData.cedula ?? undefined,
+          email: formData.email ?? undefined,
+          sex: formData.sex ?? undefined,
+          notes: formData.notes ?? undefined,
+          blood_type: formData.blood_type ?? undefined,
+          allergies: formData.allergies ?? undefined,
+          chronic_conditions: formData.chronic_conditions ?? undefined,
+          emergency_contact_name: formData.emergency_contact_name ?? undefined,
+          emergency_contact_phone: formData.emergency_contact_phone ?? undefined,
+          address: formData.address ?? undefined,
+          city: formData.city ?? undefined,
+          source: 'manual',
+        })
+        if (!res.success) throw new Error(res.error || 'Error al crear')
+        // Recargar lista
+        getPatients(doctorId).then(setPatients)
+      }
+      setPatientFormOpen(false)
+      setPatientFormInitial(null)
+    } catch (err: any) {
+      // Re-throw para que PatientForm lo muestre como error
+      throw err
+    } finally {
+      setPatientFormSaving(false)
+    }
+  }
+
   function handleAddPatient(e: React.FormEvent) {
     e.preventDefault()
     if (!newPat.full_name.trim()) { setPatError('El nombre es obligatorio'); return }
@@ -349,7 +416,7 @@ export default function PatientsPage() {
                 <MessageCircle className="w-4 h-4 text-emerald-500" />
                 <span>WhatsApp</span>
               </a>
-              <button onClick={() => setShowAddModal(true)} className="g-bg flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity">
+              <button onClick={() => { setPatientFormInitial(null); setPatientFormOpen(true) }} className="g-bg flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity">
                 <Plus className="w-4 h-4" /> <span>Nuevo paciente</span>
               </button>
             </div>
@@ -389,7 +456,7 @@ export default function PatientsPage() {
               </div>
               <p className="text-slate-600 font-semibold">No hay pacientes aún</p>
               <p className="text-slate-400 text-sm mt-1">Agrega tu primer paciente manualmente o envía una invitación.</p>
-              <button onClick={() => setShowAddModal(true)} className="mt-4 g-bg text-white px-4 py-2 rounded-xl text-sm font-semibold">
+              <button onClick={() => { setPatientFormInitial(null); setPatientFormOpen(true) }} className="mt-4 g-bg text-white px-4 py-2 rounded-xl text-sm font-semibold">
                 Agregar paciente
               </button>
             </div>
@@ -470,7 +537,28 @@ export default function PatientsPage() {
                     </span>
                   ) : (
                     <button
-                      onClick={() => startEditPatient(selected)}
+                      onClick={() => {
+                        // RONDA 19b: usar PatientForm unificado en modo EDIT
+                        setPatientFormInitial({
+                          id: selected.id,
+                          full_name: selected.full_name || '',
+                          cedula: selected.cedula || '',
+                          email: selected.email || '',
+                          phone: selected.phone || '',
+                          birth_date: selected.birth_date || '',
+                          age: selected.age ?? null,
+                          sex: (selected.sex as any) ?? '',
+                          blood_type: selected.blood_type || '',
+                          address: selected.address || '',
+                          city: selected.city || '',
+                          allergies: selected.allergies || '',
+                          chronic_conditions: selected.chronic_conditions || '',
+                          emergency_contact_name: selected.emergency_contact_name || '',
+                          emergency_contact_phone: selected.emergency_contact_phone || '',
+                          notes: selected.notes || '',
+                        })
+                        setPatientFormOpen(true)
+                      }}
                       className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors"
                       title="Editar paciente"
                     >
@@ -1163,6 +1251,42 @@ export default function PatientsPage() {
           origin: 'patient_sheet',
         }}
       />
+
+      {/* === Modal UNIFICADO de PatientForm — crear y editar (RONDA 19b) ===
+          Reemplaza los 2 modales viejos: handleAddPatient y handleSaveEdit. */}
+      {patientFormOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
+                  <User className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">
+                    {patientFormInitial?.id ? 'Editar paciente' : 'Nuevo paciente'}
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    {patientFormInitial?.id ? 'Actualiza la información clínica del paciente' : 'Completa los datos para registrar al paciente'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setPatientFormOpen(false); setPatientFormInitial(null) }}
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <PatientForm
+              initialData={patientFormInitial}
+              submitting={patientFormSaving}
+              onSubmit={handlePatientSubmit}
+              onCancel={() => { setPatientFormOpen(false); setPatientFormInitial(null) }}
+            />
+          </div>
+        </div>
+      )}
     </>
   )
 }
