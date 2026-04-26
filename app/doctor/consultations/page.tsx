@@ -2553,9 +2553,31 @@ function ConsultationsPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                     {hasReport && <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full hidden sm:inline-block">Con informe</span>}
-                    {(c.payment_status === 'approved') && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full hidden sm:inline-block" title="Pago aprobado">Aprobada</span>}
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${ps.color}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${ps.dot}`} /><span className="hidden sm:inline">{ps.label}</span>
+
+                    {/* RONDA 16 — Badge ASISTENCIA basado en c.status (no duplicar con el badge de pago) */}
+                    {(() => {
+                      const cs = CONSULTA_STATUS[c.status] || CONSULTA_STATUS.pending
+                      // Etiqueta especifica del eje "asistencia" para que el doctor entienda en 1 vistazo
+                      const attendanceLabel =
+                        c.status === 'completed' ? 'Atendió' :
+                        c.status === 'no_show' ? 'No atendió' :
+                        c.status === 'in_progress' ? 'En curso' :
+                        'Pendiente'
+                      return (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${cs.color}`}
+                          title={`Asistencia: ${cs.label}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${cs.dot}`} />
+                          <span className="hidden sm:inline">{attendanceLabel}</span>
+                        </span>
+                      )
+                    })()}
+
+                    {/* Badge UNICO de PAGO (eliminado el duplicado de "Aprobada" hardcodeado) */}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${ps.color}`} title={`Pago: ${ps.label}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${ps.dot}`} />
+                      <span className="hidden sm:inline">{ps.label}</span>
                     </span>
                     <ChevronRight className="w-4 h-4 text-slate-300" />
                   </div>

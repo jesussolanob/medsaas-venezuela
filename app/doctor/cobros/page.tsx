@@ -53,6 +53,8 @@ export default function CobrosPage() {
   const [showExport, setShowExport] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  // Toast de feedback (ronda 16)
+  const [actionToast, setActionToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
 
   async function handleReceiptUpload(file: File) {
@@ -214,49 +216,50 @@ export default function CobrosPage() {
     setShowExport(false)
   }
 
-  async function updatePaymentStatus(id: string, newStatus: string) {
+  // RONDA 16: refactor — ahora `paymentId` es de tabla `payments` (no appointments)
+  // tras la migracion de fuente unica en ronda 15. Update directo en payments y luego
+  // sincronizamos consultations.payment_status para que el resto de modulos vea el cambio.
+  async function updatePaymentStatus(paymentId: string, newStatus: 'pending' | 'approved') {
     setUpdatingStatus(true)
+    setActionToast(null)
     const supabase = createClient()
-
-    // BUG-012 fix: actualizar 3 fuentes para mantener sincronía
-    //  1. payments.status (source of truth nuevo)
-    //  2. consultations.payment_status (mirror legacy)
-    //  3. appointments.status (display de cobros legacy)
-
-    // 1. Buscar payment_id de la appointment
-    const { data: appt } = await supabase
-      .from('appointments')
-      .select('payment_id, consultation_id')
-      .eq('id', id)
-      .single()
-
-    // 2. Update appointments (legacy display)
-    await supabase.from('appointments').update({ status: newStatus }).eq('id', id)
-
-    // 3. Update payments (source of truth)
-    if (appt?.payment_id) {
-      const paymentStatus = newStatus === 'completed' ? 'approved' : 'pending'
-      await supabase
+    try {
+      // 1. Update FUENTE DE VERDAD = payments
+      const { error: payErr } = await supabase
         .from('payments')
         .update({
-          status: paymentStatus,
-          paid_at: paymentStatus === 'approved' ? new Date().toISOString() : null,
+          status: newStatus,
+          paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
         })
-        .eq('id', appt.payment_id)
-    }
+        .eq('id', paymentId)
+      if (payErr) throw payErr
 
-    // 4. Update consultation mirror
-    if (appt?.consultation_id) {
-      const consPayStatus = newStatus === 'completed' ? 'approved' : 'pending'
-      await supabase
-        .from('consultations')
-        .update({ payment_status: consPayStatus })
-        .eq('id', appt.consultation_id)
-    }
+      // 2. Encontrar appointment vinculado para sincronizar consultations.payment_status
+      const { data: appt } = await supabase
+        .from('appointments')
+        .select('id, consultation_id')
+        .eq('payment_id', paymentId)
+        .maybeSingle()
 
-    setUpdatingStatus(false)
-    setSelectedPayment(null)
-    fetchPayments()
+      if (appt?.consultation_id) {
+        await supabase
+          .from('consultations')
+          .update({ payment_status: newStatus })
+          .eq('id', appt.consultation_id)
+      }
+
+      // 3. Toast de exito + refresh
+      setActionToast({ type: 'success', msg: newStatus === 'approved' ? 'Pago aprobado correctamente' : 'Pago marcado como pendiente' })
+      setTimeout(() => setActionToast(null), 3000)
+      setSelectedPayment(null)
+      await fetchPayments()
+    } catch (err: any) {
+      console.error('[updatePaymentStatus]', err)
+      setActionToast({ type: 'error', msg: err?.message || 'Error al actualizar el pago' })
+      setTimeout(() => setActionToast(null), 3500)
+    } finally {
+      setUpdatingStatus(false)
+    }
   }
 
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString('es-VE', {
@@ -275,6 +278,23 @@ export default function CobrosPage() {
 
   return (
     <div className="space-y-6">
+      {/* TOAST de feedback (ronda 16) */}
+      {actionToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed top-6 left-1/2 z-[100] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg border text-sm font-semibold ${
+            actionToast.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+          style={{ transform: 'translateX(-50%)' }}
+        >
+          {actionToast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+          {actionToast.msg}
+        </div>
+      )}
+
       {/* Header with totals */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-5">
@@ -427,14 +447,13 @@ export default function CobrosPage() {
                   </span>
                 </div>
                 <div className="col-span-1 text-center">
+                  {/* RONDA 16: badge basado en p.status real ('approved' | 'pending') */}
                   <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                    p.status === 'completed'
+                    p.status === 'approved'
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : p.status === 'cancelled'
-                      ? 'bg-red-50 text-red-600 border border-red-200'
                       : 'bg-amber-50 text-amber-700 border border-amber-200'
                   }`}>
-                    {p.status === 'completed' ? 'Aprobada' : p.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
+                    {p.status === 'approved' ? 'Aprobada' : 'Pendiente'}
                   </span>
                 </div>
               </div>
@@ -554,15 +573,15 @@ export default function CobrosPage() {
                 <p className="text-xs font-semibold text-slate-400 uppercase">Cambiar estado del pago</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => updatePaymentStatus(selectedPayment.id, 'scheduled')}
-                    disabled={updatingStatus || selectedPayment.status === 'scheduled' || selectedPayment.status === 'pending'}
+                    onClick={() => updatePaymentStatus(selectedPayment.id, 'pending')}
+                    disabled={updatingStatus || selectedPayment.status === 'pending'}
                     className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-amber-200 text-amber-600 hover:bg-amber-50"
                   >
                     <Clock className="w-3.5 h-3.5" /> Pendiente
                   </button>
                   <button
-                    onClick={() => updatePaymentStatus(selectedPayment.id, 'completed')}
-                    disabled={updatingStatus || selectedPayment.status === 'completed'}
+                    onClick={() => updatePaymentStatus(selectedPayment.id, 'approved')}
+                    disabled={updatingStatus || selectedPayment.status === 'approved'}
                     className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-emerald-200 text-emerald-600 hover:bg-emerald-50"
                   >
                     <CheckCircle className="w-3.5 h-3.5" /> Aprobar
