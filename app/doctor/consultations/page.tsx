@@ -589,6 +589,9 @@ function ConsultationsPage() {
           started_at: data.started_at ?? null,
           ended_at: data.ended_at ?? null,
           duration_minutes: data.duration_minutes ?? null,
+          // Preservar bloques dinámicos cargados de BD para que tabs y autosave funcionen
+          blocks_snapshot: (data as any).blocks_snapshot ?? null,
+          blocks_data: (data as any).blocks_data ?? null,
         }
         setSelected(fresh)
         setReport({
@@ -634,6 +637,29 @@ function ConsultationsPage() {
       setSelected(c)
       setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
       setAppointmentData(null)
+    }
+    // Cargar reposo persistido (si existe) desde blocks_data.reposo
+    // Hacemos una segunda lectura ligera para evitar depender del scope del try anterior
+    try {
+      const supabase = createClient()
+      const { data: bd } = await supabase
+        .from('consultations')
+        .select('blocks_data')
+        .eq('id', c.id)
+        .single()
+      const reposoData = (bd?.blocks_data as Record<string, unknown> | null)?.['reposo'] as
+        | { diagnosis?: string; days?: number; from?: string; to?: string }
+        | undefined
+      if (reposoData) {
+        setReposoDiagnosis(reposoData.diagnosis || '')
+        setReposoDays(typeof reposoData.days === 'number' ? reposoData.days : 0)
+        setReposoFrom(reposoData.from || '')
+        setReposoTo(reposoData.to || '')
+      } else {
+        setReposoDiagnosis(''); setReposoDays(0); setReposoFrom(''); setReposoTo('')
+      }
+    } catch {
+      setReposoDiagnosis(''); setReposoDays(0); setReposoFrom(''); setReposoTo('')
     }
     // Load saved prescriptions/recipes for this consultation
     try {
@@ -1161,6 +1187,45 @@ function ConsultationsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [report.chief_complaint, report.notes, report.diagnosis, report.treatment, report.payment_status, selected?.id])
 
+  // Timer para auto-save de BLOQUES DINÁMICOS (block:xxx) — debounce 1.5s
+  const blocksAutoSaveTimer = useRef<NodeJS.Timeout | null>(null)
+
+  // Auto-save BLOQUE REPOSO en blocks_data — debounce 1.5s
+  // Reposo NO tiene tabla propia, se persiste en consultations.blocks_data['reposo']
+  const reposoSaveTimer = useRef<NodeJS.Timeout | null>(null)
+  useEffect(() => {
+    if (!selected) return
+    // No guardar si todos los campos están vacíos (estado inicial)
+    if (!reposoDiagnosis && reposoDays === 0 && !reposoFrom && !reposoTo) return
+    if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current)
+    reposoSaveTimer.current = setTimeout(async () => {
+      if (!selectedRef.current) return
+      const supabase = createClient()
+      // Merge con blocks_data existente para no pisar otros bloques
+      const { data: current } = await supabase
+        .from('consultations')
+        .select('blocks_data')
+        .eq('id', selectedRef.current.id)
+        .single()
+      const existingBlocks = (current?.blocks_data as Record<string, unknown>) || {}
+      const newBlocks = {
+        ...existingBlocks,
+        reposo: {
+          diagnosis: reposoDiagnosis,
+          days: reposoDays,
+          from: reposoFrom,
+          to: reposoTo,
+          updated_at: new Date().toISOString(),
+        },
+      }
+      await supabase.from('consultations').update({ blocks_data: newBlocks }).eq('id', selectedRef.current.id)
+      // Actualizar selected en local para que dynamicBlocks vea los cambios
+      setSelected(prev => prev ? { ...prev, blocks_data: newBlocks as any } : prev)
+    }, 1500)
+    return () => { if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reposoDiagnosis, reposoDays, reposoFrom, reposoTo, selected?.id])
+
   async function callAI(action: 'summarize' | 'improve' | 'patient_history', content?: string) {
     if (!selected) return
     setAiLoading(true)
@@ -1506,6 +1571,15 @@ function ConsultationsPage() {
                         ;(selected as Consultation).blocks_data = next
                         // Re-render del componente
                         setSelected({ ...(selected as Consultation), blocks_data: next })
+                        // Autosave debounced — guarda en BD a los 1.5s sin necesidad de clic
+                        if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current)
+                        blocksAutoSaveTimer.current = setTimeout(async () => {
+                          if (!selectedRef.current) return
+                          const supabase = createClient()
+                          await supabase.from('consultations')
+                            .update({ blocks_data: next })
+                            .eq('id', selectedRef.current.id)
+                        }, 1500)
                       }}
                       onSave={async () => {
                         const supabase = createClient()
@@ -1577,6 +1651,25 @@ function ConsultationsPage() {
                             {med.indications && <p className="text-xs text-teal-600 mt-1">{med.indications}</p>}
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Quick meds: catálogo precargado del doctor — clic para agregar al instante */}
+                    {quickMeds.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Medicamentos frecuentes (clic para agregar)</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {quickMeds.map(q => (
+                            <button key={q.id}
+                              onClick={() => setRecipe(p => ({
+                                ...p,
+                                medications: [...p.medications, { name: q.name, dose: q.details || '', frequency: '', duration: '', indications: '' }]
+                              }))}
+                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium">
+                              + {q.name}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -1737,9 +1830,19 @@ function ConsultationsPage() {
                 {/* Reposo Tab (NEW) */}
                 {consultationTab === 'reposo' && (
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                      <FileText className="w-4 h-4 text-slate-400" />
-                      <p className="text-sm font-bold text-slate-800">Constancia de reposo</p>
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-slate-400" />
+                        <p className="text-sm font-bold text-slate-800">Constancia de reposo</p>
+                      </div>
+                      {(reposoDiagnosis || reposoDays > 0 || reposoFrom) && (
+                        <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Guardado
+                        </span>
+                      )}
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800">
+                      Los datos de reposo se guardan automáticamente en la consulta. Quedan disponibles aunque cierres y vuelvas.
                     </div>
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
