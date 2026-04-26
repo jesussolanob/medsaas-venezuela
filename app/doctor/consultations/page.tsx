@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Play, Square, Timer } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Play, Square, Timer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
@@ -913,11 +913,18 @@ function ConsultationsPage() {
   // sin necesidad de configurar 4 templates separados.
   function buildPdfHtml(templateType: string, title: string, bodyContent: string, patientName: string, code: string, dateStr: string) {
     const cfg = templateConfigs[templateType] || defaultTemplateConfig
+    // RONDA 17: identidad visual unificada de Delta — turquesa #0891b2 + Inter.
+    // Si el doctor configuro un primary_color custom en su template lo respetamos,
+    // pero la fuente queda fija en Inter para consistencia.
     const color = cfg.primary_color || '#0891b2'
-    const font = cfg.font_family || 'Inter'
-    // Cascada para logo y firma:
-    const effectiveLogo = (cfg.show_logo === false ? null : (cfg.logo_url || doctorLogo)) || null
-    const effectiveSignature = (cfg.show_signature === false ? null : (cfg.signature_url || doctorSignature)) || null
+    const font = 'Inter'
+    // RONDA 17: SOURCE OF TRUTH = profile del doctor.
+    // Ya no usamos cfg.logo_url ni cfg.signature_url — esos campos quedaron deprecados
+    // como override por tipo de doc. El doctor sube logo y firma una sola vez en
+    // /doctor/settings → profile.logo_url / profile.signature_url y eso aplica a TODO.
+    // Las flags show_logo / show_signature por tipo de doc siguen funcionando.
+    const effectiveLogo = cfg.show_logo === false ? null : (doctorLogo || null)
+    const effectiveSignature = cfg.show_signature === false ? null : (doctorSignature || null)
 
     return `<!DOCTYPE html>
 <html>
@@ -2554,31 +2561,43 @@ function ConsultationsPage() {
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                     {hasReport && <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full hidden sm:inline-block">Con informe</span>}
 
-                    {/* RONDA 16 — Badge ASISTENCIA basado en c.status (no duplicar con el badge de pago) */}
+                    {/* === RONDA 17 — BADGE ASISTENCIA (estilo OUTLINED, azul/gris) === */}
                     {(() => {
-                      const cs = CONSULTA_STATUS[c.status] || CONSULTA_STATUS.pending
-                      // Etiqueta especifica del eje "asistencia" para que el doctor entienda en 1 vistazo
-                      const attendanceLabel =
-                        c.status === 'completed' ? 'Atendió' :
-                        c.status === 'no_show' ? 'No atendió' :
-                        c.status === 'in_progress' ? 'En curso' :
-                        'Pendiente'
+                      const isAttended = c.status === 'completed'
+                      const isNoShow = c.status === 'no_show'
+                      const isInProgress = c.status === 'in_progress'
+                      const label = isAttended ? 'Atendió' : isNoShow ? 'No atendió' : isInProgress ? 'En curso' : 'Por asistir'
+                      const cls = isAttended
+                        ? 'border-blue-300 text-blue-700 bg-transparent'
+                        : isNoShow
+                        ? 'border-red-300 text-red-600 bg-transparent'
+                        : isInProgress
+                        ? 'border-blue-200 text-blue-600 bg-transparent'
+                        : 'border-slate-300 text-slate-600 bg-transparent'
                       return (
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${cs.color}`}
-                          title={`Asistencia: ${cs.label}`}
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${cls}`}
+                          title={`Asistencia: ${label}`}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${cs.dot}`} />
-                          <span className="hidden sm:inline">{attendanceLabel}</span>
+                          {isAttended ? <UserCheck className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                          <span className="hidden sm:inline">{label}</span>
                         </span>
                       )
                     })()}
 
-                    {/* Badge UNICO de PAGO (eliminado el duplicado de "Aprobada" hardcodeado) */}
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${ps.color}`} title={`Pago: ${ps.label}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${ps.dot}`} />
-                      <span className="hidden sm:inline">{ps.label}</span>
-                    </span>
+                    {/* === RONDA 17 — BADGE PAGO (estilo SÓLIDO, verde/naranja, icono billete) === */}
+                    {(() => {
+                      const isPaid = c.payment_status === 'approved'
+                      const cls = isPaid ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+                      const label = isPaid ? 'Pagado' : 'Pendiente'
+                      return (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${cls}`} title={`Pago: ${label}`}>
+                          <Banknote className="w-3 h-3" />
+                          <span className="hidden sm:inline">{label}</span>
+                        </span>
+                      )
+                    })()}
+
                     <ChevronRight className="w-4 h-4 text-slate-300" />
                   </div>
                 </button>

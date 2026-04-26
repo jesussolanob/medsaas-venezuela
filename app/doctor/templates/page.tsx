@@ -93,6 +93,9 @@ export default function TemplatesPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [doctorName, setDoctorName] = useState('')
   const [doctorSpecialty, setDoctorSpecialty] = useState('')
+  // RONDA 17: source of truth = profile (logo y firma SOLO se cargan desde Settings/Perfil)
+  const [profileLogoUrl, setProfileLogoUrl] = useState<string | null>(null)
+  const [profileSignatureUrl, setProfileSignatureUrl] = useState<string | null>(null)
   const logoRef = useRef<HTMLInputElement>(null)
   const signatureRef = useRef<HTMLInputElement>(null)
 
@@ -107,15 +110,17 @@ export default function TemplatesPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // Load doctor profile
+    // Load doctor profile (incluye logo y firma globales — RONDA 17 source of truth)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, specialty')
+      .select('full_name, specialty, logo_url, signature_url')
       .eq('id', user.id)
       .single()
     if (profile) {
       setDoctorName(profile.full_name || '')
       setDoctorSpecialty(profile.specialty || '')
+      setProfileLogoUrl((profile as any).logo_url || null)
+      setProfileSignatureUrl((profile as any).signature_url || null)
     }
 
     // ── 1) Cargar bloques del doctor vía API para resolver la cascada
@@ -413,7 +418,22 @@ export default function TemplatesPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left: Configuration */}
           <div className="space-y-5">
-            {/* Logo */}
+            {/* === LOGO + FIRMA — Source of truth: PERFIL del doctor (RONDA 17) ===
+                Antes cada plantilla pedia su propio logo/firma. Ahora se cargan UNA SOLA vez
+                en /doctor/settings y aqui solo mostramos preview + toggles para mostrar/ocultar
+                en este tipo de documento especifico. */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+              <ImageIcon className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 text-xs text-blue-800">
+                <p className="font-semibold mb-1">Logo y firma centralizados</p>
+                <p>Estos assets se gestionan desde tu Configuración de Perfil para que se apliquen automáticamente a todos los documentos.</p>
+                <a href="/doctor/settings?tab=profile" className="inline-flex items-center gap-1 mt-2 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline underline-offset-2">
+                  Ir a Perfil →
+                </a>
+              </div>
+            </div>
+
+            {/* Logo — preview read-only desde perfil */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -426,41 +446,26 @@ export default function TemplatesPage() {
                     config.show_logo ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'
                   }`}
                 >
-                  {config.show_logo ? 'Visible' : 'Oculto'}
+                  {config.show_logo ? 'Visible en este doc' : 'Oculto en este doc'}
                 </button>
               </div>
 
-              {config.logo_url ? (
-                <div className="relative inline-block">
+              {profileLogoUrl ? (
+                <div className="flex items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={config.logo_url} alt="Logo" className="h-16 object-contain rounded-lg border border-slate-200" />
-                  <button
-                    onClick={() => updateConfig('logo_url', null)}
-                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                  <img src={profileLogoUrl} alt="Logo" className="h-16 object-contain rounded-lg border border-slate-200 bg-slate-50 p-1" />
+                  <p className="text-xs text-slate-500">Cargado desde tu perfil</p>
                 </div>
               ) : (
-                <button
-                  onClick={() => logoRef.current?.click()}
-                  disabled={uploadingLogo}
-                  className="w-full border-2 border-dashed border-slate-300 rounded-xl py-6 flex flex-col items-center gap-2 text-slate-400 hover:border-teal-400 hover:text-teal-500 transition-colors"
-                >
-                  {uploadingLogo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                  <span className="text-xs font-medium">{uploadingLogo ? 'Subiendo...' : 'Subir logo (PNG, JPG)'}</span>
-                </button>
+                <div className="border-2 border-dashed border-slate-200 rounded-xl py-5 px-4 text-center text-xs text-slate-400">
+                  No has cargado un logo todavía.
+                  <br />
+                  <a href="/doctor/settings?tab=profile" className="text-blue-600 hover:underline font-semibold">Súbelo desde tu perfil</a>
+                </div>
               )}
-              <input
-                ref={logoRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => { if (e.target.files?.[0]) uploadFile(e.target.files[0], 'logo') }}
-              />
             </div>
 
-            {/* Signature */}
+            {/* Firma — preview read-only desde perfil */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -473,38 +478,23 @@ export default function TemplatesPage() {
                     config.show_signature ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'
                   }`}
                 >
-                  {config.show_signature ? 'Visible' : 'Oculta'}
+                  {config.show_signature ? 'Visible en este doc' : 'Oculta en este doc'}
                 </button>
               </div>
 
-              {config.signature_url ? (
-                <div className="relative inline-block">
+              {profileSignatureUrl ? (
+                <div className="flex items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={config.signature_url} alt="Firma" className="h-20 object-contain rounded-lg border border-slate-200 bg-white p-2" />
-                  <button
-                    onClick={() => updateConfig('signature_url', null)}
-                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                  <img src={profileSignatureUrl} alt="Firma" className="h-20 object-contain rounded-lg border border-slate-200 bg-white p-2" />
+                  <p className="text-xs text-slate-500">Cargada desde tu perfil</p>
                 </div>
               ) : (
-                <button
-                  onClick={() => signatureRef.current?.click()}
-                  disabled={uploadingSignature}
-                  className="w-full border-2 border-dashed border-slate-300 rounded-xl py-6 flex flex-col items-center gap-2 text-slate-400 hover:border-teal-400 hover:text-teal-500 transition-colors"
-                >
-                  {uploadingSignature ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                  <span className="text-xs font-medium">{uploadingSignature ? 'Subiendo...' : 'Subir firma (PNG con fondo transparente)'}</span>
-                </button>
+                <div className="border-2 border-dashed border-slate-200 rounded-xl py-5 px-4 text-center text-xs text-slate-400">
+                  No has cargado una firma todavía.
+                  <br />
+                  <a href="/doctor/settings?tab=profile" className="text-blue-600 hover:underline font-semibold">Súbela desde tu perfil</a>
+                </div>
               )}
-              <input
-                ref={signatureRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => { if (e.target.files?.[0]) uploadFile(e.target.files[0], 'signature') }}
-              />
             </div>
 
             {/* Typography & Color */}
