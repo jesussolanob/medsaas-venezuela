@@ -11,7 +11,10 @@ export const dynamic = 'force-dynamic'
  * Panel de auditoría 360° de una cita: 4 pasos (cita, consulta, pago, resumen).
  * El [id] es appointment_id (uuid).
  */
-export default async function Cita360Page({ params }: { params: { id: string } }) {
+export default async function Cita360Page({ params }: { params: Promise<{ id: string }> }) {
+  // Next.js 16: params es async — sin await, params.id es undefined → 404 falso
+  const { id: appointmentId } = await params
+
   const sb = await createClient()
   const { data: { user } } = await sb.auth.getUser()
   if (!user) redirect('/login')
@@ -29,7 +32,7 @@ export default async function Cita360Page({ params }: { params: { id: string } }
       doctor_id, patient_id,
       patient_name, patient_email, patient_phone, patient_cedula
     `)
-    .eq('id', params.id)
+    .eq('id', appointmentId)
     .single()
 
   if (!appt) notFound()
