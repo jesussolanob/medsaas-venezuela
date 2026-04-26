@@ -57,6 +57,37 @@ export async function POST(req: NextRequest) {
       user = authUser
     }
 
+    // 🛡️  GUARD: si el usuario logueado ES el doctor mismo (o un admin), NO debe
+    // tratarse como paciente — evita corromper la BD con un patient row que tenga
+    // auth_user_id == doctor_id y email == email del doctor (bug Osmariel 2026-04-26).
+    let userIsDoctorOrAdmin = false
+    if (user) {
+      if (user.id === doctorId) {
+        userIsDoctorOrAdmin = true
+      } else {
+        // Verificar role en profiles
+        const { data: prof } = await admin
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle()
+        if (prof?.role && ['doctor', 'super_admin', 'admin'].includes(prof.role)) {
+          userIsDoctorOrAdmin = true
+        }
+      }
+    }
+    // Si es doctor/admin: tratamos el booking como guest (sin auth_user_id)
+    // y EXIGIMOS patientName + patientEmail explícitos del form (no fallback al email del doctor).
+    if (userIsDoctorOrAdmin) {
+      if (!patientName || !patientEmail) {
+        return NextResponse.json(
+          { error: 'Como médico/admin, debes ingresar el nombre y email del paciente — no se autocompletan con tus datos.' },
+          { status: 400 }
+        )
+      }
+      user = null  // forzar modo guest a partir de aquí
+    }
+
     const finalName = patientName || (user ? user.email?.split('@')[0] : 'Paciente') || 'Paciente'
     const finalEmail = patientEmail || user?.email
 

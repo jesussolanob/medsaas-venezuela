@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Play, Square, Timer } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Play, Square, Timer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
@@ -15,7 +15,9 @@ type Consultation = {
   notes: string | null
   diagnosis: string | null
   treatment: string | null
+  status: 'pending' | 'in_progress' | 'completed' | 'no_show'   // Estado de la CONSULTA (no del pago)
   payment_status: 'pending' | 'approved'   // Quitamos 'cancelled' — los pagos no se cancelan
+  appointment_id: string | null
   patient_id: string
   patient_name: string
   patient_phone: string | null
@@ -24,6 +26,14 @@ type Consultation = {
   duration_minutes: number | null
   blocks_snapshot?: Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }> | null
   blocks_data?: Record<string, unknown> | null
+}
+
+// Estados de CONSULTA
+const CONSULTA_STATUS: Record<string, { label: string; color: string; dot: string }> = {
+  pending:     { label: 'Pendiente',     color: 'bg-slate-100 text-slate-700',     dot: 'bg-slate-400' },
+  in_progress: { label: 'En curso',      color: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-500' },
+  completed:   { label: 'Atendida',      color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  no_show:     { label: 'No asistió',    color: 'bg-red-100 text-red-700',         dot: 'bg-red-500' },
 }
 
 type Patient = {
@@ -448,7 +458,9 @@ function ConsultationsPage() {
           notes: c.notes,
           diagnosis: c.diagnosis,
           treatment: c.treatment,
+          status: (c.status ?? 'pending') as Consultation['status'],
           payment_status: c.payment_status,
+          appointment_id: (c as { appointment_id?: string | null }).appointment_id ?? null,
           patient_id: c.patient_id,
           patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
           patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
@@ -494,13 +506,62 @@ function ConsultationsPage() {
     setDeletingConsulta(false)
   }
 
+  async function updateConsultaStatus(consultationId: string, newStatus: Consultation['status'], appointmentId: string | null) {
+    const supabase = createClient()
+    try {
+      const { error } = await supabase.from('consultations').update({ status: newStatus }).eq('id', consultationId)
+      if (error) throw error
+
+      // Sincronizar el appointment.status (atendida → completed | no_show → no_show)
+      if (appointmentId) {
+        const apptStatus = newStatus === 'completed' ? 'completed' : newStatus === 'no_show' ? 'no_show' : null
+        if (apptStatus) {
+          await supabase.from('appointments').update({ status: apptStatus }).eq('id', appointmentId)
+        }
+      }
+
+      // Actualizar estado local
+      setSelected(prev => prev ? { ...prev, status: newStatus } : prev)
+      setConsultations(prev => prev.map(x => x.id === consultationId ? { ...x, status: newStatus } : x))
+    } catch (err: any) {
+      console.error('Error updating consulta status:', err)
+      alert(err?.message || 'Error al actualizar estado de la consulta')
+    }
+  }
+
+  async function updatePagoStatus(consultationId: string, newStatus: 'pending' | 'approved') {
+    const supabase = createClient()
+    try {
+      const { error } = await supabase.from('consultations').update({ payment_status: newStatus }).eq('id', consultationId)
+      if (error) throw error
+
+      // Sincronizar payments table (si existe payment vinculado a la consulta)
+      const { data: pay } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('consultation_id', consultationId)
+        .maybeSingle()
+      if (pay?.id) {
+        await supabase.from('payments').update({ status: newStatus, paid_at: newStatus === 'approved' ? new Date().toISOString() : null }).eq('id', pay.id)
+      }
+
+      // Actualizar estado local
+      setSelected(prev => prev ? { ...prev, payment_status: newStatus } : prev)
+      setReport(prev => ({ ...prev, payment_status: newStatus }))
+      setConsultations(prev => prev.map(x => x.id === consultationId ? { ...x, payment_status: newStatus } : x))
+    } catch (err: any) {
+      console.error('Error updating pago status:', err)
+      alert(err?.message || 'Error al actualizar estado del pago')
+    }
+  }
+
   async function openConsultation(c: Consultation) {
     // Fetch fresh data from DB to ensure we have latest notes/diagnosis/treatment
     const supabase = createClient()
     try {
       const { data } = await supabase
         .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, blocks_snapshot, blocks_data, patients(full_name, phone)')
+        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, status, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, blocks_snapshot, blocks_data, patients(full_name, phone)')
         .eq('id', c.id)
         .single()
 
@@ -513,7 +574,9 @@ function ConsultationsPage() {
           notes: data.notes,
           diagnosis: data.diagnosis,
           treatment: data.treatment,
+          status: (data.status ?? 'pending') as Consultation['status'],
           payment_status: data.payment_status,
+          appointment_id: (data as { appointment_id?: string | null }).appointment_id ?? null,
           patient_id: data.patient_id,
           patient_name: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string }).full_name : c.patient_name,
           patient_phone: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string; phone: string | null }).phone : c.patient_phone,
@@ -717,7 +780,9 @@ function ConsultationsPage() {
           notes: c.notes,
           diagnosis: c.diagnosis,
           treatment: c.treatment,
+          status: (c.status ?? 'pending') as Consultation['status'],
           payment_status: c.payment_status,
+          appointment_id: (c as { appointment_id?: string | null }).appointment_id ?? null,
           patient_id: c.patient_id,
           patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
           patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
@@ -1159,7 +1224,60 @@ function ConsultationsPage() {
               <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Volver a consultas
               </button>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {/* === STATUS DE LA CONSULTA === */}
+                {selected.status !== 'completed' && (
+                  <button
+                    onClick={() => updateConsultaStatus(selected.id, 'completed', selected.appointment_id)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors"
+                    title="Marcar la consulta como atendida"
+                  >
+                    <Check className="w-4 h-4" /> Marcar atendida
+                  </button>
+                )}
+                {selected.status !== 'no_show' && (
+                  <button
+                    onClick={() => {
+                      if (confirm('¿Confirmas que el paciente NO asistió a la consulta?')) {
+                        updateConsultaStatus(selected.id, 'no_show', selected.appointment_id)
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-red-200 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                    title="Marcar como no asistido"
+                  >
+                    <X className="w-4 h-4" /> No asistió
+                  </button>
+                )}
+
+                {/* === STATUS DEL PAGO === */}
+                {selected.payment_status !== 'approved' && (
+                  <button
+                    onClick={() => updatePagoStatus(selected.id, 'approved')}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 transition-colors"
+                    title="Marcar pago como aprobado"
+                  >
+                    <Check className="w-4 h-4" /> Aprobar pago
+                  </button>
+                )}
+
+                {/* === BADGES de status actuales === */}
+                <span
+                  className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${CONSULTA_STATUS[selected.status]?.color || 'bg-slate-100 text-slate-700'}`}
+                  title="Estado de la consulta"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${CONSULTA_STATUS[selected.status]?.dot || 'bg-slate-400'}`}></span>
+                  Consulta: {CONSULTA_STATUS[selected.status]?.label || selected.status}
+                </span>
+                <span
+                  className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS[selected.payment_status]?.color || 'bg-slate-100 text-slate-700'}`}
+                  title="Estado del pago"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${PAYMENT_STATUS[selected.payment_status]?.dot || 'bg-slate-400'}`}></span>
+                  Pago: {PAYMENT_STATUS[selected.payment_status]?.label || selected.payment_status}
+                </span>
+
+                <div className="w-px h-6 bg-slate-200 mx-1 hidden lg:block"></div>
+
                 <button onClick={generatePDF}
                   className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                   <FileText className="w-4 h-4" /> PDF

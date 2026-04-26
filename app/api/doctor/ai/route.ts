@@ -1,10 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// 2026-04-26: gemini-1.5-flash retired (April 2026). Migrar a gemini-2.0-flash
-//             https://ai.google.dev/gemini-api/docs/models#gemini-2-0-flash
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+// 2026-04-26: gemini-1.5-flash retired. Free tier: gemini-2.5-flash-lite tiene mayor cuota
+// que gemini-2.0-flash. Si 429 → fallback automático al modelo siguiente.
+// Free tier limits (RPM = req/min, RPD = req/día):
+//   gemini-2.5-flash-lite:  15 RPM · 1500 RPD  ← default (más cuota)
+//   gemini-2.5-flash:       10 RPM · 250 RPD
+//   gemini-2.0-flash:       15 RPM · 1500 RPD
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite'
+const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash'
+const buildUrl = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+
+// Cache simple en memoria — evita re-llamar Gemini con el mismo prompt en 5 min
+const promptCache = new Map<string, { result: string; expires: number }>()
+const CACHE_TTL_MS = 5 * 60 * 1000
+function getCached(key: string): string | null {
+  const entry = promptCache.get(key)
+  if (!entry) return null
+  if (Date.now() > entry.expires) { promptCache.delete(key); return null }
+  return entry.result
+}
+function setCached(key: string, result: string) {
+  promptCache.set(key, { result, expires: Date.now() + CACHE_TTL_MS })
+  // Cleanup si se llena (max 50 entradas)
+  if (promptCache.size > 50) {
+    const oldest = promptCache.keys().next().value
+    if (oldest) promptCache.delete(oldest)
+  }
+}
+
+async function callGeminiWithRetry(apiKey: string, prompt: string): Promise<{ ok: true; text: string } | { ok: false; status: number; body: string }> {
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+  })
+
+  // Intento 1: modelo principal
+  for (const model of [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]) {
+    try {
+      const res = await fetch(`${buildUrl(model)}?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta de la IA'
+        return { ok: true, text }
+      }
+      // 429 → probar siguiente modelo. Otros errores → retornar
+      if (res.status !== 429) {
+        const errBody = await res.text()
+        return { ok: false, status: res.status, body: errBody }
+      }
+      console.warn(`[AI] Modelo ${model} retornó 429, probando fallback...`)
+    } catch (e: any) {
+      console.error(`[AI] Error llamando ${model}:`, e?.message)
+    }
+  }
+  return { ok: false, status: 429, body: 'Todos los modelos retornaron 429 (cuota agotada)' }
+}
 
 type AIAction = 'summarize' | 'improve' | 'patient_history'
 
@@ -99,35 +155,27 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Acción no válida' }, { status: 400 })
     }
 
-    // Call Gemini API
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 2048,
-        },
-      }),
-    })
-
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text()
-      console.error('Gemini API error:', geminiRes.status, errText)
-      // Mensaje útil para diagnóstico
-      let errMsg = `Error de Gemini (${geminiRes.status})`
-      if (geminiRes.status === 404) errMsg = `Modelo ${GEMINI_MODEL} no encontrado. Probar con gemini-2.5-flash o gemini-2.0-flash.`
-      else if (geminiRes.status === 403) errMsg = 'API key de Gemini inválida o sin permisos. Revisa GEMINI_API_KEY.'
-      else if (geminiRes.status === 429) errMsg = 'Cuota de Gemini agotada. Intenta de nuevo en unos minutos.'
-      else if (geminiRes.status === 400) errMsg = 'Solicitud inválida a Gemini. Revisa el contenido enviado.'
-      return NextResponse.json({ error: errMsg, debug: errText.slice(0, 200) }, { status: 500 })
+    // Cache hit?
+    const cacheKey = `${action}:${(content || patientId || '').slice(0, 200)}`
+    const cached = getCached(cacheKey)
+    if (cached) {
+      return NextResponse.json({ result: cached, cached: true })
     }
 
-    const geminiData = await geminiRes.json()
-    const result = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta de la IA'
+    // Llamar Gemini con retry + fallback automático a otro modelo si 429
+    const callResult = await callGeminiWithRetry(GEMINI_API_KEY, prompt)
 
-    return NextResponse.json({ result })
+    if (!callResult.ok) {
+      let errMsg = `Error de Gemini (${callResult.status})`
+      if (callResult.status === 404) errMsg = `Modelo no encontrado. Probar otro modelo.`
+      else if (callResult.status === 403) errMsg = 'API key de Gemini inválida o sin permisos.'
+      else if (callResult.status === 429) errMsg = 'Cuota gratuita de Gemini agotada (1500 requests/día). Espera unos minutos o habilita facturación en Google AI Studio.'
+      else if (callResult.status === 400) errMsg = 'Solicitud inválida a Gemini.'
+      return NextResponse.json({ error: errMsg, debug: callResult.body.slice(0, 200) }, { status: 500 })
+    }
+
+    setCached(cacheKey, callResult.text)
+    return NextResponse.json({ result: callResult.text })
   } catch (err: any) {
     console.error('AI route error:', err?.message || err)
     return NextResponse.json({ error: `Error interno: ${err?.message || 'desconocido'}` }, { status: 500 })
