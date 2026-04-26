@@ -529,20 +529,26 @@ function ConsultationsPage() {
     }
   }
 
-  async function updatePagoStatus(consultationId: string, newStatus: 'pending' | 'approved') {
+  async function updatePagoStatus(consultationId: string, newStatus: 'pending' | 'approved', appointmentId: string | null) {
     const supabase = createClient()
     try {
       const { error } = await supabase.from('consultations').update({ payment_status: newStatus }).eq('id', consultationId)
       if (error) throw error
 
-      // Sincronizar payments table (si existe payment vinculado a la consulta)
-      const { data: pay } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('consultation_id', consultationId)
-        .maybeSingle()
-      if (pay?.id) {
-        await supabase.from('payments').update({ status: newStatus, paid_at: newStatus === 'approved' ? new Date().toISOString() : null }).eq('id', pay.id)
+      // Sincronizar payments table — la relación REAL es appointments.payment_id → payments.id
+      // (NO existe payments.consultation_id). Necesitamos appointment_id para llegar al payment.
+      if (appointmentId) {
+        const { data: appt } = await supabase
+          .from('appointments')
+          .select('payment_id')
+          .eq('id', appointmentId)
+          .maybeSingle()
+        if (appt?.payment_id) {
+          await supabase.from('payments').update({
+            status: newStatus,
+            paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
+          }).eq('id', appt.payment_id)
+        }
       }
 
       // Actualizar estado local
@@ -1219,82 +1225,89 @@ function ConsultationsPage() {
         <div className="flex flex-col lg:flex-row gap-5">
           {/* Main Content (Left ~65%) */}
           <div className="flex-1 min-w-0 space-y-5">
-            {/* Header: Back + Actions (PDF, Print, Share) */}
-            <div className="flex items-center justify-between">
-              <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
-                <ArrowLeft className="w-4 h-4" /> Volver a consultas
-              </button>
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                {/* === STATUS DE LA CONSULTA === */}
-                {selected.status !== 'completed' && (
-                  <button
-                    onClick={() => updateConsultaStatus(selected.id, 'completed', selected.appointment_id)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-600 transition-colors"
-                    title="Marcar la consulta como atendida"
-                  >
-                    <Check className="w-4 h-4" /> Marcar atendida
-                  </button>
-                )}
-                {selected.status !== 'no_show' && (
-                  <button
-                    onClick={() => {
-                      if (confirm('¿Confirmas que el paciente NO asistió a la consulta?')) {
-                        updateConsultaStatus(selected.id, 'no_show', selected.appointment_id)
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-red-200 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
-                    title="Marcar como no asistido"
-                  >
-                    <X className="w-4 h-4" /> No asistió
-                  </button>
-                )}
-
-                {/* === STATUS DEL PAGO === */}
-                {selected.payment_status !== 'approved' && (
-                  <button
-                    onClick={() => updatePagoStatus(selected.id, 'approved')}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 transition-colors"
-                    title="Marcar pago como aprobado"
-                  >
-                    <Check className="w-4 h-4" /> Aprobar pago
-                  </button>
-                )}
-
-                {/* === BADGES de status actuales === */}
-                <span
-                  className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${CONSULTA_STATUS[selected.status]?.color || 'bg-slate-100 text-slate-700'}`}
-                  title="Estado de la consulta"
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${CONSULTA_STATUS[selected.status]?.dot || 'bg-slate-400'}`}></span>
-                  Consulta: {CONSULTA_STATUS[selected.status]?.label || selected.status}
-                </span>
-                <span
-                  className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS[selected.payment_status]?.color || 'bg-slate-100 text-slate-700'}`}
-                  title="Estado del pago"
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${PAYMENT_STATUS[selected.payment_status]?.dot || 'bg-slate-400'}`}></span>
-                  Pago: {PAYMENT_STATUS[selected.payment_status]?.label || selected.payment_status}
-                </span>
-
-                <div className="w-px h-6 bg-slate-200 mx-1 hidden lg:block"></div>
-
-                <button onClick={generatePDF}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                  <FileText className="w-4 h-4" /> PDF
+            {/* Header: estructura compacta de 2 filas
+                Fila 1: Volver + Badges de estado (consulta + pago)
+                Fila 2: Acciones de status (atendida/no asistió/aprobar pago) | Acciones de archivo (PDF/Imprimir/Eliminar/Compartir) */}
+            <div className="space-y-3">
+              {/* Fila 1: navegación + badges en vivo */}
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
+                  <ArrowLeft className="w-4 h-4" /> Volver a consultas
                 </button>
-                <button onClick={generatePDF}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                  <Printer className="w-4 h-4" /> Imprimir
-                </button>
-                <button onClick={() => selected && setConfirmDeleteConsulta(selected)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-red-200 rounded-lg text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors">
-                  <Trash2 className="w-4 h-4" /> Eliminar
-                </button>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${CONSULTA_STATUS[selected.status]?.color || 'bg-slate-100 text-slate-700'}`}
+                    title="Estado de la consulta"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${CONSULTA_STATUS[selected.status]?.dot || 'bg-slate-400'}`}></span>
+                    Consulta: {CONSULTA_STATUS[selected.status]?.label || selected.status}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS[selected.payment_status]?.color || 'bg-slate-100 text-slate-700'}`}
+                    title="Estado del pago"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${PAYMENT_STATUS[selected.payment_status]?.dot || 'bg-slate-400'}`}></span>
+                    Pago: {PAYMENT_STATUS[selected.payment_status]?.label || selected.payment_status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Fila 2: acciones agrupadas */}
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                {/* Grupo izquierdo: cambios de status (solo aparecen si aplican) */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {selected.status !== 'completed' && (
+                    <button
+                      onClick={() => updateConsultaStatus(selected.id, 'completed', selected.appointment_id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors"
+                      title="Marcar consulta como atendida"
+                    >
+                      <Check className="w-3.5 h-3.5" /> Atendida
+                    </button>
+                  )}
+                  {selected.status !== 'no_show' && (
+                    <button
+                      onClick={() => { if (confirm('¿Confirmas que el paciente NO asistió?')) updateConsultaStatus(selected.id, 'no_show', selected.appointment_id) }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                      title="Marcar como no asistido"
+                    >
+                      <X className="w-3.5 h-3.5" /> No asistió
+                    </button>
+                  )}
+                  {selected.payment_status !== 'approved' && (
+                    <button
+                      onClick={() => updatePagoStatus(selected.id, 'approved', selected.appointment_id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 text-white rounded-lg text-xs font-semibold hover:bg-teal-600 transition-colors"
+                      title="Marcar pago como aprobado"
+                    >
+                      <DollarSign className="w-3.5 h-3.5" /> Aprobar pago
+                    </button>
+                  )}
+                </div>
+
+                {/* Grupo derecho: acciones de archivo (compactas, solo iconos en sm) */}
+                <div className="flex items-center gap-1.5">
+                  <button onClick={generatePDF}
+                    title="Descargar PDF"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                    <FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">PDF</span>
+                  </button>
+                  <button onClick={generatePDF}
+                    title="Imprimir"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                    <Printer className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Imprimir</span>
+                  </button>
+                  <button onClick={() => selected && setConfirmDeleteConsulta(selected)}
+                    title="Eliminar consulta"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Eliminar</span>
+                  </button>
                 {/* Share Button */}
                 <div className="relative">
                   <button onClick={() => setShowShare(!showShare)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                    <Share2 className="w-4 h-4" /> Compartir
+                    title="Compartir"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                    <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Compartir</span>
                   </button>
                   {showShare && (
                     <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-5 space-y-4">
@@ -1427,6 +1440,7 @@ function ConsultationsPage() {
                       </div>
                     </div>
                   )}
+                </div>
                 </div>
               </div>
             </div>

@@ -143,8 +143,11 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   })
   const [creatingPatient, setCreatingPatient] = useState(false)
 
-  // Step 2: Fecha y hora
+  // Step 2: Fecha y hora — selector tipo booking público
   const [scheduledAt, setScheduledAt] = useState(initialContext.slotStart || '')
+  const [selectedDate, setSelectedDate] = useState<string>('')   // 'YYYY-MM-DD'
+  const [selectedTime, setSelectedTime] = useState<string>('')   // 'HH:MM'
+  const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set()) // 'YYYY-MM-DD HH:MM'
 
   // Step 3: Modalidad
   const [mode, setMode] = useState<'presencial' | 'online'>('presencial')
@@ -209,6 +212,44 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
       if (offs && offs.length > 0 && !selectedOffice) setSelectedOffice(offs[0] as DoctorOffice)
     })()
   }, [doctorId, open])
+
+  // ── Cargar slots ocupados (próximos 21 días) ───────────────────────────
+  useEffect(() => {
+    if (!doctorId || !open) return
+    ;(async () => {
+      const start = new Date()
+      const end = new Date()
+      end.setDate(end.getDate() + 22)
+      const { data } = await supabase
+        .from('appointments')
+        .select('scheduled_at')
+        .eq('doctor_id', doctorId)
+        .in('status', ['scheduled', 'confirmed'])
+        .gte('scheduled_at', start.toISOString())
+        .lte('scheduled_at', end.toISOString())
+      const set = new Set<string>()
+      ;(data || []).forEach(a => {
+        const d = new Date(a.scheduled_at)
+        const yyyy = d.getFullYear()
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const dd = String(d.getDate()).padStart(2, '0')
+        const hh = String(d.getHours()).padStart(2, '0')
+        const mi = String(d.getMinutes()).padStart(2, '0')
+        set.add(`${yyyy}-${mm}-${dd} ${hh}:${mi}`)
+      })
+      setBookedSlots(set)
+    })()
+  }, [doctorId, open])
+
+  // ── Cuando cambia date/time, sincroniza scheduledAt ────────────────────
+  useEffect(() => {
+    if (!selectedDate || !selectedTime) return
+    // Construir Date local (sin UTC) y convertir a ISO
+    const [y, mo, d] = selectedDate.split('-').map(Number)
+    const [h, mi] = selectedTime.split(':').map(Number)
+    const local = new Date(y, mo - 1, d, h, mi, 0, 0)
+    setScheduledAt(local.toISOString())
+  }, [selectedDate, selectedTime])
 
   // ── Paquetes del paciente ───────────────────────────────────────────────
   useEffect(() => {
@@ -480,7 +521,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
             )}
           </AccordionSection>
 
-          {/* ── PASO 2: Fecha y hora ─────────────────────────────────────── */}
+          {/* ── PASO 2: Fecha y hora — slots tipo booking público ─────────── */}
           <AccordionSection
             step={2} currentStep={currentStep}
             title="Fecha y hora"
@@ -489,18 +530,103 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
             summary={scheduledAt ? fmtDateTime(scheduledAt) : undefined}
             onOpen={() => step1Done && setCurrentStep(2)}
           >
-            <input
-              type="datetime-local"
-              value={scheduledAt.slice(0,16)}
-              onChange={e => setScheduledAt(e.target.value ? new Date(e.target.value).toISOString() : '')}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-            />
-            <div className="flex justify-end mt-3">
-              <button onClick={() => setCurrentStep(3)} disabled={!scheduledAt}
-                className="px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
-                Continuar →
-              </button>
-            </div>
+            {(() => {
+              // Generar próximos 21 días (excluyendo domingos)
+              const days: { date: string; label: string; weekday: string; dayNum: string; month: string }[] = []
+              const today = new Date()
+              for (let i = 0; i < 22; i++) {
+                const d = new Date(today)
+                d.setDate(today.getDate() + i)
+                if (d.getDay() === 0) continue // skip domingos
+                const yyyy = d.getFullYear()
+                const mm = String(d.getMonth() + 1).padStart(2, '0')
+                const dd = String(d.getDate()).padStart(2, '0')
+                days.push({
+                  date: `${yyyy}-${mm}-${dd}`,
+                  label: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' }),
+                  weekday: d.toLocaleDateString('es-VE', { weekday: 'short' }).toUpperCase(),
+                  dayNum: String(d.getDate()),
+                  month: d.toLocaleDateString('es-VE', { month: 'short' }).toUpperCase(),
+                })
+              }
+              const times = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+                             '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30']
+              return (
+                <div className="space-y-3">
+                  {/* Selector de fecha — scroll horizontal */}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Selecciona el día</p>
+                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+                      {days.map(d => {
+                        const isActive = selectedDate === d.date
+                        return (
+                          <button
+                            key={d.date}
+                            type="button"
+                            onClick={() => { setSelectedDate(d.date); setSelectedTime('') }}
+                            className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-20 rounded-xl border-2 transition-all ${
+                              isActive ? 'bg-teal-500 text-white border-teal-500 shadow-md'
+                                       : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
+                            }`}
+                          >
+                            <span className={`text-[10px] font-bold ${isActive ? 'text-teal-100' : 'text-slate-500'}`}>{d.weekday}</span>
+                            <span className="text-2xl font-bold">{d.dayNum}</span>
+                            <span className={`text-[10px] ${isActive ? 'text-teal-100' : 'text-slate-500'}`}>{d.month}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Selector de hora */}
+                  {selectedDate && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Hora disponible</p>
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                        {times.map(t => {
+                          const slotKey = `${selectedDate} ${t}`
+                          const isOccupied = bookedSlots.has(slotKey)
+                          const isActive = selectedTime === t
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              disabled={isOccupied}
+                              onClick={() => setSelectedTime(t)}
+                              title={isOccupied ? 'Slot ocupado' : ''}
+                              className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                isOccupied ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed'
+                                : isActive ? 'bg-teal-500 text-white border-teal-500'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {bookedSlots.size > 0 && (
+                        <p className="text-[10px] text-slate-500 mt-1.5">Los horarios tachados ya tienen una cita.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Resumen + botón continuar */}
+                  {scheduledAt && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span className="text-xs font-semibold text-emerald-800">{fmtDateTime(scheduledAt)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <button onClick={() => setCurrentStep(3)} disabled={!scheduledAt}
+                      className="px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+                      Continuar →
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
           </AccordionSection>
 
           {/* ── PASO 3: Modalidad y ubicación ────────────────────────────── */}
