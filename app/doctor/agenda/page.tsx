@@ -1132,17 +1132,44 @@ export default function AgendaPage() {
                   </div>
                 )}
 
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase">Estado</p>
-                  <span className={`inline-block mt-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
-                    detailAppt.status === 'scheduled' ? 'bg-amber-50 text-amber-600'
-                    : detailAppt.status === 'confirmed' ? 'bg-teal-50 text-teal-600'
-                    : detailAppt.status === 'completed' ? 'bg-emerald-50 text-emerald-600'
-                    : 'bg-red-50 text-red-600'
-                  }`}>
-                    {detailAppt.status === 'scheduled' ? 'Pendiente' : detailAppt.status === 'confirmed' ? 'Confirmada' : detailAppt.status === 'completed' ? 'Completada' : 'Cancelada'}
-                  </span>
+                {/* 3 estados separados: Cita, Consulta, Pago */}
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-3">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cita</p>
+                    <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      detailAppt.status === 'scheduled'   ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : detailAppt.status === 'confirmed' ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
+                      : detailAppt.status === 'rescheduled' ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                      : detailAppt.status === 'cancelled' ? 'bg-red-50 text-red-700 border border-red-200'
+                      : detailAppt.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : detailAppt.status === 'no_show'   ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}>
+                      {detailAppt.status === 'scheduled' ? 'Agendada'
+                      : detailAppt.status === 'confirmed' ? 'Confirmada'
+                      : detailAppt.status === 'rescheduled' ? 'Reagendada'
+                      : detailAppt.status === 'cancelled' ? 'Cancelada'
+                      : detailAppt.status === 'completed' ? 'Atendida'
+                      : detailAppt.status === 'no_show' ? 'No asistió'
+                      : detailAppt.status}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Consulta</p>
+                    <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {detailAppt.source === 'consultation' ? 'Pendiente' : 'Vinculada'}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pago</p>
+                    <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                      Pendiente
+                    </span>
+                  </div>
                 </div>
+                <p className="text-[11px] text-slate-500 italic mt-2">
+                  💡 Para auditar estados completos y modificar pago, abre <strong>Cita 360°</strong> abajo.
+                </p>
 
                 {/* Google Meet link */}
                 {detailAppt.meet_link && (

@@ -110,69 +110,79 @@ export default function AdminPatientsClient({ patients }: Props) {
 
   return (
     <>
-      {/* Toolbar de filtros */}
+      {/* Toolbar de filtros — grid responsivo, todos los campos del mismo tamaño */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Filtros</h3>
-          {hasFilters && (
-            <button onClick={clearFilters} className="ml-auto text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1">
-              <X className="w-3 h-3" /> Limpiar filtros
-            </button>
-          )}
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-slate-500" />
+            <h3 className="text-sm font-semibold text-slate-900">Filtros</h3>
+            {hasFilters && (
+              <button onClick={clearFilters} className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1 ml-2">
+                <X className="w-3 h-3" /> Limpiar
+              </button>
+            )}
+          </div>
           <button
             onClick={exportExcel}
             disabled={filtered.length === 0}
-            className={`${hasFilters ? '' : 'ml-auto'} inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-500 hover:bg-teal-600 text-white disabled:opacity-50`}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-500 hover:bg-teal-600 text-white disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" /> Exportar Excel ({filtered.length})
           </button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Search */}
-          <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar nombre, email, cédula, teléfono…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
-            />
+
+        {/* Búsqueda — fila completa */}
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar nombre, email, cédula, teléfono…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
+          />
+        </div>
+
+        {/* Filtros — 4 columnas iguales en lg, 2 en md, 1 en sm */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Médico</label>
+            <select
+              value={filterDoctor}
+              onChange={e => setFilterDoctor(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white"
+            >
+              <option value="">Todos</option>
+              {doctorOptions.map(d => <option key={d as string} value={d as string}>{d as string}</option>)}
+            </select>
           </div>
-          {/* Médico */}
-          <select
-            value={filterDoctor}
-            onChange={e => setFilterDoctor(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white"
-          >
-            <option value="">Todos los médicos</option>
-            {doctorOptions.map(d => <option key={d as string} value={d as string}>{d as string}</option>)}
-          </select>
-          {/* Especialidad */}
-          <select
-            value={filterSpecialty}
-            onChange={e => setFilterSpecialty(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white"
-          >
-            <option value="">Todas las especialidades</option>
-            {specialtyOptions.map(s => <option key={s as string} value={s as string}>{s as string}</option>)}
-          </select>
-          {/* Fechas */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Especialidad</label>
+            <select
+              value={filterSpecialty}
+              onChange={e => setFilterSpecialty(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white"
+            >
+              <option value="">Todas</option>
+              {specialtyOptions.map(s => <option key={s as string} value={s as string}>{s as string}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Desde</label>
             <input
               type="date"
               value={filterFrom}
               onChange={e => setFilterFrom(e.target.value)}
-              className="flex-1 px-2 py-2 rounded-lg border border-slate-200 text-xs outline-none focus:border-teal-400"
-              placeholder="Desde"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
             />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Hasta</label>
             <input
               type="date"
               value={filterTo}
               onChange={e => setFilterTo(e.target.value)}
-              className="flex-1 px-2 py-2 rounded-lg border border-slate-200 text-xs outline-none focus:border-teal-400"
-              placeholder="Hasta"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
             />
           </div>
         </div>

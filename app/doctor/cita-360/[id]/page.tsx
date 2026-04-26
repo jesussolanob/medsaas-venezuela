@@ -97,15 +97,17 @@ export default async function Cita360Page({ params }: { params: { id: string } }
         .order('created_at', { ascending: true })
     : { data: [] }
 
-  // Audit log de cambios
-  const { data: changeLog } = await admin
-    .from('appointment_changes_log')
-    .select('id, actor_id, actor_role, action, field_changed, old_value, new_value, reason, created_at')
-    .eq('appointment_id', appt.id)
-    .order('created_at', { ascending: false })
-    .limit(20)
-    .then(r => r.data ? r : { data: [] })
-    .catch(() => ({ data: [] }))
+  // Audit log de cambios (defensive: tabla puede no existir o no tener datos)
+  let changeLog: any[] = []
+  try {
+    const { data: logs } = await admin
+      .from('appointment_changes_log')
+      .select('id, actor_id, actor_role, action, field_changed, old_value, new_value, reason, created_at')
+      .eq('appointment_id', appt.id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    changeLog = logs || []
+  } catch { /* tabla puede no existir */ }
 
   const data: Cita360Data = {
     appointment: appt as any,
@@ -114,7 +116,7 @@ export default async function Cita360Page({ params }: { params: { id: string } }
     doctor: doctor as any,
     patient: patient as any,
     rescheduleChain: (rescheduleChain || []) as any,
-    changeLog: (changeLog || []) as any,
+    changeLog: changeLog as any,
   }
 
   return (
