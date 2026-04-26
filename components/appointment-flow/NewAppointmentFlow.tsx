@@ -60,11 +60,48 @@ type PatientPackageInfo = {
   used_sessions: number
 }
 
+// RONDA 20: ahora cargamos tambien la configuracion de horarios del consultorio
+// para construir el calendario y los slots dinamicamente.
+type ScheduleDay = { day: number; start: string; end: string; enabled: boolean }
 type DoctorOffice = {
   id: string
   name: string
   address: string
+  schedule?: ScheduleDay[] | null
+  slot_duration?: number | null   // minutos entre slots
+  buffer_minutes?: number | null  // espacio entre citas
 }
+
+// El schedule en BD usa day=0 → lunes, ..., day=6 → domingo.
+// Date.getDay() usa 0=domingo, 1=lunes, ..., 6=sabado.
+// Esta funcion convierte de Date.getDay() al indice usado en la BD.
+function jsDayToScheduleDay(jsDay: number): number {
+  return jsDay === 0 ? 6 : jsDay - 1
+}
+
+// Genera horarios entre start y end con incrementos de minutos.
+// Ej: ('08:00', '12:00', 30) → ['08:00','08:30','09:00',...,'11:30']
+function generateTimeSlots(start: string, end: string, intervalMin: number): string[] {
+  const out: string[] = []
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  if (isNaN(sh) || isNaN(eh)) return []
+  const startTotal = sh * 60 + (sm || 0)
+  const endTotal = eh * 60 + (em || 0)
+  const step = Math.max(15, intervalMin || 30)
+  for (let t = startTotal; t < endTotal; t += step) {
+    const h = String(Math.floor(t / 60)).padStart(2, '0')
+    const m = String(t % 60).padStart(2, '0')
+    out.push(`${h}:${m}`)
+  }
+  return out
+}
+
+// Horarios genericos de fallback cuando NO hay consultorio configurado.
+const GENERIC_TIMES = [
+  '08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+  '14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30',
+]
 
 // Métodos de pago que requieren comprobante
 const METHODS_WITH_RECEIPT = ['pago_movil', 'transferencia', 'zelle', 'binance']
@@ -204,7 +241,9 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
           .select('id, name, price_usd, duration_minutes, sessions_count')
           .eq('doctor_id', doctorId).eq('is_active', true).order('price_usd'),
         supabase.from('doctor_offices')
-          .select('id, name, address').eq('doctor_id', doctorId).eq('is_active', true),
+          // RONDA 20: traer tambien schedule + slot_duration + buffer_minutes
+          .select('id, name, address, schedule, slot_duration, buffer_minutes')
+          .eq('doctor_id', doctorId).eq('is_active', true),
       ])
       setPricingPlans(plans || [])
       if (plans && plans.length > 0 && !selectedPlan) setSelectedPlan(plans[0])
@@ -531,57 +570,107 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
             onOpen={() => step1Done && setCurrentStep(2)}
           >
             {(() => {
-              // Generar próximos 21 días (excluyendo domingos)
-              const days: { date: string; label: string; weekday: string; dayNum: string; month: string }[] = []
+              // RONDA 20: configuracion del consultorio (si existe) decide
+              // que dias estan habilitados y que slots se muestran.
+              const office = selectedOffice
+              const hasOfficeConfig = !!office?.schedule && Array.isArray(office.schedule) && office.schedule.length > 0
+              const interval = (office?.slot_duration ?? 30)
+
+              // Generar dias: 22 dias hacia adelante.
+              // - Si hay config: marca disabled cuando schedule[day].enabled === false
+              // - Si NO hay config: TODOS los dias habilitados (decision del usuario)
+              const days: Array<{ date: string; label: string; weekday: string; dayNum: string; month: string; enabled: boolean }> = []
               const today = new Date()
               for (let i = 0; i < 22; i++) {
                 const d = new Date(today)
                 d.setDate(today.getDate() + i)
-                if (d.getDay() === 0) continue // skip domingos
                 const yyyy = d.getFullYear()
                 const mm = String(d.getMonth() + 1).padStart(2, '0')
                 const dd = String(d.getDate()).padStart(2, '0')
+                let enabled = true
+                if (hasOfficeConfig) {
+                  const schedDay = office!.schedule!.find(s => s.day === jsDayToScheduleDay(d.getDay()))
+                  enabled = schedDay?.enabled ?? false
+                }
                 days.push({
                   date: `${yyyy}-${mm}-${dd}`,
                   label: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' }),
                   weekday: d.toLocaleDateString('es-VE', { weekday: 'short' }).toUpperCase(),
                   dayNum: String(d.getDate()),
                   month: d.toLocaleDateString('es-VE', { month: 'short' }).toUpperCase(),
+                  enabled,
                 })
               }
-              const times = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-                             '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30']
+
+              // Generar slots horarios:
+              // - Con config: usa schedule[selectedDay].start/end + slot_duration
+              // - Sin config o sin selectedDate: usa GENERIC_TIMES
+              let times: string[] = GENERIC_TIMES
+              if (hasOfficeConfig && selectedDate) {
+                const [y, mo, da] = selectedDate.split('-').map(Number)
+                const sd = new Date(y, mo - 1, da)
+                const schedDay = office!.schedule!.find(s => s.day === jsDayToScheduleDay(sd.getDay()))
+                if (schedDay?.enabled) {
+                  times = generateTimeSlots(schedDay.start, schedDay.end, interval)
+                } else {
+                  times = []  // ese dia no se atiende
+                }
+              }
               return (
                 <div className="space-y-3">
+                  {/* RONDA 20 — Mensaje informativo cuando no hay consultorio configurado */}
+                  {!hasOfficeConfig && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-start gap-2 text-xs text-blue-800">
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>
+                        No tienes un consultorio configurado, se usarán horarios genéricos (8am-12pm y 2pm-6pm, todos los días).
+                        Configura tu consultorio en <strong>Settings → Consultorios</strong> para personalizar tus horarios.
+                      </span>
+                    </div>
+                  )}
+
                   {/* Selector de fecha — scroll horizontal */}
                   <div>
                     <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Selecciona el día</p>
                     <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
                       {days.map(d => {
                         const isActive = selectedDate === d.date
+                        const isDisabled = !d.enabled
                         return (
                           <button
                             key={d.date}
                             type="button"
-                            onClick={() => { setSelectedDate(d.date); setSelectedTime('') }}
+                            disabled={isDisabled}
+                            onClick={() => { if (!isDisabled) { setSelectedDate(d.date); setSelectedTime('') } }}
+                            title={isDisabled ? 'Tu consultorio no atiende este día' : ''}
                             className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-20 rounded-xl border-2 transition-all ${
-                              isActive ? 'bg-teal-500 text-white border-teal-500 shadow-md'
-                                       : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
+                              isDisabled
+                                ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                                : isActive
+                                ? 'bg-teal-500 text-white border-teal-500 shadow-md'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
                             }`}
                           >
-                            <span className={`text-[10px] font-bold ${isActive ? 'text-teal-100' : 'text-slate-500'}`}>{d.weekday}</span>
+                            <span className={`text-[10px] font-bold ${isActive ? 'text-teal-100' : isDisabled ? 'text-slate-300' : 'text-slate-500'}`}>{d.weekday}</span>
                             <span className="text-2xl font-bold">{d.dayNum}</span>
-                            <span className={`text-[10px] ${isActive ? 'text-teal-100' : 'text-slate-500'}`}>{d.month}</span>
+                            <span className={`text-[10px] ${isActive ? 'text-teal-100' : isDisabled ? 'text-slate-300' : 'text-slate-500'}`}>{d.month}</span>
                           </button>
                         )
                       })}
                     </div>
                   </div>
 
-                  {/* Selector de hora */}
-                  {selectedDate && (
+                  {/* Selector de hora — RONDA 20: dropdown de slots dinamicos */}
+                  {selectedDate && times.length === 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                      Tu consultorio no atiende este día. Selecciona otro día disponible.
+                    </div>
+                  )}
+                  {selectedDate && times.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Hora disponible</p>
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                        Hora disponible {hasOfficeConfig && <span className="font-normal text-slate-400 normal-case">· cada {interval} min</span>}
+                      </p>
                       <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                         {times.map(t => {
                           const slotKey = `${selectedDate} ${t}`
