@@ -28,9 +28,9 @@ type PaymentMethodData = {
 const ESPECIALIDADES = [
   'Medicina General','Cardiología','Dermatología','Endocrinología','Gastroenterología',
   'Ginecología','Hematología','Infectología','Medicina Interna','Nefrología',
-  'Neumología','Neurología','Oftalmología','Oncología','Ortopedia y Traumatología',
+  'Neumología','Neurología','Odontología','Oftalmología','Oncología','Ortopedia y Traumatología',
   'Otorrinolaringología','Pediatría','Psicología','Psiquiatría','Reumatología','Fisioterapia','Urología',
-  'Cirugía General','Cirugía Plástica','Medicina de Emergencia','Radiología','Otra',
+  'Cirugía General','Cirugía Plástica','Medicina de Emergencia','Radiología','Nutrición','Otra',
 ]
 
 const PROFESSIONAL_TITLES = [

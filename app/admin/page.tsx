@@ -177,13 +177,6 @@ export default async function AdminDashboard() {
             >
               Ver especialistas →
             </Link>
-            <Link
-              href="/admin/finances"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold transition-all"
-              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}
-            >
-              Finanzas
-            </Link>
           </div>
         </div>
       </div>
@@ -261,9 +254,6 @@ export default async function AdminDashboard() {
             {totalCitasMonth.toLocaleString('es-VE')}
           </p>
           <p className="text-xs mt-1" style={{ color: '#97A3AF' }}>Appointments + Consultas directas</p>
-          <Link href="/admin/finances" className="text-xs font-semibold mt-3" style={{ color: '#0891B2' }}>
-            Ver finanzas →
-          </Link>
         </div>
       </div>
     </div>

@@ -70,9 +70,9 @@ export default function UsersPanel() {
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div>
-            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Médicos y Suscripciones</h2>
+            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Especialistas</h2>
             <p className="text-slate-500 text-xs sm:text-sm mt-1">
-              {doctors?.length ?? 0} médicos registrados · {activeDoctors} activos
+              {doctors?.length ?? 0} especialistas registrados · {activeDoctors} activos
             </p>
           </div>
           <div className="flex-shrink-0">

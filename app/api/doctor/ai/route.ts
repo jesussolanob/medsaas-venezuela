@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
+// 2026-04-26: gemini-1.5-flash retired (April 2026). Migrar a gemini-2.0-flash
+//             https://ai.google.dev/gemini-api/docs/models#gemini-2-0-flash
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
 type AIAction = 'summarize' | 'improve' | 'patient_history'
 
@@ -112,7 +115,13 @@ export async function POST(req: NextRequest) {
     if (!geminiRes.ok) {
       const errText = await geminiRes.text()
       console.error('Gemini API error:', geminiRes.status, errText)
-      return NextResponse.json({ error: `Error de Gemini (${geminiRes.status}): verifica tu API key` }, { status: 500 })
+      // Mensaje útil para diagnóstico
+      let errMsg = `Error de Gemini (${geminiRes.status})`
+      if (geminiRes.status === 404) errMsg = `Modelo ${GEMINI_MODEL} no encontrado. Probar con gemini-2.5-flash o gemini-2.0-flash.`
+      else if (geminiRes.status === 403) errMsg = 'API key de Gemini inválida o sin permisos. Revisa GEMINI_API_KEY.'
+      else if (geminiRes.status === 429) errMsg = 'Cuota de Gemini agotada. Intenta de nuevo en unos minutos.'
+      else if (geminiRes.status === 400) errMsg = 'Solicitud inválida a Gemini. Revisa el contenido enviado.'
+      return NextResponse.json({ error: errMsg, debug: errText.slice(0, 200) }, { status: 500 })
     }
 
     const geminiData = await geminiRes.json()

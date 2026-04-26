@@ -47,7 +47,23 @@ export default function ConsultationDetailPage() {
         return
       }
 
-      setConsultation(c as Consultation)
+      // BUG-9 FIX: si el snapshot está vacío o desactualizado, resolver en vivo
+      // los bloques desde la config actual del doctor.
+      let snapshot = c.blocks_snapshot
+      if (!snapshot || (Array.isArray(snapshot) && snapshot.length === 0)) {
+        try {
+          const r = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' })
+          if (r.ok) {
+            const j = await r.json()
+            // resolved viene de /api/doctor/consultation-blocks
+            snapshot = (j.resolved || []).filter((b: any) => b.enabled)
+          }
+        } catch (e) {
+          console.warn('[Consultation] failed to resolve blocks live:', e)
+        }
+      }
+
+      setConsultation({ ...(c as Consultation), blocks_snapshot: snapshot })
       setBlocksData(c.blocks_data || {})
 
       // ⏱ Auto-tracking: setear started_at la primera vez que el doctor abre la consulta

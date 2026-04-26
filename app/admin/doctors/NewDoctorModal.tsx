@@ -22,6 +22,8 @@ const ESPECIALIDADES = [
   'Medicina Interna',
   'Nefrología',
   'Neurología',
+  'Nutrición',
+  'Odontología',
   'Oftalmología',
   'Ortopedia y Traumatología',
   'Otorrinolaringología',

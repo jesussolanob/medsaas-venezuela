@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import AdminPatientsClient, { type PatientRow } from './AdminPatientsClient'
 
 // Cache corto de 30s: lista refresca cada media minuto sin sacrificar velocidad
 export const revalidate = 30
@@ -45,10 +46,10 @@ export default async function AdminPatientsPage() {
       birth_date,
       created_at,
       doctor_id,
-      doctors:doctor_id(full_name, email)
+      doctors:doctor_id(full_name, email, specialty)
     `)
     .order('created_at', { ascending: false })
-    .limit(200)
+    .limit(500)
 
   // Contar 2 métricas por paciente:
   // - citasMap: appointments activas + consultations sin appointment (consultas standalone)
@@ -91,14 +92,24 @@ export default async function AdminPatientsPage() {
     }
   }
 
-  function calcAge(birth: string | null): string {
-    if (!birth) return '—'
-    const b = new Date(birth)
-    if (isNaN(b.getTime())) return '—'
-    const diff = Date.now() - b.getTime()
-    const years = Math.floor(diff / (365.25 * 24 * 3600 * 1000))
-    return years >= 0 && years < 130 ? `${years}` : '—'
-  }
+  // Construir filas para el client component (incluye specialty + counts)
+  const rows: PatientRow[] = (patients || []).map(p => {
+    const doctor: any = Array.isArray(p.doctors) ? p.doctors[0] : p.doctors
+    return {
+      id: p.id,
+      full_name: p.full_name,
+      email: p.email,
+      phone: p.phone,
+      cedula: p.cedula,
+      birth_date: p.birth_date,
+      created_at: p.created_at,
+      doctor_id: p.doctor_id,
+      doctor_name: doctor?.full_name || null,
+      doctor_specialty: doctor?.specialty || null,
+      citas: citasMap[p.id] || 0,
+      atendidas: atendidasMap[p.id] || 0,
+    }
+  })
 
   return (
     <div className="space-y-6">
@@ -126,71 +137,8 @@ export default async function AdminPatientsPage() {
         </div>
       </div>
 
-      {/* Tabla de pacientes */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-900">
-            Listado ({patients?.length || 0})
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">Últimos 200 registros, ordenados por fecha de registro</p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
-                <th className="text-left px-5 py-3">Nombre</th>
-                <th className="text-left px-5 py-3">Email</th>
-                <th className="text-left px-5 py-3">Teléfono</th>
-                <th className="text-left px-5 py-3">Cédula</th>
-                <th className="text-right px-5 py-3">Edad</th>
-                <th className="text-right px-5 py-3">Citas</th>
-                <th className="text-right px-5 py-3">Atendidas</th>
-                <th className="text-left px-5 py-3">Médico</th>
-                <th className="text-left px-5 py-3">Registrado</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {!patients || patients.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-slate-400">
-                    No hay pacientes registrados aún
-                  </td>
-                </tr>
-              ) : (
-                patients.map(p => {
-                  const doctor = Array.isArray(p.doctors) ? p.doctors[0] : p.doctors
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-3 font-medium text-slate-900">{p.full_name || '—'}</td>
-                      <td className="px-5 py-3 text-slate-600">{p.email || '—'}</td>
-                      <td className="px-5 py-3 text-slate-600">{p.phone || '—'}</td>
-                      <td className="px-5 py-3 text-slate-600">{p.cedula || '—'}</td>
-                      <td className="px-5 py-3 text-right text-slate-600">{calcAge(p.birth_date)}</td>
-                      <td className="px-5 py-3 text-right">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-semibold">
-                          {citasMap[p.id] || 0}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-semibold">
-                          {atendidasMap[p.id] || 0}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-slate-600 text-xs">
-                        {doctor?.full_name || '—'}
-                      </td>
-                      <td className="px-5 py-3 text-slate-400 text-xs">
-                        {new Date(p.created_at).toLocaleDateString('es-VE')}
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Filtros + tabla (client component) */}
+      <AdminPatientsClient patients={rows} />
     </div>
   )
 }

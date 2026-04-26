@@ -9,7 +9,8 @@ import { createClient } from '@/lib/supabase/client'
 const ESPECIALIDADES = [
   'Cardiología','Dermatología','Endocrinología','Gastroenterología',
   'Ginecología y Obstetricia','Medicina General','Medicina Interna',
-  'Nefrología','Neurología','Oftalmología','Ortopedia y Traumatología',
+  'Nefrología','Neurología','Nutrición','Odontología',
+  'Oftalmología','Ortopedia y Traumatología',
   'Otorrinolaringología','Pediatría','Psicología','Psiquiatría',
   'Reumatología','Fisioterapia','Urología','Otra',
 ]

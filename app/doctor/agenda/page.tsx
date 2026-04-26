@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, Settings, Stethoscope, Upload, Loader2, Package, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 
 const toast = { success: (msg: string) => alert(msg), error: (msg: string) => alert(msg) }
 
@@ -784,18 +785,15 @@ export default function AgendaPage() {
     }
   }
 
-  // Open new consulta modal pre-filled with a date
+  // BUG-8: usar NewAppointmentFlow (acordeón estilo booking público) en lugar del modal inline
+  const [showNewFlow, setShowNewFlow] = useState(false)
+  const [newFlowSlotStart, setNewFlowSlotStart] = useState<string | undefined>(undefined)
+
   function openNewConsultaForDate(date: Date, time?: string) {
-    setNewConsulta({
-      patient_id: '',
-      date: dateToYMD(date),
-      time: time || '09:00',
-      reason: '',
-      plan_id: '',
-      payment_method: '',
-      payment_reference: '',
-    })
-    setShowNewConsulta(true)
+    const t = time || '09:00'
+    const isoLocal = `${dateToYMD(date)}T${t}:00`
+    setNewFlowSlotStart(isoLocal)
+    setShowNewFlow(true)
   }
 
   const prevMonth = () => setMonthYear(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })
@@ -1823,6 +1821,23 @@ export default function AgendaPage() {
           )
         })()}
       </div>
+
+      {/* BUG-8 fix: NewAppointmentFlow estilo booking público (acordeón) */}
+      {showNewFlow && (
+        <NewAppointmentFlow
+          open={showNewFlow}
+          onClose={() => setShowNewFlow(false)}
+          onSuccess={() => {
+            setShowNewFlow(false)
+            // Refrescar la agenda para que aparezca la nueva cita
+            window.location.reload()
+          }}
+          initialContext={{
+            origin: 'agenda_btn',
+            slotStart: newFlowSlotStart,
+          }}
+        />
+      )}
     </>
   )
 }
