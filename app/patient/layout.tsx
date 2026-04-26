@@ -12,12 +12,12 @@ import SearchCommandPalette from './SearchCommandPalette'
 
 type NavItem = { name: string; href: string; icon: any }
 
+// RONDA 21: removido "Mensajes" — el chat queda fuera del MVP por ahora
 const navItems: NavItem[] = [
   { name: 'Inicio', href: '/patient', icon: LayoutDashboard },
   { name: 'Mis citas', href: '/patient/appointments', icon: Calendar },
   { name: 'Mis informes', href: '/patient/reports', icon: FileText },
   { name: 'Recetas', href: '/patient/prescriptions', icon: Pill },
-  { name: 'Mensajes', href: '/patient/messages', icon: MessageCircle },
   { name: 'Mi perfil', href: '/patient/profile', icon: User },
 ]
 

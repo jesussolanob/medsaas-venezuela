@@ -220,6 +220,21 @@ export default function AppointmentsPage() {
                     <p className="text-sm text-slate-600"><strong>Motivo:</strong> {apt.chief_complaint}</p>
                   </div>
                 )}
+
+                {/* RONDA 21 — Botón "Agendar otra cita" con el mismo doctor.
+                    Lleva al booking publico del doctor con doctor_id en la URL.
+                    Responsive: full width en mobile, auto en desktop con icono Calendar. */}
+                {apt.doctor_id && (
+                  <div className="pt-3 border-t border-slate-100">
+                    <a
+                      href={`/book/${apt.doctor_id}`}
+                      className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold transition-colors shadow-sm shadow-teal-500/20"
+                    >
+                      <Calendar className="w-4 h-4" />
+                      Agendar otra cita con {apt.doctor_name?.split(' ')[0] || 'este doctor'}
+                    </a>
+                  </div>
+                )}
               </div>
             )
           })
