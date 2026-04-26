@@ -147,6 +147,9 @@ function ConsultationsPage() {
 
   // New consultation modal
   const [showNewConsultation, setShowNewConsultation] = useState(false)
+  // Estado del select de pago (ronda 14: autosave + spinner + toast)
+  const [pagoSaving, setPagoSaving] = useState(false)
+  const [pagoToast, setPagoToast] = useState<string | null>(null)
   const [patients, setPatients] = useState<Patient[]>([])
   const [pricingPlans, setPricingPlans] = useState<{ id: string; name: string; price_usd: number; duration_minutes: number }[]>([])
   // Helper to get local datetime string for datetime-local input
@@ -540,6 +543,7 @@ function ConsultationsPage() {
   }
 
   async function updatePagoStatus(consultationId: string, newStatus: 'pending' | 'approved', appointmentId: string | null) {
+    setPagoSaving(true)
     const supabase = createClient()
     try {
       const { error } = await supabase.from('consultations').update({ payment_status: newStatus }).eq('id', consultationId)
@@ -561,13 +565,20 @@ function ConsultationsPage() {
         }
       }
 
-      // Actualizar estado local
+      // Actualizar estado local — el badge informativo se sincroniza automaticamente con esto
       setSelected(prev => prev ? { ...prev, payment_status: newStatus } : prev)
       setReport(prev => ({ ...prev, payment_status: newStatus }))
       setConsultations(prev => prev.map(x => x.id === consultationId ? { ...x, payment_status: newStatus } : x))
+
+      // Toast de exito (auto-dismiss 3s)
+      setPagoToast('Estado de pago actualizado correctamente')
+      setTimeout(() => setPagoToast(null), 3000)
     } catch (err: any) {
       console.error('Error updating pago status:', err)
-      alert(err?.message || 'Error al actualizar estado del pago')
+      setPagoToast('Error al actualizar el pago')
+      setTimeout(() => setPagoToast(null), 3500)
+    } finally {
+      setPagoSaving(false)
     }
   }
 
@@ -1309,7 +1320,21 @@ function ConsultationsPage() {
 
     return (
       <>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.safari-tab { border-radius: 8px 8px 0 0; padding: 8px 16px; } .safari-tab.active { background: white; border: 1px solid #e2e8f0; border-bottom: none; box-shadow: 0 -2px 8px rgba(0,0,0,0.03); }`}</style>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.safari-tab { border-radius: 8px 8px 0 0; padding: 8px 16px; } .safari-tab.active { background: white; border: 1px solid #e2e8f0; border-bottom: none; box-shadow: 0 -2px 8px rgba(0,0,0,0.03); }@keyframes toastSlide { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
+
+        {/* === TOAST de feedback (ronda 14) === */}
+        {pagoToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed top-6 left-1/2 z-[100] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg border bg-emerald-50 border-emerald-200 text-emerald-800 text-sm font-semibold"
+            style={{ animation: 'toastSlide 0.25s ease-out', transform: 'translateX(-50%)' }}
+          >
+            <CheckCircle className="w-4 h-4" />
+            {pagoToast}
+          </div>
+        )}
+
         <div className="flex flex-col lg:flex-row gap-5">
           {/* Main Content (Left ~65%) */}
           <div className="flex-1 min-w-0 space-y-5">
@@ -1362,15 +1387,8 @@ function ConsultationsPage() {
                       <X className="w-3.5 h-3.5" /> No asistió
                     </button>
                   )}
-                  {selected.payment_status !== 'approved' && (
-                    <button
-                      onClick={() => updatePagoStatus(selected.id, 'approved', selected.appointment_id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 text-white rounded-lg text-xs font-semibold hover:bg-teal-600 transition-colors"
-                      title="Marcar pago como aprobado"
-                    >
-                      <DollarSign className="w-3.5 h-3.5" /> Aprobar pago
-                    </button>
-                  )}
+                  {/* El cambio de estado de pago se centralizo en el select del panel derecho
+                      "Configuracion de la consulta" (ronda 14). Aqui solo se ven los badges. */}
                 </div>
 
                 {/* Grupo derecho: acciones de archivo (compactas, solo iconos en sm) */}
@@ -2258,16 +2276,47 @@ function ConsultationsPage() {
                 </button>
                 {showPaymentDetails && (
                   <div className="mt-3 space-y-2">
-                    {(['pending','approved'] as const).map(key => {
-                      const val = PAYMENT_STATUS[key]
-                      const active = normalizePaymentStatus(report.payment_status) === key
-                      return (
-                        <button key={key} onClick={() => setReport(p => ({ ...p, payment_status: key as Consultation['payment_status'] }))}
-                          className={`w-full text-left py-2 px-3 rounded-lg text-xs font-bold border-2 transition-all ${active ? val.color + ' border-current' : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full inline-block mr-2 ${active ? val.dot : 'bg-slate-300'}`} />{val.label}
-                        </button>
-                      )
-                    })}
+                    {/* === SELECT con auto-save (ronda 14) ===
+                        onChange dispara updatePagoStatus que actualiza Supabase + payments table
+                        + sincroniza el badge informativo de la izquierda automaticamente */}
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Estado del pago
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={normalizePaymentStatus(report.payment_status)}
+                          disabled={pagoSaving}
+                          onChange={(e) => {
+                            const next = e.target.value as 'pending' | 'approved'
+                            if (next === normalizePaymentStatus(report.payment_status)) return
+                            updatePagoStatus(selected.id, next, selected.appointment_id)
+                          }}
+                          className={`w-full text-xs font-semibold border-2 rounded-lg py-2 pl-3 pr-9 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none bg-white ${
+                            pagoSaving ? 'border-slate-200 text-slate-400 cursor-wait' : 'border-slate-200 text-slate-700 hover:border-teal-300 cursor-pointer'
+                          }`}
+                        >
+                          {(['pending', 'approved'] as const).map(key => (
+                            <option key={key} value={key}>
+                              {PAYMENT_STATUS[key].label}
+                            </option>
+                          ))}
+                        </select>
+                        {/* Spinner o chevron a la derecha */}
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                          {pagoSaving ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                          )}
+                        </div>
+                      </div>
+                      {pagoSaving && (
+                        <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Guardando…
+                        </p>
+                      )}
+                    </div>
                     {appointmentData && (appointmentData.payment_method || appointmentData.plan_price) && (
                       <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
                         {appointmentData.plan_name && (
