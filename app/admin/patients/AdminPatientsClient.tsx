@@ -110,11 +110,11 @@ export default function AdminPatientsClient({ patients }: Props) {
 
   return (
     <>
-      {/* Toolbar de filtros — grid responsivo, todos los campos del mismo tamaño */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+      {/* Toolbar de filtros — todo dentro del cuadro, sin overflow */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 overflow-hidden">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-500" />
+          <div className="flex items-center gap-2 min-w-0">
+            <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" />
             <h3 className="text-sm font-semibold text-slate-900">Filtros</h3>
             {hasFilters && (
               <button onClick={clearFilters} className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1 ml-2">
@@ -125,7 +125,7 @@ export default function AdminPatientsClient({ patients }: Props) {
           <button
             onClick={exportExcel}
             disabled={filtered.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-500 hover:bg-teal-600 text-white disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-500 hover:bg-teal-600 text-white disabled:opacity-50 flex-shrink-0"
           >
             <Download className="w-3.5 h-3.5" /> Exportar Excel ({filtered.length})
           </button>
@@ -139,50 +139,50 @@ export default function AdminPatientsClient({ patients }: Props) {
             placeholder="Buscar nombre, email, cédula, teléfono…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 box-border"
           />
         </div>
 
-        {/* Filtros — 4 columnas iguales en lg, 2 en md, 1 en sm */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="flex flex-col gap-1">
+        {/* Filtros — 1 col móvil, 2 cols tablet, 4 cols desktop. min-w-0 evita overflow */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="flex flex-col gap-1 min-w-0">
             <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Médico</label>
             <select
               value={filterDoctor}
               onChange={e => setFilterDoctor(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white"
+              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white truncate"
             >
               <option value="">Todos</option>
               {doctorOptions.map(d => <option key={d as string} value={d as string}>{d as string}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0">
             <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Especialidad</label>
             <select
               value={filterSpecialty}
               onChange={e => setFilterSpecialty(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white"
+              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white truncate"
             >
               <option value="">Todas</option>
               {specialtyOptions.map(s => <option key={s as string} value={s as string}>{s as string}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0">
             <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Desde</label>
             <input
               type="date"
               value={filterFrom}
               onChange={e => setFilterFrom(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
+              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 box-border"
             />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0">
             <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Hasta</label>
             <input
               type="date"
               value={filterTo}
               onChange={e => setFilterTo(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
+              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 box-border"
             />
           </div>
         </div>
