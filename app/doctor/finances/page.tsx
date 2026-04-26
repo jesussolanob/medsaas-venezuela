@@ -69,22 +69,31 @@ export default function FinancesPage() {
 
       // Load completed appointments as income (same source as Cobros "aprobados")
       // Exclude google_calendar events — they are schedule blockers, not financial items
+      // CODIGO UNIFICADO (ronda 13): mostrar consultation_code (maestro), fallback al appointment_code
       const { data: appointments } = await supabase
         .from('appointments')
-        .select('id, patient_name, plan_price, payment_method, scheduled_at, appointment_code')
+        .select('id, patient_name, plan_price, payment_method, scheduled_at, appointment_code, consultations(consultation_code)')
         .eq('doctor_id', user.id)
         .eq('status', 'completed')
         .neq('source', 'google_calendar')
         .order('scheduled_at', { ascending: false })
 
-      setIncomes((appointments || []).map(a => ({
-        id: a.id,
-        patient_name: a.patient_name || 'Paciente',
-        amount_usd: a.plan_price || 0,
-        payment_method: a.payment_method || '',
-        date: a.scheduled_at,
-        consultation_code: a.appointment_code || '',
-      })))
+      setIncomes((appointments || []).map(a => {
+        // El "consultation_code" es el codigo maestro que el doctor reconoce. Si por alguna razon
+        // la cita aun no tiene consulta vinculada, caemos al appointment_code para no dejar vacio.
+        const consNested = (a as any).consultations
+        const consCode = Array.isArray(consNested)
+          ? consNested[0]?.consultation_code
+          : consNested?.consultation_code
+        return {
+          id: a.id,
+          patient_name: a.patient_name || 'Paciente',
+          amount_usd: a.plan_price || 0,
+          payment_method: a.payment_method || '',
+          date: a.scheduled_at,
+          consultation_code: consCode || a.appointment_code || '',
+        }
+      }))
 
       // Load expenses
       const { data: exp } = await supabase

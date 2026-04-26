@@ -118,16 +118,23 @@ export default function CobrosPage() {
         break
     }
 
+    // CODIGO UNIFICADO (ronda 13): joinear con consultations para mostrar el consultation_code
+    // como codigo maestro. Si no hay consulta vinculada, fallback al appointment_code.
     const { data: apptData } = await supabase
       .from('appointments')
-      .select('id, patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, payment_receipt_url, source')
+      .select('id, patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, payment_receipt_url, source, consultations(consultation_code)')
       .eq('doctor_id', user.id)
       .in('status', statusFilter)
       .neq('source', 'google_calendar')
       .order('scheduled_at', { ascending: false })
       .limit(200)
 
-    setPayments((apptData || []).map(a => ({ ...a, _source: 'appointment' as const })))
+    setPayments((apptData || []).map(a => {
+      const consNested = (a as any).consultations
+      const consCode = Array.isArray(consNested) ? consNested[0]?.consultation_code : consNested?.consultation_code
+      // Sobreescribimos appointment_code con el consultation_code para que la UI ya existente lo muestre.
+      return { ...a, appointment_code: consCode || a.appointment_code, _source: 'appointment' as const }
+    }))
     setLoading(false)
   }, [tab])
 
@@ -152,9 +159,10 @@ export default function CobrosPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    // CODIGO UNIFICADO (ronda 13): exportamos consultation_code en la columna "Código"
     const { data } = await supabase
       .from('appointments')
-      .select('patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code')
+      .select('patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, consultations(consultation_code)')
       .eq('doctor_id', user.id)
       .neq('source', 'google_calendar')
       .gte('scheduled_at', `${dateFrom}T00:00:00`)
@@ -167,16 +175,20 @@ export default function CobrosPage() {
     }
 
     const headers = ['Fecha', 'Paciente', 'Servicio', 'Monto USD', 'Monto Bs', 'Método de Pago', 'Estado', 'Código']
-    const rows = data.map(r => [
-      new Date(r.scheduled_at).toLocaleDateString('es-VE'),
-      r.patient_name || '',
-      r.plan_name || '',
-      (r.plan_price || 0).toFixed(2),
-      bcvRate ? ((r.plan_price || 0) * bcvRate).toFixed(2) : 'N/A',
-      PAYMENT_METHOD_LABELS[r.payment_method || ''] || r.payment_method || '',
-      r.status || '',
-      r.appointment_code || '',
-    ])
+    const rows = data.map(r => {
+      const consNested = (r as any).consultations
+      const consCode = Array.isArray(consNested) ? consNested[0]?.consultation_code : consNested?.consultation_code
+      return [
+        new Date(r.scheduled_at).toLocaleDateString('es-VE'),
+        r.patient_name || '',
+        r.plan_name || '',
+        (r.plan_price || 0).toFixed(2),
+        bcvRate ? ((r.plan_price || 0) * bcvRate).toFixed(2) : 'N/A',
+        PAYMENT_METHOD_LABELS[r.payment_method || ''] || r.payment_method || '',
+        r.status || '',
+        consCode || r.appointment_code || '',
+      ]
+    })
 
     const csv = [headers, ...rows].map(row => row.map(c => `"${c}"`).join(',')).join('\n')
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
