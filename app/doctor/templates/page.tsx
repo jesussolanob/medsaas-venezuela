@@ -590,25 +590,35 @@ export default function TemplatesPage() {
               <p className="text-sm font-bold text-slate-700">Vista previa</p>
               <button
                 onClick={() => setShowPreview(!showPreview)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700"
+                aria-expanded={showPreview}
+                className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
               >
                 <Eye className="w-3.5 h-3.5" />
-                {showPreview ? 'Ocultar' : 'Mostrar'} PDF
+                {showPreview ? 'Ocultar PDF' : 'Mostrar PDF'}
               </button>
             </div>
 
+            {/* RONDA 18: preview animado + condicional + lee assets de PROFILE (no de config legacy)
+                + carga Google Font de la tipografia seleccionada para que el preview muestre exactamente
+                lo que se generara en el PDF final */}
+            <style>{`@import url('https://fonts.googleapis.com/css2?family=${(config.font_family || 'Inter').replace(/ /g, '+')}:wght@400;600;700&display=swap');`}</style>
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-out ${
+                showPreview ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
             <div
               className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"
-              style={{ fontFamily: config.font_family }}
+              style={{ fontFamily: `'${config.font_family || 'Inter'}', sans-serif` }}
             >
               {/* Preview Header */}
               <div className="p-6 border-b-[3px]" style={{ borderColor: config.primary_color }}>
                 <div className="flex items-start justify-between gap-4">
-                  {config.show_logo && config.logo_url && (
+                  {config.show_logo && profileLogoUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={config.logo_url} alt="Logo" className="h-12 object-contain" />
+                    <img src={profileLogoUrl} alt="Logo" className="h-12 object-contain" crossOrigin="anonymous" />
                   )}
-                  <div className={`${config.show_logo && config.logo_url ? 'text-right' : ''} flex-1`}>
+                  <div className={`${config.show_logo && profileLogoUrl ? 'text-right' : ''} flex-1`}>
                     <p className="text-base font-bold" style={{ color: config.primary_color }}>
                       {config.header_text || doctorName || 'Delta Medical'}
                     </p>
@@ -698,13 +708,13 @@ export default function TemplatesPage() {
                 )}
               </div>
 
-              {/* Preview Signature */}
+              {/* Preview Signature — usa firma del PERFIL (RONDA 18) */}
               {config.show_signature && (
                 <div className="px-6 pb-4">
                   <div className="border-t border-slate-100 pt-4 flex flex-col items-center gap-1">
-                    {config.signature_url ? (
+                    {profileSignatureUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={config.signature_url} alt="Firma" className="h-12 object-contain" />
+                      <img src={profileSignatureUrl} alt="Firma" className="h-12 object-contain" crossOrigin="anonymous" />
                     ) : (
                       <div className="h-12 w-32 border-b-2 border-slate-300" />
                     )}
@@ -720,6 +730,7 @@ export default function TemplatesPage() {
                   <p className="text-[9px] text-slate-400 text-center">{config.footer_text}</p>
                 </div>
               )}
+            </div>
             </div>
           </div>
         </div>

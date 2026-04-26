@@ -913,11 +913,14 @@ function ConsultationsPage() {
   // sin necesidad de configurar 4 templates separados.
   function buildPdfHtml(templateType: string, title: string, bodyContent: string, patientName: string, code: string, dateStr: string) {
     const cfg = templateConfigs[templateType] || defaultTemplateConfig
-    // RONDA 17: identidad visual unificada de Delta — turquesa #0891b2 + Inter.
-    // Si el doctor configuro un primary_color custom en su template lo respetamos,
-    // pero la fuente queda fija en Inter para consistencia.
+    // Color primario: respeta el configurado por el doctor; default = teal Delta
     const color = cfg.primary_color || '#0891b2'
-    const font = 'Inter'
+    // RONDA 18: tipografia dinamica del template (Inter, Georgia, Times, Arial, Calibri, Palatino).
+    // Antes (ronda 17) la fije en Inter por error y eso rompia el selector de tipografia.
+    // Las fuentes Inter/Georgia/Palatino se traen de Google Fonts; las del sistema (Arial,
+    // Times New Roman, Calibri) usan el fallback nativo del SO.
+    const font = cfg.font_family || 'Inter'
+    const isWebFont = ['Inter', 'Georgia', 'Palatino', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins'].includes(font)
     // RONDA 17: SOURCE OF TRUTH = profile del doctor.
     // Ya no usamos cfg.logo_url ni cfg.signature_url — esos campos quedaron deprecados
     // como override por tipo de doc. El doctor sube logo y firma una sola vez en
@@ -931,7 +934,7 @@ function ConsultationsPage() {
 <head>
   <title>${title} - ${code}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=${font.replace(/ /g, '+')}:wght@400;600;700&display=swap');
+    ${isWebFont ? `@import url('https://fonts.googleapis.com/css2?family=${font.replace(/ /g, '+')}:wght@400;600;700&display=swap');` : ''}
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: '${font}', 'Segoe UI', Arial, sans-serif; }
     body { padding: 40px; color: #1e293b; line-height: 1.6; }
     .header { border-bottom: 3px solid ${color}; padding-bottom: 20px; margin-bottom: 30px; display: flex; align-items: center; justify-content: space-between; }
