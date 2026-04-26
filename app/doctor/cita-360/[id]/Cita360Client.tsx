@@ -99,22 +99,38 @@ export default function Cita360Client({ data }: { data: Cita360Data }) {
 
   return (
     <div className="space-y-4">
-      {/* Header con códigos */}
+      {/* Header con código MAESTRO (consultation_code) */}
       <div className="bg-gradient-to-br from-cyan-500 to-teal-600 text-white rounded-2xl p-6 shadow-lg">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
+          <div className="flex-1 min-w-0">
             <p className="text-xs uppercase tracking-wider opacity-80 font-mono">Cita 360°</p>
             <h1 className="text-2xl font-bold mt-1">{patient?.full_name || appt.patient_name || 'Paciente'}</h1>
             <p className="text-white/85 text-sm mt-0.5">
               {fmtDate(appt.scheduled_at)}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <CodeChip value={appt.appointment_code} label="CITA" color="cyan" />
-            <CodeChip value={cons?.consultation_code} label="CONSULTA" color="teal" />
-            <CodeChip value={pay?.payment_code} label="PAGO" color="coral" />
-          </div>
+          {/* Código maestro: el de la consulta (NUNCA cambia, ni al reagendar ni al cobrar) */}
+          {(cons?.consultation_code || appt.appointment_code) && (
+            <div className="bg-white/15 backdrop-blur-sm rounded-xl px-4 py-3 text-right">
+              <p className="text-[10px] uppercase tracking-widest text-white/70 font-bold">Código de cita</p>
+              <button
+                onClick={() => navigator.clipboard?.writeText(cons?.consultation_code || appt.appointment_code).catch(() => {})}
+                title="Click para copiar"
+                className="font-mono text-xl font-bold hover:opacity-80"
+              >
+                {cons?.consultation_code || appt.appointment_code}
+              </button>
+            </div>
+          )}
         </div>
+        {/* Códigos técnicos secundarios (colapsado, info para soporte) */}
+        <details className="mt-3 text-xs">
+          <summary className="cursor-pointer text-white/70 hover:text-white">📋 IDs técnicos (cita / pago)</summary>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <CodeChip value={appt.appointment_code} label="ID CITA" color="cyan" />
+            <CodeChip value={pay?.payment_code} label="ID PAGO" color="coral" />
+          </div>
+        </details>
       </div>
 
       {/* Stepper navigation */}

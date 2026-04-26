@@ -17,6 +17,8 @@ type Consultation = {
   blocks_snapshot: SnapshotBlock[] | null
   blocks_data: Record<string, unknown> | null
   patient_id: string
+  status?: string
+  appointment_id?: string | null
 }
 
 type Patient = { id: string; full_name: string; email: string | null; phone: string | null; cedula: string | null }
@@ -37,7 +39,7 @@ export default function ConsultationDetailPage() {
       const supabase = createClient()
       const { data: c, error } = await supabase
         .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, payment_status, plan_name, amount, blocks_snapshot, blocks_data, patient_id, started_at, ended_at, status')
+        .select('id, consultation_code, consultation_date, chief_complaint, payment_status, plan_name, amount, blocks_snapshot, blocks_data, patient_id, started_at, ended_at, status, appointment_id')
         .eq('id', params.id)
         .single()
 
@@ -183,9 +185,96 @@ export default function ConsultationDetailPage() {
         <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-2">
           <User className="w-4 h-4 text-white/60" />
           <span className="text-sm">{patient?.full_name || '—'}</span>
-          <span className="ml-auto text-xs bg-white/20 px-2 py-0.5 rounded-full">
-            {consultation.payment_status}
+        </div>
+      </div>
+
+      {/* Acciones de estado de la CONSULTA y del PAGO */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado de la consulta</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button
+            disabled={consultation.status === 'completed'}
+            onClick={async () => {
+              const supabase = createClient()
+              await supabase.from('consultations').update({
+                status: 'completed',
+                ended_at: new Date().toISOString(),
+              }).eq('id', consultation.id)
+              if (consultation.appointment_id) {
+                await supabase.from('appointments').update({ status: 'completed' as any }).eq('id', consultation.appointment_id)
+              }
+              setConsultation({ ...consultation, status: 'completed' })
+              setMsg({ kind: 'ok', text: 'Consulta marcada como atendida' })
+            }}
+            className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold border transition-colors ${
+              consultation.status === 'completed'
+                ? 'bg-emerald-100 text-emerald-700 border-emerald-300 cursor-default'
+                : 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500'
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" /> {consultation.status === 'completed' ? 'Atendida ✓' : 'Marcar como atendida'}
+          </button>
+          <button
+            disabled={consultation.status === 'no_show'}
+            onClick={async () => {
+              const supabase = createClient()
+              await supabase.from('consultations').update({ status: 'no_show' }).eq('id', consultation.id)
+              if (consultation.appointment_id) {
+                await supabase.from('appointments').update({ status: 'no_show' as any }).eq('id', consultation.appointment_id)
+              }
+              setConsultation({ ...consultation, status: 'no_show' })
+              setMsg({ kind: 'ok', text: 'Marcada como No asistió' })
+            }}
+            className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold border transition-colors ${
+              consultation.status === 'no_show'
+                ? 'bg-orange-100 text-orange-700 border-orange-300 cursor-default'
+                : 'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200'
+            }`}
+          >
+            {consultation.status === 'no_show' ? 'No asistió ✓' : 'No asistió'}
+          </button>
+          <span className="flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs text-slate-500 bg-slate-50 border border-slate-200">
+            Estado actual: <strong className="text-slate-700">{
+              consultation.status === 'completed' ? 'Atendida'
+              : consultation.status === 'no_show' ? 'No asistió'
+              : consultation.status === 'in_progress' ? 'En curso'
+              : 'Pendiente'
+            }</strong>
           </span>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Estado del pago</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              disabled={consultation.payment_status === 'approved'}
+              onClick={async () => {
+                const supabase = createClient()
+                await supabase.from('consultations').update({ payment_status: 'approved' }).eq('id', consultation.id)
+                // sync con payments table si existe
+                if (consultation.appointment_id) {
+                  const { data: appt } = await supabase.from('appointments').select('payment_id').eq('id', consultation.appointment_id).single()
+                  if (appt?.payment_id) {
+                    await supabase.from('payments').update({ status: 'approved', paid_at: new Date().toISOString() }).eq('id', appt.payment_id)
+                  }
+                }
+                setConsultation({ ...consultation, payment_status: 'approved' })
+                setMsg({ kind: 'ok', text: 'Pago aprobado' })
+              }}
+              className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold border transition-colors ${
+                consultation.payment_status === 'approved'
+                  ? 'bg-emerald-100 text-emerald-700 border-emerald-300 cursor-default'
+                  : 'bg-teal-500 hover:bg-teal-600 text-white border-teal-500'
+              }`}
+            >
+              {consultation.payment_status === 'approved' ? 'Pago aprobado ✓' : '💵 Marcar pago como aprobado'}
+            </button>
+            <span className="flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs text-slate-500 bg-slate-50 border border-slate-200">
+              Estado actual: <strong className="text-slate-700">{
+                consultation.payment_status === 'approved' ? 'Aprobado' : 'Pendiente'
+              }</strong>
+            </span>
+          </div>
         </div>
       </div>
 
