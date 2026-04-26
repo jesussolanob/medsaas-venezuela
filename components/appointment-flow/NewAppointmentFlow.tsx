@@ -618,13 +618,15 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               }
               return (
                 <div className="space-y-3">
-                  {/* RONDA 20 — Mensaje informativo cuando no hay consultorio configurado */}
+                  {/* RONDA 22 — mensaje informativo si no hay consultorio.
+                      Ruta corregida: la sección se llama "Consultorio" en el sidebar
+                      y vive en /doctor/offices */}
                   {!hasOfficeConfig && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-start gap-2 text-xs text-blue-800">
                       <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                       <span>
                         No tienes un consultorio configurado, se usarán horarios genéricos (8am-12pm y 2pm-6pm, todos los días).
-                        Configura tu consultorio en <strong>Settings → Consultorios</strong> para personalizar tus horarios.
+                        Configura tu consultorio en <a href="/doctor/offices" className="font-bold underline underline-offset-2 hover:text-blue-900">Consultorio → Consultorio</a> para personalizar tus horarios.
                       </span>
                     </div>
                   )}

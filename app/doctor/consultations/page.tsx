@@ -866,30 +866,56 @@ function ConsultationsPage() {
     }
   }
 
+  // RONDA 22: refactor con logs, validacion previa y manejo de errores limpio.
+  // Antes lanzaba "Error al guardar" aunque el insert era exitoso porque la FK
+  // estaba mal apuntada a profiles(id) — ya reparada en BD a patients(id).
   async function saveRecipe() {
-    // Permitir receta de texto libre: basta con que haya medicamentos O notas.
     const hasContent = (recipe.medications && recipe.medications.length > 0)
       || (recipe.notes && recipe.notes.replace(/<[^>]*>/g, '').trim().length > 0)
     if (!selected || !hasContent) {
       alert('Agrega al menos un medicamento o escribe notas de la receta')
       return
     }
+
+    // Validacion previa del patient_id — DEBE ser un UUID de la tabla `patients`
+    if (!selected.patient_id) {
+      console.error('[saveRecipe] selected.patient_id es null/undefined', { selected })
+      alert('Error: la consulta no tiene un paciente asociado')
+      return
+    }
+    console.log('[saveRecipe] insertando con patient_id =', selected.patient_id, 'consultation_id =', selected.id)
+
     setIsSavingRecipe(true)
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        alert('Sesión expirada. Recarga la página.')
+        return
+      }
 
-      const { error } = await supabase.from('prescriptions').insert({
+      const { data, error } = await supabase.from('prescriptions').insert({
         doctor_id: user.id,
         patient_id: selected.patient_id,
         consultation_id: selected.id,
         medications: recipe.medications,
         notes: recipe.notes || null,
         created_at: new Date().toISOString(),
-      })
+      }).select('id').single()
 
-      if (error) throw error
+      // Validar respuesta ANTES de mostrar mensaje
+      if (error) {
+        console.error('[saveRecipe] Supabase error:', error)
+        alert(`Error al guardar receta: ${error.message}`)
+        return
+      }
+      if (!data?.id) {
+        console.warn('[saveRecipe] insert devolvio sin id pero sin error', { data })
+        alert('No se pudo confirmar el guardado. Recarga e intenta de nuevo.')
+        return
+      }
+
+      console.log('[saveRecipe] guardado OK con id =', data.id)
       // Reload saved prescriptions
       const { data: savedRx } = await supabase
         .from('prescriptions')
@@ -898,10 +924,10 @@ function ConsultationsPage() {
         .order('created_at', { ascending: false })
       setSavedPrescriptions((savedRx || []) as SavedPrescription[])
       setShowRecipe(false)
-      alert('Receta guardada')
-    } catch (err) {
-      console.error('Error saving recipe:', err)
-      alert('Error al guardar receta')
+      alert('Receta guardada correctamente')
+    } catch (err: any) {
+      console.error('[saveRecipe] excepcion JS:', err)
+      alert(`Error al guardar receta: ${err?.message || 'desconocido'}`)
     } finally {
       setIsSavingRecipe(false)
     }
@@ -1823,14 +1849,21 @@ function ConsultationsPage() {
                             alert('Agrega al menos un examen con nombre')
                             return
                           }
+                          // RONDA 22: validar patient_id + capturar error de Supabase por insert
+                          if (!selected.patient_id) {
+                            alert('Error: la consulta no tiene un paciente asociado')
+                            return
+                          }
+                          console.log('[savePrescripciones] patient_id =', selected.patient_id, 'consultation_id =', selected.id)
                           setIsSavingPrescripciones(true)
                           try {
                             const supabase = createClient()
                             const { data: { user } } = await supabase.auth.getUser()
                             if (!user) return
                             const exams = prescripciones.filter(p => p.exam_name.trim())
+                            const failed: string[] = []
                             for (const exam of exams) {
-                              await supabase.from('prescriptions').insert({
+                              const { error } = await supabase.from('prescriptions').insert({
                                 doctor_id: user.id,
                                 patient_id: selected.patient_id,
                                 consultation_id: selected.id,
@@ -1838,6 +1871,10 @@ function ConsultationsPage() {
                                 notes: `Examen: ${exam.exam_name}${exam.notes ? ` - ${exam.notes}` : ''}`,
                                 created_at: new Date().toISOString(),
                               })
+                              if (error) {
+                                console.error('[savePrescripciones] error en exam', exam.exam_name, error)
+                                failed.push(exam.exam_name)
+                              }
                             }
                             // Reload saved prescriptions
                             const { data: savedRx } = await supabase
@@ -1846,10 +1883,14 @@ function ConsultationsPage() {
                               .eq('consultation_id', selected.id)
                               .order('created_at', { ascending: false })
                             setSavedPrescriptions((savedRx || []) as SavedPrescription[])
-                            alert('Prescripciones guardadas')
-                          } catch (err) {
-                            console.error('Error saving prescriptions:', err)
-                            alert('Error al guardar prescripciones')
+                            if (failed.length > 0) {
+                              alert(`Algunas prescripciones fallaron: ${failed.join(', ')}`)
+                            } else {
+                              alert(`Prescripciones guardadas (${exams.length})`)
+                            }
+                          } catch (err: any) {
+                            console.error('[savePrescripciones] excepcion JS:', err)
+                            alert(`Error al guardar prescripciones: ${err?.message || 'desconocido'}`)
                           } finally {
                             setIsSavingPrescripciones(false)
                           }
