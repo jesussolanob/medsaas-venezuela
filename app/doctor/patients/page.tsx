@@ -4,7 +4,8 @@ import { useState, useEffect, useTransition } from 'react'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X, ChevronRight,
   ArrowLeft, Save, CheckCircle, Clock, AlertCircle, MessageCircle,
-  Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon, Upload
+  Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon, Upload,
+  Sparkles, Loader2
 } from 'lucide-react'
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
@@ -52,6 +53,12 @@ export default function PatientsPage() {
   const [filterSource, setFilterSource] = useState<string>('all')
   const [detailTab, setDetailTab] = useState<DetailTab>('consultas')
   const [isPending, startTransition] = useTransition()
+  // Historial Médico — consulta seleccionada en sidebar (default: la más reciente)
+  const [selectedConsultaId, setSelectedConsultaId] = useState<string | null>(null)
+  // Resumen IA del paciente (Gemini)
+  const [aiSummary, setAiSummary] = useState<string>('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
 
   // Edit patient
   const [editing, setEditing] = useState(false)
@@ -219,7 +226,14 @@ export default function PatientsPage() {
     setSelected(p)
     setView('detail')
     setConsultations([])
-    getConsultations(p.id).then(setConsultations)
+    setSelectedConsultaId(null)
+    setAiSummary('')
+    setAiError('')
+    getConsultations(p.id).then(list => {
+      setConsultations(list)
+      // Auto-select la mas reciente (primera del array, ordenada DESC en getConsultations)
+      if (list.length > 0) setSelectedConsultaId(list[0].id)
+    })
   }
 
   function handleAddPatient(e: React.FormEvent) {
@@ -668,73 +682,131 @@ export default function PatientsPage() {
 
             {/* Historial Médico Tab */}
             {detailTab === 'historial' && (
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-                {/* Left sidebar with dates */}
-                <div className="sm:col-span-3 bg-white border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
-                  {consultations.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-slate-400">
-                      No hay consultas
+              <div className="space-y-4">
+                {/* Banner de Resumen IA con Gemini */}
+                {consultations.length > 0 && (
+                  <div className="bg-gradient-to-r from-violet-50 to-teal-50 border border-violet-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-teal-500 flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800">Resumen del paciente con IA</p>
+                        <p className="text-xs text-slate-600 mt-0.5">Gemini analizará las {consultations.length} consultas y te dará un resumen ejecutivo: patrones, evolución y datos clave.</p>
+                        {aiError && <p className="text-xs text-red-600 mt-2">{aiError}</p>}
+                        {aiSummary && (
+                          <div className="mt-3 bg-white border border-violet-100 rounded-lg p-3 max-h-72 overflow-y-auto">
+                            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{aiSummary}</p>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!selected) return
+                          setAiLoading(true); setAiError(''); setAiSummary('')
+                          try {
+                            const supabase = createClient()
+                            const { data: { session } } = await supabase.auth.getSession()
+                            if (!session?.access_token) { setAiError('Sesión expirada. Recarga.'); setAiLoading(false); return }
+                            const res = await fetch('/api/doctor/ai', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+                              body: JSON.stringify({ action: 'patient_history', patientId: selected.id }),
+                            })
+                            const data = await res.json()
+                            if (!res.ok) { setAiError(data.error || 'Error de IA'); }
+                            else setAiSummary(data.result || 'Sin respuesta')
+                          } catch (e: any) { setAiError(e?.message || 'Error') }
+                          setAiLoading(false)
+                        }}
+                        disabled={aiLoading}
+                        className="px-3 py-2 bg-gradient-to-r from-violet-500 to-teal-500 hover:from-violet-600 hover:to-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 flex-shrink-0"
+                      >
+                        {aiLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analizando…</> : <><Sparkles className="w-3.5 h-3.5" /> Generar resumen</>}
+                      </button>
                     </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {consultations.map(c => (
-                        <button
-                          key={c.id}
-                          className="w-full text-left px-4 py-3 hover:bg-teal-50 transition-colors text-sm"
-                        >
-                          <p className="font-semibold text-slate-700 text-xs">{new Date(c.consultation_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: '2-digit' })}</p>
-                          <p className="text-xs text-slate-500 mt-0.5 truncate">{c.chief_complaint || 'Consulta'}</p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                {/* Right side with full consultation content */}
-                <div className="sm:col-span-9">
-                  {consultations.length === 0 ? (
-                    <div className="bg-white border border-dashed border-slate-200 rounded-xl py-10 text-center">
-                      <p className="text-slate-400 text-sm">Selecciona una consulta para ver el historial médico.</p>
-                    </div>
-                  ) : (
-                    <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-                      {consultations.length > 0 && (() => {
-                        const c = consultations[0]
-                        const st = PAYMENT_STATUS[c.payment_status]
-                        return (
-                          <>
-                            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">{c.chief_complaint || 'Consulta'}</p>
-                                <p className="text-xs text-slate-500 mt-1">{new Date(c.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                              </div>
-                              <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${st.color}`}>
-                                {st.icon} {st.label}
-                              </span>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                  {/* Left sidebar with dates */}
+                  <div className="sm:col-span-3 bg-white border border-slate-200 rounded-xl overflow-hidden max-h-[480px] overflow-y-auto">
+                    {consultations.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400">
+                        No hay consultas
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {consultations.map(c => {
+                          const isActive = selectedConsultaId === c.id
+                          return (
+                            <button
+                              key={c.id}
+                              onClick={() => setSelectedConsultaId(c.id)}
+                              className={`w-full text-left px-4 py-3 transition-colors text-sm border-l-2 ${
+                                isActive
+                                  ? 'bg-teal-50 border-l-teal-500'
+                                  : 'border-l-transparent hover:bg-slate-50'
+                              }`}
+                            >
+                              <p className={`font-semibold text-xs ${isActive ? 'text-teal-700' : 'text-slate-700'}`}>
+                                {new Date(c.consultation_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: '2-digit' })}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">{c.chief_complaint || 'Consulta'}</p>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right side with full consultation content */}
+                  <div className="sm:col-span-9">
+                    {consultations.length === 0 ? (
+                      <div className="bg-white border border-dashed border-slate-200 rounded-xl py-10 text-center">
+                        <p className="text-slate-400 text-sm">No hay consultas para este paciente.</p>
+                      </div>
+                    ) : (() => {
+                      // Buscar la consulta seleccionada (fallback: primera/mas reciente)
+                      const c = consultations.find(x => x.id === selectedConsultaId) || consultations[0]
+                      if (!c) return null
+                      const st = PAYMENT_STATUS[c.payment_status]
+                      return (
+                        <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                          <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{c.chief_complaint || 'Consulta'}</p>
+                              <p className="text-xs text-slate-500 mt-1">{new Date(c.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
                             </div>
-                            {c.notes && (
-                              <div>
-                                <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Notas</p>
-                                <p className="text-sm text-slate-700 leading-relaxed">{c.notes}</p>
-                              </div>
-                            )}
-                            {c.diagnosis && (
-                              <div>
-                                <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Diagnóstico</p>
-                                <p className="text-sm text-slate-700">{c.diagnosis}</p>
-                              </div>
-                            )}
-                            {c.treatment && (
-                              <div>
-                                <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Tratamiento</p>
-                                <p className="text-sm text-slate-700">{c.treatment}</p>
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )}
+                            <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${st.color}`}>
+                              {st.icon} {st.label}
+                            </span>
+                          </div>
+                          {!c.notes && !c.diagnosis && !c.treatment && (
+                            <p className="text-xs text-slate-400 italic py-4 text-center">Esta consulta no tiene notas, diagnóstico ni tratamiento registrados.</p>
+                          )}
+                          {c.notes && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Notas</p>
+                              <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: c.notes }} />
+                            </div>
+                          )}
+                          {c.diagnosis && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Diagnóstico</p>
+                              <div className="text-sm text-slate-700 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: c.diagnosis }} />
+                            </div>
+                          )}
+                          {c.treatment && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Tratamiento</p>
+                              <div className="text-sm text-slate-700 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: c.treatment }} />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
                 </div>
               </div>
             )}
