@@ -97,6 +97,8 @@ function SettingsPageInner() {
   const [profile, setProfile] = useState({ full_name: '', email: '', phone: '', specialty: '', professional_title: 'Dr.', allows_online: true })
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
+  const [licenseNumber, setLicenseNumber] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [tab, setTab] = useState<TabId>(initialTab)
@@ -106,6 +108,10 @@ function SettingsPageInner() {
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoError, setLogoError] = useState('')
   const logoInputRef = useRef<HTMLInputElement>(null)
+  // Signature upload
+  const [uploadingSignature, setUploadingSignature] = useState(false)
+  const [signatureError, setSignatureError] = useState('')
+  const signatureInputRef = useRef<HTMLInputElement>(null)
 
   // Plans
   const [plans, setPlans] = useState<PricingPlan[]>([])
@@ -178,6 +184,8 @@ function SettingsPageInner() {
         setProfile({ full_name: data.full_name ?? '', email: data.email ?? '', phone: data.phone ?? '', specialty: data.specialty ?? '', professional_title: data.professional_title ?? 'Dr.', allows_online: data.allows_online !== false })
         setAvatarUrl(data.avatar_url ?? null)
         setLogoUrl(data.logo_url ?? null)
+        setSignatureUrl(data.signature_url ?? null)
+        setLicenseNumber(data.license_number ?? '')
         setWhatsappToken(data.whatsapp_token ?? '')
         setWhatsappPhoneId(data.whatsapp_phone_id ?? '')
         if (data.share_message_template) setShareMessageTemplate(data.share_message_template)
@@ -256,6 +264,47 @@ function SettingsPageInner() {
       setLogoUrl(url + '?t=' + Date.now())
     }
     setUploadingLogo(false)
+  }
+
+  async function uploadSignature(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !doctorId) return
+    setUploadingSignature(true); setSignatureError('')
+    const supabase = createClient()
+    const ext = file.name.split('.').pop()
+    const path = `signatures/${doctorId}.${ext}`
+    let { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (upErr && upErr.message?.toLowerCase().includes('bucket')) {
+      try {
+        await supabase.storage.createBucket('avatars', { public: true })
+        const retry = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+        upErr = retry.error
+      } catch { upErr = { message: 'No se pudo crear el bucket' } as any }
+    }
+    if (upErr) {
+      setSignatureError('No se pudo subir la firma. Intenta de nuevo.')
+    } else {
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+      const url = urlData.publicUrl
+      await supabase.from('profiles').update({ signature_url: url }).eq('id', doctorId)
+      setSignatureUrl(url + '?t=' + Date.now())
+    }
+    setUploadingSignature(false)
+  }
+
+  async function removeSignature() {
+    if (!doctorId) return
+    if (!confirm('¿Borrar la firma actual?')) return
+    const supabase = createClient()
+    await supabase.from('profiles').update({ signature_url: null }).eq('id', doctorId)
+    setSignatureUrl(null)
+  }
+
+  async function saveLicense() {
+    if (!doctorId) return
+    const supabase = createClient()
+    await supabase.from('profiles').update({ license_number: licenseNumber || null }).eq('id', doctorId)
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
   /* ---------------- PLANS ---------------- */
@@ -527,6 +576,66 @@ function SettingsPageInner() {
                 </div>
               </div>
               {logoError && <p className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{logoError}</p>}
+            </div>
+
+            {/* === FIRMA DEL MÉDICO + MATRÍCULA — aparece en TODOS los PDFs === */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-slate-100 mb-5">
+                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
+                  <FileBadge className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900">Firma y matrícula</p>
+                  <p className="text-xs text-slate-400">Aparecerán automáticamente en todos los PDFs (informes, recetas, prescripciones, reposo)</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                {/* Firma */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Firma escaneada</label>
+                  <div className="flex items-end gap-3">
+                    <div className="w-32 h-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden">
+                      {signatureUrl ? (
+                        <img src={signatureUrl} alt="Firma" className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-[10px] text-slate-400 text-center px-2">Sin firma</span>
+                      )}
+                    </div>
+                    <div className="space-y-2 flex-1">
+                      <input ref={signatureInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={uploadSignature} className="hidden" />
+                      <button
+                        onClick={() => signatureInputRef.current?.click()}
+                        disabled={uploadingSignature}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        {uploadingSignature ? 'Subiendo…' : (signatureUrl ? 'Cambiar' : 'Subir firma')}
+                      </button>
+                      {signatureUrl && (
+                        <button onClick={removeSignature} className="w-full text-[10px] text-red-500 hover:text-red-700">
+                          Borrar firma
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1.5">PNG con fondo transparente · ideal: 400×120px</p>
+                  {signatureError && <p className="mt-2 text-xs text-red-600">{signatureError}</p>}
+                </div>
+
+                {/* Matrícula / Licencia */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Matrícula / Licencia</label>
+                  <input
+                    value={licenseNumber}
+                    onChange={e => setLicenseNumber(e.target.value)}
+                    onBlur={saveLicense}
+                    placeholder="Ej: MPPS-12345 / CMC-67890"
+                    className={fi}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1.5">Aparecerá debajo de tu nombre en la firma de los PDFs</p>
+                </div>
+              </div>
             </div>
 
             {/* Datos del perfil */}

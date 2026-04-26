@@ -215,6 +215,11 @@ function ConsultationsPage() {
 
   // Doctor profile for share template
   const [doctorName, setDoctorName] = useState('')
+  // Logo y firma GLOBALES del doctor — se aplican a TODOS los PDFs por defecto
+  // (templateConfigs[type] puede sobreescribirlos por tipo de documento)
+  const [doctorLogo, setDoctorLogo] = useState<string | null>(null)
+  const [doctorSignature, setDoctorSignature] = useState<string | null>(null)
+  const [doctorLicense, setDoctorLicense] = useState<string | null>(null)
   const [shareTemplate, setShareTemplate] = useState('Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}')
 
   // Doctor's active payment methods from settings
@@ -340,10 +345,10 @@ function ConsultationsPage() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       try {
-        // Cargar perfil del doctor (nombre + template de mensaje)
+        // Cargar perfil del doctor (nombre + template + logo + firma GLOBALES)
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('full_name, professional_title, share_message_template, payment_methods')
+          .select('full_name, professional_title, share_message_template, payment_methods, logo_url, signature_url, license_number')
           .eq('id', user.id)
           .single()
         if (profileData) {
@@ -352,6 +357,10 @@ function ConsultationsPage() {
           if (profileData.payment_methods && Array.isArray(profileData.payment_methods)) {
             setDoctorPaymentMethods(profileData.payment_methods)
           }
+          // Logo y firma GLOBALES: se aplican a todos los PDFs salvo override por tipo
+          setDoctorLogo((profileData as any).logo_url || null)
+          setDoctorSignature((profileData as any).signature_url || null)
+          setDoctorLicense((profileData as any).license_number || null)
         }
 
         // Cargar pacientes con datos médicos
@@ -887,10 +896,16 @@ function ConsultationsPage() {
   }
 
   // Helper to build PDF HTML using template config
+  // CASCADA: templateConfig especifico (por tipo de doc) → profile global del doctor → vacio
+  // Asi TODOS los PDFs (informe/receta/prescripciones/reposo/dinamicos) llevan logo + firma
+  // sin necesidad de configurar 4 templates separados.
   function buildPdfHtml(templateType: string, title: string, bodyContent: string, patientName: string, code: string, dateStr: string) {
     const cfg = templateConfigs[templateType] || defaultTemplateConfig
     const color = cfg.primary_color || '#0891b2'
     const font = cfg.font_family || 'Inter'
+    // Cascada para logo y firma:
+    const effectiveLogo = (cfg.show_logo === false ? null : (cfg.logo_url || doctorLogo)) || null
+    const effectiveSignature = (cfg.show_signature === false ? null : (cfg.signature_url || doctorSignature)) || null
 
     return `<!DOCTYPE html>
 <html>
@@ -926,7 +941,7 @@ function ConsultationsPage() {
 <body>
   <div class="header">
     <div class="header-left">
-      ${cfg.show_logo && cfg.logo_url ? '<div class="header-logo"><img src="' + cfg.logo_url + '" alt="Logo" /></div>' : ''}
+      ${effectiveLogo ? '<div class="header-logo"><img src="' + effectiveLogo + '" alt="Logo" crossorigin="anonymous" /></div>' : ''}
       <div>
         <h1>${cfg.header_text ? cfg.header_text.split('\\n')[0] || 'Delta' : 'Delta'}</h1>
         <p>${title}</p>
@@ -944,7 +959,14 @@ function ConsultationsPage() {
 
   ${bodyContent}
 
-  ${cfg.show_signature && cfg.signature_url ? '<div class="signature"><img src="' + cfg.signature_url + '" alt="Firma" /><div class="signature-line"><p>' + doctorName + '</p></div></div>' : ''}
+  <!-- Firma del medico/especialista — siempre presente. Si hay imagen de firma se muestra; si no, solo la linea -->
+  <div class="signature">
+    ${effectiveSignature ? '<img src="' + effectiveSignature + '" alt="Firma" crossorigin="anonymous" />' : '<div style="height:50px"></div>'}
+    <div class="signature-line">
+      <p style="font-weight:600;color:#1e293b">${doctorName || 'Médico tratante'}</p>
+      ${doctorLicense ? '<p style="font-size:10px;color:#64748b;margin-top:2px">Mat. ' + doctorLicense + '</p>' : ''}
+    </div>
+  </div>
 
   <div class="footer">
     ${cfg.footer_text ? '<p>' + cfg.footer_text + '</p>' : '<p>Documento generado por Delta</p>'}
