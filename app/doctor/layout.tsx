@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Calendar, ClipboardList, Users,
   Settings, LogOut, Menu, MessageSquarePlus,
   Building2, Package, Receipt, FileEdit, Pin, PanelLeftClose, PanelLeft, TrendingUp, Bell,
-  ChevronDown, Stethoscope, DollarSign, Megaphone
+  ChevronDown, Stethoscope, DollarSign, Megaphone, Search,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -30,6 +30,7 @@ const navSections: NavSection[] = [
     items: [
       { name: 'Pacientes',    href: '/doctor/patients',      icon: Users },
       { name: 'Consultas',    href: '/doctor/consultations', icon: ClipboardList },
+      { name: 'Cita 360°',    href: '/doctor/cita-360',      icon: Search },
       { name: 'Consultorios', href: '/doctor/offices',       icon: Building2 },
       { name: 'Plantillas',   href: '/doctor/templates',     icon: FileEdit },
     ],

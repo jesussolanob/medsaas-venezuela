@@ -202,6 +202,7 @@ export default function AgendaPage() {
   const [rescheduleTime, setRescheduleTime] = useState<string | null>(null)
   const [rescheduleWeekOffset, setRescheduleWeekOffset] = useState(0)
   const [detailAppt, setDetailAppt] = useState<CalendarAppointment | null>(null)
+  const [detailStatus, setDetailStatus] = useState<{ consulta: string | null; pago: string | null }>({ consulta: null, pago: null })
   const [showConfigPanel, setShowConfigPanel] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'>('all')
 
@@ -214,6 +215,34 @@ export default function AgendaPage() {
   const [confirmDelete, setConfirmDelete] = useState<CalendarAppointment | null>(null)
   // Modal custom para cambiar estado de cita (reemplaza window.confirm)
   const [statusAction, setStatusAction] = useState<{ type: 'completed' | 'cancelled' | 'no_show'; appt: CalendarAppointment } | null>(null)
+
+  // Cargar status reales de consulta + pago cada vez que se abre el modal
+  useEffect(() => {
+    if (!detailAppt) {
+      setDetailStatus({ consulta: null, pago: null })
+      return
+    }
+    const apptId = detailAppt.appointment_id || detailAppt.id
+    ;(async () => {
+      const supabase = createClient()
+      const { data: appt } = await supabase
+        .from('appointments')
+        .select('consultation_id, payment_id')
+        .eq('id', apptId)
+        .single()
+      let consStatus: string | null = null
+      let payStatus: string | null = null
+      if (appt?.consultation_id) {
+        const { data: c } = await supabase.from('consultations').select('status').eq('id', appt.consultation_id).single()
+        consStatus = c?.status || null
+      }
+      if (appt?.payment_id) {
+        const { data: p } = await supabase.from('payments').select('status').eq('id', appt.payment_id).single()
+        payStatus = p?.status || null
+      }
+      setDetailStatus({ consulta: consStatus, pago: payStatus })
+    })()
+  }, [detailAppt])
   const [statusReason, setStatusReason] = useState('')
   const [statusSaving, setStatusSaving] = useState(false)
 
@@ -1156,14 +1185,32 @@ export default function AgendaPage() {
                   </div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Consulta</p>
-                    <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                      {detailAppt.source === 'consultation' ? 'Pendiente' : 'Vinculada'}
+                    <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                      detailStatus.consulta === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : detailStatus.consulta === 'no_show' ? 'bg-orange-50 text-orange-700 border-orange-200'
+                      : detailStatus.consulta === 'in_progress' ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : detailStatus.consulta === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200'
+                      : detailStatus.consulta === 'pending' ? 'bg-slate-100 text-slate-600 border-slate-200'
+                      : 'bg-slate-50 text-slate-400 border-slate-200'
+                    }`}>
+                      {detailStatus.consulta === 'completed' ? 'Atendida'
+                      : detailStatus.consulta === 'no_show' ? 'No asistió'
+                      : detailStatus.consulta === 'in_progress' ? 'En curso'
+                      : detailStatus.consulta === 'cancelled' ? 'Cancelada'
+                      : detailStatus.consulta === 'pending' ? 'Pendiente'
+                      : detailStatus.consulta || 'Sin consulta'}
                     </span>
                   </div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pago</p>
-                    <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                      Pendiente
+                    <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                      detailStatus.pago === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : detailStatus.pago === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-slate-50 text-slate-400 border-slate-200'
+                    }`}>
+                      {detailStatus.pago === 'approved' ? 'Aprobado'
+                      : detailStatus.pago === 'pending' ? 'Pendiente'
+                      : detailStatus.pago || 'Sin pago'}
                     </span>
                   </div>
                 </div>
