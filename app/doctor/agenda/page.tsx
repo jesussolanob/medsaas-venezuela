@@ -1142,7 +1142,11 @@ export default function AgendaPage() {
                     const timeSlots = generateTimeSlots(dayOfWeek, availSlots, config)
                     const dayAppts = getApptsByDate(selectedDate)
 
-                    if (timeSlots.length === 0) {
+                    // RONDA 26: si no hay slots configurados PERO hay citas registradas para ese dia
+                    // (ej. el doctor desactivo el dia despues de agendar, o el booking publico
+                    // creo citas en hora libre), mostramos las citas igual. Antes se decia
+                    // "No hay horarios configurados" y las citas quedaban invisibles.
+                    if (timeSlots.length === 0 && dayAppts.length === 0) {
                       return (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
                           <Calendar className="w-10 h-10 text-slate-200 mb-3" />
@@ -1151,6 +1155,40 @@ export default function AgendaPage() {
                             Configurar en Consultorios
                           </a>
                         </div>
+                      )
+                    }
+                    if (timeSlots.length === 0 && dayAppts.length > 0) {
+                      // No hay slots pero SI hay citas — listamos las citas con su hora real.
+                      return (
+                        <>
+                          <div className="bg-amber-50 border-b-2 border-amber-200 px-4 py-2.5 flex items-center gap-2 text-xs text-amber-800">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            <span>No tienes horarios configurados para {DAYS_FULL[dayOfWeek]}, pero hay {dayAppts.length} cita{dayAppts.length !== 1 ? 's' : ''} registrada{dayAppts.length !== 1 ? 's' : ''} para este dia.</span>
+                          </div>
+                          {dayAppts.map(a => {
+                            const sty = getApptStyle(a.status)
+                            const Icon = sty.Icon
+                            return (
+                              <button key={a.id} onClick={() => setDetailAppt(a)}
+                                className="w-full text-left p-4 border-t border-slate-100 hover:bg-slate-50 transition-colors flex items-center gap-3">
+                                <div className="w-20 text-center shrink-0">
+                                  <p className="text-sm font-bold text-slate-700">{a.time}</p>
+                                  <p className="text-[10px] text-slate-400">{a.endTime}</p>
+                                </div>
+                                <div className={`flex-1 rounded-lg p-3 border ${sty.card}`}>
+                                  <div className="flex items-center justify-between">
+                                    <p className={`text-sm flex items-center gap-1.5 ${sty.title}`}>
+                                      <Icon className="w-3.5 h-3.5" />
+                                      {a.patient_name}
+                                    </p>
+                                    {a.appointment_code && <span className="text-[10px] font-mono text-slate-400">{a.appointment_code}</span>}
+                                  </div>
+                                  <p className={`text-xs mt-0.5 ${sty.subtitle}`}>{a.chief_complaint || sty.badgeLabel}</p>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </>
                       )
                     }
 
