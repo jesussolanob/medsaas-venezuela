@@ -407,7 +407,9 @@ export default function AgendaPage() {
       const apptObj = Array.isArray((c as any).appointments) ? (c as any).appointments[0] : (c as any).appointments
       const realStatus = (apptObj?.status as CalendarAppointment['status']) || 'confirmed'
       return {
-        id: c.id,
+        // RONDA 25: id = appointment_id si existe (asi matchea con confirmed/pending y NO se duplica
+        // en el calendario). Antes era c.id (consultation.id) → IDs distintos para el mismo evento.
+        id: c.appointment_id || c.id,
         appointment_id: c.appointment_id ?? null,
         patient_name: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).full_name : 'Paciente',
         date: dateToYMD(d),
@@ -476,11 +478,12 @@ export default function AgendaPage() {
         }
       })
 
-    // RONDA 24: deduplicar por id antes de setear el state — evita que la misma
-    // cita aparezca dos veces si por alguna razon viene en `consults` y en `confirmed`
-    // (ej. una consulta linkeada a una cita que ademas no fue filtrada por timing)
+    // RONDA 25: deduplicar por appointment_id (o id como fallback) — antes usaba
+    // solo `id` pero consultations tienen otro id distinto al appointment, por eso
+    // la misma cita aparecia 2 veces en el calendario.
     const merged = [...consultAppts, ...confirmedAppts]
-    const uniqueAppts = Array.from(new Map(merged.map(a => [a.id, a])).values())
+    const dedupKey = (a: CalendarAppointment) => a.appointment_id || a.id
+    const uniqueAppts = Array.from(new Map(merged.map(a => [dedupKey(a), a])).values())
     setAllAppointments(uniqueAppts)
 
     // Enrich pending appointments with package total_sessions
@@ -790,11 +793,12 @@ export default function AgendaPage() {
         patient_email: p.patient_email,
       }
     })
-    // RONDA 24: deduplicar por id ANTES de filtrar — pending y allAppointments
-    // pueden contener la misma cita con status distinto si hay race conditions
-    // (ej. el doctor confirma una cita scheduled mientras se recarga el state).
+    // RONDA 25: dedupe por appointment_id (con fallback a id) para que una cita
+    // que esta en `allAppointments` (como consultation) y en `pending` (como appointment)
+    // no aparezca 2 veces. consultAppts.id ya es appointment_id desde ronda 25.
     const merged = [...allAppointments, ...pendingAsAppts]
-    const unique = Array.from(new Map(merged.map(a => [a.id, a])).values())
+    const dedupKey = (a: CalendarAppointment) => a.appointment_id || a.id
+    const unique = Array.from(new Map(merged.map(a => [dedupKey(a), a])).values())
     return unique
       .filter(a => a.date === ymd)
       .filter(a => statusFilter === 'all' || a.status === statusFilter)
@@ -802,7 +806,35 @@ export default function AgendaPage() {
   }
 
   // Week appointments
-  const weekAppts = allAppointments
+  // RONDA 25: weekAppts antes era solo `allAppointments` que excluye status='scheduled'.
+  // Las citas creadas desde el booking publico nacen como 'scheduled' y nunca aparecian
+  // en la lista lateral "Citas de la semana". Ahora mergeamos con pendingAppointments
+  // y deduplicamos por appointment_id (o id) para evitar el bug del doble-render.
+  const weekAppts = (() => {
+    const pendingAsAppts: CalendarAppointment[] = pendingAppointments.map(p => {
+      const pd = new Date(p.scheduled_at)
+      const timeStr = toHHMM(pd)
+      return {
+        id: p.id,
+        appointment_id: p.id,
+        patient_name: p.patient_name,
+        date: dateToYMD(pd),
+        isoDate: p.scheduled_at,
+        time: timeStr,
+        endTime: addMinutes(timeStr, config.slot_duration),
+        chief_complaint: p.chief_complaint ?? undefined,
+        status: 'scheduled' as const,
+        source: 'appointment' as const,
+        appointment_code: p.appointment_code,
+        plan_name: p.plan_name ?? undefined,
+        plan_price: p.plan_price ?? undefined,
+        patient_phone: p.patient_phone,
+        patient_email: p.patient_email,
+      }
+    })
+    const merged = [...allAppointments, ...pendingAsAppts]
+    return Array.from(new Map(merged.map(a => [a.appointment_id || a.id, a])).values())
+  })()
     .filter(a => {
       const d = new Date(a.isoDate)
       return d >= weekDates[0] && d <= weekDates[6]
