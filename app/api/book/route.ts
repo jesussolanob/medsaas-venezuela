@@ -340,8 +340,16 @@ export async function POST(req: NextRequest) {
       })
 
       if (rpcErr) {
-        // Errores tipificados por la RPC — devolver 409/400 apropiados
         const msg = rpcErr.message || ''
+        const code = (rpcErr as any).code
+        // RONDA 23: double-booking detectado por unique index uniq_doctor_slot_active
+        if (code === '23505' || msg.includes('uniq_doctor_slot_active') || msg.includes('duplicate key')) {
+          return NextResponse.json(
+            { error: 'Este horario ya no está disponible, por favor elige otro.', code: 'slot_taken' },
+            { status: 409 }
+          )
+        }
+        // Errores tipificados por la RPC — devolver 409/400 apropiados
         if (msg.includes('PACKAGE_EXHAUSTED')) {
           return NextResponse.json({ error: 'Ya usaste todas las sesiones de tu paquete.' }, { status: 409 })
         }
@@ -390,9 +398,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (apptErr || !appt) {
+      // RONDA 23: detectar conflicto de slot (double-booking) por unique index
+      // uniq_doctor_slot_active. Postgres devuelve code 23505.
+      const code = (apptErr as any)?.code
+      if (code === '23505') {
+        return NextResponse.json(
+          { error: 'Este horario ya no está disponible, por favor elige otro.', code: 'slot_taken' },
+          { status: 409 }
+        )
+      }
       // AL-113 fix: ya NO hacemos "retry silencioso con columnas mínimas" —
       // eso tragaba columnas importantes (BCV, payment_method, package_id).
-      // Ahora fallamos explícitamente para que se detecte schema drift.
       return NextResponse.json(
         { error: `Error al guardar cita: ${apptErr?.message || 'Unknown'}` },
         { status: 500 }

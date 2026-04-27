@@ -482,7 +482,12 @@ export default function BookingClient({
 
       const result = await res.json()
       if (!res.ok || result.error) {
-        setError(result.error || 'Error al agendar cita')
+        // RONDA 23: mensaje claro cuando el slot ya esta tomado (code 23505 desde BD)
+        if (result.code === 'slot_taken' || res.status === 409) {
+          setError('Este horario ya no está disponible, por favor elige otro.')
+        } else {
+          setError(result.error || 'Error al agendar cita')
+        }
         setSubmitting(false)
         return
       }

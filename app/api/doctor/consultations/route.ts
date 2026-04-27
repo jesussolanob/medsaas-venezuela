@@ -106,7 +106,17 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single()
 
-    if (apptErr) return NextResponse.json({ error: apptErr.message }, { status: 500 })
+    if (apptErr) {
+      // RONDA 23: detectar double-booking del unique index uniq_doctor_slot_active
+      const code = (apptErr as any).code
+      if (code === '23505') {
+        return NextResponse.json(
+          { error: 'Ya tienes otra cita activa en ese horario. Elige otra hora.', code: 'slot_taken' },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json({ error: apptErr.message }, { status: 500 })
+    }
     linkedAppointmentId = newAppt.id
   } else {
     // Existing appointment — update status to confirmed

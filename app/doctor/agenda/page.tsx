@@ -1106,8 +1106,26 @@ export default function AgendaPage() {
                       )
                     }
 
-                    return timeSlots.map(slot => {
-                      const slotAppt = dayAppts.find(a => a.time === slot.time)
+                    // RONDA 23: una cita "calza" en un slot si su hora cae DENTRO del rango
+                    // [slot.time, slot.endTime). Antes el match era exacto por string ("09:00" === "09:00")
+                    // y citas a 09:30 con slots cada 60min desaparecian del dia.
+                    // Tambien identificamos las "huerfanas" (no caen en NINGUN slot) para mostrarlas aparte.
+                    const slotMinutes = (s: string) => { const [h,m] = s.split(':').map(Number); return h*60+m }
+                    const matchedApptIds = new Set<string>()
+                    const findApptForSlot = (slot: { time: string; endTime: string }) => {
+                      const slotStart = slotMinutes(slot.time)
+                      const slotEnd = slotMinutes(slot.endTime)
+                      return dayAppts.find(a => {
+                        const apptMin = slotMinutes(a.time)
+                        return apptMin >= slotStart && apptMin < slotEnd
+                      })
+                    }
+
+                    return (
+                      <>
+                      {timeSlots.map(slot => {
+                      const slotAppt = findApptForSlot(slot)
+                      if (slotAppt) matchedApptIds.add(slotAppt.id)
                       const isPast = new Date(`${dateToYMD(selectedDate)}T${slot.time}`) < new Date()
 
                       return (
@@ -1152,7 +1170,49 @@ export default function AgendaPage() {
                           </div>
                         </div>
                       )
-                    })
+                    })}
+
+                    {/* RONDA 23 — Citas que NO calzaron en ningun slot configurado.
+                        Se muestran al final para que el doctor las vea aunque su
+                        consultorio tenga otra cuadricula horaria. */}
+                    {(() => {
+                      const orphans = dayAppts.filter(a => !matchedApptIds.has(a.id))
+                      if (orphans.length === 0) return null
+                      return (
+                        <div className="bg-amber-50 border-t-2 border-amber-200">
+                          <div className="px-4 py-2 text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            Citas fuera de tu cuadrícula ({orphans.length})
+                          </div>
+                          {orphans.map(a => {
+                            const sty = getApptStyle(a.status)
+                            const Icon = sty.Icon
+                            return (
+                              <button key={a.id}
+                                onClick={() => setDetailAppt(a)}
+                                className={`w-full text-left p-4 border-t border-amber-100 hover:bg-amber-100 transition-colors flex items-center gap-3`}>
+                                <div className="w-20 text-center shrink-0">
+                                  <p className="text-sm font-bold text-slate-700">{a.time}</p>
+                                  <p className="text-[10px] text-slate-400">{a.endTime}</p>
+                                </div>
+                                <div className={`flex-1 rounded-lg p-3 border ${sty.card}`}>
+                                  <div className="flex items-center justify-between">
+                                    <p className={`text-sm flex items-center gap-1.5 ${sty.title}`}>
+                                      <Icon className="w-3.5 h-3.5" />
+                                      {a.patient_name}
+                                    </p>
+                                    {a.appointment_code && <span className="text-[10px] font-mono text-slate-400">{a.appointment_code}</span>}
+                                  </div>
+                                  <p className={`text-xs mt-0.5 ${sty.subtitle}`}>{a.chief_complaint || sty.badgeLabel}</p>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+                  </>
+                )
                   })()}
                 </div>
               </div>
