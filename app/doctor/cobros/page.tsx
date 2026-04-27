@@ -143,8 +143,10 @@ export default function CobrosPage() {
     ;(async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+      // RONDA 24: nombre unico por instancia para que StrictMode/HMR no cree
+      // dos suscripciones con el mismo nombre acumulando handlers.
       channel = supabase
-        .channel('cobros-payments-watch')
+        .channel(`cobros-payments-watch-${user.id}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },

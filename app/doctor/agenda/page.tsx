@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, XCircle, Settings, Stethoscope, Upload, Loader2, Package, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
+import { toLocalHHMM, toLocalYMD } from '@/lib/timezone'
 
 const toast = { success: (msg: string) => alert(msg), error: (msg: string) => alert(msg) }
 
@@ -169,8 +170,11 @@ function getMonthDates(year: number, month: number): (Date | null)[] {
   return cells
 }
 
+// RONDA 24: usar helpers de timezone forzando America/Caracas. Date.getHours()
+// devolveria la hora del NAVEGADOR del doctor — eso causaba que un domingo en
+// Caracas se viera como sabado si el doctor estaba en otra timezone.
 function toHHMM(date: Date): string {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  return toLocalHHMM(date)
 }
 
 function addMinutes(time: string, mins: number): string {
@@ -217,7 +221,9 @@ function isValidSlotTime(time: string, dayOfWeek: number, availSlots: Availabili
 }
 
 function dateToYMD(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // RONDA 24: forzar zona Caracas — antes usaba getFullYear/getMonth/getDate
+  // que dependen de la zona horaria del navegador.
+  return toLocalYMD(d)
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -470,7 +476,12 @@ export default function AgendaPage() {
         }
       })
 
-    setAllAppointments([...consultAppts, ...confirmedAppts])
+    // RONDA 24: deduplicar por id antes de setear el state — evita que la misma
+    // cita aparezca dos veces si por alguna razon viene en `consults` y en `confirmed`
+    // (ej. una consulta linkeada a una cita que ademas no fue filtrada por timing)
+    const merged = [...consultAppts, ...confirmedAppts]
+    const uniqueAppts = Array.from(new Map(merged.map(a => [a.id, a])).values())
+    setAllAppointments(uniqueAppts)
 
     // Enrich pending appointments with package total_sessions
     const pendingList = (pending ?? []) as PendingAppointment[]
@@ -779,7 +790,12 @@ export default function AgendaPage() {
         patient_email: p.patient_email,
       }
     })
-    return [...allAppointments, ...pendingAsAppts]
+    // RONDA 24: deduplicar por id ANTES de filtrar — pending y allAppointments
+    // pueden contener la misma cita con status distinto si hay race conditions
+    // (ej. el doctor confirma una cita scheduled mientras se recarga el state).
+    const merged = [...allAppointments, ...pendingAsAppts]
+    const unique = Array.from(new Map(merged.map(a => [a.id, a])).values())
+    return unique
       .filter(a => a.date === ymd)
       .filter(a => statusFilter === 'all' || a.status === statusFilter)
       .sort((a, b) => a.time.localeCompare(b.time))

@@ -195,7 +195,7 @@ export default function DoctorDashboard() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       channel = supabase
-        .channel('dashboard-payments-watch')
+        .channel(`dashboard-payments-watch-${user.id}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },

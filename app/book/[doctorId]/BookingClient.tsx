@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, AlertCircle,
@@ -194,9 +194,16 @@ export default function BookingClient({
   // Form
   const [form, setForm] = useState({ full_name: '', phone: '', email: '', cedula: '', notes: '', password: '', passwordConfirm: '' })
   const [submitting, setSubmitting] = useState(false)
+  // RONDA 24: ref sincrono para bloquear double-click antes de que el render propague.
+  // Se mantiene sincronizado con `submitting` via useEffect mas abajo.
+  const submittingRef = useRef(false)
   const [done, setDone] = useState(false)
   const [bookedCode, setBookedCode] = useState<string>('')
   const [error, setError] = useState('')
+
+  // RONDA 24: cualquier cambio de `submitting` libera el ref automaticamente.
+  // Asi no hay que repetir submittingRef.current = false en los 5 setSubmitting(false).
+  useEffect(() => { submittingRef.current = submitting }, [submitting])
 
   // Slot navigation
   const [weekOffset, setWeekOffset] = useState(0)
@@ -399,16 +406,23 @@ export default function BookingClient({
 
   // ── Submit ────────────────────────────────────────────────────────────────
   async function handleSubmit() {
+    // RONDA 24: guard SINCRONO contra doble-click. setSubmitting(true) tarda
+    // un render en propagar — si el usuario clickea 2 veces rapido, el segundo
+    // click ya paso las validaciones antes de ver `submitting=true`.
+    // submittingRef se actualiza al instante y bloquea el segundo click.
+    if (submittingRef.current) return
+    submittingRef.current = true
+
     setError('')
 
-    if (!selectedSlot) { setError('Selecciona una fecha y hora'); return }
-    if (!appointmentMode) { setError('Selecciona modalidad de consulta'); return }
-    if (!usingPackage && !useInsurance && !selectedPaymentMethod) { setError('Selecciona un método de pago'); return }
-    if (!usingPackage && useInsurance && !selectedInsurance) { setError('Selecciona tu seguro'); return }
+    if (!selectedSlot) { setError('Selecciona una fecha y hora'); submittingRef.current = false; return }
+    if (!appointmentMode) { setError('Selecciona modalidad de consulta'); submittingRef.current = false; return }
+    if (!usingPackage && !useInsurance && !selectedPaymentMethod) { setError('Selecciona un método de pago'); submittingRef.current = false; return }
+    if (!usingPackage && useInsurance && !selectedInsurance) { setError('Selecciona tu seguro'); submittingRef.current = false; return }
 
     // Guest validation
     if (!authUser && (!form.full_name.trim() || !form.email.trim())) {
-      setError('Nombre y email son requeridos'); return
+      setError('Nombre y email son requeridos'); submittingRef.current = false; return
     }
 
     setSubmitting(true)
@@ -508,6 +522,7 @@ export default function BookingClient({
       setError(err?.message || 'Error inesperado')
     }
     setSubmitting(false)
+    submittingRef.current = false  // RONDA 24: liberar guard
   }
 
   // ── Shared Font Style ────────────────────────────────────────────────────
