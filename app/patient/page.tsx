@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Calendar, FileText, MessageCircle, ArrowRight, Zap
+  Calendar, FileText, ArrowRight, Zap
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -112,7 +112,8 @@ export default function PatientHome() {
 
         setTotalAppointments(aptCount || 0)
 
-        // Get unread messages count
+        // RONDA 29: removido fetch de unread messages — el chat fue retirado del MVP.
+        // En su lugar contamos los informes disponibles (consultas con contenido).
         if (patients?.id) {
           const { data: patientIds } = await supabase
             .from('patients')
@@ -120,13 +121,14 @@ export default function PatientHome() {
             .eq('auth_user_id', authUser.id)
 
           if (patientIds && patientIds.length > 0) {
-            const { count: msgCount } = await supabase
-              .from('patient_messages')
+            const ids = patientIds.map(p => p.id)
+            const { count: reportsCount } = await supabase
+              .from('consultations')
               .select('*', { count: 'exact', head: true })
-              .eq('patient_id', patientIds[0].id)
-              .eq('direction', 'doctor_to_patient')
+              .in('patient_id', ids)
+              .or('notes.not.is.null,diagnosis.not.is.null,treatment.not.is.null')
 
-            setUnreadMessages(msgCount || 0)
+            setUnreadMessages(reportsCount || 0)  // reusamos el state como "informes disponibles"
           }
         }
 
@@ -256,20 +258,20 @@ export default function PatientHome() {
           </div>
         </Link>
 
-        {/* Unread messages */}
-        <Link href="/patient/messages">
+        {/* RONDA 29: card de Mensajes reemplazada por Informes — el chat fue retirado del MVP */}
+        <Link href="/patient/reports">
           <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 cursor-pointer h-full">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-slate-500 uppercase">Mensajes</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase">Informes</p>
                 <p className="text-3xl font-bold text-slate-900">{unreadMessages}</p>
               </div>
               <div className="p-2 rounded-lg bg-purple-50">
-                <MessageCircle className="w-5 h-5 text-purple-600" />
+                <FileText className="w-5 h-5 text-purple-600" />
               </div>
             </div>
             <div className="flex items-center gap-2 text-teal-600 text-sm font-medium">
-              Abrir chat <ArrowRight className="w-4 h-4" />
+              Ver informes <ArrowRight className="w-4 h-4" />
             </div>
           </div>
         </Link>
