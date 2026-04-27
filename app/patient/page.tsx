@@ -83,16 +83,18 @@ export default function PatientHome() {
 
         setUser(authUser)
 
-        // Get patient info
-        const { data: patients } = await supabase
+        // RONDA 30: el paciente puede tener UN row por cada doctor donde se atiende.
+        // Antes usabamos .single() y daba PGRST116 si tenia 2+. Ahora traemos todos
+        // y usamos el primero para el saludo. Para los conteos sumamos todos los IDs.
+        const { data: patientsRows } = await supabase
           .from('patients')
           .select('id, full_name')
           .eq('auth_user_id', authUser.id)
-          .single()
 
+        const patients = patientsRows && patientsRows.length > 0 ? patientsRows[0] : null
         if (patients) setPatient(patients)
 
-        // Get next appointment
+        // Get next appointment — maybeSingle para no romper si no hay citas futuras
         const { data: nextApt } = await supabase
           .from('appointments')
           .select('id, scheduled_at, plan_name, status')
@@ -100,7 +102,7 @@ export default function PatientHome() {
           .gte('scheduled_at', new Date().toISOString())
           .order('scheduled_at', { ascending: true })
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (nextApt) setNextAppointment(nextApt)
 

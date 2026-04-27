@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
+// RONDA 30: incluir medications de la tabla prescriptions vinculadas por consultation_id
+type Medication = { name?: string; dose?: string; frequency?: string; duration?: string; indications?: string }
+
 interface Report {
   id: string
   consultation_code: string
@@ -17,6 +20,7 @@ interface Report {
   doctor_name: string
   doctor_specialty: string | null
   doctor_title: string | null
+  medications: Medication[]
 }
 
 export default function ReportsPage() {
@@ -58,29 +62,45 @@ export default function ReportsPage() {
           .order('consultation_date', { ascending: false })
 
         if (consultationData && consultationData.length > 0) {
-          // Enhance with doctor info
-          const enhanced: Report[] = []
-          for (const consultation of consultationData) {
-            const { data: doctor } = await supabase
-              .from('profiles')
-              .select('full_name, specialty, professional_title')
-              .eq('id', consultation.doctor_id)
-              .single()
+          // RONDA 30: traer doctores Y prescriptions de cada consulta en bulk
+          const consultationIds = consultationData.map(c => c.id)
+          const doctorIds = [...new Set(consultationData.map(c => c.doctor_id))]
 
-            enhanced.push({
-              id: consultation.id,
-              consultation_code: consultation.consultation_code,
-              consultation_date: consultation.consultation_date,
-              chief_complaint: consultation.chief_complaint,
-              notes: consultation.notes,
-              diagnosis: consultation.diagnosis,
-              treatment: consultation.treatment,
-              doctor_id: consultation.doctor_id,
+          const [doctorsRes, prescriptionsRes] = await Promise.all([
+            supabase.from('profiles').select('id, full_name, specialty, professional_title').in('id', doctorIds),
+            supabase.from('prescriptions').select('consultation_id, medications').in('consultation_id', consultationIds),
+          ])
+
+          const doctorMap = new Map((doctorsRes.data || []).map(d => [d.id, d]))
+          // Una consulta puede tener varias recetas (receta principal + examenes etc.)
+          // Aqui solo nos interesan los medicamentos con nombre, no los examenes.
+          const prescriptionsByConsult = new Map<string, Medication[]>()
+          for (const p of (prescriptionsRes.data || [])) {
+            const meds = (Array.isArray(p.medications) ? p.medications : []) as Medication[]
+            // Filtrar solo los que tienen NAME y NO son examenes (los examenes guardan nombre del examen, no medicamento)
+            const realMeds = meds.filter(m => m.name && m.name.trim().length > 0)
+            if (realMeds.length === 0) continue
+            const existing = prescriptionsByConsult.get(p.consultation_id) || []
+            prescriptionsByConsult.set(p.consultation_id, [...existing, ...realMeds])
+          }
+
+          const enhanced: Report[] = consultationData.map(c => {
+            const doctor = doctorMap.get(c.doctor_id)
+            return {
+              id: c.id,
+              consultation_code: c.consultation_code,
+              consultation_date: c.consultation_date,
+              chief_complaint: c.chief_complaint,
+              notes: c.notes,
+              diagnosis: c.diagnosis,
+              treatment: c.treatment,
+              doctor_id: c.doctor_id,
               doctor_name: doctor?.full_name || 'Doctor',
               doctor_specialty: doctor?.specialty || null,
               doctor_title: doctor?.professional_title || null,
-            })
-          }
+              medications: prescriptionsByConsult.get(c.id) || [],
+            }
+          })
           setReports(enhanced)
         }
 
@@ -221,7 +241,7 @@ export default function ReportsPage() {
                     </div>
                   )}
 
-                  {/* Treatment Plan */}
+                  {/* Plan de Tratamiento — texto libre del informe */}
                   {report.treatment && (
                     <div>
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
@@ -231,6 +251,35 @@ export default function ReportsPage() {
                         className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
                         dangerouslySetInnerHTML={{ __html: report.treatment }}
                       />
+                    </div>
+                  )}
+
+                  {/* RONDA 30 — Medicamentos recetados con NOMBRE + dosis + frecuencia.
+                      Antes el paciente solo veia "50mg 2 veces..." porque el doctor escribia
+                      la dosis en el campo `treatment` y el nombre quedaba en otra tabla. */}
+                  {report.medications.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Medicamentos recetados ({report.medications.length})
+                      </p>
+                      <div className="space-y-2">
+                        {report.medications.map((m, i) => (
+                          <div key={i} className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                            <p className="font-bold text-sm text-teal-900 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                              {m.name}
+                            </p>
+                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 ml-6.5 text-xs text-teal-800">
+                              {m.dose && <span><strong>Dosis:</strong> {m.dose}</span>}
+                              {m.frequency && <span><strong>Frecuencia:</strong> {m.frequency}</span>}
+                              {m.duration && <span><strong>Duración:</strong> {m.duration}</span>}
+                            </div>
+                            {m.indications && (
+                              <p className="text-xs text-teal-700 italic mt-1.5 ml-6">{m.indications}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
