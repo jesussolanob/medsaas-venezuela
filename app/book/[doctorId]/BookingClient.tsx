@@ -43,18 +43,63 @@ function planTotal(plan: PricingPlan): number {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function generateSlots(): Slot[] {
+
+// RONDA 27: genera slots respetando el schedule del consultorio si existe.
+// Sin consultorio → comportamiento generico (8-12 + 14-18 cada 30min, todos los dias menos domingo).
+// Con consultorio(s) → usa schedule[day].enabled / start / end + slot_duration + buffer_minutes
+//   y combina TODOS los offices habilitados ese dia (ej. doctor con 2 sedes).
+const GENERIC_TIMES = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+                       '14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30']
+
+// Helper para generar slots HH:MM entre start-end con paso (slot_duration + buffer)
+function timesBetween(start: string, end: string, slotMin: number, bufferMin: number): string[] {
+  const out: string[] = []
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  if (isNaN(sh) || isNaN(eh)) return []
+  const startTotal = sh * 60 + (sm || 0)
+  const endTotal = eh * 60 + (em || 0)
+  const step = Math.max(15, (slotMin || 30) + (bufferMin || 0))
+  for (let t = startTotal; t + (slotMin || 30) <= endTotal; t += step) {
+    const h = String(Math.floor(t / 60)).padStart(2, '0')
+    const m = String(t % 60).padStart(2, '0')
+    out.push(`${h}:${m}`)
+  }
+  return out
+}
+
+function generateSlots(offices: DoctorOffice[] = []): Slot[] {
   const slots: Slot[] = []
-  const times = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-                 '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30']
   const today = new Date()
+  const hasOffices = offices.length > 0
+
   for (let d = 1; d <= 21; d++) {
     const date = new Date(today)
     date.setDate(today.getDate() + d)
-    if (date.getDay() === 0) continue
+    const jsDay = date.getDay()                          // 0=dom, 1=lun..6=sab
+    const scheduleDay = jsDay === 0 ? 6 : jsDay - 1      // formato BD: 0=lun..6=dom
     const dateStr = date.toISOString().split('T')[0]
     const dayLabel = date.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'short' })
-    times.forEach(t => slots.push({ date: dateStr, time: t, label: dayLabel }))
+
+    if (hasOffices) {
+      // Buscar TODOS los offices que atienden ese dia y unir sus slots
+      const enabledOffices = offices.filter(o =>
+        o.schedule?.some(s => s.day === scheduleDay && s.enabled)
+      )
+      if (enabledOffices.length === 0) continue   // ningun consultorio atiende ese dia
+
+      const dayTimes = new Set<string>()
+      for (const off of enabledOffices) {
+        const sched = off.schedule!.find(s => s.day === scheduleDay && s.enabled)!
+        const tt = timesBetween(sched.start, sched.end, off.slot_duration ?? 30, off.buffer_minutes ?? 0)
+        tt.forEach(t => dayTimes.add(t))
+      }
+      Array.from(dayTimes).sort().forEach(t => slots.push({ date: dateStr, time: t, label: dayLabel }))
+    } else {
+      // Sin consultorio: cualquier dia (excepto domingo) con horarios genericos
+      if (jsDay === 0) continue
+      GENERIC_TIMES.forEach(t => slots.push({ date: dateStr, time: t, label: dayLabel }))
+    }
   }
   return slots
 }
@@ -208,7 +253,9 @@ export default function BookingClient({
   // Slot navigation
   const [weekOffset, setWeekOffset] = useState(0)
 
-  const allSlots = generateSlots()
+  // RONDA 27: pasamos los offices del doctor para que generateSlots respete
+  // sus dias habilitados, horarios y duracion entre citas. Sin offices → generic.
+  const allSlots = generateSlots(doctorOffices)
   const grouped = groupByDate(allSlots)
   const dates = Object.keys(grouped).sort()
   const weekDates = dates.slice(weekOffset * 5, weekOffset * 5 + 5)
