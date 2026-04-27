@@ -350,6 +350,52 @@ export default function AgendaPage() {
           })))
         }
       }
+
+      // RONDA 28: ADEMAS leer doctor_offices.schedule. Si el doctor configuro su
+      // consultorio (la fuente moderna) y no doctor_availability (legacy), hay que
+      // mergear ambos para que vista day no diga "no hay horarios" cuando si los hay.
+      const { data: offices } = await supabase
+        .from('doctor_offices')
+        .select('schedule, slot_duration, buffer_minutes')
+        .eq('doctor_id', user.id)
+        .eq('is_active', true)
+
+      if (offices && offices.length > 0) {
+        const officeSlots: AvailabilitySlot[] = []
+        offices.forEach(off => {
+          const schedule = (off as any).schedule as { day: number; start: string; end: string; enabled: boolean }[] | null
+          if (!Array.isArray(schedule)) return
+          schedule.forEach(s => {
+            if (s.enabled && s.start && s.end) {
+              officeSlots.push({
+                id: `office-${s.day}-${s.start}`,
+                day_of_week: s.day,           // 0=lun..6=dom — mismo formato que doctor_availability
+                start_time: s.start,
+                end_time: s.end,
+                is_enabled: true,
+              } as AvailabilitySlot)
+            }
+          })
+        })
+
+        if (officeSlots.length > 0) {
+          setAvailSlots(prev => {
+            // Mergear sin duplicar dias: si ya hay slot para day_of_week en prev, dejar el de prev.
+            const existingDays = new Set(prev.filter(s => s.is_enabled).map(s => s.day_of_week))
+            const newOnes = officeSlots.filter(o => !existingDays.has(o.day_of_week))
+            return [...prev, ...newOnes]
+          })
+          // Tambien tomar slot_duration y buffer del primer office si config aun era default
+          const firstOffice = offices[0] as any
+          if (firstOffice.slot_duration) {
+            setConfig(prev => ({
+              ...prev,
+              slot_duration: prev.slot_duration === 30 ? firstOffice.slot_duration : prev.slot_duration,
+              buffer_minutes: prev.buffer_minutes === 0 && firstOffice.buffer_minutes ? firstOffice.buffer_minutes : prev.buffer_minutes,
+            }))
+          }
+        }
+      }
     } catch { /* use defaults */ }
 
     // Load patients for "nueva consulta" modal

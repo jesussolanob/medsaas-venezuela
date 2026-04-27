@@ -78,7 +78,10 @@ function generateSlots(offices: DoctorOffice[] = []): Slot[] {
     date.setDate(today.getDate() + d)
     const jsDay = date.getDay()                          // 0=dom, 1=lun..6=sab
     const scheduleDay = jsDay === 0 ? 6 : jsDay - 1      // formato BD: 0=lun..6=dom
-    const dateStr = date.toISOString().split('T')[0]
+    // RONDA 28: dateStr en formato YYYY-MM-DD usando Caracas, NO UTC.
+    // Antes usaba date.toISOString() que daba el dia UTC y corria fechas
+    // cuando se generaba en horarios nocturnos (ej. 23h Caracas = 03h UTC dia siguiente).
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
     const dayLabel = date.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'short' })
 
     if (hasOffices) {
@@ -96,8 +99,9 @@ function generateSlots(offices: DoctorOffice[] = []): Slot[] {
       }
       Array.from(dayTimes).sort().forEach(t => slots.push({ date: dateStr, time: t, label: dayLabel }))
     } else {
-      // Sin consultorio: cualquier dia (excepto domingo) con horarios genericos
-      if (jsDay === 0) continue
+      // RONDA 28: sin consultorio → TODOS los 7 dias de la semana habilitados
+      // (antes excluia domingo por default — quitado a peticion del usuario).
+      // El doctor puede crear su consultorio para limitar horarios.
       GENERIC_TIMES.forEach(t => slots.push({ date: dateStr, time: t, label: dayLabel }))
     }
   }
@@ -261,7 +265,8 @@ export default function BookingClient({
   const weekDates = dates.slice(weekOffset * 5, weekOffset * 5 + 5)
 
   const isSlotBooked = (date: string, time: string): boolean => {
-    const slotISO = new Date(`${date}T${time}:00`).toISOString()
+    // RONDA 28: forzar Caracas para comparar correctamente con bookedSlots de BD
+    const slotISO = new Date(`${date}T${time}:00-04:00`).toISOString()
     const slotTime = new Date(slotISO).getTime()
     const bufferMs = 30 * 60 * 1000
     return bookedSlots.some(bookedISO => {
@@ -517,7 +522,12 @@ export default function BookingClient({
         }
       }
 
-      const dateTime = new Date(`${selectedSlot.date}T${selectedSlot.time}:00`)
+      // RONDA 28: forzar Caracas con offset explicito -04:00.
+      // Antes usaba `new Date('YYYY-MM-DDTHH:mm:00')` sin offset, que JS interpreta
+      // como zona LOCAL del navegador. Si el paciente estaba en otra zona, la cita
+      // se guardaba en BD con un dia equivocado (ej. el doctor veia sabado en lugar
+      // del domingo seleccionado). Caracas no tiene DST → offset siempre -04:00.
+      const dateTime = new Date(`${selectedSlot.date}T${selectedSlot.time}:00-04:00`)
       const res = await fetch('/api/book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -639,7 +649,7 @@ export default function BookingClient({
         {selectedSlot && (
           <a
             href={(() => {
-              const start = new Date(`${selectedSlot.date}T${selectedSlot.time}:00`)
+              const start = new Date(`${selectedSlot.date}T${selectedSlot.time}:00-04:00`)
               const end = new Date(start.getTime() + 30 * 60000)
               const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
               const title = encodeURIComponent(`Consulta con ${doctor.full_name}`)
