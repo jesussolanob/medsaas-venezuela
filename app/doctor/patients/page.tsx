@@ -1152,6 +1152,43 @@ export default function PatientsPage() {
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm resize-none focus:border-teal-400 outline-none"
                 />
               </div>
+              {/* RONDA 41: opción de enviar SOLO comentario sin adjuntar */}
+              <button
+                onClick={async () => {
+                  if (!doctorUploadDesc.trim()) {
+                    alert('Escribe un comentario o adjunta un archivo')
+                    return
+                  }
+                  const { replyWithComment } = await import('@/lib/shared-files')
+                  const supabase = createClient()
+                  const { error } = await replyWithComment(supabase, {
+                    doctorId,
+                    patientId: selected.id,
+                    title: doctorUploadTitle.trim() || 'Comentario del doctor',
+                    description: doctorUploadDesc.trim(),
+                    createdBy: 'doctor',
+                  })
+                  if (error) {
+                    alert(`Error: ${error}`)
+                  } else {
+                    setDoctorUploadTitle('')
+                    setDoctorUploadDesc('')
+                    setDoctorUploadModal(false)
+                    await loadSharedFiles(selected.id)
+                  }
+                }}
+                disabled={!doctorUploadDesc.trim()}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
+              >
+                <Send className="w-4 h-4" /> Enviar solo comentario
+              </button>
+
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <div className="flex-1 border-t border-slate-200"></div>
+                <span>o adjuntar archivo</span>
+                <div className="flex-1 border-t border-slate-200"></div>
+              </div>
+
               <UploadDropZone
                 onUpload={async (file) => {
                   const { uploadSharedFile } = await import('@/lib/shared-files')

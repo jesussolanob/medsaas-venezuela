@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * /patient/seguimiento — RONDA 40
+ * /patient/seguimiento — RONDA 40 + RONDA 41
  *
  * Vista del paciente del modulo "Seguimiento del Paciente" (Shared Health Space).
  * Reemplaza la vieja /patient/prescriptions y consolida en una sola pestaña:
@@ -9,18 +9,25 @@
  *   - Archivos compartidos (subidos por el doctor o el paciente)
  *   - Recetas (legacy, mostradas como un tipo de archivo)
  *   - Boton grande para "Adjuntar resultado/documento"
+ *
+ * RONDA 41:
+ *   - Soporte multi-doctor: si el paciente esta con varios doctores, selector
+ *     "Todos / Dr. X / Dr. Y" para filtrar el feed
+ *   - Permitir respuesta SOLO con comentario (sin archivo obligatorio)
+ *   - Header dinamico segun el doctor seleccionado
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  FolderHeart, FileText, Image as ImageIcon, Pill, Clock, CheckCircle,
-  Upload, ExternalLink, Loader2, Download, AlertCircle
+  FolderHeart, FileText, Image as ImageIcon, Pill, Clock,
+  Upload, ExternalLink, Loader2, MessageSquare, Send, Check, Stethoscope
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import UploadDropZone from '@/components/shared/UploadDropZone'
 import {
   uploadSharedFile,
+  replyWithComment,
   markAllReadByPatient,
   type SharedFile,
 } from '@/lib/shared-files'
@@ -34,17 +41,26 @@ type LegacyPrescription = {
   created_at: string
 }
 
+type DoctorOption = {
+  id: string
+  patient_id: string  // el patient_id del paciente con ESE doctor
+  full_name: string
+  professional_title: string | null
+  specialty: string | null
+}
+
 export default function PatientSeguimientoPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [patientId, setPatientId] = useState<string | null>(null)
-  const [doctorId, setDoctorId] = useState<string | null>(null)
-  const [doctorName, setDoctorName] = useState<string>('')
+  // RONDA 41: ahora trabajamos con N doctores
+  const [doctors, setDoctors] = useState<DoctorOption[]>([])
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | 'all'>('all')
   const [files, setFiles] = useState<SharedFile[]>([])
   const [legacyPrescriptions, setLegacyPrescriptions] = useState<LegacyPrescription[]>([])
   const [uploadModal, setUploadModal] = useState<{ open: boolean; replyTo?: SharedFile | null }>({ open: false })
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -56,8 +72,7 @@ export default function PatientSeguimientoPage() {
         return
       }
 
-      // Trae el paciente (puede haber 1+ filas si el paciente esta con varios doctores;
-      // en MVP tomamos el primero)
+      // RONDA 41: traer TODOS los patient rows del paciente (uno por doctor)
       const { data: patientRows } = await supabase
         .from('patients')
         .select('id, doctor_id')
@@ -66,16 +81,28 @@ export default function PatientSeguimientoPage() {
         setLoading(false)
         return
       }
-      const p = patientRows[0]
-      setPatientId(p.id)
-      setDoctorId(p.doctor_id)
 
-      // Nombre del doctor
-      const { data: doc } = await supabase
-        .from('profiles').select('full_name, professional_title').eq('id', p.doctor_id).single()
-      if (doc) setDoctorName(`${(doc as any).professional_title || ''} ${doc.full_name}`.trim())
+      // Enriquecer con info de cada doctor
+      const doctorIds = [...new Set(patientRows.map(p => p.doctor_id))]
+      const { data: docsData } = await supabase
+        .from('profiles')
+        .select('id, full_name, professional_title, specialty')
+        .in('id', doctorIds)
+      const docsMap = new Map((docsData || []).map(d => [d.id, d]))
 
-      // Trae shared_files de TODOS los patient ids del usuario (multi-doctor support)
+      const docOptions: DoctorOption[] = patientRows.map(pr => {
+        const d = docsMap.get(pr.doctor_id)
+        return {
+          id: pr.doctor_id,
+          patient_id: pr.id,
+          full_name: d?.full_name || 'Doctor',
+          professional_title: (d as any)?.professional_title || null,
+          specialty: (d as any)?.specialty || null,
+        }
+      })
+      setDoctors(docOptions)
+
+      // Trae shared_files de TODOS los patient_ids del usuario (multi-doctor)
       const patientIds = patientRows.map(pr => pr.id)
       const { data: sharedRows } = await supabase
         .from('shared_files')
@@ -84,7 +111,7 @@ export default function PatientSeguimientoPage() {
         .order('created_at', { ascending: false })
       setFiles((sharedRows || []) as SharedFile[])
 
-      // Trae prescriptions legacy (recetas viejas que aun no estan migradas)
+      // Trae prescriptions legacy (recetas viejas)
       const { data: rxRows } = await supabase
         .from('prescriptions')
         .select('id, doctor_id, medications, notes, created_at')
@@ -92,8 +119,10 @@ export default function PatientSeguimientoPage() {
         .order('created_at', { ascending: false })
       setLegacyPrescriptions((rxRows || []) as LegacyPrescription[])
 
-      // Marcar como leido todo lo que el paciente abrio en esta vista
-      await markAllReadByPatient(supabase, { patientId: p.id })
+      // Marcar como leidos TODOS los patient_ids del paciente
+      for (const pid of patientIds) {
+        await markAllReadByPatient(supabase, { patientId: pid })
+      }
     } catch (err) {
       console.error('[seguimiento] error:', err)
     } finally {
@@ -103,48 +132,131 @@ export default function PatientSeguimientoPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Realtime: si el doctor sube algo o crea instruccion, refrescar
+  // Realtime: si CUALQUIERA de los doctores sube algo, refrescar
   useEffect(() => {
-    if (!patientId) return
+    if (doctors.length === 0) return
     const supabase = createClient()
+    const patientIds = doctors.map(d => d.patient_id)
     const channel = supabase
-      .channel(`patient-seguimiento-${patientId}-${Math.random().toString(36).slice(2, 8)}`)
+      .channel(`patient-seguimiento-multi-${Math.random().toString(36).slice(2, 8)}`)
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'shared_files', filter: `patient_id=eq.${patientId}` },
-        () => loadData()
+        { event: '*', schema: 'public', table: 'shared_files' },
+        (payload: any) => {
+          const pid = payload.new?.patient_id || payload.old?.patient_id
+          if (pid && patientIds.includes(pid)) loadData()
+        }
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [patientId, loadData])
-
-  async function handleUpload(file: File) {
-    if (!patientId || !doctorId) throw new Error('Sin paciente cargado')
-    const supabase = createClient()
-    const { error } = await uploadSharedFile(supabase, {
-      file,
-      doctorId,
-      patientId,
-      title: uploadTitle.trim() || file.name,
-      description: uploadDescription.trim() || null,
-      createdBy: 'patient',
-      parentTaskId: uploadModal.replyTo?.id || null,
-    })
-    if (error) throw new Error(error)
-    setUploadTitle('')
-    setUploadDescription('')
-    setUploadModal({ open: false })
-    await loadData()
-  }
+  }, [doctors, loadData])
 
   // ── DERIVADOS ────────────────────────────────────────────────────────────
-  const pendingTasks = files.filter(f => f.category === 'instruction' && f.status === 'pending')
-  const completedFiles = files.filter(f => f.file_url)
+
+  // Filtrar por doctor seleccionado (o "Todos")
+  const visibleFiles = useMemo(() => {
+    if (selectedDoctorId === 'all') return files
+    return files.filter(f => f.doctor_id === selectedDoctorId)
+  }, [files, selectedDoctorId])
+
+  const visibleLegacyRx = useMemo(() => {
+    if (selectedDoctorId === 'all') return legacyPrescriptions
+    return legacyPrescriptions.filter(rx => rx.doctor_id === selectedDoctorId)
+  }, [legacyPrescriptions, selectedDoctorId])
+
+  const pendingTasks = visibleFiles.filter(f => f.category === 'instruction' && f.status === 'pending')
+  const completedFiles = visibleFiles.filter(f => f.file_url || (f.category === 'instruction' && f.status === 'completed'))
+
+  // Mapa rápido para mostrar a qué doctor pertenece cada archivo
+  const doctorById = useMemo(() => {
+    const m = new Map<string, DoctorOption>()
+    for (const d of doctors) m.set(d.id, d)
+    return m
+  }, [doctors])
+
+  function getDoctorName(doctorId: string): string {
+    const d = doctorById.get(doctorId)
+    if (!d) return 'doctor'
+    return `${d.professional_title || ''} ${d.full_name}`.trim()
+  }
+
+  // ── HANDLERS ─────────────────────────────────────────────────────────────
+
+  // Determina a QUÉ doctor va dirigida la respuesta del paciente
+  function resolveTargetDoctor(replyTo: SharedFile | null | undefined): { doctorId: string; patientId: string } | null {
+    if (replyTo) {
+      // Si es respuesta a una tarea, ir al doctor de la tarea
+      const d = doctors.find(d => d.id === replyTo.doctor_id)
+      if (d) return { doctorId: d.id, patientId: d.patient_id }
+    }
+    // Si NO es respuesta y solo hay 1 doctor, usarlo
+    if (doctors.length === 1) return { doctorId: doctors[0].id, patientId: doctors[0].patient_id }
+    // Si hay filtro por doctor, usar ese
+    if (selectedDoctorId !== 'all') {
+      const d = doctors.find(d => d.id === selectedDoctorId)
+      if (d) return { doctorId: d.id, patientId: d.patient_id }
+    }
+    return null  // ambiguo: el usuario debe elegir
+  }
+
+  async function handleSubmit(file: File | null) {
+    const target = resolveTargetDoctor(uploadModal.replyTo)
+    if (!target) {
+      alert('Selecciona un doctor primero (filtro arriba) o responde directamente a una tarea.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const supabase = createClient()
+      if (file) {
+        // Upload con archivo
+        const { error } = await uploadSharedFile(supabase, {
+          file,
+          doctorId: target.doctorId,
+          patientId: target.patientId,
+          title: uploadTitle.trim() || file.name,
+          description: uploadDescription.trim() || null,
+          createdBy: 'patient',
+          parentTaskId: uploadModal.replyTo?.id || null,
+        })
+        if (error) throw new Error(error)
+      } else {
+        // Solo comentario
+        const { error } = await replyWithComment(supabase, {
+          doctorId: target.doctorId,
+          patientId: target.patientId,
+          title: uploadTitle.trim() || (uploadModal.replyTo ? `Re: ${uploadModal.replyTo.title}` : 'Comentario'),
+          description: uploadDescription.trim(),
+          createdBy: 'patient',
+          parentTaskId: uploadModal.replyTo?.id || null,
+        })
+        if (error) throw new Error(error)
+      }
+      setUploadTitle('')
+      setUploadDescription('')
+      setUploadModal({ open: false })
+      await loadData()
+    } catch (err: any) {
+      alert(`Error: ${err?.message || 'no se pudo enviar'}`)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   // ── RENDER ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="w-6 h-6 animate-spin text-teal-500" />
+      </div>
+    )
+  }
+
+  if (doctors.length === 0) {
+    return (
+      <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
+        <FolderHeart className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+        <p className="text-slate-500 font-medium">Aún no tienes consultas con ningún médico</p>
+        <p className="text-sm text-slate-400 mt-1">Tu seguimiento aparecerá aquí cuando agendes con un doctor.</p>
       </div>
     )
   }
@@ -158,7 +270,9 @@ export default function PatientSeguimientoPage() {
             <FolderHeart className="w-6 h-6 text-teal-600" /> Mi Seguimiento
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Tareas y archivos compartidos con {doctorName || 'tu médico'}.
+            {doctors.length === 1
+              ? `Tareas y archivos compartidos con ${getDoctorName(doctors[0].id)}.`
+              : `Tareas y archivos con tus ${doctors.length} médicos.`}
           </p>
         </div>
         <button
@@ -169,15 +283,56 @@ export default function PatientSeguimientoPage() {
         </button>
       </div>
 
-      {/* CTA grande: subir archivo (mobile) */}
+      {/* RONDA 41: Selector de doctor (solo si hay >1) */}
+      {doctors.length > 1 && (
+        <div className="bg-white border border-slate-200 rounded-xl p-2 flex items-center gap-1 overflow-x-auto">
+          <button
+            onClick={() => setSelectedDoctorId('all')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${
+              selectedDoctorId === 'all'
+                ? 'bg-teal-500 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Stethoscope className="w-3.5 h-3.5" /> Todos
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              selectedDoctorId === 'all' ? 'bg-white/20' : 'bg-slate-100'
+            }`}>{files.length}</span>
+          </button>
+          {doctors.map(d => {
+            const count = files.filter(f => f.doctor_id === d.id).length
+            const isActive = selectedDoctorId === d.id
+            return (
+              <button
+                key={d.id}
+                onClick={() => setSelectedDoctorId(d.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${
+                  isActive
+                    ? 'bg-teal-500 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {getDoctorName(d.id)}
+                {count > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    isActive ? 'bg-white/20' : 'bg-slate-100'
+                  }`}>{count}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* CTA grande mobile */}
       <button
         onClick={() => setUploadModal({ open: true })}
         className="sm:hidden w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-teal-500 hover:bg-teal-600 text-white text-base font-bold rounded-xl shadow-sm transition-colors"
       >
-        <Upload className="w-5 h-5" /> Adjuntar resultado / documento
+        <Upload className="w-5 h-5" /> Adjuntar / Comentar
       </button>
 
-      {/* Tareas pendientes del doctor */}
+      {/* Tareas pendientes */}
       {pendingTasks.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5">
           <div className="flex items-center gap-2 mb-3">
@@ -196,17 +351,18 @@ export default function PatientSeguimientoPage() {
                       <p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">{task.description}</p>
                     )}
                     <p className="text-[10px] text-slate-400 mt-2">
+                      {doctors.length > 1 && <span className="font-semibold">{getDoctorName(task.doctor_id)} · </span>}
                       Solicitado el {new Date(task.created_at).toLocaleDateString('es-VE')}
                     </p>
                   </div>
                   <button
                     onClick={() => {
                       setUploadModal({ open: true, replyTo: task })
-                      setUploadTitle(task.title)
+                      setUploadTitle(`Re: ${task.title}`)
                     }}
                     className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors"
                   >
-                    <Upload className="w-3.5 h-3.5" /> Subir
+                    <Send className="w-3.5 h-3.5" /> Responder
                   </button>
                 </div>
               </div>
@@ -215,48 +371,49 @@ export default function PatientSeguimientoPage() {
         </div>
       )}
 
-      {/* Archivos compartidos */}
+      {/* Archivos / comentarios compartidos */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-900">
-            Archivos compartidos ({completedFiles.length})
+            Historial compartido ({completedFiles.length})
           </h2>
         </div>
 
         {completedFiles.length === 0 ? (
           <div className="text-center py-12 px-4">
             <FolderHeart className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm text-slate-500 font-medium">No hay archivos aún</p>
+            <p className="text-sm text-slate-500 font-medium">Sin actividad aún</p>
             <p className="text-xs text-slate-400 mt-1">
-              Tus exámenes, fotos y documentos compartidos aparecerán aquí.
+              Tus archivos y mensajes con el médico aparecerán aquí.
             </p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {completedFiles.map(f => (
-              <FileRow key={f.id} file={f} doctorName={doctorName} />
+              <FileRow key={f.id} file={f} doctorName={getDoctorName(f.doctor_id)} showDoctor={doctors.length > 1} />
             ))}
           </div>
         )}
       </div>
 
-      {/* Recetas legacy (compatibilidad con datos antes del seguimiento) */}
-      {legacyPrescriptions.length > 0 && (
+      {/* Recetas legacy */}
+      {visibleLegacyRx.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center gap-2">
             <Pill className="w-4 h-4 text-teal-500" />
             <h2 className="text-sm font-bold text-slate-900">
-              Recetas previas ({legacyPrescriptions.length})
+              Recetas previas ({visibleLegacyRx.length})
             </h2>
           </div>
           <div className="divide-y divide-slate-100">
-            {legacyPrescriptions.map(rx => {
+            {visibleLegacyRx.map(rx => {
               const meds = (Array.isArray(rx.medications) ? rx.medications : []).filter(m => m.name)
               if (meds.length === 0) return null
               return (
                 <div key={rx.id} className="p-4 sm:p-5">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs text-slate-500">
+                      {doctors.length > 1 && <span className="font-semibold">{getDoctorName(rx.doctor_id)} · </span>}
                       {new Date(rx.created_at).toLocaleDateString('es-VE')}
                     </p>
                   </div>
@@ -282,72 +439,38 @@ export default function PatientSeguimientoPage() {
         </div>
       )}
 
-      {/* Modal de subida */}
+      {/* Modal de subida / comentario */}
       {uploadModal.open && (
-        <div
-          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-3"
-          onClick={() => setUploadModal({ open: false })}
-        >
-          <div
-            className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900">
-                {uploadModal.replyTo ? `Responder: ${uploadModal.replyTo.title}` : 'Adjuntar archivo'}
-              </h3>
-              <button
-                onClick={() => setUploadModal({ open: false })}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Título
-                </label>
-                <input
-                  type="text"
-                  value={uploadTitle}
-                  onChange={e => setUploadTitle(e.target.value)}
-                  placeholder="Ej: Hematología completa, Foto del ejercicio..."
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:border-teal-400 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Comentario (opcional)
-                </label>
-                <textarea
-                  value={uploadDescription}
-                  onChange={e => setUploadDescription(e.target.value)}
-                  placeholder="Notas para tu médico..."
-                  rows={3}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm resize-none focus:border-teal-400 outline-none"
-                />
-              </div>
-              <UploadDropZone
-                onUpload={handleUpload}
-                label="Suelta o selecciona el archivo"
-                helperText="PDF, JPG o PNG. Máximo 20MB."
-              />
-            </div>
-          </div>
-        </div>
+        <UploadOrCommentModal
+          replyTo={uploadModal.replyTo || null}
+          doctors={doctors}
+          selectedDoctorId={selectedDoctorId !== 'all' ? selectedDoctorId : null}
+          uploadTitle={uploadTitle}
+          uploadDescription={uploadDescription}
+          submitting={submitting}
+          onTitleChange={setUploadTitle}
+          onDescriptionChange={setUploadDescription}
+          onClose={() => setUploadModal({ open: false })}
+          onSubmit={handleSubmit}
+        />
       )}
     </div>
   )
 }
 
-function FileRow({ file, doctorName }: { file: SharedFile; doctorName: string }) {
+// ─── COMPONENTES ──────────────────────────────────────────────────────────
+
+function FileRow({ file, doctorName, showDoctor }: { file: SharedFile; doctorName: string; showDoctor: boolean }) {
   const isImage = file.file_type && ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(file.file_type)
-  const Icon = isImage ? ImageIcon : FileText
+  const hasFile = !!file.file_url
+  const Icon = !hasFile ? MessageSquare : (isImage ? ImageIcon : FileText)
 
   return (
     <div className="p-4 sm:p-5 flex items-start gap-3">
-      <div className={`shrink-0 p-2.5 rounded-lg ${isImage ? 'bg-teal-50 text-teal-600' : 'bg-red-50 text-red-600'}`}>
+      <div className={`shrink-0 p-2.5 rounded-lg ${
+        !hasFile ? 'bg-slate-100 text-slate-600' :
+        isImage ? 'bg-teal-50 text-teal-600' : 'bg-red-50 text-red-600'
+      }`}>
         <Icon className="w-5 h-5" />
       </div>
       <div className="flex-1 min-w-0">
@@ -356,20 +479,26 @@ function FileRow({ file, doctorName }: { file: SharedFile; doctorName: string })
           <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
             file.created_by === 'doctor' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
           }`}>
-            {file.created_by === 'doctor' ? `De ${doctorName || 'doctor'}` : 'Tú lo subiste'}
+            {file.created_by === 'doctor' ? `De ${doctorName || 'doctor'}` : 'Tú'}
           </span>
+          {!hasFile && (
+            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+              Comentario
+            </span>
+          )}
         </div>
         {file.description && (
-          <p className="text-xs text-slate-600 mt-1 line-clamp-2">{file.description}</p>
+          <p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">{file.description}</p>
         )}
         <p className="text-[10px] text-slate-400 mt-1">
-          {new Date(file.created_at).toLocaleDateString('es-VE', { day: 'numeric', month: 'short', year: 'numeric' })}
+          {showDoctor && <span className="font-semibold">{doctorName} · </span>}
+          {new Date(file.created_at).toLocaleString('es-VE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           {file.file_size_bytes && <> · {(file.file_size_bytes / 1024).toFixed(0)} KB</>}
         </p>
       </div>
-      {file.file_url && (
+      {hasFile && (
         <a
-          href={file.file_url}
+          href={file.file_url!}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
@@ -378,6 +507,103 @@ function FileRow({ file, doctorName }: { file: SharedFile; doctorName: string })
           <ExternalLink className="w-4 h-4" />
         </a>
       )}
+    </div>
+  )
+}
+
+function UploadOrCommentModal({
+  replyTo, doctors, selectedDoctorId, uploadTitle, uploadDescription, submitting,
+  onTitleChange, onDescriptionChange, onClose, onSubmit,
+}: {
+  replyTo: SharedFile | null
+  doctors: DoctorOption[]
+  selectedDoctorId: string | null
+  uploadTitle: string
+  uploadDescription: string
+  submitting: boolean
+  onTitleChange: (v: string) => void
+  onDescriptionChange: (v: string) => void
+  onClose: () => void
+  onSubmit: (file: File | null) => Promise<void>
+}) {
+  // Doctor preview (a quien va dirigido)
+  const targetDoctor: DoctorOption | undefined = replyTo
+    ? doctors.find(d => d.id === replyTo.doctor_id)
+    : (doctors.length === 1 ? doctors[0] : (selectedDoctorId ? doctors.find(d => d.id === selectedDoctorId) : undefined))
+
+  const ambiguousDoctor = !targetDoctor && doctors.length > 1
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between">
+          <h3 className="text-base font-bold text-slate-900">
+            {replyTo ? `Responder: ${replyTo.title}` : 'Adjuntar o comentar'}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {targetDoctor && (
+            <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-xs text-teal-800 flex items-center gap-2">
+              <Stethoscope className="w-3.5 h-3.5" />
+              <span>Para: <b>{`${targetDoctor.professional_title || ''} ${targetDoctor.full_name}`.trim()}</b></span>
+            </div>
+          )}
+
+          {ambiguousDoctor && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+              Tienes varios médicos. Cierra este modal y selecciona uno arriba antes de continuar.
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Título</label>
+            <input
+              type="text"
+              value={uploadTitle}
+              onChange={e => onTitleChange(e.target.value)}
+              placeholder="Ej: Hematología, Pregunta sobre la dosis…"
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:border-teal-400 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Comentario {/* RONDA 41: ahora puede ir solo */}
+            </label>
+            <textarea
+              value={uploadDescription}
+              onChange={e => onDescriptionChange(e.target.value)}
+              placeholder="Escribe aquí. Si solo quieres responder al doctor, puedes enviar sin adjuntar archivo."
+              rows={3}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm resize-none focus:border-teal-400 outline-none"
+            />
+          </div>
+
+          {/* Botón para enviar SOLO comentario */}
+          <button
+            onClick={() => onSubmit(null)}
+            disabled={submitting || ambiguousDoctor || !uploadDescription.trim()}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
+          >
+            {submitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</> : <><MessageSquare className="w-4 h-4" /> Enviar solo comentario</>}
+          </button>
+
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex-1 border-t border-slate-200"></div>
+            <span>o adjuntar archivo</span>
+            <div className="flex-1 border-t border-slate-200"></div>
+          </div>
+
+          <UploadDropZone
+            onUpload={async file => { await onSubmit(file) }}
+            label="Suelta o selecciona el archivo"
+            helperText="PDF, JPG o PNG. Máximo 20MB."
+            disabled={ambiguousDoctor}
+          />
+        </div>
+      </div>
     </div>
   )
 }

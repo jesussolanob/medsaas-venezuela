@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   X, Loader2, Search, UserPlus, Calendar, CheckCircle2, AlertCircle,
   ChevronDown, Check, Clock, Upload, FileText, User, Pill, MapPin, CreditCard,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 
 /**
@@ -184,6 +185,8 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   const [scheduledAt, setScheduledAt] = useState(initialContext.slotStart || '')
   const [selectedDate, setSelectedDate] = useState<string>('')   // 'YYYY-MM-DD'
   const [selectedTime, setSelectedTime] = useState<string>('')   // 'HH:MM'
+  // RONDA 41: paginacion semanal del selector de fechas (5 dias por pagina)
+  const [weekOffset, setWeekOffset] = useState<number>(0)
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set()) // 'YYYY-MM-DD HH:MM'
 
   // Step 3: Modalidad
@@ -576,12 +579,12 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               const hasOfficeConfig = !!office?.schedule && Array.isArray(office.schedule) && office.schedule.length > 0
               const interval = (office?.slot_duration ?? 30)
 
-              // Generar dias: 22 dias hacia adelante.
-              // - Si hay config: marca disabled cuando schedule[day].enabled === false
-              // - Si NO hay config: TODOS los dias habilitados (decision del usuario)
+              // RONDA 41: generar 60 dias (~12 semanas paginadas de a 5).
+              // Antes solo 22 dias con scroll horizontal: el usuario no podia
+              // agendar mas alla de ~3 semanas porque la UI no permitia scroll claro.
               const days: Array<{ date: string; label: string; weekday: string; dayNum: string; month: string; enabled: boolean }> = []
               const today = new Date()
-              for (let i = 0; i < 22; i++) {
+              for (let i = 0; i < 60; i++) {
                 const d = new Date(today)
                 d.setDate(today.getDate() + i)
                 const yyyy = d.getFullYear()
@@ -601,6 +604,14 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
                   enabled,
                 })
               }
+              // Pagina actual: 5 dias visibles
+              const PAGE_SIZE = 5
+              const visibleDays = days.slice(weekOffset * PAGE_SIZE, weekOffset * PAGE_SIZE + PAGE_SIZE)
+              const canPrev = weekOffset > 0
+              const canNext = (weekOffset + 1) * PAGE_SIZE < days.length
+              const rangeLabel = visibleDays.length > 0
+                ? `${visibleDays[0].dayNum} ${visibleDays[0].month} — ${visibleDays[visibleDays.length - 1].dayNum} ${visibleDays[visibleDays.length - 1].month}`
+                : ''
 
               // Generar slots horarios:
               // - Con config: usa schedule[selectedDay].start/end + slot_duration
@@ -631,11 +642,35 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
                     </div>
                   )}
 
-                  {/* Selector de fecha — scroll horizontal */}
+                  {/* RONDA 41: Selector de fecha paginado (5 dias por pagina + chevrons),
+                      mismo patron que /book/[doctorId] para consistencia visual. */}
                   <div>
-                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Selecciona el día</p>
-                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
-                      {days.map(d => {
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Selecciona el día</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))}
+                          disabled={!canPrev}
+                          className="w-8 h-8 rounded-xl bg-white border border-slate-200 hover:border-teal-300 hover:bg-teal-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+                          aria-label="Semana anterior"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5 text-slate-600" />
+                        </button>
+                        <span className="text-xs font-semibold text-slate-600 min-w-[7rem] text-center">{rangeLabel}</span>
+                        <button
+                          type="button"
+                          onClick={() => setWeekOffset(weekOffset + 1)}
+                          disabled={!canNext}
+                          className="w-8 h-8 rounded-xl bg-white border border-slate-200 hover:border-teal-300 hover:bg-teal-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+                          aria-label="Semana siguiente"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {visibleDays.map(d => {
                         const isActive = selectedDate === d.date
                         const isDisabled = !d.enabled
                         return (
@@ -645,7 +680,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
                             disabled={isDisabled}
                             onClick={() => { if (!isDisabled) { setSelectedDate(d.date); setSelectedTime('') } }}
                             title={isDisabled ? 'Tu consultorio no atiende este día' : ''}
-                            className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-20 rounded-xl border-2 transition-all ${
+                            className={`flex flex-col items-center justify-center h-20 rounded-xl border-2 transition-all ${
                               isDisabled
                                 ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
                                 : isActive

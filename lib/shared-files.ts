@@ -154,6 +154,57 @@ export async function createInstruction(
   return { data: data as SharedFile, error: null }
 }
 
+/**
+ * RONDA 41: respuesta SOLO con comentario (sin archivo). El paciente puede
+ * responder a una tarea o dejar un comentario suelto sin obligarlo a adjuntar.
+ * Si parentTaskId esta presente, marca la tarea original como completed.
+ */
+export async function replyWithComment(
+  supabase: SupabaseClient,
+  args: {
+    doctorId: string
+    patientId: string
+    title: string
+    description: string
+    createdBy: 'doctor' | 'patient'
+    parentTaskId?: string | null
+  }
+): Promise<{ data: SharedFile | null; error: string | null }> {
+  if (!args.description || !args.description.trim()) {
+    return { data: null, error: 'El comentario no puede estar vacío' }
+  }
+  const { data, error } = await supabase
+    .from('shared_files')
+    .insert({
+      doctor_id: args.doctorId,
+      patient_id: args.patientId,
+      title: args.title || 'Comentario',
+      description: args.description.trim(),
+      file_url: null,
+      file_type: null,
+      category: 'instruction',  // sin archivo, igual que una nota
+      status: 'completed',
+      created_by: args.createdBy,
+      parent_task_id: args.parentTaskId || null,
+      // Lo marca NO leido para el otro lado
+      read_by_doctor: args.createdBy === 'doctor',
+      read_by_patient: args.createdBy === 'patient',
+    })
+    .select()
+    .single()
+  if (error) return { data: null, error: error.message }
+
+  // Si era respuesta a una tarea, marcar la tarea original como completed
+  if (args.parentTaskId) {
+    await supabase
+      .from('shared_files')
+      .update({ status: 'completed', read_by_doctor: false })
+      .eq('id', args.parentTaskId)
+  }
+
+  return { data: data as SharedFile, error: null }
+}
+
 /** Lista los shared_files de UN paciente, ordenados desc. */
 export async function listSharedFiles(
   supabase: SupabaseClient,
