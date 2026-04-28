@@ -219,22 +219,30 @@ export default function CobrosPage() {
     setShowExport(false)
   }
 
-  // RONDA 34: cargar paquetes y servicios disponibles del doctor cuando se abre el modal
+  // RONDA 34 + RONDA 45: fuente UNICA = pricing_plans (con su columna `type`).
+  // Antes leiamos tambien de `doctor_services` (tabla legacy duplicada) y eso
+  // generaba items duplicados en el modal "Añadir al cobro". La pagina
+  // /doctor/services tambien lee solo de pricing_plans, asi que ahora ambas
+  // vistas estan sincronizadas.
   async function openAddItemModal() {
     if (!selectedPayment) return
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    // doctor_services puede no existir aun en algunos entornos; envolver en try
-    const plansRes = await supabase.from('pricing_plans').select('id, name, price_usd').eq('doctor_id', user.id).eq('is_active', true)
-    let servicesRes: { data: any[] } = { data: [] }
-    try {
-      const r = await supabase.from('doctor_services').select('id, name, price_usd').eq('doctor_id', user.id).eq('is_active', true)
-      if (r.data) servicesRes = { data: r.data }
-    } catch { /* tabla no existe, ignorar */ }
-    const items: Array<{ id: string; name: string; price_usd: number; type: 'plan' | 'service' }> = []
-    ;(plansRes.data || []).forEach((p: any) => items.push({ id: p.id, name: p.name, price_usd: p.price_usd, type: 'plan' }))
-    ;(servicesRes.data || []).forEach((s: any) => items.push({ id: s.id, name: s.name, price_usd: s.price_usd, type: 'service' }))
+    const { data: rows } = await supabase
+      .from('pricing_plans')
+      .select('id, name, price_usd, type')
+      .eq('doctor_id', user.id)
+      .eq('is_active', true)
+      .order('name')
+
+    const items: Array<{ id: string; name: string; price_usd: number; type: 'plan' | 'service' }> = (rows || []).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      price_usd: r.price_usd,
+      // Si la fila no tiene type definido, asumimos 'plan' por compat con datos viejos
+      type: (r.type === 'service' ? 'service' : 'plan') as 'plan' | 'service',
+    }))
     setAvailableItems(items)
     setShowAddItemModal(true)
   }
