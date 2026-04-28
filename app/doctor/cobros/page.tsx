@@ -49,8 +49,10 @@ export default function CobrosPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false)
   // Toast de feedback (ronda 16)
   const [actionToast, setActionToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
-  // RONDA 34: items extra agregados a un cobro (paquetes/servicios sumados durante la consulta)
+  // RONDA 35: items extra ahora persistidos en payment_items (BD).
+  // El state local solo cachea lo que ya esta en BD para render rapido.
   const [extraItems, setExtraItems] = useState<Array<{ id: string; name: string; amount: number }>>([])
+  const [loadingExtras, setLoadingExtras] = useState(false)
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [availableItems, setAvailableItems] = useState<Array<{ id: string; name: string; price_usd: number; type: 'plan' | 'service' }>>([])
   const [addingItem, setAddingItem] = useState(false)
@@ -237,23 +239,44 @@ export default function CobrosPage() {
     setShowAddItemModal(true)
   }
 
-  async function addExtraItem(item: { id: string; name: string; price_usd: number }) {
+  // RONDA 35: persistir el item extra en payment_items + actualizar total
+  async function addExtraItem(item: { id: string; name: string; price_usd: number; type: 'plan' | 'service' }) {
     if (!selectedPayment) return
     setAddingItem(true)
     try {
       const supabase = createClient()
-      // 1) Estado local (optimistic UI)
-      const newExtra = { id: `${item.id}-${Date.now()}`, name: item.name, amount: item.price_usd }
-      setExtraItems(prev => [...prev, newExtra])
-      // 2) Recalcular total y persistir en payments + appointment.plan_price
-      const newTotal = (selectedPayment.plan_price || 0) + extraItems.reduce((s, i) => s + i.amount, 0) + item.price_usd
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('No autenticado')
+
+      // 1) INSERT en payment_items (BD)
+      const { data: inserted, error: insertErr } = await supabase
+        .from('payment_items')
+        .insert({
+          payment_id: selectedPayment.id,
+          doctor_id: user.id,
+          name: item.name,
+          amount_usd: item.price_usd,
+          source_type: item.type,
+          source_id: item.id,
+        })
+        .select('id, name, amount_usd')
+        .single()
+      if (insertErr) throw insertErr
+
+      // 2) Recalcular total: payments.amount_usd = base + sum(items)
+      // Para no perder el monto base original lo guardamos cuando no hay items aun.
+      // Logica simple: tomar el plan_price actual (que ya incluye items previos) y sumar el nuevo
+      const newTotal = (selectedPayment.plan_price || 0) + item.price_usd
       await supabase.from('payments').update({ amount_usd: newTotal }).eq('id', selectedPayment.id)
-      // Tambien actualizar appointment.plan_price para que se vea consistente
-      const { data: appt } = await supabase.from('appointments').select('id, plan_price').eq('payment_id', selectedPayment.id).maybeSingle()
+      const { data: appt } = await supabase.from('appointments').select('id').eq('payment_id', selectedPayment.id).maybeSingle()
       if (appt?.id) {
         await supabase.from('appointments').update({ plan_price: newTotal }).eq('id', appt.id)
       }
+
+      // 3) Actualizar state local con el item recien insertado
+      setExtraItems(prev => [...prev, { id: inserted.id, name: inserted.name, amount: Number(inserted.amount_usd) }])
       setSelectedPayment(prev => prev ? { ...prev, plan_price: newTotal } : prev)
+
       setActionToast({ type: 'success', msg: `${item.name} agregado al cobro` })
       setTimeout(() => setActionToast(null), 2500)
       setShowAddItemModal(false)
@@ -263,6 +286,53 @@ export default function CobrosPage() {
       setTimeout(() => setActionToast(null), 3000)
     } finally {
       setAddingItem(false)
+    }
+  }
+
+  // RONDA 35: borrar un item extra de BD y restar del total
+  async function removeExtraItem(itemId: string, amount: number) {
+    if (!selectedPayment) return
+    if (!confirm('¿Eliminar este cargo del cobro?')) return
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('payment_items').delete().eq('id', itemId)
+      if (error) throw error
+
+      const newTotal = Math.max(0, (selectedPayment.plan_price || 0) - amount)
+      await supabase.from('payments').update({ amount_usd: newTotal }).eq('id', selectedPayment.id)
+      const { data: appt } = await supabase.from('appointments').select('id').eq('payment_id', selectedPayment.id).maybeSingle()
+      if (appt?.id) {
+        await supabase.from('appointments').update({ plan_price: newTotal }).eq('id', appt.id)
+      }
+
+      setExtraItems(prev => prev.filter(i => i.id !== itemId))
+      setSelectedPayment(prev => prev ? { ...prev, plan_price: newTotal } : prev)
+      setActionToast({ type: 'success', msg: 'Cargo eliminado' })
+      setTimeout(() => setActionToast(null), 2000)
+      await fetchPayments()
+    } catch (err: any) {
+      setActionToast({ type: 'error', msg: err?.message || 'Error al eliminar' })
+      setTimeout(() => setActionToast(null), 3000)
+    }
+  }
+
+  // RONDA 35: cargar extras de BD cuando se abre un payment
+  async function loadExtraItems(paymentId: string) {
+    setLoadingExtras(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('payment_items')
+        .select('id, name, amount_usd')
+        .eq('payment_id', paymentId)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      setExtraItems((data || []).map(d => ({ id: d.id, name: d.name, amount: Number(d.amount_usd) })))
+    } catch (err) {
+      console.error('[loadExtraItems]', err)
+      setExtraItems([])
+    } finally {
+      setLoadingExtras(false)
     }
   }
 
@@ -282,15 +352,27 @@ export default function CobrosPage() {
       alert('No se pudo cargar la información del doctor')
       return
     }
-    // Buscar appointment_code (real) y consultation_code via payment.id
-    const { data: appt } = await supabase
-      .from('appointments')
-      .select('appointment_code, consultation_id, consultations(consultation_code)')
-      .eq('payment_id', selectedPayment.id)
-      .maybeSingle()
+    // Buscar appointment_code (real), consultation_code y items extra en paralelo desde BD
+    const [apptRes, itemsRes] = await Promise.all([
+      supabase
+        .from('appointments')
+        .select('appointment_code, consultation_id, consultations(consultation_code)')
+        .eq('payment_id', selectedPayment.id)
+        .maybeSingle(),
+      supabase
+        .from('payment_items')
+        .select('name, amount_usd')
+        .eq('payment_id', selectedPayment.id)
+        .order('created_at', { ascending: true }),
+    ])
+    const appt = apptRes.data
+    const dbExtras = (itemsRes.data || []).map((i: any) => ({ name: i.name, amount: Number(i.amount_usd) }))
     const consNested = (appt as any)?.consultations
     const consCode = Array.isArray(consNested) ? consNested[0]?.consultation_code : consNested?.consultation_code
-    const baseTotal = selectedPayment.plan_price || 0
+    // RONDA 35: el monto BASE = total actual - sum(items). Asi el PDF muestra el desglose correcto
+    const totalNow = selectedPayment.plan_price || 0
+    const sumExtras = dbExtras.reduce((s, e) => s + e.amount, 0)
+    const baseTotal = Math.max(0, totalNow - sumExtras)
     const html = buildReceiptHtml({
       paymentCode: selectedPayment.appointment_code || appt?.appointment_code || 'RECIBO',
       consultationCode: consCode || null,
@@ -303,7 +385,7 @@ export default function CobrosPage() {
       paidAt: new Date().toISOString(),
       scheduledAt: selectedPayment.scheduled_at,
       planName: selectedPayment.plan_name,
-      extraItems: extraItems.map(i => ({ name: i.name, amount: i.amount })),
+      extraItems: dbExtras,    // viene de BD, no del state
       doctorName: prof.full_name || 'Doctor',
       doctorTitle: prof.professional_title,
       doctorSpecialty: prof.specialty,
@@ -322,8 +404,16 @@ export default function CobrosPage() {
     w.document.close()
   }
 
-  // RONDA 34: limpiar extra items al cerrar el modal
-  useEffect(() => { if (!selectedPayment) setExtraItems([]) }, [selectedPayment])
+  // RONDA 35: al abrir el modal, cargar los items extra reales desde BD.
+  // Al cerrar, limpiar para que el siguiente payment empiece limpio.
+  useEffect(() => {
+    if (!selectedPayment) {
+      setExtraItems([])
+      return
+    }
+    loadExtraItems(selectedPayment.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPayment?.id])
 
   // RONDA 16: refactor — ahora `paymentId` es de tabla `payments` (no appointments)
   // tras la migracion de fuente unica en ronda 15. Update directo en payments y luego
@@ -703,20 +793,37 @@ export default function CobrosPage() {
                 )}
               </div>
 
-              {/* RONDA 34 — Items extra agregados durante la consulta */}
-              {extraItems.length > 0 && (
+              {/* RONDA 35 — Items extra persistidos en BD (payment_items) */}
+              {(extraItems.length > 0 || loadingExtras) && (
                 <div className="space-y-2 pt-3 border-t border-slate-100">
                   <p className="text-xs font-semibold text-slate-400 uppercase">Cargos adicionales</p>
-                  {extraItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
-                      <span className="text-sm text-teal-800">{item.name}</span>
-                      <span className="text-sm font-bold text-teal-700">{formatUsd(item.amount)}</span>
+                  {loadingExtras ? (
+                    <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando cargos...
                     </div>
-                  ))}
-                  <div className="flex items-center justify-between pt-2 border-t border-teal-200">
-                    <span className="text-xs font-semibold text-slate-600 uppercase">Nuevo total</span>
-                    <span className="text-base font-bold text-teal-600">{formatUsd(selectedPayment.plan_price)}</span>
-                  </div>
+                  ) : (
+                    <>
+                      {extraItems.map(item => (
+                        <div key={item.id} className="group flex items-center justify-between bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+                          <span className="text-sm text-teal-800 flex-1 truncate pr-2">{item.name}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-sm font-bold text-teal-700">{formatUsd(item.amount)}</span>
+                            <button
+                              onClick={() => removeExtraItem(item.id, item.amount)}
+                              title="Eliminar este cargo"
+                              className="p-1 rounded-md text-teal-500 hover:bg-red-100 hover:text-red-600 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between pt-2 border-t border-teal-200">
+                        <span className="text-xs font-semibold text-slate-600 uppercase">Total actualizado</span>
+                        <span className="text-base font-bold text-teal-600">{formatUsd(selectedPayment.plan_price)}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
