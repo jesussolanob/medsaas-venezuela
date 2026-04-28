@@ -6,6 +6,8 @@ import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRigh
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
+// RONDA 46: renderer de markdown ligero para outputs de Gemini
+import MarkdownText from '@/components/shared/MarkdownText'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 
 type Consultation = {
@@ -2172,7 +2174,12 @@ function ConsultationsPage() {
                           </button>
                         </div>
                       </div>
-                      <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{aiResult}</div>
+                      {/* RONDA 46: render markdown del output de Gemini (bold, listas, headers) */}
+                      <MarkdownText
+                        text={aiResult}
+                        className="text-sm text-slate-700 leading-relaxed"
+                      />
+
                     </>
                   )}
                 </div>

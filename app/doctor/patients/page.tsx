@@ -13,6 +13,8 @@ import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm'
 // RONDA 40: componente compartido de drag & drop
 import UploadDropZone from '@/components/shared/UploadDropZone'
+// RONDA 46: renderer de markdown ligero para outputs de Gemini
+import MarkdownText from '@/components/shared/MarkdownText'
 
 interface PatientPackageInfo {
   patientId: string
@@ -873,7 +875,11 @@ export default function PatientsPage() {
                         {aiError && <p className="text-xs text-red-600 mt-2">{aiError}</p>}
                         {aiSummary && (
                           <div className="mt-3 bg-white border border-violet-100 rounded-lg p-3 max-h-72 overflow-y-auto">
-                            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{aiSummary}</p>
+                            {/* RONDA 46: render markdown (bold, listas, headers) en vez de texto plano */}
+                            <MarkdownText
+                              text={aiSummary}
+                              className="text-sm text-slate-700 leading-relaxed"
+                            />
                           </div>
                         )}
                       </div>
