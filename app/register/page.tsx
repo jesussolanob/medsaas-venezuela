@@ -65,7 +65,12 @@ export default function RegisterPage() {
     setError('')
     try {
       const supabase = createClient()
-      const metadata: Record<string, string> = { role: role === 'especialista' ? 'doctor' : 'patient' }
+      const intendedRole = role === 'especialista' ? 'doctor' : 'patient'
+      // AUDIT FIX 2026-04-28 (FASE 5D): el rol del registro se persiste en
+      // localStorage; /onboarding lo lee si profile.role llega NULL desde el
+      // trigger BD `handle_new_user_signup`. Supabase OAuth no permite enviar
+      // user_metadata custom desde signInWithOAuth, por eso el client-side hop.
+      try { localStorage.setItem('pending_role', intendedRole) } catch { /* ignore */ }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

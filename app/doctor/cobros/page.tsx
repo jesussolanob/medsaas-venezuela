@@ -56,6 +56,10 @@ export default function CobrosPage() {
   // Toast de feedback (ronda 16)
   const [actionToast, setActionToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
+  // AUDIT FIX 2026-04-28 (FASE 5B): generar recibo desde el drawer cuando el pago
+  // ya está aprobado, en lugar de obligar a navegar a /doctor/billing.
+  const [generatingReceipt, setGeneratingReceipt] = useState(false)
+  const [generatedReceipt, setGeneratedReceipt] = useState<{ docNumber: string } | null>(null)
 
   async function handleReceiptUpload(file: File) {
     if (!selectedPayment) return
@@ -100,6 +104,57 @@ export default function CobrosPage() {
     }
   }
 
+  // AUDIT FIX 2026-04-28 (FASE 5B): genera el recibo del pago aprobado
+  // directamente desde el drawer. Antes el doctor tenía que ir a /doctor/billing.
+  async function generateReceipt(payment: Payment) {
+    setGeneratingReceipt(true)
+    setGeneratedReceipt(null)
+    try {
+      const supabase = createClient()
+      const { data: appt } = await supabase
+        .from('appointments')
+        .select('id, consultation_id, patient_id')
+        .eq('payment_id', payment.id)
+        .maybeSingle()
+
+      const items = [{
+        description: payment.plan_name || 'Consulta médica',
+        quantity: 1,
+        unit_price: payment.plan_price ?? 0,
+        total: payment.plan_price ?? 0,
+      }]
+
+      const res = await fetch('/api/doctor/billing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doc_type: 'recibo',
+          payment_id: payment.id,
+          consultation_id: appt?.consultation_id ?? null,
+          patient_id: appt?.patient_id ?? null,
+          items,
+          subtotal: payment.plan_price ?? 0,
+          total: payment.plan_price ?? 0,
+          bcv_rate: bcvRate || null,
+          total_bs: bcvRate ? Number(((payment.plan_price ?? 0) * bcvRate).toFixed(2)) : null,
+          currency: 'USD',
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setActionToast({ type: 'error', msg: json.error || 'No se pudo generar el recibo' })
+        return
+      }
+      setGeneratedReceipt({ docNumber: json.docNumber })
+      setActionToast({ type: 'success', msg: `Recibo ${json.docNumber} generado` })
+    } catch (err: any) {
+      setActionToast({ type: 'error', msg: err?.message || 'Error generando recibo' })
+    } finally {
+      setGeneratingReceipt(false)
+      setTimeout(() => setActionToast(null), 4000)
+    }
+  }
+
   // BCV rate now comes from useBcvRate() hook
 
   // FUENTE UNICA (ronda 15): leer de tabla `payments` via helper compartido.
@@ -134,6 +189,10 @@ export default function CobrosPage() {
   }, [tab])
 
   useEffect(() => { fetchPayments() }, [fetchPayments])
+
+  // AUDIT FIX 2026-04-28 (FASE 5B): reset del estado de "recibo generado"
+  // cuando se cambia de pago seleccionado.
+  useEffect(() => { setGeneratedReceipt(null) }, [selectedPayment?.id])
 
   // REFRESH AUTOMATICO (ronda 15): si otra pestaña/vista cambia un pago en `payments`,
   // suscribirse a Supabase Realtime y refrescar para evitar saldos stale.
@@ -595,10 +654,43 @@ export default function CobrosPage() {
                   </div>
                 )}
               </div>
+
+              {/* AUDIT FIX 2026-04-28 (FASE 5B): generar recibo cuando el pago está aprobado. */}
+              {selectedPayment.status === 'approved' && (
+                <div className="space-y-3 pt-4 border-t border-slate-100">
+                  <p className="text-xs font-semibold text-slate-400 uppercase">Recibo</p>
+                  {generatedReceipt ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700 space-y-1">
+                      <p className="font-semibold flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" /> Recibo generado
+                      </p>
+                      <p className="font-mono text-xs">N° {generatedReceipt.docNumber}</p>
+                      <a
+                        href="/doctor/billing"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 underline mt-1"
+                      >
+                        Ver en Facturación <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => selectedPayment && generateReceipt(selectedPayment)}
+                      disabled={generatingReceipt}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl g-bg text-white text-xs font-bold hover:opacity-90 disabled:opacity-50"
+                    >
+                      {generatingReceipt
+                        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generando...</>
+                        : <><Receipt className="w-3.5 h-3.5" /> Generar recibo</>
+                      }
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
+      <style jsx>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
     </div>
   )
 }

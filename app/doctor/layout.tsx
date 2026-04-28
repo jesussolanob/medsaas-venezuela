@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/client'
 import { CheckCircle } from 'lucide-react'
 import DoctorNotificationToast from './DoctorNotificationToast'
 import SearchCommandPalette from './SearchCommandPalette'
+import { Toaster } from '@/components/ui/Toaster'
 
 type NavItem = { name: string; href: string; icon: any }
 type NavSection = { key: string; label: string; icon: any; items: NavItem[] }
@@ -137,6 +138,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
   return (
     <>
+      <Toaster />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
         .doctor-layout * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }

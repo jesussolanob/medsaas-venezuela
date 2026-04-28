@@ -6,8 +6,13 @@ import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2,
 import { createClient } from '@/lib/supabase/client'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 import { toLocalHHMM, toLocalYMD } from '@/lib/timezone'
+import { showToast } from '@/components/ui/Toaster'
 
-const toast = { success: (msg: string) => alert(msg), error: (msg: string) => alert(msg) }
+// AUDIT FIX 2026-04-28 (FASE 5C): toast real con Toaster propio (sin alert nativo).
+const toast = {
+  success: (msg: string) => showToast({ type: 'success', message: msg }),
+  error: (msg: string) => showToast({ type: 'error', message: msg }),
+}
 
 // RONDA 19c — Helper UNICO de estilos por status para citas en la agenda.
 // Cancelled: rojo claro fondo, texto rojo oscuro, borde rojo solido + opacity + line-through.

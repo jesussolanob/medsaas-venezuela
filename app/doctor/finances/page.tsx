@@ -560,8 +560,8 @@ export default function FinancesPage() {
             {tableIncomes.length === 0 ? (
               <div className="px-5 py-10 text-center text-slate-400 text-sm">No hay ingresos en este periodo</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[500px]">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full md:min-w-[500px]">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
                       <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>
@@ -640,7 +640,7 @@ export default function FinancesPage() {
             {/* Add expense form */}
             {showExpenseForm && (
               <form onSubmit={handleAddExpense} className="px-5 py-4 bg-slate-50 border-b border-slate-100 space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <select
                     value={expenseForm.category}
                     onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))}
@@ -666,8 +666,8 @@ export default function FinancesPage() {
             {tableExpenses.length === 0 ? (
               <div className="px-5 py-10 text-center text-slate-400 text-sm">No hay gastos en este periodo</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[400px]">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full md:min-w-[400px]">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
                       <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>

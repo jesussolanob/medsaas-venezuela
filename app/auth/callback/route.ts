@@ -10,13 +10,13 @@ export async function GET(request: Request) {
   const next = (nextRaw && nextRaw.startsWith('/') && !nextRaw.startsWith('//')) ? nextRaw : null
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/login?error=auth`)
+    return NextResponse.redirect(`${origin}/auth/error?type=auth`)
   }
 
   const supabase = await createClient()
   const { data, error } = await supabase.auth.exchangeCodeForSession(code)
   if (error || !data.user) {
-    return NextResponse.redirect(`${origin}/login?error=auth`)
+    return NextResponse.redirect(`${origin}/auth/error?type=auth`)
   }
 
   const userId = data.user.id
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   // BUG-014: bloquear si está suspendido
   if (profile.is_active === false || profile.subscription_status === 'suspended') {
     await supabase.auth.signOut()
-    return NextResponse.redirect(`${origin}/login?error=suspended`)
+    return NextResponse.redirect(`${origin}/auth/error?type=suspended`)
   }
 
   // BUG-017: super_admin/admin van directo sin onboarding

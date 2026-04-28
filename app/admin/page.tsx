@@ -151,7 +151,7 @@ export default async function AdminDashboard() {
   return (
     <div className="space-y-6">
       {/* ── Hero Banner ── */}
-      <div className="relative overflow-hidden rounded-[24px] p-8 lg:p-10 text-white" style={{ background: 'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)' }}>
+      <div className="relative overflow-hidden rounded-[24px] p-4 sm:p-6 lg:p-10 text-white" style={{ background: 'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)' }}>
         {/* Background isotipo */}
         <svg className="absolute -right-20 -top-10 opacity-[0.12]" width="340" height="340" viewBox="0 0 120 120" fill="none">
           <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="#fff" strokeWidth="14" strokeLinecap="round" fill="none"/>

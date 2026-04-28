@@ -79,6 +79,17 @@ export default function OnboardingPage() {
       // If profile exists with a role, pre-select it
       if (profile?.role === 'patient') setRole('patient')
       else if (profile?.role) setRole('doctor')
+      else {
+        // AUDIT FIX 2026-04-28 (FASE 5D): si llegamos aquí desde un first-time
+        // OAuth, el trigger BD creó el profile con role NULL. Revisamos si
+        // /register guardó el rol intencional en localStorage para
+        // pre-seleccionarlo en vez de mostrar 'doctor' por default.
+        try {
+          const pending = localStorage.getItem('pending_role')
+          if (pending === 'patient') setRole('patient')
+          else if (pending === 'doctor') setRole('doctor')
+        } catch { /* ignore */ }
+      }
 
       setLoading(false)
     })
@@ -120,6 +131,9 @@ export default function OnboardingPage() {
         setSaving(false)
         return
       }
+
+      // AUDIT FIX 2026-04-28 (FASE 5D): limpiar el hint del flow de OAuth.
+      try { localStorage.removeItem('pending_role') } catch { /* ignore */ }
 
       // Patients go straight to dashboard, doctors see pending approval
       if (role === 'patient') {

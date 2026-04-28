@@ -11,6 +11,7 @@ import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import AdminNotifications from './AdminNotifications'
 import SearchCommandPalette from './SearchCommandPalette'
+import { Toaster } from '@/components/ui/Toaster'
 
 const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
@@ -76,6 +77,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <>
+      <Toaster />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
         .admin-layout * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
