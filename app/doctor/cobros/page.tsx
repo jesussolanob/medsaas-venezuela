@@ -4,10 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import { fetchPayments as sharedFetchPayments, formatUsd, formatBs } from '@/lib/finances'
+import { formatPaymentMethod } from '@/lib/payment-methods'
+import { buildReceiptHtml } from '@/lib/receipt-pdf'
 import {
   Receipt, Search, Download, DollarSign, CheckCircle, Clock,
   XCircle, Calendar, ArrowRight, Loader2, RefreshCw, Filter,
-  TrendingUp, Banknote, X, CreditCard, FileText, ExternalLink, Upload
+  TrendingUp, Banknote, X, CreditCard, FileText, ExternalLink, Upload, Plus
 } from 'lucide-react'
 
 type CobrosTab = 'pending' | 'approved'
@@ -25,16 +27,8 @@ type Payment = {
   _source?: 'appointment' | 'consultation'
 }
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  pago_movil: 'Pago Móvil',
-  transferencia: 'Transferencia',
-  zelle: 'Zelle',
-  binance: 'Binance',
-  efectivo_usd: 'Efectivo USD',
-  efectivo_bs: 'Efectivo Bs',
-  pos: 'POS',
-  package: 'Paquete prepagado',
-}
+// RONDA 34: PAYMENT_METHOD_LABELS movido a lib/payment-methods.ts y reemplazado
+// por la funcion formatPaymentMethod() para consistencia entre vistas.
 
 export default function CobrosPage() {
   const [tab, setTab] = useState<CobrosTab>('pending')
@@ -55,6 +49,11 @@ export default function CobrosPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false)
   // Toast de feedback (ronda 16)
   const [actionToast, setActionToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  // RONDA 34: items extra agregados a un cobro (paquetes/servicios sumados durante la consulta)
+  const [extraItems, setExtraItems] = useState<Array<{ id: string; name: string; amount: number }>>([])
+  const [showAddItemModal, setShowAddItemModal] = useState(false)
+  const [availableItems, setAvailableItems] = useState<Array<{ id: string; name: string; price_usd: number; type: 'plan' | 'service' }>>([])
+  const [addingItem, setAddingItem] = useState(false)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
 
   async function handleReceiptUpload(file: File) {
@@ -201,7 +200,7 @@ export default function CobrosPage() {
         r.plan_name || '',
         (r.plan_price || 0).toFixed(2),
         bcvRate ? ((r.plan_price || 0) * bcvRate).toFixed(2) : 'N/A',
-        PAYMENT_METHOD_LABELS[r.payment_method || ''] || r.payment_method || '',
+        formatPaymentMethod(r.payment_method),
         r.status || '',
         consCode || r.appointment_code || '',
       ]
@@ -217,6 +216,114 @@ export default function CobrosPage() {
     URL.revokeObjectURL(url)
     setShowExport(false)
   }
+
+  // RONDA 34: cargar paquetes y servicios disponibles del doctor cuando se abre el modal
+  async function openAddItemModal() {
+    if (!selectedPayment) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    // doctor_services puede no existir aun en algunos entornos; envolver en try
+    const plansRes = await supabase.from('pricing_plans').select('id, name, price_usd').eq('doctor_id', user.id).eq('is_active', true)
+    let servicesRes: { data: any[] } = { data: [] }
+    try {
+      const r = await supabase.from('doctor_services').select('id, name, price_usd').eq('doctor_id', user.id).eq('is_active', true)
+      if (r.data) servicesRes = { data: r.data }
+    } catch { /* tabla no existe, ignorar */ }
+    const items: Array<{ id: string; name: string; price_usd: number; type: 'plan' | 'service' }> = []
+    ;(plansRes.data || []).forEach((p: any) => items.push({ id: p.id, name: p.name, price_usd: p.price_usd, type: 'plan' }))
+    ;(servicesRes.data || []).forEach((s: any) => items.push({ id: s.id, name: s.name, price_usd: s.price_usd, type: 'service' }))
+    setAvailableItems(items)
+    setShowAddItemModal(true)
+  }
+
+  async function addExtraItem(item: { id: string; name: string; price_usd: number }) {
+    if (!selectedPayment) return
+    setAddingItem(true)
+    try {
+      const supabase = createClient()
+      // 1) Estado local (optimistic UI)
+      const newExtra = { id: `${item.id}-${Date.now()}`, name: item.name, amount: item.price_usd }
+      setExtraItems(prev => [...prev, newExtra])
+      // 2) Recalcular total y persistir en payments + appointment.plan_price
+      const newTotal = (selectedPayment.plan_price || 0) + extraItems.reduce((s, i) => s + i.amount, 0) + item.price_usd
+      await supabase.from('payments').update({ amount_usd: newTotal }).eq('id', selectedPayment.id)
+      // Tambien actualizar appointment.plan_price para que se vea consistente
+      const { data: appt } = await supabase.from('appointments').select('id, plan_price').eq('payment_id', selectedPayment.id).maybeSingle()
+      if (appt?.id) {
+        await supabase.from('appointments').update({ plan_price: newTotal }).eq('id', appt.id)
+      }
+      setSelectedPayment(prev => prev ? { ...prev, plan_price: newTotal } : prev)
+      setActionToast({ type: 'success', msg: `${item.name} agregado al cobro` })
+      setTimeout(() => setActionToast(null), 2500)
+      setShowAddItemModal(false)
+      await fetchPayments()
+    } catch (err: any) {
+      setActionToast({ type: 'error', msg: err?.message || 'Error al agregar item' })
+      setTimeout(() => setActionToast(null), 3000)
+    } finally {
+      setAddingItem(false)
+    }
+  }
+
+  // RONDA 34: generar recibo PDF con branding del perfil
+  async function generateReceipt() {
+    if (!selectedPayment) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    // Cargar branding del doctor
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('full_name, professional_title, specialty, license_number, email, phone, logo_url, signature_url')
+      .eq('id', user.id)
+      .single()
+    if (!prof) {
+      alert('No se pudo cargar la información del doctor')
+      return
+    }
+    // Buscar appointment_code (real) y consultation_code via payment.id
+    const { data: appt } = await supabase
+      .from('appointments')
+      .select('appointment_code, consultation_id, consultations(consultation_code)')
+      .eq('payment_id', selectedPayment.id)
+      .maybeSingle()
+    const consNested = (appt as any)?.consultations
+    const consCode = Array.isArray(consNested) ? consNested[0]?.consultation_code : consNested?.consultation_code
+    const baseTotal = selectedPayment.plan_price || 0
+    const html = buildReceiptHtml({
+      paymentCode: selectedPayment.appointment_code || appt?.appointment_code || 'RECIBO',
+      consultationCode: consCode || null,
+      patientName: selectedPayment.patient_name || 'Paciente',
+      patientCedula: null,
+      amountUsd: baseTotal,
+      amountBs: bcvRate ? baseTotal * bcvRate : null,
+      bcvRate: bcvRate ?? null,
+      paymentMethod: selectedPayment.payment_method,
+      paidAt: new Date().toISOString(),
+      scheduledAt: selectedPayment.scheduled_at,
+      planName: selectedPayment.plan_name,
+      extraItems: extraItems.map(i => ({ name: i.name, amount: i.amount })),
+      doctorName: prof.full_name || 'Doctor',
+      doctorTitle: prof.professional_title,
+      doctorSpecialty: prof.specialty,
+      doctorLicense: (prof as any).license_number,
+      doctorEmail: prof.email,
+      doctorPhone: (prof as any).phone,
+      logoUrl: (prof as any).logo_url,
+      signatureUrl: (prof as any).signature_url,
+    })
+    const w = window.open('', '_blank')
+    if (!w) {
+      alert('Permite ventanas emergentes para generar el PDF')
+      return
+    }
+    w.document.write(html)
+    w.document.close()
+  }
+
+  // RONDA 34: limpiar extra items al cerrar el modal
+  useEffect(() => { if (!selectedPayment) setExtraItems([]) }, [selectedPayment])
 
   // RONDA 16: refactor — ahora `paymentId` es de tabla `payments` (no appointments)
   // tras la migracion de fuente unica en ronda 15. Update directo en payments y luego
@@ -435,7 +542,7 @@ export default function CobrosPage() {
                 </div>
                 <div className="col-span-2">
                   <span className="text-xs text-slate-500">
-                    {PAYMENT_METHOD_LABELS[p.payment_method || ''] || p.payment_method || '—'}
+                    {formatPaymentMethod(p.payment_method)}
                   </span>
                 </div>
                 <div className="col-span-1 text-right">
@@ -515,7 +622,7 @@ export default function CobrosPage() {
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase">Método de pago</p>
                   <p className="text-sm font-medium text-slate-700">
-                    {PAYMENT_METHOD_LABELS[selectedPayment.payment_method || ''] || selectedPayment.payment_method || 'No especificado'}
+                    {formatPaymentMethod(selectedPayment.payment_method)}
                   </p>
                 </div>
               </div>
@@ -595,6 +702,73 @@ export default function CobrosPage() {
                   </div>
                 )}
               </div>
+
+              {/* RONDA 34 — Items extra agregados durante la consulta */}
+              {extraItems.length > 0 && (
+                <div className="space-y-2 pt-3 border-t border-slate-100">
+                  <p className="text-xs font-semibold text-slate-400 uppercase">Cargos adicionales</p>
+                  {extraItems.map(item => (
+                    <div key={item.id} className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+                      <span className="text-sm text-teal-800">{item.name}</span>
+                      <span className="text-sm font-bold text-teal-700">{formatUsd(item.amount)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-2 border-t border-teal-200">
+                    <span className="text-xs font-semibold text-slate-600 uppercase">Nuevo total</span>
+                    <span className="text-base font-bold text-teal-600">{formatUsd(selectedPayment.plan_price)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* RONDA 34 — Botones de acciones extra */}
+              <div className="space-y-2 pt-3 border-t border-slate-100">
+                <button
+                  onClick={openAddItemModal}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-sm font-semibold text-slate-600 hover:border-teal-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Añadir paquete / servicio
+                </button>
+                <button
+                  onClick={generateReceipt}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold transition-colors"
+                >
+                  <FileText className="w-4 h-4" /> Generar recibo PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RONDA 34 — Modal para seleccionar paquete/servicio */}
+      {showAddItemModal && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={() => !addingItem && setShowAddItemModal(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">Añadir al cobro</h3>
+              <button onClick={() => !addingItem && setShowAddItemModal(false)} disabled={addingItem} className="p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              {availableItems.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-6">No tienes paquetes ni servicios activos. Configúralos en /doctor/services.</p>
+              ) : (
+                availableItems.map(item => (
+                  <button
+                    key={`${item.type}-${item.id}`}
+                    onClick={() => addExtraItem(item)}
+                    disabled={addingItem}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-teal-300 hover:bg-teal-50 transition-colors disabled:opacity-50"
+                  >
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-slate-800">{item.name}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">{item.type === 'plan' ? 'Plan' : 'Servicio'}</p>
+                    </div>
+                    <span className="text-sm font-bold text-teal-600">{formatUsd(item.price_usd)}</span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
