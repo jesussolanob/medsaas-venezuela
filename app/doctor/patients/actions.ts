@@ -125,11 +125,15 @@ export async function getDoctorId(): Promise<string | null> {
 // ── Consultations ──────────────────────────────────────────────────────────────
 
 export async function getConsultations(patientId: string): Promise<Consultation[]> {
+  // AUDIT FIX 2026-04-28 (C-1): valida ownership antes de leer.
+  const doctorId = await getDoctorId()
+  if (!doctorId) return []
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('consultations')
     .select('*')
     .eq('patient_id', patientId)
+    .eq('doctor_id', doctorId)
     .order('consultation_date', { ascending: false })
 
   if (error) { console.error('getConsultations:', error.message); return [] }
@@ -170,13 +174,18 @@ export async function updateConsultationStatus(
   consultationId: string,
   status: 'pending' | 'approved'
 ): Promise<ActionResult> {
+  // AUDIT FIX 2026-04-28 (C-1): valida ownership antes de mutar.
+  const doctorId = await getDoctorId()
+  if (!doctorId) return { success: false, error: 'No autenticado' }
   const supabase = createAdminClient()
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from('consultations')
-    .update({ payment_status: status })
+    .update({ payment_status: status }, { count: 'exact' })
     .eq('id', consultationId)
+    .eq('doctor_id', doctorId)
 
   if (error) return { success: false, error: error.message }
+  if (!count) return { success: false, error: 'Consulta no encontrada' }
   revalidatePath('/doctor/patients')
   return { success: true }
 }
@@ -185,13 +194,18 @@ export async function updateConsultationNotes(
   consultationId: string,
   fields: { notes?: string; diagnosis?: string; treatment?: string; chief_complaint?: string }
 ): Promise<ActionResult> {
+  // AUDIT FIX 2026-04-28 (C-1): valida ownership antes de mutar.
+  const doctorId = await getDoctorId()
+  if (!doctorId) return { success: false, error: 'No autenticado' }
   const supabase = createAdminClient()
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from('consultations')
-    .update(fields)
+    .update(fields, { count: 'exact' })
     .eq('id', consultationId)
+    .eq('doctor_id', doctorId)
 
   if (error) return { success: false, error: error.message }
+  if (!count) return { success: false, error: 'Consulta no encontrada' }
   revalidatePath('/doctor/patients')
   return { success: true }
 }

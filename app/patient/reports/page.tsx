@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { sanitizeHtml } from '@/lib/sanitize-html'
 
 // RONDA 30: incluir medications de la tabla prescriptions vinculadas por consultation_id
 type Medication = { name?: string; dose?: string; frequency?: string; duration?: string; indications?: string }
@@ -215,6 +216,7 @@ export default function ReportsPage() {
                     </div>
                   )}
 
+                  {/* AUDIT FIX 2026-04-28 (C-9): sanitize HTML before render. */}
                   {/* Notes / Informe */}
                   {report.notes && (
                     <div>
@@ -223,7 +225,7 @@ export default function ReportsPage() {
                       </p>
                       <div
                         className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                        dangerouslySetInnerHTML={{ __html: report.notes }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.notes) }}
                       />
                     </div>
                   )}
@@ -236,7 +238,7 @@ export default function ReportsPage() {
                       </p>
                       <div
                         className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                        dangerouslySetInnerHTML={{ __html: report.diagnosis }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.diagnosis) }}
                       />
                     </div>
                   )}
@@ -249,7 +251,7 @@ export default function ReportsPage() {
                       </p>
                       <div
                         className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                        dangerouslySetInnerHTML={{ __html: report.treatment }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.treatment) }}
                       />
                     </div>
                   )}

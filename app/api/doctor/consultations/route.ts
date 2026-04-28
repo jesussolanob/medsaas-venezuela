@@ -268,26 +268,53 @@ export async function PATCH(req: NextRequest) {
 
   // BUG-012 fix: si se cambió payment_status, sincronizar con payments.status del pago linkeado
   // Source of truth = payments. consultations.payment_status queda como mirror legacy hasta Fase 5.
-  if ('payment_status' in safeFields && data.appointment_id) {
-    try {
-      const newStatus = safeFields.payment_status === 'approved' ? 'approved' : 'pending'
-      // Buscar el payment_id de la appointment linkeada
-      const { data: appt } = await admin
+  // AUDIT FIX 2026-04-28 (C-7): valida ownership del payment + reporta 409 si no existe
+  // payment cuando el doctor intenta marcar approved (evita drift silencioso entre tablas).
+  if ('payment_status' in safeFields) {
+    const newStatus = safeFields.payment_status === 'approved' ? 'approved' : 'pending'
+    const apptId = data.appointment_id
+    if (!apptId) {
+      if (newStatus === 'approved') {
+        return NextResponse.json(
+          { error: 'No se puede aprobar el pago: la consulta no tiene cita ni pago vinculado.' },
+          { status: 409 }
+        )
+      }
+    } else {
+      const { data: appt, error: apptErr } = await admin
         .from('appointments')
-        .select('payment_id')
-        .eq('id', data.appointment_id)
+        .select('payment_id, doctor_id')
+        .eq('id', apptId)
         .single()
-      if (appt?.payment_id) {
-        await admin
+      if (apptErr) {
+        return NextResponse.json({ error: 'No se pudo verificar la cita vinculada.' }, { status: 500 })
+      }
+      if (appt?.doctor_id !== user.id) {
+        return NextResponse.json({ error: 'No autorizado sobre la cita vinculada.' }, { status: 403 })
+      }
+      if (!appt.payment_id) {
+        if (newStatus === 'approved') {
+          return NextResponse.json(
+            { error: 'La cita no tiene un pago asociado.' },
+            { status: 409 }
+          )
+        }
+      } else {
+        const { error: syncErr } = await admin
           .from('payments')
           .update({
             status: newStatus,
             paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
           })
           .eq('id', appt.payment_id)
+          .eq('doctor_id', user.id)
+        if (syncErr) {
+          return NextResponse.json(
+            { error: 'No se pudo sincronizar el estado de pago.' },
+            { status: 500 }
+          )
+        }
       }
-    } catch (syncErr) {
-      console.warn('[Consultations PATCH] payment sync skipped:', syncErr)
     }
   }
 
@@ -381,20 +408,13 @@ export async function DELETE(req: NextRequest) {
         }
 
         // Revert package session if applicable
+        // AUDIT FIX 2026-04-28 (C-6): RPC con FOR UPDATE en lugar de read-modify-write.
         if (appt.package_id) {
-          const { data: pkg } = await admin
-            .from('patient_packages')
-            .select('id, used_sessions, total_sessions, status')
-            .eq('id', appt.package_id)
-            .single()
-          if (pkg) {
-            const newUsed = Math.max(0, pkg.used_sessions - 1)
-            const updateData: Record<string, unknown> = { used_sessions: newUsed }
-            if (pkg.status === 'completed' && newUsed < pkg.total_sessions) {
-              updateData.status = 'active'
-            }
-            await admin.from('patient_packages').update(updateData).eq('id', appt.package_id)
-          }
+          const { error: rpcErr } = await admin.rpc('restore_package_session', {
+            p_appointment_id: consultation.appointment_id,
+            p_reason: 'consultation_deleted',
+          })
+          if (rpcErr) console.warn('[consultations DELETE] restore_package_session failed:', rpcErr.message)
         }
 
         // Delete the linked appointment

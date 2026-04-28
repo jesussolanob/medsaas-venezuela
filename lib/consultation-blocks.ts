@@ -69,16 +69,18 @@ export async function resolveBlocksForDoctor({
     const specialtyEntry = specialtyMap.get(cat.key) as any
     const doctorEntry = doctorMap.get(cat.key) as any
 
-    // Resolución de enabled (cascada)
+    // AUDIT FIX 2026-04-28 (C-4): cascada conservadora, sin "zero-friction" implícito.
+    // Antes: `enabled = !specialty` exponía TODO el catálogo si el doctor no tenía
+    // specialty cargada. Ahora cada bloque del catálogo declara `default_enabled`,
+    // y por default solo los core (chief_complaint, diagnosis, treatment, prescription)
+    // están activos. El doctor opta in al resto desde su config.
     let enabled: boolean
     if (doctorEntry) {
       enabled = doctorEntry.enabled
     } else if (specialtyEntry) {
       enabled = specialtyEntry.enabled
     } else {
-      // Si no hay ni config doctor ni specialty default, el bloque NO aparece
-      // salvo que sea del catálogo genérico y no haya specialty definida
-      enabled = !specialty  // Sin specialty → mostramos todo el catálogo activo
+      enabled = catalogEntry.default_enabled ?? false
     }
 
     if (!enabled) continue

@@ -338,15 +338,16 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
           .eq('doctor_id', doctorId)
           .or(`cedula.eq.${newPatient.cedula || '__none__'},email.eq.${newPatient.email || '__none__'}`)
           .limit(1)
+        // AUDIT FIX 2026-04-28 (C-10): no más confirm() nativo. Si hay duplicado
+        // por cédula/email, reusamos automáticamente el paciente existente —
+        // siempre la decisión correcta para no introducir filas duplicadas y
+        // mantenerlo consistente con la regla "1 paciente por (doctor, cédula)".
         if (existing && existing.length > 0) {
-          if (confirm(`Ya existe un paciente con esta cédula o email: ${existing[0].full_name}. ¿Usarlo?`)) {
-            setSelectedPatient(existing[0] as PatientLookup)
-            setShowInlineCreator(false)
-            setCurrentStep(2)
-            return
-          } else {
-            throw new Error('Cancelado')
-          }
+          setSelectedPatient(existing[0] as PatientLookup)
+          setShowInlineCreator(false)
+          setCurrentStep(2)
+          setGlobalError(`Usando paciente existente: ${existing[0].full_name}`)
+          return
         }
       }
       const { data: inserted, error } = await supabase
@@ -433,8 +434,10 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   const step3Done = mode === 'online' || (mode === 'presencial' && (offices.length === 0 || !!selectedOffice))
   const step4Done = step3Done
   const step5Done = !!selectedPlan || !!usePackage
-  const step6Done = (usePackage ? true : !!paymentMethod) &&
-                     (!METHODS_WITH_RECEIPT.includes(paymentMethod) || usePackage || !!receiptFile)
+  // AUDIT FIX 2026-04-28 (TS-5): coercer usePackage a boolean para que step6Done
+  // sea boolean puro (antes era string | boolean por el typeof usePackage).
+  const step6Done = (!!usePackage || !!paymentMethod) &&
+                     (!METHODS_WITH_RECEIPT.includes(paymentMethod) || !!usePackage || !!receiptFile)
 
   const canSubmit = step1Done && step2Done && step3Done && step5Done && step6Done
 

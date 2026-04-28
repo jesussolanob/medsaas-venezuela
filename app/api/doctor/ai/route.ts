@@ -90,6 +90,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
+    // AUDIT FIX 2026-04-28 (I-5): rate limit en BD — 10 requests / 60s por usuario.
+    // El cache en memoria por sí solo no protege contra prompts distintos.
+    {
+      const since = new Date(Date.now() - 60_000).toISOString()
+      const { count: recent } = await supabase
+        .from('ai_request_log')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', since)
+      if ((recent ?? 0) >= 10) {
+        return NextResponse.json(
+          { error: 'Demasiadas solicitudes a la IA. Espera un minuto e inténtalo de nuevo.' },
+          { status: 429, headers: { 'Retry-After': '60' } }
+        )
+      }
+      await supabase.from('ai_request_log').insert({ user_id: user.id })
+    }
+
     const body = await req.json()
     const { action, content, patientId } = body as {
       action: AIAction

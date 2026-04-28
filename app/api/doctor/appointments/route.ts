@@ -55,23 +55,15 @@ export async function DELETE(req: NextRequest) {
       await admin.from('consultations').delete().eq('appointment_id', appointmentId)
     }
 
-    // 3. If using a package, decrement used_sessions
+    // 3. If using a package, restore the session via RPC
+    // AUDIT FIX 2026-04-28 (C-6): RPC con FOR UPDATE evita races con otros
+    // doctores/admins que toquen el mismo paquete simultáneamente.
     if (appt.package_id) {
-      const { data: pkg } = await admin
-        .from('patient_packages')
-        .select('id, used_sessions, total_sessions, status')
-        .eq('id', appt.package_id)
-        .single()
-
-      if (pkg) {
-        const newUsed = Math.max(0, pkg.used_sessions - 1)
-        const updateData: Record<string, unknown> = { used_sessions: newUsed }
-        // Reactivate if was completed
-        if (pkg.status === 'completed' && newUsed < pkg.total_sessions) {
-          updateData.status = 'active'
-        }
-        await admin.from('patient_packages').update(updateData).eq('id', appt.package_id)
-      }
+      const { error: rpcErr } = await admin.rpc('restore_package_session', {
+        p_appointment_id: appointmentId,
+        p_reason: 'appointment_deleted',
+      })
+      if (rpcErr) console.warn('[appointments DELETE] restore_package_session failed:', rpcErr.message)
     }
 
     // 4. Delete the Google Calendar event (best-effort)

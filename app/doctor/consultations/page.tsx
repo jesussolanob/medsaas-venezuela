@@ -27,6 +27,8 @@ type Consultation = {
   duration_minutes: number | null
   blocks_snapshot?: Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }> | null
   blocks_data?: Record<string, unknown> | null
+  // AUDIT FIX 2026-04-28 (C-5): contador para optimistic locking del autosave.
+  version?: number | null
 }
 
 // Estados de CONSULTA
@@ -480,6 +482,8 @@ function ConsultationsPage() {
           started_at: c.started_at ?? null,
           ended_at: c.ended_at ?? null,
           duration_minutes: c.duration_minutes ?? null,
+          // AUDIT FIX 2026-04-28 (C-5): version para optimistic locking en autosave.
+          version: (c as { version?: number | null }).version ?? null,
         }))
 
         setConsultations(consultationsList)
@@ -1239,18 +1243,44 @@ function ConsultationsPage() {
       if (!r.chief_complaint && !r.notes && !r.diagnosis && !r.treatment) return
       setAutoSaving(true)
       const supabase = createClient()
-      supabase.from('consultations').update({
-        chief_complaint: r.chief_complaint,
-        notes: r.notes,
-        diagnosis: r.diagnosis,
-        treatment: r.treatment,
-        payment_status: r.payment_status,
-      }).eq('id', selectedRef.current.id).then(() => {
+      // AUDIT FIX 2026-04-28 (C-5): optimistic locking via `version` column.
+      // Si otra pestaña/usuario guardó después de que cargamos, version de BD ya
+      // avanzó y count = 0; recargamos en silencio en lugar de pisar.
+      const expectedVersion = selectedRef.current.version ?? null
+      const updateBuilder = supabase
+        .from('consultations')
+        .update({
+          chief_complaint: r.chief_complaint,
+          notes: r.notes,
+          diagnosis: r.diagnosis,
+          treatment: r.treatment,
+          payment_status: r.payment_status,
+        }, { count: 'exact' })
+        .eq('id', selectedRef.current.id)
+      const promise = expectedVersion != null
+        ? updateBuilder.eq('version', expectedVersion).select('version').maybeSingle()
+        : updateBuilder.select('version').maybeSingle()
+      promise.then(({ data, error }) => {
         setAutoSaving(false)
+        if (error || !data) {
+          // Conflict: otra escritura ganó. Refetch para tomar la última versión.
+          if (selectedRef.current) {
+            supabase.from('consultations')
+              .select('version, chief_complaint, notes, diagnosis, treatment, payment_status')
+              .eq('id', selectedRef.current.id)
+              .single()
+              .then(({ data: fresh }) => {
+                if (fresh && selectedRef.current) {
+                  setSelected(prev => prev ? { ...prev, version: fresh.version } : prev)
+                }
+              })
+          }
+          return
+        }
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
-        // Update local list
-        setConsultations(prev => prev.map(c => c.id === selectedRef.current?.id ? { ...c, ...r } : c))
+        setSelected(prev => prev ? { ...prev, version: data.version } : prev)
+        setConsultations(prev => prev.map(c => c.id === selectedRef.current?.id ? { ...c, ...r, version: data.version } : c))
       })
     }, 3000)
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
@@ -2886,10 +2916,11 @@ function ConsultationsPage() {
                           <input type="file" accept="image/*,application/pdf" onChange={e => setReceiptFile(e.target.files?.[0] || null)} className="hidden" />
                           <div className="text-center">
                             <Upload className="w-4 h-4 mx-auto mb-1 text-teal-500" />
-                            <p className="text-xs font-medium text-slate-600">{receiptFile ? receiptFile.name : 'JPG, PNG o PDF'}</p>
+                            {/* AUDIT FIX 2026-04-28 (TS-2/TS-3): nullish coalescing en lugar de ternary. */}
+                            <p className="text-xs font-medium text-slate-600">{receiptFile?.name ?? 'JPG, PNG o PDF'}</p>
                           </div>
                         </label>
-                        {receiptFile && <p className="text-xs text-slate-500">{(receiptFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                        {receiptFile && <p className="text-xs text-slate-500">{((receiptFile?.size ?? 0) / 1024 / 1024).toFixed(2)} MB</p>}
                       </div>
                     )}
                   </div>

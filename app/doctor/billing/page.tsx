@@ -66,10 +66,15 @@ export default function BillingPage() {
       })))
 
       // Get services
-      try {
-        const { data: svcs } = await supabase.from('doctor_services').select('*').eq('doctor_id', user.id).eq('is_active', true).order('name')
-        if (svcs) setServices(svcs as Service[])
-      } catch { /* tabla puede no existir */ }
+      // AUDIT FIX 2026-04-28 (C-8): pricing_plans es la fuente única; type='service'.
+      const { data: svcs } = await supabase
+        .from('pricing_plans')
+        .select('*')
+        .eq('doctor_id', user.id)
+        .eq('type', 'service')
+        .eq('is_active', true)
+        .order('name')
+      if (svcs) setServices(svcs as Service[])
 
       // Load billing document stats
       const { data: docs } = await supabase
