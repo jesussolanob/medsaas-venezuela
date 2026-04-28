@@ -21,7 +21,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   FolderHeart, FileText, Image as ImageIcon, Pill, Clock,
-  Upload, ExternalLink, Loader2, MessageSquare, Send, Check, Stethoscope
+  Upload, ExternalLink, Loader2, MessageSquare, Send, Check, Stethoscope,
+  Pencil, Trash2, Save
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import UploadDropZone from '@/components/shared/UploadDropZone'
@@ -29,6 +30,9 @@ import {
   uploadSharedFile,
   replyWithComment,
   markAllReadByPatient,
+  updateSharedFile,
+  deleteSharedFile,
+  attachFileToExisting,
   type SharedFile,
 } from '@/lib/shared-files'
 
@@ -61,6 +65,11 @@ export default function PatientSeguimientoPage() {
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // RONDA 44: estado de edicion de items propios del paciente
+  const [editingFile, setEditingFile] = useState<SharedFile | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -253,6 +262,50 @@ export default function PatientSeguimientoPage() {
     }
   }
 
+  // RONDA 44: handlers para editar/eliminar items propios del paciente
+  async function handleDeleteFile(file: SharedFile) {
+    if (!confirm(`¿Eliminar "${file.title}"?`)) return
+    const supabase = createClient()
+    const { error } = await deleteSharedFile(supabase, { id: file.id, fileUrl: file.file_url })
+    if (error) alert(`Error: ${error}`)
+    else await loadData()
+  }
+
+  async function handleSaveEdit() {
+    if (!editingFile) return
+    setSavingEdit(true)
+    try {
+      const supabase = createClient()
+      const { error } = await updateSharedFile(supabase, {
+        id: editingFile.id,
+        title: editTitle.trim() || editingFile.title,
+        description: editDesc.trim() || null,
+      })
+      if (error) alert(`Error: ${error}`)
+      else {
+        setEditingFile(null)
+        await loadData()
+      }
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function handleAttachToExisting(file: File) {
+    if (!editingFile) throw new Error('No hay item seleccionado')
+    const target = doctors.find(d => d.id === editingFile.doctor_id)
+    if (!target) throw new Error('No se encontró el paciente vinculado al doctor')
+    const supabase = createClient()
+    const { error } = await attachFileToExisting(supabase, {
+      id: editingFile.id,
+      file,
+      patientId: target.patient_id,
+    })
+    if (error) throw new Error(error)
+    setEditingFile(null)
+    await loadData()
+  }
+
   // ── RENDER ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -401,7 +454,18 @@ export default function PatientSeguimientoPage() {
         ) : (
           <div className="divide-y divide-slate-100">
             {completedFiles.map(f => (
-              <FileRow key={f.id} file={f} doctorName={getDoctorName(f.doctor_id)} showDoctor={doctors.length > 1} />
+              <FileRow
+                key={f.id}
+                file={f}
+                doctorName={getDoctorName(f.doctor_id)}
+                showDoctor={doctors.length > 1}
+                onEdit={(file) => {
+                  setEditingFile(file)
+                  setEditTitle(file.title)
+                  setEditDesc(file.description || '')
+                }}
+                onDelete={handleDeleteFile}
+              />
             ))}
           </div>
         )}
@@ -450,6 +514,61 @@ export default function PatientSeguimientoPage() {
         </div>
       )}
 
+      {/* RONDA 44: Modal de edicion de items propios */}
+      {editingFile && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-3" onClick={() => !savingEdit && setEditingFile(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Pencil className="w-4 h-4" /> Editar
+              </h3>
+              <button onClick={() => !savingEdit && setEditingFile(null)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Título</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:border-teal-400 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Descripción</label>
+                <textarea
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm resize-none focus:border-teal-400 outline-none"
+                />
+              </div>
+              <button
+                onClick={handleSaveEdit}
+                disabled={savingEdit || !editTitle.trim()}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
+              >
+                {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar cambios
+              </button>
+
+              {!editingFile.file_url && (
+                <>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <div className="flex-1 border-t border-slate-200"></div>
+                    <span>o adjuntar un archivo</span>
+                    <div className="flex-1 border-t border-slate-200"></div>
+                  </div>
+                  <UploadDropZone
+                    onUpload={handleAttachToExisting}
+                    label="Adjuntar archivo a este item"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de subida / comentario */}
       {uploadModal.open && (
         <UploadOrCommentModal
@@ -471,12 +590,20 @@ export default function PatientSeguimientoPage() {
 
 // ─── COMPONENTES ──────────────────────────────────────────────────────────
 
-function FileRow({ file, doctorName, showDoctor }: { file: SharedFile; doctorName: string; showDoctor: boolean }) {
+function FileRow({
+  file, doctorName, showDoctor, onEdit, onDelete,
+}: {
+  file: SharedFile; doctorName: string; showDoctor: boolean
+  onEdit?: (f: SharedFile) => void
+  onDelete?: (f: SharedFile) => void
+}) {
   const isImage = file.file_type && ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(file.file_type)
   const hasFile = !!file.file_url
   // RONDA 42: distinguir tipos correctamente
   const isComment = file.category === 'comment'
   const isCompletedTask = file.category === 'instruction' && file.status === 'completed'
+  // RONDA 44: solo el paciente puede editar/eliminar SUS propios items (created_by='patient')
+  const isOwnItem = file.created_by === 'patient'
   const Icon = !hasFile ? MessageSquare : (isImage ? ImageIcon : FileText)
 
   return (
@@ -517,17 +644,38 @@ function FileRow({ file, doctorName, showDoctor }: { file: SharedFile; doctorNam
           {file.file_size_bytes && <> · {(file.file_size_bytes / 1024).toFixed(0)} KB</>}
         </p>
       </div>
-      {hasFile && (
-        <a
-          href={file.file_url!}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-          title="Abrir archivo"
-        >
-          <ExternalLink className="w-4 h-4" />
-        </a>
-      )}
+      <div className="flex items-center gap-1 shrink-0">
+        {hasFile && (
+          <a
+            href={file.file_url!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+            title="Abrir archivo"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+        )}
+        {/* RONDA 44: lapiz + papelera SOLO si el item es del paciente */}
+        {isOwnItem && onEdit && (
+          <button
+            onClick={() => onEdit(file)}
+            className="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+            title="Editar"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        )}
+        {isOwnItem && onDelete && (
+          <button
+            onClick={() => onDelete(file)}
+            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Eliminar"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
     </div>
   )
 }

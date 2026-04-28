@@ -206,6 +206,102 @@ export async function replyWithComment(
   return { data: data as SharedFile, error: null }
 }
 
+/**
+ * RONDA 43: editar metadatos de un shared_file existente (titulo, descripcion).
+ * Solo el creador puede editar via RLS (doctor el suyo, paciente el suyo).
+ */
+export async function updateSharedFile(
+  supabase: SupabaseClient,
+  args: {
+    id: string
+    title?: string
+    description?: string | null
+    status?: 'pending' | 'completed' | 'reviewed'
+  }
+): Promise<{ data: SharedFile | null; error: string | null }> {
+  const updates: Record<string, unknown> = {}
+  if (args.title !== undefined) updates.title = args.title
+  if (args.description !== undefined) updates.description = args.description
+  if (args.status !== undefined) updates.status = args.status
+  if (Object.keys(updates).length === 0) {
+    return { data: null, error: 'Nada que actualizar' }
+  }
+  const { data, error } = await supabase
+    .from('shared_files')
+    .update(updates)
+    .eq('id', args.id)
+    .select()
+    .single()
+  if (error) return { data: null, error: error.message }
+  return { data: data as SharedFile, error: null }
+}
+
+/**
+ * RONDA 43: adjuntar (o reemplazar) el archivo de un shared_file ya existente.
+ * Util cuando el doctor crea primero la tarea y despues le adjunta el archivo,
+ * o quiere actualizar el archivo de una entrada existente.
+ */
+export async function attachFileToExisting(
+  supabase: SupabaseClient,
+  args: { id: string; file: File; patientId: string }
+): Promise<{ data: SharedFile | null; error: string | null }> {
+  const path = buildSharedPath(args.patientId, args.file.name)
+  const { error: upErr } = await supabase.storage
+    .from(SHARED_BUCKET)
+    .upload(path, args.file, { contentType: args.file.type, upsert: false })
+  if (upErr) return { data: null, error: `Upload fallo: ${upErr.message}` }
+
+  const { data: pubUrl } = supabase.storage.from(SHARED_BUCKET).getPublicUrl(path)
+  const { data, error } = await supabase
+    .from('shared_files')
+    .update({
+      file_url: pubUrl.publicUrl,
+      file_type: detectFileType(args.file),
+      file_size_bytes: args.file.size,
+      status: 'completed',
+      // ya no es solo instruccion, ahora tiene archivo
+      category: defaultCategory(args.file),
+    })
+    .eq('id', args.id)
+    .select()
+    .single()
+  if (error) {
+    await supabase.storage.from(SHARED_BUCKET).remove([path])
+    return { data: null, error: error.message }
+  }
+  return { data: data as SharedFile, error: null }
+}
+
+/**
+ * RONDA 43: eliminar un shared_file. Si tiene file_url, intentar borrar
+ * el archivo del bucket tambien (best-effort).
+ */
+export async function deleteSharedFile(
+  supabase: SupabaseClient,
+  args: { id: string; fileUrl?: string | null }
+): Promise<{ error: string | null }> {
+  // Borrar primero la fila (la RLS valida ownership)
+  const { error } = await supabase
+    .from('shared_files')
+    .delete()
+    .eq('id', args.id)
+  if (error) return { error: error.message }
+
+  // Best-effort: borrar el archivo del bucket si existe
+  if (args.fileUrl) {
+    try {
+      // Extraer el path desde la URL publica
+      const marker = `/storage/v1/object/public/${SHARED_BUCKET}/`
+      const idx = args.fileUrl.indexOf(marker)
+      if (idx !== -1) {
+        const path = args.fileUrl.slice(idx + marker.length)
+        await supabase.storage.from(SHARED_BUCKET).remove([decodeURIComponent(path)])
+      }
+    } catch { /* ignorar */ }
+  }
+  return { error: null }
+}
+
 /** Lista los shared_files de UN paciente, ordenados desc. */
 export async function listSharedFiles(
   supabase: SupabaseClient,

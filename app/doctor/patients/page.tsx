@@ -5,7 +5,7 @@ import {
   Users, Plus, Search, Phone, Mail, FileText, X, ChevronRight,
   ArrowLeft, Save, CheckCircle, Clock, AlertCircle, MessageCircle,
   Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon, Upload,
-  Sparkles, Loader2, Send, FolderHeart, ExternalLink
+  Sparkles, Loader2, Send, FolderHeart, ExternalLink, Pencil, Trash2
 } from 'lucide-react'
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
@@ -74,6 +74,11 @@ export default function PatientsPage() {
   const [doctorUploadModal, setDoctorUploadModal] = useState(false)
   const [doctorUploadTitle, setDoctorUploadTitle] = useState('')
   const [doctorUploadDesc, setDoctorUploadDesc] = useState('')
+  // RONDA 43: estado para editar tarea/archivo existente
+  const [editingFile, setEditingFile] = useState<import('@/lib/shared-files').SharedFile | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [savingEditFile, setSavingEditFile] = useState(false)
   // Modal NewAppointmentFlow unificado (reemplaza la vista inline new-consultation)
   const [showNewAppointmentFlow, setShowNewAppointmentFlow] = useState(false)
   // RONDA 19b: PatientForm unificado para crear y editar
@@ -986,6 +991,44 @@ export default function PatientsPage() {
             {/* RONDA 40 — Tab "Seguimiento del Paciente" (Shared Health Space) */}
             {detailTab === 'seguimiento' && selected && (
               <div className="space-y-4">
+                {/* RONDA 44: header explicito de a quien le estoy mandando, para evitar
+                    confusiones cuando el doctor tiene varios pacientes con nombres parecidos */}
+                <div className={`rounded-xl px-4 py-3 flex items-center gap-3 ${
+                  (selected as any).auth_user_id
+                    ? 'bg-emerald-50 border border-emerald-200'
+                    : 'bg-slate-50 border border-slate-200'
+                }`}>
+                  <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                    (selected as any).auth_user_id
+                      ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'
+                  }`}>
+                    {selected.full_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      Estás trabajando con: {selected.full_name}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {selected.email || selected.cedula || 'Sin email registrado'}
+                      {(selected as any).auth_user_id ? ' · ✓ Cuenta vinculada' : ' · ✗ Sin cuenta'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* RONDA 43: warning si el paciente NO tiene cuenta vinculada */}
+                {!(selected as any).auth_user_id && (
+                  <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-amber-900">Este paciente aún no tiene cuenta</p>
+                      <p className="text-xs text-amber-800 mt-0.5">
+                        Las tareas y archivos que envíes quedarán guardados en tu historial, pero el paciente no
+                        podrá verlos desde su portal hasta que se registre con su email o por el link de invitación.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Crear instruccion / tarea para el paciente */}
                 <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-4 sm:p-5">
                   <div className="flex items-start gap-3 mb-3">
@@ -1124,12 +1167,44 @@ export default function PatientsPage() {
                                 {f.file_size_bytes && <> · {(f.file_size_bytes / 1024).toFixed(0)} KB</>}
                               </p>
                             </div>
-                            {f.file_url && (
-                              <a href={f.file_url} target="_blank" rel="noopener noreferrer"
-                                className="shrink-0 p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors" title="Abrir archivo">
-                                <ExternalLink className="w-4 h-4" />
-                              </a>
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {f.file_url && (
+                                <a href={f.file_url} target="_blank" rel="noopener noreferrer"
+                                  className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors" title="Abrir archivo">
+                                  <ExternalLink className="w-4 h-4" />
+                                </a>
+                              )}
+                              {/* RONDA 43: lapiz + papelera SOLO si el item es del doctor (created_by='doctor') */}
+                              {f.created_by === 'doctor' && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setEditingFile(f)
+                                      setEditTitle(f.title)
+                                      setEditDesc(f.description || '')
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                    title="Editar"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!confirm(`¿Eliminar "${f.title}"? Esta acción no se puede deshacer.`)) return
+                                      const { deleteSharedFile } = await import('@/lib/shared-files')
+                                      const supabase = createClient()
+                                      const { error } = await deleteSharedFile(supabase, { id: f.id, fileUrl: f.file_url })
+                                      if (error) alert(`Error: ${error}`)
+                                      else if (selected) await loadSharedFiles(selected.id)
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Eliminar"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
@@ -1227,6 +1302,132 @@ export default function PatientsPage() {
                 }}
                 label="Suelta o selecciona el archivo"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RONDA 43 — Modal de edicion de tarea/archivo existente */}
+      {editingFile && selected && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-3" onClick={() => !savingEditFile && setEditingFile(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Pencil className="w-4 h-4" /> Editar
+              </h3>
+              <button onClick={() => !savingEditFile && setEditingFile(null)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Título</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:border-teal-400 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Descripción</label>
+                <textarea
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm resize-none focus:border-teal-400 outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    setSavingEditFile(true)
+                    try {
+                      const { updateSharedFile } = await import('@/lib/shared-files')
+                      const supabase = createClient()
+                      const { error } = await updateSharedFile(supabase, {
+                        id: editingFile.id,
+                        title: editTitle.trim() || editingFile.title,
+                        description: editDesc.trim() || null,
+                      })
+                      if (error) {
+                        alert(`Error: ${error}`)
+                      } else {
+                        setEditingFile(null)
+                        if (selected) await loadSharedFiles(selected.id)
+                      }
+                    } finally {
+                      setSavingEditFile(false)
+                    }
+                  }}
+                  disabled={savingEditFile || !editTitle.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
+                >
+                  {savingEditFile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar cambios
+                </button>
+              </div>
+
+              {/* Si esta tarea NO tiene archivo aun, permitir adjuntar uno */}
+              {!editingFile.file_url && (
+                <>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <div className="flex-1 border-t border-slate-200"></div>
+                    <span>o adjuntar un archivo a esta tarea</span>
+                    <div className="flex-1 border-t border-slate-200"></div>
+                  </div>
+                  <UploadDropZone
+                    onUpload={async (file) => {
+                      const { attachFileToExisting } = await import('@/lib/shared-files')
+                      const supabase = createClient()
+                      const { error } = await attachFileToExisting(supabase, {
+                        id: editingFile.id,
+                        file,
+                        patientId: selected.id,
+                      })
+                      if (error) throw new Error(error)
+                      setEditingFile(null)
+                      await loadSharedFiles(selected.id)
+                    }}
+                    label="Adjuntar archivo a esta tarea"
+                    helperText="PDF, JPG o PNG. Máximo 20MB."
+                  />
+                </>
+              )}
+
+              {/* Si YA tiene archivo, mostrar reemplazar */}
+              {editingFile.file_url && (
+                <>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <div className="flex-1 border-t border-slate-200"></div>
+                    <span>archivo actual</span>
+                    <div className="flex-1 border-t border-slate-200"></div>
+                  </div>
+                  <a
+                    href={editingFile.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-semibold"
+                  >
+                    <ExternalLink className="w-4 h-4" /> Ver archivo adjunto
+                  </a>
+                  <UploadDropZone
+                    onUpload={async (file) => {
+                      const { attachFileToExisting } = await import('@/lib/shared-files')
+                      const supabase = createClient()
+                      const { error } = await attachFileToExisting(supabase, {
+                        id: editingFile.id,
+                        file,
+                        patientId: selected.id,
+                      })
+                      if (error) throw new Error(error)
+                      setEditingFile(null)
+                      await loadSharedFiles(selected.id)
+                    }}
+                    label="Reemplazar archivo"
+                    helperText="Sube un nuevo archivo para reemplazar el actual."
+                    variant="compact"
+                  />
+                </>
+              )}
             </div>
           </div>
         </div>
