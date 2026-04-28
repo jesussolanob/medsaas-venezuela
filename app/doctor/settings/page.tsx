@@ -12,6 +12,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { VENEZUELA_INSURANCES } from './insurances'
 import AvatarUploader from './avatar-uploader'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count: number; is_active: boolean }
 type Module = { id: string; label: string; description: string; enabled: boolean }
@@ -298,12 +299,18 @@ function SettingsPageInner() {
     setUploadingSignature(false)
   }
 
-  async function removeSignature() {
+  // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.
+  const [confirmRemoveSignature, setConfirmRemoveSignature] = useState(false)
+  function removeSignature() {
     if (!doctorId) return
-    if (!confirm('¿Borrar la firma actual?')) return
+    setConfirmRemoveSignature(true)
+  }
+  async function performRemoveSignature() {
+    if (!doctorId) return
     const supabase = createClient()
     await supabase.from('profiles').update({ signature_url: null }).eq('id', doctorId)
     setSignatureUrl(null)
+    setConfirmRemoveSignature(false)
   }
 
   async function saveLicense() {
@@ -519,6 +526,16 @@ function SettingsPageInner() {
   return (
     <>
       <style>{`* { font-family: 'Inter', sans-serif; } .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+
+      <ConfirmDialog
+        open={confirmRemoveSignature}
+        title="Borrar firma"
+        message="¿Borrar la firma actual? Tendrás que subir una nueva para los próximos documentos."
+        confirmLabel="Borrar"
+        variant="danger"
+        onConfirm={performRemoveSignature}
+        onCancel={() => setConfirmRemoveSignature(false)}
+      />
 
       <div className="max-w-4xl space-y-5">
         <div>

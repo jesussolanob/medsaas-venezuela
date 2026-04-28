@@ -8,6 +8,7 @@ import {
   Save, X, Loader2, ToggleLeft, ToggleRight, Eye, EyeOff, Tag,
   FileText, Pill, Stethoscope
 } from 'lucide-react'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 type ServiceItem = {
   id: string
@@ -39,6 +40,8 @@ export default function ServicesPage() {
   const [editing, setEditing] = useState<ServiceItem | null>(null)
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState<'all' | 'plan' | 'service'>('all')
+  // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: 'quick' | 'service' } | null>(null)
 
   // Form state
   const [name, setName] = useState('')
@@ -117,10 +120,13 @@ export default function ServicesPage() {
     }
   }
 
-  async function deleteQuickItem(id: string) {
-    if (!confirm('¿Eliminar este elemento?')) return
+  function deleteQuickItem(id: string) {
+    setConfirmDelete({ id, kind: 'quick' })
+  }
+  async function performDeleteQuickItem(id: string) {
     const supabase = createClient()
     await supabase.from('doctor_quick_items').delete().eq('id', id)
+    setConfirmDelete(null)
     fetchServices()
   }
 
@@ -186,10 +192,13 @@ export default function ServicesPage() {
     fetchServices()
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('¿Eliminar este servicio?')) return
+  function handleDelete(id: string) {
+    setConfirmDelete({ id, kind: 'service' })
+  }
+  async function performDeleteService(id: string) {
     const supabase = createClient()
     await supabase.from('pricing_plans').delete().eq('id', id)
+    setConfirmDelete(null)
     fetchServices()
   }
 
@@ -217,6 +226,20 @@ export default function ServicesPage() {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={confirmDelete?.kind === 'quick' ? 'Eliminar elemento' : 'Eliminar servicio'}
+        message="¿Estás seguro? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        variant="danger"
+        onConfirm={() => {
+          if (!confirmDelete) return
+          if (confirmDelete.kind === 'quick') performDeleteQuickItem(confirmDelete.id)
+          else performDeleteService(confirmDelete.id)
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>

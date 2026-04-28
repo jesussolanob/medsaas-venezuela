@@ -6,6 +6,7 @@ import {
   Building2, Plus, Pencil, Trash2, MapPin, Phone, Clock,
   Save, X, Loader2, CheckCircle, ToggleLeft, ToggleRight
 } from 'lucide-react'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 type Office = {
   id: string
@@ -45,6 +46,8 @@ export default function OfficesPage() {
   const [editing, setEditing] = useState<Office | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   // Form state
   const [name, setName] = useState('')
@@ -143,12 +146,16 @@ export default function OfficesPage() {
     fetchOffices()
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('¿Eliminar este consultorio?')) return
+  function handleDelete(id: string) {
+    setConfirmDelete(id)
+  }
+
+  async function performDelete(id: string) {
     setDeleting(id)
     const supabase = createClient()
     await supabase.from('doctor_offices').delete().eq('id', id)
     setDeleting(null)
+    setConfirmDelete(null)
     fetchOffices()
   }
 
@@ -168,6 +175,17 @@ export default function OfficesPage() {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Eliminar consultorio"
+        message="¿Estás seguro? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        variant="danger"
+        loading={!!deleting}
+        onConfirm={() => confirmDelete && performDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

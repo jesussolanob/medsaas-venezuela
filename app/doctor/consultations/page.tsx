@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
+import { log } from '@/lib/logger'
 
 type Consultation = {
   id: string
@@ -883,11 +884,11 @@ function ConsultationsPage() {
 
     // Validacion previa del patient_id — DEBE ser un UUID de la tabla `patients`
     if (!selected.patient_id) {
-      console.error('[saveRecipe] selected.patient_id es null/undefined', { selected })
+      log.error('[saveRecipe] selected.patient_id es null/undefined', { selected })
       alert('Error: la consulta no tiene un paciente asociado')
       return
     }
-    console.log('[saveRecipe] insertando con patient_id =', selected.patient_id, 'consultation_id =', selected.id)
+    log.debug('[saveRecipe] insertando', { patient_id: selected.patient_id, consultation_id: selected.id })
 
     setIsSavingRecipe(true)
     try {
@@ -919,7 +920,7 @@ function ConsultationsPage() {
         return
       }
 
-      console.log('[saveRecipe] guardado OK con id =', data.id)
+      log.debug('[saveRecipe] guardado OK', { id: data.id })
       // Reload saved prescriptions
       const { data: savedRx } = await supabase
         .from('prescriptions')
@@ -1884,7 +1885,7 @@ function ConsultationsPage() {
                             alert('Error: la consulta no tiene un paciente asociado')
                             return
                           }
-                          console.log('[savePrescripciones] patient_id =', selected.patient_id, 'consultation_id =', selected.id)
+                          log.debug('[savePrescripciones] insertando', { patient_id: selected.patient_id, consultation_id: selected.id })
                           setIsSavingPrescripciones(true)
                           try {
                             const supabase = createClient()
