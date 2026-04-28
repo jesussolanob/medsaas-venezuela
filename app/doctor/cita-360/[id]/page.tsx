@@ -91,6 +91,15 @@ export default async function Cita360Page({ params }: { params: Promise<{ id: st
         .single()
     : { data: null }
 
+  // RONDA 47: cargar payment_items (paquetes/servicios extra agregados al cobro)
+  const { data: paymentItems } = appt.payment_id
+    ? await admin
+        .from('payment_items')
+        .select('id, name, amount_usd, source_type, created_at')
+        .eq('payment_id', appt.payment_id)
+        .order('created_at', { ascending: true })
+    : { data: [] }
+
   // Cadena de reagendamientos: buscar todas las appointments con la misma consultation_id
   const { data: rescheduleChain } = appt.consultation_id
     ? await admin
@@ -116,6 +125,7 @@ export default async function Cita360Page({ params }: { params: Promise<{ id: st
     appointment: appt as any,
     consultation: consultation as any,
     payment: payment as any,
+    paymentItems: (paymentItems || []) as any,
     doctor: doctor as any,
     patient: patient as any,
     rescheduleChain: (rescheduleChain || []) as any,

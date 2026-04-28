@@ -12,6 +12,8 @@ export type Cita360Data = {
   appointment: any
   consultation: any | null
   payment: any | null
+  // RONDA 47: items extra agregados al cobro (paquetes/servicios) para mostrar desglose
+  paymentItems: Array<{ id: string; name: string; amount_usd: number | string; source_type: string | null; created_at: string }>
   doctor: { full_name: string; specialty: string | null; professional_title: string | null; email: string } | null
   patient: { full_name: string; email: string | null; phone: string | null; cedula: string | null; birth_date: string | null } | null
   rescheduleChain: Array<{ id: string; appointment_code: string; status: string; scheduled_at: string; reschedule_of: string | null; created_at: string }>
@@ -88,7 +90,7 @@ function CodeChip({ value, label, color = 'cyan' }: { value: string | null | und
 
 export default function Cita360Client({ data }: { data: Cita360Data }) {
   const [step, setStep] = useState<Step>(1)
-  const { appointment: appt, consultation: cons, payment: pay, doctor, patient, rescheduleChain, changeLog } = data
+  const { appointment: appt, consultation: cons, payment: pay, paymentItems, doctor, patient, rescheduleChain, changeLog } = data
 
   const steps = [
     { n: 1 as Step, label: 'Cita',     icon: Calendar,    color: 'cyan' },
@@ -340,6 +342,60 @@ export default function Cita360Client({ data }: { data: Cita360Data }) {
                 <Field icon={Clock} label="Pagado el" value={fmtDate(pay.paid_at)} />
                 <Field icon={CreditCard} label="Moneda" value={pay.currency || 'USD'} />
               </div>
+
+              {/* RONDA 47: desglose de cargos del cobro (consulta base + servicios extra) */}
+              {(() => {
+                const total = Number(pay.amount_usd ?? 0)
+                const extras = paymentItems || []
+                const sumExtras = extras.reduce((s, it) => s + Number(it.amount_usd ?? 0), 0)
+                const baseTotal = Math.max(0, total - sumExtras)
+                // Mostrar siempre que haya items extra; si no hay extras, no aporta nada
+                if (extras.length === 0) return null
+                return (
+                  <div className="border-t border-slate-100 pt-4">
+                    <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                      <Receipt className="w-4 h-4 text-slate-500" /> Desglose del cobro
+                    </h3>
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-white border-b border-slate-200">
+                          <tr>
+                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider px-4 py-2.5">Concepto</th>
+                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider px-4 py-2.5">Tipo</th>
+                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider px-4 py-2.5">Monto</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          <tr>
+                            <td className="px-4 py-2.5 text-slate-800 font-medium">{cons?.plan_name || appt?.plan_name || 'Consulta'}</td>
+                            <td className="px-4 py-2.5"><span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">Consulta</span></td>
+                            <td className="px-4 py-2.5 text-right text-slate-800 font-semibold">{fmtMoney(baseTotal, pay.currency || 'USD')}</td>
+                          </tr>
+                          {extras.map(it => (
+                            <tr key={it.id}>
+                              <td className="px-4 py-2.5 text-slate-800 font-medium">{it.name}</td>
+                              <td className="px-4 py-2.5">
+                                <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                  it.source_type === 'service' ? 'bg-violet-100 text-violet-700' : 'bg-cyan-100 text-cyan-700'
+                                }`}>
+                                  {it.source_type === 'service' ? 'Servicio' : 'Plan'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-slate-800 font-semibold">{fmtMoney(it.amount_usd, pay.currency || 'USD')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-white border-t-2 border-slate-300">
+                          <tr>
+                            <td colSpan={2} className="px-4 py-3 font-bold text-slate-900">TOTAL</td>
+                            <td className="px-4 py-3 text-right font-bold text-teal-700">{fmtMoney(total, pay.currency || 'USD')}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {pay.payment_receipt_url && (
                 <div className="border-t border-slate-100 pt-4">
