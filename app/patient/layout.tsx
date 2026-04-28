@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Calendar, FileText, Pill, MessageCircle,
-  User, LogOut, Menu, Bell
+  User, LogOut, Menu, Bell, FolderHeart
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -12,12 +12,13 @@ import SearchCommandPalette from './SearchCommandPalette'
 
 type NavItem = { name: string; href: string; icon: any }
 
-// RONDA 21: removido "Mensajes" — el chat queda fuera del MVP por ahora
+// RONDA 40: "Recetas" reemplazado por "Mi seguimiento" (Shared Health Space).
+// Las recetas siguen accesibles como un tipo de archivo dentro del seguimiento.
 const navItems: NavItem[] = [
   { name: 'Inicio', href: '/patient', icon: LayoutDashboard },
   { name: 'Mis citas', href: '/patient/appointments', icon: Calendar },
   { name: 'Mis informes', href: '/patient/reports', icon: FileText },
-  { name: 'Recetas', href: '/patient/prescriptions', icon: Pill },
+  { name: 'Mi seguimiento', href: '/patient/seguimiento', icon: FolderHeart },
   { name: 'Mi perfil', href: '/patient/profile', icon: User },
 ]
 

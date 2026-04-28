@@ -5,12 +5,14 @@ import {
   Users, Plus, Search, Phone, Mail, FileText, X, ChevronRight,
   ArrowLeft, Save, CheckCircle, Clock, AlertCircle, MessageCircle,
   Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon, Upload,
-  Sparkles, Loader2
+  Sparkles, Loader2, Send, FolderHeart, ExternalLink
 } from 'lucide-react'
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm'
+// RONDA 40: componente compartido de drag & drop
+import UploadDropZone from '@/components/shared/UploadDropZone'
 
 interface PatientPackageInfo {
   patientId: string
@@ -41,7 +43,8 @@ const CHANNEL_OPTIONS = [
 ]
 
 type View = 'list' | 'detail' | 'new-consultation'
-type DetailTab = 'consultas' | 'historial'
+// RONDA 40: nueva pestaña "Seguimiento" (Shared Health Space)
+type DetailTab = 'consultas' | 'historial' | 'seguimiento'
 
 export default function PatientsPage() {
   const [doctorId, setDoctorId] = useState<string | null>(null)
@@ -61,6 +64,16 @@ export default function PatientsPage() {
   const [aiSummary, setAiSummary] = useState<string>('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
+  // RONDA 40: estado del modulo Seguimiento (shared_files)
+  const [sharedFiles, setSharedFiles] = useState<import('@/lib/shared-files').SharedFile[]>([])
+  const [sharedLoading, setSharedLoading] = useState(false)
+  const [unreadByPatient, setUnreadByPatient] = useState<Record<string, number>>({})
+  const [newInstructionTitle, setNewInstructionTitle] = useState('')
+  const [newInstructionDesc, setNewInstructionDesc] = useState('')
+  const [savingInstruction, setSavingInstruction] = useState(false)
+  const [doctorUploadModal, setDoctorUploadModal] = useState(false)
+  const [doctorUploadTitle, setDoctorUploadTitle] = useState('')
+  const [doctorUploadDesc, setDoctorUploadDesc] = useState('')
   // Modal NewAppointmentFlow unificado (reemplaza la vista inline new-consultation)
   const [showNewAppointmentFlow, setShowNewAppointmentFlow] = useState(false)
   // RONDA 19b: PatientForm unificado para crear y editar
@@ -122,6 +135,10 @@ export default function PatientsPage() {
 
       // Load package info
       loadPackageInfo(id)
+
+      // RONDA 40: cargar contadores de archivos no leidos por doctor
+      // (para badge verde en la lista de pacientes)
+      loadUnreadCounts(id)
 
       // Load pricing plans and payment methods
       const supabase = createClient()
@@ -237,11 +254,40 @@ export default function PatientsPage() {
     setSelectedConsultaId(null)
     setAiSummary('')
     setAiError('')
+    setSharedFiles([])
     getConsultations(p.id).then(list => {
       setConsultations(list)
       // Auto-select la mas reciente (primera del array, ordenada DESC en getConsultations)
       if (list.length > 0) setSelectedConsultaId(list[0].id)
     })
+    // RONDA 40: cargar shared_files del paciente
+    loadSharedFiles(p.id)
+  }
+
+  // RONDA 40: helpers del modulo Seguimiento
+  async function loadSharedFiles(patientId: string) {
+    setSharedLoading(true)
+    try {
+      const { listSharedFiles } = await import('@/lib/shared-files')
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const rows = await listSharedFiles(supabase, { patientId })
+      setSharedFiles(rows)
+    } catch (err) {
+      console.error('[loadSharedFiles]', err)
+    } finally {
+      setSharedLoading(false)
+    }
+  }
+
+  async function loadUnreadCounts(currentDoctorId: string) {
+    try {
+      const { countUnreadByDoctorPerPatient } = await import('@/lib/shared-files')
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const counts = await countUnreadByDoctorPerPatient(supabase, currentDoctorId)
+      setUnreadByPatient(counts)
+    } catch (err) {
+      console.error('[loadUnreadCounts]', err)
+    }
   }
 
   // RONDA 19b — handler UNICO para PatientForm. UPDATE si data.id existe, INSERT si no.
@@ -472,6 +518,16 @@ export default function PatientsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-slate-900 text-sm truncate">{p.full_name}</p>
+                      {/* RONDA 40: badge verde con punto pulsante si el paciente subio archivos no leidos */}
+                      {(unreadByPatient[p.id] || 0) > 0 && (
+                        <span title={`${unreadByPatient[p.id]} archivo(s) nuevo(s) del paciente`} className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0 border border-emerald-300">
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                          {unreadByPatient[p.id]} nuevo{unreadByPatient[p.id] !== 1 ? 's' : ''}
+                        </span>
+                      )}
                       {p.source && p.source !== 'manual' && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-600">{SOURCE_LABELS[p.source] ?? p.source}</span>
                       )}
@@ -695,10 +751,10 @@ export default function PatientsPage() {
           {/* Consultations with Tabs */}
           <div>
             {/* Tab buttons */}
-            <div className="flex gap-0 mb-4 border-b-2 border-slate-200">
+            <div className="flex gap-0 mb-4 border-b-2 border-slate-200 overflow-x-auto">
               <button
                 onClick={() => setDetailTab('consultas')}
-                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap ${
                   detailTab === 'consultas'
                     ? 'border-b-2 border-teal-500 text-teal-600 -mb-0.5'
                     : 'text-slate-400 hover:text-slate-600'
@@ -708,13 +764,38 @@ export default function PatientsPage() {
               </button>
               <button
                 onClick={() => setDetailTab('historial')}
-                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap ${
                   detailTab === 'historial'
                     ? 'border-b-2 border-teal-500 text-teal-600 -mb-0.5'
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
                 Historial Médico
+              </button>
+              {/* RONDA 40: tab Seguimiento del Paciente con badge verde si hay archivos sin leer */}
+              <button
+                onClick={async () => {
+                  setDetailTab('seguimiento')
+                  // marcar como leidos al entrar a la pestaña
+                  if (selected && doctorId) {
+                    const { markAllReadByDoctor } = await import('@/lib/shared-files')
+                    const supabase = (await import('@/lib/supabase/client')).createClient()
+                    await markAllReadByDoctor(supabase, { doctorId, patientId: selected.id })
+                    setUnreadByPatient(prev => ({ ...prev, [selected.id]: 0 }))
+                  }
+                }}
+                className={`relative px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap ${
+                  detailTab === 'seguimiento'
+                    ? 'border-b-2 border-teal-500 text-teal-600 -mb-0.5'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Seguimiento
+                {selected && (unreadByPatient[selected.id] || 0) > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold animate-pulse">
+                    {unreadByPatient[selected.id]}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -901,6 +982,197 @@ export default function PatientsPage() {
                 </div>
               </div>
             )}
+
+            {/* RONDA 40 — Tab "Seguimiento del Paciente" (Shared Health Space) */}
+            {detailTab === 'seguimiento' && selected && (
+              <div className="space-y-4">
+                {/* Crear instruccion / tarea para el paciente */}
+                <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-4 sm:p-5">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-xl bg-teal-500 flex items-center justify-center flex-shrink-0">
+                      <Send className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-slate-800">Pedirle algo al paciente</p>
+                      <p className="text-xs text-slate-600 mt-0.5">Crea una tarea o pídele que adjunte un examen, foto o documento. Le aparecerá como pendiente.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <input
+                      value={newInstructionTitle}
+                      onChange={e => setNewInstructionTitle(e.target.value)}
+                      placeholder="Ej: Radiografía de tórax, Foto del moretón..."
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                    />
+                    <textarea
+                      value={newInstructionDesc}
+                      onChange={e => setNewInstructionDesc(e.target.value)}
+                      placeholder="Instrucciones (opcional): cómo tomar la foto, qué examen pedir, etc."
+                      rows={2}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-teal-400 outline-none"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!doctorId || !selected || !newInstructionTitle.trim()) return
+                          setSavingInstruction(true)
+                          try {
+                            const { createInstruction } = await import('@/lib/shared-files')
+                            const supabase = createClient()
+                            const { error } = await createInstruction(supabase, {
+                              doctorId,
+                              patientId: selected.id,
+                              title: newInstructionTitle.trim(),
+                              description: newInstructionDesc.trim() || null,
+                            })
+                            if (error) {
+                              alert(`Error: ${error}`)
+                            } else {
+                              setNewInstructionTitle('')
+                              setNewInstructionDesc('')
+                              await loadSharedFiles(selected.id)
+                            }
+                          } finally {
+                            setSavingInstruction(false)
+                          }
+                        }}
+                        disabled={savingInstruction || !newInstructionTitle.trim()}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold rounded-lg disabled:opacity-50"
+                      >
+                        {savingInstruction ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        Enviar tarea
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDoctorUploadTitle(newInstructionTitle.trim())
+                          setDoctorUploadDesc(newInstructionDesc.trim())
+                          setDoctorUploadModal(true)
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-lg"
+                      >
+                        <Upload className="w-4 h-4" /> Subir archivo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feed de archivos compartidos */}
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900">Historial compartido ({sharedFiles.length})</h3>
+                    {sharedLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+                  </div>
+                  {sharedFiles.length === 0 ? (
+                    <div className="text-center py-12 px-4">
+                      <FolderHeart className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                      <p className="text-sm text-slate-500 font-medium">Sin archivos compartidos aún</p>
+                      <p className="text-xs text-slate-400 mt-1">Empieza pidiéndole al paciente un examen o foto.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {sharedFiles.map(f => {
+                        const isImage = f.file_type && ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(f.file_type)
+                        const isInstruction = f.category === 'instruction' && !f.file_url
+                        return (
+                          <div key={f.id} className="p-4 sm:p-5 flex items-start gap-3">
+                            <div className={`shrink-0 p-2.5 rounded-lg ${
+                              isInstruction ? 'bg-amber-50 text-amber-600' :
+                              isImage ? 'bg-teal-50 text-teal-600' :
+                              'bg-red-50 text-red-600'
+                            }`}>
+                              {isInstruction ? <Clock className="w-5 h-5" /> :
+                                isImage ? <ImageIcon className="w-5 h-5" /> :
+                                <FileText className="w-5 h-5" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-bold text-slate-900 truncate">{f.title}</p>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                  f.created_by === 'doctor' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                                }`}>
+                                  {f.created_by === 'doctor' ? 'Tú' : 'Paciente'}
+                                </span>
+                                {isInstruction && (
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                    Pendiente
+                                  </span>
+                                )}
+                              </div>
+                              {f.description && (
+                                <p className="text-xs text-slate-600 mt-1 line-clamp-2">{f.description}</p>
+                              )}
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                {new Date(f.created_at).toLocaleString('es-VE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                {f.file_size_bytes && <> · {(f.file_size_bytes / 1024).toFixed(0)} KB</>}
+                              </p>
+                            </div>
+                            {f.file_url && (
+                              <a href={f.file_url} target="_blank" rel="noopener noreferrer"
+                                className="shrink-0 p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors" title="Abrir archivo">
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* RONDA 40 — Modal de subida de archivo (doctor) */}
+      {doctorUploadModal && selected && doctorId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-3" onClick={() => setDoctorUploadModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900">Subir archivo al paciente</h3>
+              <button onClick={() => setDoctorUploadModal(false)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Título</label>
+                <input
+                  type="text"
+                  value={doctorUploadTitle}
+                  onChange={e => setDoctorUploadTitle(e.target.value)}
+                  placeholder="Ej: Resultados de laboratorio"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:border-teal-400 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Comentario (opcional)</label>
+                <textarea
+                  value={doctorUploadDesc}
+                  onChange={e => setDoctorUploadDesc(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm resize-none focus:border-teal-400 outline-none"
+                />
+              </div>
+              <UploadDropZone
+                onUpload={async (file) => {
+                  const { uploadSharedFile } = await import('@/lib/shared-files')
+                  const supabase = createClient()
+                  const { error } = await uploadSharedFile(supabase, {
+                    file,
+                    doctorId,
+                    patientId: selected.id,
+                    title: doctorUploadTitle.trim() || file.name,
+                    description: doctorUploadDesc.trim() || null,
+                    createdBy: 'doctor',
+                  })
+                  if (error) throw new Error(error)
+                  setDoctorUploadTitle('')
+                  setDoctorUploadDesc('')
+                  setDoctorUploadModal(false)
+                  await loadSharedFiles(selected.id)
+                }}
+                label="Suelta o selecciona el archivo"
+              />
+            </div>
           </div>
         </div>
       )}
