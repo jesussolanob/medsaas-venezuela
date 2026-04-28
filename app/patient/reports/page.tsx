@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+// RONDA 36: render dinamico desde report_data (snapshot inmutable)
+import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer'
+import type { ReportData } from '@/lib/report-data'
 
 // RONDA 30: incluir medications de la tabla prescriptions vinculadas por consultation_id
 type Medication = { name?: string; dose?: string; frequency?: string; duration?: string; indications?: string }
@@ -16,6 +19,8 @@ interface Report {
   notes: string | null
   diagnosis: string | null
   treatment: string | null
+  // RONDA 36: snapshot inmutable. Si existe, es la fuente de verdad.
+  report_data: ReportData | null
   doctor_id: string
   doctor_name: string
   doctor_specialty: string | null
@@ -54,11 +59,13 @@ export default function ReportsPage() {
         const patientIds = patients.map(p => p.id)
 
         // Get consultations with content for these patients
+        // RONDA 36: ahora traemos report_data tambien. Filtramos por consultas
+        // que tengan informe (legacy o nuevo report_data con bloques).
         const { data: consultationData } = await supabase
           .from('consultations')
-          .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, doctor_id, patient_id')
+          .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, report_data, doctor_id, patient_id')
           .in('patient_id', patientIds)
-          .or(`notes.not.is.null,diagnosis.not.is.null,treatment.not.is.null`)
+          .or(`notes.not.is.null,diagnosis.not.is.null,treatment.not.is.null,report_data.not.is.null`)
           .order('consultation_date', { ascending: false })
 
         if (consultationData && consultationData.length > 0) {
@@ -94,6 +101,8 @@ export default function ReportsPage() {
               notes: c.notes,
               diagnosis: c.diagnosis,
               treatment: c.treatment,
+              // RONDA 36: parsear report_data (Supabase devuelve jsonb como objeto JS)
+              report_data: (c.report_data as ReportData | null) || null,
               doctor_id: c.doctor_id,
               doctor_name: doctor?.full_name || 'Doctor',
               doctor_specialty: doctor?.specialty || null,
@@ -203,55 +212,60 @@ export default function ReportsPage() {
               {/* Expanded Content */}
               {expandedId === report.id && (
                 <div className="border-t border-slate-200 px-4 sm:px-6 py-4 sm:py-5 space-y-4">
-                  {/* Chief Complaint */}
-                  {report.chief_complaint && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                        Motivo de la Consulta
-                      </p>
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                        {report.chief_complaint}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Notes / Informe */}
-                  {report.notes && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                        Informe Médico
-                      </p>
-                      <div
-                        className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                        dangerouslySetInnerHTML={{ __html: report.notes }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Diagnosis */}
-                  {report.diagnosis && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                        Diagnóstico
-                      </p>
-                      <div
-                        className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                        dangerouslySetInnerHTML={{ __html: report.diagnosis }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Plan de Tratamiento — texto libre del informe */}
-                  {report.treatment && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                        Plan de Tratamiento
-                      </p>
-                      <div
-                        className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                        dangerouslySetInnerHTML={{ __html: report.treatment }}
-                      />
-                    </div>
+                  {/* RONDA 36 — Render dinamico desde report_data (snapshot inmutable).
+                      El componente itera report_data.blocks (ya filtrado de vacios),
+                      respeta send_to_patient y pinta cada bloque con su tipo correcto.
+                      Si por alguna razon no existe report_data (consultas muy viejas),
+                      caemos al render legacy de los campos sueltos. */}
+                  {report.report_data && Array.isArray(report.report_data.blocks) && report.report_data.blocks.length > 0 ? (
+                    <ReportBlocksViewer report={report.report_data} forPatient />
+                  ) : (
+                    <>
+                      {/* Chief Complaint (legacy) */}
+                      {report.chief_complaint && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                            Motivo de la Consulta
+                          </p>
+                          <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                            {report.chief_complaint}
+                          </p>
+                        </div>
+                      )}
+                      {report.notes && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                            Informe Médico
+                          </p>
+                          <div
+                            className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
+                            dangerouslySetInnerHTML={{ __html: report.notes }}
+                          />
+                        </div>
+                      )}
+                      {report.diagnosis && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                            Diagnóstico
+                          </p>
+                          <div
+                            className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
+                            dangerouslySetInnerHTML={{ __html: report.diagnosis }}
+                          />
+                        </div>
+                      )}
+                      {report.treatment && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                            Plan de Tratamiento
+                          </p>
+                          <div
+                            className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
+                            dangerouslySetInnerHTML={{ __html: report.treatment }}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* RONDA 30 — Medicamentos recetados con NOMBRE + dosis + frecuencia.

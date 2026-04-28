@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { snapshotBlocksForConsultation } from '@/lib/consultation-blocks'
+import { buildReportData } from '@/lib/report-data'
 
 function genCode(prefix: string): string {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -265,6 +266,36 @@ export async function PATCH(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // RONDA 36: si cambio blocks_data o un campo legacy del informe, reconstruir
+  // el snapshot inmutable report_data. Garantia: el informe que ve el paciente
+  // sale SIEMPRE de aqui, y queda independiente de cualquier cambio futuro en
+  // las plantillas del doctor.
+  const reportRelevantFields = ['blocks_data', 'chief_complaint', 'diagnosis', 'treatment', 'notes']
+  const reportChanged = reportRelevantFields.some(f => f in safeFields)
+  if (reportChanged && data) {
+    try {
+      const report = buildReportData(
+        (data as any).blocks_snapshot,
+        (data as any).blocks_data,
+        {
+          chief_complaint: (data as any).chief_complaint,
+          diagnosis: (data as any).diagnosis,
+          treatment: (data as any).treatment,
+          notes: (data as any).notes,
+        },
+      )
+      const { data: updated } = await admin
+        .from('consultations')
+        .update({ report_data: report })
+        .eq('id', id)
+        .select()
+        .single()
+      if (updated) Object.assign(data, updated)
+    } catch (rebuildErr) {
+      console.warn('[Consultations PATCH] report_data rebuild skipped:', rebuildErr)
+    }
+  }
 
   // BUG-012 fix: si se cambió payment_status, sincronizar con payments.status del pago linkeado
   // Source of truth = payments. consultations.payment_status queda como mirror legacy hasta Fase 5.
