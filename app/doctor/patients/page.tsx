@@ -1072,15 +1072,22 @@ export default function PatientsPage() {
                     <div className="divide-y divide-slate-100">
                       {sharedFiles.map(f => {
                         const isImage = f.file_type && ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(f.file_type)
-                        const isInstruction = f.category === 'instruction' && !f.file_url
+                        // RONDA 42: tipos correctamente diferenciados
+                        const isInstructionTask = f.category === 'instruction'
+                        const isComment = f.category === 'comment'
+                        const isPendingTask = isInstructionTask && f.status === 'pending'
+                        const isCompletedTask = isInstructionTask && f.status === 'completed'
                         return (
                           <div key={f.id} className="p-4 sm:p-5 flex items-start gap-3">
                             <div className={`shrink-0 p-2.5 rounded-lg ${
-                              isInstruction ? 'bg-amber-50 text-amber-600' :
+                              isPendingTask ? 'bg-amber-50 text-amber-600' :
+                              isCompletedTask ? 'bg-emerald-50 text-emerald-600' :
+                              isComment ? 'bg-slate-100 text-slate-600' :
                               isImage ? 'bg-teal-50 text-teal-600' :
                               'bg-red-50 text-red-600'
                             }`}>
-                              {isInstruction ? <Clock className="w-5 h-5" /> :
+                              {isInstructionTask ? <Clock className="w-5 h-5" /> :
+                                isComment ? <Send className="w-5 h-5" /> :
                                 isImage ? <ImageIcon className="w-5 h-5" /> :
                                 <FileText className="w-5 h-5" />}
                             </div>
@@ -1092,9 +1099,20 @@ export default function PatientsPage() {
                                 }`}>
                                   {f.created_by === 'doctor' ? 'Tú' : 'Paciente'}
                                 </span>
-                                {isInstruction && (
+                                {/* RONDA 42: chip de estado correcto segun status */}
+                                {isPendingTask && (
                                   <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
                                     Pendiente
+                                  </span>
+                                )}
+                                {isCompletedTask && (
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                                    Respondida
+                                  </span>
+                                )}
+                                {isComment && (
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                    Comentario
                                   </span>
                                 )}
                               </div>

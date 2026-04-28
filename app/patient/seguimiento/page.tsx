@@ -163,8 +163,19 @@ export default function PatientSeguimientoPage() {
     return legacyPrescriptions.filter(rx => rx.doctor_id === selectedDoctorId)
   }, [legacyPrescriptions, selectedDoctorId])
 
-  const pendingTasks = visibleFiles.filter(f => f.category === 'instruction' && f.status === 'pending')
-  const completedFiles = visibleFiles.filter(f => f.file_url || (f.category === 'instruction' && f.status === 'completed'))
+  // RONDA 42: filtros corregidos.
+  // Pendientes = solo tareas del doctor en estado 'pending' (NO completadas)
+  const pendingTasks = visibleFiles.filter(f =>
+    f.category === 'instruction' && f.status === 'pending' && f.created_by === 'doctor'
+  )
+  // Historial = TODO lo que no sea una tarea pendiente. Incluye:
+  // - archivos (con file_url)
+  // - comentarios sueltos (category='comment')
+  // - tareas YA completadas (category='instruction' && status='completed')
+  const completedFiles = visibleFiles.filter(f =>
+    f.file_url || f.category === 'comment' ||
+    (f.category === 'instruction' && f.status === 'completed')
+  )
 
   // Mapa rápido para mostrar a qué doctor pertenece cada archivo
   const doctorById = useMemo(() => {
@@ -463,11 +474,15 @@ export default function PatientSeguimientoPage() {
 function FileRow({ file, doctorName, showDoctor }: { file: SharedFile; doctorName: string; showDoctor: boolean }) {
   const isImage = file.file_type && ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(file.file_type)
   const hasFile = !!file.file_url
+  // RONDA 42: distinguir tipos correctamente
+  const isComment = file.category === 'comment'
+  const isCompletedTask = file.category === 'instruction' && file.status === 'completed'
   const Icon = !hasFile ? MessageSquare : (isImage ? ImageIcon : FileText)
 
   return (
     <div className="p-4 sm:p-5 flex items-start gap-3">
       <div className={`shrink-0 p-2.5 rounded-lg ${
+        isCompletedTask ? 'bg-emerald-50 text-emerald-600' :
         !hasFile ? 'bg-slate-100 text-slate-600' :
         isImage ? 'bg-teal-50 text-teal-600' : 'bg-red-50 text-red-600'
       }`}>
@@ -481,7 +496,13 @@ function FileRow({ file, doctorName, showDoctor }: { file: SharedFile; doctorNam
           }`}>
             {file.created_by === 'doctor' ? `De ${doctorName || 'doctor'}` : 'Tú'}
           </span>
-          {!hasFile && (
+          {/* RONDA 42: chips correctos por tipo */}
+          {isCompletedTask && (
+            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+              Respondida
+            </span>
+          )}
+          {isComment && (
             <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
               Comentario
             </span>

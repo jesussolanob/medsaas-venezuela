@@ -16,7 +16,7 @@ export type SharedFile = {
   file_url: string | null
   file_type: string | null
   file_size_bytes: number | null
-  category: 'instruction' | 'file' | 'recipe' | 'lab_result' | 'image' | 'other'
+  category: 'instruction' | 'file' | 'recipe' | 'lab_result' | 'image' | 'other' | 'comment'
   status: 'pending' | 'completed' | 'reviewed'
   created_by: 'doctor' | 'patient'
   parent_task_id: string | null
@@ -182,7 +182,8 @@ export async function replyWithComment(
       description: args.description.trim(),
       file_url: null,
       file_type: null,
-      category: 'instruction',  // sin archivo, igual que una nota
+      // RONDA 42: categoria propia para que NO aparezca como tarea pendiente
+      category: 'comment',
       status: 'completed',
       created_by: args.createdBy,
       parent_task_id: args.parentTaskId || null,
