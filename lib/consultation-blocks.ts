@@ -64,21 +64,33 @@ export async function resolveBlocksForDoctor({
   // El conjunto final parte del catálogo; aplicamos cascada.
   const blocks: ConsultationBlock[] = []
 
+  // RONDA 37: detectar si la specialty del doctor TIENE algun default configurado.
+  // Si NO tiene defaults Y el doctor tampoco tiene config personal, caemos a un
+  // modo "zero-friction": mostramos todos los bloques printables del catalog.
+  // Esto evita el bug donde el snapshot quedaba vacio y la consulta caia al
+  // fallback hardcoded de 5 tabs (Informe, Receta, Prescripciones, Reposo, Notas).
+  const specialtyHasDefaults = specialtyDefaults.length > 0
+  const doctorHasConfig = doctorConfig.length > 0
+
   for (const cat of catalog) {
     const catalogEntry = cat as any
     const specialtyEntry = specialtyMap.get(cat.key) as any
     const doctorEntry = doctorMap.get(cat.key) as any
 
-    // Resolución de enabled (cascada)
+    // Resolución de enabled (cascada zero-friction)
     let enabled: boolean
     if (doctorEntry) {
       enabled = doctorEntry.enabled
     } else if (specialtyEntry) {
       enabled = specialtyEntry.enabled
+    } else if (!doctorHasConfig && !specialtyHasDefaults) {
+      // Doctor totalmente "virgen" (no toco settings y su specialty no tiene
+      // defaults). Mostrar todos los bloques printables como onboarding.
+      enabled = catalogEntry.default_printable !== false
     } else {
-      // Si no hay ni config doctor ni specialty default, el bloque NO aparece
-      // salvo que sea del catálogo genérico y no haya specialty definida
-      enabled = !specialty  // Sin specialty → mostramos todo el catálogo activo
+      // El doctor SI tiene config personal pero no para este block_key especifico
+      // → respetar su decision implicita (no mostrar). Igual para specialty con defaults.
+      enabled = false
     }
 
     if (!enabled) continue

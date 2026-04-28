@@ -361,26 +361,34 @@ export default function TemplatesPage() {
       <div className="max-w-4xl space-y-6">
         {/* Header */}
         <div>
-          <h2 className="text-xl font-bold text-slate-900">Plantillas de documentos</h2>
-          <p className="text-sm text-slate-500 mt-1">Personaliza el logo, firma, tipografía y colores de tus documentos médicos</p>
+          <h2 className="text-xl font-bold text-slate-900">Plantillas de documentos (branding PDF)</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Aquí defines <b>cómo se ve</b> cada PDF (logo, firma, tipografía, colores).
+            Si quieres cambiar <b>qué pestañas aparecen</b> en la consulta, usa el banner de abajo.
+          </p>
         </div>
 
-        {/* Link a configuración de BLOQUES DE CONSULTA */}
+        {/* RONDA 37 — Banner prominente de aviso para evitar confusion entre
+            templates (branding) vs consultation-blocks (secciones reales del informe). */}
         <a
           href="/doctor/settings/consultation-blocks"
-          className="block p-4 rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-cyan-50 hover:shadow-md transition-shadow"
+          className="block p-5 rounded-xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 hover:shadow-md transition-shadow"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-              <FileEdit className="w-5 h-5 text-teal-600" />
+            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shadow-sm shrink-0">
+              <FileEdit className="w-6 h-6 text-amber-700" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-bold text-slate-900">Bloques de consulta (secciones del formulario)</p>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Decide qué secciones aparecen al hacer una consulta: prescripción, tareas, plan alimenticio, ejercicios, reposo, etc. Activa/desactiva y renombra según tu especialidad.
+              <p className="text-sm font-bold text-amber-900">
+                ¿Quieres agregar/quitar pestañas en el informe? (Plan alimenticio, Ejercicios, Reposo, etc.)
+              </p>
+              <p className="text-xs text-amber-800 mt-1">
+                Esta página solo cambia el <b>branding visual</b> de los PDFs. Para activar/desactivar las
+                <b> secciones del formulario</b> de consulta (los bloques que ves al atender un paciente),
+                debes ir a <b>Configuración → Bloques de consulta</b>.
               </p>
             </div>
-            <span className="text-teal-600 text-sm font-semibold">Configurar →</span>
+            <span className="text-amber-700 text-sm font-bold whitespace-nowrap">Ir a Bloques →</span>
           </div>
         </a>
 
