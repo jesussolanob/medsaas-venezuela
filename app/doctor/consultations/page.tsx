@@ -130,7 +130,8 @@ function ConsultationsPage() {
   const [saved, setSaved] = useState(false)
   const [autoSaving, setAutoSaving] = useState(false)
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [consultationTab, setConsultationTab] = useState<ConsultationTab>('informe')
+  // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
+  const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint')
 
   // Report fields (editable during consultation)
   const [report, setReport] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'pending' as Consultation['payment_status'] })
@@ -720,7 +721,15 @@ function ConsultationsPage() {
     }
     setView('consultation')
     setSaved(false)
-    setConsultationTab('informe')
+    // RONDA 38: tab inicial = primer bloque del snapshot del doctor.
+    // Si no hay snapshot, default a chief_complaint (que se renderiza vía fallback fake).
+    const snap = (c as any).blocks_snapshot
+    if (Array.isArray(snap) && snap.length > 0) {
+      const sorted = [...snap].sort((a: any, b: any) => a.sort_order - b.sort_order)
+      setConsultationTab(`block:${sorted[0].key}`)
+    } else {
+      setConsultationTab('block:chief_complaint')
+    }
   }
 
   async function createNewConsultation() {
@@ -1593,27 +1602,20 @@ function ConsultationsPage() {
                   Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas. */}
               <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200 overflow-x-auto">
                 {(() => {
-                  const dynamicTabs: { key: string; label: string; isDynamic: boolean }[] = []
+                  // RONDA 38: render 100% dinamico. Una tab por bloque del snapshot.
+                  // Si el snapshot esta vacio, fallback minimo: motivo + diagnostico
+                  // (ambos block_keys reales del catalog) para que el doctor nunca
+                  // se quede con un informe vacio.
+                  let dynamicTabs: { key: string; label: string }[] = []
                   const snapshot = (selected as Consultation).blocks_snapshot
                   if (snapshot && snapshot.length > 0) {
-                    // Tab "Informe" siempre primero (campos clásicos: motivo, diagnóstico, tratamiento)
-                    dynamicTabs.push({ key: 'informe', label: 'Informe', isDynamic: false })
-                    // Tabs dinámicos según los bloques de la plantilla del doctor
                     const sorted = [...snapshot].sort((a, b) => a.sort_order - b.sort_order)
-                    for (const b of sorted) {
-                      // No duplicar "informe" si el doctor lo tiene en su plantilla
-                      if (b.key === 'chief_complaint' || b.key === 'diagnosis' || b.key === 'treatment') continue
-                      dynamicTabs.push({ key: `block:${b.key}`, label: b.label, isDynamic: true })
-                    }
+                    dynamicTabs = sorted.map(b => ({ key: `block:${b.key}`, label: b.label }))
                   } else {
-                    // Fallback: tabs clásicas para consultas viejas sin snapshot
-                    ;[
-                      { key: 'informe', label: 'Informe' },
-                      { key: 'recipe', label: 'Receta' },
-                      { key: 'prescripciones', label: 'Prescripciones' },
-                      { key: 'reposo', label: 'Reposo' },
-                      { key: 'notas', label: 'Notas' },
-                    ].forEach(t => dynamicTabs.push({ ...t, isDynamic: false }))
+                    dynamicTabs = [
+                      { key: 'block:chief_complaint', label: 'Motivo de consulta' },
+                      { key: 'block:diagnosis', label: 'Diagnóstico' },
+                    ]
                   }
                   return dynamicTabs.map(t => (
                     <button
@@ -1631,11 +1633,35 @@ function ConsultationsPage() {
                 })()}
               </div>
 
-              {/* Renderer del bloque dinámico actual (cuando consultationTab empieza con "block:") */}
-              {consultationTab.startsWith('block:') && (selected as Consultation).blocks_snapshot && (() => {
+              {/* RONDA 38: renderer del bloque dinámico.
+                  - Si el block_key tiene un FLUJO ESPECIAL (prescription, requested_exams, rest,
+                    internal_notes) → no renderizamos DynamicBlocks, dejamos que la sección
+                    hardcoded de abajo lo muestre con su catálogo/datos especiales.
+                  - Para cualquier otro block_key → render genérico con DynamicBlocks.
+                  - Si el snapshot está vacío y el doctor está en chief_complaint/diagnosis,
+                    construimos un bloque FAKE para que igual pueda escribir (fallback). */}
+              {consultationTab.startsWith('block:') && (() => {
                 const blockKey = consultationTab.replace('block:', '')
+                // Bloques con UI especial — NO usar DynamicBlocks aquí
+                const SPECIAL_BLOCKS = new Set(['prescription', 'requested_exams', 'rest', 'internal_notes'])
+                if (SPECIAL_BLOCKS.has(blockKey)) return null
+
                 const snapshot = ((selected as Consultation).blocks_snapshot || []) as SnapshotBlock[]
-                const oneBlock = snapshot.filter(b => b.key === blockKey)
+                let oneBlock = snapshot.filter(b => b.key === blockKey)
+
+                // Fallback: snapshot vacío + el doctor está en motivo/diagnóstico → bloque fake
+                if (oneBlock.length === 0 && (blockKey === 'chief_complaint' || blockKey === 'diagnosis')) {
+                  oneBlock = [{
+                    key: blockKey,
+                    label: blockKey === 'chief_complaint' ? 'Motivo de consulta' : 'Diagnóstico',
+                    content_type: 'rich_text',
+                    sort_order: blockKey === 'chief_complaint' ? 1 : 2,
+                    printable: true,
+                    send_to_patient: true,
+                  }]
+                }
+                if (oneBlock.length === 0) return null
+
                 const data = (selected as Consultation).blocks_data || {}
                 return (
                   <div className="p-6">
@@ -1643,18 +1669,23 @@ function ConsultationsPage() {
                       blocks={oneBlock}
                       values={data}
                       onChange={(key, value) => {
-                        // Actualizamos el state local de selected para reflejar el cambio
                         const next = { ...data, [key]: value }
                         ;(selected as Consultation).blocks_data = next
-                        // Re-render del componente
                         setSelected({ ...(selected as Consultation), blocks_data: next })
-                        // Autosave debounced — guarda en BD a los 1.5s sin necesidad de clic
+                        // Autosave debounced — guarda blocks_data y, si es chief_complaint/diagnosis/treatment/notes,
+                        // tambien sincroniza la columna legacy correspondiente para retrocompat.
                         if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current)
                         blocksAutoSaveTimer.current = setTimeout(async () => {
                           if (!selectedRef.current) return
                           const supabase = createClient()
+                          const updates: Record<string, unknown> = { blocks_data: next }
+                          // RONDA 38: sync con columnas legacy para que el rebuild de report_data
+                          // tenga los datos correctos en `legacy` Y el render del paciente fallback funcione.
+                          if (key === 'chief_complaint' || key === 'diagnosis' || key === 'treatment' || key === 'notes') {
+                            updates[key] = typeof value === 'string' ? value : ''
+                          }
                           await supabase.from('consultations')
-                            .update({ blocks_data: next })
+                            .update(updates)
                             .eq('id', selectedRef.current.id)
                         }, 1500)
                       }}
@@ -1670,37 +1701,17 @@ function ConsultationsPage() {
                 )
               })()}
 
-              {/* Tab Content — clásico. Solo se muestra si NO estamos en tab dinámica (block:*) */}
-              <div className={`p-6 space-y-4 ${consultationTab.startsWith('block:') ? 'hidden' : ''}`}>
-                {/* Informe Tab - includes Diagnóstico field */}
-                {consultationTab === 'informe' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-slate-400" />
-                        <p className="text-sm font-bold text-slate-800">Informe médico</p>
-                      </div>
-                      <p className="text-xs font-mono text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg">ID: {selected.consultation_code}</p>
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 text-slate-400" /> Motivo de consulta
-                      </label>
-                      <input value={report.chief_complaint} onChange={e => setReport(p => ({ ...p, chief_complaint: e.target.value }))}
-                        placeholder="¿Por qué consulta el paciente hoy?" className={fi} />
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                        <FileText className="w-3.5 h-3.5 text-slate-400" /> Informe completo
-                      </label>
-                      <RichTextEditor value={report.notes} onChange={html => setReport(p => ({ ...p, notes: html }))}
-                        placeholder="Escribe el informe completo: anamnesis, examen físico, hallazgos relevantes..." />
-                    </div>
-                  </div>
-                )}
-
-                {/* Recipe Tab */}
-                {consultationTab === 'recipe' && (
+              {/* RONDA 38: Tab Content — Las únicas tabs que aún usan UI hardcoded son
+                  las que tienen FLUJO ESPECIAL (catálogo de medicamentos, exámenes, días reposo,
+                  notas internas). Todas las demás se renderizan dinámicamente arriba con DynamicBlocks.
+                  La condición de visibilidad ahora aparta el contenedor solo si la tab activa
+                  es una de las especiales. */}
+              <div className={`p-6 space-y-4 ${
+                ['block:prescription', 'block:requested_exams', 'block:rest', 'block:internal_notes'].includes(consultationTab)
+                  ? '' : 'hidden'
+              }`}>
+                {/* Recipe Tab — block:prescription */}
+                {consultationTab === 'block:prescription' && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2">
@@ -1790,8 +1801,8 @@ function ConsultationsPage() {
                   </div>
                 )}
 
-                {/* Prescripciones Tab (exámenes médicos) */}
-                {consultationTab === 'prescripciones' && (
+                {/* Prescripciones Tab — block:requested_exams (exámenes médicos) */}
+                {consultationTab === 'block:requested_exams' && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2">
@@ -1919,8 +1930,8 @@ function ConsultationsPage() {
                   </div>
                 )}
 
-                {/* Reposo Tab (NEW) */}
-                {consultationTab === 'reposo' && (
+                {/* Reposo Tab — block:rest */}
+                {consultationTab === 'block:rest' && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2">
@@ -2005,15 +2016,31 @@ function ConsultationsPage() {
                   </div>
                 )}
 
-                {/* Notas Tab */}
-                {consultationTab === 'notas' && (
+                {/* Notas internas Tab — block:internal_notes */}
+                {consultationTab === 'block:internal_notes' && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
                       <FileText className="w-4 h-4 text-slate-400" />
                       <p className="text-sm font-bold text-slate-800">Notas internas</p>
                     </div>
                     <p className="text-xs text-slate-500">Notas privadas del médico sobre esta consulta. No se incluyen en documentos del paciente.</p>
-                    <RichTextEditor value={report.diagnosis} onChange={html => setReport(p => ({ ...p, diagnosis: html }))}
+                    <RichTextEditor
+                      value={(((selected as Consultation).blocks_data || {}) as any).internal_notes || ''}
+                      onChange={html => {
+                        // RONDA 38: persistir en blocks_data.internal_notes (no en columna legacy diagnosis)
+                        const data = (selected as Consultation).blocks_data || {}
+                        const next = { ...data, internal_notes: html }
+                        ;(selected as Consultation).blocks_data = next
+                        setSelected({ ...(selected as Consultation), blocks_data: next })
+                        if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current)
+                        blocksAutoSaveTimer.current = setTimeout(async () => {
+                          if (!selectedRef.current) return
+                          const supabase = createClient()
+                          await supabase.from('consultations')
+                            .update({ blocks_data: next })
+                            .eq('id', selectedRef.current.id)
+                        }, 1500)
+                      }}
                       placeholder="Notas internas, observaciones, seguimiento pendiente..." />
                   </div>
                 )}
@@ -2044,7 +2071,8 @@ function ConsultationsPage() {
 
                 <button
                   onClick={() => {
-                    const activeContent = consultationTab === 'recipe' ? report.treatment
+                    // RONDA 38: 'recipe' renombrado a 'block:prescription'
+                    const activeContent = consultationTab === 'block:prescription' ? report.treatment
                       : report.notes
                     callAI('improve', activeContent)
                   }}
@@ -2083,7 +2111,8 @@ function ConsultationsPage() {
                           {aiAction === 'improve' && (
                             <button
                               onClick={() => {
-                                if (consultationTab === 'recipe') {
+                                // RONDA 38: 'recipe' renombrado a 'block:prescription'
+                                if (consultationTab === 'block:prescription') {
                                   setReport(p => ({ ...p, treatment: aiResult }))
                                 } else {
                                   setReport(p => ({ ...p, notes: aiResult }))
