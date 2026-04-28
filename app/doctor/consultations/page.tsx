@@ -132,6 +132,21 @@ function ConsultationsPage() {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint')
+  // RONDA 39: bloques actualmente ACTIVOS del doctor (config viva en /doctor/settings/consultation-blocks).
+  // Se usa cuando una consulta no tiene blocks_snapshot congelado todavia.
+  const [doctorActiveBlocks, setDoctorActiveBlocks] = useState<SnapshotBlock[]>([])
+
+  // RONDA 39: helper. Devuelve los bloques EFECTIVOS para una consulta:
+  //   - Si la consulta tiene snapshot congelado (informe ya guardado) → usar snapshot
+  //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
+  // Asi: cambios en /doctor/settings/consultation-blocks se ven inmediatamente
+  // en consultas vacias; las consultas con informe quedan inmutables.
+  const getEffectiveBlocks = useCallback((consultation: Consultation | null): SnapshotBlock[] => {
+    if (!consultation) return doctorActiveBlocks
+    const snap = (consultation as any).blocks_snapshot
+    if (Array.isArray(snap) && snap.length > 0) return snap as SnapshotBlock[]
+    return doctorActiveBlocks
+  }, [doctorActiveBlocks])
 
   // Report fields (editable during consultation)
   const [report, setReport] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'pending' as Consultation['payment_status'] })
@@ -384,6 +399,20 @@ function ConsultationsPage() {
         if (quickItems) {
           setQuickExams(quickItems.filter(i => i.item_type === 'exam'))
           setQuickMeds(quickItems.filter(i => i.item_type === 'medication'))
+        }
+
+        // RONDA 39: cargar bloques ACTIVOS del doctor (config viva).
+        // Esta lista se usa cuando una consulta no tiene blocks_snapshot congelado,
+        // para que las pestañas reflejen siempre la ultima configuracion del doctor.
+        try {
+          const blocksRes = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' })
+          if (blocksRes.ok) {
+            const j = await blocksRes.json()
+            const resolved = (j.resolved || []) as Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }>
+            setDoctorActiveBlocks(resolved as SnapshotBlock[])
+          }
+        } catch (err) {
+          console.warn('[consultations] no se pudo cargar config de bloques:', err)
         }
 
         // Cargar planes de precios del doctor
@@ -721,11 +750,14 @@ function ConsultationsPage() {
     }
     setView('consultation')
     setSaved(false)
-    // RONDA 38: tab inicial = primer bloque del snapshot del doctor.
-    // Si no hay snapshot, default a chief_complaint (que se renderiza vía fallback fake).
+    // RONDA 38+39: tab inicial = primer bloque EFECTIVO de la consulta.
+    // Snapshot congelado si existe, sino config actual del doctor.
     const snap = (c as any).blocks_snapshot
-    if (Array.isArray(snap) && snap.length > 0) {
-      const sorted = [...snap].sort((a: any, b: any) => a.sort_order - b.sort_order)
+    const effective = (Array.isArray(snap) && snap.length > 0)
+      ? snap
+      : doctorActiveBlocks
+    if (Array.isArray(effective) && effective.length > 0) {
+      const sorted = [...effective].sort((a: any, b: any) => a.sort_order - b.sort_order)
       setConsultationTab(`block:${sorted[0].key}`)
     } else {
       setConsultationTab('block:chief_complaint')
@@ -1602,14 +1634,15 @@ function ConsultationsPage() {
                   Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas. */}
               <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200 overflow-x-auto">
                 {(() => {
-                  // RONDA 38: render 100% dinamico. Una tab por bloque del snapshot.
-                  // Si el snapshot esta vacio, fallback minimo: motivo + diagnostico
-                  // (ambos block_keys reales del catalog) para que el doctor nunca
-                  // se quede con un informe vacio.
+                  // RONDA 38+39: tabs 100% dinamicas.
+                  //   - Si la consulta tiene snapshot congelado → usar snapshot (inmutable)
+                  //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
+                  // Fallback ultimo: motivo + diagnostico para que el doctor nunca vea
+                  // un informe vacio.
                   let dynamicTabs: { key: string; label: string }[] = []
-                  const snapshot = (selected as Consultation).blocks_snapshot
-                  if (snapshot && snapshot.length > 0) {
-                    const sorted = [...snapshot].sort((a, b) => a.sort_order - b.sort_order)
+                  const effective = getEffectiveBlocks(selected as Consultation)
+                  if (effective && effective.length > 0) {
+                    const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order)
                     dynamicTabs = sorted.map(b => ({ key: `block:${b.key}`, label: b.label }))
                   } else {
                     dynamicTabs = [
@@ -1646,8 +1679,9 @@ function ConsultationsPage() {
                 const SPECIAL_BLOCKS = new Set(['prescription', 'requested_exams', 'rest', 'internal_notes'])
                 if (SPECIAL_BLOCKS.has(blockKey)) return null
 
-                const snapshot = ((selected as Consultation).blocks_snapshot || []) as SnapshotBlock[]
-                let oneBlock = snapshot.filter(b => b.key === blockKey)
+                // RONDA 39: usar bloques EFECTIVOS (snapshot si existe, config viva si no)
+                const effective = getEffectiveBlocks(selected as Consultation)
+                let oneBlock = effective.filter(b => b.key === blockKey)
 
                 // Fallback: snapshot vacío + el doctor está en motivo/diagnóstico → bloque fake
                 if (oneBlock.length === 0 && (blockKey === 'chief_complaint' || blockKey === 'diagnosis')) {

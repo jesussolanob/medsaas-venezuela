@@ -124,10 +124,10 @@ export async function POST(req: NextRequest) {
     await admin.from('appointments').update({ status: 'confirmed' }).eq('id', linkedAppointmentId)
   }
 
-  // Obtener specialty del doctor para el snapshot de bloques
-  const { data: docProfile } = await admin
-    .from('profiles').select('specialty').eq('id', user.id).single()
-  const blocksSnapshot = await snapshotBlocksForConsultation(user.id, docProfile?.specialty)
+  // RONDA 39: NO hacer snapshot aqui. El snapshot se congela en el PATCH al
+  // primer save de blocks_data. Asi, si el doctor cambia su config en
+  // /doctor/settings/consultation-blocks despues de crear la consulta, los
+  // cambios se reflejan al abrirla mientras el informe siga vacio.
 
   // Create the consultation linked to the appointment
   const { data, error } = await admin
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
       payment_reference: payment_reference || null,
       bcv_rate: bcvRate,
       amount_bs: amountBs,
-      blocks_snapshot: blocksSnapshot,
+      // blocks_snapshot quedara NULL hasta el primer save (snapshot lazy)
     })
     .select()
     .single()
@@ -257,6 +257,11 @@ export async function PATCH(req: NextRequest) {
   }
 
   const admin = createAdminClient()
+  // RONDA 39: el snapshot lazy lo maneja un trigger BEFORE UPDATE en BD
+  // (tr_freeze_consultation_snapshot). Asi cualquier update de blocks_data,
+  // venga del endpoint o de un cliente directo, congela el snapshot solo
+  // si aun no estaba congelado.
+
   const { data, error } = await admin
     .from('consultations')
     .update({ ...safeFields, updated_at: new Date().toISOString() })
