@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
       receiptUrl,
       appointmentMode,
       packageId,
+      patientClinical,    // RONDA 33: datos clinicos opcionales del registro
     } = body
 
     if (!doctorId || !scheduledAt) {
@@ -262,6 +263,19 @@ export async function POST(req: NextRequest) {
       }
       if (patientCedula) patientInsert.cedula = patientCedula
       if (user) patientInsert.auth_user_id = user.id
+      // RONDA 33: si vienen datos clinicos del form de registro, persistirlos.
+      if (patientClinical && typeof patientClinical === 'object') {
+        const c = patientClinical as Record<string, any>
+        if (c.birth_date) patientInsert.birth_date = c.birth_date
+        if (c.sex) patientInsert.sex = c.sex
+        if (c.blood_type) patientInsert.blood_type = c.blood_type
+        if (c.allergies) patientInsert.allergies = c.allergies
+        if (c.chronic_conditions) patientInsert.chronic_conditions = c.chronic_conditions
+        if (c.address) patientInsert.address = c.address
+        if (c.city) patientInsert.city = c.city
+        if (c.emergency_contact_name) patientInsert.emergency_contact_name = c.emergency_contact_name
+        if (c.emergency_contact_phone) patientInsert.emergency_contact_phone = c.emergency_contact_phone
+      }
 
       const { data: newPatient, error: pErr } = await admin
         .from('patients')
@@ -304,6 +318,31 @@ export async function POST(req: NextRequest) {
 
     if (!patientId) {
       return NextResponse.json({ error: 'No se pudo obtener el ID del paciente' }, { status: 500 })
+    }
+
+    // RONDA 33: si vienen datos clinicos del registro y el patient ya existia (no recien insertado),
+    // llenar los campos vacios sin sobreescribir lo que el doctor ya completo previamente.
+    if (patientClinical && typeof patientClinical === 'object') {
+      const c = patientClinical as Record<string, any>
+      const { data: cur } = await admin.from('patients')
+        .select('birth_date, sex, blood_type, allergies, chronic_conditions, address, city, emergency_contact_name, emergency_contact_phone')
+        .eq('id', patientId)
+        .maybeSingle()
+      if (cur) {
+        const updates: Record<string, any> = {}
+        if (!cur.birth_date && c.birth_date) updates.birth_date = c.birth_date
+        if (!cur.sex && c.sex) updates.sex = c.sex
+        if (!cur.blood_type && c.blood_type) updates.blood_type = c.blood_type
+        if (!cur.allergies && c.allergies) updates.allergies = c.allergies
+        if (!cur.chronic_conditions && c.chronic_conditions) updates.chronic_conditions = c.chronic_conditions
+        if (!cur.address && c.address) updates.address = c.address
+        if (!cur.city && c.city) updates.city = c.city
+        if (!cur.emergency_contact_name && c.emergency_contact_name) updates.emergency_contact_name = c.emergency_contact_name
+        if (!cur.emergency_contact_phone && c.emergency_contact_phone) updates.emergency_contact_phone = c.emergency_contact_phone
+        if (Object.keys(updates).length > 0) {
+          await admin.from('patients').update(updates).eq('id', patientId)
+        }
+      }
     }
 
     // Fetch BCV rate for Bs calculation

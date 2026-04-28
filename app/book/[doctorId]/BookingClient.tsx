@@ -240,8 +240,17 @@ export default function BookingClient({
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | ''>('')
   const [paymentFile, setPaymentFile] = useState<File | null>(null)
 
-  // Form
-  const [form, setForm] = useState({ full_name: '', phone: '', email: '', cedula: '', notes: '', password: '', passwordConfirm: '' })
+  // Form — RONDA 33: ampliado con datos clinicos opcionales para zero-friction onboarding.
+  // El paciente puede saltar los opcionales y completarlos despues en su perfil.
+  const [form, setForm] = useState({
+    full_name: '', phone: '', email: '', cedula: '', notes: '',
+    password: '', passwordConfirm: '',
+    // Datos clinicos opcionales (se guardan en patients al completar el booking)
+    birth_date: '', sex: '' as '' | 'male' | 'female' | 'other',
+    blood_type: '', allergies: '', chronic_conditions: '',
+    emergency_contact_name: '', emergency_contact_phone: '',
+    address: '', city: '',
+  })
   const [submitting, setSubmitting] = useState(false)
   // RONDA 24: ref sincrono para bloquear double-click antes de que el render propague.
   // Se mantiene sincronizado con `submitting` via useEffect mas abajo.
@@ -429,6 +438,10 @@ export default function BookingClient({
       setError('Las contraseñas no coinciden')
       return
     }
+    if (!form.full_name.trim() || !form.email.trim() || !form.phone.trim()) {
+      setError('Nombre, email y teléfono son obligatorios')
+      return
+    }
     setSubmitting(true)
     try {
       const supabase = createClient()
@@ -449,6 +462,22 @@ export default function BookingClient({
         setSubmitting(false)
         return
       }
+
+      // RONDA 33: zero-friction onboarding — UPSERT en profiles con role=patient + phone
+      // Asi el callback de auth no manda al usuario al onboarding (ya tiene role + phone).
+      // Si el upsert falla (RLS, etc.) no bloqueamos el registro — el onboarding actua de fallback.
+      try {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          email: form.email.trim(),
+          full_name: form.full_name.trim(),
+          phone: form.phone.trim(),
+          role: 'patient',
+        }, { onConflict: 'id' })
+      } catch (profErr) {
+        console.warn('[register] profile upsert failed (non-blocking):', profErr)
+      }
+
       setAuthUser(data.user)
     } catch (err: any) {
       setError(err?.message || 'Error al registrarse')
@@ -548,6 +577,18 @@ export default function BookingClient({
           receiptUrl,
           appointmentMode: appointmentMode || 'presencial',
           packageId: usingPackage ? activePackage?.id : null,
+          // RONDA 33: datos clinicos opcionales para persistir en patients
+          patientClinical: {
+            birth_date: form.birth_date || null,
+            sex: form.sex || null,
+            blood_type: form.blood_type || null,
+            allergies: form.allergies?.trim() || null,
+            chronic_conditions: form.chronic_conditions?.trim() || null,
+            address: form.address?.trim() || null,
+            city: form.city?.trim() || null,
+            emergency_contact_name: form.emergency_contact_name?.trim() || null,
+            emergency_contact_phone: form.emergency_contact_phone?.trim() || null,
+          },
         }),
       })
 
@@ -1169,6 +1210,65 @@ export default function BookingClient({
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirmar contraseña</label>
                     <input type="password" value={form.passwordConfirm} onChange={e => setForm(f => ({ ...f, passwordConfirm: e.target.value }))} className={fi} required placeholder="Repite tu contraseña" />
                   </div>
+
+                  {/* RONDA 33: Datos clinicos opcionales — colapsable para no saturar el form */}
+                  <details className="border border-slate-200 rounded-xl bg-slate-50">
+                    <summary className="cursor-pointer px-3 py-2.5 text-xs font-semibold text-slate-700 flex items-center justify-between">
+                      <span>Datos clínicos (opcional)</span>
+                      <span className="text-slate-400">+ agregar</span>
+                    </summary>
+                    <div className="p-3 space-y-2.5 bg-white border-t border-slate-200 rounded-b-xl">
+                      <p className="text-[11px] text-slate-500">Estos datos ayudan a tu médico. Puedes saltarlos y completarlos más tarde desde tu perfil.</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-600 mb-1">Fecha de nacimiento</label>
+                          <input type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} className={fi} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-600 mb-1">Sexo</label>
+                          <select value={form.sex} onChange={e => setForm(f => ({ ...f, sex: e.target.value as any }))} className={fi}>
+                            <option value="">Seleccionar…</option>
+                            <option value="female">Femenino</option>
+                            <option value="male">Masculino</option>
+                            <option value="other">Otro</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 mb-1">Tipo de sangre</label>
+                        <select value={form.blood_type} onChange={e => setForm(f => ({ ...f, blood_type: e.target.value }))} className={fi}>
+                          <option value="">No registrado</option>
+                          {['O+','O-','A+','A-','B+','B-','AB+','AB-'].map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 mb-1">Alergias</label>
+                        <textarea rows={2} value={form.allergies} onChange={e => setForm(f => ({ ...f, allergies: e.target.value }))} className={fi + ' resize-none'} placeholder="Penicilina, mariscos…" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 mb-1">Antecedentes / Enfermedades crónicas</label>
+                        <textarea rows={2} value={form.chronic_conditions} onChange={e => setForm(f => ({ ...f, chronic_conditions: e.target.value }))} className={fi + ' resize-none'} placeholder="Diabetes, hipertensión…" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-600 mb-1">Dirección</label>
+                          <input type="text" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={fi} placeholder="Av. principal…" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-600 mb-1">Ciudad</label>
+                          <input type="text" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} className={fi} placeholder="Caracas" />
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Contacto de emergencia</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input type="text" value={form.emergency_contact_name} onChange={e => setForm(f => ({ ...f, emergency_contact_name: e.target.value }))} className={fi} placeholder="Nombre" />
+                          <input type="tel" value={form.emergency_contact_phone} onChange={e => setForm(f => ({ ...f, emergency_contact_phone: e.target.value }))} className={fi} placeholder="Teléfono" />
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+
                   <button type="submit" disabled={submitting} className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 disabled:opacity-60" style={{ background: BRAND.turquoise }}>
                     {submitting ? 'Registrando...' : 'Crear cuenta y continuar'}
                   </button>
