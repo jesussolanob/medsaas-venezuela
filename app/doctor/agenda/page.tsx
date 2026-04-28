@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Calendar, Clock, Plus, ChevronLeft, ChevronRight, Link2, Check, Trash2, AlertCircle, CheckCircle, ClipboardList, Search, X, XCircle, Settings, Stethoscope, Upload, Loader2, Package, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -385,14 +385,18 @@ export default function AgendaPage() {
             const newOnes = officeSlots.filter(o => !existingDays.has(o.day_of_week))
             return [...prev, ...newOnes]
           })
-          // Tambien tomar slot_duration y buffer del primer office si config aun era default
+          // RONDA 32: solo setear config si REALMENTE cambia algo (deep check).
+          // Antes el setConfig con spread {...prev, ...} siempre creaba nuevo objeto
+          // aunque los valores fueran iguales — combinado con la dep [slot_duration]
+          // del useCallback antiguo causaba el bucle infinito.
           const firstOffice = offices[0] as any
           if (firstOffice.slot_duration) {
-            setConfig(prev => ({
-              ...prev,
-              slot_duration: prev.slot_duration === 30 ? firstOffice.slot_duration : prev.slot_duration,
-              buffer_minutes: prev.buffer_minutes === 0 && firstOffice.buffer_minutes ? firstOffice.buffer_minutes : prev.buffer_minutes,
-            }))
+            setConfig(prev => {
+              const newSlot = prev.slot_duration === 30 ? firstOffice.slot_duration : prev.slot_duration
+              const newBuffer = prev.buffer_minutes === 0 && firstOffice.buffer_minutes ? firstOffice.buffer_minutes : prev.buffer_minutes
+              if (newSlot === prev.slot_duration && newBuffer === prev.buffer_minutes) return prev   // no-op
+              return { ...prev, slot_duration: newSlot, buffer_minutes: newBuffer }
+            })
           }
         }
       }
@@ -548,9 +552,22 @@ export default function AgendaPage() {
 
     setPendingAppointments(pendingList)
     setLoading(false)
-  }, [config.slot_duration])
+  // RONDA 32: deps vacias para que loadData NO se recree.
+  // Antes la dep [config.slot_duration] causaba bucle infinito porque dentro
+  // se hace setConfig({slot_duration:...}) → useCallback recrea loadData →
+  // useEffect dispara loadData otra vez → loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  // RONDA 32: ref guard para garantizar que loadData() corra UNA SOLA VEZ al montar.
+  // Cualquier refresh manual debe llamar loadData() directo (ya hay 2 lugares: linea 777 y 955).
+  const loadedRef = useRef(false)
+  useEffect(() => {
+    if (loadedRef.current) return
+    loadedRef.current = true
+    loadData()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Save availability to DB ──────────────────────────────────────────────
 
