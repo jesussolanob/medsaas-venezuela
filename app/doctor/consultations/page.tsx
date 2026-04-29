@@ -445,12 +445,23 @@ function ConsultationsPage() {
             const j = await blocksRes.json()
             const resolved = (j.resolved || []) as Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }>
             setDoctorActiveBlocks(resolved as SnapshotBlock[])
-            // L1 (2026-04-29): guardar el catálogo completo para el botón "+"
-            // que permite agregar bloques on-the-fly que NO estén en la config activa.
-            const catalog = (j.catalog || []) as Array<{ key: string; label: string; content_type: string; printable?: boolean; send_to_patient?: boolean }>
+            // L1 (2026-04-29) + FIX 2026-04-29: el endpoint devuelve la fila cruda
+            // del catálogo con columnas `default_label/default_content_type/default_printable/...`.
+            // Antes leíamos `c.label`/`c.content_type` (undefined) y el dropdown del
+            // botón "+" se renderizaba con labels vacíos — el doctor veía "nada".
+            const catalog = (j.catalog || []) as Array<{
+              key: string
+              default_label: string
+              default_content_type: string
+              default_printable?: boolean
+              default_send_to_patient?: boolean
+            }>
             setBlockCatalog(catalog.map(c => ({
-              key: c.key, label: c.label, content_type: c.content_type,
-              printable: c.printable ?? true, send_to_patient: c.send_to_patient ?? true,
+              key: c.key,
+              label: c.default_label,
+              content_type: c.default_content_type,
+              printable: c.default_printable ?? true,
+              send_to_patient: c.default_send_to_patient ?? true,
             })))
           }
         } catch (err) {
@@ -3317,16 +3328,22 @@ function ConsultationsPage() {
                       try {
                         const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
                         let body = ''
+                        const debugBlocks: { key: string; label: string; hasContent: boolean }[] = []
                         for (const b of printable) {
                           if (!reportSelectedKeys.has(b.key)) continue
                           const piece = (b.key === 'informe' || b.key === 'notes')
                             ? generateInformeHtml()
                             : generateBlockHtml(b.key, b.label)
+                          debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece })
                           if (piece) body += piece
                         }
+                        // FIX 2026-04-29: si NINGÚN bloque tiene contenido, aún así
+                        // generamos un PDF con un placeholder explicando — antes el
+                        // doctor recibía solo un alert y no entendía qué pasaba.
                         if (!body) {
-                          alert('Los bloques seleccionados no tienen contenido. Escribe algo en al menos un bloque antes de generar el informe.')
-                          return
+                          const lista = debugBlocks.map(d => `• ${d.label}: vacío`).join('\n')
+                          body = `<div class="section"><div class="section-title">Sin contenido</div><div class="section-content">No hay información registrada en los bloques seleccionados de esta consulta.<br><br>${lista.replace(/\n/g, '<br>')}</div></div>`
+                          console.warn('[generate-report] generando PDF de placeholder; bloques sin contenido:', debugBlocks)
                         }
                         const html = buildPdfHtml('informe', 'Informe Médico', body, selected.patient_name, selected.consultation_code, dateStr)
                         const res = await fetch('/api/doctor/share-pdf', {
