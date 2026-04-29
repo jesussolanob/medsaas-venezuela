@@ -20,6 +20,9 @@ import {
   X, User, Mail, Phone, Hash, Calendar, MapPin, Heart, AlertTriangle,
   Droplet, UserCheck, Save, Loader2,
 } from 'lucide-react'
+// L6 (2026-04-29): inputs reutilizables con prefijo dropdown / +58 fijo
+import CedulaInput from '@/components/shared/CedulaInput'
+import PhoneInput from '@/components/shared/PhoneInput'
 
 export type PatientFormData = {
   id?: string
@@ -139,7 +142,8 @@ export default function PatientForm({ initialData, onSubmit, onCancel, submittin
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={lbl}><Hash className="w-3 h-3" /> Cédula</label>
-            <input value={data.cedula ?? ''} onChange={e => set('cedula', e.target.value)} className={fi} placeholder="V-12345678" />
+            {/* L6 (2026-04-29): dropdown V/E/J/G + numero canonico */}
+            <CedulaInput value={data.cedula ?? ''} onChange={v => set('cedula', v)} placeholder="12345678" />
           </div>
           <div>
             <label className={lbl}><Mail className="w-3 h-3" /> Email</label>
@@ -149,7 +153,8 @@ export default function PatientForm({ initialData, onSubmit, onCancel, submittin
 
         <div>
           <label className={lbl}><Phone className="w-3 h-3" /> Teléfono</label>
-          <input value={data.phone ?? ''} onChange={e => set('phone', e.target.value)} className={fi} placeholder="+58 412 000 0000" />
+          {/* L6 (2026-04-29): prefijo +58 fijo + 10 digitos. Devuelve canonico 584XXXXXXXXX */}
+          <PhoneInput value={data.phone ?? ''} onChange={v => set('phone', v)} />
         </div>
       </section>
 
@@ -254,7 +259,8 @@ export default function PatientForm({ initialData, onSubmit, onCancel, submittin
           </div>
           <div>
             <label className={lbl}><Phone className="w-3 h-3" /> Teléfono</label>
-            <input value={data.emergency_contact_phone ?? ''} onChange={e => set('emergency_contact_phone', e.target.value)} className={fi} placeholder="+58 412 000 0000" />
+            {/* L6 (2026-04-29): canonico para contacto de emergencia tambien */}
+            <PhoneInput value={data.emergency_contact_phone ?? ''} onChange={v => set('emergency_contact_phone', v)} />
           </div>
         </div>
       </section>

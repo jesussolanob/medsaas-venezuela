@@ -62,7 +62,8 @@ async function callGeminiWithRetry(apiKey: string, prompt: string): Promise<{ ok
   return { ok: false, status: 429, body: 'Todos los modelos retornaron 429 (cuota agotada)' }
 }
 
-type AIAction = 'summarize' | 'improve' | 'patient_history' | 'improve_block'
+// L1 (2026-04-29): nueva accion `summarize_report` para el panel unificado.
+type AIAction = 'summarize' | 'improve' | 'patient_history' | 'improve_block' | 'summarize_report'
 
 // AUDIT FIX 2026-04-29 (IA-blocks): prompt-builder por block_key.
 // Cada bloque del catálogo tiene un prompt específico que enfatiza lo que
@@ -156,12 +157,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     // AUDIT FIX 2026-04-29 (IA-blocks): aceptamos block_key + block_label
     // para construir prompts específicos por tipo de bloque.
-    const { action, content, patientId, block_key, block_label } = body as {
+    // L1 (2026-04-29): nuevos campos `blocks_data` y `blocks_meta` para los modos
+    // unificados de IA (resumir informe + historial enriquecido).
+    const { action, content, patientId, block_key, block_label, blocks_data, blocks_meta, legacy } = body as {
       action: AIAction
       content?: string
       patientId?: string
       block_key?: string
       block_label?: string
+      blocks_data?: Record<string, unknown>
+      blocks_meta?: Array<{ key: string; label: string; printable?: boolean }>
+      legacy?: { chief_complaint?: string | null; notes?: string | null; diagnosis?: string | null; treatment?: string | null }
     }
 
     let prompt = ''
@@ -195,10 +201,12 @@ export async function POST(req: NextRequest) {
       case 'patient_history': {
         if (!patientId) return NextResponse.json({ error: 'ID de paciente requerido' }, { status: 400 })
 
-        // Fetch patient's consultation history (uses RLS with doctor's token)
+        // L1 (2026-04-29): incluir blocks_data + blocks_snapshot en el contexto.
+        // Antes solo leiamos 5 campos legacy, ahora la IA tambien recibe el contenido
+        // de los bloques dinamicos (15+ tipos: examen fisico, plan nutricional, ejercicios, etc.).
         const { data: consultations, error: consultErr } = await supabase
           .from('consultations')
-          .select('consultation_date, chief_complaint, diagnosis, treatment, notes')
+          .select('consultation_date, chief_complaint, diagnosis, treatment, notes, blocks_data, blocks_snapshot')
           .eq('doctor_id', user.id)
           .eq('patient_id', patientId)
           .order('consultation_date', { ascending: false })
@@ -222,12 +230,65 @@ export async function POST(req: NextRequest) {
 
         const patientInfo = patient ? `Paciente: ${patient.full_name}${patient.age ? `, ${patient.age} años` : ''}${patient.sex ? `, ${patient.sex === 'male' ? 'masculino' : patient.sex === 'female' ? 'femenino' : patient.sex}` : ''}${patient.blood_type ? `, tipo de sangre ${patient.blood_type}` : ''}${patient.allergies ? `\nAlergias: ${patient.allergies}` : ''}${patient.chronic_conditions ? `\nCondiciones crónicas: ${patient.chronic_conditions}` : ''}` : ''
 
-        const historyText = consultations.map((c, i) => {
+        const historyText = consultations.map((c: any, i: number) => {
           const date = new Date(c.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
-          return `--- Consulta ${i + 1} (${date}) ---\nMotivo: ${c.chief_complaint || 'No registrado'}\nDiagnóstico: ${stripHtml(c.diagnosis || 'No registrado')}\nTratamiento: ${stripHtml(c.treatment || 'No registrado')}\nNotas: ${stripHtml(c.notes || 'Sin notas')}`
+          let txt = `--- Consulta ${i + 1} (${date}) ---\nMotivo: ${stripHtml(c.chief_complaint || 'No registrado')}\nDiagnóstico: ${stripHtml(c.diagnosis || 'No registrado')}\nTratamiento: ${stripHtml(c.treatment || 'No registrado')}\nNotas: ${stripHtml(c.notes || 'Sin notas')}`
+          // L1 (2026-04-29): serializar bloques dinamicos (blocks_data + blocks_snapshot)
+          // para que la IA tenga acceso al examen fisico, plan nutricional, ejercicios, etc.
+          const bd = c.blocks_data && typeof c.blocks_data === 'object' ? c.blocks_data as Record<string, unknown> : null
+          const snap = Array.isArray(c.blocks_snapshot) ? c.blocks_snapshot as Array<{ key: string; label: string }> : null
+          if (bd && Object.keys(bd).length > 0) {
+            const labels: Record<string, string> = {}
+            if (snap) snap.forEach(b => { labels[b.key] = b.label })
+            const SKIP = new Set(['chief_complaint', 'diagnosis', 'treatment', 'notes', 'internal_notes'])
+            const dynLines: string[] = []
+            for (const [key, val] of Object.entries(bd)) {
+              if (SKIP.has(key)) continue
+              const label = labels[key] || key
+              let serialized = ''
+              if (typeof val === 'string') serialized = stripHtml(val)
+              else if (Array.isArray(val)) serialized = val.map(v => `- ${typeof v === 'string' ? stripHtml(v) : JSON.stringify(v)}`).join('\n')
+              else if (val && typeof val === 'object') serialized = JSON.stringify(val)
+              else if (val != null) serialized = String(val)
+              if (serialized.trim()) dynLines.push(`${label}: ${serialized}`)
+            }
+            if (dynLines.length > 0) txt += `\n${dynLines.join('\n')}`
+          }
+          return txt
         }).join('\n\n')
 
-        prompt = `Eres un asistente médico. Analiza el historial de consultas de este paciente y genera un resumen ejecutivo útil para el médico. Incluye: patrones relevantes, evolución del paciente, diagnósticos recurrentes, y cualquier dato que el médico debe tener presente para la consulta actual. Sé conciso y práctico. Responde en español.\n\n${patientInfo}\n\nHistorial de consultas (${consultations.length} consultas):\n${historyText}`
+        prompt = `Eres un asistente médico. Analiza el historial integral de consultas de este paciente (incluyendo bloques dinámicos como examen físico, plan nutricional, ejercicios, indicaciones, etc.) y genera un resumen ejecutivo útil para el médico. Incluye: patrones relevantes, evolución del paciente, diagnósticos recurrentes, y cualquier dato que el médico debe tener presente para la consulta actual. Sé conciso y práctico. Responde en español.\n\n${patientInfo}\n\nHistorial de consultas (${consultations.length} consultas):\n${historyText}`
+        break
+      }
+
+      case 'summarize_report': {
+        // L1 (2026-04-29): nuevo modo "Resumir informe" — toma TODOS los bloques
+        // de la consulta actual + chief_complaint/notes/diagnosis/treatment y arma
+        // un resumen coherente para el médico.
+        const sections: string[] = []
+        if (legacy?.chief_complaint) sections.push(`Motivo de consulta: ${stripHtml(legacy.chief_complaint)}`)
+        if (legacy?.diagnosis) sections.push(`Diagnóstico: ${stripHtml(legacy.diagnosis)}`)
+        if (legacy?.treatment) sections.push(`Tratamiento: ${stripHtml(legacy.treatment)}`)
+        if (legacy?.notes) sections.push(`Notas: ${stripHtml(legacy.notes)}`)
+        if (blocks_data && typeof blocks_data === 'object') {
+          const labels: Record<string, string> = {}
+          if (Array.isArray(blocks_meta)) blocks_meta.forEach(b => { labels[b.key] = b.label })
+          const SKIP = new Set(['chief_complaint', 'diagnosis', 'treatment', 'notes'])
+          for (const [key, val] of Object.entries(blocks_data)) {
+            if (SKIP.has(key)) continue
+            const label = labels[key] || key
+            let serialized = ''
+            if (typeof val === 'string') serialized = stripHtml(val)
+            else if (Array.isArray(val)) serialized = val.map(v => `- ${typeof v === 'string' ? stripHtml(v) : JSON.stringify(v)}`).join('\n')
+            else if (val && typeof val === 'object') serialized = JSON.stringify(val)
+            else if (val != null) serialized = String(val)
+            if (serialized.trim()) sections.push(`${label}: ${serialized}`)
+          }
+        }
+        if (sections.length === 0) {
+          return NextResponse.json({ error: 'No hay contenido en la consulta para resumir.' }, { status: 400 })
+        }
+        prompt = `Eres un asistente médico. A continuación tienes el contenido completo de una consulta médica (motivo, diagnóstico, tratamiento, notas y bloques especializados). Genera un resumen coherente y profesional del informe en uno o dos párrafos, manteniendo todos los datos clínicos relevantes y usando lenguaje médico apropiado. Responde en español, sin encabezados ni listas — solo prosa profesional.\n\nContenido de la consulta:\n${sections.join('\n\n')}`
         break
       }
 

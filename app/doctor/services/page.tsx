@@ -256,12 +256,26 @@ export default function ServicesPage() {
                 </div>
               </div>
 
+              {/* L4 (2026-04-29): cuando es paquete (sessions_count > 1) mostramos
+                  desglose precio unitario × sesiones = total para que quede claro
+                  que el paciente paga el total, no solo el precio unitario. */}
               <div className="mb-3">
                 <div className="flex items-baseline gap-1">
                   <span className="text-xl font-bold text-teal-600">${item.price_usd.toFixed(2)}</span>
                   <span className="text-xs text-slate-400">USD</span>
+                  {item.sessions_count > 1 && (
+                    <span className="text-xs text-slate-500 ml-1">
+                      × {item.sessions_count} = <span className="font-semibold text-slate-700">${(item.price_usd * item.sessions_count).toFixed(2)}</span>
+                    </span>
+                  )}
                 </div>
-                {bcvRate && <p className="text-xs text-slate-400 mt-0.5">{toBs(item.price_usd)}</p>}
+                {bcvRate && (
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {item.sessions_count > 1
+                      ? `Total: ${toBs(item.price_usd * item.sessions_count)}`
+                      : toBs(item.price_usd)}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
@@ -272,7 +286,7 @@ export default function ServicesPage() {
                 {item.sessions_count > 1 && (
                   <div className="flex items-center gap-1">
                     <Tag className="w-3 h-3" />
-                    {item.sessions_count} sesiones
+                    {item.sessions_count} sesiones — ${(item.price_usd * item.sessions_count).toFixed(2)} total
                   </div>
                 )}
               </div>
@@ -391,6 +405,24 @@ export default function ServicesPage() {
                   <input type="number" min="1" value={sessionsCount} onChange={e => setSessionsCount(e.target.value)}
                     placeholder="1" className={inp} />
                   <p className="text-[10px] text-slate-400 mt-1">Si es un paquete, pon el número de sesiones que incluye</p>
+                  {/* L4 (2026-04-29): preview del total del paquete en tiempo real
+                      cuando hay >1 sesion. Asi el doctor ve cuanto cobrara en total. */}
+                  {(() => {
+                    const p = parseFloat(priceUsd) || 0
+                    const s = parseInt(sessionsCount) || 1
+                    if (s > 1 && p > 0) {
+                      const total = p * s
+                      return (
+                        <div className="mt-2 px-3 py-2 rounded-lg bg-teal-50 border border-teal-100">
+                          <p className="text-xs font-semibold text-teal-700">
+                            Total del paquete: ${total.toFixed(2)}{' '}
+                            <span className="font-normal text-teal-600">(= ${p.toFixed(2)} USD × {s} sesiones)</span>
+                          </p>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
               )}
 

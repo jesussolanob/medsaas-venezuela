@@ -1,5 +1,8 @@
 'use client'
 
+// L7 (2026-04-29): añadidos KPIs (consultas/mes, pacientes únicos, crecimiento MoM),
+// dropdown de meses (últimos 12), gráfico Recharts de ingresos vs egresos
+// (últimos 6 meses) y exportación CSV de consultas con diagnóstico/duración.
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
@@ -7,7 +10,12 @@ import { fetchPayments as sharedFetchPayments, formatUsd, formatBs } from '@/lib
 import {
   DollarSign, TrendingUp, TrendingDown, BarChart3,
   Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Search, Calendar, Download,
+  Users, ClipboardList, Activity, FileSpreadsheet,
 } from 'lucide-react'
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as RTooltip, Legend,
+} from 'recharts'
 
 type Income = {
   id: string
@@ -28,6 +36,21 @@ type Expense = {
   notes?: string
 }
 
+// L7 (2026-04-29): row de la cuadrícula descargable de consultas.
+type ConsultationRow = {
+  id: string
+  consultation_code: string | null
+  consultation_date: string | null
+  patient_name: string
+  appointment_status: string | null      // scheduled|confirmed|cancelled|completed|no_show
+  consultation_status: string | null     // completed|no_show (post-cita)
+  payment_status: string | null          // pending|approved
+  duration_minutes: number | null
+  diagnosis: string | null
+  amount_usd: number | null
+  plan_name: string | null
+}
+
 const EXPENSE_CATEGORIES = [
   { value: 'rent', label: 'Alquiler' },
   { value: 'staff', label: 'Personal' },
@@ -45,10 +68,19 @@ export default function FinancesPage() {
   const { rate: bcvRate, toBs } = useBcvRate()
   const [incomes, setIncomes] = useState<Income[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  // L7 (2026-04-29): consultas para el cuadro descargable + KPIs.
+  const [consultationsRows, setConsultationsRows] = useState<ConsultationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'overview' | 'income' | 'expenses'>('overview')
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
+  // L7 (2026-04-29): mes seleccionado para los KPIs nuevos (formato YYYY-MM,
+  // independiente del navegador día/semana/mes existente — afecta solo a los
+  // KPI cards del bloque "Reportería" y al gráfico Recharts).
+  const [reportMonth, setReportMonth] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [savingExpense, setSavingExpense] = useState(false)
   const [expenseForm, setExpenseForm] = useState({
@@ -92,6 +124,45 @@ export default function FinancesPage() {
         .order('due_date', { ascending: false })
 
       setExpenses(exp || [])
+
+      // L7 (2026-04-29): consultas con join a appointment + patient para
+      // alimentar KPIs y CSV. Traemos status, diagnosis, duration y monto.
+      const { data: cons } = await supabase
+        .from('consultations')
+        .select(`
+          id, consultation_code, consultation_date, payment_status,
+          diagnosis, duration_minutes, amount, plan_name,
+          appointments(status),
+          patients(full_name)
+        `)
+        .eq('doctor_id', user.id)
+        .order('consultation_date', { ascending: false })
+        .limit(2000)
+
+      const rows: ConsultationRow[] = (cons || []).map((c: any) => {
+        const appt = Array.isArray(c.appointments) ? c.appointments[0] : c.appointments
+        const pat = Array.isArray(c.patients) ? c.patients[0] : c.patients
+        const apptStatus: string | null = appt?.status ?? null
+        // status de la consulta (post-cita): si la cita esta completed/no_show
+        // ese ES el estado de la consulta. Si todavia esta scheduled/confirmed,
+        // la consulta aun no se ha "atendido".
+        const consultationStatus =
+          apptStatus === 'completed' || apptStatus === 'no_show' ? apptStatus : null
+        return {
+          id: c.id,
+          consultation_code: c.consultation_code,
+          consultation_date: c.consultation_date,
+          patient_name: pat?.full_name || 'Paciente',
+          appointment_status: apptStatus,
+          consultation_status: consultationStatus,
+          payment_status: c.payment_status ?? null,
+          duration_minutes: c.duration_minutes ?? null,
+          diagnosis: c.diagnosis ?? null,
+          amount_usd: c.amount != null ? Number(c.amount) : null,
+          plan_name: c.plan_name ?? null,
+        }
+      })
+      setConsultationsRows(rows)
     } catch (err) {
       console.error('Error loading finances:', err)
     }
@@ -205,6 +276,178 @@ export default function FinancesPage() {
   }, [incomes, expenses, viewMode, currentDate])
 
   const maxChartVal = Math.max(...chartData.map(p => Math.max(p.income, p.expenses)), 1)
+
+  // L7 (2026-04-29): opciones del dropdown — últimos 12 meses.
+  const monthOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = []
+    const now = new Date()
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`
+      opts.push({ value, label })
+    }
+    return opts
+  }, [])
+
+  // L7 (2026-04-29): KPIs basados en `reportMonth` (independiente del nav día/semana/mes).
+  // - consultasMes: consultas del mes con payment_status='approved'.
+  // - pacientesUnicos: distinct patient_id (proxy con patient_name de la fila).
+  // - crecimientoMoM: % vs mes anterior. Si mes anterior era 0 → null (mostrar "—").
+  const reportKpis = useMemo(() => {
+    const [yStr, mStr] = reportMonth.split('-')
+    const year = parseInt(yStr, 10)
+    const month = parseInt(mStr, 10) - 1
+    const prevMonthDate = new Date(year, month - 1, 1)
+    const prevYear = prevMonthDate.getFullYear()
+    const prevMonth = prevMonthDate.getMonth()
+
+    const inMonth = (d: Date, y: number, m: number) =>
+      d.getFullYear() === y && d.getMonth() === m
+
+    const currentApproved = consultationsRows.filter(r => {
+      if (r.payment_status !== 'approved') return false
+      if (!r.consultation_date) return false
+      return inMonth(new Date(r.consultation_date), year, month)
+    })
+    const prevApproved = consultationsRows.filter(r => {
+      if (r.payment_status !== 'approved') return false
+      if (!r.consultation_date) return false
+      return inMonth(new Date(r.consultation_date), prevYear, prevMonth)
+    })
+
+    const consultasMes = currentApproved.length
+    const pacientesUnicos = new Set(currentApproved.map(r => r.patient_name)).size
+    const consultasPrev = prevApproved.length
+
+    let crecimientoMoM: number | null = null
+    if (consultasPrev > 0) {
+      crecimientoMoM = ((consultasMes - consultasPrev) / consultasPrev) * 100
+    } else if (consultasMes > 0 && consultasPrev === 0) {
+      crecimientoMoM = null // mes anterior era 0 → no se puede calcular
+    } else {
+      crecimientoMoM = null
+    }
+
+    return { consultasMes, pacientesUnicos, crecimientoMoM, consultasPrev }
+  }, [consultationsRows, reportMonth])
+
+  // L7 (2026-04-29): chart Recharts — últimos 6 meses ingresos vs egresos
+  // anclado al `reportMonth` seleccionado (no al `currentDate` del navegador).
+  const reportChartData = useMemo(() => {
+    const [yStr, mStr] = reportMonth.split('-')
+    const anchor = new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1)
+    const months: { label: string; ingresos: number; egresos: number }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1)
+      const yy = d.getFullYear()
+      const mm = d.getMonth()
+      const ingresos = incomes
+        .filter(inc => {
+          const id = new Date(inc.date)
+          return id.getFullYear() === yy && id.getMonth() === mm
+        })
+        .reduce((s, x) => s + (x.amount_usd || 0), 0)
+      const egresos = expenses
+        .filter(exp => {
+          const ed = new Date(exp.due_date)
+          return ed.getFullYear() === yy && ed.getMonth() === mm
+        })
+        .reduce((s, x) => s + (x.amount || 0), 0)
+      months.push({
+        label: `${MONTHS[mm]} ${String(yy).slice(2)}`,
+        ingresos: parseFloat(ingresos.toFixed(2)),
+        egresos: parseFloat(egresos.toFixed(2)),
+      })
+    }
+    return months
+  }, [incomes, expenses, reportMonth])
+
+  // L7 (2026-04-29): consultas filtradas por `reportMonth` para el CSV.
+  const reportConsultations = useMemo(() => {
+    const [yStr, mStr] = reportMonth.split('-')
+    const year = parseInt(yStr, 10)
+    const month = parseInt(mStr, 10) - 1
+    return consultationsRows.filter(r => {
+      if (!r.consultation_date) return false
+      const d = new Date(r.consultation_date)
+      return d.getFullYear() === year && d.getMonth() === month
+    })
+  }, [consultationsRows, reportMonth])
+
+  // L7 (2026-04-29): traduce status de cita a etiqueta legible.
+  const apptStatusLabel = (s: string | null) => {
+    if (!s) return '—'
+    const map: Record<string, string> = {
+      scheduled: 'Agendada', confirmed: 'Aprobada', cancelled: 'Rechazada',
+      completed: 'Atendida', no_show: 'No asistió',
+      pending: 'Pendiente', accepted: 'Aceptada',
+    }
+    return map[s] || s
+  }
+  const consultationStatusLabel = (s: string | null) => {
+    if (s === 'completed') return 'Atendida'
+    if (s === 'no_show') return 'No asistió'
+    return '—'
+  }
+  const paymentStatusLabel = (s: string | null) => {
+    if (s === 'approved') return 'Aprobado'
+    if (s === 'pending') return 'Pendiente'
+    return '—'
+  }
+  const formatDurationCell = (mins: number | null | undefined): string => {
+    if (mins == null || mins <= 0) return '—'
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    if (h > 0) return m > 0 ? `${h}h ${m}min` : `${h}h`
+    return `${m} min`
+  }
+
+  // L7 (2026-04-29): export CSV de la cuadrícula de consultas.
+  // Columnas requeridas: código, fecha, paciente, status cita, status consulta,
+  // status pago, duración, diagnóstico + monto + plan (datos extra valiosos).
+  // Genera CSV en cliente con Blob + URL.createObjectURL — sin libs externas.
+  const downloadConsultationsCSV = () => {
+    const monthLabel = monthOptions.find(o => o.value === reportMonth)?.label || reportMonth
+    const escapeCsv = (v: unknown): string => {
+      if (v == null) return ''
+      const s = String(v)
+      // Escapamos comillas duplicándolas y envolvemos toda la celda entre comillas
+      // para soportar comas/saltos de línea/quotes en diagnósticos.
+      return `"${s.replace(/"/g, '""')}"`
+    }
+    const headers = [
+      'Código', 'Fecha', 'Paciente', 'Plan',
+      'Status Cita', 'Status Consulta', 'Status Pago',
+      'Duración', 'Monto USD', 'Diagnóstico',
+    ]
+    const lines: string[] = [headers.join(',')]
+    for (const r of reportConsultations) {
+      const dateStr = r.consultation_date
+        ? new Date(r.consultation_date).toLocaleDateString('es-VE')
+        : ''
+      lines.push([
+        escapeCsv(r.consultation_code || ''),
+        escapeCsv(dateStr),
+        escapeCsv(r.patient_name),
+        escapeCsv(r.plan_name || ''),
+        escapeCsv(apptStatusLabel(r.appointment_status)),
+        escapeCsv(consultationStatusLabel(r.consultation_status)),
+        escapeCsv(paymentStatusLabel(r.payment_status)),
+        escapeCsv(formatDurationCell(r.duration_minutes)),
+        r.amount_usd != null ? r.amount_usd.toFixed(2) : '',
+        escapeCsv(r.diagnosis || ''),
+      ].join(','))
+    }
+    const csv = lines.join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `consultas_${monthLabel.replace(/\s/g, '_')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const navigate = (dir: number) => {
     const d = new Date(currentDate)
@@ -495,6 +738,174 @@ export default function FinancesPage() {
             </div>
           </>
         )}
+      </div>
+
+      {/* L7 (2026-04-29): Reportería con KPIs por mes seleccionado +
+          gráfico Recharts + cuadro descargable de consultas. Esta sección
+          es independiente del navegador día/semana/mes existente arriba. */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-teal-500" />
+            <h3 className="text-sm font-bold text-slate-700">Reportería</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Mes:</span>
+            <select
+              value={reportMonth}
+              onChange={(e) => setReportMonth(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm font-medium bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-200"
+            >
+              {monthOptions.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* L7 KPI cards: consultas del mes / pacientes únicos / crecimiento MoM */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center">
+                <ClipboardList className="w-4 h-4 text-teal-600" />
+              </div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Consultas del mes</p>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{reportKpis.consultasMes}</p>
+            <p className="text-xs text-slate-400 mt-1">Pagos aprobados</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
+                <Users className="w-4 h-4 text-emerald-600" />
+              </div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Pacientes únicos</p>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{reportKpis.pacientesUnicos}</p>
+            <p className="text-xs text-slate-400 mt-1">En el mes</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                reportKpis.crecimientoMoM == null ? 'bg-slate-50' :
+                reportKpis.crecimientoMoM >= 0 ? 'bg-emerald-50' : 'bg-red-50'
+              }`}>
+                {reportKpis.crecimientoMoM == null ? (
+                  <Activity className="w-4 h-4 text-slate-400" />
+                ) : reportKpis.crecimientoMoM >= 0 ? (
+                  <TrendingUp className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <TrendingDown className="w-4 h-4 text-red-500" />
+                )}
+              </div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Crecimiento MoM</p>
+            </div>
+            <p className={`text-2xl font-bold ${
+              reportKpis.crecimientoMoM == null ? 'text-slate-400' :
+              reportKpis.crecimientoMoM >= 0 ? 'text-emerald-600' : 'text-red-500'
+            }`}>
+              {reportKpis.crecimientoMoM == null
+                ? '—'
+                : `${reportKpis.crecimientoMoM >= 0 ? '+' : ''}${reportKpis.crecimientoMoM.toFixed(1)}%`}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">vs mes anterior ({reportKpis.consultasPrev})</p>
+          </div>
+        </div>
+
+        {/* L7 chart Recharts: ingresos vs egresos últimos 6 meses */}
+        <div>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Ingresos vs Egresos · últimos 6 meses</p>
+          <div className="w-full h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={reportChartData} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                <RTooltip
+                  formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* L7 cuadro descargable de consultas */}
+        <div>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Consultas del mes ({reportConsultations.length})
+            </p>
+            <button
+              onClick={downloadConsultationsCSV}
+              disabled={reportConsultations.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold hover:bg-teal-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Descargar Excel (CSV)
+            </button>
+          </div>
+          {reportConsultations.length === 0 ? (
+            <div className="px-5 py-10 text-center text-slate-400 text-sm border border-dashed border-slate-200 rounded-xl">
+              No hay consultas registradas en este mes
+            </div>
+          ) : (
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Código</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Fecha</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Paciente</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status Cita</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status Consulta</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status Pago</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Duración</th>
+                    <th className="text-right px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Diagnóstico</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {reportConsultations.slice(0, 50).map(r => (
+                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-3 py-2 text-xs font-mono text-slate-500">{r.consultation_code || '—'}</td>
+                      <td className="px-3 py-2 text-xs text-slate-600">
+                        {r.consultation_date ? new Date(r.consultation_date).toLocaleDateString('es-VE') : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs font-medium text-slate-800">{r.patient_name}</td>
+                      <td className="px-3 py-2 text-xs text-slate-600">{apptStatusLabel(r.appointment_status)}</td>
+                      <td className="px-3 py-2 text-xs text-slate-600">{consultationStatusLabel(r.consultation_status)}</td>
+                      <td className="px-3 py-2 text-xs">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          r.payment_status === 'approved' ? 'bg-emerald-50 text-emerald-700' :
+                          r.payment_status === 'pending' ? 'bg-amber-50 text-amber-700' :
+                          'bg-slate-50 text-slate-500'
+                        }`}>
+                          {paymentStatusLabel(r.payment_status)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-600">{formatDurationCell(r.duration_minutes)}</td>
+                      <td className="px-3 py-2 text-xs text-right font-semibold text-slate-700">
+                        {r.amount_usd != null ? formatUsd(r.amount_usd) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-600 max-w-xs truncate" title={r.diagnosis || ''}>
+                        {r.diagnosis || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {reportConsultations.length > 50 && (
+                <div className="px-3 py-2 text-[10px] text-slate-400 text-center bg-slate-50 border-t border-slate-100">
+                  Mostrando 50 de {reportConsultations.length}. Descargá el CSV para verlas todas.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs + Download all */}

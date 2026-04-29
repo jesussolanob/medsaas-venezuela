@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react'
 import { Bell, Calendar, MessageCircle, Mail, CheckCircle, Clock, AlertCircle, User, CheckSquare, Square, Send, Info, X, Phone } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+// L2 (2026-04-29): timezone helpers para que "Hoy" matchee el dia local Caracas.
+import { toLocalYMD, caracasToISO } from '@/lib/timezone'
+// L6 (2026-04-29): normaliza telefonos venezolanos (legacy free-text + canonico).
+import { normalizePhoneVE } from '@/lib/phone-utils'
 
 type Consultation = {
   id: string
@@ -49,12 +53,18 @@ export default function RemindersPage() {
         setDoctorPhone(profile.phone || '')
       }
 
+      // L2 (2026-04-29): rango desde el inicio del dia LOCAL Caracas (00:00 -04:00).
+      // Antes usaba `new Date().toISOString()` que excluye consultas de hoy a la
+      // mañana cuando el doctor abre la pagina por la tarde — por eso el filtro
+      // "Hoy" salia vacio si ya habia pasado la hora.
+      const todayCaracasStart = caracasToISO(toLocalYMD(new Date()), '00:00')
+
       // Fetch upcoming consultations
       const { data: consults } = await supabase
         .from('consultations')
         .select('*, patients(full_name, phone, email)')
         .eq('doctor_id', user.id)
-        .gte('consultation_date', new Date().toISOString())
+        .gte('consultation_date', todayCaracasStart)
         .order('consultation_date', { ascending: true })
         .limit(50)
 
@@ -71,12 +81,13 @@ export default function RemindersPage() {
       }))
 
       // Fetch upcoming appointments (scheduled/confirmed)
+      // L2 (2026-04-29): mismo rango (inicio del dia local Caracas) que consultas.
       const { data: appointments } = await supabase
         .from('appointments')
         .select('id, appointment_code, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_id, plan_name')
         .eq('doctor_id', user.id)
         .in('status', ['scheduled', 'confirmed'])
-        .gte('scheduled_at', new Date().toISOString())
+        .gte('scheduled_at', todayCaracasStart)
         .order('scheduled_at', { ascending: true })
         .limit(50)
 
@@ -108,9 +119,16 @@ export default function RemindersPage() {
     })
   }, [])
 
+  // L2 (2026-04-29): diferencia en DIAS DE CALENDARIO en zona Caracas.
+  // Antes era `Math.ceil(diffMs / 86400000)` que daba 1 cuando una cita
+  // de las 13:00 se consultaba a las 09:00 del MISMO dia — y por eso el
+  // filtro "Hoy" (filterDays=0) excluia citas de hoy mas tarde.
   function daysUntil(dateStr: string): number {
-    const diff = new Date(dateStr).getTime() - Date.now()
-    return Math.ceil(diff / (1000 * 60 * 60 * 24))
+    const todayYMD = toLocalYMD(new Date())
+    const apptYMD = toLocalYMD(new Date(dateStr))
+    const todayMs = new Date(`${todayYMD}T00:00:00-04:00`).getTime()
+    const apptMs = new Date(`${apptYMD}T00:00:00-04:00`).getTime()
+    return Math.round((apptMs - todayMs) / 86400000)
   }
 
   function formatDateTime(dateStr: string) {
@@ -163,7 +181,9 @@ export default function RemindersPage() {
   function sendWhatsApp(consult: Consultation) {
     if (!consult.patient_phone) return
     setSending(consult.id + '-wa')
-    const phone = consult.patient_phone.replace(/\D/g, '')
+    // L6 (2026-04-29): normaliza para que wa.me reciba 58XXXXXXXXXX siempre.
+    const phone = normalizePhoneVE(consult.patient_phone)
+    if (!phone) { alert('Teléfono inválido'); setSending(null); return }
     window.open(`https://wa.me/${phone}?text=${buildWAMessage(consult)}`, '_blank')
     markSent(consult.id, 'whatsapp')
     setTimeout(() => setSending(null), 1000)
@@ -202,10 +222,13 @@ export default function RemindersPage() {
     const targets = filtered.filter(c => selected.has(c.id))
     for (const consult of targets) {
       if (bulkChannel === 'whatsapp' && consult.patient_phone) {
-        const phone = consult.patient_phone.replace(/\D/g, '')
-        window.open(`https://wa.me/${phone}?text=${buildWAMessage(consult)}`, '_blank')
-        markSent(consult.id, 'whatsapp')
-        await new Promise(r => setTimeout(r, 500))
+        // L6 (2026-04-29): normaliza canonico (acepta legacy '0414...' y '+58...')
+        const phone = normalizePhoneVE(consult.patient_phone)
+        if (phone) {
+          window.open(`https://wa.me/${phone}?text=${buildWAMessage(consult)}`, '_blank')
+          markSent(consult.id, 'whatsapp')
+          await new Promise(r => setTimeout(r, 500))
+        }
       } else if (bulkChannel === 'email' && consult.patient_email) {
         const { subject, body } = buildEmailMessage(consult)
         window.open(`mailto:${consult.patient_email}?subject=${subject}&body=${body}`, '_blank')

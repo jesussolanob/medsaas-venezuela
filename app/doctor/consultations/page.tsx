@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Play, Square, Timer } from 'lucide-react'
+// L7 (2026-04-29): se eliminan los iconos del cronómetro manual (Play, Square)
+// pero mantenemos Timer para mostrar la duración calculada automáticamente.
+import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Timer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
@@ -10,6 +12,8 @@ import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicB
 import MarkdownText from '@/components/shared/MarkdownText'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 import { log } from '@/lib/logger'
+// L6 (2026-04-29): normaliza telefonos para wa.me (acepta legacy free-text)
+import { normalizePhoneVE } from '@/lib/phone-utils'
 
 type Consultation = {
   id: string
@@ -223,16 +227,40 @@ function ConsultationsPage() {
   const [deletingConsulta, setDeletingConsulta] = useState(false)
 
   // AI assistant state
+  // L1 (2026-04-29): el panel global ahora tiene 3 modos:
+  //   - patient_history: resumir historial del paciente (todas las consultas + blocks_data)
+  //   - improve_block: mejorar redacción de un bloque seleccionado por el doctor
+  //   - summarize_report: resumir el informe completo (chief_complaint+notes+diagnosis+treatment+blocks)
+  type AIMode = 'patient_history' | 'improve_block' | 'summarize_report'
   const [aiResult, setAiResult] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiAction, setAiAction] = useState<'summarize' | 'improve' | 'patient_history' | null>(null)
+  const [aiAction, setAiAction] = useState<AIMode | null>(null)
+  // Bloque seleccionado en el dropdown de "Mejorar redacción"
+  const [aiTargetBlockKey, setAiTargetBlockKey] = useState<string>('')
+  // Mostrar/ocultar el dropdown de seleccion de bloque
+  const [showAiBlockPicker, setShowAiBlockPicker] = useState(false)
 
   // Appointment data (for payment receipt, method, price)
   const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null)
 
   // Share menu state
+  // L1 (2026-04-29): los checkboxes ahora son dinámicos — uno por cada bloque
+  // printable del snapshot/config viva. shareKeys guarda las keys seleccionadas.
   const [showShare, setShowShare] = useState(false)
-  const [shareItems, setShareItems] = useState({ informe: true, recipe: false, prescripciones: false, reposo: false })
+  const [shareKeys, setShareKeys] = useState<Set<string>>(new Set())
+
+  // L1 (2026-04-29): Modal "Generar informe" — mismo concepto que share pero
+  // sin el split WhatsApp/Email; solo genera URL y la abre en otra pestaña.
+  const [showGenerateReport, setShowGenerateReport] = useState(false)
+  const [reportSelectedKeys, setReportSelectedKeys] = useState<Set<string>>(new Set())
+  const [generatingReport, setGeneratingReport] = useState(false)
+
+  // L1 (2026-04-29): Catálogo completo de bloques (consultation_block_catalog)
+  // para el botón "+" que permite agregar bloques on-the-fly a una consulta.
+  type CatalogBlock = { key: string; label: string; content_type: string; printable: boolean; send_to_patient: boolean }
+  const [blockCatalog, setBlockCatalog] = useState<CatalogBlock[]>([])
+  const [showAddBlockMenu, setShowAddBlockMenu] = useState(false)
+  const [addingBlock, setAddingBlock] = useState(false)
 
   // Collapsible sidebar sections
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
@@ -250,14 +278,12 @@ function ConsultationsPage() {
   // Doctor's active payment methods from settings
   const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([])
 
-  // Consultation timer state
-  const [consultationStarted, setConsultationStarted] = useState(false)
-  const [consultationEnded, setConsultationEnded] = useState(false)
-  const [consultationStartTime, setConsultationStartTime] = useState<Date | null>(null)
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [showEndConfirm, setShowEndConfirm] = useState(false)
-  const [endingConsultation, setEndingConsultation] = useState(false)
+  // L7 (2026-04-29): el cronómetro manual fue eliminado. La duración se
+  // calcula automáticamente: started_at se marca cuando la cita pasa a
+  // 'completed' (botón "Marcar atendida" del agenda) y ended_at +
+  // duration_minutes se setean en el primer save con contenido del informe
+  // (PATCH /api/doctor/consultations). Solo mostramos `duration_minutes`
+  // como dato read-only cuando ya existe.
 
   // Template configs for PDFs
   type TemplateConfig = {
@@ -415,6 +441,13 @@ function ConsultationsPage() {
             const j = await blocksRes.json()
             const resolved = (j.resolved || []) as Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }>
             setDoctorActiveBlocks(resolved as SnapshotBlock[])
+            // L1 (2026-04-29): guardar el catálogo completo para el botón "+"
+            // que permite agregar bloques on-the-fly que NO estén en la config activa.
+            const catalog = (j.catalog || []) as Array<{ key: string; label: string; content_type: string; printable?: boolean; send_to_patient?: boolean }>
+            setBlockCatalog(catalog.map(c => ({
+              key: c.key, label: c.label, content_type: c.content_type,
+              printable: c.printable ?? true, send_to_patient: c.send_to_patient ?? true,
+            })))
           }
         } catch (err) {
           console.warn('[consultations] no se pudo cargar config de bloques:', err)
@@ -1074,6 +1107,83 @@ function ConsultationsPage() {
 </html>`
   }
 
+  // L1 (2026-04-29): helper genérico — convierte el contenido de cualquier bloque
+  // (chief_complaint/diagnosis/notes/treatment legacy o un block_key dinámico)
+  // en un fragmento HTML <div class="section">…</div> listo para inyectar en el PDF.
+  // Respetа la plantilla del doctor a través de buildPdfHtml (que aplica fonts/colores/firma).
+  //
+  // Convención: SI existe un bloque con key="informe" (o key="notes") en el snapshot,
+  // "Informe" = solo ese bloque. Si NO, "Informe" = concatenado de TODOS los bloques
+  // printable de la consulta (este caso lo maneja generateInformeHtml más abajo).
+  function generateBlockHtml(blockKey: string, label: string): string {
+    if (!selected) return ''
+    // Resolver contenido: primero blocks_data, luego columnas legacy
+    const bd = (selected.blocks_data || {}) as Record<string, unknown>
+    const raw = bd[blockKey]
+    let content = ''
+    if (Array.isArray(raw)) {
+      content = '<ul>' + (raw as unknown[]).filter(Boolean).map(v => `<li>${String(v)}</li>`).join('') + '</ul>'
+    } else if (typeof raw === 'string' && raw.trim()) {
+      content = raw
+    } else if (raw && typeof raw === 'object') {
+      // Bloque "rest" (reposo) tiene shape {diagnosis, days, from, to}
+      if (blockKey === 'rest' || blockKey === 'reposo') {
+        const r = raw as { diagnosis?: string; days?: number; from?: string; to?: string }
+        if (r.diagnosis || r.days || r.from) {
+          content = `Diagnóstico: ${r.diagnosis || '-'}<br>Días: ${r.days ?? 0}` +
+            (r.from ? `<br>Desde: ${new Date(r.from).toLocaleDateString('es-VE')}` : '') +
+            (r.to ? `<br>Hasta: ${new Date(r.to).toLocaleDateString('es-VE')}` : '')
+        }
+      } else {
+        content = JSON.stringify(raw)
+      }
+    }
+    // Fallback a columnas legacy
+    if (!content) {
+      if (blockKey === 'chief_complaint' && report.chief_complaint) content = report.chief_complaint
+      else if (blockKey === 'diagnosis' && report.diagnosis) content = report.diagnosis
+      else if (blockKey === 'treatment' && report.treatment) content = report.treatment
+      else if ((blockKey === 'notes' || blockKey === 'informe') && report.notes) content = report.notes
+      else if (blockKey === 'rest' || blockKey === 'reposo') {
+        if (reposoDiagnosis || reposoDays > 0 || reposoFrom) {
+          content = `Diagnóstico: ${reposoDiagnosis || '-'}<br>Días: ${reposoDays}` +
+            (reposoFrom ? `<br>Desde: ${new Date(reposoFrom).toLocaleDateString('es-VE')}` : '') +
+            (reposoTo ? `<br>Hasta: ${new Date(reposoTo).toLocaleDateString('es-VE')}` : '')
+        }
+      } else if (blockKey === 'prescription' && recipe.medications.length > 0) {
+        content = recipe.medications.map((m, i) =>
+          `<div style="margin-bottom:10px;padding:8px;border:1px solid #e2e8f0;border-radius:6px"><strong>${i + 1}. ${m.name}</strong>` +
+          (m.dose ? ` | Dosis: ${m.dose}` : '') + (m.frequency ? ` | Freq: ${m.frequency}` : '') + (m.duration ? ` | Dur: ${m.duration}` : '') +
+          (m.indications ? `<br><em>${m.indications}</em>` : '') + '</div>'
+        ).join('')
+      } else if (blockKey === 'requested_exams' && prescripciones.length > 0) {
+        const valid = prescripciones.filter(p => p.exam_name.trim())
+        if (valid.length > 0) content = '<ul>' + valid.map(p => `<li>${p.exam_name}${p.notes ? ' - ' + p.notes : ''}</li>`).join('') + '</ul>'
+      }
+    }
+    if (!content) return ''
+    return `<div class="section"><div class="section-title">${label}</div><div class="section-content">${content}</div></div>`
+  }
+
+  // L1 (2026-04-29): construye el body del "Informe".
+  // - Si existe un bloque con key='informe' o 'notes' en el snapshot/config → solo ese bloque.
+  // - Si no → concatenación de TODOS los bloques printable de la consulta.
+  function generateInformeHtml(): string {
+    if (!selected) return ''
+    const effective = getEffectiveBlocks(selected)
+    const informeBlock = effective.find(b => b.key === 'informe' || b.key === 'notes')
+    if (informeBlock) {
+      return generateBlockHtml(informeBlock.key, informeBlock.label)
+    }
+    // Fallback: si no hay bloque dedicado pero hay valor en report.notes legacy → usarlo
+    if (report.notes && (!effective || effective.length === 0)) {
+      return `<div class="section"><div class="section-title">Informe</div><div class="section-content">${report.notes}</div></div>`
+    }
+    // Concatenar todos los bloques printable
+    const printable = effective.filter(b => b.printable)
+    return printable.map(b => generateBlockHtml(b.key, b.label)).filter(Boolean).join('')
+  }
+
   function generatePDF() {
     if (!selected) return
 
@@ -1152,123 +1262,20 @@ function ConsultationsPage() {
     })
   }
 
-  // ── Consultation Timer Logic ─────────────────────────────────────────────────
-
-  // Format elapsed seconds as MM:SS or HH:MM:SS
-  function formatElapsed(secs: number): string {
-    const h = Math.floor(secs / 3600)
-    const m = Math.floor((secs % 3600) / 60)
-    const s = secs % 60
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  // L7 (2026-04-29): toda la lógica del cronómetro manual fue eliminada.
+  // - started_at: lo escribe el endpoint /api/doctor/appointment-status al
+  //   marcar la cita como 'completed'.
+  // - ended_at + duration_minutes: los escribe el PATCH de
+  //   /api/doctor/consultations en el primer save con contenido.
+  // El UI solo lee `selected.duration_minutes` para mostrarlo en formato
+  // "45 min" o "1h 5min" via formatDuration().
+  function formatDuration(mins: number | null | undefined): string {
+    if (mins == null || mins <= 0) return '—'
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    if (h > 0) return m > 0 ? `${h}h ${m}min` : `${h}h`
+    return `${m} min`
   }
-
-  // Start consultation timer
-  async function startConsultationTimer() {
-    if (!selected) return
-    const now = new Date()
-    setConsultationStarted(true)
-    setConsultationEnded(false)
-    setConsultationStartTime(now)
-    setElapsedSeconds(0)
-
-    // Persist started_at to DB
-    const supabase = createClient()
-    await supabase.from('consultations').update({
-      started_at: now.toISOString(),
-      ended_at: null,
-      duration_minutes: null,
-    }).eq('id', selected.id)
-
-    // Update local state
-    setSelected(prev => prev ? { ...prev, started_at: now.toISOString(), ended_at: null, duration_minutes: null } : null)
-    setConsultations(prev => prev.map(c => c.id === selected.id ? { ...c, started_at: now.toISOString(), ended_at: null, duration_minutes: null } : c))
-
-    // Start interval
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
-    timerIntervalRef.current = setInterval(() => {
-      setElapsedSeconds(prev => prev + 1)
-    }, 1000)
-  }
-
-  // End consultation timer + save report
-  async function endConsultationTimer() {
-    if (!selected || !consultationStartTime) return
-    setEndingConsultation(true)
-
-    const endTime = new Date()
-    const durationMs = endTime.getTime() - consultationStartTime.getTime()
-    const durationMin = Math.round(durationMs / 60000)
-
-    // Stop the interval
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-
-    // Save to DB: ended_at, duration, and also save the report
-    const supabase = createClient()
-    await supabase.from('consultations').update({
-      ended_at: endTime.toISOString(),
-      duration_minutes: durationMin,
-      chief_complaint: report.chief_complaint,
-      notes: report.notes,
-      diagnosis: report.diagnosis,
-      treatment: report.treatment,
-      payment_status: report.payment_status,
-    }).eq('id', selected.id)
-
-    // Update local state
-    setSelected(prev => prev ? { ...prev, ended_at: endTime.toISOString(), duration_minutes: durationMin, ...report } : null)
-    setConsultations(prev => prev.map(c => c.id === selected.id ? { ...c, ended_at: endTime.toISOString(), duration_minutes: durationMin, ...report } : c))
-
-    setConsultationEnded(true)
-    setShowEndConfirm(false)
-    setEndingConsultation(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
-  }
-
-  // Cleanup timer on unmount or consultation change
-  useEffect(() => {
-    return () => {
-      if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-    }
-  }, [])
-
-  // When opening a different consultation, restore timer state
-  useEffect(() => {
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
-    if (!selected) {
-      setConsultationStarted(false)
-      setConsultationEnded(false)
-      setConsultationStartTime(null)
-      setElapsedSeconds(0)
-      return
-    }
-    if (selected.started_at && !selected.ended_at) {
-      // Consultation was started but not ended — resume timer
-      const start = new Date(selected.started_at)
-      setConsultationStarted(true)
-      setConsultationEnded(false)
-      setConsultationStartTime(start)
-      const elapsed = Math.floor((Date.now() - start.getTime()) / 1000)
-      setElapsedSeconds(elapsed)
-      timerIntervalRef.current = setInterval(() => {
-        setElapsedSeconds(prev => prev + 1)
-      }, 1000)
-    } else if (selected.started_at && selected.ended_at) {
-      // Consultation already finished
-      setConsultationStarted(true)
-      setConsultationEnded(true)
-      setConsultationStartTime(new Date(selected.started_at))
-      setElapsedSeconds(selected.duration_minutes ? selected.duration_minutes * 60 : 0)
-    } else {
-      // Not started
-      setConsultationStarted(false)
-      setConsultationEnded(false)
-      setConsultationStartTime(null)
-      setElapsedSeconds(0)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id])
 
   // Auto-save: debounce 3 seconds after any report field changes
   const reportRef = useRef(report)
@@ -1370,10 +1377,14 @@ function ConsultationsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reposoDiagnosis, reposoDays, reposoFrom, reposoTo, selected?.id])
 
-  async function callAI(action: 'summarize' | 'improve' | 'patient_history', content?: string) {
+  // L1 (2026-04-29): callAI unificado — un solo punto de entrada para los 3 modos.
+  // - patient_history: solo necesita patientId; el endpoint extrae historial completo.
+  // - improve_block: requiere blockKey; serializa el contenido actual del bloque y manda.
+  // - summarize_report: serializa TODOS los bloques + chief_complaint/notes/diagnosis/treatment.
+  async function callAI(mode: AIMode, opts?: { blockKey?: string }) {
     if (!selected) return
     setAiLoading(true)
-    setAiAction(action)
+    setAiAction(mode)
     setAiResult('')
     try {
       const supabase = createClient()
@@ -1382,30 +1393,108 @@ function ConsultationsPage() {
         setAiResult('Sesión expirada. Recarga la página.')
         return
       }
-      const res = await fetch('/api/doctor/ai', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          action,
-          content: content || report.notes || report.diagnosis || '',
-          patientId: selected.patient_id,
-          consultationId: selected.id,
-        }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        setAiResult(`Error: ${data.error}`)
-      } else {
-        setAiResult(data.result)
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
       }
+      let payload: Record<string, unknown> = {}
+
+      if (mode === 'patient_history') {
+        payload = { action: 'patient_history', patientId: selected.patient_id }
+      } else if (mode === 'improve_block') {
+        const blockKey = opts?.blockKey || aiTargetBlockKey
+        if (!blockKey) {
+          setAiResult('Error: selecciona un bloque para mejorar.')
+          return
+        }
+        const effective = getEffectiveBlocks(selected)
+        const block = effective.find(b => b.key === blockKey)
+        const label = block?.label || blockKey
+        // Serializar contenido del bloque desde blocks_data (o columna legacy)
+        const bd = (selected.blocks_data || {}) as Record<string, unknown>
+        let content = ''
+        const raw = bd[blockKey]
+        if (Array.isArray(raw)) content = (raw as unknown[]).filter(Boolean).map(s => `- ${s}`).join('\n')
+        else if (typeof raw === 'string') content = raw
+        else if (raw != null) content = String(raw)
+        // Fallback a columnas legacy
+        if (!content.trim()) {
+          if (blockKey === 'chief_complaint') content = report.chief_complaint
+          else if (blockKey === 'diagnosis') content = report.diagnosis
+          else if (blockKey === 'treatment') content = report.treatment
+          else if (blockKey === 'notes' || blockKey === 'informe') content = report.notes
+        }
+        if (!content.trim()) {
+          setAiResult(`El bloque "${label}" está vacío. Escribe algo antes de mejorar con IA.`)
+          return
+        }
+        payload = { action: 'improve_block', content, block_key: blockKey, block_label: label }
+      } else if (mode === 'summarize_report') {
+        const effective = getEffectiveBlocks(selected)
+        payload = {
+          action: 'summarize_report',
+          legacy: {
+            chief_complaint: report.chief_complaint,
+            notes: report.notes,
+            diagnosis: report.diagnosis,
+            treatment: report.treatment,
+          },
+          blocks_data: selected.blocks_data || {},
+          blocks_meta: effective.map(b => ({ key: b.key, label: b.label, printable: b.printable })),
+        }
+      }
+
+      const res = await fetch('/api/doctor/ai', { method: 'POST', headers, body: JSON.stringify(payload) })
+      const data = await res.json()
+      if (data.error) setAiResult(`Error: ${data.error}`)
+      else setAiResult(data.result)
     } catch (err) {
       setAiResult('Error al conectar con la IA')
     } finally {
       setAiLoading(false)
     }
+  }
+
+  // L1 (2026-04-29): aplica el resultado de IA al bloque correspondiente.
+  // - improve_block → escribe en blocks_data[aiTargetBlockKey] (y sync legacy si aplica).
+  // - summarize_report → escribe en notes (informe).
+  function applyAIResult() {
+    if (!selected || !aiResult) return
+    if (aiAction === 'improve_block' && aiTargetBlockKey) {
+      const blockKey = aiTargetBlockKey
+      const effective = getEffectiveBlocks(selected)
+      const block = effective.find(b => b.key === blockKey)
+      // Si es lista, parsear bullets
+      let value: unknown = aiResult
+      if (block?.content_type === 'list') {
+        value = aiResult.split('\n').map(l => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean)
+      }
+      const data = (selected.blocks_data || {}) as Record<string, unknown>
+      const next = { ...data, [blockKey]: value }
+      setSelected({ ...selected, blocks_data: next })
+      // Sync con columnas legacy + report
+      if (typeof value === 'string') {
+        if (blockKey === 'chief_complaint') setReport(p => ({ ...p, chief_complaint: value as string }))
+        else if (blockKey === 'diagnosis') setReport(p => ({ ...p, diagnosis: value as string }))
+        else if (blockKey === 'treatment') setReport(p => ({ ...p, treatment: value as string }))
+        else if (blockKey === 'notes' || blockKey === 'informe') setReport(p => ({ ...p, notes: value as string }))
+      }
+      // Persistir
+      const supabase = createClient()
+      const updates: Record<string, unknown> = { blocks_data: next }
+      if (typeof value === 'string' && (blockKey === 'chief_complaint' || blockKey === 'diagnosis' || blockKey === 'treatment' || blockKey === 'notes')) {
+        updates[blockKey] = value
+      }
+      supabase.from('consultations').update(updates).eq('id', selected.id).then(() => {})
+    } else if (aiAction === 'summarize_report') {
+      // El resumen del informe se aplica al campo "notes" (informe)
+      setReport(p => ({ ...p, notes: aiResult }))
+      const supabase = createClient()
+      supabase.from('consultations').update({ notes: aiResult }).eq('id', selected.id).then(() => {})
+    }
+    setAiResult('')
+    setAiAction(null)
   }
 
   // Filtering
@@ -1513,42 +1602,66 @@ function ConsultationsPage() {
                     className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                     <Printer className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Imprimir</span>
                   </button>
-                  <button onClick={() => selected && setConfirmDeleteConsulta(selected)}
-                    title="Eliminar consulta"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Eliminar</span>
-                  </button>
+                  {/* L1 (2026-04-29): botón "Eliminar" removido del header.
+                      El endpoint DELETE sigue intacto en /api/doctor/consultations. */}
+                {/* L1 (2026-04-29): botón "Generar informe" — abre modal con
+                    checkboxes dinámicos según bloques de la consulta. */}
+                <button onClick={() => {
+                    if (!selected) return
+                    const effective = getEffectiveBlocks(selected)
+                    const printable = effective.filter(b => b.printable)
+                    setReportSelectedKeys(new Set(printable.map(b => b.key)))
+                    setShowGenerateReport(true)
+                  }}
+                  title="Generar informe"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                  <FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Generar informe</span>
+                </button>
                 {/* Share Button */}
                 <div className="relative">
-                  <button onClick={() => setShowShare(!showShare)}
+                  <button onClick={() => {
+                      if (!showShare && selected) {
+                        const effective = getEffectiveBlocks(selected)
+                        const printable = effective.filter(b => b.printable)
+                        // Por default, marcamos solo el bloque "informe" o "notes" si existe;
+                        // si no, marcamos el primer printable.
+                        const informeBlock = printable.find(b => b.key === 'informe' || b.key === 'notes')
+                        const initial = informeBlock ? new Set([informeBlock.key]) : (printable[0] ? new Set([printable[0].key]) : new Set<string>())
+                        setShareKeys(initial as Set<string>)
+                      }
+                      setShowShare(!showShare)
+                    }}
                     title="Compartir"
                     className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                     <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Compartir</span>
                   </button>
-                  {showShare && (
-                    <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-5 space-y-4">
+                  {/* L1 (2026-04-29): checkboxes 100% dinámicos — uno por bloque
+                      printable del snapshot/config viva. Antes solo había 4 hardcoded
+                      (informe/receta/prescripciones/reposo). */}
+                  {showShare && selected && (() => {
+                    const effective = getEffectiveBlocks(selected)
+                    const printable = effective.filter(b => b.printable)
+                    return (
+                    <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-5 space-y-4 max-h-[70vh] overflow-y-auto">
                       <p className="text-sm font-bold text-slate-800">¿Qué deseas compartir?</p>
                       <div className="space-y-2">
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input type="checkbox" checked={shareItems.informe} onChange={e => setShareItems(p => ({ ...p, informe: e.target.checked }))}
-                            className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
-                          <span className="text-sm text-slate-700">Informe</span>
-                        </label>
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input type="checkbox" checked={shareItems.recipe} onChange={e => setShareItems(p => ({ ...p, recipe: e.target.checked }))}
-                            className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
-                          <span className="text-sm text-slate-700">Receta</span>
-                        </label>
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input type="checkbox" checked={shareItems.prescripciones} onChange={e => setShareItems(p => ({ ...p, prescripciones: e.target.checked }))}
-                            className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
-                          <span className="text-sm text-slate-700">Prescripciones</span>
-                        </label>
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input type="checkbox" checked={shareItems.reposo} onChange={e => setShareItems(p => ({ ...p, reposo: e.target.checked }))}
-                            className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
-                          <span className="text-sm text-slate-700">Reposo</span>
-                        </label>
+                        {printable.length === 0 && (
+                          <p className="text-xs text-slate-400 italic">No hay bloques compartibles en esta consulta.</p>
+                        )}
+                        {printable.map(b => (
+                          <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
+                            <input type="checkbox" checked={shareKeys.has(b.key)} onChange={e => {
+                                setShareKeys(prev => {
+                                  const next = new Set(prev)
+                                  if (e.target.checked) next.add(b.key)
+                                  else next.delete(b.key)
+                                  return next
+                                })
+                              }}
+                              className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
+                            <span className="text-sm text-slate-700">{b.label}</span>
+                          </label>
+                        ))}
                       </div>
                       <div className="flex gap-2 pt-2">
                         <button onClick={async () => {
@@ -1556,7 +1669,6 @@ function ConsultationsPage() {
                           const docLinks: string[] = []
                           const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
 
-                          // Generate and upload PDFs for selected documents
                           const uploadDoc = async (templateType: string, title: string, bodyContent: string) => {
                             try {
                               const html = buildPdfHtml(templateType, title, bodyContent, selected.patient_name, selected.consultation_code, dateStr)
@@ -1575,41 +1687,22 @@ function ConsultationsPage() {
                             return null
                           }
 
-                          if (shareItems.informe) {
-                            docs.push('informe médico')
-                            let body = ''
-                            if (report.chief_complaint) body += '<div class="section"><div class="section-title">Motivo</div><div class="section-content">' + report.chief_complaint + '</div></div>'
-                            if (report.notes) body += '<div class="section"><div class="section-title">Informe</div><div class="section-content">' + report.notes + '</div></div>'
-                            if (report.diagnosis) body += '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>'
-                            const url = await uploadDoc('informe', 'Informe Médico', body)
-                            if (url) docLinks.push(url)
-                          }
-                          if (shareItems.recipe && recipe.medications.length > 0) {
-                            docs.push('receta')
-                            let body = '<div class="section"><div class="section-title">Medicamentos</div>'
-                            body += recipe.medications.map((m, i) =>
-                              '<div style="margin-bottom:10px;padding:8px;border:1px solid #e2e8f0;border-radius:6px"><strong>' + (i+1) + '. ' + m.name + '</strong>' +
-                              (m.dose ? ' | Dosis: ' + m.dose : '') + (m.frequency ? ' | Freq: ' + m.frequency : '') + (m.duration ? ' | Dur: ' + m.duration : '') +
-                              (m.indications ? '<br><em>' + m.indications + '</em>' : '') + '</div>'
-                            ).join('') + '</div>'
-                            const url = await uploadDoc('recipe', 'Receta Médica', body)
-                            if (url) docLinks.push(url)
-                          }
-                          if (shareItems.prescripciones && prescripciones.length > 0) {
-                            docs.push('prescripciones')
-                            const body = '<div class="section"><div class="section-title">Exámenes</div><div class="section-content"><ul>' +
-                              prescripciones.filter(p => p.exam_name.trim()).map(p => '<li>' + p.exam_name + (p.notes ? ' - ' + p.notes : '') + '</li>').join('') + '</ul></div></div>'
-                            const url = await uploadDoc('prescripciones', 'Prescripciones', body)
-                            if (url) docLinks.push(url)
-                          }
-                          if (shareItems.reposo && reposoDiagnosis) {
-                            docs.push('constancia de reposo')
-                            const body = '<div class="section"><div class="section-title">Reposo</div><div class="section-content">Diagnóstico: ' + reposoDiagnosis + '<br>Días: ' + reposoDays + '</div></div>'
-                            const url = await uploadDoc('reposo', 'Constancia de Reposo', body)
+                          // L1 (2026-04-29): un PDF por cada bloque seleccionado.
+                          // generateBlockHtml respeta la plantilla del doctor (logos, firma, fonts).
+                          for (const b of printable) {
+                            if (!shareKeys.has(b.key)) continue
+                            // Caso especial: si el bloque seleccionado es "informe" o "notes",
+                            // generateInformeHtml decide si concatena todo o solo ese bloque.
+                            const body = (b.key === 'informe' || b.key === 'notes')
+                              ? generateInformeHtml()
+                              : generateBlockHtml(b.key, b.label)
+                            if (!body) continue
+                            docs.push(b.label.toLowerCase())
+                            const url = await uploadDoc(b.key, b.label, body)
                             if (url) docLinks.push(url)
                           }
 
-                          if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
+                          if (docs.length === 0) { alert('Selecciona al menos un documento con contenido'); return }
 
                           let message = shareTemplate
                             .replace('{paciente}', selected.patient_name)
@@ -1618,25 +1711,22 @@ function ConsultationsPage() {
                             .replace('{doctor}', doctorName)
                             .replace('{codigo}', selected.consultation_code || '')
 
-                          // Append document links
                           if (docLinks.length > 0) {
                             message += '\n\n' + docLinks.map((url, i) => `${docs[i] || 'Documento'}: ${url}`).join('\n')
                           }
 
-                          const phone = selected.patient_phone?.replace(/\D/g, '')
+                          // L6 (2026-04-29): normaliza VE → 58XXXXXXXXXX para wa.me
+                          const phone = normalizePhoneVE(selected.patient_phone)
                           if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank')
-                          else alert('Este paciente no tiene teléfono registrado')
+                          else alert('Este paciente no tiene teléfono válido registrado')
                           setShowShare(false)
                         }}
                           className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-green-600 transition-colors">
                           <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                         </button>
                         <button onClick={() => {
-                          const docs: string[] = []
-                          if (shareItems.informe) docs.push('Informe médico')
-                          if (shareItems.recipe) docs.push('Receta')
-                          if (shareItems.prescripciones) docs.push('Prescripciones')
-                          if (shareItems.reposo) docs.push('Constancia de reposo')
+                          // L1 (2026-04-29): ahora dinámico — usa los labels de los bloques seleccionados.
+                          const docs: string[] = printable.filter(b => shareKeys.has(b.key)).map(b => b.label)
                           if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
                           const subject = `Documentos médicos - Consulta ${selected.consultation_code}`
                           const body = shareTemplate
@@ -1655,7 +1745,8 @@ function ConsultationsPage() {
                         </button>
                       </div>
                     </div>
-                  )}
+                    )
+                  })()}
                 </div>
                 </div>
               </div>
@@ -1664,7 +1755,8 @@ function ConsultationsPage() {
             {/* Medical Report Form with Safari-style Tabs */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               {/* Safari-style Tab Navigation — DINÁMICAS según blocks_snapshot del doctor.
-                  Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas. */}
+                  Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas.
+                  L1 (2026-04-29): se agrega botón "+" al final para sumar bloques on-the-fly. */}
               <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200 overflow-x-auto">
                 {(() => {
                   // RONDA 38+39: tabs 100% dinamicas.
@@ -1697,6 +1789,117 @@ function ConsultationsPage() {
                     </button>
                   ))
                 })()}
+                {/* L1 (2026-04-29): botón "+" para agregar bloques del catálogo
+                    que no estén activados en esta consulta. Inserta en
+                    doctor_consultation_blocks (config viva) y, si la consulta tiene
+                    snapshot congelado, también lo extiende para que aparezca de inmediato. */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddBlockMenu(v => !v)}
+                    title="Agregar bloque"
+                    className="safari-tab text-sm font-bold whitespace-nowrap bg-slate-100 text-teal-600 hover:bg-slate-200 transition-all"
+                  >
+                    +
+                  </button>
+                  {showAddBlockMenu && selected && (() => {
+                    const effective = getEffectiveBlocks(selected)
+                    const activeKeys = new Set(effective.map(b => b.key))
+                    const available = blockCatalog.filter(c => !activeKeys.has(c.key))
+                    return (
+                      <div className="absolute left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-3 space-y-1 max-h-80 overflow-y-auto">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 px-2 py-1">Agregar bloque</p>
+                        {available.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic px-2 py-2">Todos los bloques del catálogo ya están activos.</p>
+                        ) : available.map(c => (
+                          <button
+                            key={c.key}
+                            disabled={addingBlock}
+                            onClick={async () => {
+                              if (!selected) return
+                              setAddingBlock(true)
+                              try {
+                                // L1 (2026-04-29): persistir en doctor_consultation_blocks
+                                // (config viva del doctor). Reemplazo total via PUT.
+                                const supabase = createClient()
+                                const { data: { user } } = await supabase.auth.getUser()
+                                if (!user) { setAddingBlock(false); return }
+                                // Reconstruir config actual desde doctorActiveBlocks + el nuevo
+                                const newSortOrder = (doctorActiveBlocks[doctorActiveBlocks.length - 1]?.sort_order ?? 0) + 1
+                                const nextBlocks = [
+                                  ...doctorActiveBlocks.map((b, i) => ({
+                                    block_key: b.key,
+                                    enabled: true,
+                                    sort_order: b.sort_order ?? i,
+                                    custom_label: null,
+                                    printable: b.printable,
+                                    send_to_patient: b.send_to_patient,
+                                  })),
+                                  {
+                                    block_key: c.key,
+                                    enabled: true,
+                                    sort_order: newSortOrder,
+                                    custom_label: null,
+                                    printable: c.printable,
+                                    send_to_patient: c.send_to_patient,
+                                  },
+                                ]
+                                const res = await fetch('/api/doctor/consultation-blocks', {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ blocks: nextBlocks }),
+                                })
+                                if (!res.ok) {
+                                  const e = await res.json().catch(() => ({}))
+                                  alert(e.error || 'No se pudo agregar el bloque')
+                                  return
+                                }
+                                // Refrescar config viva
+                                const refreshed = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' })
+                                if (refreshed.ok) {
+                                  const j = await refreshed.json()
+                                  const resolved = (j.resolved || []) as SnapshotBlock[]
+                                  setDoctorActiveBlocks(resolved)
+                                  // Si la consulta tiene snapshot congelado, también extenderlo
+                                  // para que el bloque nuevo aparezca de inmediato en esta consulta.
+                                  const currentSnap = (selected as any).blocks_snapshot
+                                  if (Array.isArray(currentSnap) && currentSnap.length > 0) {
+                                    const newSnap = [
+                                      ...currentSnap,
+                                      {
+                                        key: c.key,
+                                        label: c.label,
+                                        content_type: c.content_type,
+                                        sort_order: (currentSnap[currentSnap.length - 1]?.sort_order ?? 0) + 1,
+                                        printable: c.printable,
+                                        send_to_patient: c.send_to_patient,
+                                      },
+                                    ]
+                                    await supabase.from('consultations')
+                                      .update({ blocks_snapshot: newSnap })
+                                      .eq('id', selected.id)
+                                    setSelected({ ...selected, blocks_snapshot: newSnap as any })
+                                  }
+                                }
+                                setShowAddBlockMenu(false)
+                                setConsultationTab(`block:${c.key}`)
+                              } catch (err) {
+                                console.error('[add-block] error:', err)
+                                alert('Error agregando el bloque')
+                              } finally {
+                                setAddingBlock(false)
+                              }
+                            }}
+                            className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-slate-50 disabled:opacity-50 flex items-center gap-2"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-teal-500" />
+                            <span className="text-slate-700">{c.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </div>
               </div>
 
               {/* RONDA 38: renderer del bloque dinámico.
@@ -2114,7 +2317,11 @@ function ConsultationsPage() {
               </div>
             </div>
 
-            {/* AI Assistant Panel */}
+            {/* L1 (2026-04-29): Asistente IA UNIFICADO — único panel de IA en la consulta.
+                3 modos: resumir historial, mejorar redacción (con dropdown de bloque),
+                resumir informe completo. Antes existían dos sistemas duplicados (panel
+                global con summarize/improve/patient_history + botón "Mejorar con IA"
+                por bloque). Ahora todo vive aquí. */}
             <div className="bg-gradient-to-br from-violet-50 to-blue-50 border border-violet-200 rounded-xl p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
@@ -2128,39 +2335,65 @@ function ConsultationsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
-                  onClick={() => callAI('summarize', report.notes || report.diagnosis)}
-                  disabled={aiLoading || (!report.notes && !report.diagnosis)}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  {aiLoading && aiAction === 'summarize' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-                  Resumir informe
-                </button>
-
-                <button
-                  onClick={() => {
-                    // RONDA 38: 'recipe' renombrado a 'block:prescription'
-                    const activeContent = consultationTab === 'block:prescription' ? report.treatment
-                      : report.notes
-                    callAI('improve', activeContent)
-                  }}
-                  disabled={aiLoading || (!report.notes && !report.treatment)}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  {aiLoading && aiAction === 'improve' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                  Mejorar redacción
-                </button>
-
-                <button
-                  onClick={() => callAI('patient_history')}
+                  onClick={() => { setShowAiBlockPicker(false); callAI('patient_history') }}
                   disabled={aiLoading}
                   className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   {aiLoading && aiAction === 'patient_history' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <History className="w-3.5 h-3.5" />}
-                  Historial paciente
+                  Resumir historial del paciente
+                </button>
+
+                <button
+                  onClick={() => {
+                    // L1 (2026-04-29): toggle dropdown de selección de bloque.
+                    setShowAiBlockPicker(v => !v)
+                  }}
+                  disabled={aiLoading}
+                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  {aiLoading && aiAction === 'improve_block' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  Mejorar redacción
+                </button>
+
+                <button
+                  onClick={() => { setShowAiBlockPicker(false); callAI('summarize_report') }}
+                  disabled={aiLoading}
+                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  {aiLoading && aiAction === 'summarize_report' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                  Resumir informe
                 </button>
               </div>
 
-              {/* AI Result */}
+              {/* L1 (2026-04-29): dropdown de selección de bloque para "Mejorar redacción" */}
+              {showAiBlockPicker && selected && (() => {
+                const effective = getEffectiveBlocks(selected)
+                return (
+                  <div className="bg-white border border-violet-200 rounded-xl p-3 space-y-2">
+                    <p className="text-[11px] font-bold text-violet-700 uppercase tracking-wide">Selecciona un bloque para mejorar</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                      {effective.length === 0 && (
+                        <p className="text-xs text-slate-400 italic col-span-full">No hay bloques activos en esta consulta.</p>
+                      )}
+                      {effective.map(b => (
+                        <button
+                          key={b.key}
+                          onClick={() => {
+                            setAiTargetBlockKey(b.key)
+                            setShowAiBlockPicker(false)
+                            callAI('improve_block', { blockKey: b.key })
+                          }}
+                          className="text-xs px-2 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-lg font-medium text-left truncate"
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* AI Result — panel colapsable con Aplicar / Descartar */}
               {(aiResult || aiLoading) && (
                 <div className="bg-white border border-violet-100 rounded-xl p-4 space-y-3">
                   {aiLoading ? (
@@ -2172,23 +2405,19 @@ function ConsultationsPage() {
                     <>
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">
-                          {aiAction === 'summarize' ? 'Resumen del informe' : aiAction === 'improve' ? 'Texto mejorado' : 'Historial del paciente'}
+                          {aiAction === 'patient_history' ? 'Historial del paciente'
+                            : aiAction === 'summarize_report' ? 'Resumen del informe'
+                            : `Texto mejorado${aiTargetBlockKey ? ` (${aiTargetBlockKey})` : ''}`}
                         </p>
                         <div className="flex gap-1">
-                          {aiAction === 'improve' && (
+                          {/* Aplicar — solo aplica si el modo soporta escritura.
+                              patient_history es solo lectura informativa. */}
+                          {(aiAction === 'improve_block' || aiAction === 'summarize_report') && (
                             <button
-                              onClick={() => {
-                                // RONDA 38: 'recipe' renombrado a 'block:prescription'
-                                if (consultationTab === 'block:prescription') {
-                                  setReport(p => ({ ...p, treatment: aiResult }))
-                                } else {
-                                  setReport(p => ({ ...p, notes: aiResult }))
-                                }
-                                setAiResult('')
-                              }}
-                              className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
+                              onClick={applyAIResult}
+                              className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-1"
                             >
-                              Aplicar
+                              <Check className="w-3 h-3" /> Aplicar
                             </button>
                           )}
                           <button
@@ -2198,10 +2427,11 @@ function ConsultationsPage() {
                             <Copy className="w-3 h-3" /> Copiar
                           </button>
                           <button
-                            onClick={() => setAiResult('')}
-                            className="text-slate-400 hover:text-slate-600 p-1"
+                            onClick={() => { setAiResult(''); setAiAction(null) }}
+                            title="Descartar"
+                            className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
                           >
-                            <X className="w-3.5 h-3.5" />
+                            <X className="w-3 h-3" /> Descartar
                           </button>
                         </div>
                       </div>
@@ -2210,53 +2440,41 @@ function ConsultationsPage() {
                         text={aiResult}
                         className="text-sm text-slate-700 leading-relaxed"
                       />
-
                     </>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Consultation Timer */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-              {/* Timer display + controls */}
-              {!consultationStarted ? (
-                <button onClick={startConsultationTimer}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors">
-                  <Play className="w-4 h-4" /> Iniciar consulta
-                </button>
-              ) : consultationEnded ? (
-                <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
+            {/* L7 (2026-04-29): Display read-only de la duración automática.
+                started_at se setea al marcar la cita 'completed' en el agenda.
+                ended_at + duration_minutes se calculan en el primer save con
+                contenido del informe. No hay botones de Play/Stop. */}
+            {(selected.started_at || selected.duration_minutes != null) && (
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <Timer className="w-5 h-5 text-teal-500 shrink-0" />
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-slate-800">Consulta finalizada</p>
-                    <p className="text-xs text-slate-500">
-                      Duración: {selected.duration_minutes != null ? `${selected.duration_minutes} min` : formatElapsed(elapsedSeconds)}
-                    </p>
+                    {selected.duration_minutes != null ? (
+                      <>
+                        <p className="text-xs text-slate-500">Duración de la consulta</p>
+                        <p className="text-sm font-bold text-slate-800">{formatDuration(selected.duration_minutes)}</p>
+                      </>
+                    ) : selected.started_at ? (
+                      <>
+                        <p className="text-xs text-slate-500">Consulta iniciada</p>
+                        <p className="text-sm font-bold text-slate-800">
+                          {new Date(selected.started_at).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                          <span className="text-xs font-normal text-slate-400 ml-2">
+                            (la duración se calcula al guardar el informe)
+                          </span>
+                        </p>
+                      </>
+                    ) : null}
                   </div>
-                  <Timer className="w-4 h-4 text-slate-400" />
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 px-4 py-3 bg-teal-50 border border-teal-200 rounded-lg">
-                    <div className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-teal-800">Consulta en curso</p>
-                      <p className="text-lg font-mono font-bold text-teal-700 tabular-nums">{formatElapsed(elapsedSeconds)}</p>
-                    </div>
-                    <Timer className="w-5 h-5 text-teal-400" />
-                  </div>
-                  <button onClick={() => setShowEndConfirm(true)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm font-bold text-red-600 hover:bg-red-100 transition-colors">
-                    <Square className="w-3.5 h-3.5" /> Finalizar consulta
-                  </button>
-                </div>
-              )}
-
-              {!consultationStarted && (
-                <p className="text-xs text-slate-400 text-center">Opcional: registra el tiempo de la consulta</p>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Save button + auto-save status */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
@@ -2279,34 +2497,9 @@ function ConsultationsPage() {
               <p className="text-xs text-slate-500">Los cambios se guardan automaticamente. El informe queda registrado en el historial clinico del paciente.</p>
             </div>
 
-            {/* End Consultation Confirmation Modal */}
-            {showEndConfirm && (
-              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowEndConfirm(false)}>
-                <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
-                      <Timer className="w-6 h-6 text-amber-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900">Finalizar consulta</h3>
-                      <p className="text-sm text-slate-500">Tiempo transcurrido: {formatElapsed(elapsedSeconds)}</p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-slate-600">¿Deseas finalizar la consulta y guardar el informe? Se registrará la duración de la consulta.</p>
-                  <div className="flex gap-3">
-                    <button onClick={() => setShowEndConfirm(false)}
-                      className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-200 transition-colors">
-                      Cancelar
-                    </button>
-                    <button onClick={endConsultationTimer} disabled={endingConsultation}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 g-bg text-white rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-60 transition-opacity">
-                      {endingConsultation ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                      Sí, finalizar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* L7 (2026-04-29): el modal "Finalizar consulta" fue eliminado
+                junto con el cronómetro manual. La duración se cierra sola en
+                el primer save del informe. */}
           </div>
 
           {/* Right Sidebar Toggle (when hidden) */}
@@ -3029,6 +3222,103 @@ function ConsultationsPage() {
             </div>
           </div>
         )}
+        {/* L1 (2026-04-29): MODAL "GENERAR INFORME"
+            Lista los bloques printable de la consulta con checkboxes (todos marcados),
+            y al click de "Generar PDF" sube el HTML a share-pdf y abre la URL.
+            Usa generateBlockHtml/generateInformeHtml que respetan la plantilla del doctor. */}
+        {showGenerateReport && selected && (() => {
+          const effective = getEffectiveBlocks(selected)
+          const printable = effective.filter(b => b.printable)
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !generatingReport && setShowGenerateReport(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-teal-600" />
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-900">Generar informe</h2>
+                  </div>
+                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport} className="text-slate-400 hover:text-slate-600 disabled:opacity-50">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-slate-600">Selecciona los bloques que quieres incluir en el PDF.</p>
+                <div className="space-y-2 border border-slate-100 rounded-xl p-3">
+                  {printable.length === 0 && (
+                    <p className="text-xs text-slate-400 italic">No hay bloques compartibles en esta consulta.</p>
+                  )}
+                  {printable.map(b => (
+                    <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" checked={reportSelectedKeys.has(b.key)} onChange={e => {
+                          setReportSelectedKeys(prev => {
+                            const next = new Set(prev)
+                            if (e.target.checked) next.add(b.key)
+                            else next.delete(b.key)
+                            return next
+                          })
+                        }}
+                        className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
+                      <span className="text-sm text-slate-700">{b.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport}
+                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                    Cancelar
+                  </button>
+                  <button onClick={async () => {
+                      if (reportSelectedKeys.size === 0) { alert('Selecciona al menos un bloque'); return }
+                      setGeneratingReport(true)
+                      try {
+                        const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+                        let body = ''
+                        for (const b of printable) {
+                          if (!reportSelectedKeys.has(b.key)) continue
+                          // Si el bloque es "informe"/"notes" usamos generateInformeHtml para
+                          // respetar la convención (solo ese bloque o concatenado de todos).
+                          const piece = (b.key === 'informe' || b.key === 'notes')
+                            ? generateInformeHtml()
+                            : generateBlockHtml(b.key, b.label)
+                          if (piece) body += piece
+                        }
+                        if (!body) { alert('Los bloques seleccionados no tienen contenido'); return }
+                        const html = buildPdfHtml('informe', 'Informe Médico', body, selected.patient_name, selected.consultation_code, dateStr)
+                        const res = await fetch('/api/doctor/share-pdf', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            htmlContent: html,
+                            fileName: `informe-${selected.consultation_code}`,
+                            consultationCode: selected.consultation_code,
+                          }),
+                        })
+                        const data = await res.json()
+                        if (!res.ok || !data.url) {
+                          alert(data.error || 'Error generando el PDF')
+                          return
+                        }
+                        window.open(data.url, '_blank')
+                        setShowGenerateReport(false)
+                      } catch (err: any) {
+                        console.error('[generate-report] error:', err)
+                        alert('Error generando el informe')
+                      } finally {
+                        setGeneratingReport(false)
+                      }
+                    }}
+                    disabled={generatingReport || reportSelectedKeys.size === 0}
+                    className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
+                    {generatingReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                    {generatingReport ? 'Generando...' : 'Generar PDF'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
         {confirmDeleteConsulta && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">

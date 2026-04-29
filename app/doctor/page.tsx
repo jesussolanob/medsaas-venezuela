@@ -8,11 +8,17 @@ import {
   Users, Calendar, FileText, TrendingUp,
   Bell, DollarSign, ArrowRight, Activity,
   CheckCircle, Clock, AlertCircle, ClipboardList,
-  ChevronLeft, ChevronRight as ChevronRightIcon
+  ChevronLeft, ChevronRight as ChevronRightIcon,
+  UserPlus, X
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
+// L3 (2026-04-29): quick action "Crear paciente" en el dashboard reusa
+// el PatientForm unificado + addPatient action y muestra toast al guardar.
+import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm'
+import { addPatient, getDoctorId } from '@/app/doctor/patients/actions'
+import { showToast } from '@/components/ui/Toaster'
 
 type Profile = {
   full_name: string
@@ -27,6 +33,9 @@ type Appointment = {
   scheduled_at: string
   status: string
   source?: 'appointment' | 'consultation'
+  // L2 (2026-04-29): se carga para que click → /doctor/consultations?open=<consultation_id>
+  // cuando ya hay consulta linkeada; si no hay, fallback a /doctor/agenda.
+  consultation_id?: string | null
 }
 
 type FinancialData = {
@@ -50,6 +59,11 @@ export default function DoctorDashboard() {
   const [loading, setLoading] = useState(true)
   // Modal "Nueva consulta"
   const [showNewFlow, setShowNewFlow] = useState(false)
+  // L3 (2026-04-29): estado del modal "Crear paciente" (quick action) +
+  // patientId del recien creado para abrir NewAppointmentFlow opcionalmente.
+  const [showPatientForm, setShowPatientForm] = useState(false)
+  const [patientFormSaving, setPatientFormSaving] = useState(false)
+  const [newAppointmentPatientId, setNewAppointmentPatientId] = useState<string | null>(null)
 
   // Month filter state (year-month)
   const now = new Date()
@@ -82,10 +96,11 @@ export default function DoctorDashboard() {
       const tomorrow = new Date(today)
       tomorrow.setDate(tomorrow.getDate() + 1)
 
-      // Single source of truth: appointments table
+      // L2 (2026-04-29): tambien traemos consultation_id para que click en cita
+      // del dashboard navegue a la consulta cuando exista (#11).
       const { data: appointments } = await supabase
         .from('appointments')
-        .select('id, patient_name, scheduled_at, status')
+        .select('id, patient_name, scheduled_at, status, consultation_id')
         .eq('doctor_id', user.id)
         .in('status', ['scheduled', 'confirmed', 'completed'])
         .gte('scheduled_at', today.toISOString())
@@ -97,7 +112,8 @@ export default function DoctorDashboard() {
         patient_name: a.patient_name,
         scheduled_at: a.scheduled_at,
         status: a.status,
-        source: 'appointment'
+        source: 'appointment',
+        consultation_id: (a as { consultation_id?: string | null }).consultation_id ?? null,
       }))
 
       // Get selected month's financial data
@@ -261,11 +277,53 @@ export default function DoctorDashboard() {
     }
   }
 
+  // L3 (2026-04-29): handler del PatientForm en modo CREATE. Replica el patron
+  // de app/doctor/patients/page.tsx (reusa addPatient + revalida lista en sv).
+  // Tras crear: toast, cierra modal y deja el patientId disponible para ofrecer
+  // "Crear cita ahora" con NewAppointmentFlow pre-rellenado.
+  async function handleCreatePatient(formData: PatientFormData) {
+    setPatientFormSaving(true)
+    try {
+      const doctorId = await getDoctorId()
+      if (!doctorId) throw new Error('Sesion expirada')
+      const res = await addPatient(doctorId, {
+        full_name: formData.full_name,
+        age: formData.age ?? undefined,
+        birth_date: formData.birth_date ?? undefined,
+        phone: formData.phone ?? undefined,
+        cedula: formData.cedula ?? undefined,
+        email: formData.email ?? undefined,
+        sex: formData.sex ?? undefined,
+        notes: formData.notes ?? undefined,
+        blood_type: formData.blood_type ?? undefined,
+        allergies: formData.allergies ?? undefined,
+        chronic_conditions: formData.chronic_conditions ?? undefined,
+        emergency_contact_name: formData.emergency_contact_name ?? undefined,
+        emergency_contact_phone: formData.emergency_contact_phone ?? undefined,
+        address: formData.address ?? undefined,
+        city: formData.city ?? undefined,
+        source: 'manual',
+      })
+      if (!res.success) throw new Error(res.error || 'Error al crear')
+      showToast({ type: 'success', message: 'Paciente creado' })
+      setShowPatientForm(false)
+      setNewAppointmentPatientId(res.patient_id)
+    } catch (err: any) {
+      // Re-throw para que PatientForm muestre el error inline
+      throw err
+    } finally {
+      setPatientFormSaving(false)
+    }
+  }
+
+  // L2 (2026-04-29): si la cita ya tiene consulta linkeada → abrir esa consulta;
+  // si no, mandar a la agenda (no a /doctor/consultations con un appointment.id
+  // que no matchea ningun consultation.id, que era el bug previo).
   const handleAppointmentClick = (apt: Appointment) => {
-    if (apt.source === 'consultation') {
-      router.push(`/doctor/consultations?open=${apt.id}`)
+    if (apt.consultation_id) {
+      router.push(`/doctor/consultations?open=${apt.consultation_id}`)
     } else {
-      router.push(`/doctor/consultations?open=${apt.id}`)
+      router.push('/doctor/agenda')
     }
   }
 
@@ -353,6 +411,14 @@ export default function DoctorDashboard() {
               >
                 <ClipboardList className="w-4 h-4" />
                 <span>Crear Consulta</span>
+              </button>
+              {/* L3 (2026-04-29): quick action "Crear paciente" desde el dashboard */}
+              <button
+                onClick={() => setShowPatientForm(true)}
+                className="flex items-center justify-center sm:justify-start gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Crear Paciente</span>
               </button>
             </div>
           </div>
@@ -506,13 +572,87 @@ export default function DoctorDashboard() {
       {/* Modal: crear consulta (estilo acordeón) */}
       <NewAppointmentFlow
         open={showNewFlow}
-        onClose={() => setShowNewFlow(false)}
+        onClose={() => {
+          setShowNewFlow(false)
+          // L3 (2026-04-29): si veniamos del flujo "crear paciente → crear cita"
+          // limpiamos el patientId pendiente para evitar re-mostrar el prompt.
+          setNewAppointmentPatientId(null)
+        }}
         onSuccess={(id) => {
           setShowNewFlow(false)
+          setNewAppointmentPatientId(null)
           router.push(`/doctor/consultations?open=${id}`)
         }}
-        initialContext={{ origin: 'dashboard_btn' }}
+        initialContext={{
+          origin: 'dashboard_btn',
+          // L3 (2026-04-29): pre-rellenar paciente si viene del quick action.
+          ...(newAppointmentPatientId ? { patientId: newAppointmentPatientId } : {}),
+        }}
       />
+
+      {/* L3 (2026-04-29): Modal "Crear paciente" desde dashboard.
+          Replica el patron usado en /doctor/patients (PatientForm + addPatient). */}
+      {showPatientForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
+                  <UserPlus className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Nuevo paciente</h2>
+                  <p className="text-xs text-slate-400">Completa los datos para registrar al paciente</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPatientForm(false)}
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <PatientForm
+              submitting={patientFormSaving}
+              onSubmit={handleCreatePatient}
+              onCancel={() => setShowPatientForm(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* L3 (2026-04-29): mini-prompt post creacion para ofrecer
+          "Crear cita ahora" con NewAppointmentFlow pre-rellenado. */}
+      {newAppointmentPatientId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mx-auto mb-3 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-900 mb-1">Paciente creado</h3>
+            <p className="text-sm text-slate-500 mb-5">
+              ¿Quieres agendarle una cita ahora?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setNewAppointmentPatientId(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Más tarde
+              </button>
+              <button
+                onClick={() => {
+                  // Mantenemos el id en estado: NewAppointmentFlow lo recibe via initialContext
+                  setShowNewFlow(true)
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-teal-500 text-white text-sm font-bold hover:bg-teal-600"
+              >
+                Crear cita ahora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

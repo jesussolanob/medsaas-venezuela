@@ -51,5 +51,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 
+  // L7 (2026-04-29): cuando la cita pasa a 'completed', marcamos el inicio
+  // de la consulta (started_at) si todavía no estaba marcado. Reemplaza al
+  // cronómetro manual con un boundary objetivo: la consulta empieza cuando
+  // el doctor confirma "atendida". El ended_at + duration_minutes se calculan
+  // luego en el primer save no-vacío del informe (PATCH consultations).
+  if (new_status === 'completed') {
+    try {
+      await admin
+        .from('consultations')
+        .update({ started_at: new Date().toISOString() })
+        .eq('appointment_id', appointment_id)
+        .is('started_at', null)
+    } catch (e: any) {
+      console.warn('[appointment-status] consultation started_at update skipped:', e?.message)
+    }
+  }
+
   return NextResponse.json({ success: true, new_status })
 }

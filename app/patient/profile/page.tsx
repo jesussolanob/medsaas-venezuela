@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { User, Save, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+// L6 (2026-04-29): inputs canonicos (cedula prefijo dropdown + telefono +58)
+import CedulaInput from '@/components/shared/CedulaInput'
+import PhoneInput from '@/components/shared/PhoneInput'
 
 interface PatientProfile {
   id: string
@@ -216,12 +219,10 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Cédula</label>
-              <input
-                type="text"
-                name="cedula"
+              {/* L6 (2026-04-29): dropdown V/E/J/G + numero canonico */}
+              <CedulaInput
                 value={formData.cedula}
-                onChange={handleInputChange}
-                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                onChange={v => setFormData(prev => ({ ...prev, cedula: v }))}
               />
             </div>
             <div>
@@ -288,12 +289,10 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Teléfono</label>
-              <input
-                type="tel"
-                name="phone"
+              {/* L6 (2026-04-29): prefijo +58 fijo + canonico 584XXXXXXXXX */}
+              <PhoneInput
                 value={formData.phone}
-                onChange={handleInputChange}
-                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                onChange={v => setFormData(prev => ({ ...prev, phone: v }))}
               />
             </div>
             <div>
@@ -364,12 +363,10 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="block text-xs sm:text-sm font-medium text-slate-700 mb-2">Teléfono</label>
-              <input
-                type="tel"
-                name="emergency_contact_phone"
+              {/* L6 (2026-04-29): contacto de emergencia tambien canonico */}
+              <PhoneInput
                 value={formData.emergency_contact_phone}
-                onChange={handleInputChange}
-                className="w-full px-3 sm:px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                onChange={v => setFormData(prev => ({ ...prev, emergency_contact_phone: v }))}
               />
             </div>
           </div>

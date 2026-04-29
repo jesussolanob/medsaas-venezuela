@@ -103,6 +103,10 @@ type CalendarAppointment = {
   patient_email?: string | null
   patient_cedula?: string | null
   meet_link?: string | null
+  // L2 (2026-04-29): estado de pago (de la consulta vinculada). Solo presente
+  // cuando hay consultation linkeada — se usa para los filtros "Pago aprobado"
+  // y "Pago pendiente" del calendario.
+  payment_status?: 'pending' | 'approved' | null
 }
 
 type PendingAppointment = {
@@ -269,6 +273,10 @@ export default function AgendaPage() {
   const [detailStatus, setDetailStatus] = useState<{ consulta: string | null; pago: string | null }>({ consulta: null, pago: null })
   const [showConfigPanel, setShowConfigPanel] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'>('all')
+  // L2 (2026-04-29): filtro adicional por estado de pago (consulta vinculada).
+  // Filtros de status de cita y de pago se combinan via AND.
+  // Citas sin consulta linkeada se EXCLUYEN cuando paymentFilter !== 'all'.
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'approved' | 'pending'>('all')
 
   // Google Calendar Sync
   const [syncing, setSyncing] = useState(false)
@@ -477,6 +485,8 @@ export default function AgendaPage() {
         consultation_code: c.consultation_code,
         patient_phone: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).phone : null,
         patient_email: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).email : null,
+        // L2 (2026-04-29): expone payment_status para los filtros del calendario.
+        payment_status: (c.payment_status as 'pending' | 'approved' | null) ?? null,
       }
     })
 
@@ -571,6 +581,43 @@ export default function AgendaPage() {
     if (loadedRef.current) return
     loadedRef.current = true
     loadData()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // L2 (2026-04-29): Realtime — escuchar cambios en appointments, consultations
+  // y payments del doctor para refrescar la agenda sin reload. Antes solo se
+  // refrescaba al recargar manualmente, asi un pago aprobado en /doctor/cobros
+  // no actualizaba el filtro "Pago aprobado" hasta refrescar la pagina.
+  useEffect(() => {
+    const supabase = createClient()
+    let channels: any[] = []
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const refresh = () => { loadData() }
+      const suffix = Math.random().toString(36).slice(2, 8)
+      channels = [
+        supabase
+          .channel(`agenda-appts-${user.id}-${suffix}`)
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${user.id}` },
+            refresh)
+          .subscribe(),
+        supabase
+          .channel(`agenda-consults-${user.id}-${suffix}`)
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'consultations', filter: `doctor_id=eq.${user.id}` },
+            refresh)
+          .subscribe(),
+        supabase
+          .channel(`agenda-payments-${user.id}-${suffix}`)
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
+            refresh)
+          .subscribe(),
+      ]
+    })()
+    return () => { channels.forEach(c => { try { supabase.removeChannel(c) } catch {} }) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -867,9 +914,11 @@ export default function AgendaPage() {
     const merged = [...allAppointments, ...pendingAsAppts]
     const dedupKey = (a: CalendarAppointment) => a.appointment_id || a.id
     const unique = Array.from(new Map(merged.map(a => [dedupKey(a), a])).values())
+    // L2 (2026-04-29): combinacion de filtros de status (cita) + payment (consulta).
     return unique
       .filter(a => a.date === ymd)
       .filter(a => statusFilter === 'all' || a.status === statusFilter)
+      .filter(a => paymentFilter === 'all' || a.payment_status === paymentFilter)
       .sort((a, b) => a.time.localeCompare(b.time))
   }
 
@@ -908,6 +957,8 @@ export default function AgendaPage() {
       return d >= weekDates[0] && d <= weekDates[6]
     })
     .filter(a => statusFilter === 'all' || a.status === statusFilter)
+    // L2 (2026-04-29): aplicar tambien filtro de pago en la lista lateral semanal.
+    .filter(a => paymentFilter === 'all' || a.payment_status === paymentFilter)
 
   // ── Availability helpers ─────────────────────────────────────────────────
 
@@ -1104,6 +1155,27 @@ export default function AgendaPage() {
                   onClick={() => setStatusFilter(f.key)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
                     statusFilter === f.key ? f.active : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* L2 (2026-04-29): filtros de pago en una segunda fila para que se distingan
+                visualmente de los filtros de status de cita/consulta. */}
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-[11px] uppercase tracking-wider font-bold text-slate-400 mr-1">Pago:</span>
+              {([
+                { key: 'all',      label: 'Todos',          active: 'bg-slate-800   text-white border-slate-800'   },
+                { key: 'approved', label: 'Pago aprobado',  active: 'bg-emerald-500 text-white border-emerald-500' },
+                { key: 'pending',  label: 'Pago pendiente', active: 'bg-amber-500   text-white border-amber-500'   },
+              ] as const).map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setPaymentFilter(f.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    paymentFilter === f.key ? f.active : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   {f.label}

@@ -17,6 +17,8 @@ import {
   Globe,
   Users,
 } from 'lucide-react'
+// L6 (2026-04-29): normaliza telefonos para wa.me / tel:
+import { normalizePhoneVE } from '@/lib/phone-utils'
 
 type LeadStage = 'new' | 'contacted' | 'qualified' | 'appointment' | 'converted' | 'lost'
 type LeadChannel = 'whatsapp' | 'instagram' | 'facebook' | 'web' | 'llamada' | 'referido'
@@ -275,7 +277,8 @@ export default function CRMPage() {
 
   const handleContactViaChannel = (lead: Lead, message: string) => {
     const encodedMsg = encodeURIComponent(message)
-    const phone = lead.phone.replace(/\D/g, '')
+    // L6 (2026-04-29): normaliza VE → 58XXXXXXXXXX para wa.me; fallback a digitos crudos para tel:
+    const phone = normalizePhoneVE(lead.phone) || lead.phone.replace(/\D/g, '')
 
     switch (lead.channel) {
       case 'whatsapp':

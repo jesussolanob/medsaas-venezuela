@@ -22,7 +22,7 @@ import { useRouter } from 'next/navigation'
 import {
   FolderHeart, FileText, Image as ImageIcon, Pill, Clock,
   Upload, ExternalLink, Loader2, MessageSquare, Send, Check, Stethoscope,
-  Pencil, Trash2, Save
+  Pencil, Trash2, Save, ListChecks
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import UploadDropZone from '@/components/shared/UploadDropZone'
@@ -35,6 +35,17 @@ import {
   attachFileToExisting,
   type SharedFile,
 } from '@/lib/shared-files'
+
+// L5 (2026-04-29): clave localStorage para persistir el doctor seleccionado
+const SELECTED_DOCTOR_KEY = 'selected_doctor_id'
+
+// L5 (2026-04-29): bloques de consulta que el doctor tiene activados.
+// Se muestran al paciente como "qué tipo de información recibe de este médico".
+type DoctorBlock = {
+  key: string
+  label: string
+  sort_order: number
+}
 
 type LegacyPrescription = {
   id: string
@@ -59,6 +70,8 @@ export default function PatientSeguimientoPage() {
   // RONDA 41: ahora trabajamos con N doctores
   const [doctors, setDoctors] = useState<DoctorOption[]>([])
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | 'all'>('all')
+  // L5 (2026-04-29): bloques que el médico seleccionado tiene activados
+  const [doctorBlocks, setDoctorBlocks] = useState<DoctorBlock[]>([])
   const [files, setFiles] = useState<SharedFile[]>([])
   const [legacyPrescriptions, setLegacyPrescriptions] = useState<LegacyPrescription[]>([])
   const [uploadModal, setUploadModal] = useState<{ open: boolean; replyTo?: SharedFile | null }>({ open: false })
@@ -111,6 +124,22 @@ export default function PatientSeguimientoPage() {
       })
       setDoctors(docOptions)
 
+      // L5 (2026-04-29): resolver doctor seleccionado al cargar.
+      // Reglas:
+      //  - 1 solo doctor → auto-select ese doctor (sin opción "todos")
+      //  - >1 doctores → recuperar de localStorage si sigue siendo válido,
+      //    si no, dejar 'all'
+      if (typeof window !== 'undefined') {
+        if (docOptions.length === 1) {
+          setSelectedDoctorId(docOptions[0].id)
+        } else if (docOptions.length > 1) {
+          const stored = window.localStorage.getItem(SELECTED_DOCTOR_KEY)
+          if (stored && docOptions.some(d => d.id === stored)) {
+            setSelectedDoctorId(stored)
+          }
+        }
+      }
+
       // Trae shared_files de TODOS los patient_ids del usuario (multi-doctor)
       const patientIds = patientRows.map(pr => pr.id)
       const { data: sharedRows } = await supabase
@@ -140,6 +169,48 @@ export default function PatientSeguimientoPage() {
   }, [router])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // L5 (2026-04-29): persistir selección y cargar bloques del doctor activo.
+  // Muestra al paciente qué tipo de info recibe de ese médico (motivo de
+  // consulta, diagnóstico, prescripción, etc). Solo se considera "send_to_patient"
+  // efectivo si está printable; pero acá mostramos todos los enabled como
+  // contexto informativo.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (selectedDoctorId === 'all') {
+        window.localStorage.removeItem(SELECTED_DOCTOR_KEY)
+      } else {
+        window.localStorage.setItem(SELECTED_DOCTOR_KEY, selectedDoctorId)
+      }
+    }
+    if (selectedDoctorId === 'all') {
+      setDoctorBlocks([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const supabase = createClient()
+      // Trae el catálogo (público) + la config personal del doctor.
+      const [{ data: catalog }, { data: docCfg }] = await Promise.all([
+        supabase.from('consultation_block_catalog').select('key, default_label'),
+        supabase
+          .from('doctor_consultation_blocks')
+          .select('block_key, custom_label, enabled, sort_order')
+          .eq('doctor_id', selectedDoctorId)
+          .eq('enabled', true)
+          .order('sort_order', { ascending: true }),
+      ])
+      if (cancelled) return
+      const catalogMap = new Map((catalog || []).map((c: any) => [c.key, c.default_label]))
+      const result: DoctorBlock[] = (docCfg || []).map((d: any) => ({
+        key: d.block_key,
+        label: d.custom_label || catalogMap.get(d.block_key) || d.block_key,
+        sort_order: d.sort_order ?? 99,
+      }))
+      setDoctorBlocks(result)
+    })()
+    return () => { cancelled = true }
+  }, [selectedDoctorId])
 
   // Realtime: si CUALQUIERA de los doctores sube algo, refrescar
   useEffect(() => {
@@ -395,6 +466,33 @@ export default function PatientSeguimientoPage() {
       >
         <Upload className="w-5 h-5" /> Adjuntar / Comentar
       </button>
+
+      {/* L5 (2026-04-29): bloques que el médico seleccionado tiene activos.
+          Le da al paciente contexto sobre qué tipo de información recibe
+          (motivo de consulta, diagnóstico, prescripción, etc). */}
+      {selectedDoctorId !== 'all' && doctorBlocks.length > 0 && (
+        <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 sm:p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <ListChecks className="w-4 h-4 text-teal-700" />
+            <h2 className="text-sm font-bold text-teal-900">
+              Información que recibes de {getDoctorName(selectedDoctorId)}
+            </h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {doctorBlocks.map(b => (
+              <span
+                key={b.key}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-teal-200 rounded-full text-xs font-semibold text-teal-800"
+              >
+                <Check className="w-3 h-3 text-teal-600" /> {b.label}
+              </span>
+            ))}
+          </div>
+          <p className="text-[11px] text-teal-700/80 mt-2">
+            Cada consulta puede incluir estos apartados según corresponda.
+          </p>
+        </div>
+      )}
 
       {/* Tareas pendientes */}
       {pendingTasks.length > 0 && (

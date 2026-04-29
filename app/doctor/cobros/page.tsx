@@ -767,14 +767,17 @@ export default function CobrosPage() {
               </div>
 
               {/* Current status — solo 2 estados de PAGO */}
+              {/* L4 (2026-04-29): bug fix — comparar contra 'approved' (fuente de verdad
+                  post-RONDA-15), antes comparaba contra 'completed' (legacy) y por eso
+                  el drawer mostraba "Pendiente" aunque el pago estuviera aprobado. */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-slate-400 uppercase">Estado del pago</p>
                 <span className={`inline-flex text-sm font-semibold px-3 py-1.5 rounded-full ${
-                  selectedPayment.status === 'completed'
+                  selectedPayment.status === 'approved'
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                     : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}>
-                  {selectedPayment.status === 'completed' ? 'Aprobado' : 'Pendiente'}
+                  {selectedPayment.status === 'approved' ? 'Aprobado' : 'Pendiente'}
                 </span>
               </div>
 

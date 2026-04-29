@@ -272,6 +272,61 @@ export async function PATCH(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // L7 (2026-04-29): duración automática de la consulta.
+  // Reglas:
+  //  - started_at lo marca el endpoint /api/doctor/appointment-status cuando
+  //    la cita pasa a 'completed'.
+  //  - ended_at + duration_minutes se calculan AQUI cuando el doctor hace
+  //    el primer save con contenido en el informe (chief_complaint, diagnosis,
+  //    treatment, notes o cualquier valor en blocks_data). Solo se setea una
+  //    vez (eq ended_at NULL). Updates posteriores NO mueven ended_at.
+  if (data && !(data as any).ended_at && (data as any).started_at) {
+    const blocks = (data as any).blocks_data
+    const blocksHasContent = blocks && typeof blocks === 'object' && Object.values(blocks).some(v => {
+      if (v == null) return false
+      if (typeof v === 'string') return v.trim().length > 0
+      if (typeof v === 'object') return Object.keys(v as object).length > 0
+      return true
+    })
+    const hasContent = !!(
+      (data as any).chief_complaint ||
+      (data as any).diagnosis ||
+      (data as any).treatment ||
+      (data as any).notes ||
+      blocksHasContent
+    )
+    if (hasContent) {
+      try {
+        const { data: durRow } = await admin
+          .from('consultations')
+          .update({
+            ended_at: new Date().toISOString(),
+            // BD calcula duration_minutes via expression usando started_at + ended_at
+          })
+          .eq('id', id)
+          .is('ended_at', null)
+          .select('ended_at, started_at')
+          .maybeSingle()
+
+        if (durRow?.ended_at && durRow?.started_at) {
+          const minutes = Math.max(
+            0,
+            Math.round((new Date(durRow.ended_at).getTime() - new Date(durRow.started_at).getTime()) / 60000)
+          )
+          await admin
+            .from('consultations')
+            .update({ duration_minutes: minutes })
+            .eq('id', id)
+            .is('duration_minutes', null)
+          ;(data as any).ended_at = durRow.ended_at
+          ;(data as any).duration_minutes = minutes
+        }
+      } catch (e: any) {
+        console.warn('[Consultations PATCH] auto duration calc skipped:', e?.message)
+      }
+    }
+  }
+
   // RONDA 36: si cambio blocks_data o un campo legacy del informe, reconstruir
   // el snapshot inmutable report_data. Garantia: el informe que ve el paciente
   // sale SIEMPRE de aqui, y queda independiente de cualquier cambio futuro en

@@ -90,9 +90,14 @@ export type AddPatientInput = {
 
 export type ActionResult = { success: true } | { success: false; error: string }
 
-export async function addPatient(doctorId: string, input: AddPatientInput): Promise<ActionResult> {
+// L3 (2026-04-29): tipo extendido que ademas del success devuelve el id del paciente
+// recien insertado, util para flujos donde tras crear se quiere abrir otra accion
+// (ej: dashboard "Crear paciente" → "Crear cita ahora").
+export type AddPatientResult = { success: true; patient_id: string } | { success: false; error: string }
+
+export async function addPatient(doctorId: string, input: AddPatientInput): Promise<AddPatientResult> {
   const supabase = createAdminClient()
-  const { error } = await supabase.from('patients').insert({
+  const { data, error } = await supabase.from('patients').insert({
     doctor_id: doctorId,
     full_name: input.full_name,
     age: input.age ?? null,
@@ -110,10 +115,10 @@ export async function addPatient(doctorId: string, input: AddPatientInput): Prom
     chronic_conditions: input.chronic_conditions ?? null,
     emergency_contact_name: input.emergency_contact_name ?? null,
     emergency_contact_phone: input.emergency_contact_phone ?? null,
-  })
+  }).select('id').single()
   if (error) return { success: false, error: error.message }
   revalidatePath('/doctor/patients')
-  return { success: true }
+  return { success: true, patient_id: data.id }
 }
 
 export async function getDoctorId(): Promise<string | null> {

@@ -9,6 +9,9 @@ import {
 } from 'lucide-react'
 import { getProfessionalTitle } from '@/lib/professional-title'
 import { useBcvRate } from '@/lib/useBcvRate'
+// L6 (2026-04-29): inputs canonicos para cedula y telefono venezolano
+import CedulaInput from '@/components/shared/CedulaInput'
+import PhoneInput from '@/components/shared/PhoneInput'
 
 // ── Brand Tokens ──────────────────────────────────────────────────────────
 const BRAND = {
@@ -1192,11 +1195,13 @@ export default function BookingClient({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Cédula</label>
-                    <input type="text" value={form.cedula} onChange={e => setForm(f => ({ ...f, cedula: e.target.value }))} className={fi} placeholder="V-12345678" />
+                    {/* L6 (2026-04-29): cedula canonica V-XXXXXXXX */}
+                    <CedulaInput value={form.cedula} onChange={v => setForm(f => ({ ...f, cedula: v }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Teléfono</label>
-                    <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={fi} placeholder="0412-1234567" />
+                    {/* L6 (2026-04-29): canonico 584XXXXXXXXX listo para wa.me */}
+                    <PhoneInput value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email</label>
@@ -1263,7 +1268,8 @@ export default function BookingClient({
                         <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Contacto de emergencia</p>
                         <div className="grid grid-cols-2 gap-2">
                           <input type="text" value={form.emergency_contact_name} onChange={e => setForm(f => ({ ...f, emergency_contact_name: e.target.value }))} className={fi} placeholder="Nombre" />
-                          <input type="tel" value={form.emergency_contact_phone} onChange={e => setForm(f => ({ ...f, emergency_contact_phone: e.target.value }))} className={fi} placeholder="Teléfono" />
+                          {/* L6 (2026-04-29): canonico para contacto de emergencia */}
+                          <PhoneInput value={form.emergency_contact_phone} onChange={v => setForm(f => ({ ...f, emergency_contact_phone: v }))} />
                         </div>
                       </div>
                     </div>
@@ -1293,11 +1299,13 @@ export default function BookingClient({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Teléfono</label>
-                    <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={fi} placeholder="0412-1234567" />
+                    {/* L6 (2026-04-29): canonico 584XXXXXXXXX (modo invitado) */}
+                    <PhoneInput value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Cédula</label>
-                    <input type="text" value={form.cedula} onChange={e => setForm(f => ({ ...f, cedula: e.target.value }))} className={fi} placeholder="V-12345678" />
+                    {/* L6 (2026-04-29): cedula canonica (modo invitado) */}
+                    <CedulaInput value={form.cedula} onChange={v => setForm(f => ({ ...f, cedula: v }))} />
                   </div>
                   <button
                     type="button"

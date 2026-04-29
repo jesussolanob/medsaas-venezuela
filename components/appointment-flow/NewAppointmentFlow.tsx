@@ -7,6 +7,9 @@ import {
   ChevronDown, Check, Clock, Upload, FileText, User, Pill, MapPin, CreditCard,
   ChevronLeft, ChevronRight,
 } from 'lucide-react'
+// L6 (2026-04-29): inputs reutilizables (cedula con dropdown + telefono +58)
+import CedulaInput from '@/components/shared/CedulaInput'
+import PhoneInput from '@/components/shared/PhoneInput'
 
 /**
  * NewAppointmentFlow — componente ÚNICO para crear citas desde cualquier punto
@@ -536,12 +539,11 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
                   onChange={e => setNewPatient({ ...newPatient, full_name: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
                 <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Cédula" value={newPatient.cedula}
-                    onChange={e => setNewPatient({ ...newPatient, cedula: e.target.value })}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                  <input type="tel" placeholder="Teléfono" value={newPatient.phone}
-                    onChange={e => setNewPatient({ ...newPatient, phone: e.target.value })}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                  {/* L6 (2026-04-29): inputs canonicos reemplazan texto libre */}
+                  <CedulaInput value={newPatient.cedula}
+                    onChange={v => setNewPatient({ ...newPatient, cedula: v })} />
+                  <PhoneInput value={newPatient.phone}
+                    onChange={v => setNewPatient({ ...newPatient, phone: v })} />
                   <input type="email" placeholder="Email" value={newPatient.email}
                     onChange={e => setNewPatient({ ...newPatient, email: e.target.value })}
                     className="px-3 py-2 border border-slate-200 rounded-lg text-sm col-span-2" />
