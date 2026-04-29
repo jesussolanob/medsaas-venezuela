@@ -71,7 +71,11 @@ export default function FinancesPage() {
   // L7 (2026-04-29): consultas para el cuadro descargable + KPIs.
   const [consultationsRows, setConsultationsRows] = useState<ConsultationRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'overview' | 'income' | 'expenses'>('overview')
+  // F3 (2026-04-29): nuevo tab 'reports' (Reportería) — la sección estaba renderizada
+  // SIEMPRE en todos los tabs (no estaba envuelta en `tab === 'overview'`),
+  // pero quedaba muy abajo del scroll y el usuario no la encontraba. Ahora vive
+  // en su propio tab con icono BarChart3.
+  const [tab, setTab] = useState<'overview' | 'income' | 'expenses' | 'reports'>('overview')
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
   // L7 (2026-04-29): mes seleccionado para los KPIs nuevos (formato YYYY-MM,
@@ -605,7 +609,42 @@ export default function FinancesPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* F3 (2026-04-29): tabs movidos arriba para que Reportería sea descubrible */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg overflow-x-auto max-w-full">
+          {[
+            { value: 'overview' as const, label: 'Resumen', icon: DollarSign },
+            { value: 'income' as const, label: 'Ingresos', icon: TrendingUp },
+            { value: 'expenses' as const, label: 'Gastos', icon: TrendingDown },
+            { value: 'reports' as const, label: 'Reportería', icon: BarChart3 },
+          ].map(t => {
+            const Icon = t.icon
+            return (
+              <button
+                key={t.value}
+                onClick={() => setTab(t.value)}
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
+                  tab === t.value ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+        {tab !== 'reports' && (
+          <button
+            onClick={() => downloadCSV('all')}
+            className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-sm font-semibold hover:bg-teal-100 transition-colors"
+          >
+            <Download className="w-4 h-4" /> Descargar movimientos (CSV)
+          </button>
+        )}
+      </div>
+
+      {/* KPI Cards — visibles en overview/income/expenses (no en reports) */}
+      {tab !== 'reports' && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
           <div className="flex items-center gap-3 mb-3">
@@ -643,8 +682,10 @@ export default function FinancesPage() {
           <p className="text-xs text-slate-400 mt-1">Ingresos - Gastos</p>
         </div>
       </div>
+      )}
 
-      {/* Chart */}
+      {/* Chart — visible en overview/income/expenses (no en reports) */}
+      {tab !== 'reports' && (
       <div className="bg-white rounded-2xl border border-slate-200 p-5">
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <BarChart3 className="w-5 h-5 text-slate-400" />
@@ -739,10 +780,11 @@ export default function FinancesPage() {
           </>
         )}
       </div>
+      )}
 
-      {/* L7 (2026-04-29): Reportería con KPIs por mes seleccionado +
-          gráfico Recharts + cuadro descargable de consultas. Esta sección
-          es independiente del navegador día/semana/mes existente arriba. */}
+      {/* F3 (2026-04-29): Reportería ahora vive en su propio tab para que sea
+          descubrible. Antes estaba siempre visible pero buried bajo el chart. */}
+      {tab === 'reports' && (
       <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
@@ -907,33 +949,7 @@ export default function FinancesPage() {
           )}
         </div>
       </div>
-
-      {/* Tabs + Download all */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
-          {[
-            { value: 'overview' as const, label: 'Resumen' },
-            { value: 'income' as const, label: 'Ingresos' },
-            { value: 'expenses' as const, label: 'Gastos' },
-          ].map(t => (
-            <button
-              key={t.value}
-              onClick={() => setTab(t.value)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                tab === t.value ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => downloadCSV('all')}
-          className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-sm font-semibold hover:bg-teal-100 transition-colors"
-        >
-          <Download className="w-4 h-4" /> Descargar movimientos (CSV)
-        </button>
-      </div>
+      )}
 
       {/* Income Table */}
       {(tab === 'overview' || tab === 'income') && (() => {
@@ -958,9 +974,10 @@ export default function FinancesPage() {
               {tab === 'income' && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <Calendar className="w-4 h-4 text-slate-400" />
-                  <input type="date" value={incomeDateFrom} onChange={e => setIncomeDateFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                  {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (necesita >=16px); text-xs sólo en sm+ */}
+                  <input type="date" value={incomeDateFrom} onChange={e => setIncomeDateFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs" />
                   <span className="text-xs text-slate-400">a</span>
-                  <input type="date" value={incomeDateTo} onChange={e => setIncomeDateTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                  <input type="date" value={incomeDateTo} onChange={e => setIncomeDateTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs" />
                   {(incomeDateFrom || incomeDateTo) && (
                     <button onClick={() => { setIncomeDateFrom(''); setIncomeDateTo('') }} className="text-xs text-teal-600 hover:text-teal-700 font-medium">Limpiar</button>
                   )}
@@ -1031,9 +1048,10 @@ export default function FinancesPage() {
                 {tab === 'expenses' && (
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-slate-400" />
-                    <input type="date" value={expenseDateFrom} onChange={e => setExpenseDateFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                    {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari */}
+                    <input type="date" value={expenseDateFrom} onChange={e => setExpenseDateFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs" />
                     <span className="text-xs text-slate-400">a</span>
-                    <input type="date" value={expenseDateTo} onChange={e => setExpenseDateTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs" />
+                    <input type="date" value={expenseDateTo} onChange={e => setExpenseDateTo(e.target.value)} className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs" />
                     {(expenseDateFrom || expenseDateTo) && (
                       <button onClick={() => { setExpenseDateFrom(''); setExpenseDateTo('') }} className="text-xs text-teal-600 hover:text-teal-700 font-medium">Limpiar</button>
                     )}
@@ -1063,7 +1081,8 @@ export default function FinancesPage() {
                   </select>
                   <input type="text" placeholder="Concepto" value={expenseForm.concept} onChange={e => setExpenseForm(f => ({ ...f, concept: e.target.value }))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
                   <input type="number" step="0.01" placeholder="Monto USD" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-                  <input type="date" value={expenseForm.due_date} onChange={e => setExpenseForm(f => ({ ...f, due_date: e.target.value }))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (input date) */}
+                  <input type="date" value={expenseForm.due_date} onChange={e => setExpenseForm(f => ({ ...f, due_date: e.target.value }))} className="px-3 py-2 rounded-lg border border-slate-200 text-base sm:text-sm" />
                 </div>
                 <div className="flex items-center gap-2">
                   <button type="submit" disabled={savingExpense} className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-all hover:opacity-90 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}>

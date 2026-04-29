@@ -272,7 +272,8 @@ export default function AgendaPage() {
   const [detailAppt, setDetailAppt] = useState<CalendarAppointment | null>(null)
   const [detailStatus, setDetailStatus] = useState<{ consulta: string | null; pago: string | null }>({ consulta: null, pago: null })
   const [showConfigPanel, setShowConfigPanel] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'>('all')
+  // F1 (2026-04-29): tipo restringido a las 3 opciones visibles en los chips.
+  const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed'>('all')
   // L2 (2026-04-29): filtro adicional por estado de pago (consulta vinculada).
   // Filtros de status de cita y de pago se combinan via AND.
   // Citas sin consulta linkeada se EXCLUYEN cuando paymentFilter !== 'all'.
@@ -524,6 +525,10 @@ export default function AgendaPage() {
       .map(a => {
         const d = new Date(a.scheduled_at)
         const timeStr = toHHMM(d)
+        // F1 (2026-04-29): respetar el status real de la BD (confirmed/completed/cancelled/no_show)
+        // en vez de forzar 'confirmed'. Antes el filtro por status no funcionaba porque
+        // todas estas citas terminaban como 'confirmed' aunque en BD estuvieran como completed/cancelled/no_show.
+        const realStatus = (a.status as CalendarAppointment['status']) || 'confirmed'
         return {
           id: a.id,
           patient_name: a.patient_name,
@@ -532,7 +537,7 @@ export default function AgendaPage() {
           time: timeStr,
           endTime: addMinutes(timeStr, slotDuration),
           chief_complaint: a.chief_complaint ?? undefined,
-          status: 'confirmed' as const,
+          status: realStatus,
           source: 'appointment' as const,
           appointment_code: a.appointment_code,
           plan_name: a.plan_name,
@@ -540,6 +545,9 @@ export default function AgendaPage() {
           patient_phone: a.patient_phone,
           patient_email: a.patient_email,
           meet_link: a.meet_link,
+          // F1 (2026-04-29): citas sin consulta linkeada no tienen payment_status.
+          // Explicitamente null para que el filtro de pago las excluya cuando paymentFilter !== 'all'.
+          payment_status: null,
         }
       })
 
@@ -906,6 +914,8 @@ export default function AgendaPage() {
         plan_price: p.plan_price ?? undefined,
         patient_phone: p.patient_phone,
         patient_email: p.patient_email,
+        // F1 (2026-04-29): citas pendientes sin consulta -> payment_status null explicito.
+        payment_status: null,
       }
     })
     // RONDA 25: dedupe por appointment_id (con fallback a id) para que una cita
@@ -947,6 +957,8 @@ export default function AgendaPage() {
         plan_price: p.plan_price ?? undefined,
         patient_phone: p.patient_phone,
         patient_email: p.patient_email,
+        // F1 (2026-04-29): citas pendientes sin consulta -> payment_status null explicito.
+        payment_status: null,
       }
     })
     const merged = [...allAppointments, ...pendingAsAppts]
@@ -1140,15 +1152,15 @@ export default function AgendaPage() {
                 className="text-xs font-semibold text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 transition-colors shrink-0">Hoy</button>
             </div>
 
-            {/* Filtros: Cita (Agendada/Aprobada/Rechazada) + Consulta (Asistió/No asistió) */}
+            {/* F1 (2026-04-29): solo se muestran chips para Agendadas y Confirmadas.
+                Quitamos Rechazadas/Asistió/No asistió porque confundían al usuario
+                al combinarse con el filtro de pago. Las citas en otros estados
+                siguen visibles cuando statusFilter='all'. */}
             <div className="flex flex-wrap gap-1.5">
               {([
-                { key: 'all',       label: 'Todas',       active: 'bg-slate-800   text-white border-slate-800' },
-                { key: 'scheduled', label: 'Agendadas',   active: 'bg-amber-500   text-white border-amber-500' },
-                { key: 'confirmed', label: 'Aprobadas',   active: 'bg-teal-500    text-white border-teal-500' },
-                { key: 'cancelled', label: 'Rechazadas',  active: 'bg-red-500     text-white border-red-500' },
-                { key: 'completed', label: 'Asistió',     active: 'bg-emerald-500 text-white border-emerald-500' },
-                { key: 'no_show',   label: 'No asistió',  active: 'bg-orange-500  text-white border-orange-500' },
+                { key: 'all',       label: 'Todas',       active: 'bg-slate-800 text-white border-slate-800' },
+                { key: 'scheduled', label: 'Agendadas',   active: 'bg-amber-500 text-white border-amber-500' },
+                { key: 'confirmed', label: 'Confirmadas', active: 'bg-teal-500  text-white border-teal-500'  },
               ] as const).map(f => (
                 <button
                   key={f.key}

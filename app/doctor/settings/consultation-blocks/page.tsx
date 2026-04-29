@@ -9,6 +9,9 @@ type CatalogEntry = {
   default_label: string
   default_content_type: string
   description: string | null
+  // F-FONDO (2026-04-29): mismo flag que usa lib/consultation-blocks.ts para
+  // resolver el estado de un doctor sin config personal.
+  default_enabled?: boolean
 }
 
 type BlockRow = {
@@ -51,8 +54,10 @@ export default function ConsultationBlocksConfigPage() {
     const merged: BlockRow[] = catalog.map(c => {
       const cfg = cfgMap.get(c.key)
       const spec = specialtyMap.get(c.key)
-      // Si doctor ya configuró, usa su valor; sino, usa default de especialidad; sino, false.
-      const enabled = cfg ? cfg.enabled : (spec ? spec.enabled : false)
+      // F-FONDO (2026-04-29): mismo modelo que la consulta — si no hay cfg ni
+      // spec, usar `default_enabled` del catálogo (4 core marcados, resto NO).
+      // Antes quedaba todo en false → "0/15 activos" inconsistente con consulta.
+      const enabled = cfg ? cfg.enabled : (spec ? spec.enabled : (c.default_enabled ?? false))
       const sort_order = cfg?.sort_order ?? spec?.sort_order ?? 99
       return {
         block_key: c.key,

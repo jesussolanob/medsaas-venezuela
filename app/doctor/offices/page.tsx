@@ -367,18 +367,19 @@ export default function OfficesPage() {
                       </span>
                       {day.enabled && (
                         <div className="flex items-center gap-1.5 flex-1">
+                          {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (input time necesita >=16px) */}
                           <input
                             type="time"
                             value={day.start}
                             onChange={e => updateDay(i, 'start', e.target.value)}
-                            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-24"
+                            className="text-base sm:text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-24"
                           />
                           <span className="text-xs text-slate-400">a</span>
                           <input
                             type="time"
                             value={day.end}
                             onChange={e => updateDay(i, 'end', e.target.value)}
-                            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-24"
+                            className="text-base sm:text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-24"
                           />
                         </div>
                       )}

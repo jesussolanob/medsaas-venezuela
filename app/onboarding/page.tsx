@@ -3,8 +3,21 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User, Clock } from 'lucide-react'
+import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User, Clock, LayoutGrid } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+
+// F5 (2026-04-29): bloques mínimos que SIEMPRE quedan pre-marcados (core).
+// Reflejan los del fallback hardcoded de la consulta para que el doctor nunca
+// quede con un set vacío si no tocó las casillas.
+const CORE_BLOCK_KEYS = new Set(['chief_complaint', 'diagnosis', 'treatment', 'prescription'])
+
+// F5 (2026-04-29): tipo del catálogo de bloques.
+type CatalogBlock = {
+  key: string
+  default_label: string
+  default_content_type: string
+  description: string | null
+}
 
 const ESPECIALIDADES = [
   'Cardiología','Dermatología','Endocrinología','Gastroenterología',
@@ -36,8 +49,8 @@ export default function OnboardingPage() {
   const [userName, setUserName] = useState('')
   const [userEmail, setUserEmail] = useState('')
 
-  // Step 1: role selection, Step 2: details, Step 3: success/pending
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  // F5 (2026-04-29): Step 1=rol, 2=datos, 3=bloques (solo doctor), 4=pending.
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [role, setRole] = useState<Role>('doctor')
 
   // Form fields
@@ -45,6 +58,12 @@ export default function OnboardingPage() {
   const [specialty, setSpecialty] = useState('')
   const [professionalTitle, setProfessionalTitle] = useState('Dr.')
   const [sex, setSex] = useState('')
+
+  // F5 (2026-04-29): estado para el paso de bloques de consulta (solo doctor).
+  const [catalog, setCatalog] = useState<CatalogBlock[]>([])
+  const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set())
+  const [blocksLoading, setBlocksLoading] = useState(false)
+  const [savingBlocks, setSavingBlocks] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -135,16 +154,123 @@ export default function OnboardingPage() {
       // AUDIT FIX 2026-04-28 (FASE 5D): limpiar el hint del flow de OAuth.
       try { localStorage.removeItem('pending_role') } catch { /* ignore */ }
 
-      // Patients go straight to dashboard, doctors see pending approval
+      // F5 (2026-04-29): pacientes van directo a su dashboard; doctores pasan
+      // primero por el paso 3 (selección de bloques de consulta) antes del
+      // mensaje de "pendiente de aprobación".
       if (role === 'patient') {
         router.push('/patient/dashboard')
       } else {
-        setStep(3) // Show pending approval message
+        await loadBlocksCatalog()
+        setStep(3)
+        setSaving(false)
       }
     } catch (err: any) {
       setError(err?.message || 'Error al guardar')
       setSaving(false)
     }
+  }
+
+  // F5 (2026-04-29): carga el catálogo de bloques + specialty defaults y
+  // pre-marca los core + los enabled por defaults de la especialidad seleccionada.
+  async function loadBlocksCatalog() {
+    setBlocksLoading(true)
+    // F-FONDO (2026-04-29): pre-marcar core inmediatamente para que el doctor
+    // siempre tenga al menos los 4 bloques esenciales seleccionados aunque la
+    // query del catalog tarde o falle. Antes el botón "Continuar" quedaba
+    // disabled si el state estaba vacío al renderizar el step 3.
+    setSelectedBlocks(new Set(CORE_BLOCK_KEYS))
+    try {
+      const supabase = createClient()
+      const [catalogRes, specialtyRes] = await Promise.all([
+        supabase
+          .from('consultation_block_catalog')
+          .select('key, default_label, default_content_type, description')
+          .order('key'),
+        specialty
+          ? supabase
+              .from('specialty_default_blocks')
+              .select('block_key, enabled')
+              .eq('specialty', specialty)
+          : Promise.resolve({ data: [] as { block_key: string; enabled: boolean }[] }),
+      ])
+
+      const cat = (catalogRes.data || []) as CatalogBlock[]
+      const specialtyDefaults = ((specialtyRes.data || []) as { block_key: string; enabled: boolean }[])
+        .filter(s => s.enabled)
+        .map(s => s.block_key)
+
+      const preselected = new Set<string>()
+      // Core siempre pre-marcado
+      for (const k of CORE_BLOCK_KEYS) preselected.add(k)
+      // Defaults de la especialidad
+      for (const k of specialtyDefaults) preselected.add(k)
+      // Filtrar a llaves que realmente existan en el catálogo
+      const validKeys = new Set(cat.map(c => c.key))
+      const final = new Set<string>()
+      for (const k of preselected) if (validKeys.has(k)) final.add(k)
+
+      setCatalog(cat)
+      setSelectedBlocks(final)
+    } catch (err) {
+      // Si falla la carga, mostramos el catálogo vacío y el doctor podrá
+      // continuar — la app igual cae al fallback de bloques core.
+      console.error('Error cargando catálogo de bloques:', err)
+    } finally {
+      setBlocksLoading(false)
+    }
+  }
+
+  // F5 (2026-04-29): toggle de selección.
+  function toggleBlock(key: string) {
+    setSelectedBlocks(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // F5 (2026-04-29): guarda los bloques marcados y avanza al paso 4 (pending).
+  async function saveBlocksAndContinue() {
+    if (!userId) return
+    setSavingBlocks(true)
+    setError('')
+    try {
+      const supabase = createClient()
+      // Bulk insert: una fila por bloque seleccionado, ordenado por la posición
+      // del catálogo (que ya viene ordenado por key). Si la PK ya existe (caso
+      // poco probable en onboarding), usamos upsert para idempotencia.
+      const rows = catalog
+        .filter(c => selectedBlocks.has(c.key))
+        .map((c, idx) => ({
+          doctor_id: userId,
+          block_key: c.key,
+          enabled: true,
+          sort_order: idx,
+        }))
+
+      if (rows.length > 0) {
+        const { error: insertError } = await supabase
+          .from('doctor_consultation_blocks')
+          .upsert(rows, { onConflict: 'doctor_id,block_key' })
+        if (insertError) {
+          setError(insertError.message)
+          setSavingBlocks(false)
+          return
+        }
+      }
+      setStep(4)
+    } catch (err: any) {
+      setError(err?.message || 'Error al guardar bloques')
+    } finally {
+      setSavingBlocks(false)
+    }
+  }
+
+  // F5 (2026-04-29): permitir saltar el paso si el doctor no quiere configurarlo
+  // ahora. La cascada de resolución cae a defaults de especialidad / catálogo.
+  function skipBlocks() {
+    setStep(4)
   }
 
   if (loading) {
@@ -335,8 +461,99 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 3: Pending Approval (doctors) */}
-        {step === 3 && (
+        {/* F5 (2026-04-29) Step 3: Bloques de consulta (solo doctor) */}
+        {step === 3 && role === 'doctor' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 space-y-5 w-full max-w-2xl mx-auto">
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center g-bg">
+                <LayoutGrid className="w-7 h-7 text-white" />
+              </div>
+              <h1 className="text-xl font-extrabold text-slate-900">Bloques de tu consulta</h1>
+              <p className="text-sm text-slate-500">
+                Selecciona los bloques que usarás en cada consulta. Los predeterminados están marcados según tu especialidad — puedes ajustarlos cuando quieras desde Configuración.
+              </p>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
+            {blocksLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-teal-500" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto pr-1">
+                  {catalog.map(block => {
+                    const checked = selectedBlocks.has(block.key)
+                    const isCore = CORE_BLOCK_KEYS.has(block.key)
+                    return (
+                      <label
+                        key={block.key}
+                        className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                          checked
+                            ? 'border-teal-300 bg-teal-50/40'
+                            : 'border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleBlock(block.key)}
+                          className="w-4 h-4 mt-0.5 accent-teal-500 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                            {block.default_label}
+                            {isCore && (
+                              <span className="text-[9px] font-bold uppercase tracking-wide bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded">
+                                core
+                              </span>
+                            )}
+                          </p>
+                          {block.description && (
+                            <p className="text-xs text-slate-400 leading-snug mt-0.5">
+                              {block.description}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={saveBlocksAndContinue}
+                    disabled={savingBlocks}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-50 g-bg"
+                  >
+                    {savingBlocks ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</>
+                    ) : (
+                      <>Continuar <ArrowRight className="w-4 h-4" /></>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={skipBlocks}
+                    disabled={savingBlocks}
+                    className="text-xs text-slate-400 hover:text-slate-600 font-medium"
+                  >
+                    Configurar más tarde
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Step 4: Pending Approval (doctors) */}
+        {step === 4 && (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 space-y-6 text-center">
             <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center bg-amber-100">
               <Clock className="w-8 h-8 text-amber-600" />

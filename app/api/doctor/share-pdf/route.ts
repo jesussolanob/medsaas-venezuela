@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
     .doc-toolbar button {
       background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3);
       color: white; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
-      cursor: pointer; transition: all 0.2s; backdrop-filter: blur(4px);
+      /* F4 (2026-04-29): -webkit-backdrop-filter para Safari < 18 */
+      cursor: pointer; transition: all 0.2s; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
     }
     .doc-toolbar button:hover { background: rgba(255,255,255,0.35); }
     .doc-toolbar button.primary { background: white; color: #0891b2; border-color: white; }

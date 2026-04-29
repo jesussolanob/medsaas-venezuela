@@ -64,37 +64,26 @@ export async function resolveBlocksForDoctor({
   // El conjunto final parte del catálogo; aplicamos cascada.
   const blocks: ConsultationBlock[] = []
 
-  // RONDA 37: detectar si la specialty del doctor TIENE algun default configurado.
-  // Si NO tiene defaults Y el doctor tampoco tiene config personal, caemos a un
-  // modo "zero-friction": mostramos todos los bloques printables del catalog.
-  // Esto evita el bug donde el snapshot quedaba vacio y la consulta caia al
-  // fallback hardcoded de 5 tabs (Informe, Receta, Prescripciones, Reposo, Notas).
-  const specialtyHasDefaults = specialtyDefaults.length > 0
-  const doctorHasConfig = doctorConfig.length > 0
-
   for (const cat of catalog) {
     const catalogEntry = cat as any
     const specialtyEntry = specialtyMap.get(cat.key) as any
     const doctorEntry = doctorMap.get(cat.key) as any
 
     // Resolución de enabled (cascada).
-    // RONDA 37 + AUDIT FIX C-4 (2026-04-28): combina zero-friction onboarding
-    // (doctor virgen sin specialty defaults) con respeto al `default_enabled`
-    // del catálogo cuando el doctor SÍ tiene config personal pero no para este
-    // block_key — así los core (chief_complaint, diagnosis, treatment,
-    // prescription) siguen visibles aunque el doctor haya escondido otros.
+    // F-FONDO 2026-04-29: modelo único coherente entre consulta + settings + onboarding.
+    //   1) Si el doctor configuró este bloque → respetar su elección.
+    //   2) Si su specialty tiene un default para este bloque → respetarlo.
+    //   3) Sino → usar `default_enabled` del catálogo (solo los 4 core: chief_complaint,
+    //      diagnosis, treatment, prescription).
+    //   ❌ Eliminado el fallback "doctor virgen muestra todos los printables" — causaba
+    //   inconsistencia entre la consulta (mostraba 14 tabs) y la página de settings
+    //   (mostraba "0/15 activos") confundiendo al doctor.
     let enabled: boolean
     if (doctorEntry) {
       enabled = doctorEntry.enabled
     } else if (specialtyEntry) {
       enabled = specialtyEntry.enabled
-    } else if (!doctorHasConfig && !specialtyHasDefaults) {
-      // Doctor totalmente "virgen" (no toco settings y su specialty no tiene
-      // defaults). Mostrar todos los bloques printables como onboarding.
-      enabled = catalogEntry.default_printable !== false
     } else {
-      // Doctor con config personal o specialty con defaults pero sin entry
-      // para este block_key específico → respetar `default_enabled` del catálogo.
       enabled = catalogEntry.default_enabled ?? false
     }
 

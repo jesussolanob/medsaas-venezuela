@@ -304,7 +304,8 @@ export default function CRMPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      // F4 (2026-04-29): h-screen (=100vh) corta en iOS Safari por la URL bar; usar dvh con fallback
+      <div className="flex items-center justify-center h-screen min-h-[100dvh]">
         <p className="text-slate-500">Cargando CRM...</p>
       </div>
     )
@@ -320,7 +321,8 @@ export default function CRMPage() {
         .kanban-column { @apply min-h-96 scroll-smooth; }
       `}</style>
 
-      <div className="flex flex-col h-screen bg-slate-50">
+      {/* F4 (2026-04-29): h-screen=100vh corta el footer del kanban en iOS Safari; usar dvh con fallback */}
+      <div className="flex flex-col h-screen min-h-[100dvh] bg-slate-50">
         {/* Header */}
         <div className="border-b border-slate-200 bg-white p-4">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-4">
