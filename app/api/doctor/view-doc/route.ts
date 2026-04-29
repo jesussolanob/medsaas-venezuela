@@ -77,7 +77,13 @@ export async function GET(req: NextRequest) {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Disposition': 'inline',
-        'Cache-Control': 'public, max-age=3600',
+        // FIX 2026-04-29: la URL del PDF es determinista (mismo
+        // consultation_code = misma path = misma sig). Si cacheamos,
+        // re-generaciones del mismo informe devuelven el HTML viejo.
+        // Forzamos no-store para que el doctor siempre vea la última versión.
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'SAMEORIGIN',
       },
