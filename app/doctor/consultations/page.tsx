@@ -2932,13 +2932,22 @@ function ConsultationsPage() {
                         const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
                         let body = ''
                         const debugBlocks: { key: string; label: string; hasContent: boolean }[] = []
+                        // FIX 2026-04-29: si el doctor seleccionó un bloque que está
+                        // vacío, igual lo incluimos con placeholder "Sin información
+                        // registrada". Antes los bloques vacíos se silenciaban con
+                        // `continue` y el doctor solo veía los bloques con contenido,
+                        // pensando que había un bug.
                         for (const b of printable) {
                           if (!reportSelectedKeys.has(b.key)) continue
                           const piece = (b.key === 'informe' || b.key === 'notes')
                             ? generateInformeHtml()
                             : generateBlockHtml(b.key, b.label)
                           debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece })
-                          if (piece) body += piece
+                          if (piece) {
+                            body += piece
+                          } else {
+                            body += `<div class="section"><div class="section-title">${b.label}</div><div class="section-content"><em style="color:#94a3b8">Sin información registrada en este bloque.</em></div></div>`
+                          }
                         }
                         if (!body) {
                           const lista = debugBlocks.map(d => `• ${d.label}: vacío`).join('\n')
@@ -3479,13 +3488,22 @@ function ConsultationsPage() {
                         const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
                         let body = ''
                         const debugBlocks: { key: string; label: string; hasContent: boolean }[] = []
+                        // FIX 2026-04-29: si el doctor seleccionó un bloque que está
+                        // vacío, igual lo incluimos con placeholder "Sin información
+                        // registrada". Antes los bloques vacíos se silenciaban con
+                        // `continue` y el doctor solo veía los bloques con contenido,
+                        // pensando que había un bug.
                         for (const b of printable) {
                           if (!reportSelectedKeys.has(b.key)) continue
                           const piece = (b.key === 'informe' || b.key === 'notes')
                             ? generateInformeHtml()
                             : generateBlockHtml(b.key, b.label)
                           debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece })
-                          if (piece) body += piece
+                          if (piece) {
+                            body += piece
+                          } else {
+                            body += `<div class="section"><div class="section-title">${b.label}</div><div class="section-content"><em style="color:#94a3b8">Sin información registrada en este bloque.</em></div></div>`
+                          }
                         }
                         // FIX 2026-04-29: si NINGÚN bloque tiene contenido, aún así
                         // generamos un PDF con un placeholder explicando — antes el
