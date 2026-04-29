@@ -15,6 +15,8 @@ const ALLOWED_KEYS: (keyof AppSettings)[] = [
   'payment_methods_config',
   'stripe_enabled',
   'expiration_warning_days',
+  'sales_whatsapp_number',
+  'sales_whatsapp_message',
 ]
 
 export async function GET() {

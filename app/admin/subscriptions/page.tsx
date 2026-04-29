@@ -55,6 +55,8 @@ type AppSettings = {
   payment_methods_config: Record<string, Record<string, string>>
   stripe_enabled: boolean
   expiration_warning_days: number[]
+  sales_whatsapp_number: string
+  sales_whatsapp_message: string
 }
 
 type Promotion = {
@@ -689,6 +691,51 @@ function ConfigTab() {
             </div>
           )
         })}
+      </div>
+
+      {/* WhatsApp ventas (landing page) */}
+      <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <CreditCard className="w-5 h-5 text-emerald-500" />
+          <h2 className="font-bold text-slate-900">Botón "Hablar con ventas" del landing</h2>
+        </div>
+        <p className="text-xs text-slate-500">
+          El landing page muestra un botón "Hablar con ventas" que abre WhatsApp con un mensaje
+          pre-rellenado. Configura aquí el número (con código país, sin <code>+</code>) y el mensaje.
+        </p>
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Número WhatsApp</label>
+            <input
+              type="text"
+              defaultValue={settings.sales_whatsapp_number}
+              onBlur={e => save({ sales_whatsapp_number: e.target.value.replace(/\D/g, '') })}
+              placeholder="584141234567"
+              className="mt-1.5 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none font-mono"
+            />
+            <p className="text-xs text-slate-400 mt-1">Sin "+" ni espacios. Ej: 584141234567</p>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mensaje pre-rellenado</label>
+            <input
+              type="text"
+              defaultValue={settings.sales_whatsapp_message}
+              onBlur={e => save({ sales_whatsapp_message: e.target.value })}
+              placeholder="Hola, vengo de la web…"
+              className="mt-1.5 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+            />
+          </div>
+        </div>
+        {settings.sales_whatsapp_number && (
+          <a
+            href={`https://wa.me/${settings.sales_whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(settings.sales_whatsapp_message)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-teal-600 hover:underline"
+          >
+            🔗 Probar link →
+          </a>
+        )}
       </div>
 
       {/* Promociones multi-mes */}

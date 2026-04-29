@@ -201,6 +201,8 @@ export type AppSettings = {
   }
   stripe_enabled: boolean
   expiration_warning_days: number[]
+  sales_whatsapp_number: string
+  sales_whatsapp_message: string
 }
 
 export type DurationOption = {
@@ -225,6 +227,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   payment_methods_config: {},
   stripe_enabled: false,
   expiration_warning_days: [7, 3, 1],
+  sales_whatsapp_number: '',
+  sales_whatsapp_message: 'Hola, vengo de la web de Delta Medical CRM y me interesa conocer más sobre el plan.',
 }
 
 // ── App settings (key/value singleton) ──────────────────────────────────────
@@ -241,6 +245,8 @@ export async function getAppSettings(): Promise<AppSettings> {
     payment_methods_config: (map.payment_methods_config as AppSettings['payment_methods_config']) ?? {},
     stripe_enabled: Boolean(map.stripe_enabled ?? false),
     expiration_warning_days: (map.expiration_warning_days as number[]) ?? DEFAULT_SETTINGS.expiration_warning_days,
+    sales_whatsapp_number: String(map.sales_whatsapp_number ?? DEFAULT_SETTINGS.sales_whatsapp_number),
+    sales_whatsapp_message: String(map.sales_whatsapp_message ?? DEFAULT_SETTINGS.sales_whatsapp_message),
   }
 }
 
