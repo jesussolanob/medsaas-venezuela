@@ -1619,10 +1619,17 @@ function ConsultationsPage() {
                   </button>
                   {/* L1 (2026-04-29): botón "Eliminar" removido del header.
                       El endpoint DELETE sigue intacto en /api/doctor/consultations. */}
-                {/* L1 (2026-04-29): botón "Generar informe" — abre modal con
-                    checkboxes dinámicos según bloques de la consulta. */}
-                <button onClick={() => {
-                    if (!selected) return
+                {/* L1 (2026-04-29) + FIX 2026-04-29: botón "Generar informe" más
+                    visible (color teal sólido, label siempre, no oculto en mobile)
+                    para que no se confunda con los otros 2 botones grises del header. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log('[generar-informe] click', { selected: !!selected })
+                    if (!selected) {
+                      alert('Abre primero una consulta')
+                      return
+                    }
                     const effective = getEffectiveBlocks(selected)
                     const printable = effective.filter(b => b.printable)
                     setReportSelectedKeys(new Set(printable.map(b => b.key)))
@@ -1630,8 +1637,9 @@ function ConsultationsPage() {
                     setShowGenerateReport(true)
                   }}
                   title="Generar informe"
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                  <FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Generar informe</span>
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5" /> Generar informe
                 </button>
                 {/* Share Button */}
                 <div className="relative">
@@ -1805,29 +1813,36 @@ function ConsultationsPage() {
                     </button>
                   ))
                 })()}
-                {/* L1 (2026-04-29): botón "+" para agregar bloques del catálogo
-                    que no estén activados en esta consulta. Inserta en
-                    doctor_consultation_blocks (config viva) y, si la consulta tiene
-                    snapshot congelado, también lo extiende para que aparezca de inmediato. */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddBlockMenu(v => !v)}
-                    title="Agregar bloque"
-                    className="safari-tab text-sm font-bold whitespace-nowrap bg-slate-100 text-teal-600 hover:bg-slate-200 transition-all"
-                  >
-                    +
-                  </button>
-                  {showAddBlockMenu && selected && (() => {
-                    // FIX 2026-04-29: mostrar TODOS los bloques del catálogo.
-                    // Los que ya están activos en esta consulta se ven deshabilitados
-                    // con etiqueta "Ya activo" (antes los ocultábamos y el doctor no
-                    // sabía qué tenía disponible).
+                {/* FIX 2026-04-29: el contenedor padre tiene overflow-x-auto que
+                    clipea cualquier dropdown absolute. Solución: convertir a
+                    MODAL global (fixed inset-0) para escapar el clip. */}
+                <button
+                  type="button"
+                  onClick={() => setShowAddBlockMenu(true)}
+                  title="Agregar bloque"
+                  className="safari-tab text-sm font-bold whitespace-nowrap bg-slate-100 text-teal-600 hover:bg-slate-200 transition-all"
+                >
+                  +
+                </button>
+                {showAddBlockMenu && selected && (() => {
                     const effective = getEffectiveBlocks(selected)
                     const activeKeys = new Set(effective.map(b => b.key))
                     return (
-                      <div className="absolute left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-3 space-y-1 max-h-80 overflow-y-auto">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 px-2 py-1">Agregar bloque a esta consulta</p>
+                      <div
+                        className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4"
+                        onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+                      >
+                      <div
+                        className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-base font-bold text-slate-800">Agregar bloque a esta consulta</p>
+                          <button onClick={() => !addingBlock && setShowAddBlockMenu(false)} className="text-slate-400 hover:text-slate-600">
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-3">Selecciona un bloque del catálogo. Los que ya están activos se ven en gris.</p>
                         {blockCatalog.length === 0 ? (
                           <p className="text-xs text-slate-400 italic px-2 py-2">Catálogo vacío.</p>
                         ) : blockCatalog.map(c => {
@@ -1928,9 +1943,9 @@ function ConsultationsPage() {
                           </button>
                         )})}
                       </div>
+                      </div>
                     )
                   })()}
-                </div>
               </div>
 
               {/* RONDA 38: renderer del bloque dinámico.
