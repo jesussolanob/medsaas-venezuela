@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
   const method = String(formData.get('method') || '')
   const reference_number = String(formData.get('reference_number') || '').trim()
   const amount_usd = Number(formData.get('amount_usd'))
+  const amount_bs_raw = formData.get('amount_bs')
+  const amount_bs = amount_bs_raw ? Number(amount_bs_raw) : null
+  const bcv_rate_raw = formData.get('bcv_rate_used')
+  const bcv_rate_used = bcv_rate_raw ? Number(bcv_rate_raw) : null
   const notes = String(formData.get('notes') || '').trim()
   const promotion_id = formData.get('promotion_id') ? String(formData.get('promotion_id')) : null
   const receipt = formData.get('receipt') as File | null
@@ -74,6 +78,8 @@ export async function POST(req: NextRequest) {
     .insert({
       doctor_id: user.id,
       amount_usd,
+      amount_bs: amount_bs && amount_bs > 0 ? amount_bs : null,
+      bcv_rate_used: bcv_rate_used && bcv_rate_used > 0 ? bcv_rate_used : null,
       duration_months,
       method,
       reference_number,

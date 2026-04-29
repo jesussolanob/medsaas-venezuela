@@ -35,6 +35,8 @@ type PaymentRow = {
   id: string
   doctor_id: string
   amount_usd: number
+  amount_bs: number | null
+  bcv_rate_used: number | null
   duration_months: number
   method: string
   reference_number: string | null
@@ -434,7 +436,13 @@ function PaymentsTab() {
                     <span className="text-xs text-slate-500">{p.profiles?.email}</span>
                   </div>
                   <div className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
-                    <span><DollarSign className="w-3 h-3 inline" />{p.amount_usd} USD</span>
+                    <span className="font-semibold text-slate-700">${p.amount_usd} USD</span>
+                    {p.amount_bs && (
+                      <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                        Bs. {p.amount_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {p.bcv_rate_used && <span className="text-amber-500 ml-1">(BCV {p.bcv_rate_used.toFixed(2)})</span>}
+                      </span>
+                    )}
                     <span><Calendar className="w-3 h-3 inline" /> {p.duration_months} mes{p.duration_months > 1 ? 'es' : ''}</span>
                     <span className="capitalize">{p.method.replace('_', ' ')}</span>
                     <span className="font-mono">{p.reference_number || '—'}</span>

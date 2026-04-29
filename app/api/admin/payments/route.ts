@@ -16,8 +16,9 @@ export async function GET(req: NextRequest) {
   const { data, error } = await admin
     .from('subscription_payments')
     .select(`
-      id, doctor_id, amount_usd, duration_months, method, reference_number,
-      receipt_url, status, notes, rejection_reason, created_at, reviewed_at,
+      id, doctor_id, amount_usd, amount_bs, bcv_rate_used, duration_months,
+      method, reference_number, receipt_url, status, notes, rejection_reason,
+      created_at, reviewed_at,
       profiles!subscription_payments_doctor_id_fkey ( full_name, email, specialty )
     `)
     .eq('status', status)

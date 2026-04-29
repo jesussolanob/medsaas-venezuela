@@ -16,8 +16,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   CreditCard, Clock, AlertTriangle, CheckCircle2, Sparkles, Loader2,
-  Upload, X, FileText, Copy, ExternalLink,
+  Upload, X, FileText, Copy, ExternalLink, RefreshCw,
 } from 'lucide-react'
+import { useBcvRate } from '@/lib/useBcvRate'
 
 type SubscriptionData = {
   state: {
@@ -63,6 +64,10 @@ const METHOD_LABELS: Record<string, string> = {
   zelle:         'Zelle',
   stripe:        'Tarjeta (Stripe)',
 }
+
+// Métodos cuyo cobro se hace en Bs (no USD). Para estos mostramos el
+// monto convertido a tasa BCV en el modal de checkout.
+const BS_METHODS = new Set(['pago_movil', 'transferencia'])
 
 export default function SubscriptionPanel({ embedded = false }: { embedded?: boolean }) {
   const [data, setData] = useState<SubscriptionData | null>(null)
@@ -222,11 +227,21 @@ function CheckoutModal({ data, onClose }: { data: SubscriptionData; onClose: () 
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
 
+  // Tasa BCV — solo se usa cuando el método de pago es en Bs.
+  const { rate: bcvRate, dateLabel: bcvDate, loading: bcvLoading, refresh: refreshBcv } = useBcvRate()
+
   const config = data.payment_methods.config[method] || {}
+  const isBsMethod = BS_METHODS.has(method)
+  const totalUsd = duration.final_price_usd
+  const totalBs = bcvRate ? totalUsd * bcvRate : null
 
   async function submit() {
     if (!reference.trim()) {
       alert('Ingresa el número de referencia o comprobante')
+      return
+    }
+    if (isBsMethod && !bcvRate) {
+      alert('No se pudo obtener la tasa BCV. Refrescá e intentá de nuevo.')
       return
     }
     setSubmitting(true)
@@ -235,7 +250,13 @@ function CheckoutModal({ data, onClose }: { data: SubscriptionData; onClose: () 
       fd.append('duration_months', String(duration.duration_months))
       fd.append('method', method)
       fd.append('reference_number', reference)
-      fd.append('amount_usd', String(duration.final_price_usd))
+      fd.append('amount_usd', String(totalUsd))
+      // Si el método es en Bs, también enviamos el monto en Bs y la tasa usada
+      // (audit trail: el admin verá ambos en el panel de aprobación).
+      if (isBsMethod && bcvRate && totalBs) {
+        fd.append('amount_bs', totalBs.toFixed(2))
+        fd.append('bcv_rate_used', bcvRate.toFixed(4))
+      }
       if (notes) fd.append('notes', notes)
       if (duration.promotion_id) fd.append('promotion_id', duration.promotion_id)
       if (receipt) fd.append('receipt', receipt)
@@ -375,9 +396,51 @@ function CheckoutModal({ data, onClose }: { data: SubscriptionData; onClose: () 
                 </div>
               )}
 
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <p className="text-xs text-blue-700">
-                  Total a pagar: <strong className="text-base">${duration.final_price_usd} USD</strong> ({duration.duration_months} {duration.duration_months > 1 ? 'meses' : 'mes'})
+              {/* Total — muestra USD siempre, y conversión a Bs si el método es en Bs */}
+              <div className={`border rounded-xl p-3 space-y-2 ${isBsMethod ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs ${isBsMethod ? 'text-amber-700' : 'text-blue-700'}`}>
+                    Equivalente en USD
+                  </span>
+                  <strong className={`text-base ${isBsMethod ? 'text-amber-900' : 'text-blue-900'}`}>
+                    ${totalUsd} USD
+                  </strong>
+                </div>
+                {isBsMethod && (
+                  <>
+                    <div className="border-t border-amber-200 pt-2 flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">
+                        Total a transferir
+                      </span>
+                      <strong className="text-xl text-amber-900">
+                        {bcvLoading
+                          ? <Loader2 className="w-5 h-5 animate-spin inline" />
+                          : totalBs
+                          ? `Bs. ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : '—'}
+                      </strong>
+                    </div>
+                    <div className="text-xs text-amber-700 flex items-center gap-2">
+                      <span>
+                        Tasa BCV: {bcvRate ? `Bs. ${bcvRate.toFixed(2)} / USD` : 'cargando…'}
+                        {bcvDate && <span className="ml-1 text-amber-600">({bcvDate})</span>}
+                      </span>
+                      <button
+                        onClick={(e) => { e.preventDefault(); refreshBcv() }}
+                        className="ml-auto text-amber-700 hover:text-amber-900"
+                        title="Actualizar tasa"
+                        type="button"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${bcvLoading ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-amber-600 italic">
+                      ⚠️ Transfiere exactamente este monto en Bs. Si la tasa cambia, podemos pedir un ajuste.
+                    </p>
+                  </>
+                )}
+                <p className="text-xs text-slate-500 mt-1">
+                  Plan: {duration.duration_months} {duration.duration_months > 1 ? 'meses' : 'mes'}
                 </p>
               </div>
 
