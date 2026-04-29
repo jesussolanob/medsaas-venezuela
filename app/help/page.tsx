@@ -14,7 +14,7 @@ export default function HelpPage() {
         'Ingresa a /register desde la página principal.',
         'Llena tu nombre, cédula, email y especialidad.',
         'Recibirás un correo de verificación. Confírmalo y ya estás dentro de Delta.',
-        'Tu cuenta tiene 1 año de Beta Privada gratis.',
+        'Tu cuenta tiene 1 año de prueba gratis.',
       ],
     },
     {

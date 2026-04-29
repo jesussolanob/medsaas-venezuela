@@ -35,8 +35,8 @@ export default function TermsPage() {
             </section>
 
             <section>
-              <h2 className="text-lg font-semibold text-slate-900 mt-6">2. Beta privada</h2>
-              <p>Durante la beta privada el acceso es gratuito por 1 año. El servicio se ofrece "tal cual" sin garantías
+              <h2 className="text-lg font-semibold text-slate-900 mt-6">2. Período de prueba</h2>
+              <p>Durante el período de prueba el acceso es gratuito por 1 año. El servicio se ofrece "tal cual" sin garantías
               expresas. Reservamos el derecho de modificar funcionalidades.</p>
             </section>
 

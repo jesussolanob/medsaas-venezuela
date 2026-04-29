@@ -221,7 +221,7 @@ function LoginInner() {
                 </p>
               </div>
               <span className="ml-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}>
-                Beta Privada
+                Health Tech
               </span>
             </div>
           </div>
@@ -229,7 +229,7 @@ function LoginInner() {
           {/* Center: Message */}
           <div className="relative z-10 space-y-6 max-w-md">
             <p className="text-xs font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--dh-turquoise-700)' }}>
-              Beta privada · Acceso completo
+              Plataforma médica integral
             </p>
             <h1 className="text-4xl xl:text-[44px] font-extrabold leading-[1.1] tracking-tight" style={{ color: 'var(--dh-ink)' }}>
               Tu especialista,<br />
@@ -310,7 +310,7 @@ function LoginInner() {
               <div className="mb-7 text-center">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-3" style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}>
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--dh-turquoise)' }} />
-                  Beta Privada
+                  Bienvenido
                 </span>
                 <h2 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--dh-ink)' }}>
                   Bienvenido a Delta

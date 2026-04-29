@@ -289,7 +289,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             <div className="px-3.5 py-2 rounded-xl" style={{ background: '#ECFEFF', border: '1px solid #CFFAFE' }}>
               <div className="flex items-center gap-1.5">
                 <CheckCircle className="w-3.5 h-3.5" style={{ color: '#0891B2' }} />
-                <p className="text-xs font-bold" style={{ color: '#0891B2' }}>Beta Privada</p>
+                <p className="text-xs font-bold" style={{ color: '#0891B2' }}>Plan activo</p>
               </div>
               <p className="mt-0.5" style={{ fontSize: 10, color: '#97A3AF' }}>Acceso completo</p>
             </div>

@@ -301,7 +301,7 @@ export default function NewDoctorModal() {
                   <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 text-teal-600 mt-0.5 flex-shrink-0" />
                     <div className="text-sm">
-                      <p className="font-semibold text-teal-900">Acceso Beta Privada</p>
+                      <p className="font-semibold text-teal-900">Acceso completo</p>
                       <p className="text-teal-700 text-xs mt-0.5">
                         El médico tendrá acceso completo a la plataforma por 1 año, sin costo.
                       </p>
@@ -386,7 +386,7 @@ function SuccessView({
   onClose: () => void
 }) {
   // Beta privada (2026-04-22): todos los médicos arrancan en Beta Privada (1 año gratis)
-  const planLabel = 'Beta Privada · 1 año gratis'
+  const planLabel = 'Período de prueba · 1 año gratis'
   const planColor = 'text-teal-600 bg-teal-50'
   void plan // ignorar el plan recibido, en beta privada todos son trial
 

@@ -84,21 +84,19 @@ export default function AdminSubscriptionsPage() {
   const [tab, setTab] = useState<'doctors' | 'payments' | 'config'>('doctors')
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-600 flex items-center justify-center">
-            <CreditCard className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Suscripciones</h1>
-            <p className="text-sm text-slate-500">Gestión de planes, comprobantes y configuración global</p>
-          </div>
+    <div className="space-y-4 sm:space-y-6">
+      <header className="flex items-center gap-3">
+        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-600 flex items-center justify-center shrink-0">
+          <CreditCard className="w-5 h-5 text-white" />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-2xl font-bold text-slate-900">Suscripciones</h1>
+          <p className="text-xs sm:text-sm text-slate-500 truncate">Planes, comprobantes y configuración</p>
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200">
+      {/* Tabs — scroll horizontal en móvil */}
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto scrollbar-thin">
         {([
           { key: 'doctors',  label: 'Doctores',     icon: Users },
           { key: 'payments', label: 'Comprobantes', icon: FileText },
@@ -107,7 +105,7 @@ export default function AdminSubscriptionsPage() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            className={`shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
               tab === t.key
                 ? 'border-teal-500 text-teal-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -213,130 +211,212 @@ function DoctorsTab() {
 
   return (
     <>
-      {/* Filtros */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[240px] max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o email…"
-            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white"
-          />
-        </div>
-        {[
-          { key: '',          label: 'Todos' },
-          { key: 'expiring',  label: 'Por vencer (7d)' },
-          { key: 'expired',   label: 'Vencidos' },
-          { key: 'trial',     label: 'En trial' },
-          { key: 'active',    label: 'Activos' },
-          { key: 'suspended', label: 'Suspendidos' },
-        ].map(f => (
-          <button
-            key={f.key || 'all'}
-            onClick={() => setFilter(f.key)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border ${
-              filter === f.key
-                ? 'bg-teal-500 text-white border-teal-500'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {f.label}
+      {/* Filtros — search en línea propia en móvil para que no se aplaste */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o email…"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+            />
+          </div>
+          <button onClick={load} className="p-2 text-slate-500 hover:text-slate-800 shrink-0" title="Recargar">
+            <RefreshCw className="w-4 h-4" />
           </button>
-        ))}
-        <button onClick={load} className="ml-auto p-2 text-slate-500 hover:text-slate-800" title="Recargar">
-          <RefreshCw className="w-4 h-4" />
-        </button>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+          {[
+            { key: '',          label: 'Todos' },
+            { key: 'expiring',  label: 'Por vencer' },
+            { key: 'expired',   label: 'Vencidos' },
+            { key: 'trial',     label: 'En trial' },
+            { key: 'active',    label: 'Activos' },
+            { key: 'suspended', label: 'Suspendidos' },
+          ].map(f => (
+            <button
+              key={f.key || 'all'}
+              onClick={() => setFilter(f.key)}
+              className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border whitespace-nowrap ${
+                filter === f.key
+                  ? 'bg-teal-500 text-white border-teal-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Tabla */}
+      {/* Tabla en desktop, cards en móvil */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         {loading ? (
           <div className="p-12 text-center"><Loader2 className="w-6 h-6 animate-spin text-slate-300 mx-auto" /></div>
         ) : doctors.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-sm">Sin doctores que coincidan con el filtro.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                <tr>
-                  <th className="px-4 py-3 text-left">Doctor</th>
-                  <th className="px-4 py-3 text-left">Estado</th>
-                  <th className="px-4 py-3 text-left">Plan</th>
-                  <th className="px-4 py-3 text-right">Días restantes</th>
-                  <th className="px-4 py-3 text-left">Vence</th>
-                  <th className="px-4 py-3 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {doctors.map(d => {
-                  const badge = STATUS_BADGES[d.status || 'trial'] || STATUS_BADGES.trial
-                  return (
-                    <tr key={d.doctor_id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{d.doctor_name || '—'}</div>
-                        <div className="text-xs text-slate-500">{d.doctor_email}</div>
-                        {d.specialty && <div className="text-xs text-teal-600 mt-0.5">{d.specialty}</div>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${badge.cls}`}>
-                          {badge.label}
-                        </span>
-                        {d.expiring_soon && (
-                          <span className="block mt-1 text-xs text-orange-600 flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3" /> Vence pronto
+          <>
+            {/* Desktop ≥ md: tabla */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Doctor</th>
+                    <th className="px-4 py-3 text-left">Estado</th>
+                    <th className="px-4 py-3 text-left">Plan</th>
+                    <th className="px-4 py-3 text-right">Días restantes</th>
+                    <th className="px-4 py-3 text-left">Vence</th>
+                    <th className="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {doctors.map(d => {
+                    const badge = STATUS_BADGES[d.status || 'trial'] || STATUS_BADGES.trial
+                    return (
+                      <tr key={d.doctor_id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-slate-900">{d.doctor_name || '—'}</div>
+                          <div className="text-xs text-slate-500">{d.doctor_email}</div>
+                          {d.specialty && <div className="text-xs text-teal-600 mt-0.5">{d.specialty}</div>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${badge.cls}`}>
+                            {badge.label}
                           </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 capitalize">{d.plan || '—'}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`font-bold ${d.days_remaining === 0 ? 'text-red-600' : d.days_remaining < 7 ? 'text-orange-600' : 'text-slate-700'}`}>
-                          {d.days_remaining}
-                        </span>
-                        <span className="text-xs text-slate-400 ml-1">días</span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 text-xs">
-                        {d.current_period_end
-                          ? new Date(d.current_period_end).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex items-center gap-1">
-                          <button
-                            onClick={() => extendDoctor(d.doctor_id, d.doctor_name)}
-                            disabled={actioning === d.doctor_id}
-                            title="Extender N meses"
-                            className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-md disabled:opacity-40"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                          {d.status === 'suspended' ? (
-                            <button
-                              onClick={() => reactivateDoctor(d.doctor_id)}
-                              disabled={actioning === d.doctor_id}
-                              title="Reactivar"
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md disabled:opacity-40"
-                            >
-                              <Play className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => suspendDoctor(d.doctor_id, d.doctor_name)}
-                              disabled={actioning === d.doctor_id}
-                              title="Suspender"
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-md disabled:opacity-40"
-                            >
-                              <Pause className="w-4 h-4" />
-                            </button>
+                          {d.expiring_soon && (
+                            <span className="block mt-1 text-xs text-orange-600 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Vence pronto
+                            </span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 capitalize">{d.plan || '—'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`font-bold ${d.days_remaining === 0 ? 'text-red-600' : d.days_remaining < 7 ? 'text-orange-600' : 'text-slate-700'}`}>
+                            {d.days_remaining}
+                          </span>
+                          <span className="text-xs text-slate-400 ml-1">días</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 text-xs">
+                          {d.current_period_end
+                            ? new Date(d.current_period_end).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => extendDoctor(d.doctor_id, d.doctor_name)}
+                              disabled={actioning === d.doctor_id}
+                              title="Extender N meses"
+                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-md disabled:opacity-40"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                            {d.status === 'suspended' ? (
+                              <button
+                                onClick={() => reactivateDoctor(d.doctor_id)}
+                                disabled={actioning === d.doctor_id}
+                                title="Reactivar"
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md disabled:opacity-40"
+                              >
+                                <Play className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => suspendDoctor(d.doctor_id, d.doctor_name)}
+                                disabled={actioning === d.doctor_id}
+                                title="Suspender"
+                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-md disabled:opacity-40"
+                              >
+                                <Pause className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Móvil < md: cards */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {doctors.map(d => {
+                const badge = STATUS_BADGES[d.status || 'trial'] || STATUS_BADGES.trial
+                return (
+                  <div key={d.doctor_id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{d.doctor_name || '—'}</div>
+                        <div className="text-xs text-slate-500 truncate">{d.doctor_email}</div>
+                        {d.specialty && <div className="text-xs text-teal-600 mt-0.5">{d.specialty}</div>}
+                      </div>
+                      <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs bg-slate-50 rounded-lg p-2">
+                      <div>
+                        <div className="text-slate-400 uppercase font-semibold tracking-wider text-[10px]">Días</div>
+                        <div className={`text-base font-bold ${d.days_remaining === 0 ? 'text-red-600' : d.days_remaining < 7 ? 'text-orange-600' : 'text-slate-700'}`}>
+                          {d.days_remaining}
                         </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                      <div>
+                        <div className="text-slate-400 uppercase font-semibold tracking-wider text-[10px]">Plan</div>
+                        <div className="text-sm font-semibold text-slate-700 capitalize">{d.plan || '—'}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-slate-400 uppercase font-semibold tracking-wider text-[10px]">Vence</div>
+                        <div className="text-xs font-semibold text-slate-600">
+                          {d.current_period_end
+                            ? new Date(d.current_period_end).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
+                            : '—'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {d.expiring_soon && (
+                      <span className="text-xs text-orange-600 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Vence pronto
+                      </span>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => extendDoctor(d.doctor_id, d.doctor_name)}
+                        disabled={actioning === d.doctor_id}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg disabled:opacity-40"
+                      >
+                        <Plus className="w-4 h-4" /> Extender
+                      </button>
+                      {d.status === 'suspended' ? (
+                        <button
+                          onClick={() => reactivateDoctor(d.doctor_id)}
+                          disabled={actioning === d.doctor_id}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg disabled:opacity-40"
+                        >
+                          <Play className="w-4 h-4" /> Reactivar
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => suspendDoctor(d.doctor_id, d.doctor_name)}
+                          disabled={actioning === d.doctor_id}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg disabled:opacity-40"
+                        >
+                          <Pause className="w-4 h-4" /> Suspender
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
         )}
       </div>
     </>
@@ -429,7 +509,7 @@ function PaymentsTab() {
         ) : (
           <div className="divide-y divide-slate-100">
             {payments.map(p => (
-              <div key={p.id} className="p-4 flex items-center gap-4 hover:bg-slate-50">
+              <div key={p.id} className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-slate-50">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-900 truncate">{p.profiles?.full_name || '—'}</span>
@@ -451,7 +531,7 @@ function PaymentsTab() {
                   {p.notes && <div className="text-xs text-slate-600 mt-1 italic">"{p.notes}"</div>}
                   {p.rejection_reason && <div className="text-xs text-red-600 mt-1">Rechazado: {p.rejection_reason}</div>}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                   {p.receipt_url && (
                     <button
                       onClick={() => setPreviewId(p.id)}

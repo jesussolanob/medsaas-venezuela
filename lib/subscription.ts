@@ -38,12 +38,12 @@ export interface SubscriptionInfo {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 export const PLAN_LABELS: Record<string, string> = {
-  trial: 'Beta Privada',
-  basic: 'Beta Privada',
-  professional: 'Beta Privada',
-  enterprise: 'Beta Privada',
-  clinic: 'Beta Privada',
-  centro_salud: 'Beta Privada',
+  trial: 'Período de prueba',
+  basic: 'Plan profesional',
+  professional: 'Plan profesional',
+  enterprise: 'Plan profesional',
+  clinic: 'Plan profesional',
+  centro_salud: 'Plan profesional',
 }
 
 export const STATUS_LABELS: Record<string, string> = {

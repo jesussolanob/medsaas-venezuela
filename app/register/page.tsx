@@ -165,7 +165,7 @@ export default function RegisterPage() {
                     <CheckCircle2 className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-900">Acceso Beta Privada activado</p>
+                    <p className="font-bold text-slate-900">Período de prueba activado</p>
                     <p className="text-sm text-slate-600 mt-1">
                       Tienes acceso completo y gratuito por 1 año (configurable por el administrador).
                       Cuando se acerque el vencimiento te avisaremos.
@@ -243,7 +243,7 @@ export default function RegisterPage() {
                 </p>
               </div>
               <span className="ml-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}>
-                Beta Privada
+                Health Tech
               </span>
             </div>
           </div>
@@ -267,7 +267,7 @@ export default function RegisterPage() {
               </div>
               <div>
                 <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>Gratis</p>
-                <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--dh-gray-400)' }}>Beta Privada</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--dh-gray-400)' }}>1 año de prueba</p>
               </div>
               <div>
                 <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>2 min</p>

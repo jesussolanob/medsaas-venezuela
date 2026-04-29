@@ -114,7 +114,7 @@ export default function SubscriptionPanel({ embedded = false }: { embedded?: boo
   }[tone]
 
   const stateLabel = state.is_expired ? 'Vencida'
-    : state.is_in_trial ? 'Beta Privada'
+    : state.is_in_trial ? 'Período de prueba'
     : state.status === 'suspended' ? 'Suspendida'
     : state.status === 'active' ? 'Activa'
     : state.status
@@ -130,22 +130,22 @@ export default function SubscriptionPanel({ embedded = false }: { embedded?: boo
   return (
     <div className={embedded ? 'space-y-5' : 'max-w-3xl mx-auto space-y-5'}>
       {/* ── Estado actual ─────────────────────────────────────────────── */}
-      <div className={`bg-gradient-to-br ${toneClasses.bg} border ${toneClasses.border} rounded-2xl p-6 space-y-4`}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center">
-              <CreditCard className={`w-6 h-6 ${toneClasses.icon}`} />
+      <div className={`bg-gradient-to-br ${toneClasses.bg} border ${toneClasses.border} rounded-2xl p-4 sm:p-6 space-y-4`}>
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white shadow-sm flex items-center justify-center shrink-0">
+              <CreditCard className={`w-5 h-5 sm:w-6 sm:h-6 ${toneClasses.icon}`} />
             </div>
-            <div>
-              <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${toneClasses.label}`}>
+            <div className="min-w-0">
+              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider ${toneClasses.label}`}>
                 {stateLabel}
               </span>
-              <h2 className="text-xl font-bold text-slate-900 mt-1">Tu Suscripción</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 mt-1">Tu Suscripción</h2>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-3xl font-black text-slate-900">{state.days_remaining}</div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">días restantes</div>
+          <div className="text-right shrink-0">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{state.days_remaining}</div>
+            <div className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">días restantes</div>
           </div>
         </div>
 
@@ -171,7 +171,7 @@ export default function SubscriptionPanel({ embedded = false }: { embedded?: boo
       </div>
 
       {/* ── Historial de pagos ──────────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5">
         <h3 className="font-bold text-slate-900 mb-3">Historial de pagos</h3>
         {payments.length === 0 ? (
           <p className="text-sm text-slate-400 italic text-center py-6">Aún no has realizado pagos.</p>
@@ -184,9 +184,9 @@ export default function SubscriptionPanel({ embedded = false }: { embedded?: boo
                 ? { cls: 'bg-red-100 text-red-700', icon: <X className="w-3 h-3" />, label: 'Rechazado' }
                 : { cls: 'bg-amber-100 text-amber-700', icon: <Clock className="w-3 h-3" />, label: 'Pendiente' }
               return (
-                <div key={p.id} className="py-3 flex items-center justify-between gap-3">
+                <div key={p.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-slate-800 text-sm">${p.amount_usd} USD</span>
                       <span className="text-xs text-slate-500">·</span>
                       <span className="text-xs text-slate-500">{p.duration_months} mes{p.duration_months > 1 ? 'es' : ''}</span>
@@ -199,7 +199,7 @@ export default function SubscriptionPanel({ embedded = false }: { embedded?: boo
                     </div>
                     {p.rejection_reason && <div className="text-xs text-red-600 mt-1 italic">Motivo: {p.rejection_reason}</div>}
                   </div>
-                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${statusBadge.cls}`}>
+                  <span className={`shrink-0 self-start sm:self-auto inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${statusBadge.cls}`}>
                     {statusBadge.icon} {statusBadge.label}
                   </span>
                 </div>

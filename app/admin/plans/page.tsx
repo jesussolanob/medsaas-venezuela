@@ -94,10 +94,10 @@ export default function PlansPage() {
       <div className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 p-5 text-white">
         <div className="flex items-center gap-3 mb-2">
           <Shield className="w-6 h-6" />
-          <h2 className="text-lg font-bold">Beta Privada</h2>
+          <h2 className="text-lg font-bold">Plan profesional</h2>
         </div>
         <p className="text-sm text-white/70">
-          Delta está actualmente en beta privada. Los médicos se registran y esperan aprobación del admin para acceder al sistema.
+          Configurá los parámetros del período de prueba que reciben los médicos al registrarse.
         </p>
       </div>
 
@@ -108,7 +108,7 @@ export default function PlansPage() {
             <Settings className="w-4 h-4 text-slate-400" />
             <span className="text-xs text-slate-500 font-medium">Plan actual</span>
           </div>
-          <p className="text-lg font-bold text-slate-900">Beta Privada (Gratis)</p>
+          <p className="text-lg font-bold text-slate-900">Período de prueba (Gratis)</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -153,7 +153,7 @@ export default function PlansPage() {
                 onBlur={e => updateBetaPlan('description', e.target.value)}
                 rows={2}
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 resize-none"
-                placeholder="Acceso completo a todas las funciones durante la beta privada..."
+                placeholder="Acceso completo a todas las funciones durante el período de prueba..."
               />
             </div>
 
@@ -166,7 +166,7 @@ export default function PlansPage() {
                 onBlur={e => updateBetaPlan('price', parseFloat(e.target.value) || 0)}
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
               />
-              <p className="text-[10px] text-slate-400 mt-1">Durante la beta privada el precio es $0. Cámbialo cuando lances los planes de pago.</p>
+              <p className="text-[10px] text-slate-400 mt-1">Durante el período de prueba el precio es $0. Cámbialo cuando lances los planes de pago.</p>
             </div>
           </div>
         </div>
@@ -174,7 +174,7 @@ export default function PlansPage() {
 
       {/* Info card */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <p className="text-sm text-blue-800 font-medium mb-1">¿Cómo funciona la beta privada?</p>
+        <p className="text-sm text-blue-800 font-medium mb-1">¿Cómo funciona el período de prueba?</p>
         <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
           <li>El médico se registra en /register y recibe un periodo trial</li>
           <li>Aparece en Aprobaciones con estado "Trial"</li>

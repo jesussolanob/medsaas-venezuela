@@ -192,7 +192,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               {/* Plan badge */}
               <div className="bg-teal-50 border border-teal-200 p-3 rounded-lg">
                 <p className="text-xs text-slate-500 uppercase mb-1">Plan</p>
-                <p className="text-sm font-bold text-teal-700">Beta Privada</p>
+                <p className="text-sm font-bold text-teal-700">Plan profesional</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">Acceso completo a todas las funcionalidades</p>
               </div>
 

@@ -365,11 +365,11 @@ export default function DoctorDashboard() {
             )}
           </div>
 
-          {/* Beta badge */}
+          {/* Plan badge */}
           <div className="flex items-center gap-2 bg-white border border-teal-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 shrink-0">
             <CheckCircle className="w-4 h-4 text-teal-500" />
             <div>
-              <p className="text-xs font-semibold text-teal-700">Beta Privada</p>
+              <p className="text-xs font-semibold text-teal-700">Plan activo</p>
               <p className="text-[10px] text-slate-400">Acceso completo</p>
             </div>
           </div>
