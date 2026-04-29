@@ -2856,6 +2856,129 @@ function ConsultationsPage() {
             </div>
           </div>
         )}
+
+        {/* L1 (2026-04-29) FIX: MODAL "GENERAR INFORME" — vivía solo en la vista
+            list (línea ~3286) pero el botón está en la vista consultation, así
+            que el setState disparaba pero React nunca renderizaba el modal. */}
+        {showGenerateReport && selected && (() => {
+          const effective = getEffectiveBlocks(selected)
+          const printable = effective.filter(b => b.printable)
+          console.log('[generar-informe] MODAL RENDERING (consultation view)', { effectiveCount: effective.length, printableCount: printable.length })
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !generatingReport && setShowGenerateReport(false)}>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-teal-600" />
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-900">Generar informe</h2>
+                  </div>
+                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport} className="text-slate-400 hover:text-slate-600 disabled:opacity-50">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-slate-600">Selecciona los bloques que quieres incluir en el PDF.</p>
+                {generatedReportUrl && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                    <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5" /> Informe generado
+                    </p>
+                    <a
+                      href={generatedReportUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 underline hover:text-emerald-800"
+                    >
+                      Abrir PDF en nueva pestaña <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(generatedReportUrl).catch(() => {})}
+                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 ml-3"
+                    >
+                      Copiar enlace
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-2 border border-slate-100 rounded-xl p-3">
+                  {printable.length === 0 && (
+                    <p className="text-xs text-slate-400 italic">No hay bloques compartibles en esta consulta.</p>
+                  )}
+                  {printable.map(b => (
+                    <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" checked={reportSelectedKeys.has(b.key)} onChange={e => {
+                          setReportSelectedKeys(prev => {
+                            const next = new Set(prev)
+                            if (e.target.checked) next.add(b.key)
+                            else next.delete(b.key)
+                            return next
+                          })
+                        }}
+                        className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
+                      <span className="text-sm text-slate-700">{b.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport}
+                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                    Cancelar
+                  </button>
+                  <button onClick={async () => {
+                      if (reportSelectedKeys.size === 0) { alert('Selecciona al menos un bloque'); return }
+                      setGeneratingReport(true)
+                      setGeneratedReportUrl(null)
+                      try {
+                        const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+                        let body = ''
+                        const debugBlocks: { key: string; label: string; hasContent: boolean }[] = []
+                        for (const b of printable) {
+                          if (!reportSelectedKeys.has(b.key)) continue
+                          const piece = (b.key === 'informe' || b.key === 'notes')
+                            ? generateInformeHtml()
+                            : generateBlockHtml(b.key, b.label)
+                          debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece })
+                          if (piece) body += piece
+                        }
+                        if (!body) {
+                          const lista = debugBlocks.map(d => `• ${d.label}: vacío`).join('\n')
+                          body = `<div class="section"><div class="section-title">Sin contenido</div><div class="section-content">No hay información registrada en los bloques seleccionados de esta consulta.<br><br>${lista.replace(/\n/g, '<br>')}</div></div>`
+                          console.warn('[generate-report] generando PDF de placeholder; bloques sin contenido:', debugBlocks)
+                        }
+                        const html = buildPdfHtml('informe', 'Informe Médico', body, selected.patient_name, selected.consultation_code, dateStr)
+                        const res = await fetch('/api/doctor/share-pdf', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            htmlContent: html,
+                            fileName: `informe-${selected.consultation_code || selected.id}`,
+                            consultationCode: selected.consultation_code,
+                          }),
+                        })
+                        const data = await res.json().catch(() => ({}))
+                        if (!res.ok || !data.url) {
+                          console.error('[generate-report] response error:', { status: res.status, data })
+                          alert(data.error || `Error generando el PDF (status ${res.status})`)
+                          return
+                        }
+                        setGeneratedReportUrl(data.url)
+                      } catch (err: any) {
+                        console.error('[generate-report] error:', err)
+                        alert(`Error generando el informe: ${err?.message || 'desconocido'}`)
+                      } finally {
+                        setGeneratingReport(false)
+                      }
+                    }}
+                    disabled={generatingReport || reportSelectedKeys.size === 0}
+                    className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
+                    {generatingReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                    {generatingReport ? 'Generando...' : 'Generar PDF'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
       </>
     )
   }
