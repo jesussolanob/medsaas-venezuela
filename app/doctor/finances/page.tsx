@@ -294,10 +294,13 @@ export default function FinancesPage() {
     return opts
   }, [])
 
-  // L7 (2026-04-29): KPIs basados en `reportMonth` (independiente del nav día/semana/mes).
-  // - consultasMes: consultas del mes con payment_status='approved'.
-  // - pacientesUnicos: distinct patient_id (proxy con patient_name de la fila).
-  // - crecimientoMoM: % vs mes anterior. Si mes anterior era 0 → null (mostrar "—").
+  // L7 + FIX 2026-04-29: KPIs basados en `reportMonth`.
+  // - consultasMes: TOTAL de consultas del mes (independiente de pago) — antes
+  //   filtraba por payment_status='approved' y daba 0 cuando habían consultas
+  //   pendientes/agendadas. Sub-desglose: aprobadas + pendientes para que el
+  //   doctor vea el ratio.
+  // - pacientesUnicos: distinct patient_name del mes.
+  // - crecimientoMoM: % de consultas totales vs mes anterior.
   const reportKpis = useMemo(() => {
     const [yStr, mStr] = reportMonth.split('-')
     const year = parseInt(yStr, 10)
@@ -309,31 +312,29 @@ export default function FinancesPage() {
     const inMonth = (d: Date, y: number, m: number) =>
       d.getFullYear() === y && d.getMonth() === m
 
-    const currentApproved = consultationsRows.filter(r => {
-      if (r.payment_status !== 'approved') return false
+    const currentMonth = consultationsRows.filter(r => {
       if (!r.consultation_date) return false
       return inMonth(new Date(r.consultation_date), year, month)
     })
-    const prevApproved = consultationsRows.filter(r => {
-      if (r.payment_status !== 'approved') return false
+    const prevMonthRows = consultationsRows.filter(r => {
       if (!r.consultation_date) return false
       return inMonth(new Date(r.consultation_date), prevYear, prevMonth)
     })
 
-    const consultasMes = currentApproved.length
-    const pacientesUnicos = new Set(currentApproved.map(r => r.patient_name)).size
-    const consultasPrev = prevApproved.length
+    const consultasMes = currentMonth.length
+    const consultasAprobadas = currentMonth.filter(r => r.payment_status === 'approved').length
+    const consultasPendientes = consultasMes - consultasAprobadas
+    const pacientesUnicos = new Set(currentMonth.map(r => r.patient_name)).size
+    const consultasPrev = prevMonthRows.length
 
     let crecimientoMoM: number | null = null
     if (consultasPrev > 0) {
       crecimientoMoM = ((consultasMes - consultasPrev) / consultasPrev) * 100
-    } else if (consultasMes > 0 && consultasPrev === 0) {
-      crecimientoMoM = null // mes anterior era 0 → no se puede calcular
     } else {
       crecimientoMoM = null
     }
 
-    return { consultasMes, pacientesUnicos, crecimientoMoM, consultasPrev }
+    return { consultasMes, consultasAprobadas, consultasPendientes, pacientesUnicos, crecimientoMoM, consultasPrev }
   }, [consultationsRows, reportMonth])
 
   // L7 (2026-04-29): chart Recharts — últimos 6 meses ingresos vs egresos
@@ -815,7 +816,9 @@ export default function FinancesPage() {
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Consultas del mes</p>
             </div>
             <p className="text-2xl font-bold text-slate-900">{reportKpis.consultasMes}</p>
-            <p className="text-xs text-slate-400 mt-1">Pagos aprobados</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {reportKpis.consultasAprobadas} aprobadas · {reportKpis.consultasPendientes} pendientes
+            </p>
           </div>
           <div className="rounded-xl border border-slate-200 p-4">
             <div className="flex items-center gap-3 mb-2">

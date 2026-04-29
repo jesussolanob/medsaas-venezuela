@@ -144,15 +144,17 @@ const DEFAULT_CONFIG: ScheduleConfig = {
   auto_approve: false,
 }
 
+// FIX 2026-04-29: tags `id: 'default-...'` para que el merge sepa cuáles son
+// fallback y los reemplace por completo cuando llegue la config real del office.
 const DEFAULT_SLOTS: AvailabilitySlot[] = [
-  { day_of_week: 0, start_time: '08:00', end_time: '12:00', is_enabled: true },
-  { day_of_week: 0, start_time: '14:00', end_time: '17:00', is_enabled: true },
-  { day_of_week: 1, start_time: '08:00', end_time: '12:00', is_enabled: true },
-  { day_of_week: 1, start_time: '14:00', end_time: '17:00', is_enabled: true },
-  { day_of_week: 2, start_time: '08:00', end_time: '12:00', is_enabled: true },
-  { day_of_week: 3, start_time: '08:00', end_time: '12:00', is_enabled: true },
-  { day_of_week: 3, start_time: '14:00', end_time: '17:00', is_enabled: true },
-  { day_of_week: 4, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { id: 'default-0a', day_of_week: 0, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { id: 'default-0b', day_of_week: 0, start_time: '14:00', end_time: '17:00', is_enabled: true },
+  { id: 'default-1a', day_of_week: 1, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { id: 'default-1b', day_of_week: 1, start_time: '14:00', end_time: '17:00', is_enabled: true },
+  { id: 'default-2a', day_of_week: 2, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { id: 'default-3a', day_of_week: 3, start_time: '08:00', end_time: '12:00', is_enabled: true },
+  { id: 'default-3b', day_of_week: 3, start_time: '14:00', end_time: '17:00', is_enabled: true },
+  { id: 'default-4a', day_of_week: 4, start_time: '08:00', end_time: '12:00', is_enabled: true },
 ]
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -365,9 +367,11 @@ export default function AgendaPage() {
         }
       }
 
-      // RONDA 28: ADEMAS leer doctor_offices.schedule. Si el doctor configuro su
-      // consultorio (la fuente moderna) y no doctor_availability (legacy), hay que
-      // mergear ambos para que vista day no diga "no hay horarios" cuando si los hay.
+      // RONDA 28 + FIX 2026-04-29: doctor_offices.schedule es la fuente moderna.
+      // Si el doctor configuró su consultorio, REEMPLAZAR los DEFAULT_SLOTS — antes
+      // hacíamos merge "preservando días existentes", lo que dejaba el DEFAULT
+      // (08:00-12:00) ganando sobre el office (08:00-17:00) y la agenda solo
+      // mostraba slots hasta 10:20.
       const { data: offices } = await supabase
         .from('doctor_offices')
         .select('schedule, slot_duration, buffer_minutes')
@@ -393,25 +397,25 @@ export default function AgendaPage() {
         })
 
         if (officeSlots.length > 0) {
+          // FIX 2026-04-29: el office es la fuente de verdad. Reemplazamos
+          // DEFAULT_SLOTS por completo. Solo conservamos slots de doctor_availability
+          // (legacy) que NO chocan con office (días distintos).
           setAvailSlots(prev => {
-            // Mergear sin duplicar dias: si ya hay slot para day_of_week en prev, dejar el de prev.
-            const existingDays = new Set(prev.filter(s => s.is_enabled).map(s => s.day_of_week))
-            const newOnes = officeSlots.filter(o => !existingDays.has(o.day_of_week))
-            return [...prev, ...newOnes]
+            const officeDays = new Set(officeSlots.map(o => o.day_of_week))
+            const isDefaultSlot = (s: AvailabilitySlot) => !s.id || String(s.id).startsWith('default-')
+            const legacyKept = prev.filter(s => !officeDays.has(s.day_of_week) && !isDefaultSlot(s))
+            return [...officeSlots, ...legacyKept]
           })
           // RONDA 32: solo setear config si REALMENTE cambia algo (deep check).
-          // Antes el setConfig con spread {...prev, ...} siempre creaba nuevo objeto
-          // aunque los valores fueran iguales — combinado con la dep [slot_duration]
-          // del useCallback antiguo causaba el bucle infinito.
+          // FIX 2026-04-29: el office también es la fuente de verdad para slot_duration
+          // y buffer — antes solo aplicaba si prev.slot_duration era el default 30.
           const firstOffice = offices[0] as any
-          if (firstOffice.slot_duration) {
-            setConfig(prev => {
-              const newSlot = prev.slot_duration === 30 ? firstOffice.slot_duration : prev.slot_duration
-              const newBuffer = prev.buffer_minutes === 0 && firstOffice.buffer_minutes ? firstOffice.buffer_minutes : prev.buffer_minutes
-              if (newSlot === prev.slot_duration && newBuffer === prev.buffer_minutes) return prev   // no-op
-              return { ...prev, slot_duration: newSlot, buffer_minutes: newBuffer }
-            })
-          }
+          setConfig(prev => {
+            const newSlot = firstOffice.slot_duration ?? prev.slot_duration
+            const newBuffer = firstOffice.buffer_minutes ?? prev.buffer_minutes
+            if (newSlot === prev.slot_duration && newBuffer === prev.buffer_minutes) return prev
+            return { ...prev, slot_duration: newSlot, buffer_minutes: newBuffer }
+          })
         }
       }
     } catch { /* use defaults */ }
