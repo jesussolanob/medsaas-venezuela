@@ -28,6 +28,18 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createAdminClient()
 
+    // FIX 2026-04-29: el toolbar mostraba "Documento Medico" genérico. Detectamos
+    // el tipo desde el prefijo del fileName (informe-/recipe-/prescripciones-/reposo-)
+    // para mostrar el título correcto.
+    const docTypeLabel = (() => {
+      const fn = (fileName as string).toLowerCase()
+      if (fn.startsWith('informe')) return 'Informe Médico'
+      if (fn.startsWith('receta') || fn.startsWith('recipe')) return 'Receta Médica'
+      if (fn.startsWith('prescripciones') || fn.startsWith('prescription')) return 'Prescripción de Exámenes'
+      if (fn.startsWith('reposo')) return 'Constancia de Reposo'
+      return 'Documento Médico'
+    })()
+
     // Wrap the HTML content in a professional viewer with print/download buttons
     const viewerHtml = htmlContent
       .replace(/<script>window\.onload\s*=\s*function\(\)\s*\{\s*window\.print\(\);\s*\}<\/script>/g, '')
@@ -67,7 +79,7 @@ export async function POST(req: NextRequest) {
 </head>`)
       .replace('<body>', `<body>
   <div class="doc-toolbar">
-    <div class="brand">Delta Medical CRM<span>Documento Medico</span></div>
+    <div class="brand">Delta Medical CRM<span>${docTypeLabel}</span></div>
     <div class="actions">
       <button onclick="window.print()">Imprimir</button>
       <button class="primary" onclick="window.print()">Guardar PDF</button>
