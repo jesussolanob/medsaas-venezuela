@@ -9,6 +9,7 @@ import {
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import SearchCommandPalette from './SearchCommandPalette'
+import { Toaster } from '@/components/ui/Toaster'
 
 type NavItem = { name: string; href: string; icon: any }
 
@@ -216,6 +217,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
   return (
     <>
+      <Toaster />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
         .patient-layout * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }

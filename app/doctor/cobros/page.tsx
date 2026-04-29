@@ -101,6 +101,9 @@ export default function CobrosPage() {
     }
   }
 
+  // NOTA: la versión completa de generateReceipt() vive más abajo (línea 407+),
+  // implementada en la ronda 34 con soporte de payment_items + PDF.
+
   // BCV rate now comes from useBcvRate() hook
 
   // FUENTE UNICA (ronda 15): leer de tabla `payments` via helper compartido.
@@ -888,6 +891,7 @@ export default function CobrosPage() {
           </div>
         </div>
       )}
+      <style jsx>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
     </div>
   )
 }

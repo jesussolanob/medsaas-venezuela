@@ -115,7 +115,7 @@ export default function UsersPanel() {
 
         {/* Doctors Table */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto -mx-4 sm:mx-0 sm:overflow-hidden">
-            <table className="w-full min-w-[700px]">
+            <table className="w-full md:min-w-[700px]">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Médico</th>

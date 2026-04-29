@@ -77,7 +77,12 @@ export async function resolveBlocksForDoctor({
     const specialtyEntry = specialtyMap.get(cat.key) as any
     const doctorEntry = doctorMap.get(cat.key) as any
 
-    // Resolución de enabled (cascada zero-friction)
+    // Resolución de enabled (cascada).
+    // RONDA 37 + AUDIT FIX C-4 (2026-04-28): combina zero-friction onboarding
+    // (doctor virgen sin specialty defaults) con respeto al `default_enabled`
+    // del catálogo cuando el doctor SÍ tiene config personal pero no para este
+    // block_key — así los core (chief_complaint, diagnosis, treatment,
+    // prescription) siguen visibles aunque el doctor haya escondido otros.
     let enabled: boolean
     if (doctorEntry) {
       enabled = doctorEntry.enabled
@@ -88,9 +93,9 @@ export async function resolveBlocksForDoctor({
       // defaults). Mostrar todos los bloques printables como onboarding.
       enabled = catalogEntry.default_printable !== false
     } else {
-      // El doctor SI tiene config personal pero no para este block_key especifico
-      // → respetar su decision implicita (no mostrar). Igual para specialty con defaults.
-      enabled = false
+      // Doctor con config personal o specialty con defaults pero sin entry
+      // para este block_key específico → respetar `default_enabled` del catálogo.
+      enabled = catalogEntry.default_enabled ?? false
     }
 
     if (!enabled) continue

@@ -12,6 +12,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { VENEZUELA_INSURANCES } from './insurances'
 import AvatarUploader from './avatar-uploader'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count: number; is_active: boolean }
 type Module = { id: string; label: string; description: string; enabled: boolean }
@@ -87,7 +88,9 @@ const PAYMENT_METHODS: PaymentMethodData[] = [
 
 const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors'
 
-type TabId = 'profile' | 'booking' | 'payment' | 'notifications' | 'integrations'
+// AUDIT FIX 2026-04-28 (TS-4): incluir 'assistants' al union; el bloque de UI ya
+// existe (línea 1049) pero el tab nunca se mostraba — TabId no lo permitía.
+type TabId = 'profile' | 'booking' | 'payment' | 'notifications' | 'integrations' | 'assistants'
 
 function SettingsPageInner() {
   const searchParams = useSearchParams()
@@ -203,10 +206,14 @@ function SettingsPageInner() {
       // Si quieres reactivar, agregar columna profiles.insurances jsonb.
 
       // services
-      try {
-        const { data: svcs } = await supabase.from('doctor_services').select('*').eq('doctor_id', user.id).order('name')
-        if (svcs) setServices(svcs as Service[])
-      } catch { /* tabla puede no existir */ }
+      // AUDIT FIX 2026-04-28 (C-8): pricing_plans es la fuente única; type='service'.
+      const { data: svcs } = await supabase
+        .from('pricing_plans')
+        .select('*')
+        .eq('doctor_id', user.id)
+        .eq('type', 'service')
+        .order('name')
+      if (svcs) setServices(svcs as Service[])
 
       setLoading(false)
     }
@@ -292,12 +299,18 @@ function SettingsPageInner() {
     setUploadingSignature(false)
   }
 
-  async function removeSignature() {
+  // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.
+  const [confirmRemoveSignature, setConfirmRemoveSignature] = useState(false)
+  function removeSignature() {
     if (!doctorId) return
-    if (!confirm('¿Borrar la firma actual?')) return
+    setConfirmRemoveSignature(true)
+  }
+  async function performRemoveSignature() {
+    if (!doctorId) return
     const supabase = createClient()
     await supabase.from('profiles').update({ signature_url: null }).eq('id', doctorId)
     setSignatureUrl(null)
+    setConfirmRemoveSignature(false)
   }
 
   async function saveLicense() {
@@ -444,12 +457,14 @@ function SettingsPageInner() {
     if (!doctorId) return
     setServicesSaving(true); setServiceError('')
     const supabase = createClient()
-    const { data, error } = await supabase.from('doctor_services').insert({
+    // AUDIT FIX 2026-04-28 (C-8): pricing_plans con type='service'.
+    const { data, error } = await supabase.from('pricing_plans').insert({
       doctor_id: doctorId,
       name: newService.name,
       price_usd: parseFloat(newService.price_usd),
       description: newService.description || null,
       is_active: true,
+      type: 'service',
     }).select().single()
     if (error) {
       setServiceError('Error al guardar: ' + error.message)
@@ -463,12 +478,26 @@ function SettingsPageInner() {
   async function toggleService(id: string) {
     const service = services.find(s => s.id === id)
     setServices(prev => prev.map(s => s.id === id ? { ...s, is_active: !s.is_active } : s))
-    if (service) { const supabase = createClient(); await supabase.from('doctor_services').update({ is_active: !service.is_active }).eq('id', id) }
+    // AUDIT FIX 2026-04-28 (C-8): pricing_plans + match type='service'.
+    if (service) {
+      const supabase = createClient()
+      await supabase
+        .from('pricing_plans')
+        .update({ is_active: !service.is_active })
+        .eq('id', id)
+        .eq('type', 'service')
+    }
   }
 
   async function deleteService(id: string) {
     setServices(prev => prev.filter(s => s.id !== id))
-    const supabase = createClient(); await supabase.from('doctor_services').delete().eq('id', id)
+    // AUDIT FIX 2026-04-28 (C-8): pricing_plans + match type='service'.
+    const supabase = createClient()
+    await supabase
+      .from('pricing_plans')
+      .delete()
+      .eq('id', id)
+      .eq('type', 'service')
   }
 
   /* ---------------- INTEGRATIONS ---------------- */
@@ -497,6 +526,16 @@ function SettingsPageInner() {
   return (
     <>
       <style>{`* { font-family: 'Inter', sans-serif; } .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+
+      <ConfirmDialog
+        open={confirmRemoveSignature}
+        title="Borrar firma"
+        message="¿Borrar la firma actual? Tendrás que subir una nueva para los próximos documentos."
+        confirmLabel="Borrar"
+        variant="danger"
+        onConfirm={performRemoveSignature}
+        onCancel={() => setConfirmRemoveSignature(false)}
+      />
 
       <div className="max-w-4xl space-y-5">
         <div>

@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-// RONDA 36: render dinamico desde report_data (snapshot inmutable)
+// RONDA 36: render dinámico desde report_data (snapshot inmutable)
 import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer'
 import type { ReportData } from '@/lib/report-data'
+// AUDIT FIX 2026-04-28 (C-9): sanitizer para HTML rich-text (defense-in-depth).
+import { sanitizeHtml } from '@/lib/sanitize-html'
 
 // RONDA 30: incluir medications de la tabla prescriptions vinculadas por consultation_id
 type Medication = { name?: string; dose?: string; frequency?: string; duration?: string; indications?: string }
@@ -212,16 +214,13 @@ export default function ReportsPage() {
               {/* Expanded Content */}
               {expandedId === report.id && (
                 <div className="border-t border-slate-200 px-4 sm:px-6 py-4 sm:py-5 space-y-4">
-                  {/* RONDA 36 — Render dinamico desde report_data (snapshot inmutable).
-                      El componente itera report_data.blocks (ya filtrado de vacios),
-                      respeta send_to_patient y pinta cada bloque con su tipo correcto.
-                      Si por alguna razon no existe report_data (consultas muy viejas),
-                      caemos al render legacy de los campos sueltos. */}
+                  {/* RONDA 36 + AUDIT FIX C-9: render dinámico desde report_data
+                      (snapshot inmutable) cuando exista; fallback al render legacy
+                      con sanitizeHtml para defense-in-depth contra XSS. */}
                   {report.report_data && Array.isArray(report.report_data.blocks) && report.report_data.blocks.length > 0 ? (
                     <ReportBlocksViewer report={report.report_data} forPatient />
                   ) : (
                     <>
-                      {/* Chief Complaint (legacy) */}
                       {report.chief_complaint && (
                         <div>
                           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
@@ -239,7 +238,7 @@ export default function ReportsPage() {
                           </p>
                           <div
                             className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                            dangerouslySetInnerHTML={{ __html: report.notes }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.notes) }}
                           />
                         </div>
                       )}
@@ -250,7 +249,7 @@ export default function ReportsPage() {
                           </p>
                           <div
                             className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                            dangerouslySetInnerHTML={{ __html: report.diagnosis }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.diagnosis) }}
                           />
                         </div>
                       )}
@@ -261,7 +260,7 @@ export default function ReportsPage() {
                           </p>
                           <div
                             className="text-sm text-slate-700 prose prose-sm max-w-none bg-slate-50 rounded-lg p-3 sm:p-4"
-                            dangerouslySetInnerHTML={{ __html: report.treatment }}
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.treatment) }}
                           />
                         </div>
                       )}

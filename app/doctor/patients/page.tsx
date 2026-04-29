@@ -15,6 +15,8 @@ import PatientForm, { type PatientFormData } from '@/components/patient/PatientF
 import UploadDropZone from '@/components/shared/UploadDropZone'
 // RONDA 46: renderer de markdown ligero para outputs de Gemini
 import MarkdownText from '@/components/shared/MarkdownText'
+// AUDIT FIX 2026-04-28 (C-9): sanitizer para HTML rich-text (defense-in-depth).
+import { sanitizeHtml } from '@/lib/sanitize-html'
 
 interface PatientPackageInfo {
   patientId: string
@@ -968,22 +970,23 @@ export default function PatientsPage() {
                           {!c.notes && !c.diagnosis && !c.treatment && (
                             <p className="text-xs text-slate-400 italic py-4 text-center">Esta consulta no tiene notas, diagnóstico ni tratamiento registrados.</p>
                           )}
+                          {/* AUDIT FIX 2026-04-28 (C-9): sanitize HTML rendered from BD. */}
                           {c.notes && (
                             <div>
                               <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Notas</p>
-                              <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: c.notes }} />
+                              <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.notes) }} />
                             </div>
                           )}
                           {c.diagnosis && (
                             <div>
                               <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Diagnóstico</p>
-                              <div className="text-sm text-slate-700 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: c.diagnosis }} />
+                              <div className="text-sm text-slate-700 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.diagnosis) }} />
                             </div>
                           )}
                           {c.treatment && (
                             <div>
                               <p className="text-xs font-semibold text-slate-600 uppercase mb-2">Tratamiento</p>
-                              <div className="text-sm text-slate-700 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: c.treatment }} />
+                              <div className="text-sm text-slate-700 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.treatment) }} />
                             </div>
                           )}
                         </div>

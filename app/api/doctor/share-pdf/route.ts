@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import crypto from 'crypto'
+
+// AUDIT FIX 2026-04-28 (C-2): firmar el path con HMAC para prevenir
+// brute-forcing de links. Si SHARE_LINK_SECRET no está set, no firmamos
+// (modo backward-compat); cuando se setea, view-doc rechaza links sin sig.
+function signPath(filePath: string): string | null {
+  const secret = process.env.SHARE_LINK_SECRET
+  if (!secret) return null
+  return crypto.createHmac('sha256', secret).update(filePath).digest('hex')
+}
 
 // POST: Store an HTML document in Supabase Storage and return its public URL
 export async function POST(req: NextRequest) {
@@ -88,7 +98,9 @@ export async function POST(req: NextRequest) {
 
     // Return URL to our own viewer endpoint (guarantees correct HTML rendering)
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_URL || 'https://medsaas-venezuela.vercel.app'
-    const viewerUrl = `${baseUrl}/api/doctor/view-doc?path=${encodeURIComponent(docPath)}`
+    const sig = signPath(docPath)
+    const sigQuery = sig ? `&sig=${sig}` : ''
+    const viewerUrl = `${baseUrl}/api/doctor/view-doc?path=${encodeURIComponent(docPath)}${sigQuery}`
 
     return NextResponse.json({ success: true, url: viewerUrl })
   } catch (err: any) {
