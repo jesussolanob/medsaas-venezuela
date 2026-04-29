@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition, useRef, useCallback, Suspense } fro
 import { useSearchParams } from 'next/navigation'
 // L7 (2026-04-29): se eliminan los iconos del cronómetro manual (Play, Square)
 // pero mantenemos Timer para mostrar la duración calculada automáticamente.
-import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Timer } from 'lucide-react'
+import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Timer, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
@@ -253,6 +253,10 @@ function ConsultationsPage() {
   // sin el split WhatsApp/Email; solo genera URL y la abre en otra pestaña.
   const [showGenerateReport, setShowGenerateReport] = useState(false)
   const [reportSelectedKeys, setReportSelectedKeys] = useState<Set<string>>(new Set())
+  // FIX 2026-04-29: URL del informe generado, para mostrar enlace clickeable
+  // dentro del modal y no depender de window.open() (Safari lo bloquea por
+  // estar fuera del user gesture tras el await).
+  const [generatedReportUrl, setGeneratedReportUrl] = useState<string | null>(null)
   const [generatingReport, setGeneratingReport] = useState(false)
 
   // L1 (2026-04-29): Catálogo completo de bloques (consultation_block_catalog)
@@ -1611,6 +1615,7 @@ function ConsultationsPage() {
                     const effective = getEffectiveBlocks(selected)
                     const printable = effective.filter(b => b.printable)
                     setReportSelectedKeys(new Set(printable.map(b => b.key)))
+                    setGeneratedReportUrl(null)
                     setShowGenerateReport(true)
                   }}
                   title="Generar informe"
@@ -1803,19 +1808,25 @@ function ConsultationsPage() {
                     +
                   </button>
                   {showAddBlockMenu && selected && (() => {
+                    // FIX 2026-04-29: mostrar TODOS los bloques del catálogo.
+                    // Los que ya están activos en esta consulta se ven deshabilitados
+                    // con etiqueta "Ya activo" (antes los ocultábamos y el doctor no
+                    // sabía qué tenía disponible).
                     const effective = getEffectiveBlocks(selected)
                     const activeKeys = new Set(effective.map(b => b.key))
-                    const available = blockCatalog.filter(c => !activeKeys.has(c.key))
                     return (
                       <div className="absolute left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-3 space-y-1 max-h-80 overflow-y-auto">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 px-2 py-1">Agregar bloque</p>
-                        {available.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic px-2 py-2">Todos los bloques del catálogo ya están activos.</p>
-                        ) : available.map(c => (
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 px-2 py-1">Agregar bloque a esta consulta</p>
+                        {blockCatalog.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic px-2 py-2">Catálogo vacío.</p>
+                        ) : blockCatalog.map(c => {
+                          const alreadyActive = activeKeys.has(c.key)
+                          return (
                           <button
                             key={c.key}
-                            disabled={addingBlock}
+                            disabled={addingBlock || alreadyActive}
                             onClick={async () => {
+                              if (alreadyActive) return
                               if (!selected) return
                               setAddingBlock(true)
                               try {
@@ -1890,12 +1901,21 @@ function ConsultationsPage() {
                                 setAddingBlock(false)
                               }
                             }}
-                            className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-slate-50 disabled:opacity-50 flex items-center gap-2"
+                            className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 ${
+                              alreadyActive
+                                ? 'opacity-60 cursor-not-allowed bg-slate-50'
+                                : 'hover:bg-slate-50 disabled:opacity-50'
+                            }`}
                           >
-                            <Plus className="w-3.5 h-3.5 text-teal-500" />
-                            <span className="text-slate-700">{c.label}</span>
+                            <Plus className={`w-3.5 h-3.5 shrink-0 ${alreadyActive ? 'text-slate-300' : 'text-teal-500'}`} />
+                            <span className={`flex-1 ${alreadyActive ? 'text-slate-400' : 'text-slate-700'}`}>{c.label}</span>
+                            {alreadyActive && (
+                              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                                Ya activo
+                              </span>
+                            )}
                           </button>
-                        ))}
+                        )})}
                       </div>
                     )
                   })()}
@@ -3244,6 +3264,28 @@ function ConsultationsPage() {
                   </button>
                 </div>
                 <p className="text-sm text-slate-600">Selecciona los bloques que quieres incluir en el PDF.</p>
+                {/* FIX 2026-04-29: link clickeable post-generación (Safari friendly). */}
+                {generatedReportUrl && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                    <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5" /> Informe generado
+                    </p>
+                    <a
+                      href={generatedReportUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 underline hover:text-emerald-800"
+                    >
+                      Abrir PDF en nueva pestaña <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(generatedReportUrl).catch(() => {})}
+                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 ml-3"
+                    >
+                      Copiar enlace
+                    </button>
+                  </div>
+                )}
                 <div className="space-y-2 border border-slate-100 rounded-xl p-3">
                   {printable.length === 0 && (
                     <p className="text-xs text-slate-400 italic">No hay bloques compartibles en esta consulta.</p>
@@ -3271,39 +3313,43 @@ function ConsultationsPage() {
                   <button onClick={async () => {
                       if (reportSelectedKeys.size === 0) { alert('Selecciona al menos un bloque'); return }
                       setGeneratingReport(true)
+                      setGeneratedReportUrl(null)
                       try {
                         const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
                         let body = ''
                         for (const b of printable) {
                           if (!reportSelectedKeys.has(b.key)) continue
-                          // Si el bloque es "informe"/"notes" usamos generateInformeHtml para
-                          // respetar la convención (solo ese bloque o concatenado de todos).
                           const piece = (b.key === 'informe' || b.key === 'notes')
                             ? generateInformeHtml()
                             : generateBlockHtml(b.key, b.label)
                           if (piece) body += piece
                         }
-                        if (!body) { alert('Los bloques seleccionados no tienen contenido'); return }
+                        if (!body) {
+                          alert('Los bloques seleccionados no tienen contenido. Escribe algo en al menos un bloque antes de generar el informe.')
+                          return
+                        }
                         const html = buildPdfHtml('informe', 'Informe Médico', body, selected.patient_name, selected.consultation_code, dateStr)
                         const res = await fetch('/api/doctor/share-pdf', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             htmlContent: html,
-                            fileName: `informe-${selected.consultation_code}`,
+                            fileName: `informe-${selected.consultation_code || selected.id}`,
                             consultationCode: selected.consultation_code,
                           }),
                         })
-                        const data = await res.json()
+                        const data = await res.json().catch(() => ({}))
                         if (!res.ok || !data.url) {
-                          alert(data.error || 'Error generando el PDF')
+                          console.error('[generate-report] response error:', { status: res.status, data })
+                          alert(data.error || `Error generando el PDF (status ${res.status})`)
                           return
                         }
-                        window.open(data.url, '_blank')
-                        setShowGenerateReport(false)
+                        // FIX 2026-04-29: en lugar de window.open (bloqueado por Safari
+                        // post-await), mostramos un link clickeable dentro del modal.
+                        setGeneratedReportUrl(data.url)
                       } catch (err: any) {
                         console.error('[generate-report] error:', err)
-                        alert('Error generando el informe')
+                        alert(`Error generando el informe: ${err?.message || 'desconocido'}`)
                       } finally {
                         setGeneratingReport(false)
                       }
