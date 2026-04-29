@@ -182,3 +182,287 @@ export async function getAllSubscriptions() {
     profiles: { full_name: d.full_name, email: d.email, specialty: d.specialty },
   }))
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// FASE 1 (2026-04-29): Sistema de suscripciones configurable
+// Inspirado en Stripe Subscriptions + Shopify Admin Settings.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Types ───────────────────────────────────────────────────────────────────
+export type AppSettings = {
+  subscription_base_price_usd: number
+  subscription_currency: string
+  beta_duration_days: number
+  payment_methods_enabled: string[]
+  payment_methods_config: {
+    pago_movil?:    { phone?: string; cedula?: string; bank?: string }
+    transferencia?: { bank?: string; account?: string; holder?: string }
+    zelle?:         { email?: string; holder?: string }
+  }
+  stripe_enabled: boolean
+  expiration_warning_days: number[]
+}
+
+export type DurationOption = {
+  duration_months: number
+  base_price_usd: number       // sin descuento (price * months)
+  final_price_usd: number      // con descuento aplicado
+  discount_pct: number
+  promotion_id: string | null
+  label: string | null
+}
+
+export type SubscriptionChangeAction =
+  | 'created' | 'extended' | 'suspended' | 'reactivated' | 'cancelled'
+  | 'plan_changed' | 'payment_approved' | 'payment_rejected'
+  | 'price_adjusted' | 'manual_grant' | 'manual_revoke'
+
+const DEFAULT_SETTINGS: AppSettings = {
+  subscription_base_price_usd: 30,
+  subscription_currency: 'USD',
+  beta_duration_days: 365,
+  payment_methods_enabled: ['pago_movil', 'transferencia', 'zelle'],
+  payment_methods_config: {},
+  stripe_enabled: false,
+  expiration_warning_days: [7, 3, 1],
+}
+
+// ── App settings (key/value singleton) ──────────────────────────────────────
+export async function getAppSettings(): Promise<AppSettings> {
+  const admin = createAdminClient()
+  const { data } = await admin.from('app_settings').select('key, value')
+  const map: Record<string, unknown> = {}
+  for (const row of data || []) map[row.key] = row.value
+  return {
+    subscription_base_price_usd: Number(map.subscription_base_price_usd ?? DEFAULT_SETTINGS.subscription_base_price_usd),
+    subscription_currency: String(map.subscription_currency ?? DEFAULT_SETTINGS.subscription_currency),
+    beta_duration_days: Number(map.beta_duration_days ?? DEFAULT_SETTINGS.beta_duration_days),
+    payment_methods_enabled: (map.payment_methods_enabled as string[]) ?? DEFAULT_SETTINGS.payment_methods_enabled,
+    payment_methods_config: (map.payment_methods_config as AppSettings['payment_methods_config']) ?? {},
+    stripe_enabled: Boolean(map.stripe_enabled ?? false),
+    expiration_warning_days: (map.expiration_warning_days as number[]) ?? DEFAULT_SETTINGS.expiration_warning_days,
+  }
+}
+
+export async function setAppSetting(
+  key: keyof AppSettings,
+  value: unknown,
+  actorId: string | null,
+): Promise<void> {
+  const admin = createAdminClient()
+  await admin
+    .from('app_settings')
+    .upsert(
+      { key, value, updated_by: actorId, updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+}
+
+// ── Duration options (multi-mes con promos) ────────────────────────────────
+export async function computeDurationOptions(): Promise<DurationOption[]> {
+  const settings = await getAppSettings()
+  const basePrice = settings.subscription_base_price_usd
+  const admin = createAdminClient()
+
+  const { data: promos } = await admin
+    .from('plan_promotions')
+    .select('*')
+    .eq('is_active', true)
+    .or('ends_at.is.null,ends_at.gt.now()')
+
+  const options: DurationOption[] = [
+    {
+      duration_months: 1,
+      base_price_usd: basePrice,
+      final_price_usd: basePrice,
+      discount_pct: 0,
+      promotion_id: null,
+      label: 'Mensual',
+    },
+  ]
+
+  for (const promo of promos || []) {
+    const months = Number(promo.duration_months) || 1
+    const original = Number(promo.original_price_usd) || basePrice * months
+    const final = Number(promo.promo_price_usd) || original
+    const discount = original > 0 ? Math.round(((original - final) / original) * 100) : 0
+    options.push({
+      duration_months: months,
+      base_price_usd: basePrice * months,
+      final_price_usd: final,
+      discount_pct: discount,
+      promotion_id: promo.id,
+      label: promo.label || `${months} meses`,
+    })
+  }
+
+  return options.sort((a, b) => a.duration_months - b.duration_months)
+}
+
+// ── Audit log ───────────────────────────────────────────────────────────────
+export async function logSubscriptionChange(args: {
+  doctor_id: string
+  action: SubscriptionChangeAction
+  actor_id: string | null
+  actor_role: string | null
+  before_state?: Record<string, unknown> | null
+  after_state?: Record<string, unknown> | null
+  metadata?: Record<string, unknown>
+  payment_id?: string | null
+}): Promise<void> {
+  const admin = createAdminClient()
+  await admin.from('subscription_changes_log').insert({
+    doctor_id: args.doctor_id,
+    action: args.action,
+    actor_id: args.actor_id,
+    actor_role: args.actor_role,
+    before_state: args.before_state ?? null,
+    after_state: args.after_state ?? null,
+    metadata: args.metadata ?? {},
+    payment_id: args.payment_id ?? null,
+  })
+}
+
+// ── Extender suscripción (idempotente, no resetea días) ────────────────────
+/**
+ * Reglas (Stripe-style):
+ *  - Si subscription_expires_at es futuro → suma N meses A PARTIR de esa fecha.
+ *  - Si está vencida o nula → suma N meses A PARTIR de ahora.
+ *  - Cambia status a 'active'.
+ *  - Si el plan era 'trial' lo migra a 'basic' (plan único pago).
+ */
+export async function extendSubscription(args: {
+  doctor_id: string
+  months: number
+  actor_id: string | null
+  actor_role: string | null
+  reason: SubscriptionChangeAction
+  metadata?: Record<string, unknown>
+  payment_id?: string | null
+}): Promise<{ success: true; new_expires_at: string } | { success: false; error: string }> {
+  const admin = createAdminClient()
+  const { data: profile, error: profErr } = await admin
+    .from('profiles')
+    .select('id, plan, subscription_status, subscription_expires_at')
+    .eq('id', args.doctor_id)
+    .single()
+  if (profErr || !profile) return { success: false, error: 'Doctor no encontrado' }
+
+  const before = {
+    plan: profile.plan,
+    subscription_status: profile.subscription_status,
+    subscription_expires_at: profile.subscription_expires_at,
+  }
+
+  const now = new Date()
+  const currentEnd = profile.subscription_expires_at ? new Date(profile.subscription_expires_at) : null
+  const anchor = currentEnd && currentEnd > now ? currentEnd : now
+  const newEnd = new Date(anchor)
+  newEnd.setMonth(newEnd.getMonth() + args.months)
+
+  const newPlan = profile.plan === 'trial' ? 'basic' : (profile.plan || 'basic')
+
+  const { error: updErr } = await admin
+    .from('profiles')
+    .update({
+      subscription_status: 'active',
+      subscription_expires_at: newEnd.toISOString(),
+      plan: newPlan,
+    })
+    .eq('id', args.doctor_id)
+  if (updErr) return { success: false, error: updErr.message }
+
+  await logSubscriptionChange({
+    doctor_id: args.doctor_id,
+    action: args.reason,
+    actor_id: args.actor_id,
+    actor_role: args.actor_role,
+    before_state: before,
+    after_state: {
+      plan: newPlan,
+      subscription_status: 'active',
+      subscription_expires_at: newEnd.toISOString(),
+    },
+    metadata: { months_added: args.months, ...(args.metadata || {}) },
+    payment_id: args.payment_id ?? null,
+  })
+
+  return { success: true, new_expires_at: newEnd.toISOString() }
+}
+
+// ── Suspender / Reactivar ──────────────────────────────────────────────────
+export async function suspendSubscription(args: {
+  doctor_id: string
+  actor_id: string | null
+  actor_role: string | null
+  reason?: string
+}) {
+  const admin = createAdminClient()
+  const { data: profile } = await admin
+    .from('profiles').select('plan, subscription_status, subscription_expires_at')
+    .eq('id', args.doctor_id).single()
+  if (!profile) return { success: false, error: 'Doctor no encontrado' }
+  await admin.from('profiles').update({ subscription_status: 'suspended' }).eq('id', args.doctor_id)
+  await logSubscriptionChange({
+    doctor_id: args.doctor_id, action: 'suspended',
+    actor_id: args.actor_id, actor_role: args.actor_role,
+    before_state: { subscription_status: profile.subscription_status },
+    after_state: { subscription_status: 'suspended' },
+    metadata: args.reason ? { reason: args.reason } : {},
+  })
+  return { success: true }
+}
+
+export async function reactivateSubscription(args: {
+  doctor_id: string
+  actor_id: string | null
+  actor_role: string | null
+}) {
+  const admin = createAdminClient()
+  const { data: profile } = await admin
+    .from('profiles').select('plan, subscription_status, subscription_expires_at')
+    .eq('id', args.doctor_id).single()
+  if (!profile) return { success: false, error: 'Doctor no encontrado' }
+  const isExpired = profile.subscription_expires_at && new Date(profile.subscription_expires_at) < new Date()
+  const updates: Record<string, unknown> = { subscription_status: 'active' }
+  if (isExpired) {
+    const newEnd = new Date(); newEnd.setMonth(newEnd.getMonth() + 1)
+    updates.subscription_expires_at = newEnd.toISOString()
+  }
+  await admin.from('profiles').update(updates).eq('id', args.doctor_id)
+  await logSubscriptionChange({
+    doctor_id: args.doctor_id, action: 'reactivated',
+    actor_id: args.actor_id, actor_role: args.actor_role,
+    before_state: { subscription_status: profile.subscription_status },
+    after_state: updates,
+  })
+  return { success: true }
+}
+
+// ── Beta inicial al registrar nuevo doctor ─────────────────────────────────
+export async function startBetaForNewDoctor(doctorId: string): Promise<void> {
+  const settings = await getAppSettings()
+  const admin = createAdminClient()
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + settings.beta_duration_days)
+  await admin
+    .from('profiles')
+    .update({
+      plan: 'trial',
+      subscription_status: 'trial',
+      subscription_expires_at: expiresAt.toISOString(),
+    })
+    .eq('id', doctorId)
+  await logSubscriptionChange({
+    doctor_id: doctorId,
+    action: 'created',
+    actor_id: doctorId,
+    actor_role: 'doctor',
+    after_state: {
+      plan: 'trial',
+      subscription_status: 'trial',
+      subscription_expires_at: expiresAt.toISOString(),
+    },
+    metadata: { beta_days: settings.beta_duration_days, source: 'self_registration' },
+  })
+}

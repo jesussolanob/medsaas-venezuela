@@ -60,21 +60,47 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     return { success: false, error: profileError.message }
   }
 
-  // 3. Set plan + status en profiles — Beta: 1 año gratis activo
+  // 3. Set plan + status — duración configurable desde app_settings.beta_duration_days
+  //    (default 365 días si no está configurado).
+  const { data: betaSetting } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'beta_duration_days')
+    .maybeSingle()
+  const betaDays = Number(betaSetting?.value) || 365
+
   const expiresAt = new Date()
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+  expiresAt.setDate(expiresAt.getDate() + betaDays)
 
   const { error: planErr } = await supabase
     .from('profiles')
     .update({
       plan: 'trial',
-      subscription_status: 'active',
+      subscription_status: 'trial',
       subscription_expires_at: expiresAt.toISOString(),
     })
     .eq('id', userId)
 
   if (planErr) {
     console.error('Error seteando plan:', planErr.message)
+  }
+
+  // Audit trail
+  try {
+    await supabase.from('subscription_changes_log').insert({
+      doctor_id: userId,
+      action: 'created',
+      actor_id: userId,
+      actor_role: 'doctor',
+      after_state: {
+        plan: 'trial',
+        subscription_status: 'trial',
+        subscription_expires_at: expiresAt.toISOString(),
+      },
+      metadata: { beta_days: betaDays, source: 'self_registration' },
+    })
+  } catch (e) {
+    console.warn('[register] log entry failed:', e)
   }
 
   revalidatePath('/admin/doctors')

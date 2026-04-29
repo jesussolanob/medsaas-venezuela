@@ -151,19 +151,45 @@ export default function RegisterPage() {
           .register-root * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
         `}</style>
         <div className="register-root min-h-screen flex items-center justify-center p-6" style={{ background: '#FAFBFC' }}>
-          <div className="w-full max-w-md text-center space-y-6" style={{ animation: 'fadeUp 0.5s ease forwards' }}>
+          <div className="w-full max-w-lg text-center space-y-6" style={{ animation: 'fadeUp 0.5s ease forwards' }}>
             <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center" style={{ background: '#ECFEFF' }}>
               <CheckCircle2 className="w-8 h-8" style={{ color: '#0891B2' }} />
             </div>
             <h1 className="text-2xl font-bold" style={{ color: '#0F1A2A' }}>
-              {role === 'especialista' ? '¡Registro exitoso!' : '¡Cuenta creada!'}
+              {role === 'especialista' ? '¡Bienvenido a Delta!' : '¡Cuenta creada!'}
             </h1>
-            <p className="text-sm" style={{ color: '#5A6773' }}>
-              {role === 'especialista'
-                ? 'Tu cuenta ha sido creada exitosamente. Ya puedes iniciar sesión y acceder a todas las funcionalidades de Delta.'
-                : 'Tu cuenta ha sido creada exitosamente. Ya puedes iniciar sesión en el portal de pacientes.'
-              }
-            </p>
+            {role === 'especialista' ? (
+              <div className="space-y-4 text-left bg-white border border-slate-200 rounded-2xl p-5">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-600 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900">Acceso Beta Privada activado</p>
+                    <p className="text-sm text-slate-600 mt-1">
+                      Tienes acceso completo y gratuito por 1 año (configurable por el administrador).
+                      Cuando se acerque el vencimiento te avisaremos.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 pt-3 border-t border-slate-100">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                    <span className="text-lg">💳</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-900">Plan profesional — $30/mes</p>
+                    <p className="text-sm text-slate-600 mt-1">
+                      Cuando termine tu Beta, podrás contratar el plan desde
+                      <strong> Configuración → Suscripción</strong>. Ofrecemos descuentos por compra de 3, 6 o 12 meses.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: '#5A6773' }}>
+                Tu cuenta ha sido creada exitosamente. Ya puedes iniciar sesión en el portal de pacientes.
+              </p>
+            )}
             <Link
               href="/login"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-white transition-all"

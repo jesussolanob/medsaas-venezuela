@@ -7,12 +7,13 @@ import {
   User, Users2, Shield, Plus, X, CheckCircle, ToggleLeft, ToggleRight,
   Link2, Copy, Check, ExternalLink, Save as SaveIcon, Camera, Loader2,
   Building, Trash2, Search, Tag, DollarSign, Bell, Volume2, VolumeX,
-  Image as ImageIcon, FileBadge, Smartphone,
+  Image as ImageIcon, FileBadge, Smartphone, CreditCard,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { VENEZUELA_INSURANCES } from './insurances'
 import AvatarUploader from './avatar-uploader'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import SubscriptionPanel from '@/components/doctor/SubscriptionPanel'
 
 type PricingPlan = { id: string; name: string; price_usd: number; duration_minutes: number; sessions_count: number; is_active: boolean }
 type Module = { id: string; label: string; description: string; enabled: boolean }
@@ -90,7 +91,7 @@ const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outlin
 
 // AUDIT FIX 2026-04-28 (TS-4): incluir 'assistants' al union; el bloque de UI ya
 // existe (línea 1049) pero el tab nunca se mostraba — TabId no lo permitía.
-type TabId = 'profile' | 'booking' | 'payment' | 'notifications' | 'integrations' | 'assistants'
+type TabId = 'profile' | 'booking' | 'payment' | 'subscription' | 'notifications' | 'integrations' | 'assistants'
 
 function SettingsPageInner() {
   const searchParams = useSearchParams()
@@ -517,6 +518,7 @@ function SettingsPageInner() {
 
   const tabs: { id: TabId; label: string; icon: any }[] = [
     { id: 'profile', label: 'Mi perfil', icon: User },
+    { id: 'subscription', label: 'Suscripción', icon: CreditCard },
     { id: 'booking', label: 'Link público', icon: Link2 },
     { id: 'payment', label: 'Métodos de pago', icon: DollarSign },
     { id: 'notifications', label: 'Notificaciones', icon: Bell },
@@ -748,6 +750,11 @@ function SettingsPageInner() {
         )}
 
         {/* Plans tab removed — now in /doctor/services */}
+
+        {/* ---------------- SUSCRIPCIÓN ---------------- */}
+        {tab === 'subscription' && (
+          <SubscriptionPanel embedded />
+        )}
 
         {/* ---------------- BOOKING ---------------- */}
         {tab === 'booking' && (

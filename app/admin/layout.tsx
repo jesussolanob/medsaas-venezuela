@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard, Users, UsersRound, Package,
   Settings, LogOut, Menu, MessageSquarePlus,
-  Pin, PanelLeftClose, PanelLeft, Bell
+  Pin, PanelLeftClose, PanelLeft, Bell, CreditCard
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
@@ -16,6 +16,7 @@ import { Toaster } from '@/components/ui/Toaster'
 const navItems = [
   { name: 'Dashboard',      href: '/admin',               icon: LayoutDashboard },
   { name: 'Especialistas',  href: '/admin/doctors',       icon: Users },
+  { name: 'Suscripciones',  href: '/admin/subscriptions', icon: CreditCard },
   { name: 'Pacientes',      href: '/admin/patients',      icon: UsersRound },
   // 'Paquetes' eliminado del sidebar — pertenece al doctor, no al admin (2026-04-22)
   { name: 'Sugerencias',    href: '/admin/suggestions',   icon: MessageSquarePlus },
