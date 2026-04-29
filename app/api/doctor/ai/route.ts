@@ -62,7 +62,52 @@ async function callGeminiWithRetry(apiKey: string, prompt: string): Promise<{ ok
   return { ok: false, status: 429, body: 'Todos los modelos retornaron 429 (cuota agotada)' }
 }
 
-type AIAction = 'summarize' | 'improve' | 'patient_history'
+type AIAction = 'summarize' | 'improve' | 'patient_history' | 'improve_block'
+
+// AUDIT FIX 2026-04-29 (IA-blocks): prompt-builder por block_key.
+// Cada bloque del catálogo tiene un prompt específico que enfatiza lo que
+// importa clínicamente para ese tipo de información. Si llega una key
+// desconocida, caemos a un prompt genérico de mejora médica.
+function buildBlockPrompt(blockKey: string, blockLabel: string, content: string): string {
+  const cleaned = stripHtml(content)
+  const base = (instruction: string) =>
+    `Eres un asistente de redacción médica profesional. ${instruction} Mantén toda la información clínica intacta — NO inventes datos que no estén en el texto original. Responde en español (Venezuela) y devuelve SOLO el texto mejorado, sin explicaciones, encabezados, ni comillas.\n\nTexto original (${blockLabel}):\n${cleaned}`
+
+  switch (blockKey) {
+    case 'chief_complaint':
+      return base('Reescribe el motivo de consulta de forma clara, concisa y en lenguaje médico apropiado. Estructura los síntomas con su tiempo de evolución, intensidad y factores asociados cuando estén presentes.')
+    case 'history':
+      return base('Mejora la redacción de los antecedentes del paciente. Organízalos en categorías (personales, familiares, quirúrgicos, alérgicos, hábitos) cuando aplique, y usa terminología médica estandarizada.')
+    case 'physical_exam':
+      return base('Mejora la redacción del examen físico. Estructura los hallazgos por sistemas (general, cardiopulmonar, abdominal, neurológico, etc.) y usa terminología semiológica precisa.')
+    case 'diagnosis':
+      return base('Mejora la redacción del diagnóstico clínico. Sé preciso, usa terminología CIE-10 cuando sea posible, distingue diagnóstico principal de diagnósticos secundarios o diferenciales si los hay.')
+    case 'treatment':
+      return base('Mejora la redacción del plan terapéutico. Estructura el tratamiento (farmacológico, no farmacológico, medidas generales) de forma clara y organizada.')
+    case 'prescription':
+      return base('Mejora la redacción de la prescripción. Asegúrate que cada medicamento tenga: nombre genérico, dosis, vía, frecuencia y duración. Mantén el formato profesional de receta médica.')
+    case 'rest':
+      return base('Mejora la redacción del reposo indicado. Especifica tipo de reposo (absoluto/relativo/laboral), duración y motivo clínico de forma profesional.')
+    case 'tasks':
+      return base('Mejora la redacción de las tareas terapéuticas para el paciente. Sé claro y específico en lo que el paciente debe hacer, con instrucciones accionables y medibles.')
+    case 'nutrition_plan':
+      return base('Mejora la redacción del plan alimenticio. Estructura por comidas (desayuno, merienda, almuerzo, cena), enfatiza balance nutricional, porciones, alimentos recomendados y a evitar.')
+    case 'exercises':
+      return base('Mejora la redacción de la rutina de ejercicios. Especifica tipo de ejercicio, series, repeticiones, frecuencia semanal, progresión y precauciones cuando apliquen.')
+    case 'indications':
+      return base('Mejora la redacción de las indicaciones generales al paciente. Usa lenguaje claro, lista los puntos cuando sean varios y enfatiza signos de alarma si los hay.')
+    case 'recommendations':
+      return base('Mejora la redacción de las recomendaciones complementarias. Sé práctico, accionable y prioriza lo más importante para el paciente.')
+    case 'requested_exams':
+      return base('Mejora la redacción de los exámenes solicitados. Usa el nombre completo y estandarizado de cada estudio (laboratorio, imagen, especiales) y agrupa por tipo cuando aplique.')
+    case 'next_followup':
+      return base('Mejora la redacción de la próxima cita / control. Especifica fecha aproximada, motivo del control y qué debe traer el paciente si aplica.')
+    case 'internal_notes':
+      return base('Mejora la redacción de las notas internas del médico. Estas notas son privadas (no se comparten con el paciente) — sé directo, técnico y enfócate en seguimiento, pendientes y consideraciones clínicas.')
+    default:
+      return base(`Mejora la redacción de este bloque clínico (${blockLabel}). Hazlo más profesional, claro y estructurado.`)
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -109,10 +154,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { action, content, patientId } = body as {
+    // AUDIT FIX 2026-04-29 (IA-blocks): aceptamos block_key + block_label
+    // para construir prompts específicos por tipo de bloque.
+    const { action, content, patientId, block_key, block_label } = body as {
       action: AIAction
       content?: string
       patientId?: string
+      block_key?: string
+      block_label?: string
     }
 
     let prompt = ''
@@ -127,6 +176,19 @@ export async function POST(req: NextRequest) {
       case 'improve': {
         if (!content) return NextResponse.json({ error: 'Contenido requerido' }, { status: 400 })
         prompt = `Eres un asistente de redacción médica profesional. Mejora la redacción del siguiente texto médico: corrige gramática, mejora la estructura, hazlo más profesional y claro, pero mantén toda la información médica intacta. Responde en español y devuelve SOLO el texto mejorado, sin explicaciones adicionales.\n\nTexto original:\n${stripHtml(content)}`
+        break
+      }
+
+      case 'improve_block': {
+        // AUDIT FIX 2026-04-29 (IA-blocks): mejora con prompt específico
+        // por tipo de bloque (diagnosis vs nutrition_plan vs exercises, etc).
+        if (!content || !content.trim()) {
+          return NextResponse.json({ error: 'El bloque está vacío. Escribe algo antes de mejorar con IA.' }, { status: 400 })
+        }
+        if (!block_key) {
+          return NextResponse.json({ error: 'block_key requerido' }, { status: 400 })
+        }
+        prompt = buildBlockPrompt(block_key, block_label || block_key, content)
         break
       }
 
@@ -174,7 +236,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Cache hit?
-    const cacheKey = `${action}:${(content || patientId || '').slice(0, 200)}`
+    // AUDIT FIX 2026-04-29 (IA-blocks): incluir block_key en la key para que
+    // el mismo content bajo distintos bloques no colisione en el cache.
+    const cacheKey = `${action}:${block_key || ''}:${(content || patientId || '').slice(0, 200)}`
     const cached = getCached(cacheKey)
     if (cached) {
       return NextResponse.json({ result: cached, cached: true })
