@@ -1625,16 +1625,27 @@ function ConsultationsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    console.log('[generar-informe] click', { selected: !!selected })
+                    console.log('[generar-informe] click START', { selected: !!selected })
                     if (!selected) {
                       alert('Abre primero una consulta')
                       return
                     }
-                    const effective = getEffectiveBlocks(selected)
-                    const printable = effective.filter(b => b.printable)
-                    setReportSelectedKeys(new Set(printable.map(b => b.key)))
-                    setGeneratedReportUrl(null)
-                    setShowGenerateReport(true)
+                    try {
+                      const effective = getEffectiveBlocks(selected)
+                      const printable = effective.filter(b => b.printable)
+                      console.log('[generar-informe] blocks resolved', {
+                        effectiveCount: effective.length,
+                        printableCount: printable.length,
+                        printableKeys: printable.map(b => b.key),
+                      })
+                      setReportSelectedKeys(new Set(printable.map(b => b.key)))
+                      setGeneratedReportUrl(null)
+                      setShowGenerateReport(true)
+                      console.log('[generar-informe] setState called → showGenerateReport=true')
+                    } catch (err) {
+                      console.error('[generar-informe] HANDLER THREW:', err)
+                      alert('Error abriendo el modal: ' + (err as any)?.message)
+                    }
                   }}
                   title="Generar informe"
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
@@ -3275,6 +3286,7 @@ function ConsultationsPage() {
         {showGenerateReport && selected && (() => {
           const effective = getEffectiveBlocks(selected)
           const printable = effective.filter(b => b.printable)
+          console.log('[generar-informe] MODAL RENDERING', { effectiveCount: effective.length, printableCount: printable.length })
           return (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !generatingReport && setShowGenerateReport(false)}>
               <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
