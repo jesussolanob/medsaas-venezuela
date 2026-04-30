@@ -38,7 +38,7 @@ export default function PatientLoginPage() {
                 Delta<span style={{ color: '#06B6D4' }}>.</span>
               </span>
               <span className="text-[10px] font-medium tracking-[0.12em] uppercase block" style={{ color: '#97A3AF' }}>
-                Health Tech
+                Medical CRM
               </span>
             </div>
           </Link>

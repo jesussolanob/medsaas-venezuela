@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Delta — First Health Tech Software in Venezuela",
+  title: "Delta Medical CRM — Plataforma médica para Venezuela",
   description: "El primer software de salud hecho en Venezuela. Gestiona pacientes, agenda, historial clínico y finanzas desde un solo lugar.",
 };
 

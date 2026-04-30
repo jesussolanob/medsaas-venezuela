@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Shield, ArrowLeft } from 'lucide-react'
 
-export const metadata = { title: 'Política de Privacidad — Delta Health Tech' }
+export const metadata = { title: 'Política de Privacidad — Delta Medical CRM' }
 
 export default function PrivacyPage() {
   return (
@@ -24,7 +24,7 @@ export default function PrivacyPage() {
 
           <div className="prose prose-slate max-w-none space-y-4 text-slate-700">
             <p>
-              En Delta Health Tech tomamos en serio la privacidad de los datos médicos de nuestros usuarios.
+              En Delta Medical CRM tomamos en serio la privacidad de los datos médicos de nuestros usuarios.
               Este documento describe cómo recopilamos, usamos y protegemos tu información.
             </p>
 

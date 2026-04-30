@@ -296,7 +296,7 @@ export default function OnboardingPage() {
             </div>
             <div className="text-left">
               <p className="font-bold text-lg text-slate-900 leading-none">Delta</p>
-              <p className="text-[10px] text-slate-400 font-semibold">Health Tech</p>
+              <p className="text-[10px] text-slate-400 font-semibold">Medical CRM</p>
             </div>
           </div>
 

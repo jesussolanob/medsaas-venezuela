@@ -22,7 +22,7 @@ export default function PatientRegisterPage() {
           </div>
           <div className="text-left">
             <span className="font-bold text-lg text-slate-900">Delta</span>
-            <span className="text-[10px] text-slate-400 block font-semibold">Health Tech</span>
+            <span className="text-[10px] text-slate-400 block font-semibold">Medical CRM</span>
           </div>
         </Link>
 

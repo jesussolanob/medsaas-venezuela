@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Activity, ArrowLeft, CheckCircle2 } from 'lucide-react'
 
-export const metadata = { title: 'Estado del sistema — Delta Health Tech' }
+export const metadata = { title: 'Estado del sistema — Delta Medical CRM' }
 
 export default function StatusPage() {
   const services = [

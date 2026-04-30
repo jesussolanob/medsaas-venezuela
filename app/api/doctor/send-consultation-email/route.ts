@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     <div class="card">
       <div class="header">
         <div class="logo">Delta</div>
-        <div class="subtitle">Health Tech</div>
+        <div class="subtitle">Medical CRM</div>
       </div>
 
       <h2>Nueva consulta programada</h2>
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       ` : ''}
 
       <div class="footer">
-        <p>Este correo fue enviado automáticamente por Delta Health Tech</p>
+        <p>Este correo fue enviado automáticamente por Delta Medical CRM</p>
       </div>
     </div>
   </div>

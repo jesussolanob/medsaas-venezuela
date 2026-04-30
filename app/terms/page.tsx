@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { FileText, ArrowLeft } from 'lucide-react'
 
-export const metadata = { title: 'Términos y Condiciones — Delta Health Tech' }
+export const metadata = { title: 'Términos y Condiciones — Delta Medical CRM' }
 
 export default function TermsPage() {
   return (
@@ -29,7 +29,7 @@ export default function TermsPage() {
 
             <section>
               <h2 className="text-lg font-semibold text-slate-900 mt-6">1. Servicio</h2>
-              <p>Delta Health Tech provee una plataforma SaaS para que profesionales de la salud gestionen su práctica
+              <p>Delta Medical CRM provee una plataforma SaaS para que profesionales de la salud gestionen su práctica
               médica privada en Venezuela. El servicio incluye agenda, historia clínica electrónica, cobros, CRM y
               portal del paciente.</p>
             </section>
@@ -42,7 +42,7 @@ export default function TermsPage() {
 
             <section>
               <h2 className="text-lg font-semibold text-slate-900 mt-6">3. Responsabilidad médica</h2>
-              <p>Delta Health Tech es una herramienta de gestión administrativa. Las decisiones clínicas, diagnósticos,
+              <p>Delta Medical CRM es una herramienta de gestión administrativa. Las decisiones clínicas, diagnósticos,
               tratamientos y prescripciones son responsabilidad exclusiva del profesional médico que usa la plataforma.</p>
             </section>
 

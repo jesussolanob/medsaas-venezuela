@@ -239,11 +239,11 @@ export default function RegisterPage() {
                   Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
                 </p>
                 <p className="text-[10px] font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--dh-gray-400)' }}>
-                  Health Tech
+                  Medical CRM
                 </p>
               </div>
               <span className="ml-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}>
-                Health Tech
+                Medical CRM
               </span>
             </div>
           </div>
@@ -295,7 +295,7 @@ export default function RegisterPage() {
                   Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
                 </p>
                 <p className="text-[10px] font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--dh-gray-400)' }}>
-                  Health Tech
+                  Medical CRM
                 </p>
               </div>
             </div>

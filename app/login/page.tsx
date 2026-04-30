@@ -217,11 +217,11 @@ function LoginInner() {
                   Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
                 </p>
                 <p className="text-[10px] font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--dh-gray-400)' }}>
-                  Health Tech
+                  Medical CRM
                 </p>
               </div>
               <span className="ml-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}>
-                Health Tech
+                Medical CRM
               </span>
             </div>
           </div>
@@ -300,7 +300,7 @@ function LoginInner() {
                   Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
                 </p>
                 <p className="text-[10px] font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--dh-gray-400)' }}>
-                  Health Tech
+                  Medical CRM
                 </p>
               </div>
             </div>
@@ -384,7 +384,16 @@ function LoginInner() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--dh-ink)' }}>Contraseña</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-sm font-medium" style={{ color: 'var(--dh-ink)' }}>Contraseña</label>
+                      <Link
+                        href="/forgot-password"
+                        className="text-xs font-semibold hover:underline"
+                        style={{ color: 'var(--dh-turquoise-700)' }}
+                      >
+                        ¿Olvidaste tu contraseña?
+                      </Link>
+                    </div>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--dh-gray-400)' }} />
                       <input
@@ -394,6 +403,7 @@ function LoginInner() {
                         required
                         disabled={emailLoading}
                         placeholder="••••••••"
+                        autoComplete="current-password"
                         className="input-dh w-full pl-10 pr-10 py-3 border rounded-xl text-sm transition-all disabled:opacity-60"
                         style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-ink)', background: 'var(--dh-gray-50)' }}
                       />

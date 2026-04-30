@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft, UserPlus, Calendar, Stethoscope, DollarSign, MessageCircle, Mail } from 'lucide-react'
 
-export const metadata = { title: 'Centro de ayuda — Delta Health Tech' }
+export const metadata = { title: 'Centro de ayuda — Delta Medical CRM' }
 
 export default function HelpPage() {
   const steps = [
