@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { sendWelcomeEmail } from '@/lib/email'
 
 export type RegisterInput = {
   full_name: string
@@ -101,6 +102,17 @@ export async function registerDoctor(input: RegisterInput): Promise<RegisterResu
     })
   } catch (e) {
     console.warn('[register] log entry failed:', e)
+  }
+
+  // Welcome email (no-bloqueante: si falla solo loggea)
+  try {
+    await sendWelcomeEmail({
+      to: input.email,
+      doctor_name: input.full_name,
+      beta_days: betaDays,
+    })
+  } catch (e) {
+    console.warn('[register] welcome email failed:', e)
   }
 
   revalidatePath('/admin/doctors')

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSuperAdmin } from '@/lib/auth-guards'
 import { logSubscriptionChange } from '@/lib/subscription'
+import { sendPaymentRejectedEmail } from '@/lib/email'
 
 export async function POST(req: NextRequest) {
   const guard = await requireSuperAdmin()
@@ -42,6 +43,24 @@ export async function POST(req: NextRequest) {
     metadata: { reason },
     payment_id,
   })
+
+  // Email al doctor (no-bloqueante)
+  try {
+    const { data: doctor } = await admin
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', payment.doctor_id)
+      .single()
+    if (doctor?.email) {
+      await sendPaymentRejectedEmail({
+        to: doctor.email,
+        doctor_name: doctor.full_name || 'Doctor/a',
+        reason,
+      })
+    }
+  } catch (e) {
+    console.warn('[payments/reject] email failed:', e)
+  }
 
   return NextResponse.json({ success: true })
 }

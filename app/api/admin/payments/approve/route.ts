@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSuperAdmin } from '@/lib/auth-guards'
 import { extendSubscription } from '@/lib/subscription'
+import { sendPaymentApprovedEmail } from '@/lib/email'
 
 export async function POST(req: NextRequest) {
   const guard = await requireSuperAdmin()
@@ -61,6 +62,26 @@ export async function POST(req: NextRequest) {
       .update({ status: 'pending', reviewed_by: null, reviewed_at: null })
       .eq('id', payment_id)
     return NextResponse.json({ error: result.error }, { status: 500 })
+  }
+
+  // 3) Email al doctor (no-bloqueante)
+  try {
+    const { data: doctor } = await admin
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', payment.doctor_id)
+      .single()
+    if (doctor?.email) {
+      await sendPaymentApprovedEmail({
+        to: doctor.email,
+        doctor_name: doctor.full_name || 'Doctor/a',
+        amount_usd: Number(payment.amount_usd),
+        duration_months: Number(payment.duration_months) || 1,
+        new_expires_at: result.new_expires_at,
+      })
+    }
+  } catch (e) {
+    console.warn('[payments/approve] email failed:', e)
   }
 
   return NextResponse.json({ success: true, new_expires_at: result.new_expires_at })
