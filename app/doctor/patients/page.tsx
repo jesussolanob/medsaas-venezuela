@@ -550,7 +550,7 @@ export default function PatientsPage() {
                     <div className="flex items-center gap-3 mt-0.5">
                       {p.phone && <span className="text-xs text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3" />{p.phone}</span>}
                       {p.cedula && <span className="text-xs text-slate-400">{p.cedula}</span>}
-                      {p.age && <span className="text-xs text-slate-400">{p.age} años</span>}
+                      {(() => { const a = getDisplayAge(p); return a != null ? <span className="text-xs text-slate-400">{a} años</span> : null })()}
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
@@ -588,7 +588,17 @@ export default function PatientsPage() {
                 <div className="flex-1 min-w-0">
                   <h2 className="text-lg font-bold text-slate-900 break-words">{selected.full_name}</h2>
                   <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4 mt-2 text-sm text-slate-500">
-                    {selected.age && <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{selected.age} años · {selected.sex === 'female' ? 'Femenino' : selected.sex === 'male' ? 'Masculino' : ''}</span>}
+                    {(() => {
+                      const a = getDisplayAge(selected)
+                      const sexo = selected.sex === 'female' ? 'Femenino' : selected.sex === 'male' ? 'Masculino' : ''
+                      if (a == null && !sexo) return null
+                      return (
+                        <span className="flex items-center gap-1">
+                          <User className="w-3.5 h-3.5" />
+                          {a != null ? `${a} años` : ''}{a != null && sexo ? ' · ' : ''}{sexo}
+                        </span>
+                      )
+                    })()}
                     {selected.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{selected.phone}</span>}
                     {selected.email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{selected.email}</span>}
                     {selected.cedula && <span className="flex items-center gap-1"><Hash className="w-3.5 h-3.5" />{selected.cedula}</span>}
@@ -710,7 +720,10 @@ export default function PatientsPage() {
                     ? new Date(selected.birth_date).toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })
                     : null
                 } />
-                <PatientField label="Edad" value={selected.age != null ? `${selected.age} años` : null} />
+                <PatientField label="Edad" value={(() => {
+                  const a = getDisplayAge(selected)
+                  return a != null ? `${a} años` : null
+                })()} />
                 <PatientField label="Sexo" value={
                   selected.sex === 'male' ? 'Masculino' :
                   selected.sex === 'female' ? 'Femenino' :
@@ -1900,6 +1913,22 @@ export default function PatientsPage() {
 }
 
 const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors'
+
+// Helper: derivar edad desde fecha de nacimiento si patients.age no está set.
+// Pacientes registrados sin la columna `age` (o con valor stale) muestran "No
+// registrado" si solo confiábamos en la columna — ahora calculamos al vuelo
+// cuando tenemos birth_date.
+function getDisplayAge(p: { age?: number | null; birth_date?: string | null }): number | null {
+  if (p.age != null && p.age >= 0) return p.age
+  if (!p.birth_date) return null
+  const birth = new Date(p.birth_date)
+  if (isNaN(birth.getTime())) return null
+  const now = new Date()
+  let years = now.getFullYear() - birth.getFullYear()
+  const monthDiff = now.getMonth() - birth.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) years--
+  return years >= 0 ? years : null
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // Componentes UX/UI del módulo de pacientes (rediseño 2026-04-30)
