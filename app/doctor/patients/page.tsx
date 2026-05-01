@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import {
-  Users, Plus, Search, Phone, Mail, FileText, X, ChevronRight,
+  Users, Plus, Search, Phone, Mail, FileText, X, ChevronRight, ChevronDown,
   ArrowLeft, Save, CheckCircle, Clock, AlertCircle, MessageCircle,
   Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon, Upload,
-  Sparkles, Loader2, Send, FolderHeart, ExternalLink, Pencil, Trash2
+  Sparkles, Loader2, Send, FolderHeart, ExternalLink, Pencil, Trash2, ClipboardList
 } from 'lucide-react'
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
 import { createClient } from '@/lib/supabase/client'
@@ -667,93 +667,164 @@ export default function PatientsPage() {
               </div>
             )}
 
-            {/* Personal data section */}
-            {(selected.birth_date || selected.address || selected.city) && (
-              <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <UserCheck className="w-4 h-4 text-slate-600" />
-                  <h3 className="text-sm font-semibold text-slate-700">Datos personales</h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {selected.birth_date && (
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium uppercase mb-1">Fecha de nacimiento</p>
-                      <p className="text-sm text-slate-800">{new Date(selected.birth_date).toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                    </div>
-                  )}
-                  {selected.address && (
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium uppercase mb-1">Dirección</p>
-                      <p className="text-sm text-slate-800">{selected.address}</p>
-                    </div>
-                  )}
-                  {selected.city && (
-                    <div>
-                      <p className="text-xs text-slate-500 font-medium uppercase mb-1">Ciudad</p>
-                      <p className="text-sm text-slate-800">{selected.city}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* ──────────────────────────────────────────────────────────
+                2026-04-30: Rediseño UX/UI — secciones colapsables.
+                Pattern Notion: cada sección es un accordion con:
+                  • icono + título + lápiz para editar inline + chevron expand
+                  • Siempre visibles (no se ocultan si están vacías). Si están
+                    vacías muestran placeholder "Sin información — Editar".
+                  • Por default: Datos personales abierta. Médicos y Emergencia
+                    cerradas (menos críticas en vista rápida).
+                ────────────────────────────────────────────────────────── */}
 
-            {/* Medical data section */}
-            {(selected.blood_type || selected.allergies || selected.chronic_conditions) && (
-              <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Heart className="w-4 h-4 text-red-500" />
-                  <h3 className="text-sm font-semibold text-slate-700">Datos médicos</h3>
-                </div>
-                <div className="space-y-3">
-                  {selected.blood_type && (
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <Droplet className="w-4 h-4 text-red-400" />
-                        <div>
-                          <p className="text-xs text-slate-500 font-medium uppercase">Tipo de sangre</p>
-                          <p className="text-sm font-semibold text-slate-800">{selected.blood_type}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {selected.allergies && (
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-xs text-slate-500 font-medium uppercase mb-1">Alergias</p>
-                        <p className="text-sm text-slate-800">{selected.allergies}</p>
-                      </div>
-                    </div>
-                  )}
-                  {selected.chronic_conditions && (
-                    <div className="flex items-start gap-2">
-                      <Clock className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-xs text-slate-500 font-medium uppercase mb-1">Condiciones crónicas</p>
-                        <p className="text-sm text-slate-800">{selected.chronic_conditions}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+            <PatientCollapsibleSection
+              icon={<UserCheck className="w-4 h-4 text-slate-600" />}
+              title="Datos personales"
+              defaultOpen
+              hasData={!!(selected.birth_date || selected.sex || selected.address || selected.city)}
+              onEdit={() => {
+                setPatientFormInitial({
+                  id: selected.id,
+                  full_name: selected.full_name || '',
+                  cedula: selected.cedula || '',
+                  email: selected.email || '',
+                  phone: selected.phone || '',
+                  birth_date: selected.birth_date || '',
+                  age: selected.age ?? null,
+                  sex: (selected.sex as any) ?? '',
+                  blood_type: selected.blood_type || '',
+                  address: selected.address || '',
+                  city: selected.city || '',
+                  allergies: selected.allergies || '',
+                  chronic_conditions: selected.chronic_conditions || '',
+                  emergency_contact_name: selected.emergency_contact_name || '',
+                  emergency_contact_phone: selected.emergency_contact_phone || '',
+                  notes: selected.notes || '',
+                })
+                setPatientFormOpen(true)
+              }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <PatientField label="Fecha de nacimiento" value={
+                  selected.birth_date
+                    ? new Date(selected.birth_date).toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : null
+                } />
+                <PatientField label="Edad" value={selected.age != null ? `${selected.age} años` : null} />
+                <PatientField label="Sexo" value={
+                  selected.sex === 'male' ? 'Masculino' :
+                  selected.sex === 'female' ? 'Femenino' :
+                  selected.sex === 'other' ? 'Otro' : null
+                } />
+                <PatientField label="Ciudad" value={selected.city} />
+                <PatientField label="Dirección" value={selected.address} fullWidth />
               </div>
-            )}
+            </PatientCollapsibleSection>
 
-            {/* Emergency contact section */}
-            {(selected.emergency_contact_name || selected.emergency_contact_phone) && (
-              <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <AlertCircle className="w-4 h-4 text-orange-500" />
-                  <h3 className="text-sm font-semibold text-slate-700">Contacto de emergencia</h3>
+            <PatientCollapsibleSection
+              icon={<Heart className="w-4 h-4 text-red-500" />}
+              title="Datos médicos"
+              hasData={!!(selected.blood_type || selected.allergies || selected.chronic_conditions)}
+              onEdit={() => {
+                setPatientFormInitial({
+                  id: selected.id,
+                  full_name: selected.full_name || '',
+                  cedula: selected.cedula || '',
+                  email: selected.email || '',
+                  phone: selected.phone || '',
+                  birth_date: selected.birth_date || '',
+                  age: selected.age ?? null,
+                  sex: (selected.sex as any) ?? '',
+                  blood_type: selected.blood_type || '',
+                  address: selected.address || '',
+                  city: selected.city || '',
+                  allergies: selected.allergies || '',
+                  chronic_conditions: selected.chronic_conditions || '',
+                  emergency_contact_name: selected.emergency_contact_name || '',
+                  emergency_contact_phone: selected.emergency_contact_phone || '',
+                  notes: selected.notes || '',
+                })
+                setPatientFormOpen(true)
+              }}
+            >
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <Droplet className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                  <PatientField label="Tipo de sangre" value={selected.blood_type} flush />
                 </div>
-                <div className="space-y-2">
-                  {selected.emergency_contact_name && (
-                    <p className="text-sm text-slate-800"><span className="font-medium">Nombre:</span> {selected.emergency_contact_name}</p>
-                  )}
-                  {selected.emergency_contact_phone && (
-                    <p className="text-sm text-slate-800 flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-500" /><span className="font-medium">Teléfono:</span> {selected.emergency_contact_phone}</p>
-                  )}
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                  <PatientField label="Alergias" value={selected.allergies} flush />
+                </div>
+                <div className="flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
+                  <PatientField label="Condiciones crónicas" value={selected.chronic_conditions} flush />
                 </div>
               </div>
+            </PatientCollapsibleSection>
+
+            <PatientCollapsibleSection
+              icon={<AlertCircle className="w-4 h-4 text-orange-500" />}
+              title="Contacto de emergencia"
+              hasData={!!(selected.emergency_contact_name || selected.emergency_contact_phone)}
+              onEdit={() => {
+                setPatientFormInitial({
+                  id: selected.id,
+                  full_name: selected.full_name || '',
+                  cedula: selected.cedula || '',
+                  email: selected.email || '',
+                  phone: selected.phone || '',
+                  birth_date: selected.birth_date || '',
+                  age: selected.age ?? null,
+                  sex: (selected.sex as any) ?? '',
+                  blood_type: selected.blood_type || '',
+                  address: selected.address || '',
+                  city: selected.city || '',
+                  allergies: selected.allergies || '',
+                  chronic_conditions: selected.chronic_conditions || '',
+                  emergency_contact_name: selected.emergency_contact_name || '',
+                  emergency_contact_phone: selected.emergency_contact_phone || '',
+                  notes: selected.notes || '',
+                })
+                setPatientFormOpen(true)
+              }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <PatientField label="Nombre del contacto" value={selected.emergency_contact_name} />
+                <PatientField label="Teléfono" value={selected.emergency_contact_phone} icon={<Phone className="w-3 h-3" />} />
+              </div>
+            </PatientCollapsibleSection>
+
+            {/* Notas internas — solo si existe */}
+            {selected.notes && (
+              <PatientCollapsibleSection
+                icon={<ClipboardList className="w-4 h-4 text-slate-500" />}
+                title="Notas internas"
+                hasData={true}
+                onEdit={() => {
+                  setPatientFormInitial({
+                    id: selected.id,
+                    full_name: selected.full_name || '',
+                    cedula: selected.cedula || '',
+                    email: selected.email || '',
+                    phone: selected.phone || '',
+                    birth_date: selected.birth_date || '',
+                    age: selected.age ?? null,
+                    sex: (selected.sex as any) ?? '',
+                    blood_type: selected.blood_type || '',
+                    address: selected.address || '',
+                    city: selected.city || '',
+                    allergies: selected.allergies || '',
+                    chronic_conditions: selected.chronic_conditions || '',
+                    emergency_contact_name: selected.emergency_contact_name || '',
+                    emergency_contact_phone: selected.emergency_contact_phone || '',
+                    notes: selected.notes || '',
+                  })
+                  setPatientFormOpen(true)
+                }}
+              >
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{selected.notes}</p>
+              </PatientCollapsibleSection>
             )}
           </div>
 
@@ -1829,3 +1900,102 @@ export default function PatientsPage() {
 }
 
 const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors'
+
+// ════════════════════════════════════════════════════════════════════════════
+// Componentes UX/UI del módulo de pacientes (rediseño 2026-04-30)
+// Pattern Notion: secciones colapsables con header acción inline.
+// ════════════════════════════════════════════════════════════════════════════
+
+function PatientCollapsibleSection({
+  icon, title, hasData, defaultOpen = false, onEdit, children,
+}: {
+  icon: React.ReactNode
+  title: string
+  hasData: boolean
+  defaultOpen?: boolean
+  onEdit: () => void
+  children: React.ReactNode
+}) {
+  // Si la sección está vacía, abierta por default para que el doctor vea el CTA
+  const initiallyOpen = defaultOpen || !hasData
+  const [open, setOpen] = useState(initiallyOpen)
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-3 p-4 sm:px-6 sm:py-4 hover:bg-slate-50 transition-colors"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          {icon}
+          <h3 className="text-sm font-semibold text-slate-700 truncate">{title}</h3>
+          {!hasData && (
+            <span className="shrink-0 text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+              Sin datos
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onEdit() } }}
+            className="p-1.5 rounded-md text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors cursor-pointer"
+            title="Editar"
+            aria-label="Editar sección"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </span>
+          <ChevronDown
+            className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-4 sm:px-6 pb-4 sm:pb-5 pt-1 border-t border-slate-100">
+          {hasData ? children : (
+            <button
+              onClick={onEdit}
+              className="w-full mt-3 py-3 px-4 rounded-lg border-2 border-dashed border-slate-200 text-xs font-semibold text-slate-500 hover:border-teal-300 hover:text-teal-600 hover:bg-teal-50/30 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Pencil className="w-3.5 h-3.5" /> Agregar información
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PatientField({
+  label, value, fullWidth, flush, icon,
+}: {
+  label: string
+  value: string | null | undefined
+  fullWidth?: boolean
+  flush?: boolean // sin padding wrapping (cuando se usa con icon arriba)
+  icon?: React.ReactNode
+}) {
+  if (flush) {
+    return (
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">{label}</p>
+        <p className="text-sm text-slate-800 mt-0.5">
+          {value || <span className="text-slate-400 italic">No registrado</span>}
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div className={fullWidth ? 'sm:col-span-2' : ''}>
+      <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-0.5">{label}</p>
+      <p className="text-sm text-slate-800 flex items-center gap-1.5">
+        {icon}
+        {value || <span className="text-slate-400 italic">No registrado</span>}
+      </p>
+    </div>
+  )
+}

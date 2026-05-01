@@ -10,7 +10,8 @@ import { fetchPayments as sharedFetchPayments, formatUsd, formatBs } from '@/lib
 import {
   DollarSign, TrendingUp, TrendingDown, BarChart3,
   Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Search, Calendar, Download,
-  Users, ClipboardList, Activity, FileSpreadsheet,
+  Users, ClipboardList, Activity, FileSpreadsheet, Eye, X,
+  FileText, Stethoscope, Pill, MessageCircle,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -37,11 +38,16 @@ type Expense = {
 }
 
 // L7 (2026-04-29): row de la cuadrícula descargable de consultas.
+// 2026-04-30: extendida con campos para el modal de detalle (motivo, tratamiento,
+// prescripción, método pago, modalidad, etc.) — UX request del usuario.
 type ConsultationRow = {
   id: string
   consultation_code: string | null
   consultation_date: string | null
   patient_name: string
+  patient_email: string | null
+  patient_phone: string | null
+  patient_cedula: string | null
   appointment_status: string | null      // scheduled|confirmed|cancelled|completed|no_show
   consultation_status: string | null     // completed|no_show (post-cita)
   payment_status: string | null          // pending|approved
@@ -49,6 +55,17 @@ type ConsultationRow = {
   diagnosis: string | null
   amount_usd: number | null
   plan_name: string | null
+  // Detalle clínico
+  chief_complaint: string | null
+  treatment: string | null
+  notes: string | null
+  blocks_data: Record<string, unknown> | null
+  blocks_snapshot: Array<{ key: string; label: string; printable?: boolean }> | null
+  // Detalle de la cita
+  scheduled_at: string | null
+  appointment_mode: string | null         // online | in_person
+  payment_method: string | null
+  payment_reference: string | null
 }
 
 const EXPENSE_CATEGORIES = [
@@ -95,6 +112,8 @@ export default function FinancesPage() {
   const [incomeDateTo, setIncomeDateTo] = useState('')
   const [expenseDateFrom, setExpenseDateFrom] = useState('')
   const [expenseDateTo, setExpenseDateTo] = useState('')
+  // 2026-04-30: modal de detalle de consulta (UX feature request).
+  const [detailRow, setDetailRow] = useState<ConsultationRow | null>(null)
 
   const supabase = createClient()
 
@@ -130,14 +149,16 @@ export default function FinancesPage() {
       setExpenses(exp || [])
 
       // L7 (2026-04-29): consultas con join a appointment + patient para
-      // alimentar KPIs y CSV. Traemos status, diagnosis, duration y monto.
+      // alimentar KPIs y CSV. 2026-04-30: extendido con detalle clínico completo
+      // (motivo/tratamiento/notas/blocks) y detalle de cita (modalidad/método pago).
       const { data: cons } = await supabase
         .from('consultations')
         .select(`
           id, consultation_code, consultation_date, payment_status,
-          diagnosis, duration_minutes, amount, plan_name,
-          appointments(status),
-          patients(full_name)
+          chief_complaint, diagnosis, treatment, notes,
+          duration_minutes, amount, plan_name, blocks_data, blocks_snapshot,
+          appointments(status, scheduled_at, appointment_mode, payment_method, payment_reference),
+          patients(full_name, email, phone, cedula)
         `)
         .eq('doctor_id', user.id)
         .order('consultation_date', { ascending: false })
@@ -147,9 +168,6 @@ export default function FinancesPage() {
         const appt = Array.isArray(c.appointments) ? c.appointments[0] : c.appointments
         const pat = Array.isArray(c.patients) ? c.patients[0] : c.patients
         const apptStatus: string | null = appt?.status ?? null
-        // status de la consulta (post-cita): si la cita esta completed/no_show
-        // ese ES el estado de la consulta. Si todavia esta scheduled/confirmed,
-        // la consulta aun no se ha "atendido".
         const consultationStatus =
           apptStatus === 'completed' || apptStatus === 'no_show' ? apptStatus : null
         return {
@@ -157,6 +175,9 @@ export default function FinancesPage() {
           consultation_code: c.consultation_code,
           consultation_date: c.consultation_date,
           patient_name: pat?.full_name || 'Paciente',
+          patient_email: pat?.email ?? null,
+          patient_phone: pat?.phone ?? null,
+          patient_cedula: pat?.cedula ?? null,
           appointment_status: apptStatus,
           consultation_status: consultationStatus,
           payment_status: c.payment_status ?? null,
@@ -164,6 +185,15 @@ export default function FinancesPage() {
           diagnosis: c.diagnosis ?? null,
           amount_usd: c.amount != null ? Number(c.amount) : null,
           plan_name: c.plan_name ?? null,
+          chief_complaint: c.chief_complaint ?? null,
+          treatment: c.treatment ?? null,
+          notes: c.notes ?? null,
+          blocks_data: c.blocks_data ?? null,
+          blocks_snapshot: Array.isArray(c.blocks_snapshot) ? c.blocks_snapshot : null,
+          scheduled_at: appt?.scheduled_at ?? null,
+          appointment_mode: appt?.appointment_mode ?? null,
+          payment_method: appt?.payment_method ?? null,
+          payment_reference: appt?.payment_reference ?? null,
         }
       })
       setConsultationsRows(rows)
@@ -911,11 +941,16 @@ export default function FinancesPage() {
                     <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Duración</th>
                     <th className="text-right px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Monto</th>
                     <th className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Diagnóstico</th>
+                    <th className="text-right px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Detalle</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {reportConsultations.slice(0, 50).map(r => (
-                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                    <tr
+                      key={r.id}
+                      className="hover:bg-teal-50/50 transition-colors cursor-pointer"
+                      onClick={() => setDetailRow(r)}
+                    >
                       <td className="px-3 py-2 text-xs font-mono text-slate-500">{r.consultation_code || '—'}</td>
                       <td className="px-3 py-2 text-xs text-slate-600">
                         {r.consultation_date ? new Date(r.consultation_date).toLocaleDateString('es-VE') : '—'}
@@ -939,6 +974,14 @@ export default function FinancesPage() {
                       <td className="px-3 py-2 text-xs text-slate-600 max-w-xs truncate" title={r.diagnosis || ''}>
                         {r.diagnosis || '—'}
                       </td>
+                      <td className="px-3 py-2 text-xs text-right">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDetailRow(r) }}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-md"
+                        >
+                          <Eye className="w-3 h-3" /> Ver
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -949,6 +992,18 @@ export default function FinancesPage() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Modal detalle completo de consulta */}
+          {detailRow && (
+            <ConsultationDetailModal
+              row={detailRow}
+              onClose={() => setDetailRow(null)}
+              apptStatusLabel={apptStatusLabel}
+              consultationStatusLabel={consultationStatusLabel}
+              paymentStatusLabel={paymentStatusLabel}
+              formatDurationCell={formatDurationCell}
+            />
           )}
         </div>
       </div>
@@ -1142,6 +1197,270 @@ export default function FinancesPage() {
           </div>
         )
       })()}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ConsultationDetailModal — Modal con TODA la información de una consulta
+// (paciente, cita, pago, motivo, diagnóstico, tratamiento, prescripción,
+// ejercicios, notas, bloques personalizados…). Inspirado en el "Order detail"
+// de Stripe/Shopify: una vista que centraliza el contexto completo de la
+// transacción, sin necesidad de navegar a múltiples pestañas.
+// ════════════════════════════════════════════════════════════════════════════
+function ConsultationDetailModal({
+  row, onClose, apptStatusLabel, consultationStatusLabel, paymentStatusLabel, formatDurationCell,
+}: {
+  row: ConsultationRow
+  onClose: () => void
+  apptStatusLabel: (s: string | null) => string
+  consultationStatusLabel: (s: string | null) => string
+  paymentStatusLabel: (s: string | null) => string
+  formatDurationCell: (m: number | null | undefined) => string
+}) {
+  // Helper: obtener valor del bloque desde blocks_data
+  const getBlockValue = (key: string): string | null => {
+    if (!row.blocks_data) return null
+    const v = (row.blocks_data as Record<string, unknown>)[key]
+    if (!v) return null
+    if (typeof v === 'string') return v.trim() || null
+    if (Array.isArray(v)) return v.length > 0 ? v.join(' • ') : null
+    if (typeof v === 'object') {
+      try { return JSON.stringify(v) } catch { return null }
+    }
+    return String(v)
+  }
+
+  // Si hay snapshot, usamos ese orden; si no, una lista por defecto
+  const printableBlocks = (row.blocks_snapshot && row.blocks_snapshot.length > 0)
+    ? row.blocks_snapshot.filter(b => b.printable !== false)
+    : null
+
+  const apptDate = row.scheduled_at ? new Date(row.scheduled_at) : null
+  const consultDate = row.consultation_date ? new Date(row.consultation_date) : null
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-3 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3 shrink-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-xs text-slate-500">{row.consultation_code || '—'}</span>
+              {row.appointment_status && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold uppercase tracking-wider">
+                  Cita: {apptStatusLabel(row.appointment_status)}
+                </span>
+              )}
+              {row.consultation_status && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold uppercase tracking-wider">
+                  Consulta: {consultationStatusLabel(row.consultation_status)}
+                </span>
+              )}
+              {row.payment_status && (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                  row.payment_status === 'approved' ? 'bg-emerald-50 text-emerald-700' :
+                  row.payment_status === 'pending' ? 'bg-amber-50 text-amber-700' :
+                  'bg-slate-50 text-slate-500'
+                }`}>
+                  Pago: {paymentStatusLabel(row.payment_status)}
+                </span>
+              )}
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 mt-1.5">{row.patient_name}</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg shrink-0" aria-label="Cerrar">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Body scroll */}
+        <div className="overflow-y-auto px-4 sm:px-6 py-5 space-y-5 flex-1">
+          {/* Sección 1: Datos del paciente */}
+          <section>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" /> Paciente
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-slate-50 rounded-lg p-3">
+              {row.patient_cedula && (
+                <div>
+                  <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Cédula</p>
+                  <p className="text-slate-800 font-mono">{row.patient_cedula}</p>
+                </div>
+              )}
+              {row.patient_phone && (
+                <div>
+                  <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Teléfono</p>
+                  <p className="text-slate-800">{row.patient_phone}</p>
+                </div>
+              )}
+              {row.patient_email && (
+                <div className="col-span-2 sm:col-span-1">
+                  <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Email</p>
+                  <p className="text-slate-800 truncate">{row.patient_email}</p>
+                </div>
+              )}
+              {!row.patient_cedula && !row.patient_phone && !row.patient_email && (
+                <p className="text-slate-400 italic col-span-3">Sin datos de contacto registrados.</p>
+              )}
+            </div>
+          </section>
+
+          {/* Sección 2: Detalle de la cita */}
+          <section>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5" /> Cita
+            </h3>
+            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 rounded-lg p-3">
+              <div>
+                <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Fecha de la cita</p>
+                <p className="text-slate-800">
+                  {apptDate
+                    ? apptDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : consultDate
+                    ? consultDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Hora</p>
+                <p className="text-slate-800">{apptDate ? apptDate.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : '—'}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Modalidad</p>
+                <p className="text-slate-800 capitalize">
+                  {row.appointment_mode === 'online' ? '🖥 Online'
+                    : row.appointment_mode === 'in_person' ? '🏥 Presencial'
+                    : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Duración</p>
+                <p className="text-slate-800">{formatDurationCell(row.duration_minutes)}</p>
+              </div>
+              {row.plan_name && (
+                <div className="col-span-2">
+                  <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Plan / Servicio</p>
+                  <p className="text-slate-800">{row.plan_name}</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Sección 3: Pago */}
+          <section>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <DollarSign className="w-3.5 h-3.5" /> Pago
+            </h3>
+            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 rounded-lg p-3">
+              <div>
+                <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Monto</p>
+                <p className="text-slate-800 font-bold text-base">
+                  {row.amount_usd != null ? formatUsd(row.amount_usd) : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Método</p>
+                <p className="text-slate-800 capitalize">{row.payment_method?.replace('_', ' ') || '—'}</p>
+              </div>
+              {row.payment_reference && (
+                <div className="col-span-2">
+                  <p className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold">Referencia</p>
+                  <p className="text-slate-800 font-mono">{row.payment_reference}</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Sección 4: Detalle clínico */}
+          <section>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Stethoscope className="w-3.5 h-3.5" /> Información clínica
+            </h3>
+            <div className="space-y-3 text-sm">
+              {row.chief_complaint && (
+                <DetailField icon={<MessageCircle className="w-3.5 h-3.5 text-blue-500" />} label="Motivo de consulta" value={row.chief_complaint} />
+              )}
+              {row.diagnosis && (
+                <DetailField icon={<FileText className="w-3.5 h-3.5 text-purple-500" />} label="Diagnóstico" value={row.diagnosis} />
+              )}
+              {row.treatment && (
+                <DetailField icon={<Pill className="w-3.5 h-3.5 text-emerald-500" />} label="Tratamiento" value={row.treatment} />
+              )}
+              {row.notes && (
+                <DetailField icon={<FileText className="w-3.5 h-3.5 text-slate-500" />} label="Notas / Informe" value={row.notes} richText />
+              )}
+
+              {/* Bloques dinámicos del snapshot — solo si hay extras además de los campos legacy */}
+              {printableBlocks && printableBlocks
+                .filter(b => !['chief_complaint', 'diagnosis', 'treatment', 'notes', 'informe'].includes(b.key))
+                .map(b => {
+                  const value = getBlockValue(b.key)
+                  if (!value) return null
+                  return (
+                    <DetailField
+                      key={b.key}
+                      icon={<ClipboardList className="w-3.5 h-3.5 text-teal-500" />}
+                      label={b.label}
+                      value={value}
+                    />
+                  )
+                })
+              }
+
+              {!row.chief_complaint && !row.diagnosis && !row.treatment && !row.notes && (
+                <div className="text-xs text-slate-400 italic px-3 py-4 bg-slate-50 rounded-lg text-center">
+                  Esta consulta aún no tiene información clínica registrada.
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 sm:px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg"
+          >
+            Cerrar
+          </button>
+          <a
+            href={`/doctor/consultations/${row.id}`}
+            className="px-4 py-2 text-sm font-bold text-white bg-teal-500 hover:bg-teal-600 rounded-lg flex items-center gap-1.5"
+          >
+            <FileText className="w-4 h-4" /> Abrir consulta completa
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DetailField({
+  icon, label, value, richText,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  richText?: boolean
+}) {
+  return (
+    <div className="border border-slate-200 rounded-lg p-3 bg-white">
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+        {icon} {label}
+      </p>
+      {richText ? (
+        <div className="text-sm text-slate-800 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: value }} />
+      ) : (
+        <p className="text-sm text-slate-800 whitespace-pre-wrap">{value}</p>
+      )}
     </div>
   )
 }
