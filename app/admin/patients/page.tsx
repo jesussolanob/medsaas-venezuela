@@ -1,18 +1,20 @@
+/**
+ * /admin/patients — Pacientes (vista global)
+ * 2026-05-02: rediseño Delta Health Tech.
+ * Server component que pasa data al client AdminPatientsClient.
+ */
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { Users, Heart, Calendar, ClipboardList } from 'lucide-react'
 import AdminPatientsClient, { type PatientRow } from './AdminPatientsClient'
+import { PageHead, StatCard } from '@/components/dh'
 
-// Cache corto de 30s: lista refresca cada media minuto sin sacrificar velocidad
 export const revalidate = 30
 
-/**
- * /admin/patients
- * Vista global de todos los pacientes registrados en la plataforma.
- * Server component para performance: se resuelve todo server-side.
- */
 export default async function AdminPatientsPage() {
-  // RBAC guard
+  // RBAC
   const sb = await createClient()
   const { data: { user } } = await sb.auth.getUser()
   if (!user) redirect('/login')
@@ -21,45 +23,37 @@ export default async function AdminPatientsPage() {
     .from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'super_admin') redirect('/doctor')
 
-  // ── Stats globales ─────────────────────────────────────────────────────────
-  const { count: totalPatients } = await admin
-    .from('patients')
-    .select('id', { count: 'exact', head: true })
+  // Stats
+  const { count: totalPatients } = await admin.from('patients').select('id', { count: 'exact', head: true })
+  const { count: totalConsultations } = await admin.from('consultations').select('id', { count: 'exact', head: true })
+  const { count: totalAppointments } = await admin.from('appointments').select('id', { count: 'exact', head: true })
 
-  const { count: totalConsultations } = await admin
-    .from('consultations')
-    .select('id', { count: 'exact', head: true })
+  // Activos último mes (al menos 1 cita en últimos 30 días)
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  let activosMes = 0
+  try {
+    const { data: recentAppts } = await admin
+      .from('appointments')
+      .select('patient_id')
+      .gte('scheduled_at', thirtyDaysAgo.toISOString())
+    activosMes = new Set((recentAppts || []).map(a => a.patient_id).filter(Boolean)).size
+  } catch {}
 
-  const { count: totalAppointments } = await admin
-    .from('appointments')
-    .select('id', { count: 'exact', head: true })
-
-  // ── Listado con datos agregados ────────────────────────────────────────────
   const { data: patients } = await admin
     .from('patients')
     .select(`
-      id,
-      full_name,
-      email,
-      phone,
-      cedula,
-      birth_date,
-      created_at,
-      doctor_id,
+      id, full_name, email, phone, cedula, birth_date, created_at, doctor_id,
       doctors:doctor_id(full_name, email, specialty)
     `)
     .order('created_at', { ascending: false })
     .limit(500)
 
-  // Contar 2 métricas por paciente:
-  // - citasMap: appointments activas + consultations sin appointment (consultas standalone)
-  // - atendidasMap: appointments status='completed' + consultations status='completed'
   const patientIds = (patients || []).map(p => p.id)
   const citasMap: Record<string, number> = {}
   const atendidasMap: Record<string, number> = {}
 
   if (patientIds.length > 0) {
-    // 1. Appointments (todas excepto cancelled/rescheduled)
     const { data: allAppts } = await admin
       .from('appointments')
       .select('patient_id, status, consultation_id')
@@ -69,13 +63,9 @@ export default async function AdminPatientsPage() {
     for (const a of allAppts || []) {
       if (!a.patient_id) continue
       citasMap[a.patient_id] = (citasMap[a.patient_id] || 0) + 1
-      if (a.status === 'completed') {
-        atendidasMap[a.patient_id] = (atendidasMap[a.patient_id] || 0) + 1
-      }
+      if (a.status === 'completed') atendidasMap[a.patient_id] = (atendidasMap[a.patient_id] || 0) + 1
     }
 
-    // 2. Consultations standalone (sin appointment_id) — el doctor las creó manualmente
-    //    Cuentan como "cita" siempre, y como "atendida" solo si status='completed'
     const { data: standaloneConsults } = await admin
       .from('consultations')
       .select('patient_id, status, appointment_id')
@@ -86,13 +76,10 @@ export default async function AdminPatientsPage() {
     for (const c of standaloneConsults || []) {
       if (!c.patient_id) continue
       citasMap[c.patient_id] = (citasMap[c.patient_id] || 0) + 1
-      if (c.status === 'completed') {
-        atendidasMap[c.patient_id] = (atendidasMap[c.patient_id] || 0) + 1
-      }
+      if (c.status === 'completed') atendidasMap[c.patient_id] = (atendidasMap[c.patient_id] || 0) + 1
     }
   }
 
-  // Construir filas para el client component (incluye specialty + counts)
   const rows: PatientRow[] = (patients || []).map(p => {
     const doctor: any = Array.isArray(p.doctors) ? p.doctors[0] : p.doctors
     return {
@@ -111,33 +98,56 @@ export default async function AdminPatientsPage() {
     }
   })
 
+  // Edad promedio
+  const ages = rows
+    .map(r => {
+      if (!r.birth_date) return null
+      const b = new Date(r.birth_date)
+      if (isNaN(b.getTime())) return null
+      return Math.floor((Date.now() - b.getTime()) / (365.25 * 24 * 3600 * 1000))
+    })
+    .filter((a): a is number => a !== null && a > 0 && a < 130)
+  const avgAge = ages.length > 0 ? Math.round(ages.reduce((s, a) => s + a, 0) / ages.length) : 0
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Pacientes</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Estadísticas globales de pacientes registrados en la plataforma
-        </p>
+    <div>
+      <PageHead
+        title="Pacientes"
+        subtitle={`${(totalPatients || 0).toLocaleString('es-VE')} pacientes registrados · ${activosMes.toLocaleString('es-VE')} activos este mes`}
+      />
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
+        <StatCard
+          label="Pacientes totales"
+          value={(totalPatients || 0).toLocaleString('es-VE')}
+          icon={<Users size={16} />}
+          delta={rows.length > 0 ? 'En la plataforma' : 'Sin datos'}
+          deltaColor="success"
+        />
+        <StatCard
+          label="Activos · 30 días"
+          value={activosMes.toLocaleString('es-VE')}
+          icon={<Heart size={16} />}
+          delta={`${(totalPatients || 0) > 0 ? Math.round((activosMes / (totalPatients || 1)) * 100) : 0}% del total`}
+          deltaColor="turquoise"
+        />
+        <StatCard
+          label="Edad promedio"
+          value={avgAge > 0 ? `${avgAge}` : '—'}
+          icon={<ClipboardList size={16} />}
+          delta={avgAge > 0 ? 'Años' : 'Sin fechas registradas'}
+          deltaColor="neutral"
+        />
+        <StatCard
+          label="Citas totales"
+          value={(totalAppointments || 0).toLocaleString('es-VE')}
+          icon={<Calendar size={16} />}
+          delta={`${(totalConsultations || 0).toLocaleString('es-VE')} consultas registradas`}
+          deltaColor="success"
+        />
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Pacientes totales</p>
-          <p className="text-3xl font-bold text-slate-900 mt-2">{(totalPatients || 0).toLocaleString('es-VE')}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Consultas realizadas</p>
-          <p className="text-3xl font-bold text-slate-900 mt-2">{(totalConsultations || 0).toLocaleString('es-VE')}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Citas agendadas</p>
-          <p className="text-3xl font-bold text-slate-900 mt-2">{(totalAppointments || 0).toLocaleString('es-VE')}</p>
-        </div>
-      </div>
-
-      {/* Filtros + tabla (client component) */}
       <AdminPatientsClient patients={rows} />
     </div>
   )

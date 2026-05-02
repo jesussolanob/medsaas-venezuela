@@ -1,7 +1,13 @@
 'use client'
 
+/**
+ * AdminPatientsClient — tabla y filtros de pacientes (admin)
+ * 2026-05-02: rediseño Delta Health Tech (tokens dh-*).
+ */
+
 import { useMemo, useState } from 'react'
-import { Search, Download, Filter, X } from 'lucide-react'
+import { Search, Download, Filter, X, ChevronDown } from 'lucide-react'
+import { Card, Btn } from '@/components/dh'
 
 export type PatientRow = {
   id: string
@@ -18,10 +24,18 @@ export type PatientRow = {
   atendidas: number
 }
 
-type Props = {
-  patients: PatientRow[]
-}
+type Props = { patients: PatientRow[] }
 
+const AVATAR_COLORS = ['var(--dh-turquoise)', 'var(--dh-coral)', 'var(--dh-ink)', 'var(--dh-turquoise-700)']
+function avatarColor(id: string): string {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
+}
+function initials(name?: string | null): string {
+  if (!name) return '?'
+  return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]?.toUpperCase() || '').join('')
+}
 function calcAge(birth: string | null): string {
   if (!birth) return '—'
   const b = new Date(birth)
@@ -36,8 +50,8 @@ export default function AdminPatientsClient({ patients }: Props) {
   const [filterSpecialty, setFilterSpecialty] = useState('')
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
 
-  // Listas únicas para los selects
   const doctorOptions = useMemo(
     () => Array.from(new Set(patients.map(p => p.doctor_name).filter(Boolean))).sort(),
     [patients]
@@ -47,10 +61,8 @@ export default function AdminPatientsClient({ patients }: Props) {
     [patients]
   )
 
-  // Aplicar filtros
   const filtered = useMemo(() => {
     return patients.filter(p => {
-      // Search en nombre / email / cédula
       if (search.trim()) {
         const s = search.toLowerCase()
         const match =
@@ -83,15 +95,9 @@ export default function AdminPatientsClient({ patients }: Props) {
   function exportExcel() {
     const headers = ['Nombre', 'Email', 'Teléfono', 'Cédula', 'Edad', 'Citas', 'Atendidas', 'Médico', 'Especialidad', 'Registrado']
     const rows = filtered.map(p => [
-      p.full_name || '',
-      p.email || '',
-      p.phone || '',
-      p.cedula || '',
-      calcAge(p.birth_date),
-      p.citas,
-      p.atendidas,
-      p.doctor_name || '',
-      p.doctor_specialty || '',
+      p.full_name || '', p.email || '', p.phone || '', p.cedula || '',
+      calcAge(p.birth_date), p.citas, p.atendidas,
+      p.doctor_name || '', p.doctor_specialty || '',
       new Date(p.created_at).toLocaleDateString('es-VE'),
     ])
     const csv = [headers, ...rows]
@@ -106,140 +112,244 @@ export default function AdminPatientsClient({ patients }: Props) {
     URL.revokeObjectURL(url)
   }
 
-  const hasFilters = !!(search || filterDoctor || filterSpecialty || filterFrom || filterTo)
+  const hasFilters = !!(filterDoctor || filterSpecialty || filterFrom || filterTo)
 
   return (
     <>
-      {/* Toolbar de filtros — todo dentro del cuadro, sin overflow */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4 overflow-hidden">
-        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" />
-            <h3 className="text-sm font-semibold text-slate-900">Filtros</h3>
-            {hasFilters && (
-              <button onClick={clearFilters} className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1 ml-2">
-                <X className="w-3 h-3" /> Limpiar
-              </button>
-            )}
-          </div>
-          <button
-            onClick={exportExcel}
-            disabled={filtered.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-500 hover:bg-teal-600 text-white disabled:opacity-50 flex-shrink-0"
-          >
-            <Download className="w-3.5 h-3.5" /> Exportar Excel ({filtered.length})
-          </button>
-        </div>
-
-        {/* Búsqueda — fila completa */}
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+      {/* Search bar pill + filtros toggle + export */}
+      <div className="flex items-center gap-2.5 mb-4 flex-wrap">
+        <div
+          className="flex items-center gap-2.5 bg-white rounded-full px-4 py-2.5 flex-1 min-w-[260px] max-w-md"
+          style={{ border: '1.5px solid var(--dh-gray-100)' }}
+        >
+          <Search className="w-4 h-4 shrink-0" style={{ color: 'var(--dh-gray-400)' }} />
           <input
             type="text"
-            placeholder="Buscar nombre, email, cédula, teléfono…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 box-border"
+            placeholder="Buscar por nombre, cédula, email o teléfono..."
+            className="flex-1 outline-none text-[13px] bg-transparent"
+            style={{ color: 'var(--dh-ink)' }}
           />
+          {search && (
+            <button onClick={() => setSearch('')} className="shrink-0">
+              <X className="w-3.5 h-3.5" style={{ color: 'var(--dh-gray-400)' }} />
+            </button>
+          )}
         </div>
 
-        {/* Filtros — 1 col móvil, 2 cols tablet, 4 cols desktop. min-w-0 evita overflow */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="flex flex-col gap-1 min-w-0">
-            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Médico</label>
-            <select
-              value={filterDoctor}
-              onChange={e => setFilterDoctor(e.target.value)}
-              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white truncate"
-            >
-              <option value="">Todos</option>
-              {doctorOptions.map(d => <option key={d as string} value={d as string}>{d as string}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1 min-w-0">
-            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Especialidad</label>
-            <select
-              value={filterSpecialty}
-              onChange={e => setFilterSpecialty(e.target.value)}
-              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 bg-white truncate"
-            >
-              <option value="">Todas</option>
-              {specialtyOptions.map(s => <option key={s as string} value={s as string}>{s as string}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1 min-w-0">
-            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Desde</label>
-            <input
-              type="date"
-              value={filterFrom}
-              onChange={e => setFilterFrom(e.target.value)}
-              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 box-border"
-            />
-          </div>
-          <div className="flex flex-col gap-1 min-w-0">
-            <label className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Hasta</label>
-            <input
-              type="date"
-              value={filterTo}
-              onChange={e => setFilterTo(e.target.value)}
-              className="w-full max-w-full px-2 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400 box-border"
-            />
-          </div>
-        </div>
+        <button
+          onClick={() => setShowFilters(s => !s)}
+          className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-full text-[13px] font-medium cursor-pointer relative"
+          style={{
+            border: hasFilters ? '1.5px solid var(--dh-turquoise)' : '1.5px solid var(--dh-gray-100)',
+            color: hasFilters ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-800)',
+          }}
+        >
+          <Filter className="w-3.5 h-3.5" />
+          Filtros {hasFilters && `(${[filterDoctor, filterSpecialty, filterFrom, filterTo].filter(Boolean).length})`}
+          <ChevronDown className={`w-3 h-3 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+        </button>
+
+        <Btn
+          variant="primary"
+          size="sm"
+          icon={<Download className="w-3.5 h-3.5" />}
+          onClick={exportExcel}
+          disabled={filtered.length === 0}
+        >
+          Exportar ({filtered.length})
+        </Btn>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-900">
-            Listado ({filtered.length} de {patients.length})
+      {/* Filters panel (collapsible) */}
+      {showFilters && (
+        <Card padding={20} className="mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--dh-gray-600)' }}>
+                Médico
+              </label>
+              <select
+                value={filterDoctor}
+                onChange={e => setFilterDoctor(e.target.value)}
+                className="px-3 py-2 rounded-[var(--dh-r-md)] text-sm outline-none bg-white"
+                style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-ink)' }}
+              >
+                <option value="">Todos</option>
+                {doctorOptions.map(d => <option key={d as string} value={d as string}>{d as string}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--dh-gray-600)' }}>
+                Especialidad
+              </label>
+              <select
+                value={filterSpecialty}
+                onChange={e => setFilterSpecialty(e.target.value)}
+                className="px-3 py-2 rounded-[var(--dh-r-md)] text-sm outline-none bg-white"
+                style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-ink)' }}
+              >
+                <option value="">Todas</option>
+                {specialtyOptions.map(s => <option key={s as string} value={s as string}>{s as string}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--dh-gray-600)' }}>
+                Desde
+              </label>
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={e => setFilterFrom(e.target.value)}
+                className="px-3 py-2 rounded-[var(--dh-r-md)] text-sm outline-none bg-white"
+                style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-mono)' }}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--dh-gray-600)' }}>
+                Hasta
+              </label>
+              <input
+                type="date"
+                value={filterTo}
+                onChange={e => setFilterTo(e.target.value)}
+                className="px-3 py-2 rounded-[var(--dh-r-md)] text-sm outline-none bg-white"
+                style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-mono)' }}
+              />
+            </div>
+          </div>
+          {hasFilters && (
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={clearFilters}
+                className="text-xs font-semibold inline-flex items-center gap-1"
+                style={{ color: 'var(--dh-gray-600)' }}
+              >
+                <X className="w-3 h-3" /> Limpiar filtros
+              </button>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Tabla / cards mobile */}
+      <Card padding={0}>
+        <div
+          className="px-6 py-4"
+          style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
+        >
+          <h2 className="text-base font-bold" style={{ color: 'var(--dh-ink)' }}>
+            Listado
+            <span className="ml-2 font-normal" style={{ color: 'var(--dh-gray-400)' }}>
+              ({filtered.length} de {patients.length})
+            </span>
           </h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+
+        {/* Desktop table */}
+        <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full text-[13px]">
             <thead>
-              <tr className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
-                <th className="text-left px-5 py-3">Nombre</th>
-                <th className="text-left px-5 py-3">Email</th>
-                <th className="text-left px-5 py-3">Teléfono</th>
-                <th className="text-left px-5 py-3">Cédula</th>
-                <th className="text-right px-5 py-3">Edad</th>
-                <th className="text-right px-5 py-3">Citas</th>
-                <th className="text-right px-5 py-3">Atendidas</th>
-                <th className="text-left px-5 py-3">Médico</th>
-                <th className="text-left px-5 py-3">Especialidad</th>
-                <th className="text-left px-5 py-3">Registrado</th>
+              <tr style={{ background: 'var(--dh-gray-50)' }}>
+                {['Paciente', 'Cédula', 'Edad', 'Citas', 'Atendidas', 'Médico', 'Registrado'].map(h => (
+                  <th
+                    key={h}
+                    className="text-left"
+                    style={{
+                      padding: '14px 20px', fontSize: 11, fontFamily: 'var(--dh-font-mono)',
+                      color: 'var(--dh-gray-600)', textTransform: 'uppercase', letterSpacing: '.08em',
+                      fontWeight: 500, borderBottom: '1px solid var(--dh-gray-100)',
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-12 text-center text-slate-400">
-                    {hasFilters ? 'No se encontraron pacientes con esos filtros' : 'No hay pacientes registrados aún'}
+                  <td colSpan={7} className="text-center py-16" style={{ color: 'var(--dh-gray-400)' }}>
+                    {hasFilters || search ? 'Sin resultados con esos filtros' : 'Sin pacientes registrados aún'}
                   </td>
                 </tr>
               ) : (
-                filtered.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-5 py-3 font-medium text-slate-900">{p.full_name || '—'}</td>
-                    <td className="px-5 py-3 text-slate-600">{p.email || '—'}</td>
-                    <td className="px-5 py-3 text-slate-600">{p.phone || '—'}</td>
-                    <td className="px-5 py-3 text-slate-600">{p.cedula || '—'}</td>
-                    <td className="px-5 py-3 text-right text-slate-600">{calcAge(p.birth_date)}</td>
-                    <td className="px-5 py-3 text-right">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-semibold">
+                filtered.map((p, i) => (
+                  <tr
+                    key={p.id}
+                    style={{
+                      borderBottom: i < filtered.length - 1 ? '1px solid var(--dh-gray-100)' : 'none',
+                    }}
+                  >
+                    <td style={{ padding: '14px 20px' }}>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
+                          style={{ background: avatarColor(p.id), fontFamily: 'var(--dh-font-display)' }}
+                        >
+                          {initials(p.full_name)}
+                        </div>
+                        <div>
+                          <div className="font-semibold" style={{ color: 'var(--dh-ink)' }}>
+                            {p.full_name || '—'}
+                          </div>
+                          {p.email && (
+                            <div className="text-[11px]" style={{ color: 'var(--dh-gray-400)', marginTop: 2 }}>
+                              {p.email}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 20px', fontFamily: 'var(--dh-font-mono)', color: 'var(--dh-gray-600)' }}>
+                      {p.cedula || '—'}
+                    </td>
+                    <td style={{ padding: '14px 20px', fontFamily: 'var(--dh-font-mono)' }}>
+                      {calcAge(p.birth_date)}
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <span
+                        className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                        style={{
+                          background: 'var(--dh-turquoise-50)',
+                          color: 'var(--dh-turquoise-700)',
+                          fontFamily: 'var(--dh-font-mono)',
+                        }}
+                      >
                         {p.citas}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-semibold">
+                    <td style={{ padding: '14px 20px' }}>
+                      <span
+                        className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                        style={{
+                          background: '#D1FAE5',
+                          color: '#047857',
+                          fontFamily: 'var(--dh-font-mono)',
+                        }}
+                      >
                         {p.atendidas}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-slate-600 text-xs">{p.doctor_name || '—'}</td>
-                    <td className="px-5 py-3 text-slate-600 text-xs">{p.doctor_specialty || '—'}</td>
-                    <td className="px-5 py-3 text-slate-400 text-xs">
-                      {new Date(p.created_at).toLocaleDateString('es-VE')}
+                    <td style={{ padding: '14px 20px' }}>
+                      {p.doctor_name ? (
+                        <div>
+                          <div style={{ color: 'var(--dh-ink)', fontWeight: 500, fontSize: 12 }}>
+                            {p.doctor_name}
+                          </div>
+                          {p.doctor_specialty && (
+                            <div style={{ color: 'var(--dh-gray-400)', fontSize: 11 }}>
+                              {p.doctor_specialty}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--dh-gray-400)' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '14px 20px', fontFamily: 'var(--dh-font-mono)', color: 'var(--dh-gray-400)', fontSize: 12 }}>
+                      {new Date(p.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </td>
                   </tr>
                 ))
@@ -247,7 +357,43 @@ export default function AdminPatientsClient({ patients }: Props) {
             </tbody>
           </table>
         </div>
-      </div>
+
+        {/* Mobile cards */}
+        <div className="lg:hidden divide-y" style={{ borderColor: 'var(--dh-gray-100)' }}>
+          {filtered.length === 0 ? (
+            <div className="p-12 text-center" style={{ color: 'var(--dh-gray-400)' }}>
+              {hasFilters || search ? 'Sin resultados' : 'Sin pacientes'}
+            </div>
+          ) : (
+            filtered.map(p => (
+              <div key={p.id} className="p-4 flex items-center gap-3" style={{ borderColor: 'var(--dh-gray-100)' }}>
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
+                  style={{ background: avatarColor(p.id), fontFamily: 'var(--dh-font-display)' }}
+                >
+                  {initials(p.full_name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate text-sm" style={{ color: 'var(--dh-ink)' }}>
+                    {p.full_name || '—'}
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--dh-gray-400)', fontFamily: 'var(--dh-font-mono)' }}>
+                    {p.cedula || '—'} · {calcAge(p.birth_date)} años
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                    style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)', fontFamily: 'var(--dh-font-mono)' }}
+                  >
+                    {p.citas} citas
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
     </>
   )
 }

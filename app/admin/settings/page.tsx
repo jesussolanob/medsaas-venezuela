@@ -110,23 +110,36 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Configuración</h1>
-        <p className="text-slate-500 text-sm mt-1">Administradores y tasa de cambio BCV</p>
+    <div>
+      {/* PageHead Delta Health Tech */}
+      <div className="mb-6">
+        <h1
+          className="font-semibold tracking-tight m-0 leading-tight"
+          style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 34px)', color: 'var(--dh-ink)' }}
+        >
+          Configuración
+        </h1>
+        <p className="mt-1.5 text-[15px]" style={{ color: 'var(--dh-gray-600)' }}>
+          Administradores de la plataforma y tasa de cambio BCV
+        </p>
       </div>
 
+      <div className="space-y-5">
+
       {/* ── Administradores ── */}
-      <section className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      <section
+        className="bg-white p-6"
+        style={{ border: '1px solid var(--dh-gray-100)', borderRadius: 'var(--dh-r-lg)' }}
+      >
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-teal-600" />
-            <h2 className="text-lg font-semibold text-slate-900">Super administradores</h2>
+            <Shield className="w-5 h-5" style={{ color: 'var(--dh-turquoise-700)' }} />
+            <h2 className="text-base font-bold" style={{ color: 'var(--dh-ink)' }}>Super administradores</h2>
           </div>
           <button
             onClick={() => setNewAdminOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-semibold transition-all hover:-translate-y-px"
+            style={{ background: 'var(--dh-ink)', color: '#fff' }}
           >
             <UserPlus className="w-4 h-4" /> Agregar admin
           </button>
@@ -280,12 +293,14 @@ export default function AdminSettingsPage() {
           </div>
         </div>
 
-        <p className="text-xs text-slate-500 mt-4">
+        <p className="text-xs mt-4" style={{ color: 'var(--dh-gray-600)' }}>
           Fuente: Banco Central de Venezuela (bcv.org.ve) con fallback a PyDolarVe / DolarAPI.
           Se consulta automáticamente al cargar. Estas tasas se usan para convertir precios
           USD/EUR → BsS en citas, facturas y reportes.
         </p>
       </section>
+
+      </div>
     </div>
   )
 }

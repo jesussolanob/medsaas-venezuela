@@ -84,36 +84,48 @@ export default function AdminSubscriptionsPage() {
   const [tab, setTab] = useState<'doctors' | 'payments' | 'config'>('doctors')
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-600 flex items-center justify-center shrink-0">
-          <CreditCard className="w-5 h-5 text-white" />
-        </div>
+    <div>
+      {/* PageHead Delta Health Tech design system */}
+      <div className="flex items-end justify-between gap-4 mb-6 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-lg sm:text-2xl font-bold text-slate-900">Suscripciones</h1>
-          <p className="text-xs sm:text-sm text-slate-500 truncate">Planes, comprobantes y configuración</p>
+          <h1
+            className="font-semibold tracking-tight m-0 leading-tight"
+            style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 34px)', color: 'var(--dh-ink)' }}
+          >
+            Suscripciones
+          </h1>
+          <p className="mt-1.5 text-[15px]" style={{ color: 'var(--dh-gray-600)' }}>
+            Gestión de planes, comprobantes de pago y configuración global
+          </p>
         </div>
-      </header>
+      </div>
 
       {/* Tabs — scroll horizontal en móvil */}
-      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto scrollbar-thin">
+      <div
+        className="flex gap-1 overflow-x-auto scrollbar-thin mb-5"
+        style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
+      >
         {([
           { key: 'doctors',  label: 'Doctores',     icon: Users },
           { key: 'payments', label: 'Comprobantes', icon: FileText },
           { key: 'config',   label: 'Configuración', icon: SettingsIcon },
-        ] as const).map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
-              tab === t.key
-                ? 'border-teal-500 text-teal-700'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <t.icon className="w-4 h-4" /> {t.label}
-          </button>
-        ))}
+        ] as const).map(t => {
+          const active = tab === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className="shrink-0 flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors"
+              style={{
+                borderBottom: active ? '2px solid var(--dh-turquoise)' : '2px solid transparent',
+                color: active ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
+                marginBottom: -1,
+              }}
+            >
+              <t.icon className="w-4 h-4" /> {t.label}
+            </button>
+          )
+        })}
       </div>
 
       {tab === 'doctors'  && <DoctorsTab />}
