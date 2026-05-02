@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>Delta Health Tech · Super Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand-tokens.css"/>
+<style>
+  html, body { margin: 0; height: 100%; background: var(--dh-bone); font-family: var(--dh-font-body); color: var(--dh-ink); }
+  #root { height: 100vh; }
+  .app {
+    display: grid; grid-template-columns: 260px 1fr;
+    height: 100vh; background: var(--dh-bone);
+  }
+  .side {
+    background: #fff; border-right: 1px solid var(--dh-gray-100);
+    padding: 28px 20px; display: flex; flex-direction: column; gap: 4; overflow-y: auto;
+  }
+  .side-head { padding: 0 8px 24px; border-bottom: 1px solid var(--dh-gray-100); margin-bottom: 20px; }
+  .side-head .role {
+    margin-top: 10px; font-size: 11px; font-family: var(--dh-font-mono);
+    color: var(--dh-turquoise-700); letter-spacing: .08em; text-transform: uppercase;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; border-radius: var(--dh-r-md);
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    color: var(--dh-gray-600); margin-bottom: 2px;
+    border: none; background: transparent; font-family: inherit;
+    width: 100%; text-align: left;
+  }
+  .nav-item:hover { background: var(--dh-gray-50); }
+  .nav-item.active { background: var(--dh-turquoise-50); color: var(--dh-turquoise-700); font-weight: 600; }
+  .nav-item .badge {
+    margin-left: auto; background: var(--dh-coral); color: #fff;
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  }
+  .side-foot {
+    margin-top: auto; padding-top: 16px; border-top: 1px solid var(--dh-gray-100);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    padding: 18px 40px; border-bottom: 1px solid var(--dh-gray-100);
+    background: #fff; display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar .crumb {
+    font-size: 13px; color: var(--dh-gray-600);
+  }
+  .topbar .crumb strong { color: var(--dh-ink); font-weight: 600; }
+  .topbar .tools { display: flex; align-items: center; gap: 14px; }
+  .topbar .search {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--dh-gray-50); border-radius: 999px;
+    padding: 8px 16px; min-width: 280px;
+  }
+  .topbar .search input {
+    border: none; outline: none; background: transparent; flex: 1;
+    font-size: 13px; font-family: inherit; color: var(--dh-ink);
+  }
+  .bell { position: relative; padding: 8px; border-radius: 999px; cursor: pointer; }
+  .bell::after {
+    content: ""; position: absolute; top: 6px; right: 6px;
+    width: 8px; height: 8px; border-radius: 999px; background: var(--dh-coral);
+  }
+  main.content { padding: 32px 40px; overflow-y: auto; flex: 1; }
+
+  /* Toast hint: info bar on bottom */
+  .hint {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--dh-ink); color: #fff;
+    padding: 10px 16px; border-radius: 999px;
+    font-size: 12px; font-family: var(--dh-font-mono); letter-spacing: .04em;
+    box-shadow: var(--dh-shadow-lg); z-index: 100; opacity: .8;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="logo.jsx"></script>
+<script type="text/babel" src="ui-components.jsx"></script>
+<script type="text/babel" src="admin-tabs.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TABS = [
+  { id: "dashboard",      label: "Dashboard",      icon: "sparkle",   Comp: () => <TabDashboard/>,      path: "/admin" },
+  { id: "especialistas",  label: "Especialistas",  icon: "user",      Comp: () => <TabEspecialistas/>,  path: "/admin/especialistas" },
+  { id: "aprobaciones",   label: "Aprobaciones",   icon: "check",     Comp: () => <TabAprobaciones/>,   path: "/admin/aprobaciones",   badge: 7 },
+  { id: "pacientes",      label: "Pacientes",      icon: "heart",     Comp: () => <TabPacientes/>,      path: "/admin/pacientes" },
+  { id: "finanzas",       label: "Finanzas",       icon: "clipboard", Comp: () => <TabFinanzas/>,       path: "/admin/finanzas" },
+  { id: "suscripciones",  label: "Suscripciones",  icon: "calendar",  Comp: () => <TabSuscripciones/>,  path: "/admin/suscripciones" },
+  { id: "configuracion",  label: "Configuración",  icon: "shield",    Comp: () => <TabConfiguracion/>,  path: "/admin/configuracion" },
+];
+
+const App = () => {
+  const [active, setActive] = useState(() => localStorage.getItem("dh-admin-tab") || "dashboard");
+  useEffect(() => { localStorage.setItem("dh-admin-tab", active); }, [active]);
+  const current = TABS.find(t => t.id === active) || TABS[0];
+  const Comp = current.Comp;
+
+  return (
+    <div className="app" data-screen-label={`Admin · ${current.label}`}>
+      <aside className="side">
+        <div className="side-head">
+          <Wordmark size={34} />
+          <div className="role">Super Admin</div>
+        </div>
+
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            className={`nav-item ${active === t.id ? "active" : ""}`}
+            onClick={() => setActive(t.id)}
+          >
+            <Icon name={t.icon} size={18}/>
+            <span>{t.label}</span>
+            {t.badge && <span className="badge">{t.badge}</span>}
+          </button>
+        ))}
+
+        <div className="side-foot">
+          <Avatar initials="DA" color="var(--dh-ink)" size={36}/>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Delta Admin</div>
+            <div style={{ fontSize: 11, color: "var(--dh-gray-400)" }}>admin@delta.health</div>
+          </div>
+        </div>
+      </aside>
+
+      <div className="main">
+        <header className="topbar">
+          <div className="crumb">
+            Super Admin <span style={{margin: "0 8px", color: "var(--dh-gray-400)"}}>›</span> <strong>{current.label}</strong>
+          </div>
+          <div className="tools">
+            <div className="search">
+              <Icon name="sparkle" size={14} color="var(--dh-gray-400)"/>
+              <input placeholder="Buscar en todo Delta..."/>
+              <span style={{fontSize: 11, fontFamily: "var(--dh-font-mono)", color: "var(--dh-gray-400)", background: "#fff", padding: "2px 6px", borderRadius: 4}}>⌘K</span>
+            </div>
+            <div className="bell"><Icon name="bell" size={18} color="var(--dh-gray-600)"/></div>
+          </div>
+        </header>
+        <main className="content">
+          <Comp/>
+        </main>
+      </div>
+
+      <div className="hint">← Navega por las pestañas del sidebar</div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

@@ -4,6 +4,119 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   DELTA HEALTH TECH — Brand Tokens
+   2026-05-02: integrados desde el handoff bundle (claude.ai/design).
+   FUENTE DE VERDAD: variables --dh-* para todo lo que es Delta-branded.
+   Las variables shadcn (primary, secondary, etc.) se mantienen para
+   componentes shadcn legacy.
+   ============================================================ */
+:root {
+  /* Primary palette */
+  --dh-turquoise:        #06B6D4;
+  --dh-turquoise-700:    #0891B2;
+  --dh-turquoise-500:    #22D3EE;
+  --dh-turquoise-100:    #CFFAFE;
+  --dh-turquoise-50:     #ECFEFF;
+
+  /* Neutrals */
+  --dh-white:            #FFFFFF;
+  --dh-bone:             #FAFBFC;
+  --dh-gray-50:          #F4F6F8;
+  --dh-gray-100:         #E8ECF0;
+  --dh-gray-200:         #D6DCE3;
+  --dh-gray-400:         #97A3AF;
+  --dh-gray-600:         #5A6773;
+  --dh-gray-800:         #2A3340;
+  --dh-ink:              #0F1A2A;
+
+  /* Coral accent */
+  --dh-coral:            #FF8A65;
+  --dh-coral-600:        #F26F4A;
+  --dh-coral-100:        #FFE5DA;
+
+  /* Semantic */
+  --dh-success:          #10B981;
+  --dh-warning:          #F59E0B;
+  --dh-error:            #EF4444;
+
+  /* Type scale */
+  --dh-font-display:     var(--font-sans, "Plus Jakarta Sans"), system-ui, sans-serif;
+  --dh-font-body:        var(--font-sans, "Plus Jakarta Sans"), system-ui, sans-serif;
+  --dh-font-mono:        var(--font-mono, "JetBrains Mono"), ui-monospace, monospace;
+
+  /* Radius */
+  --dh-r-sm: 8px;
+  --dh-r-md: 14px;
+  --dh-r-lg: 22px;
+  --dh-r-xl: 32px;
+  --dh-r-pill: 999px;
+
+  /* Shadow */
+  --dh-shadow-sm: 0 1px 2px rgba(15,26,42,.06), 0 1px 3px rgba(15,26,42,.04);
+  --dh-shadow-md: 0 4px 12px rgba(15,26,42,.06), 0 2px 6px rgba(15,26,42,.04);
+  --dh-shadow-lg: 0 18px 40px rgba(6,182,212,.10), 0 6px 14px rgba(15,26,42,.06);
+}
+
+/* Type system DH */
+.dh-eyebrow {
+  font-size: 14px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--dh-turquoise-700);
+}
+.dh-display {
+  font-family: var(--dh-font-display); font-weight: 700;
+  font-size: 96px; line-height: .98; letter-spacing: -.035em;
+}
+.dh-h1 {
+  font-family: var(--dh-font-display); font-weight: 700;
+  font-size: 64px; line-height: 1.02; letter-spacing: -.028em;
+}
+.dh-h2 {
+  font-weight: 600; font-size: 36px;
+  line-height: 1.15; letter-spacing: -.018em;
+}
+.dh-body-lg {
+  font-size: 22px; line-height: 1.5;
+  color: var(--dh-gray-600); text-wrap: pretty;
+}
+.dh-body {
+  font-size: 18px; line-height: 1.55; color: var(--dh-gray-600);
+}
+.dh-caption {
+  font-family: var(--dh-font-mono); font-size: 12px;
+  letter-spacing: .04em; color: var(--dh-gray-400); text-transform: uppercase;
+}
+
+/* DH Card */
+.dh-card {
+  background: var(--dh-white);
+  border: 1px solid var(--dh-gray-100);
+  border-radius: var(--dh-r-lg);
+  padding: 32px;
+}
+
+/* DH Buttons (legacy class — preferir <Btn> componente) */
+.dh-btn {
+  font-family: var(--dh-font-display); font-weight: 600; font-size: 16px;
+  border-radius: var(--dh-r-pill); padding: 16px 28px;
+  border: none; cursor: pointer; display: inline-flex;
+  align-items: center; gap: 10px;
+  transition: all .18s cubic-bezier(.2,.8,.2,1);
+}
+.dh-btn-primary { background: var(--dh-ink); color: var(--dh-white); }
+.dh-btn-primary:hover { background: var(--dh-turquoise-700); transform: translateY(-1px); }
+.dh-btn-accent { background: var(--dh-coral); color: var(--dh-white); }
+.dh-btn-accent:hover { background: var(--dh-coral-600); }
+.dh-btn-ghost { background: transparent; color: var(--dh-ink); border: 1.5px solid var(--dh-gray-200); }
+.dh-btn-ghost:hover { border-color: var(--dh-ink); }
+
+/* Utility class for monospace metadata (cédulas, IDs, timestamps) */
+.dh-mono {
+  font-family: var(--dh-font-mono);
+  letter-spacing: .02em;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
