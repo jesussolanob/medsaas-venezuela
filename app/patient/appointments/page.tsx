@@ -114,7 +114,12 @@ export default function AppointmentsPage() {
     <div className="space-y-4 sm:space-y-6">
       {/* Header with filters */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mis citas</h1>
+        <h1
+          className="font-semibold tracking-tight"
+          style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+        >
+          Mis citas
+        </h1>
         <div className="flex flex-wrap gap-2">
           {(['all', 'future', 'past'] as FilterStatus[]).map(f => (
             <button

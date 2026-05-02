@@ -9,30 +9,16 @@ import {
 import { createClient } from '@/lib/supabase/client'
 
 const styles = `
-  @keyframes card-hover {
-    0% {
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      transform: translateY(0);
-    }
-    100% {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      transform: translateY(-2px);
-    }
-  }
-
   .card-hover {
     transition: box-shadow 200ms, transform 200ms;
   }
-
   .card-hover:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--dh-shadow-md);
     transform: translateY(-2px);
   }
-
   .gradient-hero {
-    background: linear-gradient(135deg, #00C4CC 0%, #0891b2 50%, #0e7490 100%);
+    background: linear-gradient(135deg, var(--dh-turquoise-700) 0%, var(--dh-turquoise) 50%, var(--dh-turquoise-500) 100%);
   }
-
   .gradient-progress {
     background: linear-gradient(90deg, #a78bfa 0%, #8b5cf6 100%);
   }
@@ -186,19 +172,40 @@ export default function PatientHome() {
       <style>{styles}</style>
       <div className="space-y-6 sm:space-y-8">
         {/* Gradient Hero Banner */}
-        <div className="gradient-hero rounded-2xl p-6 sm:p-8 lg:p-10 relative overflow-hidden">
-          {/* Decorative blur orbs */}
+        <div
+          className="gradient-hero p-6 sm:p-8 lg:p-10 relative overflow-hidden"
+          style={{ borderRadius: 'var(--dh-r-xl)' }}
+        >
           <div className="absolute -top-20 -left-20 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-16 -right-16 w-56 h-56 bg-white opacity-5 rounded-full blur-3xl pointer-events-none" />
 
-          {/* Content */}
           <div className="relative z-10">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-2">Hola, {firstName}</h2>
-            <p className="text-sm sm:text-base text-white opacity-90 mb-6">Tu portal de salud está listo</p>
+            <p
+              className="text-[11px] tracking-[0.12em] uppercase opacity-80 mb-2 text-white"
+              style={{ fontFamily: 'var(--dh-font-mono)' }}
+            >
+              Tu portal de salud
+            </p>
+            <h2
+              className="font-semibold tracking-tight text-white mb-2"
+              style={{
+                fontFamily: 'var(--dh-font-display)',
+                fontSize: 'clamp(28px, 4vw, 38px)',
+                letterSpacing: '-0.025em',
+              }}
+            >
+              Hola, {firstName}
+            </h2>
+            <p className="text-sm sm:text-base text-white/85 mb-6 max-w-md leading-relaxed">
+              Encuentra a tu especialista, agenda consultas y mantén tu salud en un solo lugar.
+            </p>
 
             {!nextAppointment && (
               <Link href="/patient/appointments">
-                <button className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-teal-600 font-semibold px-4 sm:px-6 py-2.5 rounded-lg transition-colors duration-200">
+                <button
+                  className="inline-flex items-center gap-2 bg-white font-semibold text-[13px] px-5 py-2.5 rounded-full transition-all hover:-translate-y-px"
+                  style={{ color: 'var(--dh-turquoise-700)' }}
+                >
                   <Calendar className="w-4 h-4" />
                   Agendar cita
                 </button>
@@ -208,72 +215,114 @@ export default function PatientHome() {
         </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {/* Next appointment */}
         <Link href="/patient/appointments">
-          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 cursor-pointer h-full">
+          <div
+            className="card-hover bg-white p-5 sm:p-6 space-y-4 cursor-pointer h-full"
+            style={{
+              border: '1px solid var(--dh-gray-100)',
+              borderRadius: 'var(--dh-r-lg)',
+            }}
+          >
             <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-slate-500 uppercase">Próxima cita</p>
-                <p className="text-sm font-semibold text-slate-900">
+              <div className="space-y-1 min-w-0">
+                <p
+                  className="text-[11px] uppercase font-semibold tracking-wider"
+                  style={{ color: 'var(--dh-gray-400)', fontFamily: 'var(--dh-font-mono)' }}
+                >
+                  Próxima cita
+                </p>
+                <p className="text-sm font-semibold truncate" style={{ color: 'var(--dh-ink)' }}>
                   {nextAppointment ? nextAppointment.plan_name : 'Sin citas agendadas'}
                 </p>
               </div>
-              <div className="p-2 rounded-lg bg-blue-50">
-                <Calendar className="w-5 h-5 text-blue-600" />
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)' }}
+              >
+                <Calendar className="w-4 h-4" />
               </div>
             </div>
             {nextAppointment && (
-              <div className="pt-2 border-t border-slate-100">
-                <p className="text-xs text-slate-600">
+              <div className="pt-2" style={{ borderTop: '1px solid var(--dh-gray-100)' }}>
+                <p className="text-xs" style={{ color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}>
                   {new Date(nextAppointment.scheduled_at).toLocaleDateString('es-VE', {
-                    weekday: 'short',
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit'
+                    weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                   })}
                 </p>
               </div>
             )}
-            <div className="flex items-center gap-2 text-teal-600 text-sm font-medium">
-              Ver todas <ArrowRight className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--dh-turquoise-700)' }}>
+              Ver todas <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
         </Link>
 
         {/* Total appointments */}
         <Link href="/patient/appointments">
-          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 cursor-pointer h-full">
+          <div
+            className="card-hover bg-white p-5 sm:p-6 space-y-4 cursor-pointer h-full"
+            style={{ border: '1px solid var(--dh-gray-100)', borderRadius: 'var(--dh-r-lg)' }}
+          >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-slate-500 uppercase">Total de citas</p>
-                <p className="text-3xl font-bold text-slate-900">{totalAppointments}</p>
+                <p
+                  className="text-[11px] uppercase font-semibold tracking-wider"
+                  style={{ color: 'var(--dh-gray-400)', fontFamily: 'var(--dh-font-mono)' }}
+                >
+                  Total de citas
+                </p>
+                <p
+                  className="font-semibold leading-none"
+                  style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 32, letterSpacing: '-0.02em' }}
+                >
+                  {totalAppointments}
+                </p>
               </div>
-              <div className="p-2 rounded-lg bg-green-50">
-                <Calendar className="w-5 h-5 text-green-600" />
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: '#D1FAE5', color: '#047857' }}
+              >
+                <Calendar className="w-4 h-4" />
               </div>
             </div>
-            <div className="flex items-center gap-2 text-teal-600 text-sm font-medium">
-              Ver historial <ArrowRight className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--dh-turquoise-700)' }}>
+              Ver historial <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
         </Link>
 
-        {/* RONDA 29: card de Mensajes reemplazada por Informes — el chat fue retirado del MVP */}
+        {/* Reports */}
         <Link href="/patient/reports">
-          <div className="card-hover bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 cursor-pointer h-full">
+          <div
+            className="card-hover bg-white p-5 sm:p-6 space-y-4 cursor-pointer h-full"
+            style={{ border: '1px solid var(--dh-gray-100)', borderRadius: 'var(--dh-r-lg)' }}
+          >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-slate-500 uppercase">Informes</p>
-                <p className="text-3xl font-bold text-slate-900">{unreadMessages}</p>
+                <p
+                  className="text-[11px] uppercase font-semibold tracking-wider"
+                  style={{ color: 'var(--dh-gray-400)', fontFamily: 'var(--dh-font-mono)' }}
+                >
+                  Informes
+                </p>
+                <p
+                  className="font-semibold leading-none"
+                  style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 32, letterSpacing: '-0.02em' }}
+                >
+                  {unreadMessages}
+                </p>
               </div>
-              <div className="p-2 rounded-lg bg-purple-50">
-                <FileText className="w-5 h-5 text-purple-600" />
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: 'var(--dh-coral-100)', color: 'var(--dh-coral-600)' }}
+              >
+                <FileText className="w-4 h-4" />
               </div>
             </div>
-            <div className="flex items-center gap-2 text-teal-600 text-sm font-medium">
-              Ver informes <ArrowRight className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--dh-turquoise-700)' }}>
+              Ver informes <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
         </Link>

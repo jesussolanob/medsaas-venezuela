@@ -116,13 +116,13 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         onClick={() => setMobileOpen(false)}
         className="flex items-center gap-3 px-3.5 py-2.5 text-sm transition-all"
         style={{
-          borderRadius: 14,
-          background: active ? '#ECFEFF' : 'transparent',
-          color: active ? '#0891B2' : '#5A6773',
+          borderRadius: 'var(--dh-r-md)',
+          background: active ? 'var(--dh-turquoise-50)' : 'transparent',
+          color: active ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
           fontWeight: active ? 600 : 500,
         }}
       >
-        <item.icon className="w-[18px] h-[18px] shrink-0" style={active ? { color: '#0891B2' } : {}} />
+        <item.icon className="w-[18px] h-[18px] shrink-0" />
         {item.name}
       </Link>
     )
@@ -138,13 +138,28 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   const SidebarInner = (
     <>
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5" style={{ borderBottom: '1px solid #E8ECF0' }}>
+      <div
+        className="flex items-center gap-3 px-5 py-5"
+        style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
+      >
         <DeltaIsotipo size={36} />
         <div>
-          <p className="text-sm font-extrabold leading-none" style={{ color: '#0F1A2A', letterSpacing: '-0.035em' }}>
-            Delta<span style={{ color: '#06B6D4' }}>.</span>
+          <p
+            className="text-sm font-extrabold leading-none"
+            style={{ color: 'var(--dh-ink)', letterSpacing: '-0.035em' }}
+          >
+            Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
           </p>
-          <p className="mt-1" style={{ fontSize: 10, fontWeight: 600, color: '#0891B2', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono', monospace" }}>
+          <p
+            className="mt-1"
+            style={{
+              fontSize: 10, fontWeight: 600,
+              color: 'var(--dh-coral-600)',
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              fontFamily: 'var(--dh-font-mono)',
+            }}
+          >
             Paciente
           </p>
         </div>
@@ -156,19 +171,37 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-4 space-y-3" style={{ borderTop: '1px solid #E8ECF0' }}>
+      <div className="px-3 py-4 space-y-3" style={{ borderTop: '1px solid var(--dh-gray-100)' }}>
         {/* User info */}
-        <div className="px-3 py-3 rounded-xl" style={{ background: '#F4F6F8', border: '1px solid #E8ECF0' }}>
+        <div
+          className="px-3 py-3"
+          style={{
+            background: 'var(--dh-gray-50)',
+            border: '1px solid var(--dh-gray-100)',
+            borderRadius: 'var(--dh-r-md)',
+          }}
+        >
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FF8A65', color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{
+                background: 'var(--dh-coral)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 13,
+                fontFamily: 'var(--dh-font-display)',
+              }}
+            >
               {getUserInitials()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold truncate" style={{ color: '#0F1A2A' }}>
+              <p className="text-xs font-semibold truncate" style={{ color: 'var(--dh-ink)' }}>
                 {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Paciente'}
               </p>
               {doctorName && (
-                <p className="truncate" style={{ fontSize: 10, color: '#97A3AF' }}>Con: {doctorName}</p>
+                <p className="truncate" style={{ fontSize: 10, color: 'var(--dh-gray-400)' }}>
+                  Con: {doctorName}
+                </p>
               )}
             </div>
           </div>
@@ -178,9 +211,9 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
-          style={{ color: '#97A3AF' }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = '#FEF2F2' }}
-          onMouseLeave={e => { e.currentTarget.style.color = '#97A3AF'; e.currentTarget.style.background = 'transparent' }}
+          style={{ color: 'var(--dh-gray-400)' }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--dh-error)'; e.currentTarget.style.background = '#FEF2F2' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--dh-gray-400)'; e.currentTarget.style.background = 'transparent' }}
         >
           <LogOut className="w-4 h-4" />
           Cerrar sesión
@@ -195,12 +228,15 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#FAFBFC' }}>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: 'var(--dh-bone)' }}
+      >
         <div className="text-center space-y-4">
           <div className="mx-auto animate-pulse">
             <DeltaIsotipo size={48} />
           </div>
-          <p className="font-medium" style={{ color: '#97A3AF' }}>Cargando...</p>
+          <p className="font-medium" style={{ color: 'var(--dh-gray-400)' }}>Cargando...</p>
         </div>
       </div>
     )
@@ -210,11 +246,10 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
     <>
       <Toaster />
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-        .patient-layout * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+        .patient-shell { font-family: var(--dh-font-body); color: var(--dh-ink); }
       `}</style>
 
-      <div className="patient-layout flex min-h-screen text-[#0F1A2A]" style={{ background: '#FAFBFC' }}>
+      <div className="patient-shell flex min-h-screen" style={{ background: 'var(--dh-bone)' }}>
         {mobileOpen && (
           <div
             className="fixed inset-0 bg-black/40 z-40 lg:hidden"
@@ -228,29 +263,41 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
             'fixed inset-y-0 left-0 w-[260px] flex flex-col bg-white z-50 transition-transform',
             mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           )}
-          style={{ borderRight: '1px solid #E8ECF0' }}
+          style={{ borderRight: '1px solid var(--dh-gray-100)' }}
         >
           {SidebarInner}
         </aside>
 
         {/* Main content */}
         <div className="flex-1 lg:ml-[260px] flex flex-col min-h-screen w-full">
-          <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 lg:px-8 py-4 bg-white/80 backdrop-blur" style={{ borderBottom: '1px solid #E8ECF0' }}>
-            <div className="flex items-center gap-3">
+          <header
+            className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-3.5 bg-white/85 backdrop-blur"
+            style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
+          >
+            <div className="flex items-center gap-3 min-w-0">
               <button
                 className="lg:hidden p-2 -ml-2 rounded-lg"
-                style={{ color: '#5A6773' }}
+                style={{ color: 'var(--dh-gray-600)' }}
                 onClick={() => setMobileOpen(true)}
                 aria-label="Abrir menú"
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <h1 className="text-sm font-semibold" style={{ color: '#2A3340' }}>{activeTitle}</h1>
+              <h1
+                className="font-semibold truncate"
+                style={{ fontFamily: 'var(--dh-font-display)', fontSize: 17, color: 'var(--dh-ink)' }}
+              >
+                {activeTitle}
+              </h1>
             </div>
             <div className="flex items-center gap-3">
               <SearchCommandPalette />
-              {/* Notification bell */}
-              <div className="relative p-2 rounded-full cursor-pointer" style={{ color: '#5A6773' }}>
+              <div
+                className="relative p-2 rounded-full cursor-pointer transition-colors"
+                style={{ color: 'var(--dh-gray-600)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-gray-50)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              >
                 <Bell className="w-[18px] h-[18px]" />
               </div>
             </div>

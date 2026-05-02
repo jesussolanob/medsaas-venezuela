@@ -401,8 +401,11 @@ export default function PatientSeguimientoPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <FolderHeart className="w-6 h-6 text-teal-600" /> Mi Seguimiento
+          <h1
+            className="font-semibold tracking-tight flex items-center gap-2"
+            style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+          >
+            <FolderHeart className="w-6 h-6" style={{ color: 'var(--dh-turquoise)' }} /> Mi Seguimiento
           </h1>
           <p className="text-sm text-slate-500 mt-1">
             {doctors.length === 1

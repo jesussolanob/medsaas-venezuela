@@ -152,7 +152,12 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Mis Informes Médicos</h1>
+      <h1
+        className="font-semibold tracking-tight"
+        style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+      >
+        Mis Informes Médicos
+      </h1>
 
       {reports.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
