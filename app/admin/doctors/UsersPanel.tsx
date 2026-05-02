@@ -1,11 +1,16 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { UserCheck, UserX, Plus, Clock, AlertTriangle, Search } from 'lucide-react'
+
+/**
+ * /admin/doctors — Especialistas
+ * 2026-05-02: rediseño según handoff Delta Health Tech.
+ */
+
+import { useState, useEffect, useMemo } from 'react'
+import { Search, MoreHorizontal, Download, Plus, Clock, Users, UserCheck, AlertTriangle, ChevronDown } from 'lucide-react'
 import NewDoctorModal from './NewDoctorModal'
 import DoctorDetailDrawer from './DoctorDetailDrawer'
-import DoctorActionButton from './DoctorActionButton'
+import { PageHead, Btn, StatCard, Card, StatusPill } from '@/components/dh'
 import { clsx } from 'clsx'
-import { getPlanLabel, getPlanColor, getStatusLabel, getStatusColor } from '@/lib/subscription'
 
 interface Doctor {
   id: string
@@ -15,7 +20,6 @@ interface Doctor {
   is_active: boolean
   created_at?: string
   last_sign_in_at?: string
-  // Plan, status y expiración ahora viven en profiles directamente
   plan?: string
   subscription_status?: string
   subscription_expires_at?: string
@@ -24,6 +28,24 @@ interface Doctor {
 function daysSince(dateStr?: string | null): number {
   if (!dateStr) return 999
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24))
+}
+
+// Colores avatar deterministicos (hash sobre id)
+const AVATAR_COLORS = [
+  'var(--dh-turquoise)',
+  'var(--dh-coral)',
+  'var(--dh-ink)',
+  'var(--dh-turquoise-700)',
+]
+function avatarColorFor(id: string): string {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
+}
+
+function initialsOf(name?: string): string {
+  if (!name) return '?'
+  return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]?.toUpperCase() || '').join('')
 }
 
 export default function UsersPanel() {
@@ -52,172 +74,306 @@ export default function UsersPanel() {
     load()
   }, [])
 
-  const filteredDoctors = doctors.filter(d => {
-    if (!searchQuery) return true
+  const filteredDoctors = useMemo(() => {
+    if (!searchQuery) return doctors
     const q = searchQuery.toLowerCase()
-    return d.full_name?.toLowerCase().includes(q) || d.email?.toLowerCase().includes(q) || d.specialty?.toLowerCase().includes(q)
-  })
+    return doctors.filter(d =>
+      d.full_name?.toLowerCase().includes(q)
+      || d.email?.toLowerCase().includes(q)
+      || d.specialty?.toLowerCase().includes(q),
+    )
+  }, [doctors, searchQuery])
 
-  // Stats
   const activeDoctors = doctors.filter(d => d.is_active).length
   const inactiveDays7 = doctors.filter(d => {
     const days = daysSince(d.last_sign_in_at || d.created_at)
     return days >= 7 && d.is_active
   }).length
+  const newThisMonth = useMemo(() => {
+    const now = new Date()
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    return doctors.filter(d => d.created_at && new Date(d.created_at).getTime() >= startMonth).length
+  }, [doctors])
 
   return (
     <>
-      <div className="space-y-4 sm:space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Especialistas</h2>
-            <p className="text-slate-500 text-xs sm:text-sm mt-1">
-              {doctors?.length ?? 0} especialistas registrados · {activeDoctors} activos
-            </p>
-          </div>
-          <div className="flex-shrink-0">
+      <PageHead
+        title="Especialistas"
+        subtitle={`${doctors.length} profesionales registrados · ${activeDoctors} activos en la plataforma`}
+        actions={
+          <>
+            <Btn variant="secondary" icon={<Download className="w-4 h-4" />}>Exportar</Btn>
             <NewDoctorModal />
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
-            <p className="text-2xl font-bold text-slate-900">{doctors.length}</p>
-            <p className="text-xs text-slate-400 mt-1">Total registrados</p>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
-            <p className="text-2xl font-bold text-emerald-600">{activeDoctors}</p>
-            <p className="text-xs text-slate-400 mt-1">Activos</p>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
-            <div className="flex items-center gap-2">
-              <p className="text-2xl font-bold text-amber-600">{inactiveDays7}</p>
-              {inactiveDays7 > 0 && <AlertTriangle className="w-4 h-4 text-amber-500" />}
-            </div>
-            <p className="text-xs text-slate-400 mt-1">+7 días sin actividad</p>
-          </div>
-        </div>
-
-        {/* Search */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Buscar médico..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-teal-400"
-            />
-          </div>
-        </div>
-
-        {/* Doctors Table */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto -mx-4 sm:mx-0 sm:overflow-hidden">
-            <table className="w-full md:min-w-[700px]">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Médico</th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Especialidad</th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Plan / Estado</th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden md:table-cell">Vence</th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider hidden lg:table-cell">Actividad</th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 sm:px-6 py-8 text-center text-slate-400 text-sm">Cargando médicos...</td>
-                  </tr>
-                ) : filteredDoctors.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 sm:px-6 py-16 text-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                          <UserCheck className="w-6 h-6 text-slate-400" />
-                        </div>
-                        <p className="text-slate-400 text-sm">{searchQuery ? 'No se encontraron resultados' : 'No hay médicos registrados todavía'}</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredDoctors.map((doctor) => {
-                    // Plan/status/expires viven en profiles directamente (reingeniería 2026-04-22)
-                    const plan = doctor.plan || 'trial'
-                    const status = doctor.subscription_status || 'active'
-                    const daysInactive = daysSince(doctor.last_sign_in_at || doctor.created_at)
-                    const vence = doctor.subscription_expires_at
-                      ? new Date(doctor.subscription_expires_at).toLocaleDateString('es-VE')
-                      : '—'
-
-                    return (
-                      <tr key={doctor.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 sm:px-6 py-4">
-                          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-medium text-xs sm:text-sm flex-shrink-0">
-                              {doctor.full_name?.charAt(0) ?? '?'}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{doctor.full_name}</p>
-                              <p className="text-xs text-slate-400 truncate">{doctor.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-600 hidden sm:table-cell">
-                          {doctor.specialty ?? '—'}
-                        </td>
-                        <td className="px-4 sm:px-6 py-4">
-                          <div className="flex flex-col gap-1">
-                            <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getPlanColor(plan)}`}>
-                              {getPlanLabel(plan)}
-                            </span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap w-fit ${getStatusColor(status)}`}>
-                              {getStatusLabel(status)}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 text-xs text-slate-500 hidden md:table-cell">
-                          {vence}
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 hidden lg:table-cell">
-                          <span className={clsx(
-                            'text-xs px-2 py-1 rounded-full flex items-center gap-1 w-fit',
-                            daysInactive >= 14 ? 'bg-red-50 text-red-600' :
-                            daysInactive >= 7 ? 'bg-amber-50 text-amber-600' :
-                            'bg-emerald-50 text-emerald-600'
-                          )}>
-                            <Clock className="w-3 h-3" />
-                            {daysInactive === 0 ? 'Hoy' : `${daysInactive}d`}
-                          </span>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4">
-                          <div className="flex items-center gap-1 sm:gap-2">
-                            <button
-                              onClick={() => setSelectedDoctor(doctor)}
-                              className="text-xs text-teal-600 hover:text-teal-700 font-medium"
-                            >
-                              Ver
-                            </button>
-                            <span className="text-slate-200 hidden sm:inline">|</span>
-                            <div className="hidden sm:block">
-                              <DoctorActionButton
-                                doctorId={doctor.id}
-                                isActive={doctor.is_active}
-                                onSuccess={loadDoctors}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
+        <StatCard
+          label="Total registrados"
+          value={doctors.length.toLocaleString('es-VE')}
+          icon={<Users size={16} />}
+          delta={newThisMonth > 0 ? `+${newThisMonth} este mes` : 'Sin nuevos'}
+          deltaColor={newThisMonth > 0 ? 'success' : 'neutral'}
+        />
+        <StatCard
+          label="Activos"
+          value={activeDoctors.toLocaleString('es-VE')}
+          icon={<UserCheck size={16} />}
+          delta={`${doctors.length > 0 ? Math.round((activeDoctors / doctors.length) * 100) : 0}% del total`}
+          deltaColor="success"
+        />
+        <StatCard
+          label="+7d sin actividad"
+          value={inactiveDays7.toLocaleString('es-VE')}
+          icon={<AlertTriangle size={16} />}
+          delta={inactiveDays7 > 0 ? 'Posible churn' : 'Todos activos'}
+          deltaColor={inactiveDays7 > 0 ? 'error' : 'success'}
+        />
+        <StatCard
+          label="Nuevos este mes"
+          value={newThisMonth.toLocaleString('es-VE')}
+          icon={<Clock size={16} />}
+          delta="Registros recientes"
+          deltaColor="turquoise"
+        />
       </div>
+
+      {/* Search + filtros */}
+      <div className="flex items-center gap-2.5 mb-4 flex-wrap">
+        <div
+          className="flex items-center gap-2.5 bg-white rounded-full px-4 py-2.5 flex-1 min-w-[260px] max-w-md"
+          style={{ border: '1.5px solid var(--dh-gray-100)' }}
+        >
+          <Search className="w-4 h-4 shrink-0" style={{ color: 'var(--dh-gray-400)' }} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Buscar por nombre, cédula, email o especialidad..."
+            className="flex-1 outline-none text-[13px] bg-transparent"
+            style={{ color: 'var(--dh-ink)' }}
+          />
+        </div>
+        <button
+          className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-full text-[13px] font-medium cursor-pointer"
+          style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-gray-800)' }}
+        >
+          Todas las especialidades
+          <ChevronDown className="w-3 h-3" style={{ color: 'var(--dh-gray-400)' }} />
+        </button>
+        <button
+          className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-full text-[13px] font-medium cursor-pointer"
+          style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-gray-800)' }}
+        >
+          Más recientes
+          <ChevronDown className="w-3 h-3" style={{ color: 'var(--dh-gray-400)' }} />
+        </button>
+      </div>
+
+      {/* Tabla — desktop */}
+      <Card padding={0}>
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-[13px]" style={{ borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--dh-gray-50)' }}>
+                {['Especialista', 'Especialidad', 'Plan / Estado', 'Vencimiento', 'Actividad', ''].map(h => (
+                  <th
+                    key={h}
+                    className="text-left"
+                    style={{
+                      padding: '14px 20px',
+                      fontSize: 11,
+                      fontFamily: 'var(--dh-font-mono)',
+                      color: 'var(--dh-gray-600)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '.08em',
+                      fontWeight: 500,
+                      borderBottom: '1px solid var(--dh-gray-100)',
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12" style={{ color: 'var(--dh-gray-400)' }}>
+                    Cargando especialistas…
+                  </td>
+                </tr>
+              ) : filteredDoctors.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-16">
+                    <div className="flex flex-col items-center gap-3">
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center"
+                        style={{ background: 'var(--dh-gray-50)' }}
+                      >
+                        <UserCheck className="w-6 h-6" style={{ color: 'var(--dh-gray-400)' }} />
+                      </div>
+                      <p className="text-sm" style={{ color: 'var(--dh-gray-400)' }}>
+                        {searchQuery ? 'Sin resultados' : 'Aún no hay especialistas registrados'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredDoctors.map((d, i) => {
+                  const days = daysSince(d.last_sign_in_at || d.created_at)
+                  const status = d.is_active
+                    ? (d.subscription_status === 'past_due' ? 'past_due'
+                      : d.subscription_status === 'suspended' ? 'suspended'
+                      : d.subscription_status === 'trial' ? 'trial'
+                      : 'active')
+                    : 'suspended'
+                  const vence = d.subscription_expires_at
+                    ? new Date(d.subscription_expires_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
+                    : '—'
+                  return (
+                    <tr
+                      key={d.id}
+                      className="cursor-pointer transition-colors"
+                      style={{
+                        borderBottom: i < filteredDoctors.length - 1 ? '1px solid var(--dh-gray-100)' : 'none',
+                      }}
+                      onClick={() => setSelectedDoctor(d)}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-gray-50)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <td style={{ padding: '16px 20px' }}>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
+                            style={{ background: avatarColorFor(d.id), fontFamily: 'var(--dh-font-display)' }}
+                          >
+                            {initialsOf(d.full_name)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold truncate" style={{ color: 'var(--dh-ink)' }}>
+                              {d.full_name}
+                            </div>
+                            <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)', marginTop: 2 }}>
+                              {d.email}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px 20px', color: 'var(--dh-gray-800)' }}>
+                        {d.specialty ?? '—'}
+                      </td>
+                      <td style={{ padding: '16px 20px' }}>
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider"
+                            style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)' }}
+                          >
+                            {d.plan || 'trial'}
+                          </span>
+                          <StatusPill status={status} size="sm" />
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px 20px', fontFamily: 'var(--dh-font-mono)', color: 'var(--dh-gray-600)' }}>
+                        {vence}
+                      </td>
+                      <td style={{ padding: '16px 20px' }}>
+                        <span
+                          className={clsx(
+                            'inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold',
+                          )}
+                          style={{
+                            background: days >= 14 ? '#FEE2E2' : days >= 7 ? '#FEF3C7' : '#D1FAE5',
+                            color:      days >= 14 ? '#B91C1C' : days >= 7 ? '#92400E' : '#047857',
+                          }}
+                        >
+                          <Clock className="w-3 h-3" />
+                          {days === 0 ? 'Hoy' : `${days}d`}
+                        </span>
+                      </td>
+                      <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedDoctor(d) }}
+                          style={{ color: 'var(--dh-gray-400)', cursor: 'pointer', padding: 6, border: 'none', background: 'transparent' }}
+                          title="Ver detalle"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+
+          {/* Pagination footer */}
+          {!loading && filteredDoctors.length > 0 && (
+            <div
+              className="flex items-center justify-between text-xs"
+              style={{
+                padding: '14px 20px',
+                color: 'var(--dh-gray-600)',
+                borderTop: '1px solid var(--dh-gray-100)',
+              }}
+            >
+              <span>
+                Mostrando {filteredDoctors.length} de {doctors.length}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y" style={{ borderColor: 'var(--dh-gray-100)' }}>
+          {loading ? (
+            <div className="p-8 text-center text-sm" style={{ color: 'var(--dh-gray-400)' }}>
+              Cargando especialistas…
+            </div>
+          ) : filteredDoctors.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-sm" style={{ color: 'var(--dh-gray-400)' }}>
+                {searchQuery ? 'Sin resultados' : 'Aún no hay especialistas'}
+              </p>
+            </div>
+          ) : (
+            filteredDoctors.map(d => {
+              const status = d.is_active
+                ? (d.subscription_status === 'past_due' ? 'past_due'
+                  : d.subscription_status === 'suspended' ? 'suspended'
+                  : d.subscription_status === 'trial' ? 'trial'
+                  : 'active')
+                : 'suspended'
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => setSelectedDoctor(d)}
+                  className="w-full p-4 flex items-center gap-3 text-left hover:bg-[var(--dh-gray-50)]"
+                  style={{ borderColor: 'var(--dh-gray-100)' }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
+                    style={{ background: avatarColorFor(d.id), fontFamily: 'var(--dh-font-display)' }}
+                  >
+                    {initialsOf(d.full_name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate text-sm" style={{ color: 'var(--dh-ink)' }}>
+                      {d.full_name}
+                    </div>
+                    <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)' }}>
+                      {d.specialty ?? d.email}
+                    </div>
+                  </div>
+                  <StatusPill status={status} size="sm" />
+                </button>
+              )
+            })
+          )}
+        </div>
+      </Card>
 
       <DoctorDetailDrawer
         doctor={selectedDoctor}
