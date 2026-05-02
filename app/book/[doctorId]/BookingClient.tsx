@@ -12,6 +12,7 @@ import { useBcvRate } from '@/lib/useBcvRate'
 // L6 (2026-04-29): inputs canonicos para cedula y telefono venezolano
 import CedulaInput from '@/components/shared/CedulaInput'
 import PhoneInput from '@/components/shared/PhoneInput'
+import { DeltaMark } from '@/components/dh'
 
 // ── Brand Tokens ──────────────────────────────────────────────────────────
 const BRAND = {
@@ -22,14 +23,9 @@ const BRAND = {
   gradient: 'linear-gradient(135deg, #06B6D4 0%, #0891b2 50%, #0E7490 100%)',
 }
 
-// ── Delta Isotipo ─────────────────────────────────────────────────────────
+// ── Delta Isotipo (oficial del design system) ─────────────────────────────
 function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 200 200" fill="none" className={className}>
-      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" strokeWidth="26" strokeLinecap="round" fill="none"/>
-      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" strokeWidth="26" strokeLinecap="round" fill="none"/>
-    </svg>
-  )
+  return <DeltaMark size={size} bold className={className} />
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────

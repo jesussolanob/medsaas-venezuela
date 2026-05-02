@@ -10,6 +10,7 @@ import { clsx } from 'clsx'
 import { createClient } from '@/lib/supabase/client'
 import SearchCommandPalette from './SearchCommandPalette'
 import { Toaster } from '@/components/ui/Toaster'
+import { DeltaMark } from '@/components/dh'
 
 type NavItem = { name: string; href: string; icon: any }
 
@@ -30,19 +31,9 @@ function isPathActive(pathname: string, href: string) {
 
 const publicRoutes = ['/patient/login', '/patient/register']
 
-/* Delta isotipo — lazo abierto */
+/* Delta isotipo — usa el componente oficial del design system */
 const DeltaIsotipo = ({ size = 36 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 120 120" fill="none">
-    <path
-      d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56"
-      stroke="#06B6D4" strokeWidth="14" strokeLinecap="round" fill="none"
-    />
-    <path
-      d="M58 92 C 78 92, 92 78, 88 60"
-      stroke="#FF8A65" strokeWidth="14" strokeLinecap="round" fill="none"
-    />
-    <circle cx="78" cy="72" r="4.5" fill="#FF8A65" />
-  </svg>
+  <DeltaMark size={size} bold />
 )
 
 export default function PatientLayout({ children }: { children: React.ReactNode }) {

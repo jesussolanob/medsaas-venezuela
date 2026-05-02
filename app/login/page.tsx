@@ -7,6 +7,12 @@ import { AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, RefreshCw } 
 import { createClient } from '@/lib/supabase/client'
 import { resendConfirmation } from '../register/actions'
 import { Suspense } from 'react'
+import { DeltaMark } from '@/components/dh'
+
+// Wrapper local para mantener API existente con className opcional
+function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
+  return <DeltaMark size={size} bold className={className} />
+}
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -19,15 +25,6 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
-/* Delta Isotipo — Lazo Abierto */
-function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 200 200" fill="none" className={className}>
-      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" strokeWidth="26" strokeLinecap="round" fill="none"/>
-      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" strokeWidth="26" strokeLinecap="round" fill="none"/>
-    </svg>
-  )
-}
 
 export default function LoginPage() {
   return (
@@ -202,11 +199,10 @@ function LoginInner() {
       <div className="login-root min-h-screen flex">
         {/* Left Panel — Brand */}
         <div className="login-left hidden lg:flex lg:w-[52%] relative overflow-hidden flex-col justify-between p-12 xl:p-16">
-          {/* Background isotipo decorativo */}
-          <svg className="absolute -right-20 -bottom-20 opacity-[0.04]" width="500" height="500" viewBox="0 0 200 200" fill="none">
-            <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" strokeWidth="26" strokeLinecap="round" fill="none"/>
-            <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" strokeWidth="26" strokeLinecap="round" fill="none"/>
-          </svg>
+          {/* Background isotipo decorativo (logo oficial) */}
+          <div className="absolute -right-20 -bottom-20 opacity-[0.06] pointer-events-none">
+            <DeltaMark size={500} bold />
+          </div>
 
           {/* Top: Logo + Beta badge */}
           <div className="relative z-10">

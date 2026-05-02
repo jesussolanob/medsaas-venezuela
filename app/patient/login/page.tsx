@@ -4,15 +4,11 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
+import { DeltaMark } from '@/components/dh'
 
-/* Delta Isotipo — Lazo Abierto */
+// Wrapper para mantener API existente
 function DeltaIsotipo({ size = 40 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 200 200" fill="none">
-      <path d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175" stroke="#06B6D4" strokeWidth="26" strokeLinecap="round" fill="none"/>
-      <path d="M145 155 C170 120, 170 70, 140 45" stroke="#FF8A65" strokeWidth="26" strokeLinecap="round" fill="none"/>
-    </svg>
-  )
+  return <DeltaMark size={size} bold />
 }
 
 // Patient login now redirects to unified login

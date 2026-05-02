@@ -19,15 +19,11 @@ const specialties = [
   'Reumatología', 'Fisioterapia', 'Urología', 'Otra',
 ]
 
-/* Delta Isotipo */
+import { DeltaMark } from '@/components/dh'
+
+// Wrapper para mantener API existente
 function DeltaIsotipo({ size = 40 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 120 120" fill="none">
-      <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="#06B6D4" strokeWidth="14" strokeLinecap="round" fill="none"/>
-      <path d="M58 92 C 78 92, 92 78, 88 60" stroke="#FF8A65" strokeWidth="14" strokeLinecap="round" fill="none"/>
-      <circle cx="78" cy="72" r="4.5" fill="#FF8A65" />
-    </svg>
-  )
+  return <DeltaMark size={size} bold />
 }
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -226,10 +222,9 @@ export default function RegisterPage() {
       <div className="register-root min-h-screen flex">
         {/* Left Panel — Brand */}
         <div className="register-left hidden lg:flex lg:w-[48%] relative overflow-hidden flex-col justify-between p-12 xl:p-16">
-          <svg className="absolute -right-20 -bottom-20 opacity-[0.04]" width="500" height="500" viewBox="0 0 120 120" fill="none">
-            <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="#06B6D4" strokeWidth="14" strokeLinecap="round" fill="none"/>
-            <path d="M58 92 C 78 92, 92 78, 88 60" stroke="#FF8A65" strokeWidth="14" strokeLinecap="round" fill="none"/>
-          </svg>
+          <div className="absolute -right-20 -bottom-20 opacity-[0.06] pointer-events-none">
+            <DeltaMark size={500} bold />
+          </div>
 
           <div className="relative z-10">
             <div className="flex items-center gap-3">
