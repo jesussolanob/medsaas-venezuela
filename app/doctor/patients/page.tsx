@@ -462,9 +462,16 @@ export default function PatientsPage() {
         <div className="max-w-5xl space-y-5">
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Pacientes</h1>
-              <p className="text-sm text-slate-500">{patients.length} paciente{patients.length !== 1 ? 's' : ''} registrado{patients.length !== 1 ? 's' : ''}</p>
+            <div className="flex-1 min-w-0">
+              <h1
+                className="font-semibold tracking-tight"
+                style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+              >
+                Pacientes
+              </h1>
+              <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
+                {patients.length} paciente{patients.length !== 1 ? 's' : ''} registrado{patients.length !== 1 ? 's' : ''}
+              </p>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <a href="https://wa.me" target="_blank" rel="noreferrer" className="flex items-center justify-center sm:justify-start gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">

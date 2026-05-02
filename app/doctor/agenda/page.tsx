@@ -1068,14 +1068,19 @@ export default function AgendaPage() {
 
   return (
     <>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.day-hover:hover { background: rgba(0,196,204,0.06); transition: background 0.2s; }`}</style>
+      <style>{`.g-bg{background:linear-gradient(135deg,var(--dh-turquoise-700) 0%,var(--dh-turquoise) 100%)}.day-hover:hover { background: rgba(6,182,212,0.06); transition: background 0.2s; }`}</style>
 
       <div className="max-w-5xl space-y-5">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex-1">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Agenda</h1>
-            <p className="text-sm text-slate-500 mt-1">
+          <div className="flex-1 min-w-0">
+            <h1
+              className="font-semibold tracking-tight"
+              style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+            >
+              Agenda
+            </h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
               Citas cada {config.slot_duration} min
               {config.buffer_minutes > 0 && ` · ${config.buffer_minutes} min entre citas`}
               {' · '}{allAppointments.length} consultas

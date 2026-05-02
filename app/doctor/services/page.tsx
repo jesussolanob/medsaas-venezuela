@@ -190,17 +190,34 @@ export default function ServicesPage() {
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">Servicios y Planes</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Configura lo que ofreces en tu consulta y link de booking</p>
+        <div className="min-w-0">
+          <h1
+            className="font-semibold tracking-tight"
+            style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+          >
+            Servicios y Planes
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
+            Configura lo que ofreces en tu consulta y link de booking
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => openNew('plan')}
-            className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => openNew('plan')}
+            className="flex items-center gap-2 text-white text-[13px] font-bold px-5 py-2.5 rounded-full transition-all hover:-translate-y-px"
+            style={{ background: 'var(--dh-turquoise)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-turquoise-700)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--dh-turquoise)' }}
+          >
             <Plus className="w-4 h-4" /> Plan de consulta
           </button>
-          <button onClick={() => openNew('service')}
-            className="flex items-center gap-2 border border-teal-200 text-teal-600 hover:bg-teal-50 text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
+          <button
+            onClick={() => openNew('service')}
+            className="flex items-center gap-2 text-[13px] font-bold px-5 py-2.5 rounded-full transition-all"
+            style={{ border: '1.5px solid var(--dh-turquoise-100)', color: 'var(--dh-turquoise-700)', background: 'white' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-turquoise-50)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'white' }}
+          >
             <Plus className="w-4 h-4" /> Servicio extra
           </button>
         </div>

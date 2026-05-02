@@ -3000,11 +3000,23 @@ function ConsultationsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Consultas</h1>
-            <p className="text-sm text-slate-500 mt-1">Gestiona tus consultas, entra a realizar el informe médico y controla el pago</p>
+            <h1
+              className="font-semibold tracking-tight"
+              style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+            >
+              Consultas
+            </h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
+              Gestiona tus consultas, entra a realizar el informe médico y controla el pago
+            </p>
           </div>
-          <button onClick={() => setShowNewConsultation(true)}
-            className="flex items-center justify-center sm:justify-start gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 shrink-0 w-full sm:w-auto">
+          <button
+            onClick={() => setShowNewConsultation(true)}
+            className="flex items-center justify-center sm:justify-start gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold text-white hover:-translate-y-px transition-all shrink-0"
+            style={{ background: 'var(--dh-ink)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-turquoise-700)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--dh-ink)' }}
+          >
             <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
           </button>
         </div>

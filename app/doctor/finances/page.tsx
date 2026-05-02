@@ -610,9 +610,16 @@ export default function FinancesPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Finanzas</h2>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1">Control de ingresos, gastos y balance del consultorio</p>
+        <div className="min-w-0">
+          <h1
+            className="font-semibold tracking-tight"
+            style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+          >
+            Finanzas
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
+            Control de ingresos, gastos y balance del consultorio
+          </p>
         </div>
 
         {/* View mode + Period nav */}
