@@ -21,6 +21,26 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Delta Medical CRM — Plataforma médica para Venezuela",
   description: "El primer software de salud hecho en Venezuela. Gestiona pacientes, agenda, historial clínico y finanzas desde un solo lugar.",
+  openGraph: {
+    title: "Delta Medical CRM",
+    description: "La primera plataforma venezolana que conecta especialistas con pacientes.",
+    type: "website",
+    locale: "es_VE",
+    images: [
+      {
+        url: "/logos/delta-logo-bone-1024.png",
+        width: 1024,
+        height: 1024,
+        alt: "Delta Health Tech",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Delta Medical CRM",
+    description: "Especialistas y pacientes, conectados.",
+    images: ["/logos/delta-logo-bone-1024.png"],
+  },
 };
 
 // F4 (2026-04-29): viewport meta para Safari iOS — sin maximum-scale (a11y) y con viewport-fit=cover para notch
