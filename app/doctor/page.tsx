@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { StatCard, Card } from '@/components/dh'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 // L3 (2026-04-29): quick action "Crear paciente" en el dashboard reusa
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
@@ -344,78 +345,112 @@ export default function DoctorDashboard() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        * { font-family: 'Inter', sans-serif; }
-        .g-bg { background: linear-gradient(135deg, #00C4CC 0%, #0891b2 50%, #0e7490 100%); }
-        .g-text { background: linear-gradient(135deg, #00C4CC, #0891b2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .g-bg { background: linear-gradient(135deg, var(--dh-turquoise-700) 0%, var(--dh-turquoise) 50%, var(--dh-turquoise-500) 100%); }
+        .g-text { background: linear-gradient(135deg, var(--dh-turquoise), var(--dh-turquoise-700)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .card-hover { transition: all 0.2s; }
-        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: var(--dh-shadow-md); }
       `}</style>
 
-      <div className="max-w-5xl mx-auto space-y-8">
+      <div className="max-w-5xl mx-auto space-y-6 lg:space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-          <div className="flex-1">
-            <p className="text-slate-500 text-sm">{greeting()},</p>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">
+          <div className="flex-1 min-w-0">
+            <p
+              className="text-[11px] font-semibold uppercase tracking-[0.12em]"
+              style={{ color: 'var(--dh-turquoise-700)', fontFamily: 'var(--dh-font-mono)' }}
+            >
+              {greeting()}
+            </p>
+            <h1
+              className="font-semibold tracking-tight mt-1"
+              style={{
+                fontFamily: 'var(--dh-font-display)',
+                fontSize: 'clamp(22px, 3.2vw, 32px)',
+                color: 'var(--dh-ink)',
+              }}
+            >
               {profile?.full_name ? `${profile.professional_title || 'Dr.'} ${profile.full_name}` : 'Bienvenido'}
             </h1>
             {profile?.specialty && (
-              <p className="text-slate-400 text-sm mt-1">{profile.specialty}</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>{profile.specialty}</p>
             )}
           </div>
 
           {/* Plan badge */}
-          <div className="flex items-center gap-2 bg-white border border-teal-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 shrink-0">
-            <CheckCircle className="w-4 h-4 text-teal-500" />
+          <div
+            className="flex items-center gap-2 bg-white px-3 sm:px-4 py-2 sm:py-2.5 shrink-0"
+            style={{
+              border: '1px solid var(--dh-turquoise-100)',
+              borderRadius: 'var(--dh-r-md)',
+            }}
+          >
+            <CheckCircle className="w-4 h-4" style={{ color: 'var(--dh-turquoise)' }} />
             <div>
-              <p className="text-xs font-semibold text-teal-700">Plan activo</p>
-              <p className="text-[10px] text-slate-400">Acceso completo</p>
+              <p className="text-xs font-semibold" style={{ color: 'var(--dh-turquoise-700)' }}>Plan activo</p>
+              <p className="text-[10px]" style={{ color: 'var(--dh-gray-400)' }}>Acceso completo</p>
             </div>
           </div>
         </div>
 
         {/* Hero welcome card */}
-        <div className="g-bg rounded-2xl p-7 relative overflow-hidden text-white">
+        <div
+          className="g-bg p-6 sm:p-8 relative overflow-hidden text-white"
+          style={{ borderRadius: 'var(--dh-r-xl)' }}
+        >
           <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
           <div className="absolute bottom-0 left-1/3 w-24 h-24 rounded-full bg-cyan-400/20 blur-xl pointer-events-none" />
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-5 h-5 text-white/80" />
-              <span className="text-white/80 text-sm font-medium">Delta</span>
+              <span
+                className="text-white/80 text-[11px] font-semibold uppercase tracking-[0.12em]"
+                style={{ fontFamily: 'var(--dh-font-mono)' }}
+              >
+                Delta
+              </span>
             </div>
-            <h2 className="text-xl font-bold text-white mb-1">
+            <h2
+              className="font-semibold text-white mb-1"
+              style={{
+                fontFamily: 'var(--dh-font-display)',
+                fontSize: 'clamp(20px, 2.8vw, 26px)',
+                letterSpacing: '-0.02em',
+              }}
+            >
               Tu portal médico está listo
             </h2>
-            <p className="text-white/70 text-sm max-w-lg">
+            <p className="text-white/80 text-sm max-w-lg leading-relaxed">
               Gestiona pacientes, agenda citas, lleva historial clínico y controla tus finanzas, todo desde un solo lugar.
             </p>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 mt-5">
               <Link
                 href="/doctor/patients"
-                className="flex items-center justify-center sm:justify-start gap-2 bg-white text-teal-600 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/90 transition-colors"
+                className="flex items-center justify-center sm:justify-start gap-2 bg-white font-semibold text-[13px] px-4 py-2.5 rounded-full hover:-translate-y-px transition-all"
+                style={{ color: 'var(--dh-turquoise-700)' }}
               >
                 <Users className="w-4 h-4" />
                 <span>Ver Pacientes</span>
               </Link>
               <Link
                 href="/doctor/agenda"
-                className="flex items-center justify-center sm:justify-start gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
+                className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
+                style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.28)' }}
               >
                 <Calendar className="w-4 h-4" />
                 <span>Ver Agenda</span>
               </Link>
               <button
                 onClick={() => setShowNewFlow(true)}
-                className="flex items-center justify-center sm:justify-start gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
+                className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
+                style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.28)' }}
               >
                 <ClipboardList className="w-4 h-4" />
                 <span>Crear Consulta</span>
               </button>
-              {/* L3 (2026-04-29): quick action "Crear paciente" desde el dashboard */}
               <button
                 onClick={() => setShowPatientForm(true)}
-                className="flex items-center justify-center sm:justify-start gap-2 bg-white/20 backdrop-blur text-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-colors border border-white/30"
+                className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
+                style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.28)' }}
               >
                 <UserPlus className="w-4 h-4" />
                 <span>Crear Paciente</span>
@@ -425,55 +460,38 @@ export default function DoctorDashboard() {
         </div>
 
         {/* ── 3 KPI Cards: ingresos, pacientes, atendidos ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Ingresos totales</p>
-              <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
-                <DollarSign className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">
-              {formatUsd(allTimeStats.total_revenue_lifetime)}
-            </p>
-            {bcvRate && (
-              <p className="text-[11px] text-slate-400 mt-1">
-                ≈ {formatBs(toBsNum(allTimeStats.total_revenue_lifetime))}
-              </p>
-            )}
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Mis pacientes</p>
-              <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center">
-                <Users className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{allTimeStats.total_patients.toLocaleString('es-VE')}</p>
-            <p className="text-[11px] text-slate-400 mt-1">Registrados en tu consultorio</p>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Pacientes atendidos</p>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                <CheckCircle className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{allTimeStats.patients_attended.toLocaleString('es-VE')}</p>
-            <p className="text-[11px] text-slate-400 mt-1">Con al menos una consulta</p>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <StatCard
+            label="Ingresos totales"
+            value={formatUsd(allTimeStats.total_revenue_lifetime)}
+            icon={<DollarSign size={16} />}
+            subtitle={bcvRate ? `≈ ${formatBs(toBsNum(allTimeStats.total_revenue_lifetime))}` : undefined}
+          />
+          <StatCard
+            label="Mis pacientes"
+            value={allTimeStats.total_patients.toLocaleString('es-VE')}
+            icon={<Users size={16} />}
+            subtitle="Registrados en tu consultorio"
+          />
+          <StatCard
+            label="Pacientes atendidos"
+            value={allTimeStats.patients_attended.toLocaleString('es-VE')}
+            icon={<CheckCircle size={16} />}
+            subtitle="Con al menos una consulta"
+          />
         </div>
 
         {/* Widgets Grid - Bento style */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
           {/* Citas del Día Widget */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6">
+          <Card padding={24}>
             <div className="flex items-center gap-2 mb-4">
-              <Calendar className="w-5 h-5 text-teal-500" />
-              <h2 className="text-sm font-semibold text-slate-900">Citas del Día</h2>
-              <span className="ml-auto text-xs font-medium text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full">
+              <Calendar className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
+              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>Citas del Día</h2>
+              <span
+                className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: 'var(--dh-gray-50)', color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}
+              >
                 {todayAppointments.length}
               </span>
             </div>
@@ -513,59 +531,117 @@ export default function DoctorDashboard() {
                 )}
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Finanzas del Mes Widget */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6">
+          <Card padding={24}>
             <div className="flex items-center gap-2 mb-4">
-              <DollarSign className="w-5 h-5 text-teal-500" />
-              <h2 className="text-sm font-semibold text-slate-900">Finanzas</h2>
+              <DollarSign className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
+              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>Finanzas</h2>
               <div className="ml-auto flex items-center gap-1">
-                <button onClick={goToPrevMonth} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                <button
+                  onClick={goToPrevMonth}
+                  className="p-1 rounded-lg transition-colors"
+                  style={{ color: 'var(--dh-gray-400)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-gray-50)'; e.currentTarget.style.color = 'var(--dh-gray-600)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--dh-gray-400)' }}
+                >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="text-xs font-medium text-slate-600 min-w-[110px] text-center capitalize">{monthLabel}</span>
-                <button onClick={goToNextMonth} disabled={isCurrentMonth} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                <span
+                  className="text-xs font-semibold min-w-[110px] text-center capitalize"
+                  style={{ color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}
+                >
+                  {monthLabel}
+                </span>
+                <button
+                  onClick={goToNextMonth}
+                  disabled={isCurrentMonth}
+                  className="p-1 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{ color: 'var(--dh-gray-400)' }}
+                  onMouseEnter={e => { if (!isCurrentMonth) { e.currentTarget.style.background = 'var(--dh-gray-50)'; e.currentTarget.style.color = 'var(--dh-gray-600)' } }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--dh-gray-400)' }}
+                >
                   <ChevronRightIcon className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
             <div className="space-y-4">
-              <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg p-4 border border-teal-100">
-                <p className="text-xs text-slate-500 font-medium mb-1">Ingresos Totales</p>
-                <p className="text-2xl font-bold text-teal-600">
+              <div
+                className="p-4"
+                style={{
+                  background: 'linear-gradient(135deg, var(--dh-turquoise-50) 0%, var(--dh-turquoise-100) 100%)',
+                  border: '1px solid var(--dh-turquoise-100)',
+                  borderRadius: 'var(--dh-r-md)',
+                }}
+              >
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--dh-gray-600)' }}>Ingresos Totales</p>
+                <p
+                  className="font-semibold"
+                  style={{
+                    color: 'var(--dh-turquoise-700)',
+                    fontFamily: 'var(--dh-font-display)',
+                    fontSize: 28,
+                    letterSpacing: '-0.02em',
+                  }}
+                >
                   {formatUsd(financialData.total_revenue)}
                 </p>
-                {bcvRate && <p className="text-sm text-teal-500 font-semibold">{toBs(financialData.total_revenue)}</p>}
-                <p className="text-xs text-slate-400 mt-1">USD</p>
+                {bcvRate && (
+                  <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>{toBs(financialData.total_revenue)}</p>
+                )}
+                <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>USD</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                  <p className="text-xs text-slate-500 font-medium">Citas Completadas</p>
-                  <p className="text-xl font-bold text-slate-900 mt-1">{financialData.appointment_count}</p>
+                <div
+                  className="p-3"
+                  style={{
+                    background: 'var(--dh-gray-50)',
+                    border: '1px solid var(--dh-gray-100)',
+                    borderRadius: 'var(--dh-r-md)',
+                  }}
+                >
+                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>Citas Completadas</p>
+                  <p
+                    className="font-bold mt-1"
+                    style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 22 }}
+                  >
+                    {financialData.appointment_count}
+                  </p>
                 </div>
-                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                  <p className="text-xs text-slate-500 font-medium">Promedio por Cita</p>
-                  <p className="text-xl font-bold text-slate-900 mt-1">
+                <div
+                  className="p-3"
+                  style={{
+                    background: 'var(--dh-gray-50)',
+                    border: '1px solid var(--dh-gray-100)',
+                    borderRadius: 'var(--dh-r-md)',
+                  }}
+                >
+                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>Promedio por Cita</p>
+                  <p
+                    className="font-bold mt-1"
+                    style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 22 }}
+                  >
                     {formatUsd(financialData.appointment_count > 0 ? (financialData.total_revenue / financialData.appointment_count) : 0)}
                   </p>
                   {bcvRate && financialData.appointment_count > 0 && (
-                    <p className="text-xs text-slate-400">{toBs(financialData.total_revenue / financialData.appointment_count)}</p>
+                    <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>{toBs(financialData.total_revenue / financialData.appointment_count)}</p>
                   )}
                 </div>
               </div>
 
               <Link
                 href="/doctor/finances"
-                className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
+                className="text-xs font-semibold flex items-center gap-1 pt-2"
+                style={{ color: 'var(--dh-turquoise-700)' }}
               >
                 Ver más detalles
                 <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
 
