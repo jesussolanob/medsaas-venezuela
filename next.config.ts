@@ -6,6 +6,19 @@ import type { NextConfig } from "next";
 // usar `next build --no-lint` o configurar eslint-config-next directamente.
 const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
+  // 2026-05-02: la landing page es HTML estático que actualizamos seguido.
+  // Sin estos headers Vercel/CDN cachea agresivamente y los users ven
+  // versiones viejas durante horas.
+  async headers() {
+    return [
+      {
+        source: '/landing.html',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+        ],
+      },
+    ]
+  },
 };
 
 export default nextConfig;
