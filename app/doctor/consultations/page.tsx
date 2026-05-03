@@ -8,6 +8,7 @@ import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRigh
 import { createClient } from '@/lib/supabase/client'
 import { useBcvRate } from '@/lib/useBcvRate'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
+import ConsultationRecorder from '@/components/consultation/ConsultationRecorder'
 // RONDA 46: renderer de markdown ligero para outputs de Gemini
 import MarkdownText from '@/components/shared/MarkdownText'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
@@ -1785,6 +1786,61 @@ function ConsultationsPage() {
                 </div>
                 </div>
               </div>
+            </div>
+
+            {/* ── GRABAR CONSULTA (minutas tipo Google Meet) ──
+                2026-05-02: el doctor activa el micrófono, la IA transcribe
+                el audio y sugiere distribución entre bloques. Aplicar las
+                sugerencias actualiza directamente selected.blocks_data — el
+                doctor sigue presionando "Guardar" después como siempre. */}
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+                  Grabar la consulta
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-600)' }}>
+                  Activa el micrófono y la IA transcribe + sugiere cómo distribuirlo en tus bloques.
+                </p>
+              </div>
+              <ConsultationRecorder
+                availableBlocks={getEffectiveBlocks(selected).map(b => ({ key: b.key, label: b.label }))}
+                onApplyToBlock={(blockKey, content, mode) => {
+                  setSelected(prev => {
+                    if (!prev) return prev
+                    const currentData = (prev.blocks_data || {}) as Record<string, unknown>
+                    const existing = currentData[blockKey]
+                    let next: unknown = content
+                    if (mode === 'append' && typeof existing === 'string' && existing.trim()) {
+                      next = existing.trimEnd() + '\n\n' + content
+                    }
+                    return {
+                      ...prev,
+                      blocks_data: { ...currentData, [blockKey]: next },
+                    }
+                  })
+                  // Sync con campos legacy (chief_complaint/diagnosis/treatment/notes)
+                  // que viven en columnas top-level además de blocks_data — para que
+                  // el resto de la UI (PDF, share, etc.) los lea correctamente.
+                  if (typeof content === 'string') {
+                    setReport(r => {
+                      const map: Record<string, keyof typeof r> = {
+                        chief_complaint: 'chief_complaint',
+                        diagnosis: 'diagnosis',
+                        treatment: 'treatment',
+                        notes: 'notes',
+                        informe: 'notes',
+                      }
+                      const field = map[blockKey]
+                      if (!field) return r
+                      const current = (r as any)[field] as string | undefined
+                      const newVal = mode === 'append' && current && current.trim()
+                        ? current.trimEnd() + '\n\n' + content
+                        : content
+                      return { ...r, [field]: newVal } as any
+                    })
+                  }
+                }}
+              />
             </div>
 
             {/* Medical Report Form with Safari-style Tabs */}
