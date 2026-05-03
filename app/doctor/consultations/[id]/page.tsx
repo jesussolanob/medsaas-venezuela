@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader2, Save, CheckCircle2, AlertCircle, User, Calendar } from 'lucide-react'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
+import ConsultationRecorder from '@/components/consultation/ConsultationRecorder'
 
 type Consultation = {
   id: string
@@ -295,11 +296,36 @@ export default function ConsultationDetailPage() {
         </div>
       )}
 
+      {/* ── GRABAR CONSULTA (minutas tipo Google Meet) ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>Grabar la consulta</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-600)' }}>
+              Activa el micrófono y la IA transcribe + sugiere cómo distribuirlo en tus bloques.
+            </p>
+          </div>
+          <ConsultationRecorder
+            availableBlocks={(consultation.blocks_snapshot || []).map(b => ({ key: b.key, label: b.label }))}
+            onApplyToBlock={(blockKey, content, mode) => {
+              setBlocksData(prev => {
+                const current = prev[blockKey]
+                let next: unknown = content
+                if (mode === 'append' && typeof current === 'string' && current.trim()) {
+                  next = current.trimEnd() + '\n\n' + content
+                }
+                return { ...prev, [blockKey]: next }
+              })
+            }}
+          />
+        </div>
+      </div>
+
       {/* ── BLOQUES DINÁMICOS ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-900">Plantilla personalizada</h2>
-          <a href="/doctor/settings/consultation-blocks" className="text-xs text-teal-600 hover:underline">
+          <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>Plantilla personalizada</h2>
+          <a href="/doctor/settings/consultation-blocks" className="text-xs font-semibold hover:underline" style={{ color: 'var(--dh-turquoise-700)' }}>
             Editar mi plantilla →
           </a>
         </div>
