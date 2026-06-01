@@ -1,0 +1,15 @@
+---
+description: Seguridad y manejo de datos sensibles
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+- Encriptación AES-256-GCM SOLO en apps/backend — nunca en apps/frontend
+- Nunca loguear: cedula, diagnosis, treatment, medication_name, phone, email de pacientes
+- Endpoints sin autenticación solo: /api/auth/*, /api/booking/*, /api/settings/usdt-rate
+- Rate limiting obligatorio en auth y booking
+- Sanitizar HTML en cualquier campo de texto libre
+- Validar MIME type de archivos en el servidor antes de guardar en GCS
+- Nunca exponer stack traces al cliente en producción
+- Datos de pacientes en listas: SIEMPRE enmascarados; solo /reveal retorna el dato
+  completo y registra en access_audit_log
+- Verificar ownership del doctor antes de retornar datos de un paciente (anti-IDOR)

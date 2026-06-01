@@ -1,0 +1,19 @@
+---
+description: SOLID y error handling en todo el proyecto
+globs: ["**/*.ts"]
+alwaysApply: true
+---
+SOLID obligatorio:
+- Una clase = una responsabilidad (S)
+- Extender por composición, no modificar (O)
+- Las subclases deben ser sustituibles por su tipo base (L)
+- Interfaces pequeñas y específicas, no monolíticas (I)
+- Depender de abstracciones, no de implementaciones (D)
+
+Error handling — cero errores sin controlar:
+- Backend: lanzar clases de error propias que extienden DomainError
+- Frontend: apiClient convierte errores HTTP a Result<T, AppError>
+- Toda promesa es awaited o tiene .catch()
+- GlobalExceptionFilter captura lo que escape de las capas anteriores
+- Nunca: throw new Error('mensaje genérico')
+- Siempre: throw new PatientNotFoundError(patientId)

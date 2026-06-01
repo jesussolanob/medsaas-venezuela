@@ -1,0 +1,35 @@
+---
+description: Arquitectura DDD para apps/backend
+globs: ["apps/backend/**/*.ts"]
+alwaysApply: true
+---
+El backend usa DDD con 4 capas estrictas:
+
+DOMAIN (src/domain/):
+- Entidades de negocio con identidad (Appointment, Patient, Consultation)
+- Value Objects inmutables (AppointmentStatus, Money, DateRange)
+- Interfaces de repositorios abstractas (IAppointmentRepository)
+- Eventos de dominio (AppointmentConfirmedEvent)
+- Errores de dominio (AppointmentConflictError extends DomainError)
+- NUNCA importar de infrastructure/, presentation/, o frameworks externos
+
+APPLICATION (src/application/):
+- Use Cases (uno por caso de uso de negocio)
+- DTOs de entrada/salida (usar schemas Zod de @delta/shared-types)
+- Interfaces de puertos de salida (INotificationPort, ICachePort)
+- NUNCA importar de infrastructure/ directamente
+
+INFRASTRUCTURE (src/infrastructure/):
+- Implementaciones de repositorios con Sequelize
+- Implementaciones de puertos (RedisCache, Auth0Client, GCSStorage)
+- Modelos de Sequelize (solo para mapeo BD — no son entidades de dominio)
+- Configuraciones (database.config, redis.config)
+
+PRESENTATION (src/presentation/):
+- Controllers NestJS (solo rutar — sin lógica de negocio)
+- Guards (AuthGuard, RolesGuard)
+- Pipes (ZodValidationPipe)
+- Filters (GlobalExceptionFilter)
+- Interceptors (CacheInterceptor, LoggingInterceptor)
+
+Reglas de dependencia: presentation → application → domain ← infrastructure

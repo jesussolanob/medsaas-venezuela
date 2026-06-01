@@ -1,0 +1,26 @@
+---
+description: Convenciones de nombres en todo el proyecto
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+Backend (NestJS/DDD):
+- Entidades: PascalCase (Appointment, Patient)
+- Use Cases: PascalCase + verbo (CreateAppointmentUseCase, CancelAppointmentUseCase)
+- Repositorios abstractos: I + PascalCase (IAppointmentRepository)
+- Repositorios concretos: PascalCase + Impl (SequelizeAppointmentRepositoryImpl)
+- Errores de dominio: PascalCase + Error (AppointmentConflictError)
+- Eventos de dominio: PascalCase + Event (AppointmentConfirmedEvent)
+- Controllers: PascalCase + Controller (AppointmentsController)
+- Constantes: SCREAMING_SNAKE_CASE
+
+Frontend (Next.js):
+- Componentes: PascalCase
+- Hooks: use + PascalCase (useAppointments)
+- Server Components: page.tsx, layout.tsx (convención Next.js)
+- Client Components: 'use client' explícito
+- Funciones de API client: verbo + recurso (fetchAppointments, createPatient)
+
+Compartido:
+- Schemas Zod: PascalCase + Schema (AppointmentSchema)
+- Tipos inferidos: PascalCase sin sufijo (Appointment, Patient)
+- Enums: PascalCase para el tipo, SCREAMING_SNAKE para los valores

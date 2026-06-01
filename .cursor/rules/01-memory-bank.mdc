@@ -1,0 +1,15 @@
+---
+description: Cargar Memory Bank y actualizar al terminar
+globs: ["**/*.ts", "**/*.tsx", "**/*.md"]
+alwaysApply: true
+---
+ANTES de cualquier cambio: leer memory-bank/00-project-overview.md,
+memory-bank/01-architecture.md, memory-bank/02-components.md, y
+memory-bank/06-mvp-planning.md.
+
+DESPUÉS de cualquier cambio significativo: actualizar el archivo del
+Memory Bank correspondiente. Los archivos del Memory Bank son documentos
+vivos — deben reflejar siempre el estado actual del proyecto.
+
+Nuevas funcionalidades deben estar en memory-bank/06-mvp-planning.md
+antes de implementarse.

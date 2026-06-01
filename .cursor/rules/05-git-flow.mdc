@@ -1,0 +1,12 @@
+---
+description: Git Flow — convención de ramas y commits
+globs: ["**/*"]
+alwaysApply: true
+---
+Ramas: main (prod), develop (integración), feature/* (desde develop),
+release/<version> (desde develop), hotfix/* (desde main).
+NUNCA commitear directo a main ni develop — siempre via PR.
+Commits: <type>(<scope>): <desc> — types: feat, fix, chore, docs, refactor, test, perf, ci.
+Push a develop → deploy automático a staging (GitHub Actions).
+Push a main → deploy automático a producción con smoke test (GitHub Actions).
+Hotfix: merge a main Y back-merge a develop.
