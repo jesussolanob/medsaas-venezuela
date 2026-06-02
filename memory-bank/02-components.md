@@ -66,7 +66,10 @@ Estado (orden `migracion/modulos/`):
   `modules/doctor-settings/`. Diferido: templates (con PDF).
 - 10 patient-portal → ✅ DDD. Portal del paciente (dashboard, citas, paquetes, recetas propias,
   mensajes, perfil). Anti-IDOR por `auth_user_id`. `modules/patient-portal/`. Diferido: PDF, reports.
-- 08 admin → ⏳ pendiente (ÚLTIMO; depende de todos).
+- 08 admin → ✅ DDD. super_admin: dashboard KPIs, médicos+actividad, suscripciones, planes/features
+  (toggle), stats, settings. Todos con @Roles('super_admin')+RolesGuard. `modules/admin/`.
+
+**🎉 TODOS los módulos del backend completos (10/10).** 614 tests verdes; dist boota sin colisión.
 
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.

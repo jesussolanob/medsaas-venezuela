@@ -335,3 +335,36 @@ Email Resend. Tests Playwright E2E.
 - Diferidos: /prescriptions/:id/pdf y /reports (PDF + decisión de producto); N+1 en packages (perf,
   batch antes de prod); updateProfile no atómico; cifrado de patient_messages.body (Etapa 2).
 - **Progreso módulos: 8/10.** Próximo y ÚLTIMO: admin (depende de todos). Luego → QA (parada).
+
+## 2026-06-02 — Módulo admin (ÚLTIMO) — completada
+
+- `apps/backend/src/modules/admin/` (DDD): super_admin. DoctorWithActivity entity, PlanConfig VO,
+  dashboard KPIs (Redis cache 300), lista de médicos, detalle, update suscripción, suscripciones,
+  planes (toggle), plan-features (toggle + invalida features:{plan}), stats de pacientes (counts), settings.
+  Migración 20260602000007 (seed plan_configs idempotent). Commit 85f4db5.
+- **TODOS los endpoints exigen super_admin** (@UseGuards(DevAuthGuard, RolesGuard) + @Roles a nivel de
+  clase). Verificado: super_admin→200, doctor→403 en múltiples endpoints.
+- Reviews: reviewer BLOQUEADO (3 HIGH), security APROBADO C/OBSERVACIONES (1 HIGH). Fixes (4 HIGH + medios):
+  **HIGH conflicto de models Sequelize** (SubscriptionModel duplicado admin/doctor-settings → renombrado a
+  AdminSubscriptionModel; 0 colisiones en boot verificado), Redis try/catch en dashboard/toggle/update,
+  paginación consistente con activityStatus, Zod en los 3 PUT de escritura, validación de enums en query.
+- Reconciliación: lastSignInAt no existe en Etapa 1 (auth = Fase 4) → activityStatus limitado, documentado.
+  usdt-rate NO duplicado (ya en finances).
+- Verificación del lead: build/lint/614 tests + boot dist (0 colisiones) + 403 doctor + 400 body inválido.
+
+## 2026-06-02 — 🎉 FASE 3 (backend) COMPLETA — 9/9 módulos de negocio + admin
+
+- **Todos los módulos del plan implementados** (orden modulos/): 01 auth (DevAuthGuard, Etapa 1) ·
+  02 patients · 03 appointments · 04 consultations · 05 ehr-prescriptions · 06 finances ·
+  07 packages-booking · 08 admin · 09 doctor-settings · 10 patient-portal.
+- 614 tests verdes / 101 suites; lint limpio; el dist boota todos los módulos sin colisión.
+- Construido con equipo de agentes (implementer + code-reviewer + security-agent), verificación del
+  lead por línea + boot del dist en cada módulo.
+- **PARADA EN QA** (instrucción del usuario): NO se ejecutó el qa-agent dedicado (cobertura+smoke formal,
+  E2E). Es el siguiente paso cuando el usuario lo indique.
+- **Deuda diferida documentada (Etapa 2 / decisiones de producto):** Turnstile real + rate limiting en
+  booking público; generación de PDF de recetas (+ tabla doctor_templates); slots de agenda
+  (doctor_schedules ya existe → desbloqueable); cifrado de patient_messages.body; reports clínicos al
+  paciente; N+1 en algunos listados; last_sign_in tracking (Auth0, Fase 4); GlobalExceptionFilter mapear
+  FK violations a 422.
+- Próximo posible: QA dedicado · Fase 4 (Auth0/sesión única/Cloudflare) · integración frontend (BFF).

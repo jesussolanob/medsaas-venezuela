@@ -123,6 +123,22 @@
 
 > Regla anti-IDOR: TODO se scopea por `auth_user_id = user.sub`, nunca por ids del cliente.
 
+### Admin (módulo ✅ — TODOS super_admin, RolesGuard a nivel de clase)
+
+| Endpoint                                                                    | Método  | Notas                                                                                          |
+| --------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------- |
+| `/api/admin/dashboard`                                                      | GET     | KPIs (médicos por actividad, citas 30d, pacientes, suscripciones por vencer). Redis cache 300. |
+| `/api/admin/doctors`, `/api/admin/doctors/:id`                              | GET     | Lista (filtros activity_status/subscription_status → 400 si inválido) + detalle.               |
+| `/api/admin/doctors/:id/subscription`                                       | PUT     | Actualiza suscripción (Zod) + invalida cache.                                                  |
+| `/api/admin/subscriptions`                                                  | GET     | Todas con filtros.                                                                             |
+| `/api/admin/plans`, `/api/admin/plans/:planKey`                             | GET/PUT | Planes (toggle is_active, Zod).                                                                |
+| `/api/admin/plan-features`, `/api/admin/plan-features/:planKey/:featureKey` | GET/PUT | Toggle feature (upsert + invalida features:{plan}).                                            |
+| `/api/admin/patients`                                                       | GET     | Stats globales (solo counts, sin PII).                                                         |
+| `/api/admin/settings`                                                       | GET     | Config general (no expone secretos).                                                           |
+
+> Nota: `POST /admin/settings/usdt-rate` vive en el módulo finances (no duplicado). lastSignInAt/activity
+> tracking llega en Fase 4 (auth).
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por
