@@ -1,0 +1,241 @@
+import { Test, type TestingModule } from '@nestjs/testing';
+import { ConsultationsController } from './consultations.controller';
+import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';
+import { UpdateConsultationUseCase } from '../../application/use-cases/consultations/update-consultation.use-case';
+import { ApprovePaymentUseCase } from '../../application/use-cases/consultations/approve-payment.use-case';
+import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
+import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
+import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
+import { Consultation } from '../../domain/entities/consultation.entity';
+import { ConsultationNotFoundError } from '../../domain/errors/consultation-not-found.error';
+import { PaymentAlreadyApprovedError } from '../../domain/errors/payment-already-approved.error';
+import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+
+const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
+const PATIENT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
+const CONSULTATION_ID = 'cccccccc-0000-0000-0000-000000000001';
+const now = new Date('2026-06-01T00:00:00Z');
+
+const mockUser: CurrentUserPayload = { sub: DOCTOR_ID, role: 'doctor', email: 'doc@dev.local' };
+
+function makeConsultation(
+  overrides: Partial<ConstructorParameters<typeof Consultation>[0]> = {},
+): Consultation {
+  return Consultation.create({
+    id: CONSULTATION_ID,
+    doctorId: DOCTOR_ID,
+    patientId: PATIENT_ID,
+    consultationCode: 'DLT-202606-0001',
+    consultationDate: now,
+    chiefComplaint: 'Headache',
+    diagnosis: 'Migraine',
+    treatment: 'Rest',
+    paymentStatus: 'pending',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  });
+}
+
+describe('ConsultationsController', () => {
+  let controller: ConsultationsController;
+
+  const mockCreate = { execute: jest.fn() };
+  const mockUpdate = { execute: jest.fn() };
+  const mockApprove = { execute: jest.fn() };
+  const mockGetById = { execute: jest.fn() };
+  const mockGetHistory = { execute: jest.fn() };
+  const mockList = { execute: jest.fn() };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [ConsultationsController],
+      providers: [
+        { provide: CreateConsultationUseCase, useValue: mockCreate },
+        { provide: UpdateConsultationUseCase, useValue: mockUpdate },
+        { provide: ApprovePaymentUseCase, useValue: mockApprove },
+        { provide: GetConsultationByIdUseCase, useValue: mockGetById },
+        { provide: GetPatientConsultationHistoryUseCase, useValue: mockGetHistory },
+        { provide: ListConsultationsUseCase, useValue: mockList },
+      ],
+    }).compile();
+
+    controller = module.get<ConsultationsController>(ConsultationsController);
+  });
+
+  describe('list', () => {
+    it('returns paginated consultations', async () => {
+      const consultation = makeConsultation();
+      mockList.execute.mockResolvedValue({
+        items: [consultation],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+
+      const result = await controller.list(mockUser);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+      expect(result.meta).toEqual({ total: 1, page: 1, limit: 20 });
+    });
+
+    it('passes doctorId from authenticated user', async () => {
+      mockList.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.list(mockUser);
+
+      expect(mockList.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ doctorId: DOCTOR_ID }),
+      );
+    });
+
+    it('throws BadRequestException for a malformed date_from', async () => {
+      await expect(controller.list(mockUser, 'not-a-date', undefined)).rejects.toThrow('date_from');
+    });
+
+    it('throws BadRequestException for a malformed date_to', async () => {
+      await expect(controller.list(mockUser, undefined, 'not-a-date')).rejects.toThrow('date_to');
+    });
+
+    it('accepts valid ISO date strings', async () => {
+      mockList.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await expect(
+        controller.list(mockUser, '2026-01-01T00:00:00Z', '2026-12-31T23:59:59Z'),
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe('findOne', () => {
+    it('returns a consultation by ID', async () => {
+      const consultation = makeConsultation();
+      mockGetById.execute.mockResolvedValue(consultation);
+
+      const result = await controller.findOne(CONSULTATION_ID, mockUser);
+
+      expect(result.success).toBe(true);
+      expect((result.data as Record<string, unknown>).id).toBe(CONSULTATION_ID);
+      expect((result.data as Record<string, unknown>).chief_complaint).toBe('Headache');
+    });
+
+    it('propagates ConsultationNotFoundError', async () => {
+      mockGetById.execute.mockRejectedValue(new ConsultationNotFoundError());
+
+      await expect(controller.findOne(CONSULTATION_ID, mockUser)).rejects.toThrow(
+        ConsultationNotFoundError,
+      );
+    });
+  });
+
+  describe('create', () => {
+    it('creates a consultation and returns it', async () => {
+      const consultation = makeConsultation();
+      mockCreate.execute.mockResolvedValue(consultation);
+
+      const dto = {
+        patient_id: PATIENT_ID,
+        consultation_date: now.toISOString(),
+      };
+
+      const result = await controller.create(dto, mockUser);
+
+      expect(result.success).toBe(true);
+      expect(mockCreate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ doctorId: DOCTOR_ID, patientId: PATIENT_ID }),
+      );
+    });
+
+    it('uses authenticated user doctorId — not any body field', async () => {
+      const consultation = makeConsultation();
+      mockCreate.execute.mockResolvedValue(consultation);
+
+      const dto = {
+        patient_id: PATIENT_ID,
+        consultation_date: now.toISOString(),
+      };
+
+      await controller.create(dto, mockUser);
+
+      expect(mockCreate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ doctorId: DOCTOR_ID }),
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('updates clinical fields', async () => {
+      const consultation = makeConsultation({ diagnosis: 'Updated diagnosis' });
+      mockUpdate.execute.mockResolvedValue(consultation);
+
+      const result = await controller.update(
+        CONSULTATION_ID,
+        { diagnosis: 'Updated diagnosis' },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockUpdate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          consultationId: CONSULTATION_ID,
+          doctorId: DOCTOR_ID,
+          diagnosis: 'Updated diagnosis',
+        }),
+      );
+    });
+  });
+
+  describe('approvePaymentEndpoint', () => {
+    it('approves payment successfully', async () => {
+      const consultation = makeConsultation({
+        paymentStatus: 'approved',
+        amount: 50,
+        paymentMethod: 'zelle',
+      });
+      mockApprove.execute.mockResolvedValue(consultation);
+
+      const result = await controller.approvePaymentEndpoint(
+        CONSULTATION_ID,
+        { amount: 50, payment_method: 'zelle' },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as Record<string, unknown>).payment_status).toBe('approved');
+    });
+
+    it('propagates PaymentAlreadyApprovedError', async () => {
+      mockApprove.execute.mockRejectedValue(new PaymentAlreadyApprovedError());
+
+      await expect(
+        controller.approvePaymentEndpoint(
+          CONSULTATION_ID,
+          { amount: 50, payment_method: 'zelle' },
+          mockUser,
+        ),
+      ).rejects.toThrow(PaymentAlreadyApprovedError);
+    });
+  });
+
+  describe('getPatientHistory', () => {
+    it('returns consultation history for a patient', async () => {
+      const consultation = makeConsultation();
+      mockGetHistory.execute.mockResolvedValue({
+        items: [consultation],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+
+      const result = await controller.getPatientHistory(PATIENT_ID, mockUser);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+      expect(mockGetHistory.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ patientId: PATIENT_ID, doctorId: DOCTOR_ID }),
+      );
+    });
+  });
+});

@@ -17,5 +17,7 @@ export * from './ehr-record.schema';
 export * from './dtos/create-patient.dto';
 export * from './dtos/create-appointment.dto';
 export * from './dtos/update-appointment-status.dto';
-export * from './dtos/create-consultation.dto';
+export * from './dtos/create-consultation-body.dto';
+export * from './dtos/update-consultation.dto';
+export * from './dtos/approve-payment.dto';
 export * from './dtos/update-patient.dto';

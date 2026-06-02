@@ -4,11 +4,13 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { databaseConfig } from './infrastructure/config/database.config';
 import { RedisModule } from './infrastructure/cache/redis.module';
+import { CryptoModule } from './infrastructure/crypto/crypto.module';
 import { HealthController } from './presentation/controllers/health.controller';
 import { GlobalExceptionFilter } from './presentation/filters/global-exception.filter';
 import { LoggingInterceptor } from './presentation/interceptors/logging.interceptor';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { PatientsModule } from './modules/patients/patients.module';
+import { ConsultationsModule } from './modules/consultations/consultations.module';
 
 @Module({
   imports: [
@@ -18,8 +20,11 @@ import { PatientsModule } from './modules/patients/patients.module';
     }),
     SequelizeModule.forRootAsync({ useFactory: databaseConfig }),
     RedisModule,
+    // Global crypto — must come before any module that uses CryptoService.
+    CryptoModule,
     AppointmentsModule,
     PatientsModule,
+    ConsultationsModule,
   ],
   controllers: [HealthController],
   providers: [
