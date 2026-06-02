@@ -1,0 +1,11 @@
+// Sequelize CLI configuration for apps/backend
+// This file tells sequelize-cli where to find migrations, models, seeders, and config.
+// Paths are relative to apps/backend/ (the cwd when running nx targets).
+const path = require('path');
+
+module.exports = {
+  config: path.resolve('src/infrastructure/database/config.json'),
+  'models-path': path.resolve('src/infrastructure/database/models'),
+  'seeders-path': path.resolve('src/infrastructure/database/seeders'),
+  'migrations-path': path.resolve('src/infrastructure/database/migrations'),
+};

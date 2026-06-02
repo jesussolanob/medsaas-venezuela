@@ -36,6 +36,7 @@
     "lint-staged": "^17.0.7",
     "nx": "^22.7.5",
     "prettier": "^3.8.3",
+    "sequelize-cli": "^6.6.5",
     "ts-jest": "^29.4.0",
     "ts-node": "10.9.1",
     "tslib": "^2.3.0",

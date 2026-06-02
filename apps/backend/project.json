@@ -65,6 +65,34 @@
       "options": {
         "passWithNoTests": true
       }
+    },
+    "migrate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx sequelize-cli db:migrate",
+        "cwd": "apps/backend"
+      }
+    },
+    "migrate:undo": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx sequelize-cli db:migrate:undo",
+        "cwd": "apps/backend"
+      }
+    },
+    "migrate:undo:all": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx sequelize-cli db:migrate:undo:all",
+        "cwd": "apps/backend"
+      }
+    },
+    "migrate:status": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx sequelize-cli db:migrate:status",
+        "cwd": "apps/backend"
+      }
     }
   }
 }
