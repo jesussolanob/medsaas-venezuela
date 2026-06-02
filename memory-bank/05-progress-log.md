@@ -26,11 +26,14 @@ Email Resend. Tests Playwright E2E.
   adfbcbb (CLAUDE+docker), 520b4cb (gitignore).
 - [x] Memory Bank (7 archivos)
 - [x] `.cursor/rules` (6 .mdc) + CLAUDE.md raíz monorepo
-- [x] Scaffolding NX (nx.json, pnpm-workspace, tsconfig.base @delta/*, libs skeletons)
+- [x] Scaffolding NX (nx.json, pnpm-workspace, tsconfig.base @delta/\*, libs skeletons)
 - [x] Frontend movido a `apps/frontend/` (git mv, historial preservado)
 - [x] Docker compose (Postgres16+Redis7) + init.sql + docker-reset.sh
 - [x] Verificación: `nx show projects` lista 4 proyectos; `next build` compila (paths OK)
-- [ ] PENDIENTE: Husky + commitlint + lint-staged (Paso 7)
-- [ ] PENDIENTE: crear rama `develop` + branch protection
-- [ ] NOTA: Docker Desktop no instalado aún (requerido en Fase 3)
-- [ ] NOTA: `next build` falla en prerender por env Supabase faltante (esperado, no es la migración)
+- [x] Husky + commitlint + lint-staged (Paso 7). lint-staged = solo prettier (eslint a CI). Hooks: pre-commit branch-aware + commit-msg conventional.
+- [x] Rama `develop` creada (local) en la fundación del monorepo.
+- [ ] PENDIENTE (acción usuario): push + branch protection en GitHub; fijar identidad git real (`user.email`) antes de push.
+- [ ] NOTA: Docker Desktop no instalado aún (requerido en Fase 3).
+- [ ] NOTA: `next build` falla en prerender por env Supabase faltante (esperado, no es la migración).
+
+**FASE 1 COMPLETA.** Próximo: Fase 2 — shared-types (Zod) — sub-agente Sonnet.
