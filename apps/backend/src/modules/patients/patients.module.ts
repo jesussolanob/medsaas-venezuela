@@ -38,5 +38,8 @@ import { PatientsController } from './presentation/controllers/patients.controll
     UpdatePatientUseCase,
     DeletePatientUseCase,
   ],
+  // Export the repository token so other modules (e.g. PrescriptionsModule) can
+  // inject it for ownership checks without duplicating the Sequelize model.
+  exports: [PATIENT_REPOSITORY],
 })
 export class PatientsModule {}

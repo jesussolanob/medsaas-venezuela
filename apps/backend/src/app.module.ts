@@ -11,6 +11,8 @@ import { LoggingInterceptor } from './presentation/interceptors/logging.intercep
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { PatientsModule } from './modules/patients/patients.module';
 import { ConsultationsModule } from './modules/consultations/consultations.module';
+import { EhrModule } from './modules/ehr/ehr.module';
+import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { ConsultationsModule } from './modules/consultations/consultations.modul
     AppointmentsModule,
     PatientsModule,
     ConsultationsModule,
+    EhrModule,
+    PrescriptionsModule,
   ],
   controllers: [HealthController],
   providers: [
