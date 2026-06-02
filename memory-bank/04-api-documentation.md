@@ -58,7 +58,7 @@
 | `/api/consultations/:id`                | PUT    | Actualiza campos clínicos.                                                       |
 | `/api/consultations/:id/payment`        | PUT    | Aprueba pago (pending→approved). Ya aprobado → PaymentAlreadyApprovedError.      |
 
-### EHR + Prescriptions (módulo 🔄 en progreso)
+### EHR + Prescriptions (módulo ✅ — campos clínicos cifrados; ParseUUIDPipe en params; create-prescription valida ownership del paciente)
 
 | Endpoint                                                          | Método   | Notas                                                                                 |
 | ----------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------- |

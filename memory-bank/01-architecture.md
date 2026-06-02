@@ -121,3 +121,7 @@ tasa USDT 10m. Invalidación por evento (update perfil → `profile:{id}`; cita 
 - **Proceso de equipo (Agent Teams):** implementer → code-reviewer (+ security-agent si PHI) →
   fixes → el lead VERIFICA el código por línea y corre build/lint/test (los sub-agentes han
   sobre-declarado; no se commitea con la sola palabra del agente). Ver `.claude/agents/orchestrator.md`.
+- **Pitfall DI/webpack (¡importante!):** NUNCA declarar `Sequelize` ni infra global en el array
+  `providers` de un módulo NestJS — compila y pasa los tests (TestingModule) pero CRASHEA el
+  servidor compilado (`dist`). Inyectar del DI global. **Verificación obligatoria por módulo:**
+  bootear el dist (`node dist/apps/backend/main.js`) + smoke real, no solo tests.

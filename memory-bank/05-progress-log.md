@@ -221,3 +221,28 @@ Email Resend. Tests Playwright E2E.
 - Diferidos documentados: masking en lista (Etapa 1 OK, doctor ve solo las suyas); audit_log en GET
   (pre-prod); imports de CryptoService en application/ de patients (deuda preexistente).
 - **Progreso módulos: 3/10 (patients, appointments, consultations).** Próximo: ehr-prescriptions.
+
+## 2026-06-02 — Módulo ehr-prescriptions — completada
+
+- Dos sub-módulos: `apps/backend/src/modules/ehr/` y `modules/prescriptions/` (DDD). Reusan
+  CryptoModule global. EHR cifra diagnosis/treatment_plan; prescriptions cifra medication/dosage
+  (nombres reales `medication`/`notes`, NO medication_name/instructions; patient_id nullable;
+  issued_date mapeado de created_at). Commits fe6659d, 9f232ad, 888a113.
+- **Bug crítico encontrado por el implementer y corregido:** `ConsultationsModule` tenía
+  `Sequelize` en el array `providers`, lo que hacía **crashear el servidor compilado (dist)** —
+  los 193 tests no lo atraparon porque usan el TestingModule, no el dist. El lead había saltado
+  el boot-smoke del dist en consultations. **Lección incorporada: el smoke de boot del dist es
+  obligatorio por módulo.** Ningún otro módulo tenía el patrón (verificado). Commit fe6659d.
+- Reviews: security APROBADO (0 CRIT/HIGH, 2 MEDIUM, 1 LOW); reviewer APROBADO (2 MEDIUM, 3 LOW).
+  7 fixes aplicados: anti-IDOR de ESCRITURA en create-prescription (valida ownership del paciente
+  vía PatientRepository → PatientNotOwnedError/NOT_FOUND), ParseUUIDPipe en path params, mensajes
+  genéricos en DecryptionError (ehr/prescriptions/consultations), códigos de error unificados a
+  \*\_NOT_FOUND (anti-enumeración), `requireDecrypt` para medication (sin `?? ''`), tests faltantes.
+- **Verificación de cierre del lead:** build + lint + 276 tests verdes + **boot del servidor real**
+  (POST ehr/prescriptions/consultations 201, cifrado confirmado en BD ilegible, anti-IDOR override).
+- **Lección de proceso recurrente:** el implementer sub-entrega en directivas multi-item
+  (procesa el primer lote, omite el addendum). El lead verifica por línea y aplica los pocos
+  faltantes él mismo cuando son triviales (más eficiente que otra ronda).
+- Diferidos: GeneratePrescriptionPdf (req. tabla doctor_templates + lib PDF); acceso rol-paciente
+  a recetas (→ módulo patient-portal).
+- **Progreso módulos: 4/10.** Próximo: packages-booking.

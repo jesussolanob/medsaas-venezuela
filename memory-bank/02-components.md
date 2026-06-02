@@ -52,8 +52,14 @@ Estado (orden `migracion/modulos/`):
   lock de paquetes. `modules/appointments/`. Diferido: slots/reschedule (falta doctor_schedule).
 - 04 consultations → ✅ DDD. Campos clínicos cifrados; `ConsultationCode` VO (DLT-YYYYMM-XXXX,
   retry ante colisión); aprobación de pago. `modules/consultations/`.
-- 05 ehr-prescriptions → 🔄 en progreso. EHR + recetas cifradas. Diferido: PDF + acceso paciente.
-- 06 finances · 07 packages-booking · 08 admin · 09 doctor-settings · 10 patient-portal → ⏳ pendientes.
+- 05 ehr-prescriptions → ✅ DDD. EHR (diagnosis/treatment_plan cifrados) + prescriptions
+  (medication/dosage cifrados; anti-IDOR de escritura: valida ownership del paciente).
+  `modules/ehr/` + `modules/prescriptions/`. Diferido: PDF + acceso rol-paciente.
+- 07 packages-booking · 06 finances · 09 doctor-settings · 10 patient-portal · 08 admin → ⏳ pendientes.
+
+> ⚠️ Pitfall DI/webpack: NUNCA declarar `Sequelize` (ni infra global) en el array `providers`
+> de un módulo — crashea el server compilado (dist). Inyectarlo del DI global. Verificar con
+> boot del dist (`node dist/apps/backend/main.js`), no solo con tests.
 
 **Infraestructura transversal:** `infrastructure/crypto/` (CryptoModule @Global: encrypt/decrypt
 AES-256-GCM + HMAC search hash, lee llaves de ConfigService, guard de llaves triviales);
