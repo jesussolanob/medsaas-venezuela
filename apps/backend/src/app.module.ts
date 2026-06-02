@@ -15,6 +15,7 @@ import { EhrModule } from './modules/ehr/ehr.module';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 import { PackagesModule } from './modules/packages/packages.module';
 import { BookingModule } from './modules/booking/booking.module';
+import { FinancesModule } from './modules/finances/finances.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { BookingModule } from './modules/booking/booking.module';
     PrescriptionsModule,
     PackagesModule,
     BookingModule,
+    FinancesModule,
   ],
   controllers: [HealthController],
   providers: [

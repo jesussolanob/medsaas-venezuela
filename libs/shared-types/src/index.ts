@@ -26,3 +26,4 @@ export * from './dtos/create-prescription.dto';
 export * from './dtos/create-package.dto';
 export * from './dtos/create-booking.dto';
 export * from './dtos/create-pricing-plan.dto';
+export * from './dtos/record-finance-entry.dto';
