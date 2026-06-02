@@ -8,6 +8,7 @@ import { HealthController } from './presentation/controllers/health.controller';
 import { GlobalExceptionFilter } from './presentation/filters/global-exception.filter';
 import { LoggingInterceptor } from './presentation/interceptors/logging.interceptor';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { PatientsModule } from './modules/patients/patients.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
     SequelizeModule.forRootAsync({ useFactory: databaseConfig }),
     RedisModule,
     AppointmentsModule,
+    PatientsModule,
   ],
   controllers: [HealthController],
   providers: [
