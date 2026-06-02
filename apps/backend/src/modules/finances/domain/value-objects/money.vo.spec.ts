@@ -93,7 +93,7 @@ describe('Money', () => {
   });
 
   describe('subtract', () => {
-    it('subtracts same-currency amounts', () => {
+    it('subtracts same-currency amounts when result is non-negative', () => {
       const a = new Money(100, 'USD');
       const b = new Money(30, 'USD');
       const result = a.subtract(b);
@@ -101,17 +101,33 @@ describe('Money', () => {
       expect(result.currency).toBe('USD');
     });
 
-    it('floors at zero when subtraction would go negative', () => {
-      const a = new Money(10, 'USD');
+    it('allows subtraction that results in exactly zero', () => {
+      const a = new Money(50, 'USD');
       const b = new Money(50, 'USD');
       const result = a.subtract(b);
       expect(result.amount).toBe(0);
+    });
+
+    it('throws InvalidAmountError when subtraction would produce a negative amount', () => {
+      // Money cannot represent negative magnitudes. Callers that need a signed
+      // deficit (e.g. GetFinancialSummaryUseCase) compute net as a plain number.
+      const a = new Money(10, 'USD');
+      const b = new Money(50, 'USD');
+      expect(() => a.subtract(b)).toThrow(InvalidAmountError);
     });
 
     it('throws CurrencyMismatchError for different currencies', () => {
       const usd = new Money(100, 'USD');
       const bs = new Money(100, 'BS');
       expect(() => usd.subtract(bs)).toThrow(CurrencyMismatchError);
+    });
+
+    it('returns a new Money instance (immutability)', () => {
+      const a = new Money(100, 'USD');
+      const b = new Money(40, 'USD');
+      const result = a.subtract(b);
+      expect(result).not.toBe(a);
+      expect(a.amount).toBe(100); // original unchanged
     });
   });
 });

@@ -7,9 +7,20 @@ export type Currency = 'USD' | 'BS';
  * Value object representing a monetary amount in a specific currency.
  *
  * Invariants:
- *   - amount must be > 0 (use zero values separately in aggregate logic)
+ *   - amount >= 0 (negative amounts are rejected; the Money VO represents a
+ *     magnitude, not a signed position)
  *   - currency must be 'USD' or 'BS'
- *   - add() requires both operands to share the same currency
+ *   - add() and subtract() require both operands to share the same currency
+ *
+ * Zero is permitted at the VO level to support aggregate results (e.g. a sum
+ * that happens to total $0). Individual transaction amounts are validated at
+ * the use-case / DTO layer (Zod z.number().positive()) to reject zero before
+ * a Money is constructed for a transaction entry.
+ *
+ * TODO TD-FINANCES-002: If Money is ever used outside aggregate/summary
+ * contexts for strict ledger entries, consider a factory method
+ * `Money.forTransaction(amount, currency)` that enforces amount > 0,
+ * keeping the constructor permissive for internal aggregate use.
  */
 export class Money {
   constructor(
@@ -19,9 +30,6 @@ export class Money {
     if (amount < 0) {
       throw new InvalidAmountError(amount);
     }
-    // Note: amount === 0 is permitted for aggregate calculations (e.g. net result).
-    // Individual transaction amounts are validated at the use-case / DTO layer
-    // (Zod z.number().positive()) to reject zero before reaching the domain.
   }
 
   /**
@@ -55,20 +63,23 @@ export class Money {
 
   /**
    * Returns a new Money that is the difference (this - other).
-   * Floors at zero: a net financial position cannot go below zero in the summary
-   * view (expenses exceeding income means net = 0, not a negative balance).
    * Throws CurrencyMismatchError if currencies differ.
+   * Throws InvalidAmountError if the result is negative (Money cannot represent
+   * a negative magnitude — callers that need signed deficit values should compute
+   * the difference as a plain number outside the VO).
    *
-   * TECH DEBT (Etapa 1): The silent floor is intentional for summary calculations
-   * but could mask upstream bugs if subtract() is ever used to validate individual
-   * transactions. If that use case arises, add a separate `subtractStrict()` that
-   * throws on negative result. Tracked as TD-FINANCES-001.
+   * The financial summary (GetFinancialSummaryUseCase) computes net as a raw
+   * signed number for exactly this reason: a deficit month produces a negative
+   * net that is not representable as Money.
    */
   subtract(other: Money): Money {
     if (this.currency !== other.currency) {
       throw new CurrencyMismatchError();
     }
     const result = this.amount - other.amount;
-    return new Money(Math.max(0, result), this.currency);
+    if (result < 0) {
+      throw new InvalidAmountError(result);
+    }
+    return new Money(result, this.currency);
   }
 }

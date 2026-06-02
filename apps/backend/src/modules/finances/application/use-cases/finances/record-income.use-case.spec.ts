@@ -57,7 +57,7 @@ describe('RecordIncomeUseCase', () => {
     expect(mockRepo.save).not.toHaveBeenCalled();
   });
 
-  it('accepts negative amount and throws InvalidAmountError', async () => {
+  it('rejects negative amount with InvalidAmountError', async () => {
     await expect(
       useCase.execute({ doctorId: 'doc-id-1', amount: -50, currency: 'USD', description: 'Fee' }),
     ).rejects.toThrow(InvalidAmountError);

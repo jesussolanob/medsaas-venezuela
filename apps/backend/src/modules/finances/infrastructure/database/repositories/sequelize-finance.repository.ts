@@ -91,6 +91,9 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
   async getConsultationSummary(doctorId: string, month: string): Promise<ConsultationSummary> {
     const { start, end } = this.monthBounds(month);
 
+    // COUNT returns bigint in Postgres; node-postgres delivers bigint as a string.
+    // The ::text cast keeps the wire type consistent with the SumAggRow pattern
+    // and avoids potential precision loss through JavaScript's number type.
     const rows = await this.sequelize.query<ConsultationAggRow>(
       `SELECT
          COALESCE(SUM(CASE WHEN payment_status = 'approved' THEN amount ELSE 0 END), 0) AS approved_total,
@@ -137,6 +140,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
   ): Promise<{ total: number; count: number }> {
     const { start, end } = this.monthBounds(month);
 
+    // COUNT(*)::text — same bigint-as-string rationale as getConsultationSummary.
     const rows = await this.sequelize.query<SumAggRow>(
       `SELECT
          COALESCE(SUM(amount), 0) AS total,
