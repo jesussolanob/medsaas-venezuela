@@ -273,3 +273,23 @@ Email Resend. Tests Playwright E2E.
   booking público — go-live blocker; hoy es un stub que acepta. También /booking/:doctorId/slots
   (requiere tabla doctor_schedule inexistente).
 - **Progreso módulos: 5/10.** Próximo: finances.
+
+## 2026-06-02 — Módulo finances — completada
+
+- `apps/backend/src/modules/finances/` (DDD): Money VO (USD/BS, conversión, add), FinancialTransaction
+  entity, resumen financiero, transacciones manuales (income/expense), tasa USDT con Redis. Migración
+  20260602000004 (financial_transactions + app_settings). **RolesGuard reutilizable** (super_admin) en
+  `presentation/guards/` — lo usará admin.
+- GetFinancialSummary suma `consultations.amount` WHERE payment_status='approved' (columna REAL) +
+  transacciones manuales. `net` es number con SIGNO (puede ser negativo — mes en rojo). Tasa USDT:
+  Redis TTL 600s + fallback app_settings; GET /settings/usdt-rate público; POST /admin/settings/usdt-rate
+  super_admin (RolesGuard).
+- Reviews: security APROBADO (2 MEDIUM, 2 LOW); reviewer BLOQUEADO (3 HIGH). 5 fixes aplicados:
+  net negativo (no floor), guard NaN en redis-usdt-rate, quitar actorRole muerto, tipar controller,
+  validar month YYYY-MM.
+- **Falso positivo del reviewer descartado por el lead:** reviewer marcó HIGH "columna amount vs
+  payment_amount" guiándose por el spec del módulo DESACTUALIZADO; la columna real ES `amount`
+  (03b T-07 + smoke lo confirman). NO se tocó. (Lección: el lead juzga los hallazgos, no los aplica a ciegas.)
+- Verificación del lead: build/lint/423 tests + BOOT DEL DIST + smoke (net=-70 con gastos>ingresos;
+  month inválido→400; RolesGuard doctor→403).
+- **Progreso módulos: 6/10.** Próximo: doctor-settings.

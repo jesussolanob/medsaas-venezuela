@@ -58,7 +58,14 @@ Estado (orden `migracion/modulos/`):
 - 07 packages-booking → ✅ DDD. Paquetes (ConsumePackageSession optimistic lock vía
   QueryTypes.UPDATE) + booking PÚBLICO (sin auth; find-or-create paciente + cita en transacción
   atómica). `modules/packages/` + `modules/booking/`. Diferido Etapa 2: Turnstile + rate limiting.
-- 06 finances · 09 doctor-settings · 10 patient-portal · 08 admin → ⏳ pendientes.
+- 06 finances → ✅ DDD. Money VO (USD/BS), resumen (consultas aprobadas + transacciones), tasa USDT
+  con Redis (TTL 600s), RolesGuard super_admin reutilizable. `modules/finances/`. Migración
+  20260602000004 (financial_transactions + app_settings).
+- 09 doctor-settings · 10 patient-portal · 08 admin → ⏳ pendientes.
+
+> `RolesGuard` (`presentation/guards/roles.guard.ts`) reutilizable: aplica con `@Roles('super_admin')`
+>
+> - DevAuthGuard. Fail-closed. Lo usará admin.
 
 > ⚠️ Pitfall DI/webpack: NUNCA declarar `Sequelize` (ni infra global) en el array `providers`
 > de un módulo — crashea el server compilado (dist). Inyectarlo del DI global. Verificar con

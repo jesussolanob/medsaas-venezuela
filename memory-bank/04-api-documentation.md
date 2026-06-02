@@ -87,6 +87,17 @@
 | `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. |
 | _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                           |
 
+### Finances (módulo ✅)
+
+| Endpoint                              | Método | Auth                         | Notas                                                                                                            |
+| ------------------------------------- | ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/api/finances/summary?month=YYYY-MM` | GET    | doctor                       | Resumen del mes (consultas aprobadas + transacciones). `net` con signo (puede ser negativo). month inválido→400. |
+| `/api/finances/transactions`          | GET    | doctor                       | Lista paginada de ingresos/gastos.                                                                               |
+| `/api/finances/income`                | POST   | doctor                       | Registrar ingreso manual (amount>0).                                                                             |
+| `/api/finances/expense`               | POST   | doctor                       | Registrar gasto.                                                                                                 |
+| `/api/settings/usdt-rate`             | GET    | **Pública**                  | Tasa USDT/Bs (Redis TTL 600s + fallback app_settings; null si no seteada).                                       |
+| `/api/admin/settings/usdt-rate`       | POST   | **super_admin** (RolesGuard) | Actualiza tasa + invalida Redis. doctor→403.                                                                     |
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por
