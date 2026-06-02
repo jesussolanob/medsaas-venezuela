@@ -1,7 +1,13 @@
+# Monorepo NX integrado: dependencias centralizadas en el package.json raíz.
+# Los libs (@delta/*) se resuelven vía tsconfig paths, no como paquetes pnpm.
+# Solo el frontend legacy mantiene su propio package.json por ahora.
 packages:
-  - "apps/*"
-  - "libs/*"
+  - "apps/frontend"
 allowBuilds:
+  '@nestjs/core': false
+  '@parcel/watcher': true
+  '@swc/core': true
+  less: false
   msw: false
   nx: true
   sharp: true
