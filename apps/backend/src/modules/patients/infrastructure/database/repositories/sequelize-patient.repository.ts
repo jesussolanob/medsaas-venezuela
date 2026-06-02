@@ -11,7 +11,7 @@ import type {
 } from '../../../domain/repositories/patient.repository';
 import { PatientModel } from '../models/patient.model';
 import { AccessAuditLogModel } from '../models/access-audit-log.model';
-import { CryptoService } from '../../crypto/crypto.service';
+import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 
 const VALID_SEX_VALUES: ReadonlyArray<Patient['sex']> = ['male', 'female', 'other'];
 const VALID_SOURCE_VALUES: ReadonlyArray<Patient['source']> = [

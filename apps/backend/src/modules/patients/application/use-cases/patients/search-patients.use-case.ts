@@ -4,7 +4,7 @@ import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
 } from '../../../domain/repositories/patient.repository';
-import { CryptoService } from '../../../infrastructure/crypto/crypto.service';
+import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 
 export interface SearchPatientsInput {
   query: string;

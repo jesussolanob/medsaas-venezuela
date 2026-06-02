@@ -3,7 +3,7 @@ import { SequelizeModule } from '@nestjs/sequelize';
 
 import { PatientModel } from './infrastructure/database/models/patient.model';
 import { AccessAuditLogModel } from './infrastructure/database/models/access-audit-log.model';
-import { CryptoService } from './infrastructure/crypto/crypto.service';
+// CryptoService is provided globally by CryptoModule (imported in AppModule) — no local import needed.
 import { SequelizePatientRepository } from './infrastructure/database/repositories/sequelize-patient.repository';
 import { PATIENT_REPOSITORY } from './domain/repositories/patient.repository';
 
@@ -21,8 +21,7 @@ import { PatientsController } from './presentation/controllers/patients.controll
   imports: [SequelizeModule.forFeature([PatientModel, AccessAuditLogModel])],
   controllers: [PatientsController],
   providers: [
-    // Crypto helper (reads env keys at boot)
-    CryptoService,
+    // CryptoService is global — injected from CryptoModule, not listed here.
 
     // Repository binding: domain interface → Sequelize implementation
     {

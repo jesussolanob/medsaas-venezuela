@@ -18,7 +18,9 @@ function isTrivialKey(hex: string): boolean {
  *
  * Reads ENCRYPTION_KEY and ENCRYPTION_HMAC_SECRET from the environment at boot
  * time and validates that they are present and non-trivial outside development.
- * All field encryption/decryption in the patients module goes through this service.
+ *
+ * This service is global — provided by CryptoModule (@Global) and available
+ * in every module without explicit import.
  */
 @Injectable()
 export class CryptoService implements OnModuleInit {
@@ -40,7 +42,6 @@ export class CryptoService implements OnModuleInit {
     }
 
     // Block trivial placeholder keys in any environment other than development.
-    // In production these keys MUST come from Secret Manager — never from .env.
     if (env !== 'development' && (isTrivialKey(keyHex) || isTrivialKey(hmacHex))) {
       throw new Error(
         'Trivial placeholder encryption keys detected in non-development environment. ' +
