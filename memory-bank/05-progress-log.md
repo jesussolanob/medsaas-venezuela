@@ -81,8 +81,45 @@ Email Resend. Tests Playwright E2E.
   importa enum + schema reales). Confirmado pendiente de Fase 2.
 - Hallazgo: zod v4 `.uuid()` exige RFC estricto (versión `[1-8]`, variante `[89ab]`).
 - Sin lint target en backend (coherente: eslint a CI, no en commits).
-- Pendiente Fase 3 (próxima sesión): migración inicial Sequelize (18 tablas) + primer
-  módulo de negocio (appointments) con endpoint funcional.
+- Pendiente Fase 3 (próxima sesión): primer módulo de negocio (appointments) con endpoint funcional.
+
+## 2026-06-02 — Fase 3 Unidad A: Migración inicial Sequelize — completada
+
+- `sequelize-cli` instalado como devDep root (`pnpm add -D -w sequelize-cli@6.6.5`).
+- Creados: `apps/backend/.sequelizerc` y `apps/backend/src/infrastructure/database/config.json`
+  (dev → deltamedical local Docker; test → deltamedical_test; production → DATABASE_URL env var).
+- Migración inicial creada en CommonJS (`.cjs`) en lugar de TypeScript. Motivo: `sequelize-cli`
+  no soporta TS nativo sin `ts-node` con configuración especial en monorepos NX. CJS es más
+  robusto y garantiza que la migración corre en verde.
+- Migración `20260602000000-initial-schema.cjs` implementa exactamente el spec `03b-schema-real.md`:
+  - 10 enums: user_role, subscription_plan, subscription_status, appointment_status,
+    reminder_channel, reminder_offset, lead_source, lead_status, payment_method, payment_status.
+  - 18 tablas en orden de dependencias FK: profiles, plan_configs, plan_features, subscriptions,
+    patients, pricing_plans, leads, patient_packages, appointments (sin FK circular), consultations,
+    ALTER TABLE appointments ADD consultation_id + FK, ehr_records, prescriptions, patient_messages,
+    reminders_settings, reminders_queue, doctor_invitations, access_audit_log, active_sessions.
+  - FK circular appointments<->consultations: appointments creada sin consultation_id; FK añadida
+    con ALTER TABLE post consultations. Constraint: `fk_appointments_consultation_id`.
+  - patient_packages.package_template_id: columna uuid nullable SIN FK formal (package_templates
+    fuera del scope de 18 tablas).
+  - Decisiones D-01 a D-17 aplicadas: leads.channel = TEXT, leads.stage = TEXT+CHECK,
+    appointments.payment_method = TEXT, consultations.payment_status = TEXT+CHECK('pending','approved'),
+    reminders_queue.patient_id -> profiles(id) (no patients.id), etc.
+  - Bug encontrado y corregido: índice parcial `appointments_doctor_slot_uq` usaba `status::text IN (...)`
+    en el WHERE predicate, lo que Postgres rechaza por no ser IMMUTABLE. Corregido comparando
+    con valores del enum directamente: `status IN ('scheduled'::appointment_status, ...)`.
+  - 61 índices totales (PKs, UNIQUEs, custom idx\_\*) + 5 CHECK constraints + 23 FK constraints.
+  - down() revierte todo limpiamente (tablas en orden inverso + DROP TYPE).
+- Targets NX añadidos a `apps/backend/project.json`: `migrate`, `migrate:undo`, `migrate:undo:all`,
+  `migrate:status` (executor `nx:run-commands`, cwd `apps/backend`).
+- Criterios de aceptación verificados:
+  - [x] `pnpm nx run backend:migrate` → verde (migrated 0.074s).
+  - [x] `\dt` → 18 tablas de negocio + SequelizeMeta = 19 filas.
+  - [x] `\dT` → 10 tipos enum.
+  - [x] `pnpm nx run backend:migrate:undo:all` → verde, BD sin tablas de negocio ni enums.
+  - [x] Re-migrate → verde, BD vuelve a estado completo.
+  - [x] `pnpm nx build backend` → webpack compiled successfully.
+- Próxima sesión: primer módulo de negocio (appointments) con endpoint funcional.
 
 ### Decisión de monorepo: un solo package.json
 
