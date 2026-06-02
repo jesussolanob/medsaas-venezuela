@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, QueryTypes } from 'sequelize';
-import type { WhereOptions } from 'sequelize';
+import type { Transaction, WhereOptions } from 'sequelize';
 import type { AppointmentStatus } from '@delta/shared-types';
 import { Appointment } from '../../../domain/entities/appointment.entity';
 import type {
@@ -80,34 +80,37 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     };
   }
 
-  async save(appointment: Appointment): Promise<Appointment> {
-    const row = await this.appointmentModel.create({
-      id: appointment.id,
-      doctorId: appointment.doctorId,
-      patientId: appointment.patientId,
-      authUserId: appointment.authUserId,
-      consultationId: appointment.consultationId,
-      patientName: appointment.patientName,
-      patientPhone: appointment.patientPhone,
-      patientEmail: appointment.patientEmail,
-      patientCedula: appointment.patientCedula,
-      scheduledAt: appointment.scheduledAt,
-      status: appointment.status,
-      appointmentMode: appointment.appointmentMode,
-      source: appointment.source,
-      planName: appointment.planName,
-      planPrice: appointment.planPrice,
-      paymentMethod: appointment.paymentMethod,
-      paymentReference: appointment.paymentReference,
-      paymentReceiptUrl: appointment.paymentReceiptUrl,
-      insuranceName: appointment.insuranceName,
-      bcvRate: appointment.bcvRate,
-      amountBs: appointment.amountBs,
-      packageId: appointment.packageId,
-      sessionNumber: appointment.sessionNumber,
-      chiefComplaint: appointment.chiefComplaint,
-      appointmentCode: appointment.appointmentCode,
-    });
+  async save(appointment: Appointment, transaction?: Transaction): Promise<Appointment> {
+    const row = await this.appointmentModel.create(
+      {
+        id: appointment.id,
+        doctorId: appointment.doctorId,
+        patientId: appointment.patientId,
+        authUserId: appointment.authUserId,
+        consultationId: appointment.consultationId,
+        patientName: appointment.patientName,
+        patientPhone: appointment.patientPhone,
+        patientEmail: appointment.patientEmail,
+        patientCedula: appointment.patientCedula,
+        scheduledAt: appointment.scheduledAt,
+        status: appointment.status,
+        appointmentMode: appointment.appointmentMode,
+        source: appointment.source,
+        planName: appointment.planName,
+        planPrice: appointment.planPrice,
+        paymentMethod: appointment.paymentMethod,
+        paymentReference: appointment.paymentReference,
+        paymentReceiptUrl: appointment.paymentReceiptUrl,
+        insuranceName: appointment.insuranceName,
+        bcvRate: appointment.bcvRate,
+        amountBs: appointment.amountBs,
+        packageId: appointment.packageId,
+        sessionNumber: appointment.sessionNumber,
+        chiefComplaint: appointment.chiefComplaint,
+        appointmentCode: appointment.appointmentCode,
+      },
+      { transaction },
+    );
     return this.toDomain(row);
   }
 
@@ -172,8 +175,8 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
   }
 
   async incrementPackageSessions(packageId: string, currentUsedSessions: number): Promise<boolean> {
-    // QueryTypes.RAW returns [unknown[], number] where the second element is rowsAffected.
-    const [, affected] = await this.sequelize.query(
+    // QueryTypes.UPDATE returns [undefined, affectedCount: number] — no casting required.
+    const [, affectedCount] = await this.sequelize.query(
       `UPDATE patient_packages
        SET used_sessions = used_sessions + 1,
            updated_at    = now()
@@ -181,11 +184,11 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
          AND used_sessions  = :currentUsedSessions`,
       {
         replacements: { packageId, currentUsedSessions },
-        type: QueryTypes.RAW,
+        type: QueryTypes.UPDATE,
       },
     );
 
-    return affected === 1;
+    return affectedCount === 1;
   }
 
   async logStatusChange(entry: AuditLogEntry): Promise<void> {
