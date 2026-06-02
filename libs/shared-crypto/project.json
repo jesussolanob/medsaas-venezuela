@@ -9,6 +9,14 @@
       "options": {
         "command": "tsc -p libs/shared-crypto/tsconfig.json"
       }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/libs/shared-crypto"],
+      "options": {
+        "jestConfig": "libs/shared-crypto/jest.config.cts",
+        "passWithNoTests": true
+      }
     }
   }
 }
