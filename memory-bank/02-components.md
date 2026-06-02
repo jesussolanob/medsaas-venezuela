@@ -55,7 +55,10 @@ Estado (orden `migracion/modulos/`):
 - 05 ehr-prescriptions → ✅ DDD. EHR (diagnosis/treatment_plan cifrados) + prescriptions
   (medication/dosage cifrados; anti-IDOR de escritura: valida ownership del paciente).
   `modules/ehr/` + `modules/prescriptions/`. Diferido: PDF + acceso rol-paciente.
-- 07 packages-booking · 06 finances · 09 doctor-settings · 10 patient-portal · 08 admin → ⏳ pendientes.
+- 07 packages-booking → ✅ DDD. Paquetes (ConsumePackageSession optimistic lock vía
+  QueryTypes.UPDATE) + booking PÚBLICO (sin auth; find-or-create paciente + cita en transacción
+  atómica). `modules/packages/` + `modules/booking/`. Diferido Etapa 2: Turnstile + rate limiting.
+- 06 finances · 09 doctor-settings · 10 patient-portal · 08 admin → ⏳ pendientes.
 
 > ⚠️ Pitfall DI/webpack: NUNCA declarar `Sequelize` (ni infra global) en el array `providers`
 > de un módulo — crashea el server compilado (dist). Inyectarlo del DI global. Verificar con

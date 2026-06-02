@@ -125,3 +125,12 @@ tasa USDT 10m. Invalidación por evento (update perfil → `profile:{id}`; cita 
   `providers` de un módulo NestJS — compila y pasa los tests (TestingModule) pero CRASHEA el
   servidor compilado (`dist`). Inyectar del DI global. **Verificación obligatoria por módulo:**
   bootear el dist (`node dist/apps/backend/main.js`) + smoke real, no solo tests.
+- **Optimistic lock:** consumo de sesión de paquete = `UPDATE ... WHERE used_sessions=:current AND
+status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`; 0 filas → retry x3
+  → InsufficientSessionsError). NO usar `QueryTypes.RAW` + extraer rowCount (frágil con pg).
+- **Transacciones:** flujos que tocan ≥2 escrituras relacionadas (booking = cita + consumo de paquete)
+  van en `sequelize.transaction(async t => ...)` con el `transaction` threadeado a cada repo
+  (los métodos de repo aceptan `transaction?` opcional). DomainError mapea a 422 salvo `httpStatus`
+  override (404/400 en superficies públicas).
+- **Superficie pública (booking):** sin auth → validación Zod estricta de TODO input, 404 anti-enumeración,
+  sin exponer ids internos, PII cifrada vía patients repo. DEUDA Etapa 2: Turnstile real + rate limiting.

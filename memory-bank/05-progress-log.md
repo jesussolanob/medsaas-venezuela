@@ -246,3 +246,30 @@ Email Resend. Tests Playwright E2E.
 - Diferidos: GeneratePrescriptionPdf (req. tabla doctor_templates + lib PDF); acceso rol-paciente
   a recetas (→ módulo patient-portal).
 - **Progreso módulos: 4/10.** Próximo: packages-booking.
+
+## 2026-06-02 — Módulo packages-booking — completada
+
+- `apps/backend/src/modules/packages/` (paquetes prepagados) + `modules/booking/` (booking PÚBLICO).
+  Commits d10b88b, 928946a, c4d5b0d.
+- Packages: PatientPackage entity, ConsumePackageSession con OPTIMISTIC LOCK, CreatePackage,
+  GetPatientPackages. Booking público (sin DevAuthGuard): GET /booking/:doctorId/info|plans|packages,
+  POST /booking (find-or-create paciente vía patients repo [cifra PII] + crea cita reusando
+  appointments + consume paquete, en TRANSACCIÓN Sequelize atómica).
+- **Bug crítico encontrado y corregido (también en appointments):** el check del optimistic lock
+  `affected === 1` era SIEMPRE false — Sequelize+pg con `QueryTypes.RAW` devuelve `[rows, QueryResult]`
+  y el `?? rawResult` caía en comparar un objeto con 1. Fix correcto: `QueryTypes.UPDATE` (devuelve
+  `[undefined, affectedCount]`). El lock de consumo de paquete estaba roto en runtime; los tests con
+  mocks no lo atrapaban. Aplicado en sequelize-package y sequelize-appointment repos.
+- `DomainError` ahora tiene `httpStatus?` (default 422); GlobalExceptionFilter lo respeta →
+  DoctorNotFoundError 404, InvalidEmailError 400. Mejora transversal.
+- Reviews: reviewer BLOQUEADO (2 HIGH: optimistic lock + atomicidad del booking) → ambos resueltos
+  (QueryTypes.UPDATE + transacción Sequelize). security APROBADO c/correcciones (4 MEDIUM superficie
+  pública). 9 fixes aplicados: no exponer patientId, 404 anti-enumeración doctor, validar email Zod,
+  mensajes genéricos, lógica del controller a use cases, más entropía en appointmentCode, quitar
+  paymentDetails sin uso.
+- Verificación del lead: código por línea + build/lint/335 tests + BOOT DEL DIST + smoke real
+  (booking 201 sin patientId, PII cifrada, 404 doctor, 400 email, rollback de transacción 6→6).
+- **Diferido a Etapa 2 (deuda documentada):** Turnstile real (Cloudflare) + RATE LIMITING en el
+  booking público — go-live blocker; hoy es un stub que acepta. También /booking/:doctorId/slots
+  (requiere tabla doctor_schedule inexistente).
+- **Progreso módulos: 5/10.** Próximo: finances.

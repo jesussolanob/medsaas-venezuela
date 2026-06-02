@@ -68,6 +68,25 @@
 | `/api/prescriptions`                                              | POST     | Emitir receta.                                                                        |
 | _(diferidos)_                                                     |          | `/:id/pdf` (req. doctor_templates + lib PDF); acceso rol-paciente (→ patient-portal). |
 
+### Packages (módulo ✅ — doctor)
+
+| Endpoint                           | Método | Notas                                               |
+| ---------------------------------- | ------ | --------------------------------------------------- |
+| `/api/packages/patient/:patientId` | GET    | Paquetes de un paciente (ownership). ParseUUIDPipe. |
+| `/api/packages`                    | POST   | Crear paquete prepagado.                            |
+
+> ConsumePackageSession usa optimistic lock (`QueryTypes.UPDATE` + retry) — consumido por el booking.
+
+### Booking público (módulo ✅ — SIN auth)
+
+| Endpoint                                 | Método | Notas                                                                                                                                       |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/booking/:doctorId/info`            | GET    | Datos públicos del doctor. 404 si no existe/inactivo (anti-enumeración).                                                                    |
+| `/api/booking/:doctorId/plans`           | GET    | Pricing plans con `show_in_booking=true`.                                                                                                   |
+| `/api/booking/:doctorId/packages?email=` | GET    | Saldo de paquetes del paciente por email (Zod email; no filtra PII).                                                                        |
+| `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. |
+| _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                           |
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por
