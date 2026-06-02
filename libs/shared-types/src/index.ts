@@ -1,1 +1,20 @@
-export {};
+// Enums
+export * from './enums';
+
+// Common helpers and API envelopes
+export * from './common';
+
+// Entity schemas
+export * from './profile.schema';
+export * from './patient.schema';
+export * from './appointment.schema';
+export * from './consultation.schema';
+export * from './subscription.schema';
+export * from './prescription.schema';
+export * from './ehr-record.schema';
+
+// DTOs
+export * from './dtos/create-patient.dto';
+export * from './dtos/create-appointment.dto';
+export * from './dtos/update-appointment-status.dto';
+export * from './dtos/create-consultation.dto';

@@ -36,4 +36,16 @@ Email Resend. Tests Playwright E2E.
 - [ ] NOTA: Docker Desktop no instalado aún (requerido en Fase 3).
 - [ ] NOTA: `next build` falla en prerender por env Supabase faltante (esperado, no es la migración).
 
-**FASE 1 COMPLETA.** Próximo: Fase 2 — shared-types (Zod) — sub-agente Sonnet.
+**FASE 1 COMPLETA.**
+
+## 2026-06-01 — Fase 2: shared-types (Zod) — completada (base)
+
+- Rama `feature/fase-2-shared-types` (desde `develop`).
+- Sub-agente Sonnet construyó la base: zod 4.4.3, 14 archivos en `libs/shared-types/src`.
+- enums (anclados al SQL real: AppointmentStatus 7 valores, UserRole con assistant,
+  SubscriptionStatus con trialing/cancelled), envelope/Result, 7 entidades núcleo + 4 DTOs.
+- Hallazgo: columna real es `medication` (no `medication_name`); `payment_method` es
+  texto libre en la práctica. Documentado en los schemas.
+- `nx build shared-types` ✓ (tsc, 0 errores).
+- Pendiente: que un consumidor (backend Fase 3) valide el alias `@delta/shared-types`.
+- Próximo: Fase 3 — backend NestJS (requiere Docker instalado).

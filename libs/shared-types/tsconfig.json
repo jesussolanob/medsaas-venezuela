@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": ".",
     "outDir": "../../dist/libs/shared-types"
   },
   "include": ["src/**/*.ts"]

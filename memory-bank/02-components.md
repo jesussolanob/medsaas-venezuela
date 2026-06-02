@@ -6,20 +6,24 @@
 ## Páginas frontend (Next.js App Router) — existentes
 
 ### `/admin` (super admin)
+
 dashboard, doctors, patients, subscriptions, plans, plan-features, promotions,
 packages, reminders, roles, settings, suggestions, finances/finanzas,
 approvals/aprobaciones. (Algunas marcadas para eliminar en beta — ver CLAUDE.md raíz.)
 
 ### `/doctor`
+
 dashboard, agenda, patients, consultations, ehr, finances, billing, cobros,
 reports, crm, reminders, messages, services, plans, offices, templates,
 cita-360, suggestions, settings (+ settings/consultation-blocks).
 
 ### `/patient`
+
 dashboard, appointments, reports, prescriptions, messages, profile, seguimiento,
 login, register, [patientId].
 
 ### Público / auth
+
 `/book/[doctorId]` (booking acordeón 5 pasos), `/login`, `/register`,
 `/onboarding`, `/auth/callback`, `/forgot-password`, `/reset-password`,
 `/privacy`, `/terms`, `/help`, `/status`.
@@ -44,10 +48,15 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
 
 Estado: **ninguno implementado aún** (Fase 3 no iniciada).
 
-## Schemas Zod (`libs/shared-types`) — a crear en Fase 2
+## Schemas Zod (`libs/shared-types`) — Fase 2 ✅ (base)
 
-profile, appointment, patient, consultation, ehr, subscription, prescription,
-finance + DTOs (Create*/Update*) + `enums.ts`. Estado: **vacío** (skeleton).
+zod 4.4.3. Creados: `enums.ts` (6 enums), `common.ts` (ApiResponse/PaginatedResponse/
+ApiErrorResponse/Result + uuid/timestamps), schemas de 7 entidades núcleo (profile,
+patient, appointment, consultation, subscription, prescription, ehr-record) con campos
+PHI marcados, + DTOs (create-patient, create-appointment, update-appointment-status,
+create-consultation). Cada schema exporta `XxxSchema`, `Xxx` (z.infer), `CreateXxxSchema`,
+`CreateXxx`. Campos en snake_case (espejan columnas BD). `nx build shared-types` ✓.
+Pendiente (crecen por módulo): finance, packages, plans, notifications.
 
 ## Enums compartidos
 

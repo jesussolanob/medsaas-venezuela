@@ -111,7 +111,11 @@ importers:
 
   libs/shared-crypto: {}
 
-  libs/shared-types: {}
+  libs/shared-types:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   libs/shared-utils: {}
 
