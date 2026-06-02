@@ -1,3 +1,4 @@
+import type { Transaction } from 'sequelize';
 import type { AppointmentStatus } from '@delta/shared-types';
 import type { Appointment } from '../entities/appointment.entity';
 
@@ -55,8 +56,11 @@ export interface IAppointmentRepository {
   /** List appointments with pagination and optional filters. */
   list(filters: AppointmentListFilters): Promise<AppointmentListResult>;
 
-  /** Persist a new appointment and return the saved domain entity. */
-  save(appointment: Appointment): Promise<Appointment>;
+  /**
+   * Persist a new appointment and return the saved domain entity.
+   * An optional Sequelize Transaction may be supplied for atomic booking flows.
+   */
+  save(appointment: Appointment, transaction?: Transaction): Promise<Appointment>;
 
   /** Update the status of an existing appointment. Returns the updated entity. */
   updateStatus(id: string, status: AppointmentStatus): Promise<Appointment>;
