@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
-import { Sequelize } from 'sequelize-typescript';
 
 import { ConsultationModel } from './infrastructure/database/models/consultation.model';
 import { SequelizeConsultationRepository } from './infrastructure/database/repositories/sequelize-consultation.repository';
@@ -21,10 +20,7 @@ import { ConsultationsController } from './presentation/controllers/consultation
   imports: [SequelizeModule.forFeature([ConsultationModel])],
   controllers: [ConsultationsController],
   providers: [
-    // Sequelize instance — needed by the repository for transaction support.
-    // SequelizeCoreModule registers it under the Sequelize token; re-exporting
-    // it here makes it available to SequelizeConsultationRepository.
-    Sequelize,
+    // Sequelize is global (provided by SequelizeModule.forRootAsync in AppModule) — no import needed.
 
     // Repository binding: domain interface → Sequelize implementation
     {
