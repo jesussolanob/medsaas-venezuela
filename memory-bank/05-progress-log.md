@@ -49,3 +49,46 @@ Email Resend. Tests Playwright E2E.
 - `nx build shared-types` ✓ (tsc, 0 errores).
 - Pendiente: que un consumidor (backend Fase 3) valide el alias `@delta/shared-types`.
 - Próximo: Fase 3 — backend NestJS (requiere Docker instalado).
+
+## 2026-06-02 — Infraestructura local (Docker) — desbloqueada
+
+- Docker instalado (Engine 29.5.2 + Compose v5.1.4). Homebrew en `/opt/homebrew`
+  (Apple Silicon), fuera del PATH por defecto — prefijar como con pnpm.
+- `docker/docker-compose.yml` levantado: Postgres 18.4 (`5432`) y Redis 7 (`6379`),
+  ambos `healthy`. Extensiones `uuid-ossp` + `pgcrypto` aplicadas por `init.sql`.
+- Subido a Postgres 18 (estable más reciente). OJO: PG18+ cambió la convención del
+  data dir — el mount del volumen va en `/var/lib/postgresql` (no en `/data`).
+- Sin tablas aún (esperado: el esquema lo crean las migraciones Sequelize en Fase 3).
+- Redis responde `PONG` con auth (`redis_dev_password`, default del compose).
+- **Bloqueante de Fase 3 (Docker) resuelto.** Listos para scaffold del backend NestJS.
+
+## 2026-06-02 — Fase 3: scaffold base backend NestJS — completada (base)
+
+- App `apps/backend` generada con `@nx/nest:application` (NestJS 11, jest, webpack).
+- Estructura DDD 4 capas creada: `domain/` (errors), `application/` (use-cases,
+  ports, dtos), `infrastructure/` (database, cache, auth, config), `presentation/`
+  (controllers, guards, decorators, filters, interceptors, pipes).
+- Piezas base: `DomainError` (clase base), `databaseConfig` (Sequelize, synchronize
+  off), `RedisModule` (ioredis global, token `REDIS_CLIENT`), `DevAuthGuard`,
+  `CurrentUser`/`Roles` decorators, `GlobalExceptionFilter`, `ZodValidationPipe`,
+  `LoggingInterceptor` (no loguea bodies → PII), `HealthController`.
+- `app.module.ts` cablea ConfigModule (envFilePath apps/backend/.env), SequelizeModule,
+  RedisModule, filtro+interceptor globales. `main.ts`: prefijo `api`, CORS, puerto 3001.
+- `.env` (gitignored) + `.env.example` creados.
+- **Verificación ✓**: `nx build backend` compila; `GET /api/health` → 200
+  `{status:ok, dependencies:{postgres:up, redis:up}}`; `nx test backend` 3/3 verdes.
+- **Alias `@delta/shared-types` validado** desde el backend (spec del ZodValidationPipe
+  importa enum + schema reales). Confirmado pendiente de Fase 2.
+- Hallazgo: zod v4 `.uuid()` exige RFC estricto (versión `[1-8]`, variante `[89ab]`).
+- Sin lint target en backend (coherente: eslint a CI, no en commits).
+- Pendiente Fase 3 (próxima sesión): migración inicial Sequelize (18 tablas) + primer
+  módulo de negocio (appointments) con endpoint funcional.
+
+### Decisión de monorepo: un solo package.json
+
+- Eliminados los `package.json` redundantes de `libs/*` (eran vestigios del scaffold).
+  NX detecta proyectos por `project.json`; los `@delta/*` resuelven por tsconfig paths,
+  no por pnpm linking. `zod` movido al `package.json` raíz.
+- `pnpm-workspace.yaml`: `packages` reducido a `apps/frontend` (única app legacy con
+  package.json propio, se fusionará al root cuando se migre el frontend).
+- Añadido `baseUrl: "."` a `tsconfig.base.json` (faltaba; TS5090 sin él).

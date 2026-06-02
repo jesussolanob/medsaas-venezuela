@@ -16,7 +16,9 @@
 
 ## Endpoints NestJS
 
-Ninguno aún — el backend se crea en Fase 3.
+| Endpoint      | Método | Auth    | Respuesta                                                                                                                                                                                     |
+| ------------- | ------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/health` | GET    | Pública | `{ status, timestamp, dependencies: { postgres, redis } }` — verifica conectividad a Postgres (Sequelize `authenticate`) y Redis (`ping`). `status: ok` solo si ambos `up`, si no `degraded`. |
 
 ## Referencia: rutas API legacy (Next.js) a migrar
 
@@ -26,5 +28,5 @@ equivalente legacy, documentar aquí el endpoint nuevo y marcar el legacy como
 deprecado.
 
 | Endpoint NestJS | Método | Roles | Body | Caché | Reemplaza a (legacy) |
-|-----------------|--------|-------|------|-------|----------------------|
-| _(pendiente)_ | | | | | |
+| --------------- | ------ | ----- | ---- | ----- | -------------------- |
+| _(pendiente)_   |        |       |      |       |                      |

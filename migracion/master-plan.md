@@ -1,4 +1,5 @@
 # Plan Maestro de Migración — Delta Medical CRM
+
 ## De: Next.js monolítico + Supabase → NX Monorepo + NestJS + PostgreSQL + GCP
 
 **Versión:** 1.0
@@ -11,6 +12,7 @@
 ## AUDIT REPORT — Estado actual del proyecto
 
 ### Stack actual detectado
+
 - **Frontend:** Next.js 16 (App Router) + TypeScript + Tailwind CSS v4 + shadcn/ui
 - **Auth:** Supabase Auth (email/password + magic link)
 - **Base de datos:** PostgreSQL vía Supabase (con RLS policies)
@@ -21,6 +23,7 @@
 - **Testing:** Playwright (E2E básico)
 
 ### Acoplamiento detectado (problemas a resolver)
+
 1. **Lógica de negocio en Server Actions (`actions.ts`):** Cada módulo del doctor y admin tiene su propio archivo `actions.ts` con queries directas a Supabase. No hay separación de capas.
 2. **Auth embebida en el middleware:** `middleware.ts` llama directamente a Supabase para verificar sesión y rol en cada request.
 3. **Sin tipado compartido:** Los tipos de `profiles`, `appointments`, `patients`, etc. están duplicados o inferidos inline por toda la app.
@@ -29,6 +32,7 @@
 6. **Sin separación Front/Back:** La API de negocio (`/app/api/`) y el frontend comparten el mismo proceso Node.js de Next.js.
 
 ### Módulos existentes a conservar
+
 - `/admin` — Super Administrador (dashboard, médicos, suscripciones, planes, features)
 - `/doctor` — App del médico (agenda, pacientes, consultas, EHR, finanzas, cobros, plantillas)
 - `/patient` — Portal del paciente
@@ -42,27 +46,30 @@
 ## MARCO LEGAL — Datos de pacientes en Venezuela
 
 ### Legislación aplicable
+
 1. **Constitución RBV, Art. 60:** Garantiza el derecho a la privacidad y a la protección del honor. Los datos de salud son datos de carácter personalísimo.
 2. **Ley Especial contra los Delitos Informáticos (Gaceta 37.313, 2001):** Tipifica el acceso indebido, sabotaje y espionaje informático. Impone responsabilidad por divulgación de datos de sistemas de información.
 3. **Ley de Infogobierno (Gaceta 40.274, 2013):** Establece principios de seguridad, integridad y confidencialidad de la información en sistemas de tecnología. Exige mecanismos criptográficos para datos sensibles del Estado, extrapolable a sistemas privados de salud.
 4. **Código de Deontología Médica de Venezuela (FMV):** Impone al médico el secreto profesional absoluto sobre los datos del paciente. Digitalmente, esto se traduce en la obligación de proteger el historial clínico con mecanismos técnicos.
 
 ### Campos que DEBEN encriptarse (AES-256-GCM a nivel de campo)
-| Tabla | Campo | Justificación |
-|-------|-------|---------------|
-| `patients` | `cedula` | Identificador nacional — dato sensible |
-| `patients` | `full_name` | PII directa |
-| `patients` | `phone` | PII de contacto |
-| `patients` | `email` | PII de contacto |
-| `ehr_records` | `diagnosis` | Dato clínico — secreto médico |
-| `ehr_records` | `treatment_plan` | Dato clínico |
-| `consultations` | `chief_complaint` | Dato clínico |
-| `consultations` | `diagnosis` | Dato clínico |
-| `consultations` | `treatment` | Dato clínico |
-| `prescriptions` | `medication_name` | Dato clínico |
-| `prescriptions` | `dosage` | Dato clínico |
+
+| Tabla           | Campo             | Justificación                          |
+| --------------- | ----------------- | -------------------------------------- |
+| `patients`      | `cedula`          | Identificador nacional — dato sensible |
+| `patients`      | `full_name`       | PII directa                            |
+| `patients`      | `phone`           | PII de contacto                        |
+| `patients`      | `email`           | PII de contacto                        |
+| `ehr_records`   | `diagnosis`       | Dato clínico — secreto médico          |
+| `ehr_records`   | `treatment_plan`  | Dato clínico                           |
+| `consultations` | `chief_complaint` | Dato clínico                           |
+| `consultations` | `diagnosis`       | Dato clínico                           |
+| `consultations` | `treatment`       | Dato clínico                           |
+| `prescriptions` | `medication_name` | Dato clínico                           |
+| `prescriptions` | `dosage`          | Dato clínico                           |
 
 ### Estrategia de encriptación
+
 - **Algoritmo:** AES-256-GCM (autenticado, detección de tampering)
 - **Gestión de claves:** GCP Secret Manager + Cloud KMS — llave accesible ÚNICAMENTE via IAM desde el backend (Cloud Run Service Account). Nunca en variables de entorno en producción, nunca en el cliente
 - **IV/Nonce:** Generado aleatoriamente por campo, almacenado junto al ciphertext (base64)
@@ -114,19 +121,20 @@ delta-medical-nx/                        # Raíz del monorepo NX
 ```
 
 ### Decisión de stack backend: NestJS + Sequelize + DDD
+
 **Justificación:** NestJS comparte el ecosistema TypeScript con Next.js, permitiendo reusar los tipos de `shared-types` sin conversión. Sequelize provee migrations versionadas y hooks para encriptación transparente. La arquitectura DDD (Domain-Driven Design) garantiza que el código de negocio (dominio) nunca depende de frameworks de infraestructura — si mañana se cambia Sequelize por otro ORM, o Redis por otro sistema de caché, el dominio no se toca.
 
 ### Patrones de diseño obligatorios en el backend
 
-| Patrón | Dónde se aplica | Por qué |
-|--------|-----------------|---------|
-| **DDD (Domain-Driven Design)** | Estructura de capas completa | Separar lógica de negocio de infraestructura |
-| **Repository Pattern** | `domain/repositories/` (abstract) + `infrastructure/repositories/` (Sequelize) | El dominio depende de la abstracción, no de Sequelize |
-| **Factory Pattern** | Creación de entidades de dominio complejas (ej: `AppointmentFactory`) | Encapsular lógica de construcción y validación de invariantes |
-| **Singleton** | Conexiones a BD, cliente Redis, cliente Auth0 | Evitar múltiples instancias de recursos costosos (manejado por NestJS DI) |
-| **Strategy Pattern** | Notificaciones (WhatsApp vs Email), métodos de pago, exportación (Excel vs PDF) | Intercambiar algoritmos sin modificar el código cliente |
-| **Observer / Event-Driven** | Eventos de dominio (`AppointmentConfirmed`, `PaymentReceived`) | Desacoplar efectos secundarios (emails, invalidación de caché) de los casos de uso |
-| **Decorator Pattern** | Caché, logging, métricas en los use cases | Agregar comportamiento transversal sin modificar la clase original |
+| Patrón                         | Dónde se aplica                                                                 | Por qué                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **DDD (Domain-Driven Design)** | Estructura de capas completa                                                    | Separar lógica de negocio de infraestructura                                       |
+| **Repository Pattern**         | `domain/repositories/` (abstract) + `infrastructure/repositories/` (Sequelize)  | El dominio depende de la abstracción, no de Sequelize                              |
+| **Factory Pattern**            | Creación de entidades de dominio complejas (ej: `AppointmentFactory`)           | Encapsular lógica de construcción y validación de invariantes                      |
+| **Singleton**                  | Conexiones a BD, cliente Redis, cliente Auth0                                   | Evitar múltiples instancias de recursos costosos (manejado por NestJS DI)          |
+| **Strategy Pattern**           | Notificaciones (WhatsApp vs Email), métodos de pago, exportación (Excel vs PDF) | Intercambiar algoritmos sin modificar el código cliente                            |
+| **Observer / Event-Driven**    | Eventos de dominio (`AppointmentConfirmed`, `PaymentReceived`)                  | Desacoplar efectos secundarios (emails, invalidación de caché) de los casos de uso |
+| **Decorator Pattern**          | Caché, logging, métricas en los use cases                                       | Agregar comportamiento transversal sin modificar la clase original                 |
 
 ### Principios SOLID — aplicación obligatoria
 
@@ -145,6 +153,7 @@ delta-medical-nx/                        # Raíz del monorepo NX
 - **Regla ESLint obligatoria:** `no-floating-promises` y `@typescript-eslint/no-throw-literal` — toda promesa rechazada es capturada.
 
 ### Comunicación Front → Back
+
 - **Durante desarrollo:** Next.js llama al NestJS API en `http://localhost:3001`
 - **En producción (GCP):** Cloud Run `frontend` → Cloud Run `backend` via VPC interna (sin salir a internet público)
 - **NestJS en producción:** configurado con `--ingress=internal` en Cloud Run — rechaza cualquier request que no provenga de la red VPC interna. No tiene URL pública expuesta
@@ -186,6 +195,7 @@ delta-medical-nx/                        # Raíz del monorepo NX
 ### Instrucciones para Claude Code
 
 #### 1.1 — Inicializar el workspace NX
+
 - Crear el directorio `delta-medical-nx/` como raíz del monorepo (fuera del repo actual).
 - Inicializar workspace NX vacío con `create-nx-workspace@latest` usando el preset `ts` (TypeScript sin opinionado).
 - Configurar `nx.json` con `defaultProject: "frontend"` y `tasksRunnerOptions` para caché local activado.
@@ -193,6 +203,7 @@ delta-medical-nx/                        # Raíz del monorepo NX
 - Crear la estructura de carpetas definida en la sección "ARQUITECTURA OBJETIVO" de este documento, incluyendo `memory-bank/`, `.github/workflows/`, `.cursor/rules/`, `infrastructure/terraform/`, `tools/scripts/`, y `docker/`.
 
 #### 1.2 — Migrar el frontend (Next.js) como `apps/frontend`
+
 - Copiar el proyecto Next.js actual al directorio `apps/frontend/` dentro del nuevo monorepo.
 - Crear el `project.json` de NX para la app `frontend` con los targets: `build`, `serve`, `lint`, `test`.
 - Actualizar todos los paths de importación relativos que rompan con la nueva ubicación.
@@ -200,6 +211,7 @@ delta-medical-nx/                        # Raíz del monorepo NX
 - El `tsconfig.json` de `apps/frontend` debe extender del `tsconfig.base.json` de la raíz.
 
 #### 1.3 — Configurar el `tsconfig.base.json` raíz
+
 - Definir los `paths` de TypeScript para los alias de las librerías compartidas:
   ```
   "@delta/shared-types": ["libs/shared-types/src/index.ts"]
@@ -210,6 +222,7 @@ delta-medical-nx/                        # Raíz del monorepo NX
 - Esto permite que tanto `apps/frontend` como `apps/backend` importen de las libs con paths absolutos.
 
 #### 1.4 — Crear las librerías compartidas vacías
+
 - Usar el generador de NX para crear tres librerías TypeScript puras (sin framework):
   - `libs/shared-types/` — Tipos e interfaces + Zod schemas
   - `libs/shared-utils/` — Funciones utilitarias puras (sin side effects, sin dependencias externas)
@@ -218,7 +231,20 @@ delta-medical-nx/                        # Raíz del monorepo NX
 - Configurar el `lint` y `build` en cada lib via `tsc` (no Webpack/Vite — son librerías puras).
 - Las librerías NO deben importar de `apps/` — solo `apps/` importa de `libs/`.
 
+> **Decisión (2026-06-02) — Un solo `package.json`.** En este monorepo NX integrado las
+> dependencias se centralizan en el `package.json` raíz. Los `libs/*` NO llevan
+> `package.json` propio (NX detecta proyectos por `project.json`; los `@delta/*` resuelven
+> por `tsconfig.base.json` paths, no por pnpm linking). Se eliminaron los `package.json`
+> de los 3 libs y se requiere `baseUrl: "."` en `tsconfig.base.json`.
+>
+> **PENDIENTE — consolidar el frontend.** `apps/frontend` aún conserva su `package.json`
+> propio (app Next.js legacy de producción). Fusionar sus deps al root es un cambio mayor
+> sobre la app que está corriendo, así que se difiere a la fase de migración del frontend
+> (cuando se integre del todo a NX), no antes. Hasta entonces `pnpm-workspace.yaml` lista
+> solo `apps/frontend` como paquete pnpm.
+
 #### 1.5 — Configurar ESLint y Prettier a nivel raíz
+
 - Un solo `eslint.config.mjs` en la raíz que aplique reglas a todos los proyectos.
 - Prettier con `printWidth: 100`, `singleQuote: true`, `trailingComma: 'all'`.
 - Reglas ESLint obligatorias para calidad y seguridad:
@@ -230,6 +256,7 @@ delta-medical-nx/                        # Raíz del monorepo NX
 - Ignorar `*.generated.ts` y archivos de migrations.
 
 #### 1.6 — Configurar Git Flow y estructura de ramas
+
 - Crear `.gitignore` unificado en la raíz del monorepo.
 - Inicializar Git Flow con la siguiente convención de ramas estándar:
   - `main` → código en producción (solo recibe merges desde `release/*` y `hotfix/*`)
@@ -246,7 +273,16 @@ delta-medical-nx/                        # Raíz del monorepo NX
   - `nx affected --target=build --base=origin/develop`
 - Configurar `nx affected` para comparar contra `origin/develop` en PRs y contra el commit anterior en `push` directo.
 
+> **Decisión (2026-06-02) — Rama única de migración.** Para esta migración secuencial
+> de un solo desarrollador NO se abre una `feature/*` por fase. Todo el avance vive en
+> una sola rama de larga duración `feature/migracion-backend` (renombrada desde
+> `feature/fase-2-shared-types`, conserva la historia). Las fases se commitean ahí de
+> forma continua y se mergea a `develop` solo en hitos sólidos. Evita la fragmentación
+> y mantener el progreso visible en un único hilo. La convención `feature/<fase>` del
+> Git Flow estándar se retoma cuando el equipo crezca o haya trabajo paralelo real.
+
 #### 1.7 — Inicializar el Memory Bank
+
 Crear los siguientes archivos en `memory-bank/` con el contenido del estado actual del proyecto (obtenido en Fase 0):
 
 - **`00-project-overview.md`** — Nombre comercial (Delta Medical CRM), descripción del negocio, problema que resuelve, URLs de entornos, stack tecnológico completo post-migración, contactos del equipo.
@@ -260,20 +296,25 @@ Crear los siguientes archivos en `memory-bank/` con el contenido del estado actu
 **Regla de mantenimiento del Memory Bank:** Cada vez que se complete un cambio significativo (nuevo módulo, nuevo endpoint, decisión de arquitectura, fix de bug importante), Claude o Cursor deben actualizar el archivo correspondiente del Memory Bank antes de cerrar la sesión de trabajo. Esta regla está reforzada en las reglas de los agentes (ver sección 1.8 y 1.9).
 
 #### 1.8 — Crear `CLAUDE.md` (reglas para Claude Code)
+
 Crear `CLAUDE.md` en la raíz del monorepo con las siguientes instrucciones obligatorias:
 
 ```markdown
 # Delta Medical CRM — Instrucciones para Claude Code
 
 ## PASO 0 — OBLIGATORIO antes de cualquier cambio
+
 Lee estos archivos SIEMPRE antes de sugerir o aplicar cualquier modificación:
+
 1. memory-bank/00-project-overview.md
 2. memory-bank/01-architecture.md
 3. memory-bank/02-components.md
-4. memory-bank/06-mvp-planning.md  ← prioridades de negocio
+4. memory-bank/06-mvp-planning.md ← prioridades de negocio
 
 ## PASO FINAL — OBLIGATORIO al terminar cualquier cambio
+
 Actualiza el archivo del Memory Bank correspondiente al cambio realizado:
+
 - Nuevo endpoint → actualizar memory-bank/04-api-documentation.md
 - Nueva decisión de arquitectura → actualizar memory-bank/01-architecture.md
 - Nuevo componente/módulo → actualizar memory-bank/02-components.md
@@ -281,10 +322,12 @@ Actualiza el archivo del Memory Bank correspondiente al cambio realizado:
 - Cambio de prioridad del MVP → actualizar memory-bank/06-mvp-planning.md
 
 ## Priorización de trabajo
+
 Toda nueva funcionalidad DEBE estar justificada en memory-bank/06-mvp-planning.md.
 No implementar features que no estén en el MVP o que no hayan sido aprobadas explícitamente.
 
 ## Arquitectura — reglas críticas
+
 - Monorepo NX: apps/frontend (Next.js), apps/backend (NestJS con DDD)
 - Backend usa 4 capas DDD: domain → application → infrastructure → presentation
 - NUNCA importar desde apps/backend en apps/frontend directamente — usar HTTP
@@ -295,6 +338,7 @@ No implementar features que no estén en el MVP o que no hayan sido aprobadas ex
 - SIEMPRE manejar errores — ninguna promesa sin await ni catch
 
 ## Principios SOLID — no negociables
+
 - S: cada clase/función tiene una única responsabilidad
 - O: extender por composición, no modificar clases existentes
 - L: las implementaciones son intercambiables si respetan la interfaz
@@ -302,32 +346,37 @@ No implementar features que no estén en el MVP o que no hayan sido aprobadas ex
 - D: depender de abstracciones (interfaces), no de implementaciones concretas
 
 ## Manejo de errores — política de cero errores sin controlar
+
 - Backend: usar clases de error de dominio propias, nunca `throw new Error('string')`
 - Frontend: el apiClient convierte todos los errores HTTP a tipos Result<T, AppError>
 - GlobalExceptionFilter captura todo lo que no fue capturado en capas anteriores
 - Regla ESLint `no-floating-promises` está activa — toda promesa debe ser handled
 
 ## Seguridad — reglas críticas
+
 - NUNCA encriptar/decriptar datos de pacientes en apps/frontend
 - NUNCA loguear campos sensibles (cedula, diagnosis, treatment, medication_name)
 - NUNCA exponer ENCRYPTION_KEY ni DATABASE_URL al cliente
 - NUNCA llamar directamente a apps/backend desde el browser — SIEMPRE via Server Actions o Route Handlers de Next.js (patrón BFF)
-- NUNCA usar NEXT_PUBLIC_ para URLs o secrets del backend — el cliente no necesita saber que NestJS existe
+- NUNCA usar NEXT*PUBLIC* para URLs o secrets del backend — el cliente no necesita saber que NestJS existe
 - El JWT de Auth0 vive ÚNICAMENTE en la cookie httpOnly cifrada — no en localStorage, no en variables de React, no en headers visibles al cliente
 - Endpoints de admin SIEMPRE con @Roles('super_admin')
 - Antes de retornar datos de pacientes, verificar ownership del doctor autenticado
 - Datos sensibles de pacientes: retornar SIEMPRE enmascarados en vistas de lista — solo el endpoint /reveal retorna el dato completo y registra en access_audit_log
 
 ## Idioma
+
 - Código y comentarios técnicos: inglés
 - UI y mensajes al usuario: español Venezuela (locale es-VE)
 - Errores mostrados al usuario: español, tono profesional y claro
 ```
 
 #### 1.9 — Crear reglas para Cursor (`.cursor/rules/`)
+
 Crear los siguientes archivos en `.cursor/rules/`:
 
 **`01-memory-bank.mdc`** — Carga del Memory Bank y regla de actualización:
+
 ```
 ---
 description: Cargar Memory Bank y actualizar al terminar
@@ -347,6 +396,7 @@ antes de implementarse.
 ```
 
 **`02-ddd-architecture.mdc`** — Arquitectura DDD del backend:
+
 ```
 ---
 description: Arquitectura DDD para apps/backend
@@ -386,6 +436,7 @@ Reglas de dependencia: presentation → application → domain ← infrastructur
 ```
 
 **`03-solid-principles.mdc`** — Principios SOLID y manejo de errores:
+
 ```
 ---
 description: SOLID y error handling en todo el proyecto
@@ -409,6 +460,7 @@ Error handling — cero errores sin controlar:
 ```
 
 **`04-security.mdc`** — Reglas de seguridad:
+
 ```
 ---
 description: Seguridad y manejo de datos sensibles
@@ -425,6 +477,7 @@ alwaysApply: true
 ```
 
 **`05-git-flow.mdc`** — Flujo de ramas y commits:
+
 ```
 ---
 description: Git Flow — convención de ramas y commits
@@ -441,6 +494,7 @@ Hotfix: merge a main Y back-merge a develop.
 ```
 
 **`06-naming-conventions.mdc`** — Convenciones de nombres:
+
 ```
 ---
 description: Convenciones de nombres en todo el proyecto
@@ -482,11 +536,13 @@ Compartido:
 ### Instrucciones para Claude Code
 
 #### 2.1 — Auditar y centralizar tipos existentes
+
 - Lee todos los archivos `actions.ts`, `page.tsx`, y rutas de API del proyecto. Extrae todos los tipos e interfaces inline o importados.
 - Identifica los tipos duplicados (por ejemplo, `Patient` probablemente está definido de forma diferente en varios módulos).
 - Crea un inventario en `memory-bank/02-components.md` con todos los tipos encontrados.
 
 #### 2.2 — Crear Zod schemas en `libs/shared-types/src/`
+
 - Para cada entidad principal de la base de datos, crea un Zod schema:
   - `profile.schema.ts` — Perfiles de usuario (doctor, admin, patient)
   - `appointment.schema.ts` — Citas con todos sus estados válidos
@@ -499,6 +555,7 @@ Compartido:
 - Cada schema debe exportar: el schema Zod, el tipo inferido (`z.infer<typeof Schema>`), y el schema de creación (`Schema.omit({ id: true, createdAt: true })`).
 
 #### 2.3 — Schemas de DTOs para la API
+
 - Crea schemas específicos para los DTOs de la API NestJS (entradas y salidas de endpoints):
   - `CreateAppointmentDto.schema.ts`
   - `UpdateAppointmentStatusDto.schema.ts`
@@ -508,6 +565,7 @@ Compartido:
 - Estos DTOs son más estrictos que los schemas de entidad — no permiten campos extras.
 
 #### 2.4 — Enums compartidos
+
 - Crea `enums.ts` con todos los valores de estado definidos en el CLAUDE.md:
   - `AppointmentStatus`: `scheduled | confirmed | cancelled | completed | no_show`
   - `PaymentStatus`: `pending | approved`
@@ -516,6 +574,7 @@ Compartido:
   - `PackageStatus`: `active | completed`
 
 #### 2.5 — Actualizar `apps/frontend` para usar `@delta/shared-types`
+
 - Reemplaza las importaciones de tipos locales con los de la librería compartida.
 - Usa `tsc --noEmit` para verificar que no hay errores de tipo.
 
@@ -531,12 +590,14 @@ Compartido:
 ### Instrucciones para Claude Code
 
 #### 3.1 — Scaffolding de la app NestJS
+
 - Usa el plugin `@nx/nest` para generar `apps/backend/` dentro del monorepo.
 - Configura el `project.json` con targets: `build`, `serve`, `lint`, `test`.
 - El servidor NestJS debe arrancar en el puerto `3001`.
 - Configura `CORS` en `main.ts` para aceptar requests desde `http://localhost:3000` (web).
 
 #### 3.2 — Estructura de módulos NestJS con DDD
+
 Organiza el backend en cuatro capas estrictas según DDD. La regla de dependencia es unidireccional: `presentation → application → domain ← infrastructure`.
 
 ```
@@ -652,12 +713,14 @@ apps/backend/src/
 ```
 
 **Regla de dependencias (enforced por ESLint `@nx/enforce-module-boundaries`):**
+
 - `domain/` no importa de ninguna otra capa ni de frameworks
 - `application/` solo importa de `domain/`
 - `infrastructure/` importa de `domain/` y `application/` (para implementar sus contratos)
 - `presentation/` importa de `application/` (invoca use cases) y de `infrastructure/` (para inyección de dependencias en módulos NestJS)
 
 #### 3.3 — Configurar Sequelize con PostgreSQL
+
 - Instalar: `@nestjs/sequelize`, `sequelize`, `sequelize-typescript`, `pg`, `pg-hstore`.
 - Crear `database.config.ts` que lea `DATABASE_URL` del entorno.
 - Configurar `SequelizeModule.forRootAsync()` en `AppModule` con:
@@ -667,6 +730,7 @@ apps/backend/src/
   - `logging: process.env.NODE_ENV === 'development'`
 
 #### 3.4 — Crear los Sequelize Models
+
 - Para cada tabla principal, crear un modelo que extienda `Model` de `sequelize-typescript`.
 - Los modelos deben usar los tipos de `@delta/shared-types` para los campos.
 - Los campos encriptables (definidos en la sección de marco legal) deben tener hooks `beforeCreate` y `beforeUpdate` que llamen a `@delta/shared-crypto` para encriptar, y `afterFind` para decriptar.
@@ -674,6 +738,7 @@ apps/backend/src/
 - Importante: los campos `search_hash` (HMAC) deben actualizarse automáticamente via hook cuando su campo original cambia.
 
 #### 3.5 — Sistema de Migrations con Sequelize CLI
+
 - Configurar `.sequelizerc` en la raíz de `apps/backend/` para apuntar a `src/database/`.
 - Crear la migration inicial `001-initial-schema.ts` que reproduzca el schema actual de Supabase (obtenido en Fase 0).
 - Convención de nombres: `NNN-descripcion-en-kebab-case.ts` (numeración secuencial).
@@ -681,7 +746,9 @@ apps/backend/src/
 - Crear un script `nx run backend:migrate:undo` para rollback.
 
 #### 3.6 — Docker Compose para desarrollo local
+
 Crea `docker/docker-compose.yml` con exactamente dos servicios (sin herramientas de administración gráfica — usar cliente local como TablePlus, DBeaver, o DataGrip):
+
 ```yaml
 services:
   postgres:
@@ -700,12 +767,14 @@ services:
     # Healthcheck: redis-cli ping
     # restart: unless-stopped
 ```
+
 - Crear `.env.docker` con las variables para el compose (nunca commitear con valores reales — agregar al `.gitignore`).
 - Crear `.env.docker.example` con las variables documentadas pero sin valores.
 - Crear `docker/init.sql` con las extensiones necesarias para PostgreSQL: `uuid-ossp` (para `gen_random_uuid()`), `pgcrypto` (para funciones de hash nativas).
 - Crear el script `tools/scripts/docker-reset.sh` que baje los contenedores, elimine los volúmenes, y los vuelva a levantar — útil para resetear el entorno de desarrollo limpiamente.
 
 #### 3.7 — Migrar lógica de Server Actions al backend
+
 - Para cada `actions.ts` del frontend, analizar su lógica y crear el endpoint NestJS equivalente.
 - Priorizar módulos en este orden: `appointments` → `patients` → `consultations` → `finances` → `admin`.
 - Cada endpoint debe:
@@ -716,11 +785,13 @@ services:
   5. El `Service` usa el `Repository` de Sequelize
 
 #### 3.8 — ZodValidationPipe global
+
 - Crea un `ZodValidationPipe` global que tome el schema Zod del DTO y valide el request body.
 - Si la validación falla, lanzar `BadRequestException` con los errores formateados de Zod.
 - Esto garantiza que los DTOs en el backend y los schemas en el frontend son los mismos objetos Zod de `@delta/shared-types`.
 
 #### 3.9 — Actualizar `apps/frontend` para llamar a la API
+
 - Reemplaza gradualmente las llamadas directas a Supabase en las Server Actions con llamadas HTTP al backend NestJS.
 - Usa un `apiClient.ts` en `apps/frontend/src/lib/` que configure los headers de Authorization automáticamente.
 - Durante la transición, mantén las llamadas a Supabase como fallback hasta que cada módulo sea migrado.
@@ -737,6 +808,7 @@ services:
 ### Instrucciones para Claude Code
 
 #### 4.1 — Configurar Auth0 Tenant
+
 - Crear un tenant en Auth0 para el proyecto (instrucción: crear una cuenta en auth0.com, un tenant con nombre `delta-medical`).
 - Configurar una **Regular Web Application** (NO SPA) para `apps/frontend` (Next.js) — este tipo de app soporta el flujo server-side con cookies httpOnly correctamente.
 - Configurar una **API** en Auth0 con el identificador `https://api.deltamedical.com`.
@@ -745,6 +817,7 @@ services:
 - Configurar las URLs permitidas de callback, logout, y CORS para los entornos de dev y prod.
 
 **Configuración de tokens y sesiones (crítico):**
+
 - **Access Token TTL:** 900 segundos (15 minutos) — ventana máxima de exposición si hay sesión comprometida
 - **Refresh Token Rotation:** HABILITADO — cada uso del refresh token genera uno nuevo e invalida el anterior
 - **Refresh Token Reuse Detection:** HABILITADO — si se detecta reutilización de un refresh token ya rotado, Auth0 revoca toda la familia de tokens automáticamente (indica probable robo de token)
@@ -763,7 +836,9 @@ services:
 - La redirección post-login debe seguir el mismo flujo: leer el custom claim `role` → redirigir a `/admin`, `/doctor`, o `/patient`.
 
 **Patrón BFF — reglas de implementación obligatorias:**
+
 - Crear `apps/frontend/src/lib/api-client.server.ts` (archivo con sufijo `.server.ts` para garantizar que Next.js nunca lo incluya en el bundle del cliente):
+
   ```typescript
   import { getAccessToken } from '@auth0/nextjs-auth0';
 
@@ -779,6 +854,7 @@ services:
     });
   }
   ```
+
 - `BACKEND_INTERNAL_URL` es una variable de entorno del servidor (sin prefijo `NEXT_PUBLIC_`). El cliente nunca sabe que NestJS existe.
 - Todos los Server Actions y Route Handlers del frontend usan `serverFetch` — NUNCA `fetch` directo a NestJS desde componentes cliente.
 - El refresh silencioso del access token lo maneja `@auth0/nextjs-auth0` automáticamente en el servidor cuando el token expira — el usuario no percibe nada.
@@ -786,15 +862,20 @@ services:
   ```typescript
   export default {
     session: {
-      rolling: true,           // extiende sesión con actividad
-      rollingDuration: 1800,   // 30 min inactividad → logout
+      rolling: true, // extiende sesión con actividad
+      rollingDuration: 1800, // 30 min inactividad → logout
       absoluteDuration: 86400, // 24h máximo absoluto
     },
-    routes: { callback: '/api/auth/callback', login: '/api/auth/login', logout: '/api/auth/logout' },
+    routes: {
+      callback: '/api/auth/callback',
+      login: '/api/auth/login',
+      logout: '/api/auth/logout',
+    },
   };
   ```
 
 #### 4.3 — Integrar Auth0 en `apps/backend` (NestJS)
+
 - Instalar `passport`, `passport-jwt`, `@nestjs/passport`, `jwks-rsa`.
 - Crear `JwtStrategy` que valide el JWT de Auth0 usando el endpoint JWKS público del tenant.
 - El `JwtStrategy` debe extraer el `sub` (user ID de Auth0), el `role` (custom claim), y el `email`.
@@ -802,6 +883,7 @@ services:
 - El `CurrentUser` decorator debe retornar el payload del JWT para usar en los controllers.
 
 #### 4.4 — Migración de usuarios de Supabase Auth a Auth0
+
 - Exportar los usuarios existentes de Supabase Auth.
 - Crear un script de migración en `tools/scripts/migrate-users-to-auth0.ts` que:
   1. Lea cada usuario de Supabase
@@ -816,11 +898,13 @@ services:
 **Implementación:**
 
 1. **Tabla en Redis** con TTL igual al `absoluteDuration` de la sesión:
+
    ```
    active_session:{userId}  →  { sessionId, deviceInfo, ip, loginAt }
    ```
 
 2. **Auth0 Action (Post-Login trigger)** que llama al backend para registrar la nueva sesión:
+
    ```javascript
    // Auth0 Action: registrar sesión activa
    exports.onExecutePostLogin = async (event, api) => {
@@ -847,9 +931,10 @@ services:
    - Si el `sessionId` del JWT no coincide con el de Redis → retorna `401 SESSION_SUPERSEDED`
    - El frontend recibe ese error y ejecuta logout limpio
 
-5. **En el frontend**, `apiClient.server.ts` maneja el error `SESSION_SUPERSEDED` con un redirect a `/api/auth/logout?message=session_superseded` que muestra al usuario: *"Tu sesión fue iniciada en otro dispositivo."*
+5. **En el frontend**, `apiClient.server.ts` maneja el error `SESSION_SUPERSEDED` con un redirect a `/api/auth/logout?message=session_superseded` que muestra al usuario: _"Tu sesión fue iniciada en otro dispositivo."_
 
 #### 4.6 — Encriptación a nivel de campo en los Sequelize Models
+
 - Crea `libs/shared-crypto/src/field-encryption.ts` con las funciones:
   - `encrypt(plaintext: string, key: Buffer): string` — AES-256-GCM, retorna `iv:ciphertext:authTag` en base64
   - `decrypt(encoded: string, key: Buffer): string` — falla explícitamente si el authTag no coincide (tampering detectado)
@@ -890,6 +975,7 @@ Usuario → Cloudflare (DNS + WAF + DDoS) → Cloud Run frontend (Next.js) → V
 
 6. **Security Headers via Cloudflare Transform Rules (gratis):**
    Agregar estos headers a todas las respuestas:
+
    ```
    Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
    X-Content-Type-Options: nosniff
@@ -904,9 +990,10 @@ Usuario → Cloudflare (DNS + WAF + DDoS) → Cloud Run frontend (Next.js) → V
    Crear reglas WAF personalizadas para las rutas más expuestas:
    - `(http.request.uri.path eq "/api/auth/login")` → bloquear si más de 10 requests/minuto por IP
    - `(http.request.uri.path contains "/book/")` → challenge si más de 30 requests/minuto por IP
-   Nota: el rate limiting avanzado es de pago, pero las Custom Rules del plan gratuito permiten reglas básicas efectivas.
+     Nota: el rate limiting avanzado es de pago, pero las Custom Rules del plan gratuito permiten reglas básicas efectivas.
 
 **Variables de entorno adicionales necesarias:**
+
 ```env
 # apps/frontend
 CLOUDFLARE_TURNSTILE_SECRET_KEY=   # para validación server-side del Turnstile
@@ -916,6 +1003,7 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 #### 4.6 — Estrategia de caché con Redis
 
 **Caché global (Cache Manager de NestJS):**
+
 - Instalar `@nestjs/cache-manager`, `cache-manager-redis-yet`.
 - Configurar `CacheModule.registerAsync()` con la URL de Redis.
 - TTLs por tipo de dato:
@@ -926,11 +1014,13 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
   - Tasa USDT/Binance: **10 minutos** (con invalidación manual)
 
 **Invalidación de caché por evento:**
+
 - Cada vez que se actualiza un perfil, invalidar la key `profile:{doctorId}`.
 - Cada vez que se crea/cancela una cita, invalidar `slots:{doctorId}:{date}`.
 - Cada vez que se cobra una suscripción, invalidar `dashboard:admin:*`.
 
 **Caché a nivel de ruta (Next.js `apps/frontend`):**
+
 - Usar `revalidate` de Next.js para las páginas que muestran datos semi-estáticos.
 - La landing page (`/`) debe tener `revalidate: 3600` (revalidar cada hora).
 - Páginas de booking público (`/book/[doctorId]`): `revalidate: 300` (5 minutos).
@@ -939,6 +1029,7 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 **Instrucción para Claude:** Analiza cada endpoint del NestJS y determina si aplica `@UseInterceptors(CacheInterceptor)`. Documenta en `memory-bank/04-api-documentation.md` qué endpoints tienen caché y con qué TTL.
 
 **Verificación de fase:**
+
 - [ ] Login con Auth0 magic link funciona end-to-end
 - [ ] `document.cookie` en DevTools del browser NO muestra el token JWT (solo la cookie opaca de sesión)
 - [ ] Abrir DevTools → Network: ningún request del browser muestra `Authorization: Bearer` en los headers (solo los requests de Next.js server-to-server lo tienen)
@@ -958,6 +1049,7 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 ### Instrucciones para Claude Code
 
 #### 5.1 — Auditoría de dependencias Supabase a reemplazar
+
 - **Supabase Auth:** Reemplazado por Auth0 (Fase 4).
 - **Supabase PostgreSQL:** Reemplazado por Cloud SQL (PostgreSQL 16) en GCP.
 - **Supabase Storage:** Reemplazado por Google Cloud Storage (GCS) con signed URLs.
@@ -966,6 +1058,7 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 - **Supabase Edge Functions:** Reemplazadas por Cloud Functions o Cloud Run Jobs (para crons).
 
 #### 5.2 — Infraestructura como código (IaC) con Terraform
+
 - Crear `infrastructure/terraform/` con los siguientes módulos:
   - `modules/cloud-sql/` — Instancia PostgreSQL 16 en Cloud SQL (High Availability)
   - `modules/cloud-run/` — Servicios para `apps/frontend` y `apps/backend`
@@ -978,6 +1071,7 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 **Instrucción para Claude:** NO generar el código Terraform aún. Primero documentar en `memory-bank/01-architecture.md` el diagrama de arquitectura GCP con todos los servicios y sus relaciones de red.
 
 #### 5.3 — Cloud SQL (PostgreSQL)
+
 - Tipo de instancia: `db-standard-2` para producción.
 - Habilitar `point-in-time recovery` y backups automáticos diarios.
 - VPC privada — Cloud Run se conecta via `Cloud SQL Auth Proxy` o `Cloud SQL connector`.
@@ -985,9 +1079,11 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 - Ejecutar las migrations de Sequelize como parte del pipeline de GitHub Actions (step previo al deploy del servicio `api`).
 
 #### 5.4 — Cloud Run (apps/frontend y apps/backend)
+
 - Cada app tiene su propio servicio en Cloud Run.
 
 **`apps/frontend` (Next.js):**
+
 - Imagen Docker multi-stage con `node:20-alpine`.
 - `next build` produce output standalone (`output: 'standalone'` en `next.config.ts`).
 - Variables de entorno inyectadas desde Secret Manager.
@@ -995,6 +1091,7 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 - Configurar el header `CF-Connecting-IP` para extraer la IP real del usuario (Cloudflare lo inyecta).
 
 **`apps/backend` (NestJS):**
+
 - Imagen Docker multi-stage con `node:20-alpine`.
 - `nest build` → ejecutar imagen con Node.js.
 - **Ingress: `--ingress=internal`** — este es el cambio crítico. Cloud Run rechaza cualquier request que NO provenga de la red VPC interna del proyecto. El backend no tiene URL pública accesible desde internet bajo ninguna circunstancia.
@@ -1002,11 +1099,13 @@ NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=  # este sí es público — solo iden
 - La variable `BACKEND_INTERNAL_URL` en el frontend apunta a esta URL interna.
 
 **Escalado:**
+
 - Configurar Cloud Run para escalar a 0 instancias en entorno dev (ahorro de costos).
 - En prod: mínimo 1 instancia, máximo 10.
 - El backend puede escalar más agresivamente que el frontend si hay alta carga de API.
 
 #### 5.5 — Google Cloud Storage (reemplaza Supabase Storage)
+
 - Crear un bucket privado para archivos de pacientes: `delta-medical-patients-files`.
 - Los archivos NUNCA son públicos — acceso via signed URLs generadas por el backend (expiración: 15 minutos).
 - Habilitar Object Versioning en el bucket.
@@ -1020,6 +1119,7 @@ Crear los siguientes workflows en `.github/workflows/`:
 
 **`ci.yml` — Integración continua (se dispara en todo PR hacia `develop` y `main`)**
 Pasos en orden:
+
 1. Checkout del repo con `fetch-depth: 0` (necesario para que `nx affected` compare correctamente).
 2. Setup de Node.js (versión LTS) con caché de `npm`.
 3. `nx affected --target=lint --base=origin/develop` — lint solo de proyectos afectados.
@@ -1029,6 +1129,7 @@ Pasos en orden:
 
 **`deploy-staging.yml` — Deploy a staging (se dispara en `push` a `develop`)**
 Pasos en orden:
+
 1. Checkout + setup Node.js.
 2. Autenticación con GCP usando `google-github-actions/auth` y un Service Account dedicado para staging (credenciales almacenadas como GitHub Secret `GCP_SA_KEY_STAGING`).
 3. `nx affected --target=build --base=HEAD~1` — build de lo que cambió.
@@ -1040,6 +1141,7 @@ Pasos en orden:
 
 **`deploy-production.yml` — Deploy a producción (se dispara en `push` a `main`)**
 Pasos en orden:
+
 1. Checkout + setup Node.js.
 2. Autenticación con GCP usando `google-github-actions/auth` con Service Account de producción (`GCP_SA_KEY_PROD`).
 3. Detectar qué apps cambiaron comparando el merge commit contra el commit anterior en `main`.
@@ -1052,11 +1154,13 @@ Pasos en orden:
 
 **`hotfix-flow.yml` — Validación extra para ramas `hotfix/*`**
 Se dispara en `push` a ramas que comiencen con `hotfix/`:
+
 1. CI completo (lint + test + build) igual que `ci.yml`.
 2. Verificar que la rama `hotfix/*` salió de `main` (no de `develop`).
 3. Generar un resumen del diff contra `main` en el PR como recordatorio de impacto.
 
 **Secretos de GitHub requeridos (configurar en Settings > Secrets):**
+
 - `GCP_SA_KEY_STAGING` — JSON del Service Account de GCP para staging
 - `GCP_SA_KEY_PROD` — JSON del Service Account de GCP para producción
 - `GCP_PROJECT_ID_STAGING` — ID del proyecto GCP de staging
@@ -1064,6 +1168,7 @@ Se dispara en `push` a ramas que comiencen con `hotfix/`:
 - `GCP_REGION` — región de GCP (ej: `us-central1`)
 
 **Flujo completo Git Flow → GitHub Actions:**
+
 ```
 feature/nueva-funcionalidad
         │ PR hacia develop
@@ -1079,11 +1184,13 @@ hotfix/bug-critico (sale de main)
 ```
 
 **Nota sobre NX Affected en GitHub Actions:**
+
 - En `push` a `develop` o `main`: comparar con `HEAD~1` (el commit anterior).
 - En `pull_request`: comparar con `origin/<base-branch>` (la rama destino del PR).
 - Configurar `nxCloudAccessToken` en `nx.json` si se usa NX Cloud para caché distribuida de builds (recomendado para acelerar CI).
 
 #### 5.7 — Migración de datos de Supabase a Cloud SQL
+
 - Crear un script `tools/scripts/migrate-supabase-to-cloudsql.ts` que:
   1. Conecte a Supabase (source) y a Cloud SQL (target)
   2. Migre tabla por tabla en orden de dependencias (sin violar FKs)
@@ -1104,6 +1211,7 @@ hotfix/bug-critico (sale de main)
 ### Instrucciones para Claude Code
 
 #### 6.1 — Code Splitting y Lazy Loading en Next.js
+
 - Audita el `apps/frontend` con `next build && next analyze` para identificar los bundles más pesados.
 - Aplica `dynamic(() => import(...), { loading: () => <Skeleton /> })` a:
   - El calendario de la agenda (componente grande de terceros)
@@ -1114,17 +1222,20 @@ hotfix/bug-critico (sale de main)
 - Crea componentes `Skeleton` para cada uno de los anteriores — evitar Cumulative Layout Shift (CLS).
 
 #### 6.2 — Optimización de imágenes
+
 - Reemplaza todas las etiquetas `<img>` con el componente `<Image>` de Next.js.
 - Configura `next.config.ts` con `images.remotePatterns` para GCS (logos de doctores).
 - Habilita WebP/AVIF automático via `images.formats: ['image/avif', 'image/webp']`.
 - Los avatares de doctores deben cargarse con `loading="lazy"` excepto el avatar del perfil principal.
 
 #### 6.3 — Caché HTTP y headers
+
 - Configura headers de caché en `next.config.ts` para assets estáticos (`/_next/static/*`): `Cache-Control: public, max-age=31536000, immutable`.
 - Para la landing page: `Cache-Control: public, max-age=0, must-revalidate` (ya configurado, mantener).
 - Configura `stale-while-revalidate` para las páginas de booking público.
 
 #### 6.4 — Optimización de queries a la base de datos
+
 - Audita los N+1 queries: busca todos los lugares donde se hace un loop con queries adentro.
 - Usa `include` de Sequelize para eager loading de relaciones necesarias.
 - Crea índices en PostgreSQL para:
@@ -1136,11 +1247,13 @@ hotfix/bug-critico (sale de main)
 - Documenta cada índice en `memory-bank/01-architecture.md`.
 
 #### 6.5 — Server-side rendering y Suspense
+
 - Convierte las páginas de dashboard (`/doctor/page.tsx`, `/admin/page.tsx`) a Server Components que hagan el fetch inicial en el servidor.
 - Usa `<Suspense>` boundaries con Skeletons para partes de la página que tienen datos menos críticos.
 - El layout del doctor y admin deben pre-cargar el perfil y los feature flags en el servidor — evitar waterfalls en el cliente.
 
 #### 6.6 — Service Worker y PWA (opcional pero recomendado)
+
 - Configura `next-pwa` para cachear assets estáticos y el shell de la app.
 - El Service Worker debe cachear la última versión de la agenda del doctor para funcionamiento offline básico.
 - Habilita notificaciones push via Web Push API (integrar con el módulo de notificaciones del backend).
@@ -1157,6 +1270,7 @@ hotfix/bug-critico (sale de main)
 ### Mapa de requerimientos MVP → Implementación
 
 #### 7.1 — Landing Page
+
 - Quitar el botón de paciente del nav.
 - Actualizar el contador de especialistas con dato real de la API.
 - Actualizar la sección "Cómo funciona" con el copy correcto (3 pasos).
@@ -1164,6 +1278,7 @@ hotfix/bug-critico (sale de main)
 - Implementar la página de precios con 3 planes: Free Trial, Especialista ($30), Clínica (contacto ventas).
 
 #### 7.2 — Dashboard Admin (nuevas métricas)
+
 - Endpoint `GET /admin/dashboard/stats` que retorne:
   - Cantidad de especialistas (total, activos, fríos, inactivos)
   - Cantidad de citas agendadas (últimos 30 días)
@@ -1174,6 +1289,7 @@ hotfix/bug-critico (sale de main)
 - La definición de "activo/frío/inactivo" basada en `last_sign_in_at` de Auth0 (webhook para mantener sincronizado).
 
 #### 7.3 — Gestión de especialistas con estados
+
 - En el listado de médicos, agregar columna de "Estado" calculada:
   - **Activo:** último ingreso hace 7 días o menos
   - **Frío:** entre 7 y 30 días sin ingresar
@@ -1182,18 +1298,21 @@ hotfix/bug-critico (sale de main)
 - Botón de exportar en Excel y PDF.
 
 #### 7.4 — Configuración de tasa USDT/Binance
+
 - Endpoint `POST /admin/settings/usdt-rate` para actualizar la tasa.
 - Endpoint `GET /settings/usdt-rate` (público) para que la app del doctor y el booking puedan consultarla.
 - La tasa se almacena en Redis con TTL de 10 minutos y en la tabla `settings`.
 - En el booking público, mostrar el precio en USD y en Bs equivalente según la tasa actual.
 
 #### 7.5 — Dashboard Especialista mejorado
+
 - Agregar botón "Registrar Pago" en el dashboard.
 - Agregar botón "Registrar Gasto" en el dashboard.
 - Notificaciones cuando se aproximan citas (30 min antes) via WebSockets.
 - "Cita actual": mostrar la cita del momento de forma destacada, con botón de abrir consulta.
 
 #### 7.6 — Agenda del Especialista — Mejoras
+
 - Eliminar los filtros de pagos de la vista de agenda.
 - Agregar filtros: "Completadas" y "Canceladas".
 - KPIs de agenda (marcados como "deseable" en el MVP):
@@ -1203,30 +1322,36 @@ hotfix/bug-critico (sale de main)
   - Mejor día de la semana
 
 #### 7.7 — Consultorio — Historial del Paciente
+
 - En el historial, al hacer click en una consulta anterior, abrir la consulta en modo lectura/edición.
 - Seguimientos: adjuntos relevantes del historial del paciente, cargados en consulta o por el paciente.
 - Datos médicos del paciente editables desde dentro de una consulta activa.
 
 #### 7.8 — Sistema de Plantillas para PDF
+
 - Nueva tabla `doctor_templates` con: encabezado, logo, firma, sello, pie de página, matrícula, tipografía, color, tamaño de hoja.
 - Endpoint `POST /doctor/templates` para crear/actualizar plantilla.
 - Tipos de documentos con orientación configurable por bloque: Informe, Recipe, Indicaciones.
 - Generación de PDF usando `@react-pdf/renderer` en el backend.
 
 #### 7.9 — Finanzas del Especialista — Mejoras
+
 - Agregar sección "Por ingresar" (pagos pendientes).
 - Poder generar ingresos diferentes a consultas (asociados a un paciente).
 - Revisar y corregir la gráfica de finanzas (bug reportado en MVP).
 
 #### 7.10 — Cobros — Mejoras
+
 - Filtro de estado de consulta en la vista de cobros.
 - Botón de cobro por WhatsApp: genera un mensaje pre-formateado con el link de pago y lo abre en WhatsApp Web.
   - Investigar integración con WhatsApp Business API (número único de Delta o número del especialista).
 
 #### 7.11 — Servicios del Especialista
+
 - Agregar campo de descripción del servicio (se muestra en el booking público).
 
 #### 7.12 — Base de datos — Limpieza
+
 - Quitar el campo `ID de cita` visible en la UI (mantenerlo en BD pero no mostrarlo al usuario).
 - Revisar y eliminar los campos marcados como eliminados en el CLAUDE.md.
 
@@ -1242,20 +1367,23 @@ hotfix/bug-critico (sale de main)
 ### Instrucciones para Claude Code — Mantenimiento continuo
 
 #### 8.1 — Protocolo de actualización obligatorio
+
 Después de cada sesión de trabajo significativa, verificar y actualizar según corresponda:
 
-| Si se hizo... | Actualizar este archivo |
-|---------------|------------------------|
-| Nuevo endpoint o cambio de API | `memory-bank/04-api-documentation.md` |
-| Nueva decisión de arquitectura o ADR | `memory-bank/01-architecture.md` |
-| Nuevo módulo, componente, o schema Zod | `memory-bank/02-components.md` |
-| Fase del plan completada | `memory-bank/05-progress-log.md` |
-| Ítem del MVP implementado o priorizado | `memory-bank/06-mvp-planning.md` |
-| Cambio en proceso de desarrollo | `memory-bank/03-development-process.md` |
-| Cambio en el stack o visión del proyecto | `memory-bank/00-project-overview.md` |
+| Si se hizo...                            | Actualizar este archivo                 |
+| ---------------------------------------- | --------------------------------------- |
+| Nuevo endpoint o cambio de API           | `memory-bank/04-api-documentation.md`   |
+| Nueva decisión de arquitectura o ADR     | `memory-bank/01-architecture.md`        |
+| Nuevo módulo, componente, o schema Zod   | `memory-bank/02-components.md`          |
+| Fase del plan completada                 | `memory-bank/05-progress-log.md`        |
+| Ítem del MVP implementado o priorizado   | `memory-bank/06-mvp-planning.md`        |
+| Cambio en proceso de desarrollo          | `memory-bank/03-development-process.md` |
+| Cambio en el stack o visión del proyecto | `memory-bank/00-project-overview.md`    |
 
 #### 8.2 — Mantenimiento de `memory-bank/06-mvp-planning.md`
+
 Este es el archivo más crítico para priorización. Debe estar siempre actualizado con:
+
 - Estado de cada ítem del MVP: `pendiente | en-progreso | completado | descartado`
 - Fecha en que se inició y se completó cada ítem
 - Notas técnicas relevantes (decisiones tomadas, limitaciones encontradas)
@@ -1264,13 +1392,17 @@ Este es el archivo más crítico para priorización. Debe estar siempre actualiz
 **Regla:** Antes de iniciar cualquier nueva funcionalidad, verificar que existe en `06-mvp-planning.md`. Si no existe, agregarla con justificación antes de implementar.
 
 #### 8.3 — Revisión periódica de las reglas de agentes
+
 Cada vez que se adopte un nuevo patrón, convención, o se descubra un anti-pattern recurrente:
+
 - Actualizar el archivo `.cursor/rules/` correspondiente
 - Actualizar la sección relevante de `CLAUDE.md`
 - Agregar una nota en `memory-bank/05-progress-log.md` con la razón del cambio
 
 #### 8.4 — Verificación de consistencia del Memory Bank
+
 Antes de cada release (merge a `main`), verificar que:
+
 - Los endpoints en `04-api-documentation.md` coinciden con los controllers reales
 - La arquitectura en `01-architecture.md` refleja la estructura real del proyecto
 - El `06-mvp-planning.md` tiene correctamente marcado lo que se incluyó en el release
@@ -1281,6 +1413,7 @@ Antes de cada release (merge a `main`), verificar que:
 ## APÉNDICE A — Variables de entorno requeridas
 
 ### `apps/frontend` (.env.local)
+
 ```env
 # Auth0 — todos son server-side (sin NEXT_PUBLIC_)
 AUTH0_SECRET=                          # Generado: openssl rand -hex 32 — cifra la cookie de sesión
@@ -1302,6 +1435,7 @@ NEXT_PUBLIC_ENV=development
 ```
 
 ### `apps/backend` (.env)
+
 ```env
 # Database
 DATABASE_URL=postgres://delta:delta@localhost:5432/deltamedical
@@ -1370,6 +1504,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
 #### 9.1 — Sentry: rastreo de errores frontend y backend
 
 **Backend (NestJS):**
+
 - Instalar `@sentry/nestjs` y `@sentry/profiling-node`.
 - Inicializar Sentry en `main.ts` antes del bootstrap de NestJS, con `dsn` cargado desde GCP Secret Manager.
 - Configurar `SentryModule.forRootAsync()` con:
@@ -1381,6 +1516,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
 - Crear alertas en Sentry para: error rate > 1% en producción, new issue detected, regression detected.
 
 **Frontend (Next.js):**
+
 - Instalar `@sentry/nextjs` y ejecutar el wizard de configuración (`npx @sentry/wizard@latest -i nextjs`).
 - Configurar `sentry.client.config.ts`, `sentry.server.config.ts`, y `sentry.edge.config.ts`.
 - Habilitar Session Replay con `replaysSessionSampleRate: 0.01` y `replaysOnErrorSampleRate: 0.5` (replay completo cuando hay error).
@@ -1430,6 +1566,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
 #### 9.5 — Stack de notificaciones: Resend (email) + Twilio (WhatsApp)
 
 **Decisión de stack:**
+
 - **Email transaccional:** Resend (`resend.com`) — SDK TypeScript nativo, integración con `react-email` para templates, excelente DX, sin la complejidad de SendGrid.
 - **WhatsApp:** Twilio WhatsApp Business API — estándar de la industria, cobertura confiable en Venezuela, un solo SDK para WhatsApp + SMS como canal de fallback.
 - **Marketing/lifecycle emails (futuro):** Customer.io — evaluar cuando el volumen de usuarios justifique automatización de campañas. No implementar en esta fase.
@@ -1437,6 +1574,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
 **Instrucción para Claude:** La implementación del stack de notificaciones va en `apps/backend/src/infrastructure/notifications/`. El dominio ya tiene la interfaz `INotificationPort` definida en la Fase 3. Esta fase la implementa con adaptadores concretos.
 
 **9.5.1 — Adapter de Resend (`resend-email.adapter.ts`):**
+
 - Implementa `INotificationPort` para el canal email.
 - Instalar `resend` en el backend.
 - Los templates de email se crean con `react-email` en `apps/backend/src/infrastructure/notifications/templates/`:
@@ -1450,6 +1588,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
 - Configurar el dominio de envío (ej: `notificaciones@deltamedical.com`) con los registros DNS de Resend.
 
 **9.5.2 — Adapter de Twilio WhatsApp (`twilio-whatsapp.adapter.ts`):**
+
 - Implementa `INotificationPort` para el canal WhatsApp.
 - Instalar `twilio` en el backend.
 - Templates de WhatsApp (deben ser aprobados por Meta antes de uso):
@@ -1463,6 +1602,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
 - Definir si el número de WhatsApp es único de Delta o uno por especialista — documentar la decisión en `memory-bank/01-architecture.md`.
 
 **9.5.3 — Servicio de notificaciones orquestador (`notification.service.ts`):**
+
 - En la capa de `application/`, crear `NotificationService` que:
   - Determine el canal preferido del usuario (WhatsApp > Email, configurable por doctor)
   - Ejecute la notificación con el canal primario
@@ -1473,6 +1613,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
   - El worker de Bull procesa la cola de notificaciones de forma asíncrona
 
 **9.5.4 — Cloud Scheduler para recordatorios automáticos:**
+
 - Crear un Cloud Run Job `send-appointment-reminders` que se ejecuta cada hora via Cloud Scheduler.
 - El job consulta las citas de las próximas 25 horas (para los recordatorios de 24h) y de la próxima hora y 10 minutos (para los de 1h).
 - Encola las notificaciones pendientes en Redis/Bull.
@@ -1483,6 +1624,7 @@ Fase 0 → Fase 1 → Fase 2 → Fase 3 → Fase 4 → Fase 5 → Fase 7 (iterat
 #### 9.6 — Dashboard de observabilidad interno
 
 Crear una sección en el dashboard de admin (`/admin/observability`) que consolide:
+
 - **Errores activos** — count de issues abiertos en Sentry (vía Sentry API) con link al issue
 - **Costos de IA** — datos de Helicone: gasto del mes, breakdown por feature y por doctor
 - **Notificaciones** — tasa de entrega de emails (Resend webhook) y WhatsApp (Twilio webhook), errores de envío
@@ -1494,6 +1636,7 @@ Crear una sección en el dashboard de admin (`/admin/observability`) que consoli
 #### 9.7 — Variables de entorno adicionales (Fase 9)
 
 Agregar al `.env` de `apps/backend`:
+
 ```env
 # Sentry
 SENTRY_DSN=
@@ -1513,6 +1656,7 @@ HELICONE_COST_ALERT_THRESHOLD_USD=50         # Alerta si el gasto diario supera 
 ```
 
 Agregar al `.env.local` de `apps/frontend`:
+
 ```env
 # Sentry
 NEXT_PUBLIC_SENTRY_DSN=
