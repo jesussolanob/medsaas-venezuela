@@ -64,7 +64,9 @@ Estado (orden `migracion/modulos/`):
 - 09 doctor-settings → ✅ DDD. Perfil (payment_details), horario (tabla nueva `doctor_schedules`),
   features (Redis cache resiliente), suscripción (bannerLevel), servicios (pricing_plans CRUD).
   `modules/doctor-settings/`. Diferido: templates (con PDF).
-- 10 patient-portal · 08 admin → ⏳ pendientes.
+- 10 patient-portal → ✅ DDD. Portal del paciente (dashboard, citas, paquetes, recetas propias,
+  mensajes, perfil). Anti-IDOR por `auth_user_id`. `modules/patient-portal/`. Diferido: PDF, reports.
+- 08 admin → ⏳ pendiente (ÚLTIMO; depende de todos).
 
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.

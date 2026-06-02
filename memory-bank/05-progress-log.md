@@ -315,3 +315,23 @@ Email Resend. Tests Playwright E2E.
   default 08:00-17:00). Diferido: templates (doctor_templates, con PDF); start/end_time como VARCHAR(5)
   (aceptable Etapa 1); double-select en UpdateProfile (optimización futura).
 - **Progreso módulos: 7/10.** Próximo: patient-portal.
+
+## 2026-06-02 — Módulo patient-portal — completada
+
+- `apps/backend/src/modules/patient-portal/` (DDD): portal del paciente (dashboard, citas, paquetes
+  con info del doctor, recetas propias descifradas, mensajes get/send, perfil get/update). Implementa
+  el acceso-paciente a recetas que se difirió en ehr-prescriptions.
+- **Regla anti-IDOR central:** todo se scopea por `auth_user_id = user.sub`; nunca por ids del cliente.
+  Maneja multi-patient-record (un auth_user_id con varios patients rows, uno por doctor). SendMessage
+  valida relación paciente-doctor antes de insertar (direction='patient_to_doctor').
+- Reviews: reviewer + security APROBADO C/OBSERVACIONES (0 CRITICAL; 0 HIGH bloqueante). 4 fixes:
+  IPatientPortalRepository movida a domain/ (corrige inversión DDD), return types tipados, validación
+  UUID de doctor_id en GET /messages, comentarios TODO/guard.
+- **Falso/parcial descartado por el lead:** security marcó HIGH "auth_user_id NOT NULL" — DESCARTADO:
+  es nullable POR DISEÑO (pacientes sin cuenta; solo los que tienen cuenta acceden al portal; rows sin
+  auth_user_id invisibles en el portal es correcto). No se cambió el schema.
+- Verificación del lead: código por línea (interfaz en domain/, sin ruta vieja) + build/lint/540 tests
+  - boot dist (health 200) + anti-IDOR re-confirmado (atacante ve vacío; mensaje cross-doctor rechazado).
+- Diferidos: /prescriptions/:id/pdf y /reports (PDF + decisión de producto); N+1 en packages (perf,
+  batch antes de prod); updateProfile no atómico; cifrado de patient_messages.body (Etapa 2).
+- **Progreso módulos: 8/10.** Próximo y ÚLTIMO: admin (depende de todos). Luego → QA (parada).

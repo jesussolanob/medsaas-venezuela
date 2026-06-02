@@ -109,6 +109,20 @@
 | `/api/doctor/services`, `/api/doctor/services/:id` | GET/POST/PUT/DELETE | Pricing plans del doctor (ownership).                                                   |
 | _(diferido)_                                       |                     | `/doctor/templates` (req. tabla doctor_templates + PDF).                                |
 
+### Patient portal (módulo ✅ — rol patient, scope por auth_user_id)
+
+| Endpoint                     | Método   | Notas                                                                                           |
+| ---------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `/api/patient/dashboard`     | GET      | Próxima cita + paquetes activos + total.                                                        |
+| `/api/patient/appointments`  | GET      | Citas del paciente (por auth_user_id).                                                          |
+| `/api/patient/packages`      | GET      | Paquetes activos + info del doctor (nombre, booking link).                                      |
+| `/api/patient/prescriptions` | GET      | Recetas propias (descifradas).                                                                  |
+| `/api/patient/messages`      | GET/POST | Conversación con el doctor (POST direction=patient_to_doctor; valida relación). doctor_id UUID. |
+| `/api/patient/profile`       | GET/PUT  | Perfil propio del paciente.                                                                     |
+| _(diferidos)_                |          | `/prescriptions/:id/pdf` (PDF); `/reports` (decisión de producto).                              |
+
+> Regla anti-IDOR: TODO se scopea por `auth_user_id = user.sub`, nunca por ids del cliente.
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por
