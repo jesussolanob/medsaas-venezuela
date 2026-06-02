@@ -129,3 +129,35 @@ Email Resend. Tests Playwright E2E.
 - `pnpm-workspace.yaml`: `packages` reducido a `apps/frontend` (única app legacy con
   package.json propio, se fusionará al root cuando se migre el frontend).
 - Añadido `baseUrl: "."` a `tsconfig.base.json` (faltaba; TS5090 sin él).
+
+## 2026-06-02 — Fase 3 Unidad B: módulo appointments — completada
+
+- Implementado con **equipo de agentes** (Agent Teams): `implementer` (backend-agent)
+  construyó → `reviewer` (code-reviewer) revisó y mandó hallazgos directo al implementer →
+  implementer iteró → lead (orquestador) verificó y cerró. QA dedicado DIFERIDO al final
+  por ahorro de tokens (decisión del usuario).
+- Módulo en `apps/backend/src/modules/appointments/` (DDD 4 capas):
+  - domain: entidad `Appointment` (transiciones canTransitionTo de los 5 canónicos;
+    legacy pending/accepted terminales; canBeModifiedBy = ownership), 5 errores que
+    extienden DomainError, `IAppointmentRepository` (token `APPOINTMENT_REPOSITORY`).
+  - application: use cases CreateAppointment (duplicado ±15min, slot ocupado, optimistic
+    lock de patient_packages.used_sessions), UpdateAppointmentStatus (transición+ownership+
+    audit log), GetDoctorAgenda (paginada), GetAppointmentById.
+  - infrastructure: `appointment.model.ts`, `appointment-changes-log.model.ts`,
+    `SequelizeAppointmentRepository`, migración `20260602000001-appointment-changes-log.cjs`.
+  - presentation: `appointments.controller.ts` (GET /, GET /:id, POST /, PUT /:id/status)
+    con DevAuthGuard + ZodValidationPipe; masking de PII en `presentation/mappers/`.
+- Tabla nueva `appointment_changes_log` (auditoría de cambios de estado): FK a appointments,
+  índices en appointment_id y actor_id, down() limpio.
+- DIFERIDO: GetDoctorSlots y Reschedule (requieren tabla doctor_schedule inexistente).
+- Code review: 0 CRITICAL, 1 HIGH + 3 MEDIUM + 2 LOW — TODOS corregidos. Más relevantes:
+  masking movido de use-case a presentation/mappers (HIGH); anti-IDOR en POST (doctor_id
+  se sobreescribe con user.sub, no se confía en el body); fallo de optimistic lock lanza
+  InsufficientSessionsError; `as never` → QueryTypes; `[Op.gte as unknown]` → WhereOptions.
+- Verificación de cierre (lead): `nx build backend` ✓; `nx test backend` 68/68 en 9 suites;
+  cobertura domain 100% / use-cases 95.5% / repo 71.9% / controller 100%;
+  `GET /api/appointments` con headers x-dev-\* → 200 envelope; sin headers → 403.
+- **FASE 3 COMPLETA** (scaffold + migración inicial + módulo de referencia appointments).
+- Pendiente global: QA dedicado (cobertura+smoke formal) cuando el usuario lo indique;
+  warning Redis NOAUTH al arrancar fuera del cwd raíz (revisar en QA, no afecta módulos).
+- Próximo: Fase 4 (seguridad/identidad) o siguiente módulo de negocio según prioridad MVP.
