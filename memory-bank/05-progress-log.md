@@ -161,3 +161,37 @@ Email Resend. Tests Playwright E2E.
 - Pendiente global: QA dedicado (cobertura+smoke formal) cuando el usuario lo indique;
   warning Redis NOAUTH al arrancar fuera del cwd raíz (revisar en QA, no afecta módulos).
 - Próximo: Fase 4 (seguridad/identidad) o siguiente módulo de negocio según prioridad MVP.
+
+## 2026-06-02 — libs/shared-crypto + módulo patients (con cifrado de PII) — completada
+
+- **libs/shared-crypto**: encrypt/decrypt AES-256-GCM (IV aleatorio 12B, authTag, base64
+  iv||ct||tag) + hashForSearch HMAC-SHA256 (normaliza: trim, lowercase, NFD+strip acentos,
+  colapsa espacios) → 64 hex. 100% cobertura. Cero deps externas (módulo `crypto` de Node).
+- **Módulo patients** (`apps/backend/src/modules/patients/`, DDD 4 capas):
+  - Cifrado en el REPOSITORIO vía `CryptoService` inyectable (lee ENCRYPTION_KEY +
+    ENCRYPTION_HMAC_SECRET de ConfigService; guard al boot que rechaza llaves triviales
+    fuera de development). NO en hooks del modelo. Dominio siempre en plaintext.
+  - Campos cifrados: full_name, cedula, phone, email. Hashes de búsqueda: full_name,
+    cedula, email (los 3, VARCHAR(64)).
+  - **Búsqueda híbrida** (decisión del usuario): lookup exacto por hash (cédula/email) +
+    búsqueda parcial/orden descifrando in-app dentro del scope del doctor.
+  - `/reveal` → plaintext + inserta 1 fila por campo PII en access_audit_log (4 filas).
+  - Lista MÍNIMA (id, fullName, cedula, phone, email, source, createdAt) enmascarada;
+    campos clínicos solo en detalle y reveal. Masking en presentation/mappers.
+  - Anti-IDOR: doctor_id del actor (user.sub), nunca del body; doctor_id en el WHERE de
+    findById/update/softDelete (acceso cross-doctor → not found). Ownership doble capa.
+  - Soft delete: migración 20260602000002 (deleted_at) + Sequelize paranoid.
+- **Gate de ESLint** configurado para el backend (eslint.config.mjs flat, no-explicit-any,
+  no-floating-promises, no-console; target `lint` vía nx:run-commands). `nx lint backend` verde.
+- Equipo de agentes: implementer → code-reviewer + security-agent (paralelo) → fixes → lead.
+  Reviews: 0 CRITICAL; 2 HIGH (code) + 3 HIGH (security) + medios — TODOS corregidos.
+  **El lead detectó que el implementer sobre-declaró**: 5 fixes (varios de seguridad) no
+  estaban en la 1ª ronda; se exigió prueba por punto y se re-verificó en código.
+- Verificación de cierre (lead, smoke real con perfil de doctor sembrado): POST 201 masked;
+  anti-IDOR override OK; lista keys mínimas; cross-doctor 0; reveal plaintext + 4 audit;
+  full_name cifrado en BD + hashes 64. `nx test backend` 131/131; lint verde; build verde.
+- Hallazgo menor diferido: violaciones de FK (ej. doctor sin perfil) salen como 500 genérico
+  — mejorable mapeándolas a 422 en GlobalExceptionFilter (no bloqueante; el doctor autenticado
+  siempre existe en uso real). También: GlobalExceptionFilter no loguea el `.parent` de errores
+  Sequelize (poco depurable) — mejora pendiente.
+- Próximo: siguiente módulo (consultations / finances) o Fase 4, según prioridad.
