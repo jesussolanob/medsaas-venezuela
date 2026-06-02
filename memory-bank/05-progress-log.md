@@ -195,3 +195,29 @@ Email Resend. Tests Playwright E2E.
   siempre existe en uso real). También: GlobalExceptionFilter no loguea el `.parent` de errores
   Sequelize (poco depurable) — mejora pendiente.
 - Próximo: siguiente módulo (consultations / finances) o Fase 4, según prioridad.
+
+## 2026-06-02 — CryptoModule global + módulo consultations — completada
+
+- **CryptoService extraído a módulo global** `apps/backend/src/infrastructure/crypto/` (@Global,
+  CryptoModule) reutilizable por consultations/ehr/prescriptions. patients actualizado a la nueva
+  ruta; sus tests siguen verdes. Commit 3ba36d2.
+- **Módulo consultations** (`apps/backend/src/modules/consultations/`, DDD): entidad Consultation
+  (canBeModifiedBy, canApprovePayment), VO ConsultationCode (DLT-YYYYMM-XXXX), errores propios,
+  repo con cifrado de chief_complaint/diagnosis/treatment/notes vía CryptoService global. Use cases:
+  Create (código único con retry ante colisión), Update, ApprovePayment (pending→approved), GetById,
+  GetPatientHistory (ownership), List (filtros). Controller con DevAuthGuard + Zod, doctor_id de
+  user.sub. Migración 20260602000003 (payment_date). Commit 00e514c.
+- Reconciliación: columna real `amount` (no payment_amount); consultation_code ya tenía UNIQUE.
+- Equipo: implementer → code-reviewer + security-agent. security APROBADO (0 CRIT/HIGH).
+  reviewer APROBADO C/CORRECCIONES: **2 HIGH** (race condition del consultation_code + Error genérico)
+  - 3 MEDIUM + 4 LOW. **TODOS los aplicables corregidos (9 fixes)**: race condition real (save()
+    captura UniqueConstraintError → ConsultationCodeConflictError → retry; agota → ConsultationCodeExhaustedError),
+    ConsultationCodeExhaustedError, DTO legacy eliminado, payment_status validado, VO isValid/generate
+    coherentes (≥4 dígitos), DecryptionError en decrypt, validación ISO de fechas, update/updatePayment
+    en transacción, unique en el modelo.
+- **Lección de proceso:** el implementer volvió a sub-entregar (procesó una directiva vieja de 3
+  fixes en vez de la corregida de 9). El lead verificó el código por línea, detectó los 6 faltantes
+  y, ante edición concurrente, convergió con el implementer; verificación final en disco confirmó los 9. 193 tests verdes, lint verde, build verde.
+- Diferidos documentados: masking en lista (Etapa 1 OK, doctor ve solo las suyas); audit_log en GET
+  (pre-prod); imports de CryptoService en application/ de patients (deuda preexistente).
+- **Progreso módulos: 3/10 (patients, appointments, consultations).** Próximo: ehr-prescriptions.
