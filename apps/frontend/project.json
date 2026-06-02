@@ -1,0 +1,12 @@
+{
+  "name": "frontend",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/frontend",
+  "projectType": "application",
+  "targets": {
+    "dev": { "executor": "nx:run-commands", "options": { "command": "next dev", "cwd": "apps/frontend" } },
+    "build": { "executor": "nx:run-commands", "options": { "command": "next build", "cwd": "apps/frontend" } },
+    "start": { "executor": "nx:run-commands", "options": { "command": "next start", "cwd": "apps/frontend" } },
+    "lint": { "executor": "nx:run-commands", "options": { "command": "eslint .", "cwd": "apps/frontend" } }
+  }
+}

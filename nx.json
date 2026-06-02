@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultProject": "frontend",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*"],
+    "production": ["default"]
+  },
+  "targetDefaults": {
+    "build": { "cache": true },
+    "lint": { "cache": true }
+  }
+}
