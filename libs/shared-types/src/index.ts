@@ -23,3 +23,6 @@ export * from './dtos/approve-payment.dto';
 export * from './dtos/update-patient.dto';
 export * from './dtos/create-ehr-record.dto';
 export * from './dtos/create-prescription.dto';
+export * from './dtos/create-package.dto';
+export * from './dtos/create-booking.dto';
+export * from './dtos/create-pricing-plan.dto';

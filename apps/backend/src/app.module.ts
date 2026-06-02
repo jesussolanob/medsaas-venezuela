@@ -13,6 +13,8 @@ import { PatientsModule } from './modules/patients/patients.module';
 import { ConsultationsModule } from './modules/consultations/consultations.module';
 import { EhrModule } from './modules/ehr/ehr.module';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
+import { PackagesModule } from './modules/packages/packages.module';
+import { BookingModule } from './modules/booking/booking.module';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { PrescriptionsModule } from './modules/prescriptions/prescriptions.modul
     ConsultationsModule,
     EhrModule,
     PrescriptionsModule,
+    PackagesModule,
+    BookingModule,
   ],
   controllers: [HealthController],
   providers: [

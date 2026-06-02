@@ -39,7 +39,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
       code = 'HTTP_ERROR';
     } else if (exception instanceof DomainError) {
-      status = HttpStatus.UNPROCESSABLE_ENTITY;
+      status = exception.httpStatus ?? HttpStatus.UNPROCESSABLE_ENTITY;
       code = exception.code;
       message = exception.message;
     } else {
