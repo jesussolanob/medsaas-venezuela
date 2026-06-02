@@ -16,6 +16,7 @@ import { PrescriptionsModule } from './modules/prescriptions/prescriptions.modul
 import { PackagesModule } from './modules/packages/packages.module';
 import { BookingModule } from './modules/booking/booking.module';
 import { FinancesModule } from './modules/finances/finances.module';
+import { DoctorSettingsModule } from './modules/doctor-settings/doctor-settings.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { FinancesModule } from './modules/finances/finances.module';
     PackagesModule,
     BookingModule,
     FinancesModule,
+    DoctorSettingsModule,
   ],
   controllers: [HealthController],
   providers: [

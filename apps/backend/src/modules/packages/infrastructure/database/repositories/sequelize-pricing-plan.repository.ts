@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import type { WhereOptions } from 'sequelize';
 import { PricingPlan } from '../../../domain/entities/pricing-plan.entity';
-import type { IPricingPlanRepository } from '../../../domain/repositories/pricing-plan.repository';
+import type {
+  IPricingPlanRepository,
+  PricingPlanUpdateParams,
+} from '../../../domain/repositories/pricing-plan.repository';
+import { PricingPlanNotFoundError } from '../../../domain/errors/pricing-plan-not-found.error';
 import { PricingPlanModel } from '../models/pricing-plan.model';
 
 @Injectable()
@@ -48,6 +52,28 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
       isActive: plan.isActive,
     });
     return this.toDomain(row);
+  }
+
+  async update(id: string, params: PricingPlanUpdateParams): Promise<PricingPlan> {
+    const row = await this.planModel.findByPk(id);
+    if (!row) throw new PricingPlanNotFoundError(id);
+
+    await row.update({
+      ...(params.name !== undefined && { name: params.name }),
+      ...(params.priceUsd !== undefined && { priceUsd: params.priceUsd }),
+      ...(params.durationMinutes !== undefined && { durationMinutes: params.durationMinutes }),
+      ...(params.sessionsCount !== undefined && { sessionsCount: params.sessionsCount }),
+      ...(params.description !== undefined && { description: params.description }),
+      ...(params.type !== undefined && { type: params.type }),
+      ...(params.showInBooking !== undefined && { showInBooking: params.showInBooking }),
+      ...(params.isActive !== undefined && { isActive: params.isActive }),
+    });
+
+    return this.toDomain(row);
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.planModel.destroy({ where: { id } as WhereOptions });
   }
 
   private toDomain(row: PricingPlanModel): PricingPlan {

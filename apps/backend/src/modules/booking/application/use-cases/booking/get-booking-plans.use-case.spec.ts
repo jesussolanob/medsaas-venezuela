@@ -28,6 +28,8 @@ describe('GetBookingPlansUseCase', () => {
       findAllByDoctorId: jest.fn(),
       findById: jest.fn(),
       save: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
     };
     useCase = new GetBookingPlansUseCase(mockRepo);
   });

@@ -27,3 +27,6 @@ export * from './dtos/create-package.dto';
 export * from './dtos/create-booking.dto';
 export * from './dtos/create-pricing-plan.dto';
 export * from './dtos/record-finance-entry.dto';
+export * from './dtos/update-doctor-profile.dto';
+export * from './dtos/update-doctor-schedule.dto';
+export * from './dtos/update-pricing-plan.dto';
