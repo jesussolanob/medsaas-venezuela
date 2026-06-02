@@ -29,12 +29,12 @@ Docker. Auth con `DevAuthGuard` (headers `x-dev-user-id`, `x-dev-user-role`).
 presentation → application → domain ← infrastructure
 ```
 
-| Capa | Contenido | Importa de |
-|------|-----------|-----------|
-| `domain/` | entities, value-objects, repository interfaces, domain events, domain errors, factories | nada (ni frameworks) |
-| `application/` | use-cases (1 por acción), ports (INotificationPort, ICachePort…), DTOs | `domain/` |
-| `infrastructure/` | Sequelize models + repos, Redis/GCS/Auth0 adapters, config | `domain/`, `application/` |
-| `presentation/` | controllers, guards, pipes (ZodValidationPipe), filters (GlobalExceptionFilter), interceptors | `application/`, `infrastructure/` |
+| Capa              | Contenido                                                                                     | Importa de                        |
+| ----------------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
+| `domain/`         | entities, value-objects, repository interfaces, domain events, domain errors, factories       | nada (ni frameworks)              |
+| `application/`    | use-cases (1 por acción), ports (INotificationPort, ICachePort…), DTOs                        | `domain/`                         |
+| `infrastructure/` | Sequelize models + repos, Redis/GCS/Auth0 adapters, config                                    | `domain/`, `application/`         |
+| `presentation/`   | controllers, guards, pipes (ZodValidationPipe), filters (GlobalExceptionFilter), interceptors | `application/`, `infrastructure/` |
 
 Enforced por ESLint `@nx/enforce-module-boundaries`.
 
@@ -82,9 +82,10 @@ Otros: `patient_messages`, `leads`, `lead_messages`, `shared_files`, `avatars`,
 
 ## Campos PHI a encriptar (AES-256-GCM por campo + `*_search_hash` HMAC)
 
-`patients`: cedula, full_name, phone, email · `ehr_records`: diagnosis,
+`patients`: cedula, full_name, phone, email (+ `cedula_search_hash`,
+`full_name_search_hash`, `email_search_hash`) · `ehr_records`: diagnosis,
 treatment_plan · `consultations`: chief_complaint, diagnosis, treatment ·
-`prescriptions`: medication_name, dosage. Masking por defecto en listas;
+`prescriptions`: medication (NO medication_name), dosage. Masking por defecto en listas;
 `/reveal` registra en `access_audit_log`.
 
 ## Estrategia de caché (Redis TTLs)
@@ -98,3 +99,25 @@ tasa USDT 10m. Invalidación por evento (update perfil → `profile:{id}`; cita 
 `appointments(doctor_id, scheduled_at)` · `patients(doctor_id)` ·
 `patients(cedula_search_hash)` · `consultations(doctor_id, consultation_date)` ·
 `subscriptions(doctor_id, status)`.
+
+## Decisiones de implementación (Fase 3 — realizadas)
+
+- **Cifrado en la capa repositorio, no en hooks del modelo.** El dominio opera SIEMPRE en
+  plaintext; el repo cifra al escribir y descifra al leer vía `CryptoService` (CryptoModule
+  @Global en `infrastructure/crypto/`). Más testeable y DDD-puro que los hooks Sequelize.
+- **`CryptoService` global compartido:** encrypt/decrypt AES-256-GCM (IV aleatorio 12B + authTag,
+  base64 iv||ct||tag) y `hashForSearch` HMAC-SHA256 (normaliza: trim/lowercase/NFD-sin-acentos).
+  Llaves de ConfigService (`ENCRYPTION_KEY`, `ENCRYPTION_HMAC_SECRET`); guard al boot que rechaza
+  llaves triviales fuera de development. `decrypt` fallido → `DecryptionError` (422, no 500).
+- **Búsqueda sobre datos cifrados — híbrido:** lookup exacto por `*_search_hash` (HMAC determinístico,
+  indexado) para cédula/email; búsqueda parcial/orden descifrando in-app dentro del scope del doctor
+  (set acotado). El ciphertext (nonce aleatorio) NO es indexable directamente.
+- **Anti-IDOR (doble capa):** `doctor_id` siempre de `user.sub` (nunca del body); además `doctor_id`
+  en el WHERE del repo (findById/update/softDelete) → acceso cross-doctor devuelve not-found.
+- **Masking en la capa de presentación** (mappers), nunca en use-case/repo. Listas mínimas.
+- **Migraciones `.cjs`** con sequelize-cli (TS frágil en NX). Una migración por cambio incremental
+  (appointment_changes_log, patients soft-delete, consultations payment_date).
+- **Gate de ESLint** en backend (no-explicit-any, no-floating-promises, no-console).
+- **Proceso de equipo (Agent Teams):** implementer → code-reviewer (+ security-agent si PHI) →
+  fixes → el lead VERIFICA el código por línea y corre build/lint/test (los sub-agentes han
+  sobre-declarado; no se commitea con la sola palabra del agente). Ver `.claude/agents/orchestrator.md`.

@@ -41,12 +41,25 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
 > Server Actions. Cada handler hace queries directas a Supabase. La migración los
 > reescribe como controllers NestJS → use cases → repositorios Sequelize.
 
-## Módulos backend NestJS (a construir — orden de `migracion/modulos/`)
+## Módulos backend NestJS (`apps/backend/src/modules/`)
 
-01 auth · 02 patients · 03 appointments · 04 consultations · 05 ehr-prescriptions ·
-06 finances · 07 packages-booking · 08 admin · 09 doctor-settings · 10 patient-portal.
+Estado (orden `migracion/modulos/`):
 
-Estado: **ninguno implementado aún** (Fase 3 no iniciada).
+- 01 auth → Etapa 1 cubierto por `DevAuthGuard` (módulo Auth0 real = Fase 4).
+- 02 patients → ✅ DDD completo. PII cifrada (full_name/cedula/phone/email) + search hashes;
+  /reveal auditado; búsqueda híbrida; soft delete (paranoid). `modules/patients/`.
+- 03 appointments → ✅ DDD. Transiciones de estado + `appointment_changes_log`; optimistic
+  lock de paquetes. `modules/appointments/`. Diferido: slots/reschedule (falta doctor_schedule).
+- 04 consultations → ✅ DDD. Campos clínicos cifrados; `ConsultationCode` VO (DLT-YYYYMM-XXXX,
+  retry ante colisión); aprobación de pago. `modules/consultations/`.
+- 05 ehr-prescriptions → 🔄 en progreso. EHR + recetas cifradas. Diferido: PDF + acceso paciente.
+- 06 finances · 07 packages-booking · 08 admin · 09 doctor-settings · 10 patient-portal → ⏳ pendientes.
+
+**Infraestructura transversal:** `infrastructure/crypto/` (CryptoModule @Global: encrypt/decrypt
+AES-256-GCM + HMAC search hash, lee llaves de ConfigService, guard de llaves triviales);
+`infrastructure/cache/` (RedisModule ioredis); `infrastructure/auth/` (DevAuthGuard);
+`infrastructure/database/` (migraciones .cjs, config Sequelize). Cifrado SIEMPRE en la capa
+repositorio (el dominio opera en plaintext). Endpoints: ver `04-api-documentation.md`.
 
 ## Schemas Zod (`libs/shared-types`) — Fase 2 ✅ (base)
 
