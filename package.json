@@ -8,11 +8,7 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "apps/frontend/**/*.{ts,tsx}": [
-      "prettier --write",
-      "bash -c 'cd apps/frontend && eslint --fix --max-warnings=0'"
-    ],
-    "*.{json,md,css}": [
+    "*.{ts,tsx,js,jsx,json,md,css}": [
       "prettier --write"
     ]
   },
