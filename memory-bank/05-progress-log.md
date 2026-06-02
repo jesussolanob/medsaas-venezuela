@@ -293,3 +293,25 @@ Email Resend. Tests Playwright E2E.
 - Verificación del lead: build/lint/423 tests + BOOT DEL DIST + smoke (net=-70 con gastos>ingresos;
   month inválido→400; RolesGuard doctor→403).
 - **Progreso módulos: 6/10.** Próximo: doctor-settings.
+
+## 2026-06-02 — Módulo doctor-settings — completada
+
+- `apps/backend/src/modules/doctor-settings/` (DDD): DoctorProfile entity, DoctorSchedule VO
+  (generateSlotsForDate), SubscriptionInfo VO (bannerLevel: suspended/critical≤3d/warning≤7d/none),
+  perfil (con payment_details re-añadido al modelo propio), horario, features (Redis cache TTL 3600),
+  suscripción, servicios (pricing_plans CRUD reusando/extendiendo el repo de packages).
+- **Tabla nueva `doctor_schedules`** (migración 20260602000005) — la que faltaba para slots. Migración
+  000006 dropea índice único redundante sobre la PK. Commit (feat doctor-settings).
+- pricing_plans repo extendido con update/delete + PricingPlanNotFoundError (httpStatus 404).
+- Reviews: code-reviewer APROBADO CON CORRECCIONES (2 HIGH, 4 MEDIUM). Fixes: Redis con try/catch
+  (degrada a DB si Redis cae, en get-features e invalidateSlotCache); `currentPeriodEnd ?? null`;
+  errores tipados (DoctorProfileNotFoundError/PricingPlanNotFoundError, no `throw new Error`);
+  spec anti-IDOR de GetServices; índice redundante eliminado.
+- **Lección de proceso:** el implementer mandó una auto-evaluación "APROBADO" prematura; el lead
+  casi cierra con eso, pero el veredicto REAL del reviewer agent traía 2 HIGH. **Esperar siempre el
+  veredicto del agente reviewer, no la auto-evaluación del implementer.** Además: apagar el implementer
+  y esperar terminación ANTES de commitear (evita carrera de edición post-commit como en finances).
+- Verificación del lead: código por línea + build/lint/497 tests + boot dist (health 200, schedule
+  default 08:00-17:00). Diferido: templates (doctor_templates, con PDF); start/end_time como VARCHAR(5)
+  (aceptable Etapa 1); double-select en UpdateProfile (optimización futura).
+- **Progreso módulos: 7/10.** Próximo: patient-portal.

@@ -98,6 +98,17 @@
 | `/api/settings/usdt-rate`             | GET    | **Pública**                  | Tasa USDT/Bs (Redis TTL 600s + fallback app_settings; null si no seteada).                                       |
 | `/api/admin/settings/usdt-rate`       | POST   | **super_admin** (RolesGuard) | Actualiza tasa + invalida Redis. doctor→403.                                                                     |
 
+### Doctor settings (módulo ✅)
+
+| Endpoint                                           | Método              | Notas                                                                                   |
+| -------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------- |
+| `/api/doctor/profile`                              | GET/PUT             | Perfil del doctor (incluye payment_details/payment_methods, solo del dueño).            |
+| `/api/doctor/schedule`                             | GET/PUT             | Horario (default L-V 08:00-17:00 30min si no existe). PUT invalida Redis slots:{id}:\*. |
+| `/api/doctor/features`                             | GET                 | Features del plan (Redis cache TTL 3600, degrada a DB si Redis cae).                    |
+| `/api/doctor/subscription`                         | GET                 | Estado + `bannerLevel` (suspended/critical≤3d/warning≤7d/none).                         |
+| `/api/doctor/services`, `/api/doctor/services/:id` | GET/POST/PUT/DELETE | Pricing plans del doctor (ownership).                                                   |
+| _(diferido)_                                       |                     | `/doctor/templates` (req. tabla doctor_templates + PDF).                                |
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por

@@ -61,7 +61,13 @@ Estado (orden `migracion/modulos/`):
 - 06 finances → ✅ DDD. Money VO (USD/BS), resumen (consultas aprobadas + transacciones), tasa USDT
   con Redis (TTL 600s), RolesGuard super_admin reutilizable. `modules/finances/`. Migración
   20260602000004 (financial_transactions + app_settings).
-- 09 doctor-settings · 10 patient-portal · 08 admin → ⏳ pendientes.
+- 09 doctor-settings → ✅ DDD. Perfil (payment_details), horario (tabla nueva `doctor_schedules`),
+  features (Redis cache resiliente), suscripción (bannerLevel), servicios (pricing_plans CRUD).
+  `modules/doctor-settings/`. Diferido: templates (con PDF).
+- 10 patient-portal · 08 admin → ⏳ pendientes.
+
+> Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
+> diferidos por falta de esta tabla) ya son implementables si se requieren.
 
 > `RolesGuard` (`presentation/guards/roles.guard.ts`) reutilizable: aplica con `@Roles('super_admin')`
 >
