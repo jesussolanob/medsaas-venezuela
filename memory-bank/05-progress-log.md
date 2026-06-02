@@ -18,14 +18,19 @@ Email Resend. Tests Playwright E2E.
 - Sin `.env` commiteados (secretos fuera del repo). ✅
 - Memory Bank inicializado (archivos 00-06).
 
-## 2026-06-01 — Fase 1: Fundación NX (en progreso)
+## 2026-06-01 — Fase 1: Fundación NX (casi completa)
 
-- Decisiones: monorepo in-place; pnpm vía corepack user-local.
+- Decisiones: monorepo in-place; pnpm user-local; NX+Next vía `nx:run-commands`.
 - pnpm instalado (`~/.local/share/pnpm`), PATH en `.zshenv`.
-- Rama `feature/fase-1-nx-monorepo`.
-- [x] Memory Bank
-- [ ] CLAUDE.md monorepo + `.cursor/rules`
-- [ ] Scaffolding NX (nx.json, workspaces, tsconfig.base, eslint/prettier, libs)
-- [ ] Mover frontend a `apps/frontend/`
-- [ ] Docker compose + Husky + commitlint
-- [ ] Verificación: `nx graph`, `nx serve frontend`
+- Rama `feature/fase-1-nx-monorepo`. Commits: 0cdfb8a (docs), 70febed (restructure),
+  adfbcbb (CLAUDE+docker), 520b4cb (gitignore).
+- [x] Memory Bank (7 archivos)
+- [x] `.cursor/rules` (6 .mdc) + CLAUDE.md raíz monorepo
+- [x] Scaffolding NX (nx.json, pnpm-workspace, tsconfig.base @delta/*, libs skeletons)
+- [x] Frontend movido a `apps/frontend/` (git mv, historial preservado)
+- [x] Docker compose (Postgres16+Redis7) + init.sql + docker-reset.sh
+- [x] Verificación: `nx show projects` lista 4 proyectos; `next build` compila (paths OK)
+- [ ] PENDIENTE: Husky + commitlint + lint-staged (Paso 7)
+- [ ] PENDIENTE: crear rama `develop` + branch protection
+- [ ] NOTA: Docker Desktop no instalado aún (requerido en Fase 3)
+- [ ] NOTA: `next build` falla en prerender por env Supabase faltante (esperado, no es la migración)
