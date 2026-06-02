@@ -1,0 +1,12 @@
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+if [ "$BRANCH" = "develop" ] || [ "$BRANCH" = "main" ]; then
+  echo "⚡ Rama protegida ($BRANCH) — lint-staged + tests afectados..."
+  npx lint-staged || exit 1
+  export PATH="$HOME/.local/share/pnpm/bin:$PATH"
+  pnpm nx affected --target=test --base=HEAD~1 --passWithNoTests || exit 1
+  echo "✅ checks OK"
+else
+  echo "🔧 Rama de trabajo ($BRANCH) — solo lint-staged..."
+  npx lint-staged || exit 1
+fi

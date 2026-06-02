@@ -4,10 +4,25 @@
   "private": true,
   "packageManager": "pnpm@11.5.0",
   "scripts": {
-    "nx": "nx"
+    "nx": "nx",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "apps/frontend/**/*.{ts,tsx}": [
+      "prettier --write",
+      "bash -c 'cd apps/frontend && eslint --fix --max-warnings=0'"
+    ],
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
     "nx": "^22.7.5",
+    "prettier": "^3.8.3",
     "typescript": "^5.9.3"
   }
 }
