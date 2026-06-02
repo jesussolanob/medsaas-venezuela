@@ -18,6 +18,7 @@ import { BookingModule } from './modules/booking/booking.module';
 import { FinancesModule } from './modules/finances/finances.module';
 import { DoctorSettingsModule } from './modules/doctor-settings/doctor-settings.module';
 import { PatientPortalModule } from './modules/patient-portal/patient-portal.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { PatientPortalModule } from './modules/patient-portal/patient-portal.mod
     FinancesModule,
     DoctorSettingsModule,
     PatientPortalModule,
+    AdminModule,
   ],
   controllers: [HealthController],
   providers: [
