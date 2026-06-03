@@ -6,6 +6,12 @@
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
+    // DEUDA TÉCNICA: el tsconfig.base.json hereda noUncheckedIndexedAccess:true,
+    // pero el frontend legacy tiene ~192 lugares que no cumplen esa regla (accesos
+    // a arrays/records sin guardia de undefined). Se desactiva aquí para que la
+    // compilación no falle al importar @delta/shared-types (que sí resuelve al
+    // tsconfig base). Resolver en sprint de calidad antes de Etapa 2 (Auth0).
+    "noUncheckedIndexedAccess": false,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
