@@ -409,3 +409,24 @@ Email Resend. Tests Playwright E2E.
 - **Lote 1 ✅ (commit 8e8c319):** appointment-status (route→backend), consultations route (GET/POST/PATCH),
   actions.ts de consultations/ehr/prescriptions creados. DELETE de appointments/consultations + financials
   - blocks + IA/PDF/email/calendar → Fase 5.
+- **ÁREA DOCTOR ✅ (commits 8e8c319, e7bc119):** auth de Supabase ELIMINADA de los 17 .tsx del doctor
+  (dashboard, agenda, ehr, consultations, finances, cobros, crm, messages, billing, reports, reminders,
+  offices, services, settings, exchange-rate, templates, DoctorNotificationToast) → usan dev-stub
+  (`getDoctorId`). `services/page.tsx` con CRUD COMPLETO al backend. ehr/consultations cableados.
+  Nuevos: `app/doctor/actions.ts`, `app/doctor/services/actions.ts`. tsc 0 (el lead corrigió 2 errores
+  que el agente sobre-declaró). Data residual en Supabase (Fase 5): payments/cobros, appointments
+  DELETE+realtime, quick_items, templates, profiles updates, offices, blocks, storage→GCS, leads, messages.
+
+### ⏸️ PUNTO DE RETOME (pausa 2026-06-03 — continuar con `claude --continue`)
+
+- **Hecho:** Backend 10/10 ✅. Frontend: fundación BFF ✅ + ÁREA DOCTOR ✅ (auth fuera de Supabase; data
+  parcial). Commiteado en `feature/migracion-backend` (local, sin push). tsc frontend 0.
+- **Siguiente (frontend, por áreas; patrón thin-proxy + editar SOLO la capa de datos en .tsx, visual intacto):**
+  1. **patient** (portal) → backend patient-portal · 2. **admin** → backend admin ·
+  2. **público/auth** (book→booking; login/register→dev-stub) · 4. barrido final: borrar `lib/supabase/*`
+     cuando nada de datos lo use (queda solo Fase 5: IA/email/PDF/storage/calendar).
+- **Reglas:** editar SOLO datos en .tsx (nunca JSX/estilos); server-only en módulos server; api-client.server
+  (server) o server actions (desde 'use client'); proxy.ts = middleware Next 16.
+- **Lección lead:** verificar tsc con el EXIT REAL (`tsc...; echo $?`), no el del pipe (el agente
+  sobre-declaró tsc 0 y había 2 errores). Apagar agente + esperar terminación antes de commitear.
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
