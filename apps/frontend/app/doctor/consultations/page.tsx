@@ -45,11 +45,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client'; // FASE 5: still needed for doctor_quick_items, doctor_templates, pricing_plans, blocks_data, payments, storage
-import {
-  getDoctorId as getDevDoctorId,
-  listConsultations,
-  getPatientConsultations,
-} from './actions';
+import { getDoctorId as getDevDoctorId } from '../actions';
+import { listConsultations, getPatientConsultations } from './actions';
 import { getEhrPatients } from '../ehr/actions';
 import { getPatientPrescriptions } from './actions-prescriptions';
 import { useBcvRate } from '@/lib/useBcvRate';
