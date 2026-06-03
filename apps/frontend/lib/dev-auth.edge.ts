@@ -35,6 +35,16 @@ export interface DevUser {
  */
 export const DEV_DOCTOR_UUID = '00000000-0000-4000-8000-000000000001';
 
+/**
+ * UUID v4 fijo para el paciente de desarrollo (auth_user_id).
+ *
+ * El portal del paciente (backend) deriva el scope de `user.sub` (auth_user_id),
+ * NO del path. Para probar el portal end-to-end, setear las cookies:
+ *   dev_user_id=00000000-0000-4000-8000-000000000002  dev_user_role=patient
+ * y sembrar un row en `patients` con ese `auth_user_id`.
+ */
+export const DEV_PATIENT_UUID = '00000000-0000-4000-8000-000000000002';
+
 const DEFAULT_USER_ROLE: DevUserRole = 'doctor';
 
 function isValidRole(value: string | null | undefined): value is DevUserRole {

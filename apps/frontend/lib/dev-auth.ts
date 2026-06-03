@@ -18,7 +18,12 @@ import 'server-only';
 
 import { cookies } from 'next/headers';
 export type { DevUser, DevUserRole } from './dev-auth.edge';
-export { DEV_DOCTOR_UUID, resolveFromRaw, getDevUserFromRequest } from './dev-auth.edge';
+export {
+  DEV_DOCTOR_UUID,
+  DEV_PATIENT_UUID,
+  resolveFromRaw,
+  getDevUserFromRequest,
+} from './dev-auth.edge';
 
 /**
  * Returns the dev user identity from Server Action / Route Handler context.

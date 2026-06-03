@@ -1,31 +1,34 @@
-import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { Download, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import { notFound } from 'next/navigation';
+// TODO Fase 5: migrar a backend. Reporte de una consultation por id (datos
+// clinicos); exposicion al paciente pendiente de decision de producto, sin
+// endpoint en patient-portal. Supabase temporal.
+import { createClient } from '@/lib/supabase/server';
+import { Download, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 // RONDA 36: render dinamico desde report_data
-import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer'
-import type { ReportData } from '@/lib/report-data'
+import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer';
+import type { ReportData } from '@/lib/report-data';
 
 type ConsultationData = {
-  id: string
-  consultation_code: string
-  consultation_date: string
-  chief_complaint: string | null
-  diagnosis: string | null
-  treatment: string | null
-  notes: string | null
+  id: string;
+  consultation_code: string;
+  consultation_date: string;
+  chief_complaint: string | null;
+  diagnosis: string | null;
+  treatment: string | null;
+  notes: string | null;
   // RONDA 36: snapshot inmutable. Si existe, se renderiza dinamicamente.
-  report_data: ReportData | null
-  patient: { full_name: string; phone: string | null; email: string | null }
-  doctor: { full_name: string; specialty: string | null }
-}
+  report_data: ReportData | null;
+  patient: { full_name: string; phone: string | null; email: string | null };
+  doctor: { full_name: string; specialty: string | null };
+};
 
 export default async function ConsultationReportPage({
   params,
 }: {
-  params: { patientId: string; consultationId: string }
+  params: { patientId: string; consultationId: string };
 }) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
   // RONDA 36: incluir report_data (snapshot inmutable)
   const { data: consultation } = await supabase
@@ -33,21 +36,21 @@ export default async function ConsultationReportPage({
     .select(
       `id, consultation_code, consultation_date, chief_complaint, diagnosis, treatment, notes, report_data,
        patients(full_name, phone, email),
-       profiles:doctor_id(full_name, specialty)`
+       profiles:doctor_id(full_name, specialty)`,
     )
     .eq('id', params.consultationId)
     .eq('patient_id', params.patientId)
-    .single()
+    .single();
 
-  if (!consultation) notFound()
+  if (!consultation) notFound();
 
-  const data = consultation as any as ConsultationData
+  const data = consultation as any as ConsultationData;
 
   const reportDate = new Date().toLocaleDateString('es-VE', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  })
+  });
 
   return (
     <>
@@ -89,7 +92,10 @@ export default async function ConsultationReportPage({
                 <div>
                   <h1 className="text-3xl font-bold text-slate-900">Informe de Consulta</h1>
                   <p className="text-slate-500 mt-1">
-                    Código: <span className="font-mono font-bold text-teal-600">{data.consultation_code}</span>
+                    Código:{' '}
+                    <span className="font-mono font-bold text-teal-600">
+                      {data.consultation_code}
+                    </span>
                   </p>
                 </div>
                 <div className="text-right">
@@ -103,7 +109,9 @@ export default async function ConsultationReportPage({
             <div className="grid grid-cols-2 gap-8">
               {/* Paciente */}
               <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Datos del Paciente</h3>
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">
+                  Datos del Paciente
+                </h3>
                 <div className="space-y-2">
                   <div>
                     <p className="text-xs text-slate-500">Nombre</p>
@@ -126,7 +134,9 @@ export default async function ConsultationReportPage({
 
               {/* Médico */}
               <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Datos del Médico</h3>
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">
+                  Datos del Médico
+                </h3>
                 <div className="space-y-2">
                   <div>
                     <p className="text-xs text-slate-500">Médico</p>
@@ -155,32 +165,42 @@ export default async function ConsultationReportPage({
             {/* RONDA 36 — Render dinamico desde report_data si existe.
                 report_data es el snapshot INMUTABLE: aunque el doctor edite o borre
                 su plantilla manana, este informe queda exactamente como se guardo. */}
-            {data.report_data && Array.isArray(data.report_data.blocks) && data.report_data.blocks.length > 0 ? (
+            {data.report_data &&
+            Array.isArray(data.report_data.blocks) &&
+            data.report_data.blocks.length > 0 ? (
               <ReportBlocksViewer report={data.report_data} forPatient />
             ) : (
               <>
                 {/* Fallback legacy para consultas pre-Ronda36 */}
                 {data.chief_complaint && (
                   <div>
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Motivo de Consulta</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">
+                      Motivo de Consulta
+                    </h3>
                     <p className="text-slate-900 text-lg">{data.chief_complaint}</p>
                   </div>
                 )}
                 {data.diagnosis && (
                   <div className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-6">
-                    <h3 className="text-sm font-bold text-blue-900 uppercase tracking-widest mb-3">Diagnóstico</h3>
+                    <h3 className="text-sm font-bold text-blue-900 uppercase tracking-widest mb-3">
+                      Diagnóstico
+                    </h3>
                     <p className="text-slate-900">{data.diagnosis}</p>
                   </div>
                 )}
                 {data.treatment && (
                   <div className="bg-green-50 border-l-4 border-green-500 rounded-lg p-6">
-                    <h3 className="text-sm font-bold text-green-900 uppercase tracking-widest mb-3">Tratamiento Recomendado</h3>
+                    <h3 className="text-sm font-bold text-green-900 uppercase tracking-widest mb-3">
+                      Tratamiento Recomendado
+                    </h3>
                     <p className="text-slate-900 whitespace-pre-wrap">{data.treatment}</p>
                   </div>
                 )}
                 {data.notes && (
                   <div>
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">Notas Adicionales</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">
+                      Notas Adicionales
+                    </h3>
                     <p className="text-slate-700 whitespace-pre-wrap">{data.notes}</p>
                   </div>
                 )}
@@ -196,5 +216,5 @@ export default async function ConsultationReportPage({
         </div>
       </div>
     </>
-  )
+  );
 }

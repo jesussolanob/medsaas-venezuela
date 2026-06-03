@@ -1,100 +1,121 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { FileText, ChevronDown, ChevronUp } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { FileText, ChevronDown, ChevronUp } from 'lucide-react';
+// TODO Fase 5: migrar a backend. La exposicion de datos clinicos del paciente
+// (consultations notes/diagnosis/treatment + report_data) es una decision de
+// producto pendiente y aun no tiene endpoint en patient-portal. Supabase temporal.
+import { createClient } from '@/lib/supabase/client';
 // RONDA 36: render dinámico desde report_data (snapshot inmutable)
-import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer'
-import type { ReportData } from '@/lib/report-data'
+import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer';
+import type { ReportData } from '@/lib/report-data';
 // AUDIT FIX 2026-04-28 (C-9): sanitizer para HTML rich-text (defense-in-depth).
-import { sanitizeHtml } from '@/lib/sanitize-html'
+import { sanitizeHtml } from '@/lib/sanitize-html';
 
 // RONDA 30: incluir medications de la tabla prescriptions vinculadas por consultation_id
-type Medication = { name?: string; dose?: string; frequency?: string; duration?: string; indications?: string }
+type Medication = {
+  name?: string;
+  dose?: string;
+  frequency?: string;
+  duration?: string;
+  indications?: string;
+};
 
 interface Report {
-  id: string
-  consultation_code: string
-  consultation_date: string
-  chief_complaint: string | null
-  notes: string | null
-  diagnosis: string | null
-  treatment: string | null
+  id: string;
+  consultation_code: string;
+  consultation_date: string;
+  chief_complaint: string | null;
+  notes: string | null;
+  diagnosis: string | null;
+  treatment: string | null;
   // RONDA 36: snapshot inmutable. Si existe, es la fuente de verdad.
-  report_data: ReportData | null
-  doctor_id: string
-  doctor_name: string
-  doctor_specialty: string | null
-  doctor_title: string | null
-  medications: Medication[]
+  report_data: ReportData | null;
+  doctor_id: string;
+  doctor_name: string;
+  doctor_specialty: string | null;
+  doctor_title: string | null;
+  medications: Medication[];
 }
 
 export default function ReportsPage() {
-  const router = useRouter()
-  const [reports, setReports] = useState<Report[]>([])
-  const [loading, setLoading] = useState(true)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const router = useRouter();
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadReports = async () => {
       try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
         if (!user) {
-          router.push('/patient/login')
-          return
+          router.push('/patient/login');
+          return;
         }
 
         // Get all patients for this auth user
         const { data: patients } = await supabase
           .from('patients')
           .select('id')
-          .eq('auth_user_id', user.id)
+          .eq('auth_user_id', user.id);
 
         if (!patients || patients.length === 0) {
-          setLoading(false)
-          return
+          setLoading(false);
+          return;
         }
 
-        const patientIds = patients.map(p => p.id)
+        const patientIds = patients.map((p) => p.id);
 
         // Get consultations with content for these patients
         // RONDA 36: ahora traemos report_data tambien. Filtramos por consultas
         // que tengan informe (legacy o nuevo report_data con bloques).
         const { data: consultationData } = await supabase
           .from('consultations')
-          .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, report_data, doctor_id, patient_id')
+          .select(
+            'id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, report_data, doctor_id, patient_id',
+          )
           .in('patient_id', patientIds)
-          .or(`notes.not.is.null,diagnosis.not.is.null,treatment.not.is.null,report_data.not.is.null`)
-          .order('consultation_date', { ascending: false })
+          .or(
+            `notes.not.is.null,diagnosis.not.is.null,treatment.not.is.null,report_data.not.is.null`,
+          )
+          .order('consultation_date', { ascending: false });
 
         if (consultationData && consultationData.length > 0) {
           // RONDA 30: traer doctores Y prescriptions de cada consulta en bulk
-          const consultationIds = consultationData.map(c => c.id)
-          const doctorIds = [...new Set(consultationData.map(c => c.doctor_id))]
+          const consultationIds = consultationData.map((c) => c.id);
+          const doctorIds = [...new Set(consultationData.map((c) => c.doctor_id))];
 
           const [doctorsRes, prescriptionsRes] = await Promise.all([
-            supabase.from('profiles').select('id, full_name, specialty, professional_title').in('id', doctorIds),
-            supabase.from('prescriptions').select('consultation_id, medications').in('consultation_id', consultationIds),
-          ])
+            supabase
+              .from('profiles')
+              .select('id, full_name, specialty, professional_title')
+              .in('id', doctorIds),
+            supabase
+              .from('prescriptions')
+              .select('consultation_id, medications')
+              .in('consultation_id', consultationIds),
+          ]);
 
-          const doctorMap = new Map((doctorsRes.data || []).map(d => [d.id, d]))
+          const doctorMap = new Map((doctorsRes.data || []).map((d) => [d.id, d]));
           // Una consulta puede tener varias recetas (receta principal + examenes etc.)
           // Aqui solo nos interesan los medicamentos con nombre, no los examenes.
-          const prescriptionsByConsult = new Map<string, Medication[]>()
-          for (const p of (prescriptionsRes.data || [])) {
-            const meds = (Array.isArray(p.medications) ? p.medications : []) as Medication[]
+          const prescriptionsByConsult = new Map<string, Medication[]>();
+          for (const p of prescriptionsRes.data || []) {
+            const meds = (Array.isArray(p.medications) ? p.medications : []) as Medication[];
             // Filtrar solo los que tienen NAME y NO son examenes (los examenes guardan nombre del examen, no medicamento)
-            const realMeds = meds.filter(m => m.name && m.name.trim().length > 0)
-            if (realMeds.length === 0) continue
-            const existing = prescriptionsByConsult.get(p.consultation_id) || []
-            prescriptionsByConsult.set(p.consultation_id, [...existing, ...realMeds])
+            const realMeds = meds.filter((m) => m.name && m.name.trim().length > 0);
+            if (realMeds.length === 0) continue;
+            const existing = prescriptionsByConsult.get(p.consultation_id) || [];
+            prescriptionsByConsult.set(p.consultation_id, [...existing, ...realMeds]);
           }
 
-          const enhanced: Report[] = consultationData.map(c => {
-            const doctor = doctorMap.get(c.doctor_id)
+          const enhanced: Report[] = consultationData.map((c) => {
+            const doctor = doctorMap.get(c.doctor_id);
             return {
               id: c.id,
               consultation_code: c.consultation_code,
@@ -110,34 +131,34 @@ export default function ReportsPage() {
               doctor_specialty: doctor?.specialty || null,
               doctor_title: doctor?.professional_title || null,
               medications: prescriptionsByConsult.get(c.id) || [],
-            }
-          })
-          setReports(enhanced)
+            };
+          });
+          setReports(enhanced);
         }
 
-        setLoading(false)
+        setLoading(false);
       } catch (err) {
-        console.error('Error loading reports:', err)
-        setLoading(false)
+        console.error('Error loading reports:', err);
+        setLoading(false);
       }
-    }
+    };
 
-    loadReports()
-  }, [router])
+    loadReports();
+  }, [router]);
 
   const toggleExpand = (id: string) => {
-    setExpandedId(expandedId === id ? null : id)
-  }
+    setExpandedId(expandedId === id ? null : id);
+  };
 
   const getTextPreview = (text: string | null, maxLength: number = 150): string => {
-    if (!text) return ''
+    if (!text) return '';
     // Strip HTML tags for preview
-    const plainText = text.replace(/<[^>]*>/g, '').trim()
+    const plainText = text.replace(/<[^>]*>/g, '').trim();
     if (plainText.length > maxLength) {
-      return plainText.substring(0, maxLength) + '...'
+      return plainText.substring(0, maxLength) + '...';
     }
-    return plainText
-  }
+    return plainText;
+  };
 
   if (loading) {
     return (
@@ -147,14 +168,18 @@ export default function ReportsPage() {
           <p className="text-slate-500 font-medium">Cargando informes...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <h1
         className="font-semibold tracking-tight"
-        style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+        style={{
+          fontFamily: 'var(--dh-font-display)',
+          fontSize: 'clamp(22px, 3.2vw, 32px)',
+          color: 'var(--dh-ink)',
+        }}
       >
         Mis Informes Médicos
       </h1>
@@ -163,11 +188,13 @@ export default function ReportsPage() {
         <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
           <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-500 font-medium">No hay informes disponibles</p>
-          <p className="text-sm text-slate-400 mt-1">Tus informes aparecerán aquí después de tus consultas</p>
+          <p className="text-sm text-slate-400 mt-1">
+            Tus informes aparecerán aquí después de tus consultas
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {reports.map(report => (
+          {reports.map((report) => (
             <div
               key={report.id}
               className="bg-white rounded-xl border border-slate-200 overflow-hidden transition-all hover:border-slate-300"
@@ -222,7 +249,9 @@ export default function ReportsPage() {
                   {/* RONDA 36 + AUDIT FIX C-9: render dinámico desde report_data
                       (snapshot inmutable) cuando exista; fallback al render legacy
                       con sanitizeHtml para defense-in-depth contra XSS. */}
-                  {report.report_data && Array.isArray(report.report_data.blocks) && report.report_data.blocks.length > 0 ? (
+                  {report.report_data &&
+                  Array.isArray(report.report_data.blocks) &&
+                  report.report_data.blocks.length > 0 ? (
                     <ReportBlocksViewer report={report.report_data} forPatient />
                   ) : (
                     <>
@@ -284,16 +313,32 @@ export default function ReportsPage() {
                         {report.medications.map((m, i) => (
                           <div key={i} className="bg-teal-50 border border-teal-200 rounded-lg p-3">
                             <p className="font-bold text-sm text-teal-900 flex items-center gap-1.5">
-                              <span className="w-5 h-5 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                              <span className="w-5 h-5 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center">
+                                {i + 1}
+                              </span>
                               {m.name}
                             </p>
                             <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 ml-6.5 text-xs text-teal-800">
-                              {m.dose && <span><strong>Dosis:</strong> {m.dose}</span>}
-                              {m.frequency && <span><strong>Frecuencia:</strong> {m.frequency}</span>}
-                              {m.duration && <span><strong>Duración:</strong> {m.duration}</span>}
+                              {m.dose && (
+                                <span>
+                                  <strong>Dosis:</strong> {m.dose}
+                                </span>
+                              )}
+                              {m.frequency && (
+                                <span>
+                                  <strong>Frecuencia:</strong> {m.frequency}
+                                </span>
+                              )}
+                              {m.duration && (
+                                <span>
+                                  <strong>Duración:</strong> {m.duration}
+                                </span>
+                              )}
                             </div>
                             {m.indications && (
-                              <p className="text-xs text-teal-700 italic mt-1.5 ml-6">{m.indications}</p>
+                              <p className="text-xs text-teal-700 italic mt-1.5 ml-6">
+                                {m.indications}
+                              </p>
                             )}
                           </div>
                         ))}
@@ -307,5 +352,5 @@ export default function ReportsPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -1,18 +1,26 @@
-'use client'
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+'use client';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import {
-  LayoutDashboard, Calendar, FileText, Pill, MessageCircle,
-  User, LogOut, Menu, Bell, FolderHeart
-} from 'lucide-react'
-import { clsx } from 'clsx'
-import { createClient } from '@/lib/supabase/client'
-import SearchCommandPalette from './SearchCommandPalette'
-import { Toaster } from '@/components/ui/Toaster'
-import { DeltaMark } from '@/components/dh'
+  LayoutDashboard,
+  Calendar,
+  FileText,
+  Pill,
+  MessageCircle,
+  User,
+  LogOut,
+  Menu,
+  Bell,
+  FolderHeart,
+} from 'lucide-react';
+import { clsx } from 'clsx';
+import { getPatientDashboard, getPatientProfile } from './actions';
+import SearchCommandPalette from './SearchCommandPalette';
+import { Toaster } from '@/components/ui/Toaster';
+import { DeltaMark } from '@/components/dh';
 
-type NavItem = { name: string; href: string; icon: any }
+type NavItem = { name: string; href: string; icon: any };
 
 // RONDA 40: "Recetas" reemplazado por "Mi seguimiento" (Shared Health Space).
 // Las recetas siguen accesibles como un tipo de archivo dentro del seguimiento.
@@ -22,94 +30,82 @@ const navItems: NavItem[] = [
   { name: 'Mis informes', href: '/patient/reports', icon: FileText },
   { name: 'Mi seguimiento', href: '/patient/seguimiento', icon: FolderHeart },
   { name: 'Mi perfil', href: '/patient/profile', icon: User },
-]
+];
 
 function isPathActive(pathname: string, href: string) {
-  if (href === '/patient') return pathname === '/patient'
-  return pathname === href || pathname.startsWith(href + '/')
+  if (href === '/patient') return pathname === '/patient';
+  return pathname === href || pathname.startsWith(href + '/');
 }
 
-const publicRoutes = ['/patient/login', '/patient/register']
+const publicRoutes = ['/patient/login', '/patient/register'];
 
 /* Delta isotipo — usa el componente oficial del design system */
-const DeltaIsotipo = ({ size = 36 }: { size?: number }) => (
-  <DeltaMark size={size} bold />
-)
+const DeltaIsotipo = ({ size = 36 }: { size?: number }) => <DeltaMark size={size} bold />;
 
 export default function PatientLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [user, setUser] = useState<any>(null)
-  const [doctorName, setDoctorName] = useState('')
-  const [loading, setLoading] = useState(true)
-  const isPublicRoute = publicRoutes.some(r => pathname.startsWith(r))
+  const pathname = usePathname();
+  const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [user, setUser] = useState<{ email: string; user_metadata: { full_name: string } } | null>(
+    null,
+  );
+  const [doctorName, setDoctorName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const isPublicRoute = publicRoutes.some((r) => pathname.startsWith(r));
 
   useEffect(() => {
     if (isPublicRoute) {
-      setLoading(false)
-      return
+      setLoading(false);
+      return;
     }
 
     const checkAuth = async () => {
       try {
-        const supabase = createClient()
-        const { data: { user: authUser }, error: userErr } = await supabase.auth.getUser()
+        // ETAPA 1: identidad via dev-stub (cookies). El backend deriva el scope
+        // de auth_user_id; aqui solo necesitamos el nombre y el doctor para el header.
+        const [profiles, dashboard] = await Promise.all([
+          getPatientProfile(),
+          getPatientDashboard(),
+        ]);
 
-        if (userErr || !authUser) {
-          router.push('/patient/login')
-          return
+        const profile = profiles.length > 0 ? profiles[0] : null;
+        if (!profile) {
+          router.push('/login');
+          return;
         }
 
-        setUser(authUser)
+        // Reconstruimos el shape que la UI espera (user_metadata.full_name / email).
+        setUser({
+          email: profile.email ?? '',
+          user_metadata: { full_name: profile.fullName },
+        });
 
-        const { data: patients } = await supabase
-          .from('patients')
-          .select('id')
-          .eq('auth_user_id', authUser.id)
-          .maybeSingle()
-
-        if (patients?.id) {
-          const { data: appointments } = await supabase
-            .from('appointments')
-            .select('doctor_id')
-            .eq('auth_user_id', authUser.id)
-            .limit(1)
-            .maybeSingle()
-
-          if (appointments?.doctor_id) {
-            const { data: doctor } = await supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', appointments.doctor_id)
-              .single()
-
-            if (doctor?.full_name) {
-              setDoctorName(doctor.full_name)
-            }
-          }
+        if (dashboard.nextAppointment?.doctorName) {
+          setDoctorName(dashboard.nextAppointment.doctorName);
         }
 
-        setLoading(false)
+        setLoading(false);
       } catch (err) {
-        console.error('Auth check error:', err)
-        router.push('/patient/login')
+        console.error('Auth check error:', err);
+        router.push('/login');
       }
-    }
+    };
 
-    checkAuth()
-  }, [router, isPublicRoute])
+    checkAuth();
+  }, [router, isPublicRoute]);
 
-  async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/patient/login')
+  function handleLogout() {
+    // ETAPA 1: limpiar cookies del dev-stub. Fase 4: signOut de Auth0.
+    document.cookie = 'dev_user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'dev_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    router.push('/login');
   }
 
-  const activeTitle = navItems.find(i => isPathActive(pathname, i.href))?.name ?? 'Portal del Paciente'
+  const activeTitle =
+    navItems.find((i) => isPathActive(pathname, i.href))?.name ?? 'Portal del Paciente';
 
   const NavLink = ({ item }: { item: NavItem }) => {
-    const active = isPathActive(pathname, item.href)
+    const active = isPathActive(pathname, item.href);
     return (
       <Link
         href={item.href}
@@ -125,15 +121,15 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         <item.icon className="w-[18px] h-[18px] shrink-0" />
         {item.name}
       </Link>
-    )
-  }
+    );
+  };
 
   const getUserInitials = () => {
-    const name = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'P'
-    const parts = name.split(' ')
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-    return name.substring(0, 2).toUpperCase()
-  }
+    const name = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'P';
+    const parts = name.split(' ');
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  };
 
   const SidebarInner = (
     <>
@@ -153,7 +149,8 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           <p
             className="mt-1"
             style={{
-              fontSize: 10, fontWeight: 600,
+              fontSize: 10,
+              fontWeight: 600,
               color: 'var(--dh-coral-600)',
               letterSpacing: '0.18em',
               textTransform: 'uppercase',
@@ -167,7 +164,9 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map(i => <NavLink key={i.href} item={i} />)}
+        {navItems.map((i) => (
+          <NavLink key={i.href} item={i} />
+        ))}
       </nav>
 
       {/* Footer */}
@@ -212,18 +211,24 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           onClick={handleLogout}
           className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
           style={{ color: 'var(--dh-gray-400)' }}
-          onMouseEnter={e => { e.currentTarget.style.color = 'var(--dh-error)'; e.currentTarget.style.background = '#FEF2F2' }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--dh-gray-400)'; e.currentTarget.style.background = 'transparent' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--dh-error)';
+            e.currentTarget.style.background = '#FEF2F2';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--dh-gray-400)';
+            e.currentTarget.style.background = 'transparent';
+          }}
         >
           <LogOut className="w-4 h-4" />
           Cerrar sesión
         </button>
       </div>
     </>
-  )
+  );
 
   if (isPublicRoute) {
-    return <>{children}</>
+    return <>{children}</>;
   }
 
   if (loading) {
@@ -236,10 +241,12 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           <div className="mx-auto animate-pulse">
             <DeltaIsotipo size={48} />
           </div>
-          <p className="font-medium" style={{ color: 'var(--dh-gray-400)' }}>Cargando...</p>
+          <p className="font-medium" style={{ color: 'var(--dh-gray-400)' }}>
+            Cargando...
+          </p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -261,7 +268,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
         <aside
           className={clsx(
             'fixed inset-y-0 left-0 w-[260px] flex flex-col bg-white z-50 transition-transform',
-            mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+            mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
           )}
           style={{ borderRight: '1px solid var(--dh-gray-100)' }}
         >
@@ -285,7 +292,11 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
               </button>
               <h1
                 className="font-semibold truncate"
-                style={{ fontFamily: 'var(--dh-font-display)', fontSize: 17, color: 'var(--dh-ink)' }}
+                style={{
+                  fontFamily: 'var(--dh-font-display)',
+                  fontSize: 17,
+                  color: 'var(--dh-ink)',
+                }}
               >
                 {activeTitle}
               </h1>
@@ -295,8 +306,12 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
               <div
                 className="relative p-2 rounded-full cursor-pointer transition-colors"
                 style={{ color: 'var(--dh-gray-600)' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-gray-50)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--dh-gray-50)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
               >
                 <Bell className="w-[18px] h-[18px]" />
               </div>
@@ -304,12 +319,10 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
           </header>
 
           <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 w-full">
-            <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">
-              {children}
-            </div>
+            <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">{children}</div>
           </main>
         </div>
       </div>
     </>
-  )
+  );
 }

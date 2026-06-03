@@ -1,103 +1,90 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Calendar, Clock, User, Filter, Video, MapPin } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Calendar, Clock, User, Filter, Video, MapPin } from 'lucide-react';
+import { getPatientAppointments } from '../actions';
 
 interface Appointment {
-  id: string
-  scheduled_at: string
-  plan_name: string
-  plan_price: number
-  status: string
-  chief_complaint?: string
-  doctor_id: string
-  doctor_name?: string
-  doctor_specialty?: string
-  appointment_mode?: string
-  meet_link?: string
+  id: string;
+  scheduled_at: string;
+  plan_name: string;
+  plan_price: number;
+  status: string;
+  chief_complaint?: string;
+  doctor_id: string;
+  doctor_name?: string;
+  doctor_specialty?: string;
+  appointment_mode?: string;
+  meet_link?: string;
 }
 
-type FilterStatus = 'all' | 'future' | 'past'
+type FilterStatus = 'all' | 'future' | 'past';
 
 export default function AppointmentsPage() {
-  const router = useRouter()
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<FilterStatus>('all')
+  const router = useRouter();
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<FilterStatus>('all');
 
   useEffect(() => {
     const loadAppointments = async () => {
       try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        // ETAPA 1: historial de citas via backend (BFF). El backend deriva el
+        // scope de auth_user_id y devuelve las citas mas recientes primero.
+        const apts = await getPatientAppointments({ page: 1, limit: 100 });
 
-        if (!user) {
-          router.push('/patient/login')
-          return
-        }
+        const mapped: Appointment[] = apts.map((apt) => ({
+          id: apt.id,
+          scheduled_at: apt.scheduledAt,
+          plan_name: apt.planName ?? '',
+          plan_price: apt.planPrice ?? 0,
+          status: apt.status,
+          chief_complaint: apt.chiefComplaint ?? undefined,
+          doctor_id: apt.doctorId,
+          // TODO Fase 5: doctorName/doctorSpecialty/meetLink en el endpoint de citas del paciente.
+          doctor_name: undefined,
+          doctor_specialty: undefined,
+          appointment_mode: apt.appointmentMode,
+          meet_link: undefined,
+        }));
+        setAppointments(mapped);
 
-        const { data: apts } = await supabase
-          .from('appointments')
-          .select('*')
-          .eq('auth_user_id', user.id)
-          .order('scheduled_at', { ascending: false })
-
-        if (apts) {
-          // Load doctor info for each appointment
-          const enhancedApts: Appointment[] = []
-          for (const apt of apts) {
-            const { data: doctor } = await supabase
-              .from('profiles')
-              .select('full_name, specialty')
-              .eq('id', apt.doctor_id)
-              .single()
-
-            enhancedApts.push({
-              ...apt,
-              doctor_name: doctor?.full_name,
-              doctor_specialty: doctor?.specialty
-            })
-          }
-          setAppointments(enhancedApts)
-        }
-
-        setLoading(false)
+        setLoading(false);
       } catch (err) {
-        console.error('Error loading appointments:', err)
-        setLoading(false)
+        console.error('Error loading appointments:', err);
+        setLoading(false);
       }
-    }
+    };
 
-    loadAppointments()
-  }, [router])
+    loadAppointments();
+  }, [router]);
 
-  const now = new Date()
-  const filtered = appointments.filter(apt => {
-    const aptDate = new Date(apt.scheduled_at)
-    if (filter === 'future') return aptDate >= now
-    if (filter === 'past') return aptDate < now
-    return true
-  })
+  const now = new Date();
+  const filtered = appointments.filter((apt) => {
+    const aptDate = new Date(apt.scheduled_at);
+    if (filter === 'future') return aptDate >= now;
+    if (filter === 'past') return aptDate < now;
+    return true;
+  });
 
   const getStatusColor = (status: string) => {
-    if (status === 'scheduled') return 'bg-blue-50 text-blue-600'
-    if (status === 'confirmed') return 'bg-green-50 text-green-600'
-    if (status === 'completed') return 'bg-slate-50 text-slate-600'
-    if (status === 'cancelled') return 'bg-red-50 text-red-600'
-    return 'bg-slate-50 text-slate-600'
-  }
+    if (status === 'scheduled') return 'bg-blue-50 text-blue-600';
+    if (status === 'confirmed') return 'bg-green-50 text-green-600';
+    if (status === 'completed') return 'bg-slate-50 text-slate-600';
+    if (status === 'cancelled') return 'bg-red-50 text-red-600';
+    return 'bg-slate-50 text-slate-600';
+  };
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       scheduled: 'Agendada',
       confirmed: 'Confirmada',
       completed: 'Completada',
-      cancelled: 'Cancelada'
-    }
-    return labels[status] || status
-  }
+      cancelled: 'Cancelada',
+    };
+    return labels[status] || status;
+  };
 
   if (loading) {
     return (
@@ -107,7 +94,7 @@ export default function AppointmentsPage() {
           <p className="text-slate-500 font-medium">Cargando citas...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -116,12 +103,16 @@ export default function AppointmentsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1
           className="font-semibold tracking-tight"
-          style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+          style={{
+            fontFamily: 'var(--dh-font-display)',
+            fontSize: 'clamp(22px, 3.2vw, 32px)',
+            color: 'var(--dh-ink)',
+          }}
         >
           Mis citas
         </h1>
         <div className="flex flex-wrap gap-2">
-          {(['all', 'future', 'past'] as FilterStatus[]).map(f => (
+          {(['all', 'future', 'past'] as FilterStatus[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -147,22 +138,33 @@ export default function AppointmentsPage() {
             </p>
           </div>
         ) : (
-          filtered.map(apt => {
-            const aptDate = new Date(apt.scheduled_at)
-            const isPast = aptDate < now
+          filtered.map((apt) => {
+            const aptDate = new Date(apt.scheduled_at);
+            const isPast = aptDate < now;
 
             return (
-              <div key={apt.id} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4">
+              <div
+                key={apt.id}
+                className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4"
+              >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
                   <div className="space-y-1">
-                    <p className="font-semibold text-slate-900 text-sm sm:text-base">{apt.plan_name}</p>
+                    <p className="font-semibold text-slate-900 text-sm sm:text-base">
+                      {apt.plan_name}
+                    </p>
                     <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600">
                       <User className="w-4 h-4 shrink-0" />
                       <span className="truncate">{apt.doctor_name || 'Doctor'}</span>
-                      {apt.doctor_specialty && <span className="text-slate-400 hidden sm:inline">· {apt.doctor_specialty}</span>}
+                      {apt.doctor_specialty && (
+                        <span className="text-slate-400 hidden sm:inline">
+                          · {apt.doctor_specialty}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <span className={`text-xs font-bold px-3 py-1 rounded-full w-fit ${getStatusColor(apt.status)}`}>
+                  <span
+                    className={`text-xs font-bold px-3 py-1 rounded-full w-fit ${getStatusColor(apt.status)}`}
+                  >
                     {getStatusLabel(apt.status)}
                   </span>
                 </div>
@@ -170,7 +172,12 @@ export default function AppointmentsPage() {
                 <div className="flex flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm text-slate-600">
                   <span className="flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
-                    {aptDate.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                    {aptDate.toLocaleDateString('es-VE', {
+                      weekday: 'short',
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
                   </span>
                   <span className="flex items-center gap-2">
                     <Clock className="w-4 h-4" />
@@ -197,32 +204,40 @@ export default function AppointmentsPage() {
                 )}
 
                 {/* Google Meet link for online appointments */}
-                {apt.meet_link && !isPast && (apt.status === 'scheduled' || apt.status === 'confirmed') && (
-                  <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-3 sm:p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Video className="w-5 h-5 text-teal-600" />
-                        <div>
-                          <p className="text-sm font-semibold text-teal-700">Videollamada disponible</p>
-                          <p className="text-xs text-teal-500">Google Meet — haz clic para unirte</p>
+                {apt.meet_link &&
+                  !isPast &&
+                  (apt.status === 'scheduled' || apt.status === 'confirmed') && (
+                    <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Video className="w-5 h-5 text-teal-600" />
+                          <div>
+                            <p className="text-sm font-semibold text-teal-700">
+                              Videollamada disponible
+                            </p>
+                            <p className="text-xs text-teal-500">
+                              Google Meet — haz clic para unirte
+                            </p>
+                          </div>
                         </div>
+                        <a
+                          href={apt.meet_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                        >
+                          <Video className="w-4 h-4" />
+                          Unirme a la llamada
+                        </a>
                       </div>
-                      <a
-                        href={apt.meet_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-                      >
-                        <Video className="w-4 h-4" />
-                        Unirme a la llamada
-                      </a>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {apt.chief_complaint && (
                   <div className="pt-3 border-t border-slate-100">
-                    <p className="text-sm text-slate-600"><strong>Motivo:</strong> {apt.chief_complaint}</p>
+                    <p className="text-sm text-slate-600">
+                      <strong>Motivo:</strong> {apt.chief_complaint}
+                    </p>
                   </div>
                 )}
 
@@ -241,10 +256,10 @@ export default function AppointmentsPage() {
                   </div>
                 )}
               </div>
-            )
+            );
           })
         )}
       </div>
     </div>
-  )
+  );
 }
