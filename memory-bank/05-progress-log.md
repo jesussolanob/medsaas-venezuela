@@ -434,15 +434,39 @@ Email Resend. Tests Playwright E2E.
 - Lección confirmada: un frontend-agent murió por corte de socket SIN escribir nada (disco intacto);
   el lead verificó en disco y rehízo el trabajo inline. NUNCA confiar en "lo hice" — verificar en disco.
 
-### ⏸️ PUNTO DE RETOME (al 2026-06-03)
+### 2026-06-03 — Frontend: ADMIN auth + LOGIN dev-stub (commits f52e456, 69695b7)
 
-- **Hecho:** Backend 10/10 ✅. Frontend: fundación BFF ✅ + ÁREA DOCTOR ✅ + ÁREA PATIENT ✅ (auth fuera
-  de Supabase; data parcial con TODOs Fase 5). Commiteado en `feature/migracion-backend` (local, sin push). tsc 0.
-- **Siguiente (frontend, por áreas; patrón thin-proxy + editar SOLO la capa de datos en .tsx, visual intacto):**
-  1. **admin** → backend admin · 2. **público/auth** (book→booking; login/register→dev-stub) ·
-  2. barrido final: borrar `lib/supabase/*` cuando nada de datos lo use (queda solo Fase 5: IA/email/PDF/storage/calendar).
+- **Admin auth ✅** (f52e456): `admin/layout.tsx` logout sin Supabase (borra cookies dev). Nota Fase 4
+  en `admin/doctors/actions.ts` (createDoctor crea usuario en Auth → requiere Auth0/endpoint provisioning).
+- **LOGIN dev-stub ✅** (69695b7): `login/actions.ts` reescrito — NO verifica credenciales (no hay
+  proveedor de auth en local); infiere rol del email (admin→/admin, patient→/patient, resto→/doctor) y
+  setea cookies dev_user_id/dev_user_role (vía next/headers cookies). `login/page.tsx`: email/password →
+  server action `loginUser`; Google OAuth → mensaje "próximamente" (Fase 4); eliminado el retry de
+  confirmación de email. `DEV_ADMIN_UUID` (…0003) añadido a dev-auth.edge.ts (+re-export). tsc 0, eslint 0.
+- **Admin DATA pages — NO migradas (bloqueadas por backend):** el backend admin solo expone lecturas
+  (dashboard KPIs, doctors list/detail, subscriptions, plans, plan-features, patients-stats, settings) +
+  PUT subscription/plan-toggle/feature-toggle. NO hay endpoints para: finanzas, payments/approve/reject,
+  invoices, promotions, packages, reminders, roles, edición de precios de planes, createDoctor, app-settings,
+  bcv-rate, seed/reset. Además las páginas escriben vía route handlers (`app/api/admin/*`, ~32) que también
+  usan Supabase. → ADMIN es un sub-proyecto Fase 4/5 (requiere construir esos endpoints primero).
+- **BOOKING público — NO migrado (complejo):** `book/[doctorId]` tiene endpoints backend (booking
+  info/plans/packages/POST) PERO `BookingClient.tsx` embebe signup (Fase 4), storage upload de
+  payment-receipts (Fase 5/GCS), doctor_offices, y postea a route handler `/api/book`. Requiere trabajo dedicado.
+- **Auth-recovery — Fase 4:** register, auth/callback (OAuth), forgot-password, reset-password, onboarding
+  son flujos del proveedor de auth → quedan en Supabase hasta Auth0.
+
+### ⏸️ PUNTO DE RETOME (al 2026-06-03, fin de sesión)
+
+- **Hecho:** Backend 10/10 ✅. Frontend: fundación BFF ✅ + ÁREA DOCTOR ✅ + ÁREA PATIENT ✅ + ADMIN auth ✅
+  - LOGIN dev-stub ✅. Commiteado en `feature/migracion-backend` (local, sin push). tsc 0.
+- **Siguiente — DECISIÓN PENDIENTE del usuario (sequencing):**
+  - Opción A: construir endpoints backend que faltan para ADMIN (finanzas/payments/invoices/promotions/
+    packages/reminders/roles/plan-edit) y luego migrar admin frontend + sus route handlers.
+  - Opción B: migrar BOOKING público (dedicado: separar signup→Fase 4, storage→Fase 5, cablear info/plans/
+    packages/POST al backend).
+  - Opción C: dejar admin/booking/recovery en Supabase (Fase 4/5) y hacer el barrido de lo migrable.
 - **Reglas:** editar SOLO datos en .tsx (nunca JSX/estilos); server-only en módulos server; api-client.server
   (server) o server actions (desde 'use client'); proxy.ts = middleware Next 16.
-- **Lección lead:** verificar tsc con el EXIT REAL (`tsc...; echo $?`, NO el del pipe). Verificar en disco
-  lo que cualquier agente declare. Apagar agente + esperar terminación antes de commitear.
+- **Lección lead:** verificar tsc/eslint con EXIT REAL (NO el del pipe). Verificar en disco lo que cualquier
+  agente declare (un frontend-agent murió por socket sin escribir nada). Apagar agente antes de commitear.
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.

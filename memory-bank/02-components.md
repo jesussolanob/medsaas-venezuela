@@ -56,7 +56,16 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
   realtime/storage), `[patientId]` y `[patientId]/report` (exposición clínica = decisión de producto).
   GAP backend detectado: appointments del paciente no traen doctorName/specialty/meetLink; perfil solo
   persiste address/city/notes; sin contador de informes. tsc 0.
-- **Pendiente (frontend):** áreas **admin**, **público/auth** (book/login/register); luego borrar `lib/supabase/*`.
+- **ADMIN auth ✅ + LOGIN dev-stub ✅** admin logout y login sin Supabase (cookies dev por rol inferido
+  del email; `DEV_ADMIN_UUID` …0003). Google OAuth → "próximamente" (Fase 4).
+- **Pendiente / bloqueado (frontend):**
+  - **admin DATA pages**: backend solo tiene lecturas + 3 PUT; faltan endpoints (finanzas, payments,
+    invoices, promotions, packages, reminders, roles, plan-edit, createDoctor=Auth0) + ~32 route handlers
+    `app/api/admin/*` que usan Supabase → sub-proyecto Fase 4/5.
+  - **booking público**: tiene backend (info/plans/packages/POST) pero el client embebe signup (Fase 4) +
+    storage receipts (Fase 5) + route handler `/api/book` → trabajo dedicado.
+  - **auth-recovery** (register, auth/callback, forgot/reset-password, onboarding) → Fase 4 (Auth0).
+  - Barrido final: borrar `lib/supabase/*` cuando nada de datos lo use.
 - **Diferido Fase 5** (sin endpoint backend aún): IA/Gemini, email/Resend, PDF, storage→GCS, calendar, cron.
 - UI a CONSERVAR: 104 `.tsx` (Next.js 16 + Tailwind teal/slate). 0 componentes cliente usan Supabase.
 
