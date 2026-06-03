@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 /**
  * Admin layout — Delta Health Tech design system
@@ -6,71 +6,83 @@
  * Uso de tokens --dh-* + componentes <DeltaMark> de @/components/dh.
  */
 
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  LayoutDashboard, Users, UsersRound, ClipboardCheck, CreditCard,
-  TrendingUp, Settings, LogOut, Menu, MessageSquarePlus,
-  PanelLeftClose, Pin, X,
-} from 'lucide-react'
-import { clsx } from 'clsx'
-import { createClient } from '@/lib/supabase/client'
-import AdminNotifications from './AdminNotifications'
-import SearchCommandPalette from './SearchCommandPalette'
-import { Toaster } from '@/components/ui/Toaster'
-import { DeltaMark } from '@/components/dh'
+  LayoutDashboard,
+  Users,
+  UsersRound,
+  ClipboardCheck,
+  CreditCard,
+  TrendingUp,
+  Settings,
+  LogOut,
+  Menu,
+  MessageSquarePlus,
+  PanelLeftClose,
+  Pin,
+  X,
+} from 'lucide-react';
+import { clsx } from 'clsx';
+import AdminNotifications from './AdminNotifications';
+import SearchCommandPalette from './SearchCommandPalette';
+import { Toaster } from '@/components/ui/Toaster';
+import { DeltaMark } from '@/components/dh';
 
 // 7 tabs del design (orden del PROMPT.md):
 // Dashboard · Especialistas · Aprobaciones · Pacientes · Finanzas · Suscripciones · Configuración
 const navItems = [
-  { name: 'Dashboard',      href: '/admin',                icon: LayoutDashboard },
-  { name: 'Especialistas',  href: '/admin/doctors',        icon: Users },
-  { name: 'Aprobaciones',   href: '/admin/aprobaciones',   icon: ClipboardCheck },
-  { name: 'Pacientes',      href: '/admin/patients',       icon: UsersRound },
-  { name: 'Finanzas',       href: '/admin/finanzas',       icon: TrendingUp },
-  { name: 'Suscripciones',  href: '/admin/subscriptions',  icon: CreditCard },
-  { name: 'Sugerencias',    href: '/admin/suggestions',    icon: MessageSquarePlus },
-  { name: 'Configuración',  href: '/admin/settings',       icon: Settings },
-]
+  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { name: 'Especialistas', href: '/admin/doctors', icon: Users },
+  { name: 'Aprobaciones', href: '/admin/aprobaciones', icon: ClipboardCheck },
+  { name: 'Pacientes', href: '/admin/patients', icon: UsersRound },
+  { name: 'Finanzas', href: '/admin/finanzas', icon: TrendingUp },
+  { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
+  { name: 'Sugerencias', href: '/admin/suggestions', icon: MessageSquarePlus },
+  { name: 'Configuración', href: '/admin/settings', icon: Settings },
+];
 
 function isPathActive(pathname: string, href: string) {
-  if (href === '/admin') return pathname === '/admin'
-  return pathname === href || pathname.startsWith(href + '/')
+  if (href === '/admin') return pathname === '/admin';
+  return pathname === href || pathname.startsWith(href + '/');
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const pathname = usePathname();
+  const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const [pinned, setPinned] = useState(true)
-  const [hovered, setHovered] = useState(false)
+  const [pinned, setPinned] = useState(true);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('delta_admin_sidebar_pinned')
-      if (saved !== null) setPinned(saved === 'true')
+      const saved = localStorage.getItem('delta_admin_sidebar_pinned');
+      if (saved !== null) setPinned(saved === 'true');
     } catch {}
-  }, [])
+  }, []);
 
   const togglePin = useCallback(() => {
-    setPinned(prev => {
-      const next = !prev
-      try { localStorage.setItem('delta_admin_sidebar_pinned', String(next)) } catch {}
-      return next
-    })
-  }, [])
+    setPinned((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('delta_admin_sidebar_pinned', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
-  const sidebarVisible = pinned || hovered
+  const sidebarVisible = pinned || hovered;
 
-  async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/login')
+  function handleLogout() {
+    // ETAPA 1: limpiar cookies del dev-stub. Fase 4: signOut de Auth0.
+    document.cookie = 'dev_user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'dev_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    router.push('/login');
   }
 
-  const activeTitle = navItems.find(n => isPathActive(pathname, n.href))?.name ?? 'Admin'
+  const activeTitle = navItems.find((n) => isPathActive(pathname, n.href))?.name ?? 'Admin';
 
   return (
     <>
@@ -83,25 +95,35 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       <div className="admin-shell flex min-h-screen" style={{ background: 'var(--dh-bone)' }}>
         {mobileOpen && (
-          <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
+          <div
+            className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
         )}
 
         {!pinned && !hovered && (
-          <div className="sidebar-hover-zone-admin hidden lg:block" onMouseEnter={() => setHovered(true)} />
+          <div
+            className="sidebar-hover-zone-admin hidden lg:block"
+            onMouseEnter={() => setHovered(true)}
+          />
         )}
 
         {/* Sidebar */}
         <aside
-          onMouseEnter={() => { if (!pinned) setHovered(true) }}
-          onMouseLeave={() => { if (!pinned) setHovered(false) }}
+          onMouseEnter={() => {
+            if (!pinned) setHovered(true);
+          }}
+          onMouseLeave={() => {
+            if (!pinned) setHovered(false);
+          }}
           className={clsx(
             'fixed inset-y-0 left-0 w-[260px] flex flex-col bg-white z-50 transition-transform duration-200',
             mobileOpen ? 'translate-x-0' : '-translate-x-full',
-            sidebarVisible ? 'lg:translate-x-0' : 'lg:-translate-x-full'
+            sidebarVisible ? 'lg:translate-x-0' : 'lg:-translate-x-full',
           )}
           style={{
             borderRight: '1px solid var(--dh-gray-100)',
-            ...((!pinned && hovered) ? { boxShadow: 'var(--dh-shadow-md)' } : {}),
+            ...(!pinned && hovered ? { boxShadow: 'var(--dh-shadow-md)' } : {}),
           }}
         >
           {/* Header logo + pin/close */}
@@ -112,7 +134,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="flex items-center gap-3 min-w-0">
               <DeltaMark size={36} bold />
               <div className="min-w-0">
-                <p className="text-sm font-extrabold leading-none" style={{ color: 'var(--dh-ink)', letterSpacing: '-0.035em' }}>
+                <p
+                  className="text-sm font-extrabold leading-none"
+                  style={{ color: 'var(--dh-ink)', letterSpacing: '-0.035em' }}
+                >
                   Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
                 </p>
                 <p
@@ -145,7 +170,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <button
               onClick={togglePin}
               className={clsx(
-                'hidden lg:flex items-center justify-center w-7 h-7 rounded-lg transition-all'
+                'hidden lg:flex items-center justify-center w-7 h-7 rounded-lg transition-all',
               )}
               style={{
                 color: pinned ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-400)',
@@ -160,8 +185,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {navItems.map(item => {
-              const active = isPathActive(pathname, item.href)
+            {navItems.map((item) => {
+              const active = isPathActive(pathname, item.href);
               return (
                 <Link
                   key={item.name}
@@ -169,7 +194,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   onClick={() => setMobileOpen(false)}
                   className={clsx(
                     'flex items-center gap-3 px-3.5 py-2.5 text-sm rounded-[var(--dh-r-md)] transition-all',
-                    active && 'nav-item-active'
+                    active && 'nav-item-active',
                   )}
                   style={{
                     color: active ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
@@ -179,16 +204,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <item.icon className="w-[18px] h-[18px] shrink-0" />
                   {item.name}
                 </Link>
-              )
+              );
             })}
           </nav>
 
           {/* Footer: status + logout */}
-          <div className="px-3 py-4 space-y-1" style={{ borderTop: '1px solid var(--dh-gray-100)' }}>
+          <div
+            className="px-3 py-4 space-y-1"
+            style={{ borderTop: '1px solid var(--dh-gray-100)' }}
+          >
             <div className="px-3.5 py-2">
               <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--dh-success)' }} />
-                <span style={{ fontSize: 10, color: 'var(--dh-gray-400)', fontWeight: 500, fontFamily: 'var(--dh-font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                <div
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ background: 'var(--dh-success)' }}
+                />
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: 'var(--dh-gray-400)',
+                    fontWeight: 500,
+                    fontFamily: 'var(--dh-font-mono)',
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}
+                >
                   Sistema operativo
                 </span>
               </div>
@@ -197,8 +237,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               onClick={handleLogout}
               className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
               style={{ color: 'var(--dh-gray-400)' }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--dh-error)'; e.currentTarget.style.background = '#FEF2F2' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--dh-gray-400)'; e.currentTarget.style.background = 'transparent' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--dh-error)';
+                e.currentTarget.style.background = '#FEF2F2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--dh-gray-400)';
+                e.currentTarget.style.background = 'transparent';
+              }}
             >
               <LogOut className="w-4 h-4" />
               Cerrar sesión
@@ -210,7 +256,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div
           className={clsx(
             'flex-1 flex flex-col min-h-screen w-full transition-[margin] duration-200',
-            pinned ? 'lg:ml-[260px]' : 'lg:ml-0'
+            pinned ? 'lg:ml-[260px]' : 'lg:ml-0',
           )}
         >
           {/* Topbar */}
@@ -229,7 +275,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </button>
               <h1
                 className="font-semibold tracking-tight truncate"
-                style={{ fontFamily: 'var(--dh-font-display)', fontSize: 17, color: 'var(--dh-ink)' }}
+                style={{
+                  fontFamily: 'var(--dh-font-display)',
+                  fontSize: 17,
+                  color: 'var(--dh-ink)',
+                }}
               >
                 {activeTitle}
               </h1>
@@ -248,5 +298,5 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
     </>
-  )
+  );
 }
