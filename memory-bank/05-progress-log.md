@@ -417,16 +417,32 @@ Email Resend. Tests Playwright E2E.
   que el agente sobre-declaró). Data residual en Supabase (Fase 5): payments/cobros, appointments
   DELETE+realtime, quick_items, templates, profiles updates, offices, blocks, storage→GCS, leads, messages.
 
-### ⏸️ PUNTO DE RETOME (pausa 2026-06-03 — continuar con `claude --continue`)
+### 2026-06-03 — Frontend: ÁREA PATIENT migrada (commit 0d12b5f)
 
-- **Hecho:** Backend 10/10 ✅. Frontend: fundación BFF ✅ + ÁREA DOCTOR ✅ (auth fuera de Supabase; data
-  parcial). Commiteado en `feature/migracion-backend` (local, sin push). tsc frontend 0.
+- Auth Supabase ELIMINADA de `patient/layout.tsx`, `patient/page.tsx` (dashboard),
+  `patient/appointments/page.tsx`, `patient/profile/page.tsx`. Nuevo `app/patient/actions.ts`
+  (thin-proxy a /api/patient/dashboard|appointments|prescriptions|profile). `DEV_PATIENT_UUID`
+  (00000000-0000-4000-8000-000000000002) añadido a `dev-auth.edge.ts` (+ re-export en dev-auth.ts).
+  Logout del paciente → borra cookies dev y va a `/login`. tsc EXIT REAL 0; eslint sin errores nuevos
+  (los 2 que quedan en layout son pre-existentes: `NavItem.icon: any` y `set-state-in-effect`).
+- **Diferido Fase 5** (sin endpoint; cada archivo con `// TODO Fase 5`): `reports`, `seguimiento`
+  (shared_files/realtime/storage→GCS), `[patientId]` y `[patientId]/report` (exposición clínica al
+  paciente = decisión de producto).
+- **GAP backend** (anotar para cuando se ataque Fase 5 / mejoras): GET /patient/appointments no trae
+  doctorName/specialty/meetLink; PUT /patient/profile solo persiste address/city/notes; no hay
+  contador de informes/reports del paciente.
+- Lección confirmada: un frontend-agent murió por corte de socket SIN escribir nada (disco intacto);
+  el lead verificó en disco y rehízo el trabajo inline. NUNCA confiar en "lo hice" — verificar en disco.
+
+### ⏸️ PUNTO DE RETOME (al 2026-06-03)
+
+- **Hecho:** Backend 10/10 ✅. Frontend: fundación BFF ✅ + ÁREA DOCTOR ✅ + ÁREA PATIENT ✅ (auth fuera
+  de Supabase; data parcial con TODOs Fase 5). Commiteado en `feature/migracion-backend` (local, sin push). tsc 0.
 - **Siguiente (frontend, por áreas; patrón thin-proxy + editar SOLO la capa de datos en .tsx, visual intacto):**
-  1. **patient** (portal) → backend patient-portal · 2. **admin** → backend admin ·
-  2. **público/auth** (book→booking; login/register→dev-stub) · 4. barrido final: borrar `lib/supabase/*`
-     cuando nada de datos lo use (queda solo Fase 5: IA/email/PDF/storage/calendar).
+  1. **admin** → backend admin · 2. **público/auth** (book→booking; login/register→dev-stub) ·
+  2. barrido final: borrar `lib/supabase/*` cuando nada de datos lo use (queda solo Fase 5: IA/email/PDF/storage/calendar).
 - **Reglas:** editar SOLO datos en .tsx (nunca JSX/estilos); server-only en módulos server; api-client.server
   (server) o server actions (desde 'use client'); proxy.ts = middleware Next 16.
-- **Lección lead:** verificar tsc con el EXIT REAL (`tsc...; echo $?`), no el del pipe (el agente
-  sobre-declaró tsc 0 y había 2 errores). Apagar agente + esperar terminación antes de commitear.
+- **Lección lead:** verificar tsc con el EXIT REAL (`tsc...; echo $?`, NO el del pipe). Verificar en disco
+  lo que cualquier agente declare. Apagar agente + esperar terminación antes de commitear.
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.

@@ -50,8 +50,13 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
   ehr/consultations cableados. tsc 0. Data residual → Fase 5 (ver progress-log).
 - **Patrón:** reescribir el cuerpo de cada `actions.ts`/route handler → llamar al backend vía BFF,
   quitando `@supabase/*`; UI (.tsx) intacta. Auth = dev-stub (x-dev-\*) → Auth0 Fase 4.
-- **Pendiente (frontend):** áreas **patient** (portal), **admin**, **público/auth** (book/login/register);
-  luego borrar `lib/supabase/*`.
+- **ÁREA PATIENT (portal) ✅** auth Supabase eliminada de layout/dashboard/appointments/profile
+  (usan dev-stub + `app/patient/actions.ts` thin-proxy a /api/patient/\*); `DEV_PATIENT_UUID` añadido.
+  Diferido Fase 5 (sin endpoint, con TODO en cada archivo): `reports`, `seguimiento` (shared_files/
+  realtime/storage), `[patientId]` y `[patientId]/report` (exposición clínica = decisión de producto).
+  GAP backend detectado: appointments del paciente no traen doctorName/specialty/meetLink; perfil solo
+  persiste address/city/notes; sin contador de informes. tsc 0.
+- **Pendiente (frontend):** áreas **admin**, **público/auth** (book/login/register); luego borrar `lib/supabase/*`.
 - **Diferido Fase 5** (sin endpoint backend aún): IA/Gemini, email/Resend, PDF, storage→GCS, calendar, cron.
 - UI a CONSERVAR: 104 `.tsx` (Next.js 16 + Tailwind teal/slate). 0 componentes cliente usan Supabase.
 
