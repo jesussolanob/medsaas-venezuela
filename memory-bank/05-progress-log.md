@@ -399,3 +399,13 @@ Email Resend. Tests Playwright E2E.
   IA/Gemini, email/Resend, PDF de recetas, storage/uploads (→ GCS), calendar-sync, cron, promotions, onboarding.
 - **PARADA EN QA:** el usuario hará el QA visual/funcional él mismo (que el front se vea/funcione igual
   que antes, sobre el backend nuevo). NO ejecutar qa-agent.
+- **DECISIÓN DE ALCANCE (2026-06-03, confirmada por el usuario):** el acceso a Supabase NO está solo en
+  route handlers/actions — **~47 `.tsx` llaman a Supabase DIRECTAMENTE** (`createClient()` en el
+  componente). Medición: 47 .tsx + 39 route.ts + 4 actions.ts usan supabase. Para eliminar Supabase del
+  todo HAY que editar el **fetch de datos dentro de esos .tsx**. REGLA: se cambia SOLO la capa de datos
+  (swap Supabase→backend); NUNCA JSX/estilos/layout/comportamiento. Lo visual queda idéntico. Sin esto
+  no se cumple "eliminar Supabase". El Lote 1 dejó actions.ts listos para ehr/consultations pero hay que
+  CABLEARLOS en los .tsx. (Client components usan server actions; server components usan api-client.server.)
+- **Lote 1 ✅ (commit 8e8c319):** appointment-status (route→backend), consultations route (GET/POST/PATCH),
+  actions.ts de consultations/ehr/prescriptions creados. DELETE de appointments/consultations + financials
+  - blocks + IA/PDF/email/calendar → Fase 5.
