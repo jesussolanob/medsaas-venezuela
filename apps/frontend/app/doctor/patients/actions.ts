@@ -12,28 +12,41 @@
  * function signatures / return shapes as before — the mapping happens here.
  *
  * Backend endpoints consumed:
- *   GET  /api/patients?page=&limit=&source=  → list (paginated, masked)
- *   POST /api/patients                        → create
- *   GET  /api/patients/:id                   → get one (masked)
- *   PUT  /api/patients/:id                   → update
- *   DELETE /api/patients/:id                 → soft delete (unused by UI yet)
- *   GET  /api/patients/:id/reveal            → reveal PII
+ *   GET    /api/patients?page=&limit=           → list (paginated, PII masked)
+ *   POST   /api/patients                        → create
+ *   PUT    /api/patients/:id                    → update
+ *   GET    /api/patients/:id/reveal             → reveal PII + audit log
+ *   GET    /api/consultations/patient/:id       → patient consultation history
+ *   POST   /api/consultations                   → create consultation
+ *   PUT    /api/consultations/:id               → update consultation fields
  *
- *   GET  /api/consultations?patient_id=&page=&limit= → list consultations
- *   POST /api/consultations                          → create consultation
- *   PUT  /api/consultations/:id                      → update consultation
+ * Not yet migrated (no backend equivalent in Etapa 1):
+ *   - patient_packages, pricing_plans  → separate modules, still Supabase
+ *   - shared_files / storage           → Fase 5 (integrations)
  *
- * No backend equivalent (skipped for now):
- *   - getDoctorId()  — derived from dev-auth stub
- *   - patient_packages read (separate module, still on Supabase)
+ * NOTE ON _doctorId PARAMETERS:
+ *   Several functions keep a `_doctorId` parameter for compatibility with the
+ *   existing UI (page.tsx calls getDoctorId() and passes the result). These
+ *   parameters are intentionally ignored — the backend derives doctor_id from
+ *   the x-dev-user-id header (anti-IDOR). They will be removed when the UI is
+ *   updated in a future sprint.
  */
 
 import { revalidatePath } from 'next/cache';
+import { log } from '@/lib/logger';
 import { getDevUser } from '@/lib/dev-auth';
 import { backendGet, backendPost, backendPut, type AppError } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
-// Types — kept compatible with the existing UI
+// Pagination constants
+// ---------------------------------------------------------------------------
+
+const PATIENTS_PAGE_SIZE = 200; // Single-doctor list; backend max is 100 per request
+const CONSULTATIONS_PAGE_SIZE = 100; // Per-patient history
+const ALL_CONSULTATIONS_PAGE_SIZE = 500; // Doctor-wide list for reporting
+
+// ---------------------------------------------------------------------------
+// Public types — kept compatible with the existing UI
 // ---------------------------------------------------------------------------
 
 export type Patient = {
@@ -80,7 +93,11 @@ export type AddPatientResult =
   | { success: true; patient_id: string }
   | { success: false; error: string };
 
-// Backend shape (camelCase) returned by NestJS mapper — list item
+// ---------------------------------------------------------------------------
+// Backend response shapes
+// ---------------------------------------------------------------------------
+
+// NestJS patients mapper returns camelCase
 interface BackendPatientListItem {
   id: string;
   doctorId: string;
@@ -92,7 +109,6 @@ interface BackendPatientListItem {
   createdAt: string;
 }
 
-// Backend shape (camelCase) — full detail
 interface BackendPatientDetail extends BackendPatientListItem {
   authUserId: string | null;
   birthDate: string | null;
@@ -109,7 +125,7 @@ interface BackendPatientDetail extends BackendPatientListItem {
   updatedAt: string;
 }
 
-// Backend consultation shape — the consultation mapper returns snake_case
+// NestJS consultations mapper returns snake_case
 interface BackendConsultation {
   id: string;
   consultation_code: string;
@@ -125,7 +141,7 @@ interface BackendConsultation {
 }
 
 // ---------------------------------------------------------------------------
-// Mappers — backend camelCase → frontend snake_case
+// Mappers
 // ---------------------------------------------------------------------------
 
 function mapListItemToPatient(item: BackendPatientListItem): Patient {
@@ -171,7 +187,7 @@ function mapDetailToPatient(detail: BackendPatientDetail): Patient {
   };
 }
 
-// The consultation mapper already returns snake_case — direct pass-through.
+// Consultation mapper already returns snake_case — direct pass-through.
 function mapConsultation(c: BackendConsultation): Consultation {
   return {
     id: c.id,
@@ -193,12 +209,17 @@ function appErrorToString(error: AppError): string {
 }
 
 // ---------------------------------------------------------------------------
-// Doctor identity — derived from dev-auth stub (replaces supabase.auth.getUser)
+// Doctor identity
 // ---------------------------------------------------------------------------
 
 /**
  * Returns the current doctor's id from the dev-auth stub.
- * In Etapa 2, this is replaced by the Auth0 session.
+ *
+ * Called by the UI (page.tsx) for display/state. The id is also attached
+ * automatically to every backend request via the x-dev-user-id header —
+ * actions do NOT pass it to the backend explicitly.
+ *
+ * In Etapa 2 this is replaced by the Auth0 session.
  */
 export async function getDoctorId(): Promise<string | null> {
   const user = await getDevUser();
@@ -209,15 +230,22 @@ export async function getDoctorId(): Promise<string | null> {
 // Patients CRUD
 // ---------------------------------------------------------------------------
 
-/** Fetch all patients for the authenticated doctor. Returns up to 200 records. */
+/**
+ * Fetch all patients for the authenticated doctor.
+ *
+ * @param _doctorId — kept for UI compatibility; ignored (backend derives
+ *   doctor_id from x-dev-user-id header, anti-IDOR).
+ */
 export async function getPatients(_doctorId: string): Promise<Patient[]> {
-  // doctorId param kept for API compatibility with the existing UI calls,
-  // but the backend derives it from the auth header (anti-IDOR).
-  // backendFetch unwraps the backend envelope { success, data, meta } and returns data.
-  const result = await backendGet<BackendPatientListItem[]>('/api/patients?page=1&limit=200');
+  const result = await backendGet<BackendPatientListItem[]>(
+    `/api/patients?page=1&limit=${PATIENTS_PAGE_SIZE}`,
+  );
 
   if (!result.ok) {
-    console.error('[getPatients]', result.error.message);
+    log.error('[getPatients] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
     return [];
   }
 
@@ -225,7 +253,6 @@ export async function getPatients(_doctorId: string): Promise<Patient[]> {
   return items.map(mapListItemToPatient);
 }
 
-// AddPatientInput — superset of fields the UI may pass
 export type AddPatientInput = {
   full_name: string;
   age?: number | null;
@@ -245,14 +272,18 @@ export type AddPatientInput = {
   emergency_contact_phone?: string | null;
 };
 
-/** Create a new patient for the authenticated doctor. */
+/**
+ * Create a new patient for the authenticated doctor.
+ *
+ * @param _doctorId — kept for UI compatibility; ignored (see note above).
+ */
 export async function addPatient(
   _doctorId: string,
   input: AddPatientInput,
 ): Promise<AddPatientResult> {
-  const doctorId = await getDoctorId();
+  // doctor_id is required by CreatePatientDtoSchema; read from dev-auth stub.
+  const { id: doctorId } = await getDevUser();
 
-  // backend CreatePatientDtoSchema requires doctor_id
   const body = {
     doctor_id: doctorId,
     full_name: input.full_name,
@@ -279,15 +310,17 @@ export async function addPatient(
 // Consultations
 // ---------------------------------------------------------------------------
 
-/** Fetch consultations for a patient. */
+/** Fetch consultation history for a specific patient. */
 export async function getConsultations(patientId: string): Promise<Consultation[]> {
-  // Backend endpoint: GET /api/consultations/patient/:patientId (DDD module)
   const result = await backendGet<BackendConsultation[]>(
-    `/api/consultations/patient/${patientId}?page=1&limit=100`,
+    `/api/consultations/patient/${patientId}?page=1&limit=${CONSULTATIONS_PAGE_SIZE}`,
   );
 
   if (!result.ok) {
-    console.error('[getConsultations]', result.error.message);
+    log.error('[getConsultations] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
     return [];
   }
 
@@ -296,7 +329,6 @@ export async function getConsultations(patientId: string): Promise<Consultation[
   return items.map(mapConsultation);
 }
 
-// CreateConsultationInput — mirrors the existing type
 export type CreateConsultationInput = {
   patient_id: string;
   chief_complaint?: string;
@@ -306,12 +338,17 @@ export type CreateConsultationInput = {
   payment_status?: 'pending' | 'approved';
 };
 
+/**
+ * Create a new consultation for a patient.
+ *
+ * @param _doctorId — kept for UI compatibility; ignored (see note above).
+ */
 export async function createConsultation(
   _doctorId: string,
   input: CreateConsultationInput,
 ): Promise<ActionResult & { code?: string }> {
   // CreateConsultationBodyDtoSchema requires patient_id + consultation_date (ISO).
-  // diagnosis and treatment are set via a subsequent PUT call (update consultation).
+  // diagnosis and treatment are set via updateConsultationNotes after creation.
   const body = {
     patient_id: input.patient_id,
     consultation_date: new Date().toISOString(),
@@ -392,13 +429,17 @@ export type UpdatePatientInput = {
   source?: string | null;
 };
 
-/** Update a patient's fields. doctor_id ownership is verified server-side (anti-IDOR). */
+/**
+ * Update a patient's fields. Ownership is enforced server-side (anti-IDOR).
+ *
+ * @param _doctorId — kept for UI compatibility; ignored (see note above).
+ */
 export async function updatePatient(
   patientId: string,
   _doctorId: string,
   input: UpdatePatientInput,
 ): Promise<ActionResult> {
-  // Build the body — only include defined keys (partial update)
+  // Build a partial body — only send fields that were explicitly provided.
   const body: Record<string, unknown> = {};
   if (input.full_name !== undefined) body.full_name = input.full_name;
   if (input.age !== undefined) body.age = input.age;
@@ -438,7 +479,10 @@ export async function revealPatient(patientId: string): Promise<Patient | null> 
   const result = await backendGet<BackendPatientDetail>(`/api/patients/${patientId}/reveal`);
 
   if (!result.ok) {
-    console.error('[revealPatient]', result.error.message);
+    log.error('[revealPatient] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
     return null;
   }
 
@@ -446,25 +490,34 @@ export async function revealPatient(patientId: string): Promise<Patient | null> 
 }
 
 // ---------------------------------------------------------------------------
-// All consultations (for the doctor's consultations module, kept for compat)
+// All consultations — doctor-wide (kept for reporting compat)
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetch all consultations for the authenticated doctor across all patients.
+ *
+ * IMPORTANT: The backend does not include patient_name in the consultation
+ * response. The returned `patient_name` field is always '' (empty string).
+ * Callers that need the name must fetch it separately from GET /api/patients/:id.
+ *
+ * @param _doctorId — kept for UI compatibility; ignored (see note above).
+ */
 export async function getAllConsultationsForDoctor(
   _doctorId: string,
 ): Promise<(Consultation & { patient_name: string })[]> {
-  const result = await backendGet<BackendConsultation[]>('/api/consultations?page=1&limit=500');
+  const result = await backendGet<BackendConsultation[]>(
+    `/api/consultations?page=1&limit=${ALL_CONSULTATIONS_PAGE_SIZE}`,
+  );
 
   if (!result.ok) {
-    console.error('[getAllConsultationsForDoctor]', result.error.message);
+    log.error('[getAllConsultationsForDoctor] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
     return [];
   }
 
   const raw = result.value;
   const items = Array.isArray(raw) ? raw : [];
-  // patient_name is not included in the backend response for this endpoint —
-  // callers that need it should fetch the patient separately.
-  return items.map((c) => ({
-    ...mapConsultation(c),
-    patient_name: 'Paciente',
-  }));
+  return items.map((c) => ({ ...mapConsultation(c), patient_name: '' }));
 }

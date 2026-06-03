@@ -23,7 +23,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDevUserFromRequest } from '@/lib/dev-auth';
+// Import from dev-auth.edge (no Node/server-only imports) — safe for Edge Runtime.
+import { getDevUserFromRequest } from '@/lib/dev-auth.edge';
 
 export function proxy(request: NextRequest): NextResponse {
   const path = request.nextUrl.pathname;

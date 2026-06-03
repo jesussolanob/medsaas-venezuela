@@ -1,3 +1,8 @@
+// Prevents this module from being imported in 'use client' components or client
+// bundles. Next.js throws a build-time error if the import is detected on the
+// client side, protecting BACKEND_INTERNAL_URL and dev-auth headers from leaking.
+import 'server-only';
+
 /**
  * lib/api-client.server.ts
  *
@@ -10,9 +15,6 @@
  * ETAPA 1: Uses DevAuthGuard headers (x-dev-user-id, x-dev-user-role).
  * ETAPA 2 (Fase 4): Replace getDevUser() with Auth0 JWT verification from
  *   httpOnly cookie; the rest of this module stays the same.
- *
- * Never import this file from 'use client' components — it reads cookies
- * and calls the internal backend URL, both are server-only.
  *
  * Usage:
  *   import { backendFetch, backendGet, backendPost } from '@/lib/api-client.server'
@@ -41,17 +43,25 @@ export interface AppError {
 
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
 
-interface FetchOptions extends Omit<RequestInit, 'body'> {
+export interface FetchOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
-  /** Override the user id (default: from cookie / dev-auth stub). */
+  /**
+   * Override both userId AND role together (e.g. in tests / impersonation).
+   * Partial overrides are intentionally disallowed: if only one field is
+   * provided the override is ignored and the full dev-auth identity is used.
+   * This prevents accidental hybrid combos like (test-uuid + dev-role).
+   */
   userId?: string;
-  /** Override the user role (default: from cookie / dev-auth stub). */
   role?: string;
 }
 
 /**
  * Core fetch wrapper. Attaches dev-auth headers, serializes the body,
  * and returns Result<T, AppError>.
+ *
+ * Identity resolution:
+ *   - Both userId AND role present → use them (complete override).
+ *   - Otherwise → read the full identity from getDevUser() (dev-auth stub).
  */
 export async function backendFetch<T>(
   path: string,
@@ -59,13 +69,18 @@ export async function backendFetch<T>(
 ): Promise<Result<T, AppError>> {
   const { body, userId, role, ...fetchOptions } = options;
 
-  // Resolve identity — caller can override for impersonation in tests.
-  let resolvedId = userId;
-  let resolvedRole = role;
-  if (!resolvedId || !resolvedRole) {
+  let resolvedId: string;
+  let resolvedRole: string;
+
+  if (userId && role) {
+    // Complete override — used in tests or explicit impersonation.
+    resolvedId = userId;
+    resolvedRole = role;
+  } else {
+    // No override, or only partial — always read the full identity from stub.
     const devUser = await getDevUser();
-    resolvedId = resolvedId ?? devUser.id;
-    resolvedRole = resolvedRole ?? devUser.role;
+    resolvedId = devUser.id;
+    resolvedRole = devUser.role;
   }
 
   const url = `${BACKEND_URL}${path}`;
