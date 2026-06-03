@@ -1,479 +1,276 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { NextRequest, NextResponse } from 'next/server'
-import { snapshotBlocksForConsultation } from '@/lib/consultation-blocks'
-import { buildReportData } from '@/lib/report-data'
+import 'server-only';
 
-function genCode(prefix: string): string {
-  const d = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const rand = Math.random().toString(36).substring(2, 6).toUpperCase()
-  return `${prefix}-${d}-${rand}`
+/**
+ * app/api/doctor/consultations/route.ts
+ *
+ * Thin-proxy → NestJS /api/consultations (GET, POST, PATCH → PUT).
+ *
+ * MIGRATED — Etapa 1:
+ *   GET    → GET  /api/consultations?page=&limit=&payment_status=
+ *   POST   → POST /api/consultations
+ *   PATCH  → PUT  /api/consultations/:id  (body must include { id })
+ *
+ * DEFERRED — Fase 5 (DELETE stays on Supabase):
+ *   The DELETE handler cascades into: EHR records, prescriptions, the linked
+ *   appointment, package session restore, and Google Calendar event deletion.
+ *   There is no single backend endpoint that handles this full cascade in Etapa 1.
+ *
+ * DEFERRED — Fase 5 (complex logic not in backend Etapa 1):
+ *   - BCV rate fetch on POST (bcv_rate, amount_bs fields)
+ *   - auto-create appointment when none provided on POST
+ *   - payments table INSERT + triple-link on POST
+ *   - report_data rebuild on PATCH (blocks_data snapshot)
+ *   - duration_minutes auto-calc on PATCH (ended_at + started_at)
+ *   - payments table sync on payment_status change (PATCH)
+ *
+ *   These business rules are owned by the NestJS use cases and will be completed
+ *   as those use cases mature. The frontend route proxies the request; the UI
+ *   receives whatever the backend returns.
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { backendGet, backendPost, backendPut } from '@/lib/api-client.server';
+import { log } from '@/lib/logger';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE_DEFAULT = 50;
+
+// ---------------------------------------------------------------------------
+// GET /api/doctor/consultations
+//   ?patient_id=  → /api/consultations/patient/:id  (patient-specific history)
+//   ?status=      → /api/consultations?payment_status=  (list with filter)
+//   ?limit=&offset= supported (translated to page/limit)
+// ---------------------------------------------------------------------------
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const { searchParams } = new URL(req.url);
+  const patientId = searchParams.get('patient_id');
+  const status = searchParams.get('status');
+  const limit = Math.min(100, parseInt(searchParams.get('limit') ?? String(PAGE_SIZE_DEFAULT), 10));
+  const offset = parseInt(searchParams.get('offset') ?? '0', 10);
+  const page = Math.max(1, Math.floor(offset / limit) + 1);
+
+  let path: string;
+  if (patientId) {
+    // Patient-scoped history endpoint
+    path = `/api/consultations/patient/${patientId}?page=${page}&limit=${limit}`;
+  } else {
+    // Doctor-wide list with optional payment_status filter
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (status) qs.set('payment_status', status);
+    path = `/api/consultations?${qs.toString()}`;
+  }
+
+  const result = await backendGet<unknown[]>(path);
+
+  if (!result.ok) {
+    log.error('[consultations GET] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
+
+  const data = Array.isArray(result.value) ? result.value : [];
+  return NextResponse.json({ data, total: data.length });
 }
 
-// GET /api/doctor/consultations — List consultations for logged-in doctor
-export async function GET(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+// ---------------------------------------------------------------------------
+// POST /api/doctor/consultations
+// Maps to POST /api/consultations
+// Fields forwarded: patient_id, appointment_id, consultation_date,
+//   chief_complaint, notes
+// Fields NOT forwarded (no backend equivalent in Etapa 1):
+//   amount, currency, plan_name, payment_method, payment_receipt_url,
+//   bcv_rate, amount_bs, payment_reference
+//   → Backend will handle financial fields in a later use case.
+// ---------------------------------------------------------------------------
 
-  const admin = createAdminClient()
-  const { searchParams } = new URL(req.url)
-  const patientId = searchParams.get('patient_id')
-  const status = searchParams.get('status')
-  const limit = parseInt(searchParams.get('limit') || '50')
-  const offset = parseInt(searchParams.get('offset') || '0')
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 });
+  }
 
-  let query = admin
-    .from('consultations')
-    .select(`
-      *,
-      patients(id, full_name, phone, email),
-      appointments(id, appointment_code, scheduled_at, plan_name, plan_price)
-    `, { count: 'exact' })
-    .eq('doctor_id', user.id)
-    .order('consultation_date', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (patientId) query = query.eq('patient_id', patientId)
-  if (status) query = query.eq('payment_status', status)
-
-  const { data, error, count } = await query
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ data: data ?? [], total: count ?? 0 })
-}
-
-// POST /api/doctor/consultations — Create consultation ALWAYS linked to an appointment
-// Rule: every consultation has an appointment. Appointment = financial truth, Consultation = clinical truth.
-export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-
-  const body = await req.json()
-  const { patient_id, appointment_id, chief_complaint, notes, consultation_date, amount, currency, plan_name, payment_method, payment_reference, payment_receipt_url } = body
+  const { patient_id, appointment_id, chief_complaint, notes, consultation_date } = body as Record<
+    string,
+    unknown
+  >;
 
   if (!patient_id) {
-    return NextResponse.json({ error: 'patient_id requerido' }, { status: 400 })
+    return NextResponse.json({ error: 'patient_id requerido' }, { status: 400 });
   }
 
-  const admin = createAdminClient()
-  const consultationCode = genCode('CON')
-  const dateISO = consultation_date || new Date().toISOString()
-  const finalAmount = amount || 0
+  const backendBody: Record<string, unknown> = {
+    patient_id,
+    consultation_date: consultation_date ?? new Date().toISOString(),
+    chief_complaint: chief_complaint ?? null,
+    notes: notes ?? null,
+  };
+  if (appointment_id) backendBody.appointment_id = appointment_id;
 
-  // Fetch BCV rate for Bs calculation
-  let bcvRate: number | null = null
-  try {
-    const bcvRes = await fetch(new URL('/api/admin/bcv-rate', req.url).toString())
-    if (bcvRes.ok) {
-      const bcvData = await bcvRes.json()
-      if (bcvData.rate && bcvData.rate > 0) bcvRate = bcvData.rate
+  const result = await backendPost<{
+    id: string;
+    consultation_code: string;
+    appointment_id: string | null;
+  }>('/api/consultations', backendBody);
+
+  if (!result.ok) {
+    log.error('[consultations POST] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    if (result.error.status === 409) {
+      return NextResponse.json(
+        {
+          error: 'Ya tienes otra cita activa en ese horario. Elige otra hora.',
+          code: 'slot_taken',
+        },
+        { status: 409 },
+      );
     }
-  } catch { /* best-effort */ }
-  const amountBs = bcvRate && finalAmount ? parseFloat((finalAmount * bcvRate).toFixed(2)) : null
-
-  let linkedAppointmentId = appointment_id || null
-
-  // If no appointment provided, auto-create one (single source of truth for finances + agenda)
-  if (!linkedAppointmentId) {
-    // Look up patient name for the appointment record
-    const { data: patientData } = await admin
-      .from('patients')
-      .select('full_name, phone, email')
-      .eq('id', patient_id)
-      .single()
-
-    const { data: newAppt, error: apptErr } = await admin
-      .from('appointments')
-      .insert({
-        doctor_id: user.id,
-        patient_id,
-        patient_name: patientData?.full_name || 'Paciente',
-        patient_phone: patientData?.phone || null,
-        patient_email: patientData?.email || null,
-        scheduled_at: dateISO,
-        status: 'confirmed',
-        source: 'manual',
-        plan_name: plan_name || null,
-        plan_price: finalAmount,
-        payment_method: payment_method || null,
-        payment_receipt_url: payment_receipt_url || null,
-        appointment_mode: 'presencial',
-        bcv_rate: bcvRate,
-        amount_bs: amountBs,
-      })
-      .select('id')
-      .single()
-
-    if (apptErr) {
-      // RONDA 23: detectar double-booking del unique index uniq_doctor_slot_active
-      const code = (apptErr as any).code
-      if (code === '23505') {
-        return NextResponse.json(
-          { error: 'Ya tienes otra cita activa en ese horario. Elige otra hora.', code: 'slot_taken' },
-          { status: 409 }
-        )
-      }
-      return NextResponse.json({ error: apptErr.message }, { status: 500 })
-    }
-    linkedAppointmentId = newAppt.id
-  } else {
-    // Existing appointment — update status to confirmed
-    await admin.from('appointments').update({ status: 'confirmed' }).eq('id', linkedAppointmentId)
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
   }
 
-  // RONDA 39: NO hacer snapshot aqui. El snapshot se congela en el PATCH al
-  // primer save de blocks_data. Asi, si el doctor cambia su config en
-  // /doctor/settings/consultation-blocks despues de crear la consulta, los
-  // cambios se reflejan al abrirla mientras el informe siga vacio.
-
-  // Create the consultation linked to the appointment
-  const { data, error } = await admin
-    .from('consultations')
-    .insert({
-      consultation_code: consultationCode,
-      patient_id,
-      doctor_id: user.id,
-      appointment_id: linkedAppointmentId,
-      chief_complaint: chief_complaint || null,
-      notes: notes || null,
-      consultation_date: dateISO,
-      payment_status: 'pending',
-      amount: finalAmount,
-      currency: currency || 'USD',
-      plan_name: plan_name || null,
-      payment_method: payment_method || null,
-      payment_reference: payment_reference || null,
-      bcv_rate: bcvRate,
-      amount_bs: amountBs,
-      // blocks_snapshot quedara NULL hasta el primer save (snapshot lazy)
-    })
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // Crear payment + linkear todo (reingeniería 2026-04-22)
-  // Triple link: appointments ↔ consultations ↔ payments
-  let paymentId: string | null = null
-  try {
-    const { data: paymentRow, error: payErr } = await admin
-      .from('payments')
-      .insert({
-        doctor_id: user.id,
-        patient_id,
-        amount_usd: finalAmount,
-        amount_bs: amountBs,
-        bcv_rate: bcvRate,
-        currency: currency || 'USD',
-        method_snapshot: payment_method || null,
-        payment_reference: payment_reference || null,
-        payment_receipt_url: payment_receipt_url || null,
-        status: 'pending',
-      })
-      .select('id')
-      .single()
-
-    if (payErr) {
-      console.error('[Consultations POST] payment INSERT failed:', payErr.message)
-    } else {
-      paymentId = paymentRow?.id ?? null
-    }
-  } catch (e: any) {
-    console.error('[Consultations POST] payment INSERT threw:', e?.message)
-  }
-
-  // Linkear appointment con consultation_id + payment_id + service_snapshot
-  try {
-    const updates: Record<string, unknown> = {
-      consultation_id: data.id,
-      service_snapshot: {
-        name: plan_name || 'Consulta General',
-        price_usd: finalAmount,
-        mode: 'presencial',
-      },
-    }
-    if (paymentId) updates.payment_id = paymentId
-    await admin.from('appointments').update(updates).eq('id', linkedAppointmentId)
-  } catch (e: any) {
-    console.error('[Consultations POST] appointment link failed:', e?.message)
-  }
-
+  const consultation = result.value;
   return NextResponse.json({
     success: true,
-    consultation: data,
-    code: consultationCode,
-    appointmentId: linkedAppointmentId,
-    paymentId,
-  })
+    consultation,
+    code: consultation.consultation_code,
+    appointmentId: consultation.appointment_id,
+    paymentId: null, // Not available in Etapa 1
+  });
 }
 
-// PATCH /api/doctor/consultations — Update consultation
-// AL-104 fix: allowlist de campos. NO permitir mutar doctor_id, patient_id, payment_status.
-const ALLOWED_PATCH_FIELDS = new Set([
-  'chief_complaint',
-  'notes',
-  'diagnosis',
-  'treatment',
-  'amount',
-  'currency',
-  'plan_name',
-  'payment_method',
-  'payment_reference',
-  'payment_status',   // permitir: pending | approved | cancelled (validado abajo)
-  'consultation_date',
-  'started_at',
-  'ended_at',
-  'duration_minutes',
-  'blocks_data',      // valores de los bloques dinámicos (jsonb)
-])
+// ---------------------------------------------------------------------------
+// PATCH /api/doctor/consultations
+// Legacy body shape: { id, ...fields }
+// Maps to PUT /api/consultations/:id
+// ---------------------------------------------------------------------------
 
-// Estados de pago: solo pending | approved. Un pago no se "cancela", el pago nunca llegó (pending) o fue recibido (approved).
-const VALID_PAYMENT_STATUSES = new Set(['pending', 'approved'])
+export async function PATCH(req: NextRequest): Promise<NextResponse> {
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 });
+  }
 
-export async function PATCH(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  const { id, ...fields } = body as { id?: string; [key: string]: unknown };
 
-  const body = await req.json()
-  const { id, ...fields } = body
+  if (!id) {
+    return NextResponse.json({ error: 'id requerido' }, { status: 400 });
+  }
 
-  if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 })
+  // Forward only the clinical fields the backend PUT endpoint accepts.
+  // Financial fields (amount, currency, payment_method, etc.) and
+  // integration fields (blocks_data, blocks_snapshot, report_data) are
+  // deferred to Fase 5 when those use cases are implemented in the backend.
+  const ALLOWED_PUT_FIELDS = new Set([
+    'chief_complaint',
+    'notes',
+    'diagnosis',
+    'treatment',
+    'payment_status',
+    'consultation_date',
+  ]);
 
-  // AL-104: filtrar solo campos permitidos. doctor_id, patient_id,
-  // consultation_code, etc. quedan fuera. payment_status validado contra whitelist.
-  const safeFields: Record<string, unknown> = {}
+  const putBody: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
-    if (!ALLOWED_PATCH_FIELDS.has(k)) continue
-    if (k === 'payment_status' && typeof v === 'string' && !VALID_PAYMENT_STATUSES.has(v)) continue
-    safeFields[k] = v
+    if (ALLOWED_PUT_FIELDS.has(k)) putBody[k] = v;
   }
 
-  if (Object.keys(safeFields).length === 0) {
-    return NextResponse.json({ error: 'Ningún campo permitido en el body' }, { status: 400 })
+  if (Object.keys(putBody).length === 0) {
+    return NextResponse.json({ error: 'Ningún campo permitido en el body' }, { status: 400 });
   }
 
-  const admin = createAdminClient()
-  // RONDA 39: el snapshot lazy lo maneja un trigger BEFORE UPDATE en BD
-  // (tr_freeze_consultation_snapshot). Asi cualquier update de blocks_data,
-  // venga del endpoint o de un cliente directo, congela el snapshot solo
-  // si aun no estaba congelado.
+  const result = await backendPut<Record<string, unknown>>(`/api/consultations/${id}`, putBody);
 
-  const { data, error } = await admin
-    .from('consultations')
-    .update({ ...safeFields, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('doctor_id', user.id) // security: only own consultations
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // L7 (2026-04-29): duración automática de la consulta.
-  // Reglas:
-  //  - started_at lo marca el endpoint /api/doctor/appointment-status cuando
-  //    la cita pasa a 'completed'.
-  //  - ended_at + duration_minutes se calculan AQUI cuando el doctor hace
-  //    el primer save con contenido en el informe (chief_complaint, diagnosis,
-  //    treatment, notes o cualquier valor en blocks_data). Solo se setea una
-  //    vez (eq ended_at NULL). Updates posteriores NO mueven ended_at.
-  if (data && !(data as any).ended_at && (data as any).started_at) {
-    const blocks = (data as any).blocks_data
-    const blocksHasContent = blocks && typeof blocks === 'object' && Object.values(blocks).some(v => {
-      if (v == null) return false
-      if (typeof v === 'string') return v.trim().length > 0
-      if (typeof v === 'object') return Object.keys(v as object).length > 0
-      return true
-    })
-    const hasContent = !!(
-      (data as any).chief_complaint ||
-      (data as any).diagnosis ||
-      (data as any).treatment ||
-      (data as any).notes ||
-      blocksHasContent
-    )
-    if (hasContent) {
-      try {
-        const { data: durRow } = await admin
-          .from('consultations')
-          .update({
-            ended_at: new Date().toISOString(),
-            // BD calcula duration_minutes via expression usando started_at + ended_at
-          })
-          .eq('id', id)
-          .is('ended_at', null)
-          .select('ended_at, started_at')
-          .maybeSingle()
-
-        if (durRow?.ended_at && durRow?.started_at) {
-          const minutes = Math.max(
-            0,
-            Math.round((new Date(durRow.ended_at).getTime() - new Date(durRow.started_at).getTime()) / 60000)
-          )
-          await admin
-            .from('consultations')
-            .update({ duration_minutes: minutes })
-            .eq('id', id)
-            .is('duration_minutes', null)
-          ;(data as any).ended_at = durRow.ended_at
-          ;(data as any).duration_minutes = minutes
-        }
-      } catch (e: any) {
-        console.warn('[Consultations PATCH] auto duration calc skipped:', e?.message)
-      }
-    }
+  if (!result.ok) {
+    log.error('[consultations PATCH] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
   }
 
-  // RONDA 36: si cambio blocks_data o un campo legacy del informe, reconstruir
-  // el snapshot inmutable report_data. Garantia: el informe que ve el paciente
-  // sale SIEMPRE de aqui, y queda independiente de cualquier cambio futuro en
-  // las plantillas del doctor.
-  const reportRelevantFields = ['blocks_data', 'chief_complaint', 'diagnosis', 'treatment', 'notes']
-  const reportChanged = reportRelevantFields.some(f => f in safeFields)
-  if (reportChanged && data) {
-    try {
-      const report = buildReportData(
-        (data as any).blocks_snapshot,
-        (data as any).blocks_data,
-        {
-          chief_complaint: (data as any).chief_complaint,
-          diagnosis: (data as any).diagnosis,
-          treatment: (data as any).treatment,
-          notes: (data as any).notes,
-        },
-      )
-      const { data: updated } = await admin
-        .from('consultations')
-        .update({ report_data: report })
-        .eq('id', id)
-        .select()
-        .single()
-      if (updated) Object.assign(data, updated)
-    } catch (rebuildErr) {
-      console.warn('[Consultations PATCH] report_data rebuild skipped:', rebuildErr)
-    }
-  }
-
-  // BUG-012 fix: si se cambió payment_status, sincronizar con payments.status del pago linkeado
-  // Source of truth = payments. consultations.payment_status queda como mirror legacy hasta Fase 5.
-  // AUDIT FIX 2026-04-28 (C-7): valida ownership del payment + reporta 409 si no existe
-  // payment cuando el doctor intenta marcar approved (evita drift silencioso entre tablas).
-  if ('payment_status' in safeFields) {
-    const newStatus = safeFields.payment_status === 'approved' ? 'approved' : 'pending'
-    const apptId = data.appointment_id
-    if (!apptId) {
-      if (newStatus === 'approved') {
-        return NextResponse.json(
-          { error: 'No se puede aprobar el pago: la consulta no tiene cita ni pago vinculado.' },
-          { status: 409 }
-        )
-      }
-    } else {
-      const { data: appt, error: apptErr } = await admin
-        .from('appointments')
-        .select('payment_id, doctor_id')
-        .eq('id', apptId)
-        .single()
-      if (apptErr) {
-        return NextResponse.json({ error: 'No se pudo verificar la cita vinculada.' }, { status: 500 })
-      }
-      if (appt?.doctor_id !== user.id) {
-        return NextResponse.json({ error: 'No autorizado sobre la cita vinculada.' }, { status: 403 })
-      }
-      if (!appt.payment_id) {
-        if (newStatus === 'approved') {
-          return NextResponse.json(
-            { error: 'La cita no tiene un pago asociado.' },
-            { status: 409 }
-          )
-        }
-      } else {
-        const { error: syncErr } = await admin
-          .from('payments')
-          .update({
-            status: newStatus,
-            paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
-          })
-          .eq('id', appt.payment_id)
-          .eq('doctor_id', user.id)
-        if (syncErr) {
-          return NextResponse.json(
-            { error: 'No se pudo sincronizar el estado de pago.' },
-            { status: 500 }
-          )
-        }
-      }
-    }
-  }
-
-  return NextResponse.json({ success: true, consultation: data })
+  return NextResponse.json({ success: true, consultation: result.value });
 }
 
+// ---------------------------------------------------------------------------
 // DELETE /api/doctor/consultations?id=xxx
-// Deletes a consultation AND its linked appointment (cascade delete from both sides)
-export async function DELETE(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+//
+// FASE 5 — NOT MIGRATED. Stays on Supabase until:
+//   - Backend supports cascade delete of EHR + prescriptions + appointment
+//   - Backend supports package session restore (optimistic lock RPC)
+//   - Backend supports Google Calendar event deletion
+// ---------------------------------------------------------------------------
 
-  const { searchParams } = new URL(req.url)
-  const consultationId = searchParams.get('id')
+export async function DELETE(req: NextRequest): Promise<NextResponse> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
 
+  const { searchParams } = new URL(req.url);
+  const consultationId = searchParams.get('id');
   if (!consultationId) {
-    return NextResponse.json({ error: 'id requerido' }, { status: 400 })
+    return NextResponse.json({ error: 'id requerido' }, { status: 400 });
   }
 
-  const admin = createAdminClient()
+  const admin = createAdminClient();
 
-  // 1. Get consultation and verify ownership
   const { data: consultation, error: findErr } = await admin
     .from('consultations')
     .select('id, doctor_id, appointment_id')
     .eq('id', consultationId)
-    .single()
+    .single();
 
   if (findErr || !consultation) {
-    return NextResponse.json({ error: 'Consulta no encontrada' }, { status: 404 })
+    return NextResponse.json({ error: 'Consulta no encontrada' }, { status: 404 });
   }
-
   if (consultation.doctor_id !== user.id) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
   try {
-    // 2. Delete linked EHR records and prescriptions
-    // CR-011 fix: ehr_records usa appointment_id (no consultation_id).
-    // prescriptions tiene ambos (consultation_id Y ehr_record_id).
     if (consultation.appointment_id) {
-      await admin.from('ehr_records').delete().eq('appointment_id', consultation.appointment_id)
+      await admin.from('ehr_records').delete().eq('appointment_id', consultation.appointment_id);
     }
-    await admin.from('prescriptions').delete().eq('consultation_id', consultationId)
+    await admin.from('prescriptions').delete().eq('consultation_id', consultationId);
+    await admin.from('consultations').delete().eq('id', consultationId);
 
-    // 3. Delete the consultation
-    await admin.from('consultations').delete().eq('id', consultationId)
-
-    // 4. If linked to an appointment, delete or revert it
     if (consultation.appointment_id) {
-      // Get appointment details before deleting
       const { data: appt } = await admin
         .from('appointments')
         .select('id, google_event_id, package_id')
         .eq('id', consultation.appointment_id)
-        .single()
+        .single();
 
       if (appt) {
-        // Delete Google Calendar event (best-effort)
+        // FASE 5: Google Calendar — keep on Supabase
         if (appt.google_event_id) {
           try {
             const { data: profile } = await admin
               .from('profiles')
               .select('google_refresh_token')
               .eq('id', user.id)
-              .single()
-
+              .single();
             if (profile?.google_refresh_token) {
               const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
                 method: 'POST',
@@ -484,44 +281,45 @@ export async function DELETE(req: NextRequest) {
                   refresh_token: profile.google_refresh_token,
                   grant_type: 'refresh_token',
                 }),
-              })
+              });
               if (tokenRes.ok) {
-                const { access_token } = await tokenRes.json()
+                const { access_token } = await tokenRes.json();
                 if (access_token) {
                   await fetch(
                     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${appt.google_event_id}?sendUpdates=all`,
-                    { method: 'DELETE', headers: { Authorization: `Bearer ${access_token}` } }
-                  )
+                    { method: 'DELETE', headers: { Authorization: `Bearer ${access_token}` } },
+                  );
                 }
               }
             }
-          } catch { /* best-effort */ }
+          } catch {
+            /* best-effort — Fase 5 */
+          }
         }
 
-        // Revert package session if applicable
-        // AUDIT FIX 2026-04-28 (C-6): RPC con FOR UPDATE en lugar de read-modify-write.
+        // FASE 5: package restore — keep on Supabase
         if (appt.package_id) {
           const { error: rpcErr } = await admin.rpc('restore_package_session', {
             p_appointment_id: consultation.appointment_id,
             p_reason: 'consultation_deleted',
-          })
-          if (rpcErr) console.warn('[consultations DELETE] restore_package_session failed:', rpcErr.message)
+          });
+          if (rpcErr)
+            log.warn('[consultations DELETE] restore_package_session failed', {
+              code: rpcErr.code,
+            });
         }
 
-        // Delete the linked appointment
-        await admin.from('appointments').delete().eq('id', consultation.appointment_id)
+        await admin.from('appointments').delete().eq('id', consultation.appointment_id);
       }
     }
 
     return NextResponse.json({
       success: true,
-      deleted: {
-        consultation: consultationId,
-        appointment: consultation.appointment_id || null,
-      },
-    })
-  } catch (err: any) {
-    console.error('[DELETE consultation] Error:', err)
-    return NextResponse.json({ error: err?.message || 'Error al eliminar' }, { status: 500 })
+      deleted: { consultation: consultationId, appointment: consultation.appointment_id || null },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error al eliminar';
+    log.error('[DELETE consultation]', { msg });
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
