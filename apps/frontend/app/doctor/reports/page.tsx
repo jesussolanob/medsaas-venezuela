@@ -1,54 +1,78 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { Download, Loader2, BarChart3, Calendar, User, FileBarChart, ArrowRight, X, Clock, UserX, Repeat } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import Link from 'next/link'
+import { useState, useEffect } from 'react';
+import {
+  Download,
+  Loader2,
+  BarChart3,
+  Calendar,
+  User,
+  FileBarChart,
+  ArrowRight,
+  X,
+  Clock,
+  UserX,
+  Repeat,
+} from 'lucide-react';
+import { createClient } from '@/lib/supabase/client'; // FASE 5: consultations with join, patients
+import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import Link from 'next/link';
 
 type ConsultationRecord = {
-  id: string
-  consultation_code: string
-  patient_name: string
-  patient_cedula?: string
-  chief_complaint: string
-  payment_method: string
-  amount: number
-  consultation_date: string
-  status?: string
-  payment_status?: string
-  duration_minutes?: number
-  patient_id?: string
-}
+  id: string;
+  consultation_code: string;
+  patient_name: string;
+  patient_cedula?: string;
+  chief_complaint: string;
+  payment_method: string;
+  amount: number;
+  consultation_date: string;
+  status?: string;
+  payment_status?: string;
+  duration_minutes?: number;
+  patient_id?: string;
+};
 
 export default function ReportsPage() {
-  const [consultations, setConsultations] = useState<ConsultationRecord[]>([])
-  const [loading, setLoading] = useState(true)
-  const [exporting, setExporting] = useState(false)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [filterError, setFilterError] = useState('')
-  const [appliedFrom, setAppliedFrom] = useState('')
-  const [appliedTo, setAppliedTo] = useState('')
-  const [hoursPerWeek, setHoursPerWeek] = useState<string>('—')
-  const [noShowRate, setNoShowRate] = useState<string>('—')
-  const [retention, setRetention] = useState<{ patients: number; percentage: string }>({ patients: 0, percentage: '—' })
+  const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [filterError, setFilterError] = useState('');
+  const [appliedFrom, setAppliedFrom] = useState('');
+  const [appliedTo, setAppliedTo] = useState('');
+  const [hoursPerWeek, setHoursPerWeek] = useState<string>('—');
+  const [noShowRate, setNoShowRate] = useState<string>('—');
+  const [retention, setRetention] = useState<{ patients: number; percentage: string }>({
+    patients: 0,
+    percentage: '—',
+  });
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
+    const supabase = createClient();
+    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: consultations join stays Supabase.
+    getDevDoctorId().then(async (id) => {
+      if (!id) return;
+      const user = { id };
 
       const { data } = await supabase
         .from('consultations')
-        .select('id, consultation_code, chief_complaint, payment_method, amount, consultation_date, status, payment_status, duration_minutes, patient_id, patients(full_name, id_number)')
+        .select(
+          'id, consultation_code, chief_complaint, payment_method, amount, consultation_date, status, payment_status, duration_minutes, patient_id, patients(full_name, id_number)',
+        )
         .eq('doctor_id', user.id)
-        .order('consultation_date', { ascending: false })
+        .order('consultation_date', { ascending: false });
 
-      const records: ConsultationRecord[] = (data ?? []).map(c => ({
+      const records: ConsultationRecord[] = (data ?? []).map((c) => ({
         id: c.id,
         consultation_code: c.consultation_code,
-        patient_name: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).full_name : 'Paciente desconocido',
-        patient_cedula: (!Array.isArray(c.patients) && c.patients) ? (c.patients as any).id_number : undefined,
+        patient_name:
+          !Array.isArray(c.patients) && c.patients
+            ? (c.patients as any).full_name
+            : 'Paciente desconocido',
+        patient_cedula:
+          !Array.isArray(c.patients) && c.patients ? (c.patients as any).id_number : undefined,
         chief_complaint: c.chief_complaint || '',
         payment_method: c.payment_method || 'No especificado',
         amount: c.amount || 0,
@@ -57,46 +81,46 @@ export default function ReportsPage() {
         payment_status: c.payment_status,
         duration_minutes: c.duration_minutes,
         patient_id: c.patient_id,
-      }))
-      setConsultations(records)
+      }));
+      setConsultations(records);
 
       // Calcular estadísticas
-      calculateStats(records, user.id, supabase)
-      setLoading(false)
-    })
-  }, [])
+      calculateStats(records, user.id, supabase);
+      setLoading(false);
+    });
+  }, []);
 
   const calculateStats = async (records: ConsultationRecord[], userId: string, supabase: any) => {
     // 1. Horas de consulta por semana
     try {
       if (records.length > 0) {
-        const totalMinutes = records.reduce((sum, c) => sum + (c.duration_minutes || 30), 0)
-        const totalHours = totalMinutes / 60
-        const weeks = new Set<string>()
-        records.forEach(c => {
-          const date = new Date(c.consultation_date)
-          const weekStart = new Date(date)
-          weekStart.setDate(date.getDate() - date.getDay())
-          weeks.add(weekStart.toISOString().split('T')[0])
-        })
-        const avgHoursPerWeek = weeks.size > 0 ? totalHours / weeks.size : 0
-        setHoursPerWeek(avgHoursPerWeek.toFixed(1))
+        const totalMinutes = records.reduce((sum, c) => sum + (c.duration_minutes || 30), 0);
+        const totalHours = totalMinutes / 60;
+        const weeks = new Set<string>();
+        records.forEach((c) => {
+          const date = new Date(c.consultation_date);
+          const weekStart = new Date(date);
+          weekStart.setDate(date.getDate() - date.getDay());
+          weeks.add(weekStart.toISOString().split('T')[0]);
+        });
+        const avgHoursPerWeek = weeks.size > 0 ? totalHours / weeks.size : 0;
+        setHoursPerWeek(avgHoursPerWeek.toFixed(1));
       }
     } catch (err) {
-      console.error('Error calculating hours:', err)
+      console.error('Error calculating hours:', err);
     }
 
     // 2. Tasa de no-show
     try {
-      const total = records.length
-      let noShow = records.filter(c => {
-        if (c.status) return c.status === 'cancelled' || c.status === 'no_show'
-        return c.payment_status !== 'paid' && new Date(c.consultation_date) < new Date()
-      }).length
-      const rate = total > 0 ? ((noShow / total) * 100).toFixed(1) : '0.0'
-      setNoShowRate(rate)
+      const total = records.length;
+      let noShow = records.filter((c) => {
+        if (c.status) return c.status === 'cancelled' || c.status === 'no_show';
+        return c.payment_status !== 'paid' && new Date(c.consultation_date) < new Date();
+      }).length;
+      const rate = total > 0 ? ((noShow / total) * 100).toFixed(1) : '0.0';
+      setNoShowRate(rate);
     } catch (err) {
-      console.error('Error calculating no-show rate:', err)
+      console.error('Error calculating no-show rate:', err);
     }
 
     // 3. Retención de pacientes
@@ -104,121 +128,121 @@ export default function ReportsPage() {
       const { data: allConsultations } = await supabase
         .from('consultations')
         .select('patient_id')
-        .eq('doctor_id', userId)
+        .eq('doctor_id', userId);
 
       if (allConsultations && allConsultations.length > 0) {
-        const patientCounts = {} as Record<string, number>
+        const patientCounts = {} as Record<string, number>;
         allConsultations.forEach((c: any) => {
           if (c.patient_id) {
-            patientCounts[c.patient_id] = (patientCounts[c.patient_id] || 0) + 1
+            patientCounts[c.patient_id] = (patientCounts[c.patient_id] || 0) + 1;
           }
-        })
+        });
 
-        const totalPatients = Object.keys(patientCounts).length
-        const returning = Object.values(patientCounts).filter(count => count >= 2).length
-        const pct = totalPatients > 0 ? ((returning / totalPatients) * 100).toFixed(0) : '0'
-        setRetention({ patients: returning, percentage: pct })
+        const totalPatients = Object.keys(patientCounts).length;
+        const returning = Object.values(patientCounts).filter((count) => count >= 2).length;
+        const pct = totalPatients > 0 ? ((returning / totalPatients) * 100).toFixed(0) : '0';
+        setRetention({ patients: returning, percentage: pct });
       }
     } catch (err) {
-      console.error('Error calculating retention:', err)
+      console.error('Error calculating retention:', err);
     }
-  }
+  };
 
   const getFilteredRecords = (records: ConsultationRecord[], from: string, to: string) => {
-    let filtered = records
+    let filtered = records;
     if (from) {
-      const fromDate = new Date(from)
-      filtered = filtered.filter(c => new Date(c.consultation_date) >= fromDate)
+      const fromDate = new Date(from);
+      filtered = filtered.filter((c) => new Date(c.consultation_date) >= fromDate);
     }
     if (to) {
-      const toDate = new Date(to)
-      toDate.setHours(23, 59, 59)
-      filtered = filtered.filter(c => new Date(c.consultation_date) <= toDate)
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59);
+      filtered = filtered.filter((c) => new Date(c.consultation_date) <= toDate);
     }
-    return filtered
-  }
+    return filtered;
+  };
 
   const recalculateStatsWithFilter = (from: string, to: string) => {
-    const filtered = getFilteredRecords(consultations, from, to)
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) calculateStats(filtered, user.id, supabase)
-    })
-  }
+    const filtered = getFilteredRecords(consultations, from, to);
+    const supabase = createClient();
+    getDevDoctorId().then((id) => {
+      if (id) calculateStats(filtered, id, supabase);
+    });
+  };
 
   const applyFilter = () => {
-    setFilterError('')
+    setFilterError('');
     if (dateFrom && dateTo) {
-      const from = new Date(dateFrom)
-      const to = new Date(dateTo)
+      const from = new Date(dateFrom);
+      const to = new Date(dateTo);
       if (from > to) {
-        setFilterError('La fecha "Desde" no puede ser mayor que "Hasta"')
-        return
+        setFilterError('La fecha "Desde" no puede ser mayor que "Hasta"');
+        return;
       }
     }
-    setAppliedFrom(dateFrom)
-    setAppliedTo(dateTo)
-    recalculateStatsWithFilter(dateFrom, dateTo)
-  }
+    setAppliedFrom(dateFrom);
+    setAppliedTo(dateTo);
+    recalculateStatsWithFilter(dateFrom, dateTo);
+  };
 
   const clearFilter = () => {
-    setDateFrom('')
-    setDateTo('')
-    setAppliedFrom('')
-    setAppliedTo('')
-    setFilterError('')
-    recalculateStatsWithFilter('', '')
-  }
+    setDateFrom('');
+    setDateTo('');
+    setAppliedFrom('');
+    setAppliedTo('');
+    setFilterError('');
+    recalculateStatsWithFilter('', '');
+  };
 
   const setPreset = (preset: string) => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    let from: Date, to: Date
+    let from: Date, to: Date;
 
     switch (preset) {
       case 'today':
-        from = new Date(today)
-        to = new Date(today)
-        break
+        from = new Date(today);
+        to = new Date(today);
+        break;
       case 'last7':
-        from = new Date(today)
-        from.setDate(from.getDate() - 7)
-        to = new Date(today)
-        break
+        from = new Date(today);
+        from.setDate(from.getDate() - 7);
+        to = new Date(today);
+        break;
       case 'thisMonth':
-        from = new Date(today.getFullYear(), today.getMonth(), 1)
-        to = new Date(today)
-        break
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+        to = new Date(today);
+        break;
       case 'last30':
-        from = new Date(today)
-        from.setDate(from.getDate() - 30)
-        to = new Date(today)
-        break
+        from = new Date(today);
+        from.setDate(from.getDate() - 30);
+        to = new Date(today);
+        break;
       default:
-        return
+        return;
     }
 
-    const formatDate = (d: Date) => d.toISOString().split('T')[0]
-    setDateFrom(formatDate(from))
-    setDateTo(formatDate(to))
-  }
+    const formatDate = (d: Date) => d.toISOString().split('T')[0];
+    setDateFrom(formatDate(from));
+    setDateTo(formatDate(to));
+  };
 
   function exportToCSV() {
-    if (consultations.length === 0) return
+    if (consultations.length === 0) return;
 
-    setExporting(true)
+    setExporting(true);
 
     // Filtrar por fechas aplicadas
-    let filtered = consultations
+    let filtered = consultations;
     if (appliedFrom) {
-      const fromDate = new Date(appliedFrom)
-      filtered = filtered.filter(c => new Date(c.consultation_date) >= fromDate)
+      const fromDate = new Date(appliedFrom);
+      filtered = filtered.filter((c) => new Date(c.consultation_date) >= fromDate);
     }
     if (appliedTo) {
-      const toDate = new Date(appliedTo)
-      toDate.setHours(23, 59, 59)
-      filtered = filtered.filter(c => new Date(c.consultation_date) <= toDate)
+      const toDate = new Date(appliedTo);
+      toDate.setHours(23, 59, 59);
+      filtered = filtered.filter((c) => new Date(c.consultation_date) <= toDate);
     }
 
     // Encabezados
@@ -229,43 +253,46 @@ export default function ReportsPage() {
       'Motivo',
       'Forma de pago',
       'Monto (USD)',
-      'Fecha'
-    ]
+      'Fecha',
+    ];
 
     // Filas
-    const rows = filtered.map(c => [
+    const rows = filtered.map((c) => [
       c.consultation_code,
       c.patient_name,
       c.patient_cedula || '—',
       c.chief_complaint,
       c.payment_method,
       c.amount.toFixed(2),
-      new Date(c.consultation_date).toLocaleDateString('es-VE')
-    ])
+      new Date(c.consultation_date).toLocaleDateString('es-VE'),
+    ]);
 
     // Crear CSV
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n')
+      ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
 
     // Descargar
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    link.setAttribute('href', url)
-    link.setAttribute('download', `Reporte_Consultas_${new Date().toISOString().split('T')[0]}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute(
+      'download',
+      `Reporte_Consultas_${new Date().toISOString().split('T')[0]}.csv`,
+    );
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-    setExporting(false)
+    setExporting(false);
   }
 
-  const displayRecords = getFilteredRecords(consultations, appliedFrom, appliedTo)
-  const filteredCount = displayRecords.length
-  const totalAmount = displayRecords.reduce((sum, c) => sum + c.amount, 0)
+  const displayRecords = getFilteredRecords(consultations, appliedFrom, appliedTo);
+  const filteredCount = displayRecords.length;
+  const totalAmount = displayRecords.reduce((sum, c) => sum + c.amount, 0);
 
   return (
     <>
@@ -277,7 +304,9 @@ export default function ReportsPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
             <FileBarChart className="w-5 h-5 text-teal-500" /> <span>Reportería de Consultas</span>
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Exporta datos de tus consultas a CSV para análisis en Excel</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Exporta datos de tus consultas a CSV para análisis en Excel
+          </p>
         </div>
 
         {/* New KPI Cards */}
@@ -314,7 +343,9 @@ export default function ReportsPage() {
                 <Repeat className="w-5 h-5 text-teal-500" />
               </div>
               <div className="flex-1">
-                <p className="text-xs font-semibold text-slate-500 uppercase">Retención de pacientes</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase">
+                  Retención de pacientes
+                </p>
                 <p className="text-2xl font-bold text-slate-900 mt-1">{retention.patients}</p>
                 <p className="text-xs text-slate-500 mt-1">pacientes · {retention.percentage}%</p>
               </div>
@@ -331,8 +362,12 @@ export default function ReportsPage() {
               </div>
               <span className="text-xs font-bold text-slate-400 uppercase">Total</span>
             </div>
-            <p className="text-2xl font-bold text-slate-900">{(appliedFrom || appliedTo) ? filteredCount : consultations.length}</p>
-            <p className="text-xs text-slate-500 mt-1">{(appliedFrom || appliedTo) ? 'Consultas en rango' : 'Consultas registradas'}</p>
+            <p className="text-2xl font-bold text-slate-900">
+              {appliedFrom || appliedTo ? filteredCount : consultations.length}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              {appliedFrom || appliedTo ? 'Consultas en rango' : 'Consultas registradas'}
+            </p>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
@@ -378,7 +413,7 @@ export default function ReportsPage() {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
+                onChange={(e) => setDateFrom(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
               />
             </div>
@@ -387,15 +422,13 @@ export default function ReportsPage() {
               <input
                 type="date"
                 value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
+                onChange={(e) => setDateTo(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
               />
             </div>
           </div>
 
-          {filterError && (
-            <p className="text-xs text-red-600 font-medium">{filterError}</p>
-          )}
+          {filterError && <p className="text-xs text-red-600 font-medium">{filterError}</p>}
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -436,7 +469,8 @@ export default function ReportsPage() {
 
           {(appliedFrom || appliedTo) && (
             <p className="text-xs text-slate-600 bg-teal-50 px-3 py-2 rounded-lg border border-teal-200">
-              Filtro activo: {appliedFrom && `desde ${new Date(appliedFrom).toLocaleDateString('es-VE')}`}
+              Filtro activo:{' '}
+              {appliedFrom && `desde ${new Date(appliedFrom).toLocaleDateString('es-VE')}`}
               {appliedFrom && appliedTo && ' '}
               {appliedTo && `hasta ${new Date(appliedTo).toLocaleDateString('es-VE')}`}
             </p>
@@ -468,46 +502,59 @@ export default function ReportsPage() {
         ) : displayRecords.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl py-12 text-center">
             <BarChart3 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-            <p className="text-slate-500 font-semibold">{(appliedFrom || appliedTo) ? 'Sin consultas en el rango seleccionado' : 'Sin consultas registradas'}</p>
+            <p className="text-slate-500 font-semibold">
+              {appliedFrom || appliedTo
+                ? 'Sin consultas en el rango seleccionado'
+                : 'Sin consultas registradas'}
+            </p>
           </div>
         ) : (
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-xs sm:text-sm min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="px-5 py-3 text-left font-semibold text-slate-700">ID Consulta</th>
-                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Paciente</th>
-                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Cédula</th>
-                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Motivo</th>
-                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Pago</th>
-                    <th className="px-5 py-3 text-right font-semibold text-slate-700">Monto</th>
-                    <th className="px-5 py-3 text-left font-semibold text-slate-700">Fecha</th>
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">ID Consulta</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Paciente</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Cédula</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Motivo</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Pago</th>
+                  <th className="px-5 py-3 text-right font-semibold text-slate-700">Monto</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayRecords.map((c, i) => (
+                  <tr
+                    key={c.id}
+                    className={`border-b border-slate-100 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}
+                  >
+                    <td className="px-5 py-3">
+                      <Link
+                        href={`/doctor/consultations?id=${c.id}`}
+                        className="font-mono text-teal-600 hover:text-teal-700 underline transition-colors"
+                      >
+                        {c.consultation_code}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3 font-medium text-slate-900">{c.patient_name}</td>
+                    <td className="px-5 py-3 text-slate-600">{c.patient_cedula || '—'}</td>
+                    <td className="px-5 py-3 text-slate-600">{c.chief_complaint}</td>
+                    <td className="px-5 py-3 text-xs bg-slate-100 rounded px-2 py-1 inline-block text-slate-700 font-semibold">
+                      {c.payment_method}
+                    </td>
+                    <td className="px-5 py-3 text-right font-semibold text-emerald-600">
+                      ${c.amount.toFixed(2)}
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {new Date(c.consultation_date).toLocaleDateString('es-VE')}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {displayRecords.map((c, i) => (
-                    <tr key={c.id} className={`border-b border-slate-100 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                      <td className="px-5 py-3">
-                        <Link
-                          href={`/doctor/consultations?id=${c.id}`}
-                          className="font-mono text-teal-600 hover:text-teal-700 underline transition-colors"
-                        >
-                          {c.consultation_code}
-                        </Link>
-                      </td>
-                      <td className="px-5 py-3 font-medium text-slate-900">{c.patient_name}</td>
-                      <td className="px-5 py-3 text-slate-600">{c.patient_cedula || '—'}</td>
-                      <td className="px-5 py-3 text-slate-600">{c.chief_complaint}</td>
-                      <td className="px-5 py-3 text-xs bg-slate-100 rounded px-2 py-1 inline-block text-slate-700 font-semibold">{c.payment_method}</td>
-                      <td className="px-5 py-3 text-right font-semibold text-emerald-600">${c.amount.toFixed(2)}</td>
-                      <td className="px-5 py-3 text-slate-600">{new Date(c.consultation_date).toLocaleDateString('es-VE')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
     </>
-  )
+  );
 }

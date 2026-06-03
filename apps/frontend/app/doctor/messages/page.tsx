@@ -1,54 +1,53 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase-client'
-import { MessageCircle, AlertCircle, Search } from 'lucide-react'
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase-client'; // FASE 5: patient_messages
+import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import { MessageCircle, AlertCircle, Search } from 'lucide-react';
 
 interface Conversation {
-  patient_id: string
-  patient_name: string
-  last_message: string
-  last_message_time: string
-  unread_count: number
+  patient_id: string;
+  patient_name: string;
+  last_message: string;
+  last_message_time: string;
+  unread_count: number;
 }
 
 interface Message {
-  id: string
-  body: string
-  direction: string
-  created_at: string
-  read_at?: string
+  id: string;
+  body: string;
+  direction: string;
+  created_at: string;
+  read_at?: string;
 }
 
 interface Patient {
-  id: string
-  full_name: string
-  phone: string
-  cedula: string
+  id: string;
+  full_name: string;
+  phone: string;
+  cedula: string;
 }
 
 export default function DoctorMessagesPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
-  const [newMessage, setNewMessage] = useState('')
-  const [patient, setPatient] = useState<Patient | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [doctorId, setDoctorId] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [sendingMessage, setSendingMessage] = useState(false)
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   useEffect(() => {
-    // Obtener doctor ID de sesión Supabase (si está autenticado)
-    const getSession = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.id) {
-        setDoctorId(user.id)
-        loadConversations(user.id)
+    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: patient_messages stays Supabase.
+    getDevDoctorId().then((id) => {
+      if (id) {
+        setDoctorId(id);
+        loadConversations(id);
       }
-    }
-    getSession()
-  }, [])
+    });
+  }, []);
 
   const loadConversations = async (dId: string) => {
     try {
@@ -57,13 +56,13 @@ export default function DoctorMessagesPage() {
         .from('patient_messages')
         .select('patient_id, body, created_at')
         .eq('doctor_id', dId)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (msgs) {
-        const grouped: Record<string, any> = {}
+        const grouped: Record<string, any> = {};
         for (const msg of msgs) {
           if (!grouped[msg.patient_id]) {
-            grouped[msg.patient_id] = msg
+            grouped[msg.patient_id] = msg;
           }
         }
 
@@ -71,31 +70,31 @@ export default function DoctorMessagesPage() {
         const { data: patients } = await supabase
           .from('patients')
           .select('id, full_name')
-          .in('id', Object.keys(grouped))
+          .in('id', Object.keys(grouped));
 
-        const convs: Conversation[] = []
+        const convs: Conversation[] = [];
         for (const patId in grouped) {
-          const pat = patients?.find((p) => p.id === patId)
+          const pat = patients?.find((p) => p.id === patId);
           convs.push({
             patient_id: patId,
             patient_name: pat?.full_name || 'Paciente desconocido',
             last_message: grouped[patId].body,
             last_message_time: grouped[patId].created_at,
             unread_count: 0,
-          })
+          });
         }
 
-        setConversations(convs)
-        setLoading(false)
+        setConversations(convs);
+        setLoading(false);
       }
     } catch (err) {
-      console.error('Error cargando conversaciones:', err)
-      setLoading(false)
+      console.error('Error cargando conversaciones:', err);
+      setLoading(false);
     }
-  }
+  };
 
   const handleSelectConversation = async (patientId: string) => {
-    setSelectedPatientId(patientId)
+    setSelectedPatientId(patientId);
 
     // Cargar mensajes
     const { data: msgs } = await supabase
@@ -103,18 +102,18 @@ export default function DoctorMessagesPage() {
       .select('id, body, direction, created_at, read_at')
       .eq('patient_id', patientId)
       .eq('doctor_id', doctorId!)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: true });
 
-    if (msgs) setMessages(msgs)
+    if (msgs) setMessages(msgs);
 
     // Cargar datos del paciente
     const { data: pat } = await supabase
       .from('patients')
       .select('id, full_name, phone, cedula')
       .eq('id', patientId)
-      .single()
+      .single();
 
-    if (pat) setPatient(pat)
+    if (pat) setPatient(pat);
 
     // Marcar como leído
     if (doctorId) {
@@ -123,24 +122,24 @@ export default function DoctorMessagesPage() {
         .update({ read_at: new Date().toISOString() })
         .eq('patient_id', patientId)
         .eq('doctor_id', doctorId)
-        .is('read_at', true)
+        .is('read_at', true);
     }
-  }
+  };
 
   const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newMessage.trim() || !selectedPatientId || !doctorId) return
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedPatientId || !doctorId) return;
 
-    setSendingMessage(true)
+    setSendingMessage(true);
     try {
       await supabase.from('patient_messages').insert({
         patient_id: selectedPatientId,
         doctor_id: doctorId,
         body: newMessage.trim(),
         direction: 'doctor_to_patient',
-      })
+      });
 
-      setNewMessage('')
+      setNewMessage('');
 
       // Recargar mensajes
       const { data: msgs } = await supabase
@@ -148,21 +147,21 @@ export default function DoctorMessagesPage() {
         .select('id, body, direction, created_at, read_at')
         .eq('patient_id', selectedPatientId)
         .eq('doctor_id', doctorId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: true });
 
-      if (msgs) setMessages(msgs)
+      if (msgs) setMessages(msgs);
     } catch (err) {
-      console.error('Error enviando mensaje:', err)
+      console.error('Error enviando mensaje:', err);
     }
-    setSendingMessage(false)
-  }
+    setSendingMessage(false);
+  };
 
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <p className="text-slate-500">Cargando mensajes...</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -190,9 +189,7 @@ export default function DoctorMessagesPage() {
             </div>
           ) : (
             conversations
-              .filter((c) =>
-                c.patient_name.toLowerCase().includes(searchTerm.toLowerCase())
-              )
+              .filter((c) => c.patient_name.toLowerCase().includes(searchTerm.toLowerCase()))
               .map((conv) => (
                 <button
                   key={conv.patient_id}
@@ -287,5 +284,5 @@ export default function DoctorMessagesPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

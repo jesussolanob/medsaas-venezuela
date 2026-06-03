@@ -1,176 +1,192 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useBcvRate } from '@/lib/useBcvRate'
+import { useState, useEffect, useCallback } from 'react';
+// MIGRATED (Etapa 1): services CRUD → NestJS /api/doctor/services
 import {
-  Package, Plus, Pencil, Trash2, DollarSign, Clock,
-  Save, X, Loader2, ToggleLeft, ToggleRight, Eye, EyeOff, Tag,
-  FileText
-} from 'lucide-react'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
+  getDoctorServices,
+  createDoctorService,
+  updateDoctorService,
+  deleteDoctorService,
+  toggleDoctorService,
+} from './actions';
+import { useBcvRate } from '@/lib/useBcvRate';
+import {
+  Package,
+  Plus,
+  Pencil,
+  Trash2,
+  DollarSign,
+  Clock,
+  Save,
+  X,
+  Loader2,
+  ToggleLeft,
+  ToggleRight,
+  Eye,
+  EyeOff,
+  Tag,
+  FileText,
+} from 'lucide-react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 type ServiceItem = {
-  id: string
-  name: string
-  price_usd: number
-  duration_minutes: number
-  sessions_count: number
-  is_active: boolean
-  show_in_booking: boolean
-  description: string
-  type: 'plan' | 'service'
-}
+  id: string;
+  name: string;
+  price_usd: number;
+  duration_minutes: number;
+  sessions_count: number;
+  is_active: boolean;
+  show_in_booking: boolean;
+  description: string;
+  type: 'plan' | 'service';
+};
 
-
-const inp = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white'
+const inp =
+  'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white';
 
 export default function ServicesPage() {
-  const { rate: bcvRate, toBs } = useBcvRate()
-  const [items, setItems] = useState<ServiceItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing] = useState<ServiceItem | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'plan' | 'service'>('all')
+  const { rate: bcvRate, toBs } = useBcvRate();
+  const [items, setItems] = useState<ServiceItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<ServiceItem | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'plan' | 'service'>('all');
   // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: 'service' } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: 'service' } | null>(null);
 
   // Form state
-  const [name, setName] = useState('')
-  const [priceUsd, setPriceUsd] = useState('')
-  const [durationMinutes, setDurationMinutes] = useState('30')
-  const [sessionsCount, setSessionsCount] = useState('1')
-  const [description, setDescription] = useState('')
-  const [type, setType] = useState<'plan' | 'service'>('plan')
-  const [showInBooking, setShowInBooking] = useState(true)
+  const [name, setName] = useState('');
+  const [priceUsd, setPriceUsd] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState('30');
+  const [sessionsCount, setSessionsCount] = useState('1');
+  const [description, setDescription] = useState('');
+  const [type, setType] = useState<'plan' | 'service'>('plan');
+  const [showInBooking, setShowInBooking] = useState(true);
 
   // Quick items (Prescripciones = exams, Recetas = medications)
   // RONDA 31: states de quick items (prescripciones / recetas) removidos.
   // La logica se reestructurara en otra ronda.
 
   const fetchServices = useCallback(async () => {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    // MIGRATED (Etapa 1): GET /api/doctor/services → NestJS backend
+    const data = await getDoctorServices();
+    setItems(
+      data.map((d) => ({
+        id: d.id,
+        name: d.name,
+        price_usd: d.price_usd,
+        duration_minutes: d.duration_minutes,
+        sessions_count: d.sessions_count ?? 1,
+        is_active: d.is_active,
+        show_in_booking: d.is_active ?? true, // use is_active as proxy (backend field)
+        description: '',
+        type: 'plan' as const,
+      })),
+    );
+    setLoading(false);
+  }, []);
 
-    const { data } = await supabase
-      .from('pricing_plans')
-      .select('*')
-      .eq('doctor_id', user.id)
-      .order('created_at', { ascending: true })
-
-    setItems((data || []).map(d => ({
-      ...d,
-      show_in_booking: d.show_in_booking ?? true,
-      description: d.description || '',
-      type: d.type || 'plan',
-    })))
-
-    // RONDA 31: fetch de doctor_quick_items removido. Se reestructurara la logica
-    // de prescripciones/recetas en una ronda futura.
-
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { fetchServices() }, [fetchServices])
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
 
   // RONDA 31: addQuickItem/deleteQuickItem removidos en main; el catálogo
   // doctor_quick_items se reestructurará. ConfirmDialog conserva el kind
   // 'quick' por si se reactiva más adelante.
 
   function openNew(itemType: 'plan' | 'service' = 'plan') {
-    setEditing(null)
-    setName('')
-    setPriceUsd('')
-    setDurationMinutes('30')
-    setSessionsCount('1')
-    setDescription('')
-    setType(itemType)
-    setShowInBooking(true)
-    setShowForm(true)
+    setEditing(null);
+    setName('');
+    setPriceUsd('');
+    setDurationMinutes('30');
+    setSessionsCount('1');
+    setDescription('');
+    setType(itemType);
+    setShowInBooking(true);
+    setShowForm(true);
   }
 
   function openEdit(item: ServiceItem) {
-    setEditing(item)
-    setName(item.name)
-    setPriceUsd(item.price_usd.toString())
-    setDurationMinutes(item.duration_minutes.toString())
-    setSessionsCount(item.sessions_count.toString())
-    setDescription(item.description)
-    setType(item.type)
-    setShowInBooking(item.show_in_booking)
-    setShowForm(true)
+    setEditing(item);
+    setName(item.name);
+    setPriceUsd(item.price_usd.toString());
+    setDurationMinutes(item.duration_minutes.toString());
+    setSessionsCount(item.sessions_count.toString());
+    setDescription(item.description);
+    setType(item.type);
+    setShowInBooking(item.show_in_booking);
+    setShowForm(true);
   }
 
   function closeForm() {
-    setShowForm(false)
-    setEditing(null)
+    setShowForm(false);
+    setEditing(null);
   }
 
   async function handleSave() {
     if (!name.trim() || !priceUsd) {
-      alert('Nombre y precio son obligatorios')
-      return
+      alert('Nombre y precio son obligatorios');
+      return;
     }
-    setSaving(true)
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
+    setSaving(true);
+    // MIGRATED (Etapa 1): POST/PUT /api/doctor/services → NestJS backend
     const payload = {
-      doctor_id: user.id,
       name: name.trim(),
       price_usd: parseFloat(priceUsd) || 0,
       duration_minutes: parseInt(durationMinutes) || 30,
       sessions_count: parseInt(sessionsCount) || 1,
-      description: description.trim(),
+      description: description.trim() || null,
       type,
       show_in_booking: showInBooking,
-      is_active: true,
-    }
+    };
 
+    let result;
     if (editing) {
-      await supabase.from('pricing_plans').update(payload).eq('id', editing.id)
+      result = await updateDoctorService(editing.id, payload);
     } else {
-      await supabase.from('pricing_plans').insert(payload)
+      result = await createDoctorService(payload);
     }
 
-    setSaving(false)
-    closeForm()
-    fetchServices()
+    if (!result.success) {
+      alert(result.error);
+    }
+
+    setSaving(false);
+    closeForm();
+    fetchServices();
   }
 
   function handleDelete(id: string) {
-    setConfirmDelete({ id, kind: 'service' })
+    setConfirmDelete({ id, kind: 'service' });
   }
   async function performDeleteService(id: string) {
-    const supabase = createClient()
-    await supabase.from('pricing_plans').delete().eq('id', id)
-    setConfirmDelete(null)
-    fetchServices()
+    // MIGRATED (Etapa 1): DELETE /api/doctor/services/:id → NestJS backend
+    await deleteDoctorService(id);
+    setConfirmDelete(null);
+    fetchServices();
   }
 
   async function toggleBooking(item: ServiceItem) {
-    const supabase = createClient()
-    await supabase.from('pricing_plans').update({ show_in_booking: !item.show_in_booking }).eq('id', item.id)
-    fetchServices()
+    // MIGRATED (Etapa 1): PUT /api/doctor/services/:id → NestJS backend
+    await toggleDoctorService(item.id, 'show_in_booking', !item.show_in_booking);
+    fetchServices();
   }
 
   async function toggleActive(item: ServiceItem) {
-    const supabase = createClient()
-    await supabase.from('pricing_plans').update({ is_active: !item.is_active }).eq('id', item.id)
-    fetchServices()
+    // MIGRATED (Etapa 1): PUT /api/doctor/services/:id → NestJS backend
+    await toggleDoctorService(item.id, 'is_active', !item.is_active);
+    fetchServices();
   }
 
-  const filtered = items.filter(i => filter === 'all' || i.type === filter)
+  const filtered = items.filter((i) => filter === 'all' || i.type === filter);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
       </div>
-    )
+    );
   }
 
   return (
@@ -182,8 +198,8 @@ export default function ServicesPage() {
         confirmLabel="Eliminar"
         variant="danger"
         onConfirm={() => {
-          if (!confirmDelete) return
-          performDeleteService(confirmDelete.id)
+          if (!confirmDelete) return;
+          performDeleteService(confirmDelete.id);
         }}
         onCancel={() => setConfirmDelete(null)}
       />
@@ -193,7 +209,11 @@ export default function ServicesPage() {
         <div className="min-w-0">
           <h1
             className="font-semibold tracking-tight"
-            style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+            style={{
+              fontFamily: 'var(--dh-font-display)',
+              fontSize: 'clamp(22px, 3.2vw, 32px)',
+              color: 'var(--dh-ink)',
+            }}
           >
             Servicios y Planes
           </h1>
@@ -206,17 +226,29 @@ export default function ServicesPage() {
             onClick={() => openNew('plan')}
             className="flex items-center gap-2 text-white text-[13px] font-bold px-5 py-2.5 rounded-full transition-all hover:-translate-y-px"
             style={{ background: 'var(--dh-turquoise)' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-turquoise-700)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--dh-turquoise)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--dh-turquoise-700)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--dh-turquoise)';
+            }}
           >
             <Plus className="w-4 h-4" /> Plan de consulta
           </button>
           <button
             onClick={() => openNew('service')}
             className="flex items-center gap-2 text-[13px] font-bold px-5 py-2.5 rounded-full transition-all"
-            style={{ border: '1.5px solid var(--dh-turquoise-100)', color: 'var(--dh-turquoise-700)', background: 'white' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-turquoise-50)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'white' }}
+            style={{
+              border: '1.5px solid var(--dh-turquoise-100)',
+              color: 'var(--dh-turquoise-700)',
+              background: 'white',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--dh-turquoise-50)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'white';
+            }}
           >
             <Plus className="w-4 h-4" /> Servicio extra
           </button>
@@ -229,7 +261,7 @@ export default function ServicesPage() {
           { key: 'all', label: 'Todos' },
           { key: 'plan', label: 'Planes' },
           { key: 'service', label: 'Servicios' },
-        ].map(f => (
+        ].map((f) => (
           <button
             key={f.key}
             onClick={() => setFilter(f.key as any)}
@@ -249,20 +281,27 @@ export default function ServicesPage() {
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
           <Package className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <p className="text-sm font-medium text-slate-500">No tienes servicios configurados</p>
-          <p className="text-xs text-slate-400 mt-1">Agrega planes de consulta o servicios extras</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Agrega planes de consulta o servicios extras
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(item => (
-            <div key={item.id} className={`bg-white border rounded-xl p-5 transition-all ${item.is_active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
+          {filtered.map((item) => (
+            <div
+              key={item.id}
+              className={`bg-white border rounded-xl p-5 transition-all ${item.is_active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}
+            >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                      item.type === 'plan'
-                        ? 'bg-teal-50 text-teal-600 border border-teal-200'
-                        : 'bg-purple-50 text-purple-600 border border-purple-200'
-                    }`}>
+                    <span
+                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                        item.type === 'plan'
+                          ? 'bg-teal-50 text-teal-600 border border-teal-200'
+                          : 'bg-purple-50 text-purple-600 border border-purple-200'
+                      }`}
+                    >
                       {item.type === 'plan' ? 'Plan' : 'Servicio'}
                     </span>
                   </div>
@@ -278,11 +317,16 @@ export default function ServicesPage() {
                   que el paciente paga el total, no solo el precio unitario. */}
               <div className="mb-3">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-xl font-bold text-teal-600">${item.price_usd.toFixed(2)}</span>
+                  <span className="text-xl font-bold text-teal-600">
+                    ${item.price_usd.toFixed(2)}
+                  </span>
                   <span className="text-xs text-slate-400">USD</span>
                   {item.sessions_count > 1 && (
                     <span className="text-xs text-slate-500 ml-1">
-                      × {item.sessions_count} = <span className="font-semibold text-slate-700">${(item.price_usd * item.sessions_count).toFixed(2)}</span>
+                      × {item.sessions_count} ={' '}
+                      <span className="font-semibold text-slate-700">
+                        ${(item.price_usd * item.sessions_count).toFixed(2)}
+                      </span>
                     </span>
                   )}
                 </div>
@@ -303,7 +347,8 @@ export default function ServicesPage() {
                 {item.sessions_count > 1 && (
                   <div className="flex items-center gap-1">
                     <Tag className="w-3 h-3" />
-                    {item.sessions_count} sesiones — ${(item.price_usd * item.sessions_count).toFixed(2)} total
+                    {item.sessions_count} sesiones — $
+                    {(item.price_usd * item.sessions_count).toFixed(2)} total
                   </div>
                 )}
               </div>
@@ -311,34 +356,45 @@ export default function ServicesPage() {
               {/* Booking toggle */}
               <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-slate-50 border border-slate-100 mb-3">
                 <div className="flex items-center gap-2">
-                  {item.show_in_booking ? <Eye className="w-3.5 h-3.5 text-teal-500" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+                  {item.show_in_booking ? (
+                    <Eye className="w-3.5 h-3.5 text-teal-500" />
+                  ) : (
+                    <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                  )}
                   <span className="text-xs font-medium text-slate-600">Visible en booking</span>
                 </div>
                 <button onClick={() => toggleBooking(item)}>
-                  {item.show_in_booking
-                    ? <ToggleRight className="w-5 h-5 text-teal-500" />
-                    : <ToggleLeft className="w-5 h-5 text-slate-300" />
-                  }
+                  {item.show_in_booking ? (
+                    <ToggleRight className="w-5 h-5 text-teal-500" />
+                  ) : (
+                    <ToggleLeft className="w-5 h-5 text-slate-300" />
+                  )}
                 </button>
               </div>
 
               {/* Actions */}
               <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                <button onClick={() => toggleActive(item)}
+                <button
+                  onClick={() => toggleActive(item)}
                   className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
                     item.is_active
                       ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
                       : 'text-slate-400 bg-slate-50 hover:bg-slate-100'
-                  }`}>
+                  }`}
+                >
                   {item.is_active ? 'Activo' : 'Inactivo'}
                 </button>
                 <div className="flex-1" />
-                <button onClick={() => openEdit(item)}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                <button
+                  onClick={() => openEdit(item)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                >
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button onClick={() => handleDelete(item.id)}
-                  className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -353,8 +409,14 @@ export default function ServicesPage() {
 
       {/* Form modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={closeForm}>
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={closeForm}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
               <h3 className="text-base font-bold text-slate-900">
                 {editing ? 'Editar' : 'Nuevo'} {type === 'plan' ? 'plan de consulta' : 'servicio'}
@@ -372,7 +434,7 @@ export default function ServicesPage() {
                   {[
                     { value: 'plan', label: 'Plan de consulta', desc: 'Consulta médica' },
                     { value: 'service', label: 'Servicio extra', desc: 'Limpieza, examen, etc.' },
-                  ].map(opt => (
+                  ].map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
@@ -383,7 +445,11 @@ export default function ServicesPage() {
                           : 'border-slate-200 hover:border-slate-300'
                       }`}
                     >
-                      <p className={`text-xs font-bold ${type === opt.value ? 'text-teal-700' : 'text-slate-700'}`}>{opt.label}</p>
+                      <p
+                        className={`text-xs font-bold ${type === opt.value ? 'text-teal-700' : 'text-slate-700'}`}
+                      >
+                        {opt.label}
+                      </p>
                       <p className="text-[10px] text-slate-400 mt-0.5">{opt.desc}</p>
                     </button>
                   ))}
@@ -391,26 +457,47 @@ export default function ServicesPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">Nombre <span className="text-red-400">*</span></label>
-                <input value={name} onChange={e => setName(e.target.value)}
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Nombre <span className="text-red-400">*</span>
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder={type === 'plan' ? 'Consulta general' : 'Limpieza dental'}
-                  className={inp} />
+                  className={inp}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Precio USD <span className="text-red-400">*</span></label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                    Precio USD <span className="text-red-400">*</span>
+                  </label>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="number" step="0.01" value={priceUsd} onChange={e => setPriceUsd(e.target.value)}
-                      placeholder="30.00" className={inp + ' pl-9'} />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={priceUsd}
+                      onChange={(e) => setPriceUsd(e.target.value)}
+                      placeholder="30.00"
+                      className={inp + ' pl-9'}
+                    />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Duración (min)</label>
-                  <select value={durationMinutes} onChange={e => setDurationMinutes(e.target.value)} className={inp}>
-                    {[15, 20, 30, 45, 60, 90, 120].map(d => (
-                      <option key={d} value={d}>{d} minutos</option>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                    Duración (min)
+                  </label>
+                  <select
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(e.target.value)}
+                    className={inp}
+                  >
+                    {[15, 20, 30, 45, 60, 90, 120].map((d) => (
+                      <option key={d} value={d}>
+                        {d} minutos
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -418,62 +505,91 @@ export default function ServicesPage() {
 
               {type === 'plan' && (
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Sesiones incluidas</label>
-                  <input type="number" min="1" value={sessionsCount} onChange={e => setSessionsCount(e.target.value)}
-                    placeholder="1" className={inp} />
-                  <p className="text-[10px] text-slate-400 mt-1">Si es un paquete, pon el número de sesiones que incluye</p>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                    Sesiones incluidas
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={sessionsCount}
+                    onChange={(e) => setSessionsCount(e.target.value)}
+                    placeholder="1"
+                    className={inp}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Si es un paquete, pon el número de sesiones que incluye
+                  </p>
                   {/* L4 (2026-04-29): preview del total del paquete en tiempo real
                       cuando hay >1 sesion. Asi el doctor ve cuanto cobrara en total. */}
                   {(() => {
-                    const p = parseFloat(priceUsd) || 0
-                    const s = parseInt(sessionsCount) || 1
+                    const p = parseFloat(priceUsd) || 0;
+                    const s = parseInt(sessionsCount) || 1;
                     if (s > 1 && p > 0) {
-                      const total = p * s
+                      const total = p * s;
                       return (
                         <div className="mt-2 px-3 py-2 rounded-lg bg-teal-50 border border-teal-100">
                           <p className="text-xs font-semibold text-teal-700">
                             Total del paquete: ${total.toFixed(2)}{' '}
-                            <span className="font-normal text-teal-600">(= ${p.toFixed(2)} USD × {s} sesiones)</span>
+                            <span className="font-normal text-teal-600">
+                              (= ${p.toFixed(2)} USD × {s} sesiones)
+                            </span>
                           </p>
                         </div>
-                      )
+                      );
                     }
-                    return null
+                    return null;
                   })()}
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">Descripción</label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)}
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Descripción
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe brevemente el servicio..."
                   rows={2}
-                  className={inp + ' resize-none'} />
+                  className={inp + ' resize-none'}
+                />
               </div>
 
               {/* Booking visibility */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
                 <div>
                   <p className="text-xs font-semibold text-slate-700">Mostrar en link de booking</p>
-                  <p className="text-[10px] text-slate-400">Los pacientes podrán seleccionarlo al agendar</p>
+                  <p className="text-[10px] text-slate-400">
+                    Los pacientes podrán seleccionarlo al agendar
+                  </p>
                 </div>
                 <button type="button" onClick={() => setShowInBooking(!showInBooking)}>
-                  {showInBooking
-                    ? <ToggleRight className="w-6 h-6 text-teal-500" />
-                    : <ToggleLeft className="w-6 h-6 text-slate-300" />
-                  }
+                  {showInBooking ? (
+                    <ToggleRight className="w-6 h-6 text-teal-500" />
+                  ) : (
+                    <ToggleLeft className="w-6 h-6 text-slate-300" />
+                  )}
                 </button>
               </div>
             </div>
 
             <div className="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 flex gap-3 rounded-b-2xl">
-              <button onClick={closeForm}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+              <button
+                onClick={closeForm}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
                 Cancelar
               </button>
-              <button onClick={handleSave} disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors">
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
                 {editing ? 'Guardar cambios' : 'Crear'}
               </button>
             </div>
@@ -481,5 +597,5 @@ export default function ServicesPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

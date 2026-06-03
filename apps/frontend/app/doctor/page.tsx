@@ -1,101 +1,139 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useBcvRate } from '@/lib/useBcvRate'
-import { formatUsd, formatBs } from '@/lib/finances'
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useBcvRate } from '@/lib/useBcvRate';
+import { formatUsd, formatBs } from '@/lib/finances';
 import {
-  Users, Calendar, FileText, TrendingUp,
-  Bell, DollarSign, ArrowRight, Activity,
-  CheckCircle, Clock, AlertCircle, ClipboardList,
-  ChevronLeft, ChevronRight as ChevronRightIcon,
-  UserPlus, X
-} from 'lucide-react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { StatCard, Card } from '@/components/dh'
-import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
+  Users,
+  Calendar,
+  FileText,
+  TrendingUp,
+  Bell,
+  DollarSign,
+  ArrowRight,
+  Activity,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  ClipboardList,
+  ChevronLeft,
+  ChevronRight as ChevronRightIcon,
+  UserPlus,
+  X,
+} from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { StatCard, Card } from '@/components/dh';
+import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 // L3 (2026-04-29): quick action "Crear paciente" en el dashboard reusa
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
-import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm'
-import { addPatient, getDoctorId } from '@/app/doctor/patients/actions'
-import { showToast } from '@/components/ui/Toaster'
+import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
+import { addPatient } from '@/app/doctor/patients/actions';
+import { getDoctorId } from '@/app/doctor/actions';
+import { showToast } from '@/components/ui/Toaster';
 
 type Profile = {
-  full_name: string
-  specialty: string | null
-  email: string
-  professional_title: string | null
-}
+  full_name: string;
+  specialty: string | null;
+  email: string;
+  professional_title: string | null;
+};
 
 type Appointment = {
-  id: string
-  patient_name: string
-  scheduled_at: string
-  status: string
-  source?: 'appointment' | 'consultation'
+  id: string;
+  patient_name: string;
+  scheduled_at: string;
+  status: string;
+  source?: 'appointment' | 'consultation';
   // L2 (2026-04-29): se carga para que click → /doctor/consultations?open=<consultation_id>
   // cuando ya hay consulta linkeada; si no hay, fallback a /doctor/agenda.
-  consultation_id?: string | null
-}
+  consultation_id?: string | null;
+};
 
 type FinancialData = {
-  total_revenue: number
-  appointment_count: number
-}
+  total_revenue: number;
+  appointment_count: number;
+};
 
 type AllTimeStats = {
-  total_revenue_lifetime: number
-  total_patients: number
-  patients_attended: number
-}
+  total_revenue_lifetime: number;
+  total_patients: number;
+  patients_attended: number;
+};
 
 export default function DoctorDashboard() {
-  const router = useRouter()
-  const { rate: bcvRate, toBs, toBsNum } = useBcvRate()
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
-  const [financialData, setFinancialData] = useState<FinancialData>({ total_revenue: 0, appointment_count: 0 })
-  const [allTimeStats, setAllTimeStats] = useState<AllTimeStats>({ total_revenue_lifetime: 0, total_patients: 0, patients_attended: 0 })
-  const [loading, setLoading] = useState(true)
+  const router = useRouter();
+  const { rate: bcvRate, toBs, toBsNum } = useBcvRate();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
+  const [financialData, setFinancialData] = useState<FinancialData>({
+    total_revenue: 0,
+    appointment_count: 0,
+  });
+  const [allTimeStats, setAllTimeStats] = useState<AllTimeStats>({
+    total_revenue_lifetime: 0,
+    total_patients: 0,
+    patients_attended: 0,
+  });
+  const [loading, setLoading] = useState(true);
   // Modal "Nueva consulta"
-  const [showNewFlow, setShowNewFlow] = useState(false)
+  const [showNewFlow, setShowNewFlow] = useState(false);
   // L3 (2026-04-29): estado del modal "Crear paciente" (quick action) +
   // patientId del recien creado para abrir NewAppointmentFlow opcionalmente.
-  const [showPatientForm, setShowPatientForm] = useState(false)
-  const [patientFormSaving, setPatientFormSaving] = useState(false)
-  const [newAppointmentPatientId, setNewAppointmentPatientId] = useState<string | null>(null)
+  const [showPatientForm, setShowPatientForm] = useState(false);
+  const [patientFormSaving, setPatientFormSaving] = useState(false);
+  const [newAppointmentPatientId, setNewAppointmentPatientId] = useState<string | null>(null);
 
   // Month filter state (year-month)
-  const now = new Date()
-  const [selectedMonth, setSelectedMonth] = useState({ year: now.getFullYear(), month: now.getMonth() })
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+  });
 
   const goToPrevMonth = () => {
-    setSelectedMonth(prev => prev.month === 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: prev.month - 1 })
-  }
+    setSelectedMonth((prev) =>
+      prev.month === 0
+        ? { year: prev.year - 1, month: 11 }
+        : { year: prev.year, month: prev.month - 1 },
+    );
+  };
   const goToNextMonth = () => {
-    setSelectedMonth(prev => prev.month === 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: prev.month + 1 })
-  }
-  const isCurrentMonth = selectedMonth.year === now.getFullYear() && selectedMonth.month === now.getMonth()
-  const monthLabel = new Date(selectedMonth.year, selectedMonth.month).toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })
+    setSelectedMonth((prev) =>
+      prev.month === 11
+        ? { year: prev.year + 1, month: 0 }
+        : { year: prev.year, month: prev.month + 1 },
+    );
+  };
+  const isCurrentMonth =
+    selectedMonth.year === now.getFullYear() && selectedMonth.month === now.getMonth();
+  const monthLabel = new Date(selectedMonth.year, selectedMonth.month).toLocaleDateString('es-VE', {
+    month: 'long',
+    year: 'numeric',
+  });
 
   useEffect(() => {
     async function fetchData() {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      // MIGRATED (Etapa 1): auth identity from dev-auth stub.
+      // FASE 5: all data (profiles, payments, appointments, patients, consultations) stays on
+      // Supabase until backend summary endpoint covers dashboard KPIs.
+      const doctorId = await getDoctorId();
+      if (!doctorId) return;
+      const user = { id: doctorId };
+      const supabase = createClient(); // still needed for FASE 5 data calls
 
       const { data: prof } = await supabase
         .from('profiles')
         .select('full_name, specialty, email, professional_title')
         .eq('id', user.id)
-        .single()
+        .single();
 
       // Get today's appointments
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const tomorrow = new Date(today)
-      tomorrow.setDate(tomorrow.getDate() + 1)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
 
       // L2 (2026-04-29): tambien traemos consultation_id para que click en cita
       // del dashboard navegue a la consulta cuando exista (#11).
@@ -106,21 +144,21 @@ export default function DoctorDashboard() {
         .in('status', ['scheduled', 'confirmed', 'completed'])
         .gte('scheduled_at', today.toISOString())
         .lt('scheduled_at', tomorrow.toISOString())
-        .order('scheduled_at', { ascending: true })
+        .order('scheduled_at', { ascending: true });
 
-      const allAppointments: Appointment[] = (appointments || []).map(a => ({
+      const allAppointments: Appointment[] = (appointments || []).map((a) => ({
         id: a.id,
         patient_name: a.patient_name,
         scheduled_at: a.scheduled_at,
         status: a.status,
         source: 'appointment',
         consultation_id: (a as { consultation_id?: string | null }).consultation_id ?? null,
-      }))
+      }));
 
       // Get selected month's financial data
-      const monthStart = new Date(selectedMonth.year, selectedMonth.month, 1)
-      const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0)
-      monthEnd.setHours(23, 59, 59, 999)
+      const monthStart = new Date(selectedMonth.year, selectedMonth.month, 1);
+      const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0);
+      monthEnd.setHours(23, 59, 59, 999);
 
       // Financial: ingresos = SUM(payments.amount_usd WHERE status='approved')
       // (reingeniería 2026-04-22: source of truth = payments table)
@@ -130,10 +168,13 @@ export default function DoctorDashboard() {
         .eq('doctor_id', user.id)
         .eq('status', 'approved')
         .gte('created_at', monthStart.toISOString())
-        .lte('created_at', monthEnd.toISOString())
+        .lte('created_at', monthEnd.toISOString());
 
-      let totalRevenue = (approvedThisMonth || []).reduce((s, p) => s + (Number(p.amount_usd) || 0), 0)
-      let appointmentCount = (approvedThisMonth || []).length
+      let totalRevenue = (approvedThisMonth || []).reduce(
+        (s, p) => s + (Number(p.amount_usd) || 0),
+        0,
+      );
+      let appointmentCount = (approvedThisMonth || []).length;
 
       // Fallback: si payments aún no tiene data (migración pendiente), suma desde appointments legacy
       if (totalRevenue === 0 && appointmentCount === 0) {
@@ -144,10 +185,13 @@ export default function DoctorDashboard() {
           .eq('status', 'completed')
           .neq('source', 'google_calendar')
           .gte('scheduled_at', monthStart.toISOString())
-          .lte('scheduled_at', monthEnd.toISOString())
+          .lte('scheduled_at', monthEnd.toISOString());
 
-        totalRevenue = (completedAppts || []).reduce((sum, a) => sum + (Number(a.plan_price) || 0), 0)
-        appointmentCount = (completedAppts || []).length
+        totalRevenue = (completedAppts || []).reduce(
+          (sum, a) => sum + (Number(a.plan_price) || 0),
+          0,
+        );
+        appointmentCount = (completedAppts || []).length;
       }
 
       // ── All-time stats ─────────────────────────────────────────────────────
@@ -156,9 +200,12 @@ export default function DoctorDashboard() {
         .from('payments')
         .select('amount_usd')
         .eq('doctor_id', user.id)
-        .eq('status', 'approved')
+        .eq('status', 'approved');
 
-      let totalRevenueLifetime = (allApproved || []).reduce((s, p) => s + (Number(p.amount_usd) || 0), 0)
+      let totalRevenueLifetime = (allApproved || []).reduce(
+        (s, p) => s + (Number(p.amount_usd) || 0),
+        0,
+      );
 
       // Fallback legacy
       if (totalRevenueLifetime === 0) {
@@ -167,50 +214,50 @@ export default function DoctorDashboard() {
           .select('plan_price')
           .eq('doctor_id', user.id)
           .eq('status', 'completed')
-          .neq('source', 'google_calendar')
+          .neq('source', 'google_calendar');
 
         totalRevenueLifetime = (allCompleted || []).reduce(
-          (sum, a) => sum + (Number(a.plan_price) || 0), 0
-        )
+          (sum, a) => sum + (Number(a.plan_price) || 0),
+          0,
+        );
       }
 
       // Total de pacientes únicos registrados por este doctor
       const { count: patientCount } = await supabase
         .from('patients')
         .select('id', { count: 'exact', head: true })
-        .eq('doctor_id', user.id)
+        .eq('doctor_id', user.id);
 
       // Pacientes atendidos (tienen al menos una consulta aprobada/pendiente o cita completada)
       const { data: consultedPatients } = await supabase
         .from('consultations')
         .select('patient_id')
-        .eq('doctor_id', user.id)
+        .eq('doctor_id', user.id);
       const uniquePatientsAttended = new Set(
-        (consultedPatients || []).map(c => c.patient_id).filter(Boolean)
-      ).size
+        (consultedPatients || []).map((c) => c.patient_id).filter(Boolean),
+      ).size;
 
-      setProfile(prof)
-      setTodayAppointments(allAppointments)
-      setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount })
+      setProfile(prof);
+      setTodayAppointments(allAppointments);
+      setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount });
       setAllTimeStats({
         total_revenue_lifetime: totalRevenueLifetime,
         total_patients: patientCount || 0,
         patients_attended: uniquePatientsAttended,
-      })
-      setLoading(false)
+      });
+      setLoading(false);
     }
-    fetchData()
-  }, [selectedMonth])
+    fetchData();
+  }, [selectedMonth]);
 
-  // REFRESH AUTOMATICO (ronda 15): cuando cambia algo en payments del doctor,
-  // re-ejecutar fetchData para que el saldo del Dashboard quede sincronizado con
-  // Cobros y Finanzas sin necesidad de reload.
+  // REFRESH AUTOMATICO (ronda 15): Supabase Realtime subscription — stays Supabase until Fase 5.
   useEffect(() => {
-    const supabase = createClient()
-    let channel: any = null
-    ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+    const supabase = createClient();
+    let channel: any = null;
+    (async () => {
+      const doctorId = await getDoctorId();
+      if (!doctorId) return;
+      const user = { id: doctorId };
       channel = supabase
         .channel(`dashboard-payments-watch-${user.id}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
@@ -219,74 +266,76 @@ export default function DoctorDashboard() {
           () => {
             // Forzar re-render trigger con cambio de selectedMonth a si mismo es feo;
             // mejor recargar usando setSelectedMonth (mantiene el mes actual)
-            setSelectedMonth(prev => ({ ...prev }))
-          }
+            setSelectedMonth((prev) => ({ ...prev }));
+          },
         )
-        .subscribe()
-    })()
-    return () => { if (channel) supabase.removeChannel(channel) }
-  }, [])
+        .subscribe();
+    })();
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
 
   const greeting = () => {
-    const h = new Date().getHours()
-    if (h < 12) return 'Buenos días'
-    if (h < 18) return 'Buenas tardes'
-    return 'Buenas noches'
-  }
+    const h = new Date().getHours();
+    if (h < 12) return 'Buenos días';
+    if (h < 18) return 'Buenas tardes';
+    return 'Buenas noches';
+  };
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true })
-  }
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
 
   const getStatusBadgeColor = (status: string, isPast: boolean = false) => {
     // If appointment time has passed, show as "Pasada"
     if (isPast && (status === 'scheduled' || status === 'pending')) {
-      return 'bg-red-50 text-red-700 border border-red-200'
+      return 'bg-red-50 text-red-700 border border-red-200';
     }
     switch (status) {
       case 'completed':
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
       case 'confirmed':
-        return 'bg-blue-50 text-blue-700 border border-blue-200'
+        return 'bg-blue-50 text-blue-700 border border-blue-200';
       case 'pending':
       case 'scheduled':
-        return 'bg-amber-50 text-amber-700 border border-amber-200'
+        return 'bg-amber-50 text-amber-700 border border-amber-200';
       case 'cancelled':
-        return 'bg-slate-50 text-slate-700 border border-slate-200'
+        return 'bg-slate-50 text-slate-700 border border-slate-200';
       default:
-        return 'bg-slate-50 text-slate-700 border border-slate-200'
+        return 'bg-slate-50 text-slate-700 border border-slate-200';
     }
-  }
+  };
 
   const getStatusBadgeText = (apt: Appointment, isPast: boolean = false): string => {
     if (isPast && (apt.status === 'scheduled' || apt.status === 'pending')) {
-      return 'Pasada'
+      return 'Pasada';
     }
     switch (apt.status) {
       case 'completed':
-        return 'Completada'
+        return 'Completada';
       case 'confirmed':
-        return 'Confirmada'
+        return 'Confirmada';
       case 'pending':
       case 'scheduled':
-        return 'Pendiente'
+        return 'Pendiente';
       case 'cancelled':
-        return 'Cancelada'
+        return 'Cancelada';
       default:
-        return apt.status
+        return apt.status;
     }
-  }
+  };
 
   // L3 (2026-04-29): handler del PatientForm en modo CREATE. Replica el patron
   // de app/doctor/patients/page.tsx (reusa addPatient + revalida lista en sv).
   // Tras crear: toast, cierra modal y deja el patientId disponible para ofrecer
   // "Crear cita ahora" con NewAppointmentFlow pre-rellenado.
   async function handleCreatePatient(formData: PatientFormData) {
-    setPatientFormSaving(true)
+    setPatientFormSaving(true);
     try {
-      const doctorId = await getDoctorId()
-      if (!doctorId) throw new Error('Sesion expirada')
+      const doctorId = await getDoctorId();
+      if (!doctorId) throw new Error('Sesion expirada');
       const res = await addPatient(doctorId, {
         full_name: formData.full_name,
         age: formData.age ?? undefined,
@@ -304,16 +353,16 @@ export default function DoctorDashboard() {
         address: formData.address ?? undefined,
         city: formData.city ?? undefined,
         source: 'manual',
-      })
-      if (!res.success) throw new Error(res.error || 'Error al crear')
-      showToast({ type: 'success', message: 'Paciente creado' })
-      setShowPatientForm(false)
-      setNewAppointmentPatientId(res.patient_id)
+      });
+      if (!res.success) throw new Error(res.error || 'Error al crear');
+      showToast({ type: 'success', message: 'Paciente creado' });
+      setShowPatientForm(false);
+      setNewAppointmentPatientId(res.patient_id);
     } catch (err: any) {
       // Re-throw para que PatientForm muestre el error inline
-      throw err
+      throw err;
     } finally {
-      setPatientFormSaving(false)
+      setPatientFormSaving(false);
     }
   }
 
@@ -322,24 +371,35 @@ export default function DoctorDashboard() {
   // que no matchea ningun consultation.id, que era el bug previo).
   const handleAppointmentClick = (apt: Appointment) => {
     if (apt.consultation_id) {
-      router.push(`/doctor/consultations?open=${apt.consultation_id}`)
+      router.push(`/doctor/consultations?open=${apt.consultation_id}`);
     } else {
-      router.push('/doctor/agenda')
+      router.push('/doctor/agenda');
     }
-  }
+  };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex items-center gap-3 text-slate-400">
           <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
           </svg>
           <span className="text-sm">Cargando tu portal...</span>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -369,10 +429,14 @@ export default function DoctorDashboard() {
                 color: 'var(--dh-ink)',
               }}
             >
-              {profile?.full_name ? `${profile.professional_title || 'Dr.'} ${profile.full_name}` : 'Bienvenido'}
+              {profile?.full_name
+                ? `${profile.professional_title || 'Dr.'} ${profile.full_name}`
+                : 'Bienvenido'}
             </h1>
             {profile?.specialty && (
-              <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>{profile.specialty}</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
+                {profile.specialty}
+              </p>
             )}
           </div>
 
@@ -386,8 +450,12 @@ export default function DoctorDashboard() {
           >
             <CheckCircle className="w-4 h-4" style={{ color: 'var(--dh-turquoise)' }} />
             <div>
-              <p className="text-xs font-semibold" style={{ color: 'var(--dh-turquoise-700)' }}>Plan activo</p>
-              <p className="text-[10px]" style={{ color: 'var(--dh-gray-400)' }}>Acceso completo</p>
+              <p className="text-xs font-semibold" style={{ color: 'var(--dh-turquoise-700)' }}>
+                Plan activo
+              </p>
+              <p className="text-[10px]" style={{ color: 'var(--dh-gray-400)' }}>
+                Acceso completo
+              </p>
             </div>
           </div>
         </div>
@@ -420,7 +488,8 @@ export default function DoctorDashboard() {
               Tu portal médico está listo
             </h2>
             <p className="text-white/80 text-sm max-w-lg leading-relaxed">
-              Gestiona pacientes, agenda citas, lleva historial clínico y controla tus finanzas, todo desde un solo lugar.
+              Gestiona pacientes, agenda citas, lleva historial clínico y controla tus finanzas,
+              todo desde un solo lugar.
             </p>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 mt-5">
               <Link
@@ -434,7 +503,10 @@ export default function DoctorDashboard() {
               <Link
                 href="/doctor/agenda"
                 className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
-                style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.28)' }}
+                style={{
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                }}
               >
                 <Calendar className="w-4 h-4" />
                 <span>Ver Agenda</span>
@@ -442,7 +514,10 @@ export default function DoctorDashboard() {
               <button
                 onClick={() => setShowNewFlow(true)}
                 className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
-                style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.28)' }}
+                style={{
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                }}
               >
                 <ClipboardList className="w-4 h-4" />
                 <span>Crear Consulta</span>
@@ -450,7 +525,10 @@ export default function DoctorDashboard() {
               <button
                 onClick={() => setShowPatientForm(true)}
                 className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
-                style={{ background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.28)' }}
+                style={{
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                }}
               >
                 <UserPlus className="w-4 h-4" />
                 <span>Crear Paciente</span>
@@ -465,7 +543,9 @@ export default function DoctorDashboard() {
             label="Ingresos totales"
             value={formatUsd(allTimeStats.total_revenue_lifetime)}
             icon={<DollarSign size={16} />}
-            subtitle={bcvRate ? `≈ ${formatBs(toBsNum(allTimeStats.total_revenue_lifetime))}` : undefined}
+            subtitle={
+              bcvRate ? `≈ ${formatBs(toBsNum(allTimeStats.total_revenue_lifetime))}` : undefined
+            }
           />
           <StatCard
             label="Mis pacientes"
@@ -487,23 +567,31 @@ export default function DoctorDashboard() {
           <Card padding={24}>
             <div className="flex items-center gap-2 mb-4">
               <Calendar className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
-              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>Citas del Día</h2>
+              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+                Citas del Día
+              </h2>
               <span
                 className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{ background: 'var(--dh-gray-50)', color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}
+                style={{
+                  background: 'var(--dh-gray-50)',
+                  color: 'var(--dh-gray-600)',
+                  fontFamily: 'var(--dh-font-mono)',
+                }}
               >
                 {todayAppointments.length}
               </span>
             </div>
 
             {todayAppointments.length === 0 ? (
-              <p className="text-sm text-slate-400 py-8 text-center">No hay citas programadas para hoy</p>
+              <p className="text-sm text-slate-400 py-8 text-center">
+                No hay citas programadas para hoy
+              </p>
             ) : (
               <div className="space-y-3">
                 {todayAppointments.slice(0, 3).map((apt) => {
-                  const appointmentTime = new Date(apt.scheduled_at)
-                  const now = new Date()
-                  const isPast = appointmentTime < now
+                  const appointmentTime = new Date(apt.scheduled_at);
+                  const now = new Date();
+                  const isPast = appointmentTime < now;
                   return (
                     <button
                       key={apt.id}
@@ -511,14 +599,20 @@ export default function DoctorDashboard() {
                       className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 hover:bg-teal-50/30 transition-colors text-left"
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900">{apt.patient_name || 'Paciente sin nombre'}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{formatTime(apt.scheduled_at)}</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {apt.patient_name || 'Paciente sin nombre'}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {formatTime(apt.scheduled_at)}
+                        </p>
                       </div>
-                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${getStatusBadgeColor(apt.status, isPast)}`}>
+                      <span
+                        className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${getStatusBadgeColor(apt.status, isPast)}`}
+                      >
                         {getStatusBadgeText(apt, isPast)}
                       </span>
                     </button>
-                  )
+                  );
                 })}
                 {todayAppointments.length > 3 && (
                   <Link
@@ -537,14 +631,22 @@ export default function DoctorDashboard() {
           <Card padding={24}>
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
-              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>Finanzas</h2>
+              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+                Finanzas
+              </h2>
               <div className="ml-auto flex items-center gap-1">
                 <button
                   onClick={goToPrevMonth}
                   className="p-1 rounded-lg transition-colors"
                   style={{ color: 'var(--dh-gray-400)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-gray-50)'; e.currentTarget.style.color = 'var(--dh-gray-600)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--dh-gray-400)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--dh-gray-50)';
+                    e.currentTarget.style.color = 'var(--dh-gray-600)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--dh-gray-400)';
+                  }}
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -559,8 +661,16 @@ export default function DoctorDashboard() {
                   disabled={isCurrentMonth}
                   className="p-1 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   style={{ color: 'var(--dh-gray-400)' }}
-                  onMouseEnter={e => { if (!isCurrentMonth) { e.currentTarget.style.background = 'var(--dh-gray-50)'; e.currentTarget.style.color = 'var(--dh-gray-600)' } }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--dh-gray-400)' }}
+                  onMouseEnter={(e) => {
+                    if (!isCurrentMonth) {
+                      e.currentTarget.style.background = 'var(--dh-gray-50)';
+                      e.currentTarget.style.color = 'var(--dh-gray-600)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--dh-gray-400)';
+                  }}
                 >
                   <ChevronRightIcon className="w-4 h-4" />
                 </button>
@@ -571,12 +681,15 @@ export default function DoctorDashboard() {
               <div
                 className="p-4"
                 style={{
-                  background: 'linear-gradient(135deg, var(--dh-turquoise-50) 0%, var(--dh-turquoise-100) 100%)',
+                  background:
+                    'linear-gradient(135deg, var(--dh-turquoise-50) 0%, var(--dh-turquoise-100) 100%)',
                   border: '1px solid var(--dh-turquoise-100)',
                   borderRadius: 'var(--dh-r-md)',
                 }}
               >
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--dh-gray-600)' }}>Ingresos Totales</p>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--dh-gray-600)' }}>
+                  Ingresos Totales
+                </p>
                 <p
                   className="font-semibold"
                   style={{
@@ -589,9 +702,13 @@ export default function DoctorDashboard() {
                   {formatUsd(financialData.total_revenue)}
                 </p>
                 {bcvRate && (
-                  <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>{toBs(financialData.total_revenue)}</p>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>
+                    {toBs(financialData.total_revenue)}
+                  </p>
                 )}
-                <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>USD</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
+                  USD
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -603,10 +720,16 @@ export default function DoctorDashboard() {
                     borderRadius: 'var(--dh-r-md)',
                   }}
                 >
-                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>Citas Completadas</p>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
+                    Citas Completadas
+                  </p>
                   <p
                     className="font-bold mt-1"
-                    style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 22 }}
+                    style={{
+                      color: 'var(--dh-ink)',
+                      fontFamily: 'var(--dh-font-display)',
+                      fontSize: 22,
+                    }}
                   >
                     {financialData.appointment_count}
                   </p>
@@ -619,15 +742,27 @@ export default function DoctorDashboard() {
                     borderRadius: 'var(--dh-r-md)',
                   }}
                 >
-                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>Promedio por Cita</p>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
+                    Promedio por Cita
+                  </p>
                   <p
                     className="font-bold mt-1"
-                    style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 22 }}
+                    style={{
+                      color: 'var(--dh-ink)',
+                      fontFamily: 'var(--dh-font-display)',
+                      fontSize: 22,
+                    }}
                   >
-                    {formatUsd(financialData.appointment_count > 0 ? (financialData.total_revenue / financialData.appointment_count) : 0)}
+                    {formatUsd(
+                      financialData.appointment_count > 0
+                        ? financialData.total_revenue / financialData.appointment_count
+                        : 0,
+                    )}
                   </p>
                   {bcvRate && financialData.appointment_count > 0 && (
-                    <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>{toBs(financialData.total_revenue / financialData.appointment_count)}</p>
+                    <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
+                      {toBs(financialData.total_revenue / financialData.appointment_count)}
+                    </p>
                   )}
                 </div>
               </div>
@@ -649,15 +784,15 @@ export default function DoctorDashboard() {
       <NewAppointmentFlow
         open={showNewFlow}
         onClose={() => {
-          setShowNewFlow(false)
+          setShowNewFlow(false);
           // L3 (2026-04-29): si veniamos del flujo "crear paciente → crear cita"
           // limpiamos el patientId pendiente para evitar re-mostrar el prompt.
-          setNewAppointmentPatientId(null)
+          setNewAppointmentPatientId(null);
         }}
         onSuccess={(id) => {
-          setShowNewFlow(false)
-          setNewAppointmentPatientId(null)
-          router.push(`/doctor/consultations?open=${id}`)
+          setShowNewFlow(false);
+          setNewAppointmentPatientId(null);
+          router.push(`/doctor/consultations?open=${id}`);
         }}
         initialContext={{
           origin: 'dashboard_btn',
@@ -678,7 +813,9 @@ export default function DoctorDashboard() {
                 </div>
                 <div>
                   <h2 className="font-bold text-slate-900">Nuevo paciente</h2>
-                  <p className="text-xs text-slate-400">Completa los datos para registrar al paciente</p>
+                  <p className="text-xs text-slate-400">
+                    Completa los datos para registrar al paciente
+                  </p>
                 </div>
               </div>
               <button
@@ -706,9 +843,7 @@ export default function DoctorDashboard() {
               <CheckCircle className="w-6 h-6" />
             </div>
             <h3 className="font-bold text-slate-900 mb-1">Paciente creado</h3>
-            <p className="text-sm text-slate-500 mb-5">
-              ¿Quieres agendarle una cita ahora?
-            </p>
+            <p className="text-sm text-slate-500 mb-5">¿Quieres agendarle una cita ahora?</p>
             <div className="flex gap-2">
               <button
                 onClick={() => setNewAppointmentPatientId(null)}
@@ -719,7 +854,7 @@ export default function DoctorDashboard() {
               <button
                 onClick={() => {
                   // Mantenemos el id en estado: NewAppointmentFlow lo recibe via initialContext
-                  setShowNewFlow(true)
+                  setShowNewFlow(true);
                 }}
                 className="flex-1 py-2.5 px-4 rounded-xl bg-teal-500 text-white text-sm font-bold hover:bg-teal-600"
               >
@@ -730,5 +865,5 @@ export default function DoctorDashboard() {
         </div>
       )}
     </>
-  )
+  );
 }

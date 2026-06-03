@@ -1,190 +1,260 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 // L7 (2026-04-29): se eliminan los iconos del cronómetro manual (Play, Square)
 // pero mantenemos Timer para mostrar la duración calculada automáticamente.
-import { ClipboardList, Search, Calendar, User, UserCheck, Banknote, ChevronRight, ArrowLeft, Save, CheckCircle, Clock, AlertCircle, DollarSign, FileText, Stethoscope, Pill, Filter, Plus, X, Check, Printer, Droplet, AlertTriangle, Heart, Sparkles, Wand2, History, Copy, Loader2, Share2, Mail, MessageCircle, ChevronDown, ChevronUp, Trash2, Upload, Timer, ExternalLink } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { useBcvRate } from '@/lib/useBcvRate'
-import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
-import ConsultationRecorder from '@/components/consultation/ConsultationRecorder'
+import {
+  ClipboardList,
+  Search,
+  Calendar,
+  User,
+  UserCheck,
+  Banknote,
+  ChevronRight,
+  ArrowLeft,
+  Save,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  DollarSign,
+  FileText,
+  Stethoscope,
+  Pill,
+  Filter,
+  Plus,
+  X,
+  Check,
+  Printer,
+  Droplet,
+  AlertTriangle,
+  Heart,
+  Sparkles,
+  Wand2,
+  History,
+  Copy,
+  Loader2,
+  Share2,
+  Mail,
+  MessageCircle,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  Upload,
+  Timer,
+  ExternalLink,
+} from 'lucide-react';
+import { createClient } from '@/lib/supabase/client'; // FASE 5: still needed for doctor_quick_items, doctor_templates, pricing_plans, blocks_data, payments, storage
+import {
+  getDoctorId as getDevDoctorId,
+  listConsultations,
+  getPatientConsultations,
+} from './actions';
+import { getEhrPatients } from '../ehr/actions';
+import { getPatientPrescriptions } from './actions-prescriptions';
+import { useBcvRate } from '@/lib/useBcvRate';
+import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks';
+import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
 // RONDA 46: renderer de markdown ligero para outputs de Gemini
-import MarkdownText from '@/components/shared/MarkdownText'
-import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
-import { log } from '@/lib/logger'
+import MarkdownText from '@/components/shared/MarkdownText';
+import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
+import { log } from '@/lib/logger';
 // L6 (2026-04-29): normaliza telefonos para wa.me (acepta legacy free-text)
-import { normalizePhoneVE } from '@/lib/phone-utils'
+import { normalizePhoneVE } from '@/lib/phone-utils';
 
 type Consultation = {
-  id: string
-  consultation_code: string
-  consultation_date: string
-  chief_complaint: string | null
-  notes: string | null
-  diagnosis: string | null
-  treatment: string | null
-  status: 'pending' | 'in_progress' | 'completed' | 'no_show'   // Estado de la CONSULTA (no del pago)
-  payment_status: 'pending' | 'approved'   // Quitamos 'cancelled' — los pagos no se cancelan
-  appointment_id: string | null
-  patient_id: string
-  patient_name: string
-  patient_phone: string | null
-  started_at: string | null
-  ended_at: string | null
-  duration_minutes: number | null
-  blocks_snapshot?: Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }> | null
-  blocks_data?: Record<string, unknown> | null
+  id: string;
+  consultation_code: string;
+  consultation_date: string;
+  chief_complaint: string | null;
+  notes: string | null;
+  diagnosis: string | null;
+  treatment: string | null;
+  status: 'pending' | 'in_progress' | 'completed' | 'no_show'; // Estado de la CONSULTA (no del pago)
+  payment_status: 'pending' | 'approved'; // Quitamos 'cancelled' — los pagos no se cancelan
+  appointment_id: string | null;
+  patient_id: string;
+  patient_name: string;
+  patient_phone: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_minutes: number | null;
+  blocks_snapshot?: Array<{
+    key: string;
+    label: string;
+    content_type: string;
+    sort_order: number;
+    printable: boolean;
+    send_to_patient: boolean;
+  }> | null;
+  blocks_data?: Record<string, unknown> | null;
   // AUDIT FIX 2026-04-28 (C-5): contador para optimistic locking del autosave.
-  version?: number | null
-}
+  version?: number | null;
+};
 
 // Estados de CONSULTA
 const CONSULTA_STATUS: Record<string, { label: string; color: string; dot: string }> = {
-  pending:     { label: 'Pendiente',     color: 'bg-slate-100 text-slate-700',     dot: 'bg-slate-400' },
-  in_progress: { label: 'En curso',      color: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-500' },
-  completed:   { label: 'Atendida',      color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-  no_show:     { label: 'No asistió',    color: 'bg-red-100 text-red-700',         dot: 'bg-red-500' },
-}
+  pending: { label: 'Pendiente', color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' },
+  in_progress: { label: 'En curso', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
+  completed: { label: 'Atendida', color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  no_show: { label: 'No asistió', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+};
 
 type Patient = {
-  id: string
-  full_name: string
-  phone: string | null
-  email?: string | null
-  cedula?: string | null
-  age?: number | null
-  sex?: string | null
-  blood_type?: string | null
-  allergies?: string | null
-  chronic_conditions?: string | null
-}
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email?: string | null;
+  cedula?: string | null;
+  age?: number | null;
+  sex?: string | null;
+  blood_type?: string | null;
+  allergies?: string | null;
+  chronic_conditions?: string | null;
+};
 
 type Medication = {
-  name: string
-  dose: string
-  frequency: string
-  duration: string
-  indications: string
-}
+  name: string;
+  dose: string;
+  frequency: string;
+  duration: string;
+  indications: string;
+};
 
 type Recipe = {
-  medications: Medication[]
-  notes: string
-}
+  medications: Medication[];
+  notes: string;
+};
 
 type AppointmentData = {
-  payment_receipt_url?: string | null
-  payment_method?: string | null
-  plan_price?: number | null
-  plan_name?: string | null
-}
+  payment_receipt_url?: string | null;
+  payment_method?: string | null;
+  plan_price?: number | null;
+  plan_name?: string | null;
+};
 
 // Estados de PAGO únicamente (no estados de cita ni de consulta)
 // Definición del usuario: Pendiente | Aprobado. NO existe "Rechazado".
 const PAYMENT_STATUS: Record<string, { label: string; color: string; dot: string }> = {
-  pending:  { label: 'Pendiente', color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
-  approved: { label: 'Aprobado',  color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-}
+  pending: { label: 'Pendiente', color: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
+  approved: { label: 'Aprobado', color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+};
 
 // Helper para resolver aliases legacy ('unpaid','pending_approval','cancelled') a 'pending'
 function normalizePaymentStatus(s: string | null | undefined): 'pending' | 'approved' {
-  return s === 'approved' ? 'approved' : 'pending'
+  return s === 'approved' ? 'approved' : 'pending';
 }
 
-type ViewMode = 'list' | 'consultation'
-type TimeFilter = 'all' | 'upcoming' | 'past' | 'today'
-type ConsultationTab = string  // dinámico según blocks_snapshot del doctor
+type ViewMode = 'list' | 'consultation';
+type TimeFilter = 'all' | 'upcoming' | 'past' | 'today';
+type ConsultationTab = string; // dinámico según blocks_snapshot del doctor
 
 type Prescripcion = {
-  exam_name: string
-  notes: string
-}
+  exam_name: string;
+  notes: string;
+};
 
 type QuickItem = {
-  id: string
-  item_type: 'exam' | 'medication'
-  name: string
-  category: string | null
-  details: string | null
-}
+  id: string;
+  item_type: 'exam' | 'medication';
+  name: string;
+  category: string | null;
+  details: string | null;
+};
 
 type SavedPrescription = {
-  id: string
-  medications: Medication[]
-  notes: string | null
-  created_at: string
-}
+  id: string;
+  medications: Medication[];
+  notes: string | null;
+  created_at: string;
+};
 
 export default function ConsultationsPageWrapper() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400 text-sm">Cargando...</div>}>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-12 text-slate-400 text-sm">
+          Cargando...
+        </div>
+      }
+    >
       <ConsultationsPage />
     </Suspense>
-  )
+  );
 }
 
 function ConsultationsPage() {
-  const searchParams = useSearchParams()
-  const openId = searchParams.get('open')
-  const { rate: bcvRate, toBs } = useBcvRate()
+  const searchParams = useSearchParams();
+  const openId = searchParams.get('open');
+  const { rate: bcvRate, toBs } = useBcvRate();
 
-  const [view, setView] = useState<ViewMode>('list')
-  const [selected, setSelected] = useState<Consultation | null>(null)
-  const [consultations, setConsultations] = useState<Consultation[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [patientSearchText, setPatientSearchText] = useState('')
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
-  const [isPending, startTransition] = useTransition()
-  const [saved, setSaved] = useState(false)
-  const [autoSaving, setAutoSaving] = useState(false)
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [view, setView] = useState<ViewMode>('list');
+  const [selected, setSelected] = useState<Consultation | null>(null);
+  const [consultations, setConsultations] = useState<Consultation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [patientSearchText, setPatientSearchText] = useState('');
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [isPending, startTransition] = useTransition();
+  const [saved, setSaved] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
-  const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint')
+  const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint');
   // RONDA 39: bloques actualmente ACTIVOS del doctor (config viva en /doctor/settings/consultation-blocks).
   // Se usa cuando una consulta no tiene blocks_snapshot congelado todavia.
-  const [doctorActiveBlocks, setDoctorActiveBlocks] = useState<SnapshotBlock[]>([])
+  const [doctorActiveBlocks, setDoctorActiveBlocks] = useState<SnapshotBlock[]>([]);
 
   // RONDA 39: helper. Devuelve los bloques EFECTIVOS para una consulta:
   //   - Si la consulta tiene snapshot congelado (informe ya guardado) → usar snapshot
   //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
   // Asi: cambios en /doctor/settings/consultation-blocks se ven inmediatamente
   // en consultas vacias; las consultas con informe quedan inmutables.
-  const getEffectiveBlocks = useCallback((consultation: Consultation | null): SnapshotBlock[] => {
-    if (!consultation) return doctorActiveBlocks
-    const snap = (consultation as any).blocks_snapshot
-    if (Array.isArray(snap) && snap.length > 0) return snap as SnapshotBlock[]
-    return doctorActiveBlocks
-  }, [doctorActiveBlocks])
+  const getEffectiveBlocks = useCallback(
+    (consultation: Consultation | null): SnapshotBlock[] => {
+      if (!consultation) return doctorActiveBlocks;
+      const snap = (consultation as any).blocks_snapshot;
+      if (Array.isArray(snap) && snap.length > 0) return snap as SnapshotBlock[];
+      return doctorActiveBlocks;
+    },
+    [doctorActiveBlocks],
+  );
 
   // Report fields (editable during consultation)
-  const [report, setReport] = useState({ chief_complaint: '', notes: '', diagnosis: '', treatment: '', payment_status: 'pending' as Consultation['payment_status'] })
+  const [report, setReport] = useState({
+    chief_complaint: '',
+    notes: '',
+    diagnosis: '',
+    treatment: '',
+    payment_status: 'pending' as Consultation['payment_status'],
+  });
 
   // PDF include toggles
-  const [includeRecipe, setIncludeRecipe] = useState(true)
-  const [includePrescripciones, setIncludePrescripciones] = useState(true)
+  const [includeRecipe, setIncludeRecipe] = useState(true);
+  const [includePrescripciones, setIncludePrescripciones] = useState(true);
 
   // Reposo fields
-  const [reposoDays, setReposoDays] = useState(0)
-  const [reposoFrom, setReposoFrom] = useState('')
-  const [reposoTo, setReposoTo] = useState('')
-  const [reposoDiagnosis, setReposoDiagnosis] = useState('')
+  const [reposoDays, setReposoDays] = useState(0);
+  const [reposoFrom, setReposoFrom] = useState('');
+  const [reposoTo, setReposoTo] = useState('');
+  const [reposoDiagnosis, setReposoDiagnosis] = useState('');
 
   // New consultation modal
-  const [showNewConsultation, setShowNewConsultation] = useState(false)
+  const [showNewConsultation, setShowNewConsultation] = useState(false);
   // Estado del select de pago (ronda 14: autosave + spinner + toast)
-  const [pagoSaving, setPagoSaving] = useState(false)
-  const [pagoToast, setPagoToast] = useState<string | null>(null)
-  const [patients, setPatients] = useState<Patient[]>([])
-  const [pricingPlans, setPricingPlans] = useState<{ id: string; name: string; price_usd: number; duration_minutes: number }[]>([])
+  const [pagoSaving, setPagoSaving] = useState(false);
+  const [pagoToast, setPagoToast] = useState<string | null>(null);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [pricingPlans, setPricingPlans] = useState<
+    { id: string; name: string; price_usd: number; duration_minutes: number }[]
+  >([]);
   // Helper to get local datetime string for datetime-local input
   const getLocalDateTimeString = () => {
-    const now = new Date()
-    const offset = now.getTimezoneOffset()
-    const local = new Date(now.getTime() - offset * 60000)
-    return local.toISOString().slice(0, 16)
-  }
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const local = new Date(now.getTime() - offset * 60000);
+    return local.toISOString().slice(0, 16);
+  };
 
   const [newConsultation, setNewConsultation] = useState({
     patient_id: '',
@@ -193,95 +263,116 @@ function ConsultationsPage() {
     plan_id: '',
     payment_reference: '',
     amount: '',
-    payment_method: 'efectivo' as 'efectivo' | 'transferencia' | 'pago_movil' | 'zelle' | 'binance' | 'pos' | 'seguro',
+    payment_method: 'efectivo' as
+      | 'efectivo'
+      | 'transferencia'
+      | 'pago_movil'
+      | 'zelle'
+      | 'binance'
+      | 'pos'
+      | 'seguro',
     comments: '',
     sendEmail: true,
-  })
-  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false)
-  const [receiptFile, setReceiptFile] = useState<File | null>(null)
-  const requiresReceipt = (method: string) => !['efectivo', 'efectivo_bs', 'pos', ''].includes(method)
+  });
+  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const requiresReceipt = (method: string) =>
+    !['efectivo', 'efectivo_bs', 'pos', ''].includes(method);
 
   // Schedule / time slot state for new consultation
-  type AvailabilitySlot = { day_of_week: number; start_time: string; end_time: string; is_enabled: boolean }
-  type BlockedSlot = { blocked_date: string; start_time?: string; end_time?: string }
-  const [scheduleSlots, setScheduleSlots] = useState<AvailabilitySlot[]>([])
-  const [blockedDates, setBlockedDates] = useState<BlockedSlot[]>([])
-  const [slotDuration, setSlotDuration] = useState(30)
-  const [bookedTimes, setBookedTimes] = useState<string[]>([])
-  const [selectedDate, setSelectedDate] = useState<string>('')
-  const [selectedTime, setSelectedTime] = useState<string>('')
-  const [weekOffset, setWeekOffset] = useState(0)
-  const [scheduleLoaded, setScheduleLoaded] = useState(false)
+  type AvailabilitySlot = {
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    is_enabled: boolean;
+  };
+  type BlockedSlot = { blocked_date: string; start_time?: string; end_time?: string };
+  const [scheduleSlots, setScheduleSlots] = useState<AvailabilitySlot[]>([]);
+  const [blockedDates, setBlockedDates] = useState<BlockedSlot[]>([]);
+  const [slotDuration, setSlotDuration] = useState(30);
+  const [bookedTimes, setBookedTimes] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [scheduleLoaded, setScheduleLoaded] = useState(false);
 
   // Recipe modal
-  const [showRecipe, setShowRecipe] = useState(false)
-  const [recipe, setRecipe] = useState<Recipe>({ medications: [], notes: '' })
-  const [isSavingRecipe, setIsSavingRecipe] = useState(false)
-  const [showPrintRecipe, setShowPrintRecipe] = useState(false)
+  const [showRecipe, setShowRecipe] = useState(false);
+  const [recipe, setRecipe] = useState<Recipe>({ medications: [], notes: '' });
+  const [isSavingRecipe, setIsSavingRecipe] = useState(false);
+  const [showPrintRecipe, setShowPrintRecipe] = useState(false);
 
   // Prescripciones (exámenes que el médico ordena)
-  const [prescripciones, setPrescripciones] = useState<Prescripcion[]>([])
-  const [isSavingPrescripciones, setIsSavingPrescripciones] = useState(false)
+  const [prescripciones, setPrescripciones] = useState<Prescripcion[]>([]);
+  const [isSavingPrescripciones, setIsSavingPrescripciones] = useState(false);
 
   // Delete confirmation
-  const [confirmDeleteConsulta, setConfirmDeleteConsulta] = useState<Consultation | null>(null)
-  const [deletingConsulta, setDeletingConsulta] = useState(false)
+  const [confirmDeleteConsulta, setConfirmDeleteConsulta] = useState<Consultation | null>(null);
+  const [deletingConsulta, setDeletingConsulta] = useState(false);
 
   // AI assistant state
   // L1 (2026-04-29): el panel global ahora tiene 3 modos:
   //   - patient_history: resumir historial del paciente (todas las consultas + blocks_data)
   //   - improve_block: mejorar redacción de un bloque seleccionado por el doctor
   //   - summarize_report: resumir el informe completo (chief_complaint+notes+diagnosis+treatment+blocks)
-  type AIMode = 'patient_history' | 'improve_block' | 'summarize_report'
-  const [aiResult, setAiResult] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiAction, setAiAction] = useState<AIMode | null>(null)
+  type AIMode = 'patient_history' | 'improve_block' | 'summarize_report';
+  const [aiResult, setAiResult] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiAction, setAiAction] = useState<AIMode | null>(null);
   // Bloque seleccionado en el dropdown de "Mejorar redacción"
-  const [aiTargetBlockKey, setAiTargetBlockKey] = useState<string>('')
+  const [aiTargetBlockKey, setAiTargetBlockKey] = useState<string>('');
   // Mostrar/ocultar el dropdown de seleccion de bloque
-  const [showAiBlockPicker, setShowAiBlockPicker] = useState(false)
+  const [showAiBlockPicker, setShowAiBlockPicker] = useState(false);
 
   // Appointment data (for payment receipt, method, price)
-  const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null)
+  const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null);
 
   // Share menu state
   // L1 (2026-04-29): los checkboxes ahora son dinámicos — uno por cada bloque
   // printable del snapshot/config viva. shareKeys guarda las keys seleccionadas.
-  const [showShare, setShowShare] = useState(false)
-  const [shareKeys, setShareKeys] = useState<Set<string>>(new Set())
+  const [showShare, setShowShare] = useState(false);
+  const [shareKeys, setShareKeys] = useState<Set<string>>(new Set());
 
   // L1 (2026-04-29): Modal "Generar informe" — mismo concepto que share pero
   // sin el split WhatsApp/Email; solo genera URL y la abre en otra pestaña.
-  const [showGenerateReport, setShowGenerateReport] = useState(false)
-  const [reportSelectedKeys, setReportSelectedKeys] = useState<Set<string>>(new Set())
+  const [showGenerateReport, setShowGenerateReport] = useState(false);
+  const [reportSelectedKeys, setReportSelectedKeys] = useState<Set<string>>(new Set());
   // FIX 2026-04-29: URL del informe generado, para mostrar enlace clickeable
   // dentro del modal y no depender de window.open() (Safari lo bloquea por
   // estar fuera del user gesture tras el await).
-  const [generatedReportUrl, setGeneratedReportUrl] = useState<string | null>(null)
-  const [generatingReport, setGeneratingReport] = useState(false)
+  const [generatedReportUrl, setGeneratedReportUrl] = useState<string | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   // L1 (2026-04-29): Catálogo completo de bloques (consultation_block_catalog)
   // para el botón "+" que permite agregar bloques on-the-fly a una consulta.
-  type CatalogBlock = { key: string; label: string; content_type: string; printable: boolean; send_to_patient: boolean }
-  const [blockCatalog, setBlockCatalog] = useState<CatalogBlock[]>([])
-  const [showAddBlockMenu, setShowAddBlockMenu] = useState(false)
-  const [addingBlock, setAddingBlock] = useState(false)
+  type CatalogBlock = {
+    key: string;
+    label: string;
+    content_type: string;
+    printable: boolean;
+    send_to_patient: boolean;
+  };
+  const [blockCatalog, setBlockCatalog] = useState<CatalogBlock[]>([]);
+  const [showAddBlockMenu, setShowAddBlockMenu] = useState(false);
+  const [addingBlock, setAddingBlock] = useState(false);
 
   // Collapsible sidebar sections
-  const [showPaymentDetails, setShowPaymentDetails] = useState(false)
-  const [showRightSidebar, setShowRightSidebar] = useState(true)
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
+  const [showRightSidebar, setShowRightSidebar] = useState(true);
 
   // Doctor profile for share template
-  const [doctorName, setDoctorName] = useState('')
+  const [doctorName, setDoctorName] = useState('');
   // Logo y firma GLOBALES del doctor — se aplican a TODOS los PDFs por defecto
   // (templateConfigs[type] puede sobreescribirlos por tipo de documento)
-  const [doctorLogo, setDoctorLogo] = useState<string | null>(null)
-  const [doctorSignature, setDoctorSignature] = useState<string | null>(null)
-  const [doctorLicense, setDoctorLicense] = useState<string | null>(null)
-  const [shareTemplate, setShareTemplate] = useState('Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}')
+  const [doctorLogo, setDoctorLogo] = useState<string | null>(null);
+  const [doctorSignature, setDoctorSignature] = useState<string | null>(null);
+  const [doctorLicense, setDoctorLicense] = useState<string | null>(null);
+  const [shareTemplate, setShareTemplate] = useState(
+    'Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}',
+  );
 
   // Doctor's active payment methods from settings
-  const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([])
+  const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([]);
 
   // L7 (2026-04-29): el cronómetro manual fue eliminado. La duración se
   // calcula automáticamente: started_at se marca cuando la cita pasa a
@@ -292,181 +383,218 @@ function ConsultationsPage() {
 
   // Template configs for PDFs
   type TemplateConfig = {
-    logo_url: string | null
-    signature_url: string | null
-    font_family: string
-    header_text: string
-    footer_text: string
-    show_logo: boolean
-    show_signature: boolean
-    primary_color: string
-  }
+    logo_url: string | null;
+    signature_url: string | null;
+    font_family: string;
+    header_text: string;
+    footer_text: string;
+    show_logo: boolean;
+    show_signature: boolean;
+    primary_color: string;
+  };
   const defaultTemplateConfig: TemplateConfig = {
-    logo_url: null, signature_url: null, font_family: 'Inter',
-    header_text: '', footer_text: '', show_logo: true, show_signature: true, primary_color: '#0891b2',
-  }
+    logo_url: null,
+    signature_url: null,
+    font_family: 'Inter',
+    header_text: '',
+    footer_text: '',
+    show_logo: true,
+    show_signature: true,
+    primary_color: '#0891b2',
+  };
   const [templateConfigs, setTemplateConfigs] = useState<Record<string, TemplateConfig>>({
     informe: { ...defaultTemplateConfig },
     recipe: { ...defaultTemplateConfig },
     prescripciones: { ...defaultTemplateConfig },
     reposo: { ...defaultTemplateConfig },
-  })
+  });
 
   // Quick items from templates (doctor_quick_items)
-  const [quickExams, setQuickExams] = useState<QuickItem[]>([])
-  const [quickMeds, setQuickMeds] = useState<QuickItem[]>([])
+  const [quickExams, setQuickExams] = useState<QuickItem[]>([]);
+  const [quickMeds, setQuickMeds] = useState<QuickItem[]>([]);
 
   // Saved prescriptions for current consultation
-  const [savedPrescriptions, setSavedPrescriptions] = useState<SavedPrescription[]>([])
+  const [savedPrescriptions, setSavedPrescriptions] = useState<SavedPrescription[]>([]);
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toISOString().split('T')[0];
 
   // Generate available dates (next 30 days, based on doctor's schedule)
   const availableDates = (() => {
-    const dates: { date: string; label: string; dayOfWeek: number }[] = []
-    const now = new Date()
+    const dates: { date: string; label: string; dayOfWeek: number }[] = [];
+    const now = new Date();
     for (let d = 0; d <= 30; d++) {
-      const dt = new Date(now)
-      dt.setDate(now.getDate() + d)
-      const dow = dt.getDay() // 0=Sunday
-      const dateStr = dt.toISOString().split('T')[0]
+      const dt = new Date(now);
+      dt.setDate(now.getDate() + d);
+      const dow = dt.getDay(); // 0=Sunday
+      const dateStr = dt.toISOString().split('T')[0];
       // If schedule is loaded, only show days that have availability
       if (scheduleLoaded && scheduleSlots.length > 0) {
-        const hasSlots = scheduleSlots.some(s => s.day_of_week === dow && s.is_enabled)
-        if (!hasSlots) continue
+        const hasSlots = scheduleSlots.some((s) => s.day_of_week === dow && s.is_enabled);
+        if (!hasSlots) continue;
       } else {
         // Default: skip Sundays
-        if (dow === 0) continue
+        if (dow === 0) continue;
       }
       // Skip blocked dates
-      if (blockedDates.some(b => b.blocked_date === dateStr)) continue
-      const label = dt.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' })
-      dates.push({ date: dateStr, label, dayOfWeek: dow })
+      if (blockedDates.some((b) => b.blocked_date === dateStr)) continue;
+      const label = dt.toLocaleDateString('es-VE', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      });
+      dates.push({ date: dateStr, label, dayOfWeek: dow });
     }
-    return dates
-  })()
+    return dates;
+  })();
 
   // Generate time slots for selected date
   const timeSlotsForDate = (() => {
-    if (!selectedDate) return []
-    const dateObj = new Date(selectedDate + 'T00:00:00')
-    const dow = dateObj.getDay()
-    const duration = slotDuration || 30
+    if (!selectedDate) return [];
+    const dateObj = new Date(selectedDate + 'T00:00:00');
+    const dow = dateObj.getDay();
+    const duration = slotDuration || 30;
 
-    let daySlots: { start: string; end: string }[] = []
+    let daySlots: { start: string; end: string }[] = [];
     if (scheduleLoaded && scheduleSlots.length > 0) {
       daySlots = scheduleSlots
-        .filter(s => s.day_of_week === dow && s.is_enabled)
-        .map(s => ({ start: s.start_time, end: s.end_time }))
+        .filter((s) => s.day_of_week === dow && s.is_enabled)
+        .map((s) => ({ start: s.start_time, end: s.end_time }));
     } else {
       // Default schedule
       daySlots = [
         { start: '08:00', end: '12:00' },
         { start: '14:00', end: '18:00' },
-      ]
+      ];
     }
 
-    const slots: string[] = []
-    daySlots.forEach(range => {
-      const [sh, sm] = range.start.split(':').map(Number)
-      const [eh, em] = range.end.split(':').map(Number)
-      let current = sh * 60 + sm
-      const endMin = eh * 60 + em
+    const slots: string[] = [];
+    daySlots.forEach((range) => {
+      const [sh, sm] = range.start.split(':').map(Number);
+      const [eh, em] = range.end.split(':').map(Number);
+      let current = sh * 60 + sm;
+      const endMin = eh * 60 + em;
       while (current + duration <= endMin) {
-        const h = Math.floor(current / 60)
-        const m = current % 60
-        slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-        current += duration
+        const h = Math.floor(current / 60);
+        const m = current % 60;
+        slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+        current += duration;
       }
-    })
+    });
 
-    return slots
-  })()
+    return slots;
+  })();
 
   // Check if a time slot is booked
   const isTimeBooked = (date: string, time: string) => {
-    const slotTime = new Date(`${date}T${time}:00`).getTime()
-    const bufferMs = (slotDuration || 30) * 60 * 1000
-    return bookedTimes.some(bt => {
-      const bookedTime = new Date(bt).getTime()
-      return Math.abs(bookedTime - slotTime) < bufferMs
-    })
-  }
+    const slotTime = new Date(`${date}T${time}:00`).getTime();
+    const bufferMs = (slotDuration || 30) * 60 * 1000;
+    return bookedTimes.some((bt) => {
+      const bookedTime = new Date(bt).getTime();
+      return Math.abs(bookedTime - slotTime) < bufferMs;
+    });
+  };
 
   // Week navigation for dates
-  const weekDates = availableDates.slice(weekOffset * 5, weekOffset * 5 + 5)
+  const weekDates = availableDates.slice(weekOffset * 5, weekOffset * 5 + 5);
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
+    // MIGRATED (Etapa 1): auth identity + patients + consultations list → NestJS backend.
+    // FASE 5 (still Supabase): profiles, doctor_quick_items, pricing_plans, doctor_templates,
+    //   appointments booked times, blocks_data autosave, payments, storage.
+    getDevDoctorId().then(async (doctorId) => {
+      if (!doctorId) return;
+      const supabase = createClient(); // still needed for FASE 5 calls below
+      const user = { id: doctorId };
       try {
-        // Cargar perfil del doctor (nombre + template + logo + firma GLOBALES)
+        // FASE 5: profiles — no backend endpoint in Etapa 1
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('full_name, professional_title, share_message_template, payment_methods, logo_url, signature_url, license_number')
+          .select(
+            'full_name, professional_title, share_message_template, payment_methods, logo_url, signature_url, license_number',
+          )
           .eq('id', user.id)
-          .single()
+          .single();
         if (profileData) {
-          setDoctorName(`${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim())
-          if (profileData.share_message_template) setShareTemplate(profileData.share_message_template)
+          setDoctorName(
+            `${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim(),
+          );
+          if (profileData.share_message_template)
+            setShareTemplate(profileData.share_message_template);
           if (profileData.payment_methods && Array.isArray(profileData.payment_methods)) {
-            setDoctorPaymentMethods(profileData.payment_methods)
+            setDoctorPaymentMethods(profileData.payment_methods);
           }
-          // Logo y firma GLOBALES: se aplican a todos los PDFs salvo override por tipo
-          setDoctorLogo((profileData as any).logo_url || null)
-          setDoctorSignature((profileData as any).signature_url || null)
-          setDoctorLicense((profileData as any).license_number || null)
+          setDoctorLogo((profileData as any).logo_url || null);
+          setDoctorSignature((profileData as any).signature_url || null);
+          setDoctorLicense((profileData as any).license_number || null);
         }
 
-        // Cargar pacientes con datos médicos
-        const { data: patientsData } = await supabase
-          .from('patients')
-          .select('id, full_name, phone, email, cedula, age, sex, blood_type, allergies, chronic_conditions')
-          .eq('doctor_id', user.id)
-        setPatients(patientsData ?? [])
+        // MIGRATED: patients → GET /api/patients (NestJS backend)
+        const ehrPatients = await getEhrPatients();
+        setPatients(
+          ehrPatients.map((p) => ({
+            id: p.id,
+            full_name: p.full_name,
+            phone: p.phone,
+            email: null, // not in list shape — detail only
+            cedula: p.id_number, // id_number is the cedula alias
+            age: p.age,
+            sex: p.sex,
+            blood_type: null,
+            allergies: null,
+            chronic_conditions: null,
+          })),
+        );
 
         // Cargar quick items (exámenes y medicamentos frecuentes)
         const { data: quickItems } = await supabase
           .from('doctor_quick_items')
           .select('id, item_type, name, category, details')
           .eq('doctor_id', user.id)
-          .order('name')
+          .order('name');
         if (quickItems) {
-          setQuickExams(quickItems.filter(i => i.item_type === 'exam'))
-          setQuickMeds(quickItems.filter(i => i.item_type === 'medication'))
+          setQuickExams(quickItems.filter((i) => i.item_type === 'exam'));
+          setQuickMeds(quickItems.filter((i) => i.item_type === 'medication'));
         }
 
         // RONDA 39: cargar bloques ACTIVOS del doctor (config viva).
         // Esta lista se usa cuando una consulta no tiene blocks_snapshot congelado,
         // para que las pestañas reflejen siempre la ultima configuracion del doctor.
         try {
-          const blocksRes = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' })
+          const blocksRes = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' });
           if (blocksRes.ok) {
-            const j = await blocksRes.json()
-            const resolved = (j.resolved || []) as Array<{ key: string; label: string; content_type: string; sort_order: number; printable: boolean; send_to_patient: boolean }>
-            setDoctorActiveBlocks(resolved as SnapshotBlock[])
+            const j = await blocksRes.json();
+            const resolved = (j.resolved || []) as Array<{
+              key: string;
+              label: string;
+              content_type: string;
+              sort_order: number;
+              printable: boolean;
+              send_to_patient: boolean;
+            }>;
+            setDoctorActiveBlocks(resolved as SnapshotBlock[]);
             // L1 (2026-04-29) + FIX 2026-04-29: el endpoint devuelve la fila cruda
             // del catálogo con columnas `default_label/default_content_type/default_printable/...`.
             // Antes leíamos `c.label`/`c.content_type` (undefined) y el dropdown del
             // botón "+" se renderizaba con labels vacíos — el doctor veía "nada".
             const catalog = (j.catalog || []) as Array<{
-              key: string
-              default_label: string
-              default_content_type: string
-              default_printable?: boolean
-              default_send_to_patient?: boolean
-            }>
-            setBlockCatalog(catalog.map(c => ({
-              key: c.key,
-              label: c.default_label,
-              content_type: c.default_content_type,
-              printable: c.default_printable ?? true,
-              send_to_patient: c.default_send_to_patient ?? true,
-            })))
+              key: string;
+              default_label: string;
+              default_content_type: string;
+              default_printable?: boolean;
+              default_send_to_patient?: boolean;
+            }>;
+            setBlockCatalog(
+              catalog.map((c) => ({
+                key: c.key,
+                label: c.default_label,
+                content_type: c.default_content_type,
+                printable: c.default_printable ?? true,
+                send_to_patient: c.default_send_to_patient ?? true,
+              })),
+            );
           }
         } catch (err) {
-          console.warn('[consultations] no se pudo cargar config de bloques:', err)
+          console.warn('[consultations] no se pudo cargar config de bloques:', err);
         }
 
         // Cargar planes de precios del doctor
@@ -475,54 +603,58 @@ function ConsultationsPage() {
           .select('id, name, price_usd, duration_minutes')
           .eq('doctor_id', user.id)
           .eq('is_active', true)
-          .order('price_usd')
-        setPricingPlans(plansData ?? [])
+          .order('price_usd');
+        setPricingPlans(plansData ?? []);
 
         // Cargar horario del doctor para bloques de citas
         try {
-          const schedRes = await fetch('/api/doctor/schedule')
+          const schedRes = await fetch('/api/doctor/schedule');
           if (schedRes.ok) {
-            const schedData = await schedRes.json()
-            setScheduleSlots(schedData.slots || [])
-            setBlockedDates(schedData.blocked || [])
-            setSlotDuration(schedData.config?.slot_duration || 30)
-            setScheduleLoaded(true)
+            const schedData = await schedRes.json();
+            setScheduleSlots(schedData.slots || []);
+            setBlockedDates(schedData.blocked || []);
+            setSlotDuration(schedData.config?.slot_duration || 30);
+            setScheduleLoaded(true);
           }
-        } catch { /* schedule not configured */ }
+        } catch {
+          /* schedule not configured */
+        }
 
         // Cargar citas existentes para marcar slots ocupados
-        const startOfRange = new Date()
-        const endOfRange = new Date(Date.now() + 30 * 86400000)
+        const startOfRange = new Date();
+        const endOfRange = new Date(Date.now() + 30 * 86400000);
         const { data: existingAppts } = await supabase
           .from('appointments')
           .select('scheduled_at')
           .eq('doctor_id', user.id)
           .gte('scheduled_at', startOfRange.toISOString())
-          .lte('scheduled_at', endOfRange.toISOString())
+          .lte('scheduled_at', endOfRange.toISOString());
         const { data: existingCons } = await supabase
           .from('consultations')
           .select('consultation_date')
           .eq('doctor_id', user.id)
           .gte('consultation_date', startOfRange.toISOString())
-          .lte('consultation_date', endOfRange.toISOString())
+          .lte('consultation_date', endOfRange.toISOString());
         const booked = [
-          ...(existingAppts || []).map(a => a.scheduled_at),
-          ...(existingCons || []).map(c => c.consultation_date),
-        ]
-        setBookedTimes(booked)
+          ...(existingAppts || []).map((a) => a.scheduled_at),
+          ...(existingCons || []).map((c) => c.consultation_date),
+        ];
+        setBookedTimes(booked);
 
         // Cargar configuraciones de plantillas para PDFs
         const { data: tplData } = await supabase
           .from('doctor_templates')
-          .select('template_type, logo_url, signature_url, font_family, header_text, footer_text, show_logo, show_signature, primary_color')
-          .eq('doctor_id', user.id)
+          .select(
+            'template_type, logo_url, signature_url, font_family, header_text, footer_text, show_logo, show_signature, primary_color',
+          )
+          .eq('doctor_id', user.id);
         if (tplData) {
           const configs: Record<string, TemplateConfig> = {
             informe: { ...defaultTemplateConfig },
             recipe: { ...defaultTemplateConfig },
             prescripciones: { ...defaultTemplateConfig },
             reposo: { ...defaultTemplateConfig },
-          }
+          };
           tplData.forEach((t: any) => {
             if (configs[t.template_type]) {
               configs[t.template_type] = {
@@ -534,20 +666,15 @@ function ConsultationsPage() {
                 show_logo: t.show_logo ?? true,
                 show_signature: t.show_signature ?? true,
                 primary_color: t.primary_color || '#0891b2',
-              }
+              };
             }
-          })
-          setTemplateConfigs(configs)
+          });
+          setTemplateConfigs(configs);
         }
 
-        // Cargar consultas
-        const { data } = await supabase
-          .from('consultations')
-          .select('*, patients(full_name, phone)')
-          .eq('doctor_id', user.id)
-          .order('consultation_date', { ascending: false })
-
-        const consultationsList = (data ?? []).map(c => ({
+        // MIGRATED: consultations list → GET /api/consultations (NestJS backend)
+        const backendConsultations = await listConsultations({ limit: 200 });
+        const consultationsList = backendConsultations.map((c) => ({
           id: c.id,
           consultation_code: c.consultation_code,
           consultation_date: c.consultation_date,
@@ -555,85 +682,104 @@ function ConsultationsPage() {
           notes: c.notes,
           diagnosis: c.diagnosis,
           treatment: c.treatment,
-          status: (c.status ?? 'pending') as Consultation['status'],
+          status: 'pending' as Consultation['status'], // backend Etapa 1 doesn't expose status field
           payment_status: c.payment_status,
-          appointment_id: (c as { appointment_id?: string | null }).appointment_id ?? null,
+          appointment_id: c.appointment_id,
           patient_id: c.patient_id,
-          patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
-          patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
-          started_at: c.started_at ?? null,
-          ended_at: c.ended_at ?? null,
-          duration_minutes: c.duration_minutes ?? null,
-          // AUDIT FIX 2026-04-28 (C-5): version para optimistic locking en autosave.
-          version: (c as { version?: number | null }).version ?? null,
-        }))
+          patient_name: 'Paciente', // not in backend response — fetch separately if needed
+          patient_phone: null,
+          started_at: c.started_at,
+          ended_at: c.ended_at,
+          duration_minutes: c.duration_minutes,
+          version: null, // optimistic lock field — Fase 5
+        }));
 
-        setConsultations(consultationsList)
+        setConsultations(consultationsList);
 
         // Auto-open consultation if openId is in query params
         if (openId) {
-          const consultationToOpen = consultationsList.find(c => c.id === openId)
+          const consultationToOpen = consultationsList.find((c) => c.id === openId);
           if (consultationToOpen) {
-            await new Promise(resolve => setTimeout(resolve, 100)) // Small delay to ensure state is updated
-            openConsultation(consultationToOpen)
+            await new Promise((resolve) => setTimeout(resolve, 100)); // Small delay to ensure state is updated
+            openConsultation(consultationToOpen);
           }
         }
       } catch (err) {
-        console.error('Error loading data:', err)
+        console.error('Error loading data:', err);
       }
-      setLoading(false)
-    })
-  }, [openId])
+      setLoading(false);
+    });
+  }, [openId]);
 
   async function deleteConsultationCascade(c: Consultation) {
-    setDeletingConsulta(true)
+    setDeletingConsulta(true);
     try {
-      const res = await fetch(`/api/doctor/consultations?id=${c.id}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error al eliminar')
+      const res = await fetch(`/api/doctor/consultations?id=${c.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al eliminar');
 
       // Remove from local state and go back to list
-      setConsultations(prev => prev.filter(con => con.id !== c.id))
-      setSelected(null)
-      setView('list')
-      setConfirmDeleteConsulta(null)
-      alert('Consulta eliminada correctamente')
+      setConsultations((prev) => prev.filter((con) => con.id !== c.id));
+      setSelected(null);
+      setView('list');
+      setConfirmDeleteConsulta(null);
+      alert('Consulta eliminada correctamente');
     } catch (err: any) {
-      console.error('Delete error:', err)
-      alert(err?.message || 'Error al eliminar la consulta')
+      console.error('Delete error:', err);
+      alert(err?.message || 'Error al eliminar la consulta');
     }
-    setDeletingConsulta(false)
+    setDeletingConsulta(false);
   }
 
-  async function updateConsultaStatus(consultationId: string, newStatus: Consultation['status'], appointmentId: string | null) {
-    const supabase = createClient()
+  async function updateConsultaStatus(
+    consultationId: string,
+    newStatus: Consultation['status'],
+    appointmentId: string | null,
+  ) {
+    const supabase = createClient();
     try {
-      const { error } = await supabase.from('consultations').update({ status: newStatus }).eq('id', consultationId)
-      if (error) throw error
+      const { error } = await supabase
+        .from('consultations')
+        .update({ status: newStatus })
+        .eq('id', consultationId);
+      if (error) throw error;
 
       // Sincronizar el appointment.status (atendida → completed | no_show → no_show)
       if (appointmentId) {
-        const apptStatus = newStatus === 'completed' ? 'completed' : newStatus === 'no_show' ? 'no_show' : null
+        const apptStatus =
+          newStatus === 'completed' ? 'completed' : newStatus === 'no_show' ? 'no_show' : null;
         if (apptStatus) {
-          await supabase.from('appointments').update({ status: apptStatus }).eq('id', appointmentId)
+          await supabase
+            .from('appointments')
+            .update({ status: apptStatus })
+            .eq('id', appointmentId);
         }
       }
 
       // Actualizar estado local
-      setSelected(prev => prev ? { ...prev, status: newStatus } : prev)
-      setConsultations(prev => prev.map(x => x.id === consultationId ? { ...x, status: newStatus } : x))
+      setSelected((prev) => (prev ? { ...prev, status: newStatus } : prev));
+      setConsultations((prev) =>
+        prev.map((x) => (x.id === consultationId ? { ...x, status: newStatus } : x)),
+      );
     } catch (err: any) {
-      console.error('Error updating consulta status:', err)
-      alert(err?.message || 'Error al actualizar estado de la consulta')
+      console.error('Error updating consulta status:', err);
+      alert(err?.message || 'Error al actualizar estado de la consulta');
     }
   }
 
-  async function updatePagoStatus(consultationId: string, newStatus: 'pending' | 'approved', appointmentId: string | null) {
-    setPagoSaving(true)
-    const supabase = createClient()
+  async function updatePagoStatus(
+    consultationId: string,
+    newStatus: 'pending' | 'approved',
+    appointmentId: string | null,
+  ) {
+    setPagoSaving(true);
+    const supabase = createClient();
     try {
-      const { error } = await supabase.from('consultations').update({ payment_status: newStatus }).eq('id', consultationId)
-      if (error) throw error
+      const { error } = await supabase
+        .from('consultations')
+        .update({ payment_status: newStatus })
+        .eq('id', consultationId);
+      if (error) throw error;
 
       // Sincronizar payments table — la relación REAL es appointments.payment_id → payments.id
       // (NO existe payments.consultation_id). Necesitamos appointment_id para llegar al payment.
@@ -642,41 +788,48 @@ function ConsultationsPage() {
           .from('appointments')
           .select('payment_id')
           .eq('id', appointmentId)
-          .maybeSingle()
+          .maybeSingle();
         if (appt?.payment_id) {
-          await supabase.from('payments').update({
-            status: newStatus,
-            paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
-          }).eq('id', appt.payment_id)
+          await supabase
+            .from('payments')
+            .update({
+              status: newStatus,
+              paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
+            })
+            .eq('id', appt.payment_id);
         }
       }
 
       // Actualizar estado local — el badge informativo se sincroniza automaticamente con esto
-      setSelected(prev => prev ? { ...prev, payment_status: newStatus } : prev)
-      setReport(prev => ({ ...prev, payment_status: newStatus }))
-      setConsultations(prev => prev.map(x => x.id === consultationId ? { ...x, payment_status: newStatus } : x))
+      setSelected((prev) => (prev ? { ...prev, payment_status: newStatus } : prev));
+      setReport((prev) => ({ ...prev, payment_status: newStatus }));
+      setConsultations((prev) =>
+        prev.map((x) => (x.id === consultationId ? { ...x, payment_status: newStatus } : x)),
+      );
 
       // Toast de exito (auto-dismiss 3s)
-      setPagoToast('Estado de pago actualizado correctamente')
-      setTimeout(() => setPagoToast(null), 3000)
+      setPagoToast('Estado de pago actualizado correctamente');
+      setTimeout(() => setPagoToast(null), 3000);
     } catch (err: any) {
-      console.error('Error updating pago status:', err)
-      setPagoToast('Error al actualizar el pago')
-      setTimeout(() => setPagoToast(null), 3500)
+      console.error('Error updating pago status:', err);
+      setPagoToast('Error al actualizar el pago');
+      setTimeout(() => setPagoToast(null), 3500);
     } finally {
-      setPagoSaving(false)
+      setPagoSaving(false);
     }
   }
 
   async function openConsultation(c: Consultation) {
     // Fetch fresh data from DB to ensure we have latest notes/diagnosis/treatment
-    const supabase = createClient()
+    const supabase = createClient();
     try {
       const { data } = await supabase
         .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, status, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, blocks_snapshot, blocks_data, patients(full_name, phone)')
+        .select(
+          'id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, status, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, blocks_snapshot, blocks_data, patients(full_name, phone)',
+        )
         .eq('id', c.id)
-        .single()
+        .single();
 
       if (data) {
         const fresh: Consultation = {
@@ -691,25 +844,31 @@ function ConsultationsPage() {
           payment_status: data.payment_status,
           appointment_id: (data as { appointment_id?: string | null }).appointment_id ?? null,
           patient_id: data.patient_id,
-          patient_name: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string }).full_name : c.patient_name,
-          patient_phone: !Array.isArray(data.patients) && data.patients ? (data.patients as { full_name: string; phone: string | null }).phone : c.patient_phone,
+          patient_name:
+            !Array.isArray(data.patients) && data.patients
+              ? (data.patients as { full_name: string }).full_name
+              : c.patient_name,
+          patient_phone:
+            !Array.isArray(data.patients) && data.patients
+              ? (data.patients as { full_name: string; phone: string | null }).phone
+              : c.patient_phone,
           started_at: data.started_at ?? null,
           ended_at: data.ended_at ?? null,
           duration_minutes: data.duration_minutes ?? null,
           // Preservar bloques dinámicos cargados de BD para que tabs y autosave funcionen
           blocks_snapshot: (data as any).blocks_snapshot ?? null,
           blocks_data: (data as any).blocks_data ?? null,
-        }
-        setSelected(fresh)
+        };
+        setSelected(fresh);
         setReport({
           chief_complaint: fresh.chief_complaint ?? '',
           notes: fresh.notes ?? '',
           diagnosis: fresh.diagnosis ?? '',
           treatment: fresh.treatment ?? '',
           payment_status: fresh.payment_status,
-        })
+        });
         // Update local list with fresh data
-        setConsultations(prev => prev.map(x => x.id === fresh.id ? fresh : x))
+        setConsultations((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)));
 
         // Fetch linked appointment data for payment receipt
         if (data.appointment_id) {
@@ -717,137 +876,160 @@ function ConsultationsPage() {
             .from('appointments')
             .select('payment_receipt_url, payment_method, plan_price, plan_name')
             .eq('id', data.appointment_id)
-            .maybeSingle()
-          setAppointmentData(apptData || null)
+            .maybeSingle();
+          setAppointmentData(apptData || null);
         } else {
-          // Fallback: try to find by doctor_id + patient_id + consultation_date
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
+          // Fallback: try to find by doctor_id + patient_id + consultation_date — FASE 5
+          const fallbackId = await getDevDoctorId();
+          if (fallbackId) {
+            const user = { id: fallbackId };
             const { data: apptData } = await supabase
               .from('appointments')
               .select('payment_receipt_url, payment_method, plan_price, plan_name')
               .eq('doctor_id', user.id)
               .eq('patient_id', data.patient_id)
               .eq('scheduled_at', data.consultation_date)
-              .maybeSingle()
-            setAppointmentData(apptData || null)
+              .maybeSingle();
+            setAppointmentData(apptData || null);
           }
         }
       } else {
         // Fallback to cached data
-        setSelected(c)
-        setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
-        setAppointmentData(null)
+        setSelected(c);
+        setReport({
+          chief_complaint: c.chief_complaint ?? '',
+          notes: c.notes ?? '',
+          diagnosis: c.diagnosis ?? '',
+          treatment: c.treatment ?? '',
+          payment_status: c.payment_status,
+        });
+        setAppointmentData(null);
       }
     } catch {
       // Fallback to cached data on error
-      setSelected(c)
-      setReport({ chief_complaint: c.chief_complaint ?? '', notes: c.notes ?? '', diagnosis: c.diagnosis ?? '', treatment: c.treatment ?? '', payment_status: c.payment_status })
-      setAppointmentData(null)
+      setSelected(c);
+      setReport({
+        chief_complaint: c.chief_complaint ?? '',
+        notes: c.notes ?? '',
+        diagnosis: c.diagnosis ?? '',
+        treatment: c.treatment ?? '',
+        payment_status: c.payment_status,
+      });
+      setAppointmentData(null);
     }
     // Cargar reposo persistido (si existe) desde blocks_data.reposo
     // Hacemos una segunda lectura ligera para evitar depender del scope del try anterior
     try {
-      const supabase = createClient()
+      const supabase = createClient();
       const { data: bd } = await supabase
         .from('consultations')
         .select('blocks_data')
         .eq('id', c.id)
-        .single()
+        .single();
       const reposoData = (bd?.blocks_data as Record<string, unknown> | null)?.['reposo'] as
         | { diagnosis?: string; days?: number; from?: string; to?: string }
-        | undefined
+        | undefined;
       if (reposoData) {
-        setReposoDiagnosis(reposoData.diagnosis || '')
-        setReposoDays(typeof reposoData.days === 'number' ? reposoData.days : 0)
-        setReposoFrom(reposoData.from || '')
-        setReposoTo(reposoData.to || '')
+        setReposoDiagnosis(reposoData.diagnosis || '');
+        setReposoDays(typeof reposoData.days === 'number' ? reposoData.days : 0);
+        setReposoFrom(reposoData.from || '');
+        setReposoTo(reposoData.to || '');
       } else {
-        setReposoDiagnosis(''); setReposoDays(0); setReposoFrom(''); setReposoTo('')
+        setReposoDiagnosis('');
+        setReposoDays(0);
+        setReposoFrom('');
+        setReposoTo('');
       }
     } catch {
-      setReposoDiagnosis(''); setReposoDays(0); setReposoFrom(''); setReposoTo('')
+      setReposoDiagnosis('');
+      setReposoDays(0);
+      setReposoFrom('');
+      setReposoTo('');
     }
     // Load saved prescriptions/recipes for this consultation
     try {
-      const supabase = createClient()
+      const supabase = createClient();
       const { data: savedRx } = await supabase
         .from('prescriptions')
         .select('id, medications, notes, created_at')
         .eq('consultation_id', c.id)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false });
       if (savedRx && savedRx.length > 0) {
-        setSavedPrescriptions(savedRx as SavedPrescription[])
+        setSavedPrescriptions(savedRx as SavedPrescription[]);
         // Load the most recent recipe's medications into the recipe editor
-        const latest = savedRx[0]
-        const meds = (latest.medications as Medication[]) || []
-        setRecipe({ medications: meds, notes: latest.notes || '' })
+        const latest = savedRx[0];
+        const meds = (latest.medications as Medication[]) || [];
+        setRecipe({ medications: meds, notes: latest.notes || '' });
         // Load exams from saved prescriptions (those that look like exams)
         const examItems = savedRx
-          .filter(rx => rx.notes?.startsWith('Examen:'))
-          .map(rx => {
-            const meds = (rx.medications as Medication[]) || []
-            return { exam_name: meds[0]?.name || '', notes: meds[0]?.indications || '' }
-          })
+          .filter((rx) => rx.notes?.startsWith('Examen:'))
+          .map((rx) => {
+            const meds = (rx.medications as Medication[]) || [];
+            return { exam_name: meds[0]?.name || '', notes: meds[0]?.indications || '' };
+          });
         if (examItems.length > 0) {
-          setPrescripciones(examItems)
+          setPrescripciones(examItems);
         } else {
-          setPrescripciones([])
+          setPrescripciones([]);
         }
       } else {
-        setSavedPrescriptions([])
-        setRecipe({ medications: [], notes: '' })
-        setPrescripciones([])
+        setSavedPrescriptions([]);
+        setRecipe({ medications: [], notes: '' });
+        setPrescripciones([]);
       }
     } catch {
-      setSavedPrescriptions([])
-      setRecipe({ medications: [], notes: '' })
-      setPrescripciones([])
+      setSavedPrescriptions([]);
+      setRecipe({ medications: [], notes: '' });
+      setPrescripciones([]);
     }
-    setView('consultation')
-    setSaved(false)
+    setView('consultation');
+    setSaved(false);
     // RONDA 38+39: tab inicial = primer bloque EFECTIVO de la consulta.
     // Snapshot congelado si existe, sino config actual del doctor.
-    const snap = (c as any).blocks_snapshot
-    const effective = (Array.isArray(snap) && snap.length > 0)
-      ? snap
-      : doctorActiveBlocks
+    const snap = (c as any).blocks_snapshot;
+    const effective = Array.isArray(snap) && snap.length > 0 ? snap : doctorActiveBlocks;
     if (Array.isArray(effective) && effective.length > 0) {
-      const sorted = [...effective].sort((a: any, b: any) => a.sort_order - b.sort_order)
-      setConsultationTab(`block:${sorted[0].key}`)
+      const sorted = [...effective].sort((a: any, b: any) => a.sort_order - b.sort_order);
+      setConsultationTab(`block:${sorted[0].key}`);
     } else {
-      setConsultationTab('block:chief_complaint')
+      setConsultationTab('block:chief_complaint');
     }
   }
 
   async function createNewConsultation() {
     if (!newConsultation.patient_id || !newConsultation.consultation_date) {
-      alert('Completa paciente y fecha')
-      return
+      alert('Completa paciente y fecha');
+      return;
     }
     if (!newConsultation.plan_id) {
-      alert('Selecciona un plan o servicio')
-      return
+      alert('Selecciona un plan o servicio');
+      return;
     }
-    setIsCreatingConsultation(true)
+    setIsCreatingConsultation(true);
     try {
       // Find selected plan details
-      const selectedPlan = pricingPlans.find(p => p.id === newConsultation.plan_id)
-      const planAmount = selectedPlan?.price_usd || 0
-      const planName = selectedPlan?.name || ''
+      const selectedPlan = pricingPlans.find((p) => p.id === newConsultation.plan_id);
+      const planAmount = selectedPlan?.price_usd || 0;
+      const planName = selectedPlan?.name || '';
 
       // Upload receipt if provided
-      let receiptUrl: string | null = null
+      let receiptUrl: string | null = null;
       if (receiptFile) {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const ext = receiptFile.name.split('.').pop()
-          const path = `${user.id}/${newConsultation.patient_id}/${Date.now()}.${ext}`
-          const { error: uploadErr } = await supabase.storage.from('payment-receipts').upload(path, receiptFile, { upsert: false })
+        const supabase = createClient();
+        // FASE 5: storage upload stays Supabase
+        const receiptUserId = await getDevDoctorId();
+        if (receiptUserId) {
+          const user = { id: receiptUserId };
+          const ext = receiptFile.name.split('.').pop();
+          const path = `${user.id}/${newConsultation.patient_id}/${Date.now()}.${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from('payment-receipts')
+            .upload(path, receiptFile, { upsert: false });
           if (!uploadErr) {
-            const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
-            receiptUrl = publicUrl.publicUrl
+            const { data: publicUrl } = supabase.storage
+              .from('payment-receipts')
+              .getPublicUrl(path);
+            receiptUrl = publicUrl.publicUrl;
           }
         }
       }
@@ -867,12 +1049,12 @@ function ConsultationsPage() {
           payment_reference: newConsultation.payment_reference || null,
           payment_receipt_url: receiptUrl,
         }),
-      })
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error || 'Error al crear consulta')
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Error al crear consulta');
 
       // 2. If there's an amount and payment method, register the payment
-      const consultationId = result.consultation?.id
+      const consultationId = result.consultation?.id;
       if (consultationId && planAmount > 0) {
         await fetch('/api/doctor/payments', {
           method: 'POST',
@@ -884,12 +1066,12 @@ function ConsultationsPage() {
             payment_method: newConsultation.payment_method,
             payment_reference: newConsultation.payment_reference || null,
           }),
-        })
+        });
       }
 
       // 3. Send email notification to patient if enabled
       if (newConsultation.sendEmail) {
-        const patient = patients.find(p => p.id === newConsultation.patient_id)
+        const patient = patients.find((p) => p.id === newConsultation.patient_id);
         if (patient?.email) {
           try {
             await fetch('/api/doctor/send-consultation-email', {
@@ -904,46 +1086,55 @@ function ConsultationsPage() {
                 comments: newConsultation.comments || '',
                 consultationCode: result.consultation?.consultation_code || '',
               }),
-            })
+            });
           } catch (emailErr) {
-            console.error('Error sending email:', emailErr)
+            console.error('Error sending email:', emailErr);
             // Don't block consultation creation if email fails
           }
         }
       }
 
-      // 3. Reload consultation list
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
+      // 3. FASE 5: reload consultation list from Supabase until backend covers this
+      const reloadId = await getDevDoctorId();
+      if (reloadId) {
+        const user = { id: reloadId };
+        const supabase = createClient();
         const { data } = await supabase
           .from('consultations')
           .select('*, patients(full_name, phone)')
           .eq('doctor_id', user.id)
-          .order('consultation_date', { ascending: false })
+          .order('consultation_date', { ascending: false });
 
-        setConsultations((data ?? []).map(c => ({
-          id: c.id,
-          consultation_code: c.consultation_code,
-          consultation_date: c.consultation_date,
-          chief_complaint: c.chief_complaint,
-          notes: c.notes,
-          diagnosis: c.diagnosis,
-          treatment: c.treatment,
-          status: (c.status ?? 'pending') as Consultation['status'],
-          payment_status: c.payment_status,
-          appointment_id: (c as { appointment_id?: string | null }).appointment_id ?? null,
-          patient_id: c.patient_id,
-          patient_name: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string }).full_name : 'Paciente',
-          patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as { full_name: string; phone: string | null }).phone : null,
-          started_at: c.started_at ?? null,
-          ended_at: c.ended_at ?? null,
-          duration_minutes: c.duration_minutes ?? null,
-        })))
+        setConsultations(
+          (data ?? []).map((c) => ({
+            id: c.id,
+            consultation_code: c.consultation_code,
+            consultation_date: c.consultation_date,
+            chief_complaint: c.chief_complaint,
+            notes: c.notes,
+            diagnosis: c.diagnosis,
+            treatment: c.treatment,
+            status: (c.status ?? 'pending') as Consultation['status'],
+            payment_status: c.payment_status,
+            appointment_id: (c as { appointment_id?: string | null }).appointment_id ?? null,
+            patient_id: c.patient_id,
+            patient_name:
+              !Array.isArray(c.patients) && c.patients
+                ? (c.patients as { full_name: string }).full_name
+                : 'Paciente',
+            patient_phone:
+              !Array.isArray(c.patients) && c.patients
+                ? (c.patients as { full_name: string; phone: string | null }).phone
+                : null,
+            started_at: c.started_at ?? null,
+            ended_at: c.ended_at ?? null,
+            duration_minutes: c.duration_minutes ?? null,
+          })),
+        );
       }
 
-      setShowNewConsultation(false)
-      setReceiptFile(null)
+      setShowNewConsultation(false);
+      setReceiptFile(null);
       setNewConsultation({
         patient_id: '',
         consultation_date: getLocalDateTimeString(),
@@ -954,12 +1145,12 @@ function ConsultationsPage() {
         payment_method: 'efectivo',
         comments: '',
         sendEmail: true,
-      })
+      });
     } catch (err) {
-      console.error('Error creating consultation:', err)
-      alert('Error al crear consulta')
+      console.error('Error creating consultation:', err);
+      alert('Error al crear consulta');
     } finally {
-      setIsCreatingConsultation(false)
+      setIsCreatingConsultation(false);
     }
   }
 
@@ -967,66 +1158,76 @@ function ConsultationsPage() {
   // Antes lanzaba "Error al guardar" aunque el insert era exitoso porque la FK
   // estaba mal apuntada a profiles(id) — ya reparada en BD a patients(id).
   async function saveRecipe() {
-    const hasContent = (recipe.medications && recipe.medications.length > 0)
-      || (recipe.notes && recipe.notes.replace(/<[^>]*>/g, '').trim().length > 0)
+    const hasContent =
+      (recipe.medications && recipe.medications.length > 0) ||
+      (recipe.notes && recipe.notes.replace(/<[^>]*>/g, '').trim().length > 0);
     if (!selected || !hasContent) {
-      alert('Agrega al menos un medicamento o escribe notas de la receta')
-      return
+      alert('Agrega al menos un medicamento o escribe notas de la receta');
+      return;
     }
 
     // Validacion previa del patient_id — DEBE ser un UUID de la tabla `patients`
     if (!selected.patient_id) {
-      log.error('[saveRecipe] selected.patient_id es null/undefined', { selected })
-      alert('Error: la consulta no tiene un paciente asociado')
-      return
+      log.error('[saveRecipe] selected.patient_id es null/undefined', { selected });
+      alert('Error: la consulta no tiene un paciente asociado');
+      return;
     }
-    log.debug('[saveRecipe] insertando', { patient_id: selected.patient_id, consultation_id: selected.id })
+    log.debug('[saveRecipe] insertando', {
+      patient_id: selected.patient_id,
+      consultation_id: selected.id,
+    });
 
-    setIsSavingRecipe(true)
+    setIsSavingRecipe(true);
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const supabase = createClient();
+      // FASE 5: prescription insert stays Supabase
+      const rxUserId = await getDevDoctorId();
+      const user = rxUserId ? { id: rxUserId } : null;
       if (!user) {
-        alert('Sesión expirada. Recarga la página.')
-        return
+        alert('Sesión expirada. Recarga la página.');
+        return;
       }
 
-      const { data, error } = await supabase.from('prescriptions').insert({
-        doctor_id: user.id,
-        patient_id: selected.patient_id,
-        consultation_id: selected.id,
-        medications: recipe.medications,
-        notes: recipe.notes || null,
-        created_at: new Date().toISOString(),
-      }).select('id').single()
+      const { data, error } = await supabase
+        .from('prescriptions')
+        .insert({
+          doctor_id: user.id,
+          patient_id: selected.patient_id,
+          consultation_id: selected.id,
+          medications: recipe.medications,
+          notes: recipe.notes || null,
+          created_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
 
       // Validar respuesta ANTES de mostrar mensaje
       if (error) {
-        console.error('[saveRecipe] Supabase error:', error)
-        alert(`Error al guardar receta: ${error.message}`)
-        return
+        console.error('[saveRecipe] Supabase error:', error);
+        alert(`Error al guardar receta: ${error.message}`);
+        return;
       }
       if (!data?.id) {
-        console.warn('[saveRecipe] insert devolvio sin id pero sin error', { data })
-        alert('No se pudo confirmar el guardado. Recarga e intenta de nuevo.')
-        return
+        console.warn('[saveRecipe] insert devolvio sin id pero sin error', { data });
+        alert('No se pudo confirmar el guardado. Recarga e intenta de nuevo.');
+        return;
       }
 
-      log.debug('[saveRecipe] guardado OK', { id: data.id })
+      log.debug('[saveRecipe] guardado OK', { id: data.id });
       // Reload saved prescriptions
       const { data: savedRx } = await supabase
         .from('prescriptions')
         .select('id, medications, notes, created_at')
         .eq('consultation_id', selected.id)
-        .order('created_at', { ascending: false })
-      setSavedPrescriptions((savedRx || []) as SavedPrescription[])
-      setShowRecipe(false)
-      alert('Receta guardada correctamente')
+        .order('created_at', { ascending: false });
+      setSavedPrescriptions((savedRx || []) as SavedPrescription[]);
+      setShowRecipe(false);
+      alert('Receta guardada correctamente');
     } catch (err: any) {
-      console.error('[saveRecipe] excepcion JS:', err)
-      alert(`Error al guardar receta: ${err?.message || 'desconocido'}`)
+      console.error('[saveRecipe] excepcion JS:', err);
+      alert(`Error al guardar receta: ${err?.message || 'desconocido'}`);
     } finally {
-      setIsSavingRecipe(false)
+      setIsSavingRecipe(false);
     }
   }
 
@@ -1034,23 +1235,39 @@ function ConsultationsPage() {
   // CASCADA: templateConfig especifico (por tipo de doc) → profile global del doctor → vacio
   // Asi TODOS los PDFs (informe/receta/prescripciones/reposo/dinamicos) llevan logo + firma
   // sin necesidad de configurar 4 templates separados.
-  function buildPdfHtml(templateType: string, title: string, bodyContent: string, patientName: string, code: string, dateStr: string) {
-    const cfg = templateConfigs[templateType] || defaultTemplateConfig
+  function buildPdfHtml(
+    templateType: string,
+    title: string,
+    bodyContent: string,
+    patientName: string,
+    code: string,
+    dateStr: string,
+  ) {
+    const cfg = templateConfigs[templateType] || defaultTemplateConfig;
     // Color primario: respeta el configurado por el doctor; default = teal Delta
-    const color = cfg.primary_color || '#0891b2'
+    const color = cfg.primary_color || '#0891b2';
     // RONDA 18: tipografia dinamica del template (Inter, Georgia, Times, Arial, Calibri, Palatino).
     // Antes (ronda 17) la fije en Inter por error y eso rompia el selector de tipografia.
     // Las fuentes Inter/Georgia/Palatino se traen de Google Fonts; las del sistema (Arial,
     // Times New Roman, Calibri) usan el fallback nativo del SO.
-    const font = cfg.font_family || 'Inter'
-    const isWebFont = ['Inter', 'Georgia', 'Palatino', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins'].includes(font)
+    const font = cfg.font_family || 'Inter';
+    const isWebFont = [
+      'Inter',
+      'Georgia',
+      'Palatino',
+      'Roboto',
+      'Open Sans',
+      'Lato',
+      'Montserrat',
+      'Poppins',
+    ].includes(font);
     // RONDA 17: SOURCE OF TRUTH = profile del doctor.
     // Ya no usamos cfg.logo_url ni cfg.signature_url — esos campos quedaron deprecados
     // como override por tipo de doc. El doctor sube logo y firma una sola vez en
     // /doctor/settings → profile.logo_url / profile.signature_url y eso aplica a TODO.
     // Las flags show_logo / show_signature por tipo de doc siguen funcionando.
-    const effectiveLogo = cfg.show_logo === false ? null : (doctorLogo || null)
-    const effectiveSignature = cfg.show_signature === false ? null : (doctorSignature || null)
+    const effectiveLogo = cfg.show_logo === false ? null : doctorLogo || null;
+    const effectiveSignature = cfg.show_signature === false ? null : doctorSignature || null;
 
     return `<!DOCTYPE html>
 <html>
@@ -1120,7 +1337,7 @@ function ConsultationsPage() {
 
   <script>window.onload = function() { window.print(); }</script>
 </body>
-</html>`
+</html>`;
   }
 
   // L1 (2026-04-29): helper genérico — convierte el contenido de cualquier bloque
@@ -1132,150 +1349,234 @@ function ConsultationsPage() {
   // "Informe" = solo ese bloque. Si NO, "Informe" = concatenado de TODOS los bloques
   // printable de la consulta (este caso lo maneja generateInformeHtml más abajo).
   function generateBlockHtml(blockKey: string, label: string): string {
-    if (!selected) return ''
+    if (!selected) return '';
     // Resolver contenido: primero blocks_data, luego columnas legacy
-    const bd = (selected.blocks_data || {}) as Record<string, unknown>
-    const raw = bd[blockKey]
-    let content = ''
+    const bd = (selected.blocks_data || {}) as Record<string, unknown>;
+    const raw = bd[blockKey];
+    let content = '';
     if (Array.isArray(raw)) {
-      content = '<ul>' + (raw as unknown[]).filter(Boolean).map(v => `<li>${String(v)}</li>`).join('') + '</ul>'
+      content =
+        '<ul>' +
+        (raw as unknown[])
+          .filter(Boolean)
+          .map((v) => `<li>${String(v)}</li>`)
+          .join('') +
+        '</ul>';
     } else if (typeof raw === 'string' && raw.trim()) {
-      content = raw
+      content = raw;
     } else if (raw && typeof raw === 'object') {
       // Bloque "rest" (reposo) tiene shape {diagnosis, days, from, to}
       if (blockKey === 'rest' || blockKey === 'reposo') {
-        const r = raw as { diagnosis?: string; days?: number; from?: string; to?: string }
+        const r = raw as { diagnosis?: string; days?: number; from?: string; to?: string };
         if (r.diagnosis || r.days || r.from) {
-          content = `Diagnóstico: ${r.diagnosis || '-'}<br>Días: ${r.days ?? 0}` +
+          content =
+            `Diagnóstico: ${r.diagnosis || '-'}<br>Días: ${r.days ?? 0}` +
             (r.from ? `<br>Desde: ${new Date(r.from).toLocaleDateString('es-VE')}` : '') +
-            (r.to ? `<br>Hasta: ${new Date(r.to).toLocaleDateString('es-VE')}` : '')
+            (r.to ? `<br>Hasta: ${new Date(r.to).toLocaleDateString('es-VE')}` : '');
         }
       } else {
-        content = JSON.stringify(raw)
+        content = JSON.stringify(raw);
       }
     }
     // Fallback a columnas legacy
     if (!content) {
-      if (blockKey === 'chief_complaint' && report.chief_complaint) content = report.chief_complaint
-      else if (blockKey === 'diagnosis' && report.diagnosis) content = report.diagnosis
-      else if (blockKey === 'treatment' && report.treatment) content = report.treatment
-      else if ((blockKey === 'notes' || blockKey === 'informe') && report.notes) content = report.notes
+      if (blockKey === 'chief_complaint' && report.chief_complaint)
+        content = report.chief_complaint;
+      else if (blockKey === 'diagnosis' && report.diagnosis) content = report.diagnosis;
+      else if (blockKey === 'treatment' && report.treatment) content = report.treatment;
+      else if ((blockKey === 'notes' || blockKey === 'informe') && report.notes)
+        content = report.notes;
       else if (blockKey === 'rest' || blockKey === 'reposo') {
         if (reposoDiagnosis || reposoDays > 0 || reposoFrom) {
-          content = `Diagnóstico: ${reposoDiagnosis || '-'}<br>Días: ${reposoDays}` +
+          content =
+            `Diagnóstico: ${reposoDiagnosis || '-'}<br>Días: ${reposoDays}` +
             (reposoFrom ? `<br>Desde: ${new Date(reposoFrom).toLocaleDateString('es-VE')}` : '') +
-            (reposoTo ? `<br>Hasta: ${new Date(reposoTo).toLocaleDateString('es-VE')}` : '')
+            (reposoTo ? `<br>Hasta: ${new Date(reposoTo).toLocaleDateString('es-VE')}` : '');
         }
       } else if (blockKey === 'prescription' && recipe.medications.length > 0) {
-        content = recipe.medications.map((m, i) =>
-          `<div style="margin-bottom:10px;padding:8px;border:1px solid #e2e8f0;border-radius:6px"><strong>${i + 1}. ${m.name}</strong>` +
-          (m.dose ? ` | Dosis: ${m.dose}` : '') + (m.frequency ? ` | Freq: ${m.frequency}` : '') + (m.duration ? ` | Dur: ${m.duration}` : '') +
-          (m.indications ? `<br><em>${m.indications}</em>` : '') + '</div>'
-        ).join('')
+        content = recipe.medications
+          .map(
+            (m, i) =>
+              `<div style="margin-bottom:10px;padding:8px;border:1px solid #e2e8f0;border-radius:6px"><strong>${i + 1}. ${m.name}</strong>` +
+              (m.dose ? ` | Dosis: ${m.dose}` : '') +
+              (m.frequency ? ` | Freq: ${m.frequency}` : '') +
+              (m.duration ? ` | Dur: ${m.duration}` : '') +
+              (m.indications ? `<br><em>${m.indications}</em>` : '') +
+              '</div>',
+          )
+          .join('');
       } else if (blockKey === 'requested_exams' && prescripciones.length > 0) {
-        const valid = prescripciones.filter(p => p.exam_name.trim())
-        if (valid.length > 0) content = '<ul>' + valid.map(p => `<li>${p.exam_name}${p.notes ? ' - ' + p.notes : ''}</li>`).join('') + '</ul>'
+        const valid = prescripciones.filter((p) => p.exam_name.trim());
+        if (valid.length > 0)
+          content =
+            '<ul>' +
+            valid.map((p) => `<li>${p.exam_name}${p.notes ? ' - ' + p.notes : ''}</li>`).join('') +
+            '</ul>';
       }
     }
-    if (!content) return ''
-    return `<div class="section"><div class="section-title">${label}</div><div class="section-content">${content}</div></div>`
+    if (!content) return '';
+    return `<div class="section"><div class="section-title">${label}</div><div class="section-content">${content}</div></div>`;
   }
 
   // L1 (2026-04-29): construye el body del "Informe".
   // - Si existe un bloque con key='informe' o 'notes' en el snapshot/config → solo ese bloque.
   // - Si no → concatenación de TODOS los bloques printable de la consulta.
   function generateInformeHtml(): string {
-    if (!selected) return ''
-    const effective = getEffectiveBlocks(selected)
-    const informeBlock = effective.find(b => b.key === 'informe' || b.key === 'notes')
+    if (!selected) return '';
+    const effective = getEffectiveBlocks(selected);
+    const informeBlock = effective.find((b) => b.key === 'informe' || b.key === 'notes');
     if (informeBlock) {
-      return generateBlockHtml(informeBlock.key, informeBlock.label)
+      return generateBlockHtml(informeBlock.key, informeBlock.label);
     }
     // Fallback: si no hay bloque dedicado pero hay valor en report.notes legacy → usarlo
     if (report.notes && (!effective || effective.length === 0)) {
-      return `<div class="section"><div class="section-title">Informe</div><div class="section-content">${report.notes}</div></div>`
+      return `<div class="section"><div class="section-title">Informe</div><div class="section-content">${report.notes}</div></div>`;
     }
     // Concatenar todos los bloques printable
-    const printable = effective.filter(b => b.printable)
-    return printable.map(b => generateBlockHtml(b.key, b.label)).filter(Boolean).join('')
+    const printable = effective.filter((b) => b.printable);
+    return printable
+      .map((b) => generateBlockHtml(b.key, b.label))
+      .filter(Boolean)
+      .join('');
   }
 
   function generatePDF() {
-    if (!selected) return
+    if (!selected) return;
 
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
 
-    const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
 
-    let bodyContent = ''
-    if (report.chief_complaint) bodyContent += '<div class="section"><div class="section-title">Motivo de Consulta</div><div class="section-content">' + report.chief_complaint + '</div></div>'
-    if (report.notes) bodyContent += '<div class="section"><div class="section-title">Informe Médico</div><div class="section-content">' + report.notes + '</div></div>'
-    if (report.diagnosis) bodyContent += '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + report.diagnosis + '</div></div>'
+    let bodyContent = '';
+    if (report.chief_complaint)
+      bodyContent +=
+        '<div class="section"><div class="section-title">Motivo de Consulta</div><div class="section-content">' +
+        report.chief_complaint +
+        '</div></div>';
+    if (report.notes)
+      bodyContent +=
+        '<div class="section"><div class="section-title">Informe Médico</div><div class="section-content">' +
+        report.notes +
+        '</div></div>';
+    if (report.diagnosis)
+      bodyContent +=
+        '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' +
+        report.diagnosis +
+        '</div></div>';
 
     if (includeRecipe) {
       if (recipe.medications.length > 0) {
-        bodyContent += '<div class="section"><div class="section-title">Medicamentos</div><div class="section-content">'
-        bodyContent += recipe.medications.map((m: Medication, i: number) =>
-          '<div style="margin-bottom:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px">' +
-          '<div style="font-weight:700;color:#1e293b">' + (i+1) + '. ' + (m.name || '') + '</div>' +
-          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">' +
-          (m.dose ? '<span style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' + m.dose + '</span>' : '') +
-          (m.frequency ? '<span style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' + m.frequency + '</span>' : '') +
-          (m.duration ? '<span style="font-size:12px;color:#475569"><strong>Duración:</strong> ' + m.duration + '</span>' : '') +
-          '</div>' +
-          (m.indications ? '<div style="font-size:12px;color:#64748b;margin-top:2px"><em>' + m.indications + '</em></div>' : '') +
-          '</div>'
-        ).join('')
-        bodyContent += '</div></div>'
+        bodyContent +=
+          '<div class="section"><div class="section-title">Medicamentos</div><div class="section-content">';
+        bodyContent += recipe.medications
+          .map(
+            (m: Medication, i: number) =>
+              '<div style="margin-bottom:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px">' +
+              '<div style="font-weight:700;color:#1e293b">' +
+              (i + 1) +
+              '. ' +
+              (m.name || '') +
+              '</div>' +
+              '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">' +
+              (m.dose
+                ? '<span style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' +
+                  m.dose +
+                  '</span>'
+                : '') +
+              (m.frequency
+                ? '<span style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' +
+                  m.frequency +
+                  '</span>'
+                : '') +
+              (m.duration
+                ? '<span style="font-size:12px;color:#475569"><strong>Duración:</strong> ' +
+                  m.duration +
+                  '</span>'
+                : '') +
+              '</div>' +
+              (m.indications
+                ? '<div style="font-size:12px;color:#64748b;margin-top:2px"><em>' +
+                  m.indications +
+                  '</em></div>'
+                : '') +
+              '</div>',
+          )
+          .join('');
+        bodyContent += '</div></div>';
       }
-      if (report.treatment) bodyContent += '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' + report.treatment + '</div></div>'
+      if (report.treatment)
+        bodyContent +=
+          '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' +
+          report.treatment +
+          '</div></div>';
     }
 
     if (includePrescripciones && prescripciones.length > 0) {
-      bodyContent += '<div class="section"><div class="section-title">Prescripciones</div><div class="section-content"><ul>' + prescripciones.filter(p => p.exam_name.trim()).map(p => '<li>' + p.exam_name + (p.notes ? ' - ' + p.notes : '') + '</li>').join('') + '</ul></div></div>'
+      bodyContent +=
+        '<div class="section"><div class="section-title">Prescripciones</div><div class="section-content"><ul>' +
+        prescripciones
+          .filter((p) => p.exam_name.trim())
+          .map((p) => '<li>' + p.exam_name + (p.notes ? ' - ' + p.notes : '') + '</li>')
+          .join('') +
+        '</ul></div></div>';
     }
 
-    const htmlContent = buildPdfHtml('informe', 'Informe Médico', bodyContent, selected.patient_name, selected.consultation_code, dateStr)
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
+    const htmlContent = buildPdfHtml(
+      'informe',
+      'Informe Médico',
+      bodyContent,
+      selected.patient_name,
+      selected.consultation_code,
+      dateStr,
+    );
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   }
 
   function addMedication() {
-    setRecipe(p => ({
+    setRecipe((p) => ({
       ...p,
-      medications: [...p.medications, { name: '', dose: '', frequency: '', duration: '', indications: '' }]
-    }))
+      medications: [
+        ...p.medications,
+        { name: '', dose: '', frequency: '', duration: '', indications: '' },
+      ],
+    }));
   }
 
   function removeMedication(idx: number) {
-    setRecipe(p => ({
+    setRecipe((p) => ({
       ...p,
-      medications: p.medications.filter((_, i) => i !== idx)
-    }))
+      medications: p.medications.filter((_, i) => i !== idx),
+    }));
   }
 
   function saveReport() {
-    if (!selected) return
+    if (!selected) return;
     startTransition(async () => {
-      const supabase = createClient()
-      await supabase.from('consultations').update({
-        chief_complaint: report.chief_complaint,
-        notes: report.notes,
-        diagnosis: report.diagnosis,
-        treatment: report.treatment,
-        payment_status: report.payment_status,
-      }).eq('id', selected.id)
+      const supabase = createClient();
+      await supabase
+        .from('consultations')
+        .update({
+          chief_complaint: report.chief_complaint,
+          notes: report.notes,
+          diagnosis: report.diagnosis,
+          treatment: report.treatment,
+          payment_status: report.payment_status,
+        })
+        .eq('id', selected.id);
 
       // Update local state
-      setConsultations(prev => prev.map(c => c.id === selected.id
-        ? { ...c, ...report }
-        : c
-      ))
-      setSelected(prev => prev ? { ...prev, ...report } : null)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    })
+      setConsultations((prev) => prev.map((c) => (c.id === selected.id ? { ...c, ...report } : c)));
+      setSelected((prev) => (prev ? { ...prev, ...report } : null));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    });
   }
 
   // L7 (2026-04-29): toda la lógica del cronómetro manual fue eliminada.
@@ -1286,95 +1587,113 @@ function ConsultationsPage() {
   // El UI solo lee `selected.duration_minutes` para mostrarlo en formato
   // "45 min" o "1h 5min" via formatDuration().
   function formatDuration(mins: number | null | undefined): string {
-    if (mins == null || mins <= 0) return '—'
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    if (h > 0) return m > 0 ? `${h}h ${m}min` : `${h}h`
-    return `${m} min`
+    if (mins == null || mins <= 0) return '—';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h > 0) return m > 0 ? `${h}h ${m}min` : `${h}h`;
+    return `${m} min`;
   }
 
   // Auto-save: debounce 3 seconds after any report field changes
-  const reportRef = useRef(report)
-  reportRef.current = report
-  const selectedRef = useRef(selected)
-  selectedRef.current = selected
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
 
   useEffect(() => {
-    if (!selected) return
+    if (!selected) return;
     // Don't auto-save if the report hasn't been loaded yet (initial open)
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
-      if (!selectedRef.current) return
-      const r = reportRef.current
+      if (!selectedRef.current) return;
+      const r = reportRef.current;
       // Only save if there's some content
-      if (!r.chief_complaint && !r.notes && !r.diagnosis && !r.treatment) return
-      setAutoSaving(true)
-      const supabase = createClient()
+      if (!r.chief_complaint && !r.notes && !r.diagnosis && !r.treatment) return;
+      setAutoSaving(true);
+      const supabase = createClient();
       // AUDIT FIX 2026-04-28 (C-5): optimistic locking via `version` column.
       // Si otra pestaña/usuario guardó después de que cargamos, version de BD ya
       // avanzó y count = 0; recargamos en silencio en lugar de pisar.
-      const expectedVersion = selectedRef.current.version ?? null
+      const expectedVersion = selectedRef.current.version ?? null;
       const updateBuilder = supabase
         .from('consultations')
-        .update({
-          chief_complaint: r.chief_complaint,
-          notes: r.notes,
-          diagnosis: r.diagnosis,
-          treatment: r.treatment,
-          payment_status: r.payment_status,
-        }, { count: 'exact' })
-        .eq('id', selectedRef.current.id)
-      const promise = expectedVersion != null
-        ? updateBuilder.eq('version', expectedVersion).select('version').maybeSingle()
-        : updateBuilder.select('version').maybeSingle()
+        .update(
+          {
+            chief_complaint: r.chief_complaint,
+            notes: r.notes,
+            diagnosis: r.diagnosis,
+            treatment: r.treatment,
+            payment_status: r.payment_status,
+          },
+          { count: 'exact' },
+        )
+        .eq('id', selectedRef.current.id);
+      const promise =
+        expectedVersion != null
+          ? updateBuilder.eq('version', expectedVersion).select('version').maybeSingle()
+          : updateBuilder.select('version').maybeSingle();
       promise.then(({ data, error }) => {
-        setAutoSaving(false)
+        setAutoSaving(false);
         if (error || !data) {
           // Conflict: otra escritura ganó. Refetch para tomar la última versión.
           if (selectedRef.current) {
-            supabase.from('consultations')
+            supabase
+              .from('consultations')
               .select('version, chief_complaint, notes, diagnosis, treatment, payment_status')
               .eq('id', selectedRef.current.id)
               .single()
               .then(({ data: fresh }) => {
                 if (fresh && selectedRef.current) {
-                  setSelected(prev => prev ? { ...prev, version: fresh.version } : prev)
+                  setSelected((prev) => (prev ? { ...prev, version: fresh.version } : prev));
                 }
-              })
+              });
           }
-          return
+          return;
         }
-        setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
-        setSelected(prev => prev ? { ...prev, version: data.version } : prev)
-        setConsultations(prev => prev.map(c => c.id === selectedRef.current?.id ? { ...c, ...r, version: data.version } : c))
-      })
-    }, 3000)
-    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report.chief_complaint, report.notes, report.diagnosis, report.treatment, report.payment_status, selected?.id])
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+        setSelected((prev) => (prev ? { ...prev, version: data.version } : prev));
+        setConsultations((prev) =>
+          prev.map((c) =>
+            c.id === selectedRef.current?.id ? { ...c, ...r, version: data.version } : c,
+          ),
+        );
+      });
+    }, 3000);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    report.chief_complaint,
+    report.notes,
+    report.diagnosis,
+    report.treatment,
+    report.payment_status,
+    selected?.id,
+  ]);
 
   // Timer para auto-save de BLOQUES DINÁMICOS (block:xxx) — debounce 1.5s
-  const blocksAutoSaveTimer = useRef<NodeJS.Timeout | null>(null)
+  const blocksAutoSaveTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-save BLOQUE REPOSO en blocks_data — debounce 1.5s
   // Reposo NO tiene tabla propia, se persiste en consultations.blocks_data['reposo']
-  const reposoSaveTimer = useRef<NodeJS.Timeout | null>(null)
+  const reposoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
-    if (!selected) return
+    if (!selected) return;
     // No guardar si todos los campos están vacíos (estado inicial)
-    if (!reposoDiagnosis && reposoDays === 0 && !reposoFrom && !reposoTo) return
-    if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current)
+    if (!reposoDiagnosis && reposoDays === 0 && !reposoFrom && !reposoTo) return;
+    if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current);
     reposoSaveTimer.current = setTimeout(async () => {
-      if (!selectedRef.current) return
-      const supabase = createClient()
+      if (!selectedRef.current) return;
+      const supabase = createClient();
       // Merge con blocks_data existente para no pisar otros bloques
       const { data: current } = await supabase
         .from('consultations')
         .select('blocks_data')
         .eq('id', selectedRef.current.id)
-        .single()
-      const existingBlocks = (current?.blocks_data as Record<string, unknown>) || {}
+        .single();
+      const existingBlocks = (current?.blocks_data as Record<string, unknown>) || {};
       const newBlocks = {
         ...existingBlocks,
         reposo: {
@@ -1384,70 +1703,81 @@ function ConsultationsPage() {
           to: reposoTo,
           updated_at: new Date().toISOString(),
         },
-      }
-      await supabase.from('consultations').update({ blocks_data: newBlocks }).eq('id', selectedRef.current.id)
+      };
+      await supabase
+        .from('consultations')
+        .update({ blocks_data: newBlocks })
+        .eq('id', selectedRef.current.id);
       // Actualizar selected en local para que dynamicBlocks vea los cambios
-      setSelected(prev => prev ? { ...prev, blocks_data: newBlocks as any } : prev)
-    }, 1500)
-    return () => { if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reposoDiagnosis, reposoDays, reposoFrom, reposoTo, selected?.id])
+      setSelected((prev) => (prev ? { ...prev, blocks_data: newBlocks as any } : prev));
+    }, 1500);
+    return () => {
+      if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reposoDiagnosis, reposoDays, reposoFrom, reposoTo, selected?.id]);
 
   // L1 (2026-04-29): callAI unificado — un solo punto de entrada para los 3 modos.
   // - patient_history: solo necesita patientId; el endpoint extrae historial completo.
   // - improve_block: requiere blockKey; serializa el contenido actual del bloque y manda.
   // - summarize_report: serializa TODOS los bloques + chief_complaint/notes/diagnosis/treatment.
   async function callAI(mode: AIMode, opts?: { blockKey?: string }) {
-    if (!selected) return
-    setAiLoading(true)
-    setAiAction(mode)
-    setAiResult('')
+    if (!selected) return;
+    setAiLoading(true);
+    setAiAction(mode);
+    setAiResult('');
     try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        setAiResult('Sesión expirada. Recarga la página.')
-        return
+        setAiResult('Sesión expirada. Recarga la página.');
+        return;
       }
 
       const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      }
-      let payload: Record<string, unknown> = {}
+        Authorization: `Bearer ${session.access_token}`,
+      };
+      let payload: Record<string, unknown> = {};
 
       if (mode === 'patient_history') {
-        payload = { action: 'patient_history', patientId: selected.patient_id }
+        payload = { action: 'patient_history', patientId: selected.patient_id };
       } else if (mode === 'improve_block') {
-        const blockKey = opts?.blockKey || aiTargetBlockKey
+        const blockKey = opts?.blockKey || aiTargetBlockKey;
         if (!blockKey) {
-          setAiResult('Error: selecciona un bloque para mejorar.')
-          return
+          setAiResult('Error: selecciona un bloque para mejorar.');
+          return;
         }
-        const effective = getEffectiveBlocks(selected)
-        const block = effective.find(b => b.key === blockKey)
-        const label = block?.label || blockKey
+        const effective = getEffectiveBlocks(selected);
+        const block = effective.find((b) => b.key === blockKey);
+        const label = block?.label || blockKey;
         // Serializar contenido del bloque desde blocks_data (o columna legacy)
-        const bd = (selected.blocks_data || {}) as Record<string, unknown>
-        let content = ''
-        const raw = bd[blockKey]
-        if (Array.isArray(raw)) content = (raw as unknown[]).filter(Boolean).map(s => `- ${s}`).join('\n')
-        else if (typeof raw === 'string') content = raw
-        else if (raw != null) content = String(raw)
+        const bd = (selected.blocks_data || {}) as Record<string, unknown>;
+        let content = '';
+        const raw = bd[blockKey];
+        if (Array.isArray(raw))
+          content = (raw as unknown[])
+            .filter(Boolean)
+            .map((s) => `- ${s}`)
+            .join('\n');
+        else if (typeof raw === 'string') content = raw;
+        else if (raw != null) content = String(raw);
         // Fallback a columnas legacy
         if (!content.trim()) {
-          if (blockKey === 'chief_complaint') content = report.chief_complaint
-          else if (blockKey === 'diagnosis') content = report.diagnosis
-          else if (blockKey === 'treatment') content = report.treatment
-          else if (blockKey === 'notes' || blockKey === 'informe') content = report.notes
+          if (blockKey === 'chief_complaint') content = report.chief_complaint;
+          else if (blockKey === 'diagnosis') content = report.diagnosis;
+          else if (blockKey === 'treatment') content = report.treatment;
+          else if (blockKey === 'notes' || blockKey === 'informe') content = report.notes;
         }
         if (!content.trim()) {
-          setAiResult(`El bloque "${label}" está vacío. Escribe algo antes de mejorar con IA.`)
-          return
+          setAiResult(`El bloque "${label}" está vacío. Escribe algo antes de mejorar con IA.`);
+          return;
         }
-        payload = { action: 'improve_block', content, block_key: blockKey, block_label: label }
+        payload = { action: 'improve_block', content, block_key: blockKey, block_label: label };
       } else if (mode === 'summarize_report') {
-        const effective = getEffectiveBlocks(selected)
+        const effective = getEffectiveBlocks(selected);
         payload = {
           action: 'summarize_report',
           legacy: {
@@ -1457,18 +1787,26 @@ function ConsultationsPage() {
             treatment: report.treatment,
           },
           blocks_data: selected.blocks_data || {},
-          blocks_meta: effective.map(b => ({ key: b.key, label: b.label, printable: b.printable })),
-        }
+          blocks_meta: effective.map((b) => ({
+            key: b.key,
+            label: b.label,
+            printable: b.printable,
+          })),
+        };
       }
 
-      const res = await fetch('/api/doctor/ai', { method: 'POST', headers, body: JSON.stringify(payload) })
-      const data = await res.json()
-      if (data.error) setAiResult(`Error: ${data.error}`)
-      else setAiResult(data.result)
+      const res = await fetch('/api/doctor/ai', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.error) setAiResult(`Error: ${data.error}`);
+      else setAiResult(data.result);
     } catch (err) {
-      setAiResult('Error al conectar con la IA')
+      setAiResult('Error al conectar con la IA');
     } finally {
-      setAiLoading(false)
+      setAiLoading(false);
     }
   }
 
@@ -1476,62 +1814,88 @@ function ConsultationsPage() {
   // - improve_block → escribe en blocks_data[aiTargetBlockKey] (y sync legacy si aplica).
   // - summarize_report → escribe en notes (informe).
   function applyAIResult() {
-    if (!selected || !aiResult) return
+    if (!selected || !aiResult) return;
     if (aiAction === 'improve_block' && aiTargetBlockKey) {
-      const blockKey = aiTargetBlockKey
-      const effective = getEffectiveBlocks(selected)
-      const block = effective.find(b => b.key === blockKey)
+      const blockKey = aiTargetBlockKey;
+      const effective = getEffectiveBlocks(selected);
+      const block = effective.find((b) => b.key === blockKey);
       // Si es lista, parsear bullets
-      let value: unknown = aiResult
+      let value: unknown = aiResult;
       if (block?.content_type === 'list') {
-        value = aiResult.split('\n').map(l => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean)
+        value = aiResult
+          .split('\n')
+          .map((l) => l.replace(/^\s*[-*•]\s*/, '').trim())
+          .filter(Boolean);
       }
-      const data = (selected.blocks_data || {}) as Record<string, unknown>
-      const next = { ...data, [blockKey]: value }
-      setSelected({ ...selected, blocks_data: next })
+      const data = (selected.blocks_data || {}) as Record<string, unknown>;
+      const next = { ...data, [blockKey]: value };
+      setSelected({ ...selected, blocks_data: next });
       // Sync con columnas legacy + report
       if (typeof value === 'string') {
-        if (blockKey === 'chief_complaint') setReport(p => ({ ...p, chief_complaint: value as string }))
-        else if (blockKey === 'diagnosis') setReport(p => ({ ...p, diagnosis: value as string }))
-        else if (blockKey === 'treatment') setReport(p => ({ ...p, treatment: value as string }))
-        else if (blockKey === 'notes' || blockKey === 'informe') setReport(p => ({ ...p, notes: value as string }))
+        if (blockKey === 'chief_complaint')
+          setReport((p) => ({ ...p, chief_complaint: value as string }));
+        else if (blockKey === 'diagnosis') setReport((p) => ({ ...p, diagnosis: value as string }));
+        else if (blockKey === 'treatment') setReport((p) => ({ ...p, treatment: value as string }));
+        else if (blockKey === 'notes' || blockKey === 'informe')
+          setReport((p) => ({ ...p, notes: value as string }));
       }
       // Persistir
-      const supabase = createClient()
-      const updates: Record<string, unknown> = { blocks_data: next }
-      if (typeof value === 'string' && (blockKey === 'chief_complaint' || blockKey === 'diagnosis' || blockKey === 'treatment' || blockKey === 'notes')) {
-        updates[blockKey] = value
+      const supabase = createClient();
+      const updates: Record<string, unknown> = { blocks_data: next };
+      if (
+        typeof value === 'string' &&
+        (blockKey === 'chief_complaint' ||
+          blockKey === 'diagnosis' ||
+          blockKey === 'treatment' ||
+          blockKey === 'notes')
+      ) {
+        updates[blockKey] = value;
       }
-      supabase.from('consultations').update(updates).eq('id', selected.id).then(() => {})
+      supabase
+        .from('consultations')
+        .update(updates)
+        .eq('id', selected.id)
+        .then(() => {});
     } else if (aiAction === 'summarize_report') {
       // El resumen del informe se aplica al campo "notes" (informe)
-      setReport(p => ({ ...p, notes: aiResult }))
-      const supabase = createClient()
-      supabase.from('consultations').update({ notes: aiResult }).eq('id', selected.id).then(() => {})
+      setReport((p) => ({ ...p, notes: aiResult }));
+      const supabase = createClient();
+      supabase
+        .from('consultations')
+        .update({ notes: aiResult })
+        .eq('id', selected.id)
+        .then(() => {});
     }
-    setAiResult('')
-    setAiAction(null)
+    setAiResult('');
+    setAiAction(null);
   }
 
   // Filtering
-  const now = new Date()
-  const filtered = consultations.filter(c => {
-    const matchSearch = !search || c.patient_name.toLowerCase().includes(search.toLowerCase()) || c.consultation_code.toLowerCase().includes(search.toLowerCase())
-    const cDate = new Date(c.consultation_date)
-    const matchTime = timeFilter === 'all' ? true
-      : timeFilter === 'upcoming' ? cDate > now
-      : timeFilter === 'past' ? cDate < now
-      : c.consultation_date.startsWith(today)
-    return matchSearch && matchTime
-  })
+  const now = new Date();
+  const filtered = consultations.filter((c) => {
+    const matchSearch =
+      !search ||
+      c.patient_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.consultation_code.toLowerCase().includes(search.toLowerCase());
+    const cDate = new Date(c.consultation_date);
+    const matchTime =
+      timeFilter === 'all'
+        ? true
+        : timeFilter === 'upcoming'
+          ? cDate > now
+          : timeFilter === 'past'
+            ? cDate < now
+            : c.consultation_date.startsWith(today);
+    return matchSearch && matchTime;
+  });
 
-  const upcoming = consultations.filter(c => new Date(c.consultation_date) > now).length
-  const todayCount = consultations.filter(c => c.consultation_date.startsWith(today)).length
+  const upcoming = consultations.filter((c) => new Date(c.consultation_date) > now).length;
+  const todayCount = consultations.filter((c) => c.consultation_date.startsWith(today)).length;
 
   if (view === 'consultation' && selected) {
-    const cDate = new Date(selected.consultation_date)
-    const isUpcoming = cDate > now
-    const ps = PAYMENT_STATUS[report.payment_status]
+    const cDate = new Date(selected.consultation_date);
+    const isUpcoming = cDate > now;
+    const ps = PAYMENT_STATUS[report.payment_status];
 
     return (
       <>
@@ -1559,7 +1923,10 @@ function ConsultationsPage() {
             <div className="space-y-3">
               {/* Fila 1: navegación + badges en vivo */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <button onClick={() => setView('list')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors">
+                <button
+                  onClick={() => setView('list')}
+                  className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
+                >
                   <ArrowLeft className="w-4 h-4" /> Volver a consultas
                 </button>
                 <div className="flex items-center gap-2">
@@ -1567,15 +1934,20 @@ function ConsultationsPage() {
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${CONSULTA_STATUS[selected.status]?.color || 'bg-slate-100 text-slate-700'}`}
                     title="Estado de la consulta"
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${CONSULTA_STATUS[selected.status]?.dot || 'bg-slate-400'}`}></span>
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${CONSULTA_STATUS[selected.status]?.dot || 'bg-slate-400'}`}
+                    ></span>
                     Consulta: {CONSULTA_STATUS[selected.status]?.label || selected.status}
                   </span>
                   <span
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS[selected.payment_status]?.color || 'bg-slate-100 text-slate-700'}`}
                     title="Estado del pago"
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${PAYMENT_STATUS[selected.payment_status]?.dot || 'bg-slate-400'}`}></span>
-                    Pago: {PAYMENT_STATUS[selected.payment_status]?.label || selected.payment_status}
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${PAYMENT_STATUS[selected.payment_status]?.dot || 'bg-slate-400'}`}
+                    ></span>
+                    Pago:{' '}
+                    {PAYMENT_STATUS[selected.payment_status]?.label || selected.payment_status}
                   </span>
                 </div>
               </div>
@@ -1586,7 +1958,9 @@ function ConsultationsPage() {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {selected.status !== 'completed' && (
                     <button
-                      onClick={() => updateConsultaStatus(selected.id, 'completed', selected.appointment_id)}
+                      onClick={() =>
+                        updateConsultaStatus(selected.id, 'completed', selected.appointment_id)
+                      }
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors"
                       title="Marcar consulta como atendida"
                     >
@@ -1595,7 +1969,10 @@ function ConsultationsPage() {
                   )}
                   {selected.status !== 'no_show' && (
                     <button
-                      onClick={() => { if (confirm('¿Confirmas que el paciente NO asistió?')) updateConsultaStatus(selected.id, 'no_show', selected.appointment_id) }}
+                      onClick={() => {
+                        if (confirm('¿Confirmas que el paciente NO asistió?'))
+                          updateConsultaStatus(selected.id, 'no_show', selected.appointment_id);
+                      }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
                       title="Marcar como no asistido"
                     >
@@ -1608,182 +1985,266 @@ function ConsultationsPage() {
 
                 {/* Grupo derecho: acciones de archivo (compactas, solo iconos en sm) */}
                 <div className="flex items-center gap-1.5">
-                  <button onClick={generatePDF}
+                  <button
+                    onClick={generatePDF}
                     title="Descargar PDF"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                    <FileText className="w-3.5 h-3.5" /> <span className="hidden sm:inline">PDF</span>
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" />{' '}
+                    <span className="hidden sm:inline">PDF</span>
                   </button>
-                  <button onClick={generatePDF}
+                  <button
+                    onClick={generatePDF}
                     title="Imprimir"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                    <Printer className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Imprimir</span>
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Printer className="w-3.5 h-3.5" />{' '}
+                    <span className="hidden sm:inline">Imprimir</span>
                   </button>
                   {/* L1 (2026-04-29): botón "Eliminar" removido del header.
                       El endpoint DELETE sigue intacto en /api/doctor/consultations. */}
-                {/* L1 (2026-04-29) + FIX 2026-04-29: botón "Generar informe" más
+                  {/* L1 (2026-04-29) + FIX 2026-04-29: botón "Generar informe" más
                     visible (color teal sólido, label siempre, no oculto en mobile)
                     para que no se confunda con los otros 2 botones grises del header. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    console.log('[generar-informe] click START', { selected: !!selected })
-                    if (!selected) {
-                      alert('Abre primero una consulta')
-                      return
-                    }
-                    try {
-                      const effective = getEffectiveBlocks(selected)
-                      const printable = effective.filter(b => b.printable)
-                      console.log('[generar-informe] blocks resolved', {
-                        effectiveCount: effective.length,
-                        printableCount: printable.length,
-                        printableKeys: printable.map(b => b.key),
-                      })
-                      setReportSelectedKeys(new Set(printable.map(b => b.key)))
-                      setGeneratedReportUrl(null)
-                      setShowGenerateReport(true)
-                      console.log('[generar-informe] setState called → showGenerateReport=true')
-                    } catch (err) {
-                      console.error('[generar-informe] HANDLER THREW:', err)
-                      alert('Error abriendo el modal: ' + (err as any)?.message)
-                    }
-                  }}
-                  title="Generar informe"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
-                >
-                  <FileText className="w-3.5 h-3.5" /> Generar informe
-                </button>
-                {/* Share Button */}
-                <div className="relative">
-                  <button onClick={() => {
-                      if (!showShare && selected) {
-                        const effective = getEffectiveBlocks(selected)
-                        const printable = effective.filter(b => b.printable)
-                        // Por default, marcamos solo el bloque "informe" o "notes" si existe;
-                        // si no, marcamos el primer printable.
-                        const informeBlock = printable.find(b => b.key === 'informe' || b.key === 'notes')
-                        const initial = informeBlock ? new Set([informeBlock.key]) : (printable[0] ? new Set([printable[0].key]) : new Set<string>())
-                        setShareKeys(initial as Set<string>)
+                  <button
+                    type="button"
+                    onClick={() => {
+                      console.log('[generar-informe] click START', { selected: !!selected });
+                      if (!selected) {
+                        alert('Abre primero una consulta');
+                        return;
                       }
-                      setShowShare(!showShare)
+                      try {
+                        const effective = getEffectiveBlocks(selected);
+                        const printable = effective.filter((b) => b.printable);
+                        console.log('[generar-informe] blocks resolved', {
+                          effectiveCount: effective.length,
+                          printableCount: printable.length,
+                          printableKeys: printable.map((b) => b.key),
+                        });
+                        setReportSelectedKeys(new Set(printable.map((b) => b.key)));
+                        setGeneratedReportUrl(null);
+                        setShowGenerateReport(true);
+                        console.log('[generar-informe] setState called → showGenerateReport=true');
+                      } catch (err) {
+                        console.error('[generar-informe] HANDLER THREW:', err);
+                        alert('Error abriendo el modal: ' + (err as any)?.message);
+                      }
                     }}
-                    title="Compartir"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                    <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Compartir</span>
+                    title="Generar informe"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> Generar informe
                   </button>
-                  {/* L1 (2026-04-29): checkboxes 100% dinámicos — uno por bloque
+                  {/* Share Button */}
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        if (!showShare && selected) {
+                          const effective = getEffectiveBlocks(selected);
+                          const printable = effective.filter((b) => b.printable);
+                          // Por default, marcamos solo el bloque "informe" o "notes" si existe;
+                          // si no, marcamos el primer printable.
+                          const informeBlock = printable.find(
+                            (b) => b.key === 'informe' || b.key === 'notes',
+                          );
+                          const initial = informeBlock
+                            ? new Set([informeBlock.key])
+                            : printable[0]
+                              ? new Set([printable[0].key])
+                              : new Set<string>();
+                          setShareKeys(initial as Set<string>);
+                        }
+                        setShowShare(!showShare);
+                      }}
+                      title="Compartir"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />{' '}
+                      <span className="hidden sm:inline">Compartir</span>
+                    </button>
+                    {/* L1 (2026-04-29): checkboxes 100% dinámicos — uno por bloque
                       printable del snapshot/config viva. Antes solo había 4 hardcoded
                       (informe/receta/prescripciones/reposo). */}
-                  {showShare && selected && (() => {
-                    const effective = getEffectiveBlocks(selected)
-                    const printable = effective.filter(b => b.printable)
-                    return (
-                    <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-                      <p className="text-sm font-bold text-slate-800">¿Qué deseas compartir?</p>
-                      <div className="space-y-2">
-                        {printable.length === 0 && (
-                          <p className="text-xs text-slate-400 italic">No hay bloques compartibles en esta consulta.</p>
-                        )}
-                        {printable.map(b => (
-                          <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
-                            <input type="checkbox" checked={shareKeys.has(b.key)} onChange={e => {
-                                setShareKeys(prev => {
-                                  const next = new Set(prev)
-                                  if (e.target.checked) next.add(b.key)
-                                  else next.delete(b.key)
-                                  return next
-                                })
-                              }}
-                              className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
-                            <span className="text-sm text-slate-700">{b.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <div className="flex gap-2 pt-2">
-                        <button onClick={async () => {
-                          const docs: string[] = []
-                          const docLinks: string[] = []
-                          const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
+                    {showShare &&
+                      selected &&
+                      (() => {
+                        const effective = getEffectiveBlocks(selected);
+                        const printable = effective.filter((b) => b.printable);
+                        return (
+                          <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                            <p className="text-sm font-bold text-slate-800">
+                              ¿Qué deseas compartir?
+                            </p>
+                            <div className="space-y-2">
+                              {printable.length === 0 && (
+                                <p className="text-xs text-slate-400 italic">
+                                  No hay bloques compartibles en esta consulta.
+                                </p>
+                              )}
+                              {printable.map((b) => (
+                                <label
+                                  key={b.key}
+                                  className="flex items-center gap-2.5 cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={shareKeys.has(b.key)}
+                                    onChange={(e) => {
+                                      setShareKeys((prev) => {
+                                        const next = new Set(prev);
+                                        if (e.target.checked) next.add(b.key);
+                                        else next.delete(b.key);
+                                        return next;
+                                      });
+                                    }}
+                                    className="w-4 h-4 rounded border-slate-300 accent-teal-500"
+                                  />
+                                  <span className="text-sm text-slate-700">{b.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                              <button
+                                onClick={async () => {
+                                  const docs: string[] = [];
+                                  const docLinks: string[] = [];
+                                  const dateStr = new Date(
+                                    selected.consultation_date,
+                                  ).toLocaleDateString('es-VE', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                  });
 
-                          const uploadDoc = async (templateType: string, title: string, bodyContent: string) => {
-                            try {
-                              const html = buildPdfHtml(templateType, title, bodyContent, selected.patient_name, selected.consultation_code, dateStr)
-                              const res = await fetch('/api/doctor/share-pdf', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  htmlContent: html,
-                                  fileName: `${templateType}-${selected.consultation_code}`,
-                                  consultationCode: selected.consultation_code,
-                                }),
-                              })
-                              const data = await res.json()
-                              if (data.url) return data.url
-                            } catch (err) { console.error('Upload error:', err) }
-                            return null
-                          }
+                                  const uploadDoc = async (
+                                    templateType: string,
+                                    title: string,
+                                    bodyContent: string,
+                                  ) => {
+                                    try {
+                                      const html = buildPdfHtml(
+                                        templateType,
+                                        title,
+                                        bodyContent,
+                                        selected.patient_name,
+                                        selected.consultation_code,
+                                        dateStr,
+                                      );
+                                      const res = await fetch('/api/doctor/share-pdf', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          htmlContent: html,
+                                          fileName: `${templateType}-${selected.consultation_code}`,
+                                          consultationCode: selected.consultation_code,
+                                        }),
+                                      });
+                                      const data = await res.json();
+                                      if (data.url) return data.url;
+                                    } catch (err) {
+                                      console.error('Upload error:', err);
+                                    }
+                                    return null;
+                                  };
 
-                          // L1 (2026-04-29): un PDF por cada bloque seleccionado.
-                          // generateBlockHtml respeta la plantilla del doctor (logos, firma, fonts).
-                          for (const b of printable) {
-                            if (!shareKeys.has(b.key)) continue
-                            // Caso especial: si el bloque seleccionado es "informe" o "notes",
-                            // generateInformeHtml decide si concatena todo o solo ese bloque.
-                            const body = (b.key === 'informe' || b.key === 'notes')
-                              ? generateInformeHtml()
-                              : generateBlockHtml(b.key, b.label)
-                            if (!body) continue
-                            docs.push(b.label.toLowerCase())
-                            const url = await uploadDoc(b.key, b.label, body)
-                            if (url) docLinks.push(url)
-                          }
+                                  // L1 (2026-04-29): un PDF por cada bloque seleccionado.
+                                  // generateBlockHtml respeta la plantilla del doctor (logos, firma, fonts).
+                                  for (const b of printable) {
+                                    if (!shareKeys.has(b.key)) continue;
+                                    // Caso especial: si el bloque seleccionado es "informe" o "notes",
+                                    // generateInformeHtml decide si concatena todo o solo ese bloque.
+                                    const body =
+                                      b.key === 'informe' || b.key === 'notes'
+                                        ? generateInformeHtml()
+                                        : generateBlockHtml(b.key, b.label);
+                                    if (!body) continue;
+                                    docs.push(b.label.toLowerCase());
+                                    const url = await uploadDoc(b.key, b.label, body);
+                                    if (url) docLinks.push(url);
+                                  }
 
-                          if (docs.length === 0) { alert('Selecciona al menos un documento con contenido'); return }
+                                  if (docs.length === 0) {
+                                    alert('Selecciona al menos un documento con contenido');
+                                    return;
+                                  }
 
-                          let message = shareTemplate
-                            .replace('{paciente}', selected.patient_name)
-                            .replace('{fecha}', new Date(selected.consultation_date).toLocaleDateString('es-VE'))
-                            .replace('{documentos}', docs.join(', '))
-                            .replace('{doctor}', doctorName)
-                            .replace('{codigo}', selected.consultation_code || '')
+                                  let message = shareTemplate
+                                    .replace('{paciente}', selected.patient_name)
+                                    .replace(
+                                      '{fecha}',
+                                      new Date(selected.consultation_date).toLocaleDateString(
+                                        'es-VE',
+                                      ),
+                                    )
+                                    .replace('{documentos}', docs.join(', '))
+                                    .replace('{doctor}', doctorName)
+                                    .replace('{codigo}', selected.consultation_code || '');
 
-                          if (docLinks.length > 0) {
-                            message += '\n\n' + docLinks.map((url, i) => `${docs[i] || 'Documento'}: ${url}`).join('\n')
-                          }
+                                  if (docLinks.length > 0) {
+                                    message +=
+                                      '\n\n' +
+                                      docLinks
+                                        .map((url, i) => `${docs[i] || 'Documento'}: ${url}`)
+                                        .join('\n');
+                                  }
 
-                          // L6 (2026-04-29): normaliza VE → 58XXXXXXXXXX para wa.me
-                          const phone = normalizePhoneVE(selected.patient_phone)
-                          if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank')
-                          else alert('Este paciente no tiene teléfono válido registrado')
-                          setShowShare(false)
-                        }}
-                          className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-green-600 transition-colors">
-                          <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                        </button>
-                        <button onClick={() => {
-                          // L1 (2026-04-29): ahora dinámico — usa los labels de los bloques seleccionados.
-                          const docs: string[] = printable.filter(b => shareKeys.has(b.key)).map(b => b.label)
-                          if (docs.length === 0) { alert('Selecciona al menos un documento'); return }
-                          const subject = `Documentos médicos - Consulta ${selected.consultation_code}`
-                          const body = shareTemplate
-                            .replace('{paciente}', selected.patient_name)
-                            .replace('{fecha}', new Date(selected.consultation_date).toLocaleDateString('es-VE'))
-                            .replace('{documentos}', docs.join(', '))
-                            .replace('{doctor}', doctorName)
-                            .replace('{codigo}', selected.consultation_code || '')
-                          const patientEmail = patients.find(p => p.id === selected.patient_id)?.email
-                          if (patientEmail) window.open(`mailto:${patientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
-                          else alert('Este paciente no tiene email registrado')
-                          setShowShare(false)
-                        }}
-                          className="flex-1 flex items-center justify-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors">
-                          <Mail className="w-3.5 h-3.5" /> Correo
-                        </button>
-                      </div>
-                    </div>
-                    )
-                  })()}
-                </div>
+                                  // L6 (2026-04-29): normaliza VE → 58XXXXXXXXXX para wa.me
+                                  const phone = normalizePhoneVE(selected.patient_phone);
+                                  if (phone)
+                                    window.open(
+                                      `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
+                                      '_blank',
+                                    );
+                                  else alert('Este paciente no tiene teléfono válido registrado');
+                                  setShowShare(false);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-green-600 transition-colors"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // L1 (2026-04-29): ahora dinámico — usa los labels de los bloques seleccionados.
+                                  const docs: string[] = printable
+                                    .filter((b) => shareKeys.has(b.key))
+                                    .map((b) => b.label);
+                                  if (docs.length === 0) {
+                                    alert('Selecciona al menos un documento');
+                                    return;
+                                  }
+                                  const subject = `Documentos médicos - Consulta ${selected.consultation_code}`;
+                                  const body = shareTemplate
+                                    .replace('{paciente}', selected.patient_name)
+                                    .replace(
+                                      '{fecha}',
+                                      new Date(selected.consultation_date).toLocaleDateString(
+                                        'es-VE',
+                                      ),
+                                    )
+                                    .replace('{documentos}', docs.join(', '))
+                                    .replace('{doctor}', doctorName)
+                                    .replace('{codigo}', selected.consultation_code || '');
+                                  const patientEmail = patients.find(
+                                    (p) => p.id === selected.patient_id,
+                                  )?.email;
+                                  if (patientEmail)
+                                    window.open(
+                                      `mailto:${patientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+                                      '_blank',
+                                    );
+                                  else alert('Este paciente no tiene email registrado');
+                                  setShowShare(false);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors"
+                              >
+                                <Mail className="w-3.5 h-3.5" /> Correo
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1803,41 +2264,45 @@ function ConsultationsPage() {
                 </p>
               </div>
               <ConsultationRecorder
-                availableBlocks={getEffectiveBlocks(selected).map(b => ({ key: b.key, label: b.label }))}
+                availableBlocks={getEffectiveBlocks(selected).map((b) => ({
+                  key: b.key,
+                  label: b.label,
+                }))}
                 onApplyToBlock={(blockKey, content, mode) => {
-                  setSelected(prev => {
-                    if (!prev) return prev
-                    const currentData = (prev.blocks_data || {}) as Record<string, unknown>
-                    const existing = currentData[blockKey]
-                    let next: unknown = content
+                  setSelected((prev) => {
+                    if (!prev) return prev;
+                    const currentData = (prev.blocks_data || {}) as Record<string, unknown>;
+                    const existing = currentData[blockKey];
+                    let next: unknown = content;
                     if (mode === 'append' && typeof existing === 'string' && existing.trim()) {
-                      next = existing.trimEnd() + '\n\n' + content
+                      next = existing.trimEnd() + '\n\n' + content;
                     }
                     return {
                       ...prev,
                       blocks_data: { ...currentData, [blockKey]: next },
-                    }
-                  })
+                    };
+                  });
                   // Sync con campos legacy (chief_complaint/diagnosis/treatment/notes)
                   // que viven en columnas top-level además de blocks_data — para que
                   // el resto de la UI (PDF, share, etc.) los lea correctamente.
                   if (typeof content === 'string') {
-                    setReport(r => {
+                    setReport((r) => {
                       const map: Record<string, keyof typeof r> = {
                         chief_complaint: 'chief_complaint',
                         diagnosis: 'diagnosis',
                         treatment: 'treatment',
                         notes: 'notes',
                         informe: 'notes',
-                      }
-                      const field = map[blockKey]
-                      if (!field) return r
-                      const current = (r as any)[field] as string | undefined
-                      const newVal = mode === 'append' && current && current.trim()
-                        ? current.trimEnd() + '\n\n' + content
-                        : content
-                      return { ...r, [field]: newVal } as any
-                    })
+                      };
+                      const field = map[blockKey];
+                      if (!field) return r;
+                      const current = (r as any)[field] as string | undefined;
+                      const newVal =
+                        mode === 'append' && current && current.trim()
+                          ? current.trimEnd() + '\n\n' + content
+                          : content;
+                      return { ...r, [field]: newVal } as any;
+                    });
                   }
                 }}
               />
@@ -1855,18 +2320,18 @@ function ConsultationsPage() {
                   //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
                   // Fallback ultimo: motivo + diagnostico para que el doctor nunca vea
                   // un informe vacio.
-                  let dynamicTabs: { key: string; label: string }[] = []
-                  const effective = getEffectiveBlocks(selected as Consultation)
+                  let dynamicTabs: { key: string; label: string }[] = [];
+                  const effective = getEffectiveBlocks(selected as Consultation);
                   if (effective && effective.length > 0) {
-                    const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order)
-                    dynamicTabs = sorted.map(b => ({ key: `block:${b.key}`, label: b.label }))
+                    const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order);
+                    dynamicTabs = sorted.map((b) => ({ key: `block:${b.key}`, label: b.label }));
                   } else {
                     dynamicTabs = [
                       { key: 'block:chief_complaint', label: 'Motivo de consulta' },
                       { key: 'block:diagnosis', label: 'Diagnóstico' },
-                    ]
+                    ];
                   }
-                  return dynamicTabs.map(t => (
+                  return dynamicTabs.map((t) => (
                     <button
                       key={t.key}
                       onClick={() => setConsultationTab(t.key)}
@@ -1878,7 +2343,7 @@ function ConsultationsPage() {
                     >
                       {t.label}
                     </button>
-                  ))
+                  ));
                 })()}
                 {/* FIX 2026-04-29: el contenedor padre tiene overflow-x-auto que
                     clipea cualquier dropdown absolute. Solución: convertir a
@@ -1891,127 +2356,163 @@ function ConsultationsPage() {
                 >
                   +
                 </button>
-                {showAddBlockMenu && selected && (() => {
-                    const effective = getEffectiveBlocks(selected)
-                    const activeKeys = new Set(effective.map(b => b.key))
+                {showAddBlockMenu &&
+                  selected &&
+                  (() => {
+                    const effective = getEffectiveBlocks(selected);
+                    const activeKeys = new Set(effective.map((b) => b.key));
                     return (
                       <div
                         className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4"
                         onClick={() => !addingBlock && setShowAddBlockMenu(false)}
                       >
-                      <div
-                        className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-base font-bold text-slate-800">Agregar bloque a esta consulta</p>
-                          <button onClick={() => !addingBlock && setShowAddBlockMenu(false)} className="text-slate-400 hover:text-slate-600">
-                            <X className="w-5 h-5" />
-                          </button>
+                        <div
+                          className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-base font-bold text-slate-800">
+                              Agregar bloque a esta consulta
+                            </p>
+                            <button
+                              onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+                              className="text-slate-400 hover:text-slate-600"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-3">
+                            Selecciona un bloque del catálogo. Los que ya están activos se ven en
+                            gris.
+                          </p>
+                          {blockCatalog.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic px-2 py-2">
+                              Catálogo vacío.
+                            </p>
+                          ) : (
+                            blockCatalog.map((c) => {
+                              const alreadyActive = activeKeys.has(c.key);
+                              return (
+                                <button
+                                  key={c.key}
+                                  disabled={addingBlock || alreadyActive}
+                                  onClick={async () => {
+                                    if (alreadyActive) return;
+                                    if (!selected) return;
+                                    setAddingBlock(true);
+                                    try {
+                                      // L1 (2026-04-29): persistir en doctor_consultation_blocks
+                                      // (config viva del doctor). Reemplazo total via PUT. FASE 5.
+                                      const supabase = createClient();
+                                      const blockUserId = await getDevDoctorId();
+                                      if (!blockUserId) {
+                                        setAddingBlock(false);
+                                        return;
+                                      }
+                                      const user = { id: blockUserId };
+                                      // Reconstruir config actual desde doctorActiveBlocks + el nuevo
+                                      const newSortOrder =
+                                        (doctorActiveBlocks[doctorActiveBlocks.length - 1]
+                                          ?.sort_order ?? 0) + 1;
+                                      const nextBlocks = [
+                                        ...doctorActiveBlocks.map((b, i) => ({
+                                          block_key: b.key,
+                                          enabled: true,
+                                          sort_order: b.sort_order ?? i,
+                                          custom_label: null,
+                                          printable: b.printable,
+                                          send_to_patient: b.send_to_patient,
+                                        })),
+                                        {
+                                          block_key: c.key,
+                                          enabled: true,
+                                          sort_order: newSortOrder,
+                                          custom_label: null,
+                                          printable: c.printable,
+                                          send_to_patient: c.send_to_patient,
+                                        },
+                                      ];
+                                      const res = await fetch('/api/doctor/consultation-blocks', {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ blocks: nextBlocks }),
+                                      });
+                                      if (!res.ok) {
+                                        const e = await res.json().catch(() => ({}));
+                                        alert(e.error || 'No se pudo agregar el bloque');
+                                        return;
+                                      }
+                                      // Refrescar config viva
+                                      const refreshed = await fetch(
+                                        '/api/doctor/consultation-blocks',
+                                        { cache: 'no-store' },
+                                      );
+                                      if (refreshed.ok) {
+                                        const j = await refreshed.json();
+                                        const resolved = (j.resolved || []) as SnapshotBlock[];
+                                        setDoctorActiveBlocks(resolved);
+                                        // Si la consulta tiene snapshot congelado, también extenderlo
+                                        // para que el bloque nuevo aparezca de inmediato en esta consulta.
+                                        const currentSnap = (selected as any).blocks_snapshot;
+                                        if (Array.isArray(currentSnap) && currentSnap.length > 0) {
+                                          const newSnap = [
+                                            ...currentSnap,
+                                            {
+                                              key: c.key,
+                                              label: c.label,
+                                              content_type: c.content_type,
+                                              sort_order:
+                                                (currentSnap[currentSnap.length - 1]?.sort_order ??
+                                                  0) + 1,
+                                              printable: c.printable,
+                                              send_to_patient: c.send_to_patient,
+                                            },
+                                          ];
+                                          await supabase
+                                            .from('consultations')
+                                            .update({ blocks_snapshot: newSnap })
+                                            .eq('id', selected.id);
+                                          setSelected({
+                                            ...selected,
+                                            blocks_snapshot: newSnap as any,
+                                          });
+                                        }
+                                      }
+                                      setShowAddBlockMenu(false);
+                                      setConsultationTab(`block:${c.key}`);
+                                    } catch (err) {
+                                      console.error('[add-block] error:', err);
+                                      alert('Error agregando el bloque');
+                                    } finally {
+                                      setAddingBlock(false);
+                                    }
+                                  }}
+                                  className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 ${
+                                    alreadyActive
+                                      ? 'opacity-60 cursor-not-allowed bg-slate-50'
+                                      : 'hover:bg-slate-50 disabled:opacity-50'
+                                  }`}
+                                >
+                                  <Plus
+                                    className={`w-3.5 h-3.5 shrink-0 ${alreadyActive ? 'text-slate-300' : 'text-teal-500'}`}
+                                  />
+                                  <span
+                                    className={`flex-1 ${alreadyActive ? 'text-slate-400' : 'text-slate-700'}`}
+                                  >
+                                    {c.label}
+                                  </span>
+                                  {alreadyActive && (
+                                    <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                                      Ya activo
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })
+                          )}
                         </div>
-                        <p className="text-xs text-slate-500 mb-3">Selecciona un bloque del catálogo. Los que ya están activos se ven en gris.</p>
-                        {blockCatalog.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic px-2 py-2">Catálogo vacío.</p>
-                        ) : blockCatalog.map(c => {
-                          const alreadyActive = activeKeys.has(c.key)
-                          return (
-                          <button
-                            key={c.key}
-                            disabled={addingBlock || alreadyActive}
-                            onClick={async () => {
-                              if (alreadyActive) return
-                              if (!selected) return
-                              setAddingBlock(true)
-                              try {
-                                // L1 (2026-04-29): persistir en doctor_consultation_blocks
-                                // (config viva del doctor). Reemplazo total via PUT.
-                                const supabase = createClient()
-                                const { data: { user } } = await supabase.auth.getUser()
-                                if (!user) { setAddingBlock(false); return }
-                                // Reconstruir config actual desde doctorActiveBlocks + el nuevo
-                                const newSortOrder = (doctorActiveBlocks[doctorActiveBlocks.length - 1]?.sort_order ?? 0) + 1
-                                const nextBlocks = [
-                                  ...doctorActiveBlocks.map((b, i) => ({
-                                    block_key: b.key,
-                                    enabled: true,
-                                    sort_order: b.sort_order ?? i,
-                                    custom_label: null,
-                                    printable: b.printable,
-                                    send_to_patient: b.send_to_patient,
-                                  })),
-                                  {
-                                    block_key: c.key,
-                                    enabled: true,
-                                    sort_order: newSortOrder,
-                                    custom_label: null,
-                                    printable: c.printable,
-                                    send_to_patient: c.send_to_patient,
-                                  },
-                                ]
-                                const res = await fetch('/api/doctor/consultation-blocks', {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ blocks: nextBlocks }),
-                                })
-                                if (!res.ok) {
-                                  const e = await res.json().catch(() => ({}))
-                                  alert(e.error || 'No se pudo agregar el bloque')
-                                  return
-                                }
-                                // Refrescar config viva
-                                const refreshed = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' })
-                                if (refreshed.ok) {
-                                  const j = await refreshed.json()
-                                  const resolved = (j.resolved || []) as SnapshotBlock[]
-                                  setDoctorActiveBlocks(resolved)
-                                  // Si la consulta tiene snapshot congelado, también extenderlo
-                                  // para que el bloque nuevo aparezca de inmediato en esta consulta.
-                                  const currentSnap = (selected as any).blocks_snapshot
-                                  if (Array.isArray(currentSnap) && currentSnap.length > 0) {
-                                    const newSnap = [
-                                      ...currentSnap,
-                                      {
-                                        key: c.key,
-                                        label: c.label,
-                                        content_type: c.content_type,
-                                        sort_order: (currentSnap[currentSnap.length - 1]?.sort_order ?? 0) + 1,
-                                        printable: c.printable,
-                                        send_to_patient: c.send_to_patient,
-                                      },
-                                    ]
-                                    await supabase.from('consultations')
-                                      .update({ blocks_snapshot: newSnap })
-                                      .eq('id', selected.id)
-                                    setSelected({ ...selected, blocks_snapshot: newSnap as any })
-                                  }
-                                }
-                                setShowAddBlockMenu(false)
-                                setConsultationTab(`block:${c.key}`)
-                              } catch (err) {
-                                console.error('[add-block] error:', err)
-                                alert('Error agregando el bloque')
-                              } finally {
-                                setAddingBlock(false)
-                              }
-                            }}
-                            className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 ${
-                              alreadyActive
-                                ? 'opacity-60 cursor-not-allowed bg-slate-50'
-                                : 'hover:bg-slate-50 disabled:opacity-50'
-                            }`}
-                          >
-                            <Plus className={`w-3.5 h-3.5 shrink-0 ${alreadyActive ? 'text-slate-300' : 'text-teal-500'}`} />
-                            <span className={`flex-1 ${alreadyActive ? 'text-slate-400' : 'text-slate-700'}`}>{c.label}</span>
-                            {alreadyActive && (
-                              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                                Ya activo
-                              </span>
-                            )}
-                          </button>
-                        )})}
                       </div>
-                      </div>
-                    )
+                    );
                   })()}
               </div>
 
@@ -2022,77 +2523,105 @@ function ConsultationsPage() {
                   - Para cualquier otro block_key → render genérico con DynamicBlocks.
                   - Si el snapshot está vacío y el doctor está en chief_complaint/diagnosis,
                     construimos un bloque FAKE para que igual pueda escribir (fallback). */}
-              {consultationTab.startsWith('block:') && (() => {
-                const blockKey = consultationTab.replace('block:', '')
-                // Bloques con UI especial — NO usar DynamicBlocks aquí
-                const SPECIAL_BLOCKS = new Set(['prescription', 'requested_exams', 'rest', 'internal_notes'])
-                if (SPECIAL_BLOCKS.has(blockKey)) return null
+              {consultationTab.startsWith('block:') &&
+                (() => {
+                  const blockKey = consultationTab.replace('block:', '');
+                  // Bloques con UI especial — NO usar DynamicBlocks aquí
+                  const SPECIAL_BLOCKS = new Set([
+                    'prescription',
+                    'requested_exams',
+                    'rest',
+                    'internal_notes',
+                  ]);
+                  if (SPECIAL_BLOCKS.has(blockKey)) return null;
 
-                // RONDA 39: usar bloques EFECTIVOS (snapshot si existe, config viva si no)
-                const effective = getEffectiveBlocks(selected as Consultation)
-                let oneBlock = effective.filter(b => b.key === blockKey)
+                  // RONDA 39: usar bloques EFECTIVOS (snapshot si existe, config viva si no)
+                  const effective = getEffectiveBlocks(selected as Consultation);
+                  let oneBlock = effective.filter((b) => b.key === blockKey);
 
-                // Fallback: snapshot vacío + el doctor está en motivo/diagnóstico → bloque fake
-                if (oneBlock.length === 0 && (blockKey === 'chief_complaint' || blockKey === 'diagnosis')) {
-                  oneBlock = [{
-                    key: blockKey,
-                    label: blockKey === 'chief_complaint' ? 'Motivo de consulta' : 'Diagnóstico',
-                    content_type: 'rich_text',
-                    sort_order: blockKey === 'chief_complaint' ? 1 : 2,
-                    printable: true,
-                    send_to_patient: true,
-                  }]
-                }
-                if (oneBlock.length === 0) return null
+                  // Fallback: snapshot vacío + el doctor está en motivo/diagnóstico → bloque fake
+                  if (
+                    oneBlock.length === 0 &&
+                    (blockKey === 'chief_complaint' || blockKey === 'diagnosis')
+                  ) {
+                    oneBlock = [
+                      {
+                        key: blockKey,
+                        label:
+                          blockKey === 'chief_complaint' ? 'Motivo de consulta' : 'Diagnóstico',
+                        content_type: 'rich_text',
+                        sort_order: blockKey === 'chief_complaint' ? 1 : 2,
+                        printable: true,
+                        send_to_patient: true,
+                      },
+                    ];
+                  }
+                  if (oneBlock.length === 0) return null;
 
-                const data = (selected as Consultation).blocks_data || {}
-                return (
-                  <div className="p-6">
-                    <DynamicBlocks
-                      blocks={oneBlock}
-                      values={data}
-                      onChange={(key, value) => {
-                        const next = { ...data, [key]: value }
-                        ;(selected as Consultation).blocks_data = next
-                        setSelected({ ...(selected as Consultation), blocks_data: next })
-                        // Autosave debounced — guarda blocks_data y, si es chief_complaint/diagnosis/treatment/notes,
-                        // tambien sincroniza la columna legacy correspondiente para retrocompat.
-                        if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current)
-                        blocksAutoSaveTimer.current = setTimeout(async () => {
-                          if (!selectedRef.current) return
-                          const supabase = createClient()
-                          const updates: Record<string, unknown> = { blocks_data: next }
-                          // RONDA 38: sync con columnas legacy para que el rebuild de report_data
-                          // tenga los datos correctos en `legacy` Y el render del paciente fallback funcione.
-                          if (key === 'chief_complaint' || key === 'diagnosis' || key === 'treatment' || key === 'notes') {
-                            updates[key] = typeof value === 'string' ? value : ''
-                          }
-                          await supabase.from('consultations')
-                            .update(updates)
-                            .eq('id', selectedRef.current.id)
-                        }, 1500)
-                      }}
-                      onSave={async () => {
-                        const supabase = createClient()
-                        await supabase.from('consultations')
-                          .update({ blocks_data: (selected as Consultation).blocks_data || {} })
-                          .eq('id', selected!.id)
-                        alert('Bloque guardado')
-                      }}
-                    />
-                  </div>
-                )
-              })()}
+                  const data = (selected as Consultation).blocks_data || {};
+                  return (
+                    <div className="p-6">
+                      <DynamicBlocks
+                        blocks={oneBlock}
+                        values={data}
+                        onChange={(key, value) => {
+                          const next = { ...data, [key]: value };
+                          (selected as Consultation).blocks_data = next;
+                          setSelected({ ...(selected as Consultation), blocks_data: next });
+                          // Autosave debounced — guarda blocks_data y, si es chief_complaint/diagnosis/treatment/notes,
+                          // tambien sincroniza la columna legacy correspondiente para retrocompat.
+                          if (blocksAutoSaveTimer.current)
+                            clearTimeout(blocksAutoSaveTimer.current);
+                          blocksAutoSaveTimer.current = setTimeout(async () => {
+                            if (!selectedRef.current) return;
+                            const supabase = createClient();
+                            const updates: Record<string, unknown> = { blocks_data: next };
+                            // RONDA 38: sync con columnas legacy para que el rebuild de report_data
+                            // tenga los datos correctos en `legacy` Y el render del paciente fallback funcione.
+                            if (
+                              key === 'chief_complaint' ||
+                              key === 'diagnosis' ||
+                              key === 'treatment' ||
+                              key === 'notes'
+                            ) {
+                              updates[key] = typeof value === 'string' ? value : '';
+                            }
+                            await supabase
+                              .from('consultations')
+                              .update(updates)
+                              .eq('id', selectedRef.current.id);
+                          }, 1500);
+                        }}
+                        onSave={async () => {
+                          const supabase = createClient();
+                          await supabase
+                            .from('consultations')
+                            .update({ blocks_data: (selected as Consultation).blocks_data || {} })
+                            .eq('id', selected!.id);
+                          alert('Bloque guardado');
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
 
               {/* RONDA 38: Tab Content — Las únicas tabs que aún usan UI hardcoded son
                   las que tienen FLUJO ESPECIAL (catálogo de medicamentos, exámenes, días reposo,
                   notas internas). Todas las demás se renderizan dinámicamente arriba con DynamicBlocks.
                   La condición de visibilidad ahora aparta el contenedor solo si la tab activa
                   es una de las especiales. */}
-              <div className={`p-6 space-y-4 ${
-                ['block:prescription', 'block:requested_exams', 'block:rest', 'block:internal_notes'].includes(consultationTab)
-                  ? '' : 'hidden'
-              }`}>
+              <div
+                className={`p-6 space-y-4 ${
+                  [
+                    'block:prescription',
+                    'block:requested_exams',
+                    'block:rest',
+                    'block:internal_notes',
+                  ].includes(consultationTab)
+                    ? ''
+                    : 'hidden'
+                }`}
+              >
                 {/* Recipe Tab — block:prescription */}
                 {consultationTab === 'block:prescription' && (
                   <div className="space-y-4">
@@ -2101,25 +2630,45 @@ function ConsultationsPage() {
                         <Pill className="w-4 h-4 text-slate-400" />
                         <p className="text-sm font-bold text-slate-800">Receta</p>
                       </div>
-                      <button onClick={() => setShowRecipe(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 g-bg rounded-lg text-xs font-bold text-white hover:opacity-90">
-                        <Pill className="w-3.5 h-3.5" /> {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
+                      <button
+                        onClick={() => setShowRecipe(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 g-bg rounded-lg text-xs font-bold text-white hover:opacity-90"
+                      >
+                        <Pill className="w-3.5 h-3.5" />{' '}
+                        {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
                       </button>
                     </div>
 
                     {/* Show saved medications summary */}
                     {recipe.medications.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Medicamentos en receta ({recipe.medications.length})</p>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                          Medicamentos en receta ({recipe.medications.length})
+                        </p>
                         {recipe.medications.map((med, idx) => (
-                          <div key={idx} className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                          <div
+                            key={idx}
+                            className="bg-teal-50 border border-teal-200 rounded-lg p-3"
+                          >
                             <p className="text-sm font-bold text-teal-900">{med.name}</p>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                              {med.dose && <span className="text-xs text-teal-700">Dosis: {med.dose}</span>}
-                              {med.frequency && <span className="text-xs text-teal-700">Frecuencia: {med.frequency}</span>}
-                              {med.duration && <span className="text-xs text-teal-700">Duración: {med.duration}</span>}
+                              {med.dose && (
+                                <span className="text-xs text-teal-700">Dosis: {med.dose}</span>
+                              )}
+                              {med.frequency && (
+                                <span className="text-xs text-teal-700">
+                                  Frecuencia: {med.frequency}
+                                </span>
+                              )}
+                              {med.duration && (
+                                <span className="text-xs text-teal-700">
+                                  Duración: {med.duration}
+                                </span>
+                              )}
                             </div>
-                            {med.indications && <p className="text-xs text-teal-600 mt-1">{med.indications}</p>}
+                            {med.indications && (
+                              <p className="text-xs text-teal-600 mt-1">{med.indications}</p>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -2128,15 +2677,30 @@ function ConsultationsPage() {
                     {/* Quick meds: catálogo precargado del doctor — clic para agregar al instante */}
                     {quickMeds.length > 0 && (
                       <div>
-                        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Medicamentos frecuentes (clic para agregar)</p>
+                        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">
+                          Medicamentos frecuentes (clic para agregar)
+                        </p>
                         <div className="flex flex-wrap gap-1.5">
-                          {quickMeds.map(q => (
-                            <button key={q.id}
-                              onClick={() => setRecipe(p => ({
-                                ...p,
-                                medications: [...p.medications, { name: q.name, dose: q.details || '', frequency: '', duration: '', indications: '' }]
-                              }))}
-                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium">
+                          {quickMeds.map((q) => (
+                            <button
+                              key={q.id}
+                              onClick={() =>
+                                setRecipe((p) => ({
+                                  ...p,
+                                  medications: [
+                                    ...p.medications,
+                                    {
+                                      name: q.name,
+                                      dose: q.details || '',
+                                      frequency: '',
+                                      duration: '',
+                                      indications: '',
+                                    },
+                                  ],
+                                }))
+                              }
+                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium"
+                            >
                               + {q.name}
                             </button>
                           ))}
@@ -2147,37 +2711,86 @@ function ConsultationsPage() {
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                       <Pill className="w-3.5 h-3.5 text-slate-400" /> Tratamiento / Indicaciones
                     </label>
-                    <RichTextEditor value={report.treatment} onChange={html => setReport(p => ({ ...p, treatment: html }))}
-                      placeholder="Medicamentos, dosis, indicaciones, próxima cita..." />
+                    <RichTextEditor
+                      value={report.treatment}
+                      onChange={(html) => setReport((p) => ({ ...p, treatment: html }))}
+                      placeholder="Medicamentos, dosis, indicaciones, próxima cita..."
+                    />
                     <div className="flex gap-2 pt-2">
-                      <button onClick={() => setShowRecipe(true)}
-                        className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
-                        <Pill className="w-4 h-4" /> {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
+                      <button
+                        onClick={() => setShowRecipe(true)}
+                        className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
+                      >
+                        <Pill className="w-4 h-4" />{' '}
+                        {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
                       </button>
-                      <button onClick={() => {
-                        const printWindow = window.open('', '_blank')
-                        if (!printWindow) return
-                        let bodyContent = ''
-                        if (recipe.medications.length > 0) {
-                          bodyContent += '<div class="section"><div class="section-title">Medicamentos</div>'
-                          bodyContent += recipe.medications.map((m, i) =>
-                            '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">' +
-                            '<div style="font-size:14px;font-weight:700;color:#1e293b">' + (i+1) + '. ' + (m.name || 'Sin nombre') + '</div>' +
-                            '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">' +
-                            (m.dose ? '<div style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' + m.dose + '</div>' : '') +
-                            (m.frequency ? '<div style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' + m.frequency + '</div>' : '') +
-                            (m.duration ? '<div style="font-size:12px;color:#475569"><strong>Duración:</strong> ' + m.duration + '</div>' : '') +
-                            '</div>' +
-                            (m.indications ? '<div style="font-size:12px;color:#64748b;margin-top:4px"><em>' + m.indications + '</em></div>' : '') +
-                            '</div>'
-                          ).join('') + '</div>'
-                        }
-                        if (report.treatment) bodyContent += '<div class="section"><div class="section-title">Indicaciones generales</div><div class="section-content">' + report.treatment + '</div></div>'
-                        const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
-                        printWindow.document.write(buildPdfHtml('recipe', 'Receta Médica', bodyContent, selected.patient_name, selected.consultation_code, dateStr))
-                        printWindow.document.close()
-                      }}
-                        className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
+                      <button
+                        onClick={() => {
+                          const printWindow = window.open('', '_blank');
+                          if (!printWindow) return;
+                          let bodyContent = '';
+                          if (recipe.medications.length > 0) {
+                            bodyContent +=
+                              '<div class="section"><div class="section-title">Medicamentos</div>';
+                            bodyContent +=
+                              recipe.medications
+                                .map(
+                                  (m, i) =>
+                                    '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">' +
+                                    '<div style="font-size:14px;font-weight:700;color:#1e293b">' +
+                                    (i + 1) +
+                                    '. ' +
+                                    (m.name || 'Sin nombre') +
+                                    '</div>' +
+                                    '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">' +
+                                    (m.dose
+                                      ? '<div style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' +
+                                        m.dose +
+                                        '</div>'
+                                      : '') +
+                                    (m.frequency
+                                      ? '<div style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' +
+                                        m.frequency +
+                                        '</div>'
+                                      : '') +
+                                    (m.duration
+                                      ? '<div style="font-size:12px;color:#475569"><strong>Duración:</strong> ' +
+                                        m.duration +
+                                        '</div>'
+                                      : '') +
+                                    '</div>' +
+                                    (m.indications
+                                      ? '<div style="font-size:12px;color:#64748b;margin-top:4px"><em>' +
+                                        m.indications +
+                                        '</em></div>'
+                                      : '') +
+                                    '</div>',
+                                )
+                                .join('') + '</div>';
+                          }
+                          if (report.treatment)
+                            bodyContent +=
+                              '<div class="section"><div class="section-title">Indicaciones generales</div><div class="section-content">' +
+                              report.treatment +
+                              '</div></div>';
+                          const dateStr = new Date(selected.consultation_date).toLocaleDateString(
+                            'es-VE',
+                            { year: 'numeric', month: 'long', day: 'numeric' },
+                          );
+                          printWindow.document.write(
+                            buildPdfHtml(
+                              'recipe',
+                              'Receta Médica',
+                              bodyContent,
+                              selected.patient_name,
+                              selected.consultation_code,
+                              dateStr,
+                            ),
+                          );
+                          printWindow.document.close();
+                        }}
+                        className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50"
+                      >
                         <Printer className="w-4 h-4" /> PDF
                       </button>
                     </div>
@@ -2193,17 +2806,29 @@ function ConsultationsPage() {
                         <p className="text-sm font-bold text-slate-800">Prescripciones médicas</p>
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500">Exámenes e indicaciones que el médico ordena al paciente (laboratorio, imágenes, etc.)</p>
+                    <p className="text-xs text-slate-500">
+                      Exámenes e indicaciones que el médico ordena al paciente (laboratorio,
+                      imágenes, etc.)
+                    </p>
 
                     {/* Quick exams from templates */}
                     {quickExams.length > 0 && (
                       <div>
-                        <p className="text-xs font-semibold text-slate-500 mb-2">Exámenes frecuentes (clic para agregar):</p>
+                        <p className="text-xs font-semibold text-slate-500 mb-2">
+                          Exámenes frecuentes (clic para agregar):
+                        </p>
                         <div className="flex flex-wrap gap-1.5">
-                          {quickExams.map(q => (
-                            <button key={q.id}
-                              onClick={() => setPrescripciones(prev => [...prev, { exam_name: q.name, notes: q.details || '' }])}
-                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium">
+                          {quickExams.map((q) => (
+                            <button
+                              key={q.id}
+                              onClick={() =>
+                                setPrescripciones((prev) => [
+                                  ...prev,
+                                  { exam_name: q.name, notes: q.details || '' },
+                                ])
+                              }
+                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium"
+                            >
                               + {q.name}
                             </button>
                           ))}
@@ -2213,17 +2838,45 @@ function ConsultationsPage() {
 
                     <div className="space-y-3">
                       {prescripciones.map((p, idx) => (
-                        <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <div
+                          key={idx}
+                          className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 space-y-2">
-                              <input type="text" placeholder="Nombre del examen (ej: Hematología completa, Rx de tórax...)" value={p.exam_name}
-                                onChange={e => setPrescripciones(prev => prev.map((item, i) => i === idx ? { ...item, exam_name: e.target.value } : item))}
-                                className={fi} />
-                              <input type="text" placeholder="Indicaciones (ej: En ayunas, contraste oral...)" value={p.notes}
-                                onChange={e => setPrescripciones(prev => prev.map((item, i) => i === idx ? { ...item, notes: e.target.value } : item))}
-                                className={fi} />
+                              <input
+                                type="text"
+                                placeholder="Nombre del examen (ej: Hematología completa, Rx de tórax...)"
+                                value={p.exam_name}
+                                onChange={(e) =>
+                                  setPrescripciones((prev) =>
+                                    prev.map((item, i) =>
+                                      i === idx ? { ...item, exam_name: e.target.value } : item,
+                                    ),
+                                  )
+                                }
+                                className={fi}
+                              />
+                              <input
+                                type="text"
+                                placeholder="Indicaciones (ej: En ayunas, contraste oral...)"
+                                value={p.notes}
+                                onChange={(e) =>
+                                  setPrescripciones((prev) =>
+                                    prev.map((item, i) =>
+                                      i === idx ? { ...item, notes: e.target.value } : item,
+                                    ),
+                                  )
+                                }
+                                className={fi}
+                              />
                             </div>
-                            <button onClick={() => setPrescripciones(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 mt-1">
+                            <button
+                              onClick={() =>
+                                setPrescripciones((prev) => prev.filter((_, i) => i !== idx))
+                              }
+                              className="text-red-500 hover:text-red-700 mt-1"
+                            >
                               <X className="w-5 h-5" />
                             </button>
                           </div>
@@ -2231,81 +2884,146 @@ function ConsultationsPage() {
                       ))}
                     </div>
 
-                    <button onClick={() => setPrescripciones(prev => [...prev, { exam_name: '', notes: '' }])}
-                      className="w-full border-2 border-dashed border-teal-300 rounded-xl py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50">
+                    <button
+                      onClick={() =>
+                        setPrescripciones((prev) => [...prev, { exam_name: '', notes: '' }])
+                      }
+                      className="w-full border-2 border-dashed border-teal-300 rounded-xl py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50"
+                    >
                       + Agregar examen
                     </button>
 
                     {prescripciones.length > 0 && (
                       <div className="flex gap-3 pt-2">
-                        <button onClick={async () => {
-                          if (!selected || prescripciones.filter(p => p.exam_name.trim()).length === 0) {
-                            alert('Agrega al menos un examen con nombre')
-                            return
-                          }
-                          // RONDA 22: validar patient_id + capturar error de Supabase por insert
-                          if (!selected.patient_id) {
-                            alert('Error: la consulta no tiene un paciente asociado')
-                            return
-                          }
-                          log.debug('[savePrescripciones] insertando', { patient_id: selected.patient_id, consultation_id: selected.id })
-                          setIsSavingPrescripciones(true)
-                          try {
-                            const supabase = createClient()
-                            const { data: { user } } = await supabase.auth.getUser()
-                            if (!user) return
-                            const exams = prescripciones.filter(p => p.exam_name.trim())
-                            const failed: string[] = []
-                            for (const exam of exams) {
-                              const { error } = await supabase.from('prescriptions').insert({
-                                doctor_id: user.id,
-                                patient_id: selected.patient_id,
-                                consultation_id: selected.id,
-                                medications: [{ name: exam.exam_name, dose: '', frequency: '', duration: '', indications: exam.notes }],
-                                notes: `Examen: ${exam.exam_name}${exam.notes ? ` - ${exam.notes}` : ''}`,
-                                created_at: new Date().toISOString(),
-                              })
-                              if (error) {
-                                console.error('[savePrescripciones] error en exam', exam.exam_name, error)
-                                failed.push(exam.exam_name)
+                        <button
+                          onClick={async () => {
+                            if (
+                              !selected ||
+                              prescripciones.filter((p) => p.exam_name.trim()).length === 0
+                            ) {
+                              alert('Agrega al menos un examen con nombre');
+                              return;
+                            }
+                            // RONDA 22: validar patient_id + capturar error de Supabase por insert
+                            if (!selected.patient_id) {
+                              alert('Error: la consulta no tiene un paciente asociado');
+                              return;
+                            }
+                            log.debug('[savePrescripciones] insertando', {
+                              patient_id: selected.patient_id,
+                              consultation_id: selected.id,
+                            });
+                            setIsSavingPrescripciones(true);
+                            try {
+                              const supabase = createClient();
+                              // FASE 5: prescriptions insert stays Supabase
+                              const presUserId = await getDevDoctorId();
+                              if (!presUserId) return;
+                              const user = { id: presUserId };
+                              const exams = prescripciones.filter((p) => p.exam_name.trim());
+                              const failed: string[] = [];
+                              for (const exam of exams) {
+                                const { error } = await supabase.from('prescriptions').insert({
+                                  doctor_id: user.id,
+                                  patient_id: selected.patient_id,
+                                  consultation_id: selected.id,
+                                  medications: [
+                                    {
+                                      name: exam.exam_name,
+                                      dose: '',
+                                      frequency: '',
+                                      duration: '',
+                                      indications: exam.notes,
+                                    },
+                                  ],
+                                  notes: `Examen: ${exam.exam_name}${exam.notes ? ` - ${exam.notes}` : ''}`,
+                                  created_at: new Date().toISOString(),
+                                });
+                                if (error) {
+                                  console.error(
+                                    '[savePrescripciones] error en exam',
+                                    exam.exam_name,
+                                    error,
+                                  );
+                                  failed.push(exam.exam_name);
+                                }
                               }
+                              // Reload saved prescriptions
+                              const { data: savedRx } = await supabase
+                                .from('prescriptions')
+                                .select('id, medications, notes, created_at')
+                                .eq('consultation_id', selected.id)
+                                .order('created_at', { ascending: false });
+                              setSavedPrescriptions((savedRx || []) as SavedPrescription[]);
+                              if (failed.length > 0) {
+                                alert(`Algunas prescripciones fallaron: ${failed.join(', ')}`);
+                              } else {
+                                alert(`Prescripciones guardadas (${exams.length})`);
+                              }
+                            } catch (err: any) {
+                              console.error('[savePrescripciones] excepcion JS:', err);
+                              alert(
+                                `Error al guardar prescripciones: ${err?.message || 'desconocido'}`,
+                              );
+                            } finally {
+                              setIsSavingPrescripciones(false);
                             }
-                            // Reload saved prescriptions
-                            const { data: savedRx } = await supabase
-                              .from('prescriptions')
-                              .select('id, medications, notes, created_at')
-                              .eq('consultation_id', selected.id)
-                              .order('created_at', { ascending: false })
-                            setSavedPrescriptions((savedRx || []) as SavedPrescription[])
-                            if (failed.length > 0) {
-                              alert(`Algunas prescripciones fallaron: ${failed.join(', ')}`)
-                            } else {
-                              alert(`Prescripciones guardadas (${exams.length})`)
-                            }
-                          } catch (err: any) {
-                            console.error('[savePrescripciones] excepcion JS:', err)
-                            alert(`Error al guardar prescripciones: ${err?.message || 'desconocido'}`)
-                          } finally {
-                            setIsSavingPrescripciones(false)
-                          }
-                        }} disabled={isSavingPrescripciones}
-                          className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-                          {isSavingPrescripciones ? 'Guardando...' : <><Save className="w-4 h-4" /> Guardar</>}
+                          }}
+                          disabled={isSavingPrescripciones}
+                          className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                        >
+                          {isSavingPrescripciones ? (
+                            'Guardando...'
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4" /> Guardar
+                            </>
+                          )}
                         </button>
-                        <button onClick={() => {
-                          if (!selected) return
-                          const exams = prescripciones.filter(p => p.exam_name.trim())
-                          if (exams.length === 0) return
-                          const printWindow = window.open('', '_blank')
-                          if (!printWindow) return
-                          const bodyContent = '<div class="section"><div class="section-title">Exámenes Solicitados</div><div class="section-content">' +
-                            exams.map((e, i) => '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px"><div style="font-size:14px;font-weight:600;color:#1e293b">' + (i + 1) + '. ' + e.exam_name + '</div>' + (e.notes ? '<div style="font-size:12px;color:#64748b;margin-top:4px">' + e.notes + '</div>' : '') + '</div>').join('') +
-                            '</div></div>'
-                          const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
-                          printWindow.document.write(buildPdfHtml('prescripciones', 'Prescripción de Exámenes', bodyContent, selected.patient_name, selected.consultation_code, dateStr))
-                          printWindow.document.close()
-                        }}
-                          className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50">
+                        <button
+                          onClick={() => {
+                            if (!selected) return;
+                            const exams = prescripciones.filter((p) => p.exam_name.trim());
+                            if (exams.length === 0) return;
+                            const printWindow = window.open('', '_blank');
+                            if (!printWindow) return;
+                            const bodyContent =
+                              '<div class="section"><div class="section-title">Exámenes Solicitados</div><div class="section-content">' +
+                              exams
+                                .map(
+                                  (e, i) =>
+                                    '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px"><div style="font-size:14px;font-weight:600;color:#1e293b">' +
+                                    (i + 1) +
+                                    '. ' +
+                                    e.exam_name +
+                                    '</div>' +
+                                    (e.notes
+                                      ? '<div style="font-size:12px;color:#64748b;margin-top:4px">' +
+                                        e.notes +
+                                        '</div>'
+                                      : '') +
+                                    '</div>',
+                                )
+                                .join('') +
+                              '</div></div>';
+                            const dateStr = new Date(selected.consultation_date).toLocaleDateString(
+                              'es-VE',
+                              { year: 'numeric', month: 'long', day: 'numeric' },
+                            );
+                            printWindow.document.write(
+                              buildPdfHtml(
+                                'prescripciones',
+                                'Prescripción de Exámenes',
+                                bodyContent,
+                                selected.patient_name,
+                                selected.consultation_code,
+                                dateStr,
+                              ),
+                            );
+                            printWindow.document.close();
+                          }}
+                          className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50"
+                        >
                           <Printer className="w-4 h-4" /> PDF
                         </button>
                       </div>
@@ -2328,72 +3046,120 @@ function ConsultationsPage() {
                       )}
                     </div>
                     <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800">
-                      Los datos de reposo se guardan automáticamente en la consulta. Quedan disponibles aunque cierres y vuelvas.
+                      Los datos de reposo se guardan automáticamente en la consulta. Quedan
+                      disponibles aunque cierres y vuelvas.
                     </div>
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                         <FileText className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
                       </label>
-                      <input type="text" placeholder="Diagnóstico para el reposo" value={reposoDiagnosis}
-                        onChange={e => setReposoDiagnosis(e.target.value)} className={fi} />
+                      <input
+                        type="text"
+                        placeholder="Diagnóstico para el reposo"
+                        value={reposoDiagnosis}
+                        onChange={(e) => setReposoDiagnosis(e.target.value)}
+                        className={fi}
+                      />
                     </div>
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-400" /> Días de reposo
                       </label>
-                      <input type="number" placeholder="0" min="0" value={reposoDays}
-                        onChange={e => {
-                          const days = parseInt(e.target.value) || 0
-                          setReposoDays(days)
+                      <input
+                        type="number"
+                        placeholder="0"
+                        min="0"
+                        value={reposoDays}
+                        onChange={(e) => {
+                          const days = parseInt(e.target.value) || 0;
+                          setReposoDays(days);
                           if (reposoFrom) {
-                            const fromDate = new Date(reposoFrom)
-                            const toDate = new Date(fromDate)
-                            toDate.setDate(toDate.getDate() + days)
-                            setReposoTo(toDate.toISOString().split('T')[0])
+                            const fromDate = new Date(reposoFrom);
+                            const toDate = new Date(fromDate);
+                            toDate.setDate(toDate.getDate() + days);
+                            setReposoTo(toDate.toISOString().split('T')[0]);
                           }
                         }}
-                        className={fi} />
+                        className={fi}
+                      />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                           <Calendar className="w-3.5 h-3.5 text-slate-400" /> Desde
                         </label>
-                        <input type="date" value={reposoFrom}
-                          onChange={e => {
-                            setReposoFrom(e.target.value)
+                        <input
+                          type="date"
+                          value={reposoFrom}
+                          onChange={(e) => {
+                            setReposoFrom(e.target.value);
                             if (reposoDays > 0) {
-                              const fromDate = new Date(e.target.value)
-                              const toDate = new Date(fromDate)
-                              toDate.setDate(toDate.getDate() + reposoDays)
-                              setReposoTo(toDate.toISOString().split('T')[0])
+                              const fromDate = new Date(e.target.value);
+                              const toDate = new Date(fromDate);
+                              toDate.setDate(toDate.getDate() + reposoDays);
+                              setReposoTo(toDate.toISOString().split('T')[0]);
                             }
                           }}
-                          className={fi} />
+                          className={fi}
+                        />
                       </div>
                       <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                           <Calendar className="w-3.5 h-3.5 text-slate-400" /> Hasta
                         </label>
-                        <input type="date" value={reposoTo} disabled className={fi + ' opacity-60'} />
+                        <input
+                          type="date"
+                          value={reposoTo}
+                          disabled
+                          className={fi + ' opacity-60'}
+                        />
                       </div>
                     </div>
-                    <button onClick={() => {
-                      if (!reposoFrom || !reposoDiagnosis || reposoDays === 0) {
-                        alert('Completa todos los campos')
-                        return
-                      }
-                      const printWindow = window.open('', '_blank')
-                      if (!printWindow) return
-                      const bodyContent = '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' + reposoDiagnosis + '</div></div>' +
-                        '<div class="section"><div class="section-title">Período de Reposo</div><div class="section-content">Desde: ' +
-                        new Date(reposoFrom).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' }) + '<br>Hasta: ' +
-                        new Date(reposoTo).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' }) + '<br>Duración: ' + reposoDays + ' días</div></div>'
-                      const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
-                      printWindow.document.write(buildPdfHtml('reposo', 'Constancia de Reposo', bodyContent, selected.patient_name, selected.consultation_code, dateStr))
-                      printWindow.document.close()
-                    }}
-                      className="w-full flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90">
+                    <button
+                      onClick={() => {
+                        if (!reposoFrom || !reposoDiagnosis || reposoDays === 0) {
+                          alert('Completa todos los campos');
+                          return;
+                        }
+                        const printWindow = window.open('', '_blank');
+                        if (!printWindow) return;
+                        const bodyContent =
+                          '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' +
+                          reposoDiagnosis +
+                          '</div></div>' +
+                          '<div class="section"><div class="section-title">Período de Reposo</div><div class="section-content">Desde: ' +
+                          new Date(reposoFrom).toLocaleDateString('es-VE', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          }) +
+                          '<br>Hasta: ' +
+                          new Date(reposoTo).toLocaleDateString('es-VE', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          }) +
+                          '<br>Duración: ' +
+                          reposoDays +
+                          ' días</div></div>';
+                        const dateStr = new Date(selected.consultation_date).toLocaleDateString(
+                          'es-VE',
+                          { year: 'numeric', month: 'long', day: 'numeric' },
+                        );
+                        printWindow.document.write(
+                          buildPdfHtml(
+                            'reposo',
+                            'Constancia de Reposo',
+                            bodyContent,
+                            selected.patient_name,
+                            selected.consultation_code,
+                            dateStr,
+                          ),
+                        );
+                        printWindow.document.close();
+                      }}
+                      className="w-full flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
+                    >
                       <Printer className="w-4 h-4" /> Generar PDF Reposo
                     </button>
                   </div>
@@ -2406,25 +3172,32 @@ function ConsultationsPage() {
                       <FileText className="w-4 h-4 text-slate-400" />
                       <p className="text-sm font-bold text-slate-800">Notas internas</p>
                     </div>
-                    <p className="text-xs text-slate-500">Notas privadas del médico sobre esta consulta. No se incluyen en documentos del paciente.</p>
+                    <p className="text-xs text-slate-500">
+                      Notas privadas del médico sobre esta consulta. No se incluyen en documentos
+                      del paciente.
+                    </p>
                     <RichTextEditor
-                      value={(((selected as Consultation).blocks_data || {}) as any).internal_notes || ''}
-                      onChange={html => {
+                      value={
+                        (((selected as Consultation).blocks_data || {}) as any).internal_notes || ''
+                      }
+                      onChange={(html) => {
                         // RONDA 38: persistir en blocks_data.internal_notes (no en columna legacy diagnosis)
-                        const data = (selected as Consultation).blocks_data || {}
-                        const next = { ...data, internal_notes: html }
-                        ;(selected as Consultation).blocks_data = next
-                        setSelected({ ...(selected as Consultation), blocks_data: next })
-                        if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current)
+                        const data = (selected as Consultation).blocks_data || {};
+                        const next = { ...data, internal_notes: html };
+                        (selected as Consultation).blocks_data = next;
+                        setSelected({ ...(selected as Consultation), blocks_data: next });
+                        if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current);
                         blocksAutoSaveTimer.current = setTimeout(async () => {
-                          if (!selectedRef.current) return
-                          const supabase = createClient()
-                          await supabase.from('consultations')
+                          if (!selectedRef.current) return;
+                          const supabase = createClient();
+                          await supabase
+                            .from('consultations')
                             .update({ blocks_data: next })
-                            .eq('id', selectedRef.current.id)
-                        }, 1500)
+                            .eq('id', selectedRef.current.id);
+                        }, 1500);
                       }}
-                      placeholder="Notas internas, observaciones, seguimiento pendiente..." />
+                      placeholder="Notas internas, observaciones, seguimiento pendiente..."
+                    />
                   </div>
                 )}
               </div>
@@ -2448,63 +3221,87 @@ function ConsultationsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
-                  onClick={() => { setShowAiBlockPicker(false); callAI('patient_history') }}
+                  onClick={() => {
+                    setShowAiBlockPicker(false);
+                    callAI('patient_history');
+                  }}
                   disabled={aiLoading}
                   className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
-                  {aiLoading && aiAction === 'patient_history' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <History className="w-3.5 h-3.5" />}
+                  {aiLoading && aiAction === 'patient_history' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <History className="w-3.5 h-3.5" />
+                  )}
                   Resumir historial del paciente
                 </button>
 
                 <button
                   onClick={() => {
                     // L1 (2026-04-29): toggle dropdown de selección de bloque.
-                    setShowAiBlockPicker(v => !v)
+                    setShowAiBlockPicker((v) => !v);
                   }}
                   disabled={aiLoading}
                   className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
-                  {aiLoading && aiAction === 'improve_block' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  {aiLoading && aiAction === 'improve_block' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3.5 h-3.5" />
+                  )}
                   Mejorar redacción
                 </button>
 
                 <button
-                  onClick={() => { setShowAiBlockPicker(false); callAI('summarize_report') }}
+                  onClick={() => {
+                    setShowAiBlockPicker(false);
+                    callAI('summarize_report');
+                  }}
                   disabled={aiLoading}
                   className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
-                  {aiLoading && aiAction === 'summarize_report' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                  {aiLoading && aiAction === 'summarize_report' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
                   Resumir informe
                 </button>
               </div>
 
               {/* L1 (2026-04-29): dropdown de selección de bloque para "Mejorar redacción" */}
-              {showAiBlockPicker && selected && (() => {
-                const effective = getEffectiveBlocks(selected)
-                return (
-                  <div className="bg-white border border-violet-200 rounded-xl p-3 space-y-2">
-                    <p className="text-[11px] font-bold text-violet-700 uppercase tracking-wide">Selecciona un bloque para mejorar</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                      {effective.length === 0 && (
-                        <p className="text-xs text-slate-400 italic col-span-full">No hay bloques activos en esta consulta.</p>
-                      )}
-                      {effective.map(b => (
-                        <button
-                          key={b.key}
-                          onClick={() => {
-                            setAiTargetBlockKey(b.key)
-                            setShowAiBlockPicker(false)
-                            callAI('improve_block', { blockKey: b.key })
-                          }}
-                          className="text-xs px-2 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-lg font-medium text-left truncate"
-                        >
-                          {b.label}
-                        </button>
-                      ))}
+              {showAiBlockPicker &&
+                selected &&
+                (() => {
+                  const effective = getEffectiveBlocks(selected);
+                  return (
+                    <div className="bg-white border border-violet-200 rounded-xl p-3 space-y-2">
+                      <p className="text-[11px] font-bold text-violet-700 uppercase tracking-wide">
+                        Selecciona un bloque para mejorar
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {effective.length === 0 && (
+                          <p className="text-xs text-slate-400 italic col-span-full">
+                            No hay bloques activos en esta consulta.
+                          </p>
+                        )}
+                        {effective.map((b) => (
+                          <button
+                            key={b.key}
+                            onClick={() => {
+                              setAiTargetBlockKey(b.key);
+                              setShowAiBlockPicker(false);
+                              callAI('improve_block', { blockKey: b.key });
+                            }}
+                            className="text-xs px-2 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-lg font-medium text-left truncate"
+                          >
+                            {b.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )
-              })()}
+                  );
+                })()}
 
               {/* AI Result — panel colapsable con Aplicar / Descartar */}
               {(aiResult || aiLoading) && (
@@ -2518,9 +3315,11 @@ function ConsultationsPage() {
                     <>
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">
-                          {aiAction === 'patient_history' ? 'Historial del paciente'
-                            : aiAction === 'summarize_report' ? 'Resumen del informe'
-                            : `Texto mejorado${aiTargetBlockKey ? ` (${aiTargetBlockKey})` : ''}`}
+                          {aiAction === 'patient_history'
+                            ? 'Historial del paciente'
+                            : aiAction === 'summarize_report'
+                              ? 'Resumen del informe'
+                              : `Texto mejorado${aiTargetBlockKey ? ` (${aiTargetBlockKey})` : ''}`}
                         </p>
                         <div className="flex gap-1">
                           {/* Aplicar — solo aplica si el modo soporta escritura.
@@ -2534,13 +3333,18 @@ function ConsultationsPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => { navigator.clipboard.writeText(aiResult) }}
+                            onClick={() => {
+                              navigator.clipboard.writeText(aiResult);
+                            }}
                             className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
                           >
                             <Copy className="w-3 h-3" /> Copiar
                           </button>
                           <button
-                            onClick={() => { setAiResult(''); setAiAction(null) }}
+                            onClick={() => {
+                              setAiResult('');
+                              setAiAction(null);
+                            }}
                             title="Descartar"
                             className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
                           >
@@ -2571,13 +3375,18 @@ function ConsultationsPage() {
                     {selected.duration_minutes != null ? (
                       <>
                         <p className="text-xs text-slate-500">Duración de la consulta</p>
-                        <p className="text-sm font-bold text-slate-800">{formatDuration(selected.duration_minutes)}</p>
+                        <p className="text-sm font-bold text-slate-800">
+                          {formatDuration(selected.duration_minutes)}
+                        </p>
                       </>
                     ) : selected.started_at ? (
                       <>
                         <p className="text-xs text-slate-500">Consulta iniciada</p>
                         <p className="text-sm font-bold text-slate-800">
-                          {new Date(selected.started_at).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(selected.started_at).toLocaleTimeString('es-VE', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                           <span className="text-xs font-normal text-slate-400 ml-2">
                             (la duración se calcula al guardar el informe)
                           </span>
@@ -2594,20 +3403,39 @@ function ConsultationsPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {autoSaving ? (
-                    <><Loader2 className="w-4 h-4 text-teal-500 animate-spin" /><span className="text-xs text-teal-600 font-medium">Guardando...</span></>
+                    <>
+                      <Loader2 className="w-4 h-4 text-teal-500 animate-spin" />
+                      <span className="text-xs text-teal-600 font-medium">Guardando...</span>
+                    </>
                   ) : saved ? (
-                    <><CheckCircle className="w-4 h-4 text-green-500" /><span className="text-xs text-green-600 font-medium">Guardado</span></>
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <span className="text-xs text-green-600 font-medium">Guardado</span>
+                    </>
                   ) : (
-                    <><Clock className="w-4 h-4 text-slate-400" /><span className="text-xs text-slate-500">Auto-guardado activo</span></>
+                    <>
+                      <Clock className="w-4 h-4 text-slate-400" />
+                      <span className="text-xs text-slate-500">Auto-guardado activo</span>
+                    </>
                   )}
                 </div>
-                <button onClick={saveReport} disabled={isPending || autoSaving}
-                  className="flex items-center gap-2 g-bg px-4 py-2 rounded-lg text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
-                  {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <button
+                  onClick={saveReport}
+                  disabled={isPending || autoSaving}
+                  className="flex items-center gap-2 g-bg px-4 py-2 rounded-lg text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 transition-opacity"
+                >
+                  {isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
                   Guardar consulta
                 </button>
               </div>
-              <p className="text-xs text-slate-500">Los cambios se guardan automaticamente. El informe queda registrado en el historial clinico del paciente.</p>
+              <p className="text-xs text-slate-500">
+                Los cambios se guardan automaticamente. El informe queda registrado en el historial
+                clinico del paciente.
+              </p>
             </div>
 
             {/* L7 (2026-04-29): el modal "Finalizar consulta" fue eliminado
@@ -2617,200 +3445,254 @@ function ConsultationsPage() {
 
           {/* Right Sidebar Toggle (when hidden) */}
           {!showRightSidebar && (
-            <button onClick={() => setShowRightSidebar(true)}
+            <button
+              onClick={() => setShowRightSidebar(true)}
               className="hidden lg:flex fixed right-4 top-24 z-30 items-center justify-center w-10 h-10 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 hover:shadow-md transition-all"
-              title={selected.patient_name}>
+              title={selected.patient_name}
+            >
               <User className="w-4 h-4 text-teal-500" />
             </button>
           )}
 
           {/* Right Sidebar — Patient + Consultation Info */}
           {showRightSidebar && (
-          <div className="lg:w-80 space-y-0 shrink-0">
-            <div className="bg-white border border-slate-200 rounded-xl p-5 sticky top-20">
-              {/* Header with hide button */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-white" />
+            <div className="lg:w-80 space-y-0 shrink-0">
+              <div className="bg-white border border-slate-200 rounded-xl p-5 sticky top-20">
+                {/* Header with hide button */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center shrink-0">
+                    <User className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-900">{selected.patient_name}</p>
+                    <p className="text-xs text-slate-400 font-mono">{selected.consultation_code}</p>
+                  </div>
+                  <button
+                    onClick={() => setShowRightSidebar(false)}
+                    className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
+                    title="Ocultar panel"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900">{selected.patient_name}</p>
-                  <p className="text-xs text-slate-400 font-mono">{selected.consultation_code}</p>
-                </div>
-                <button onClick={() => setShowRightSidebar(false)}
-                  className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
-                  title="Ocultar panel">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
 
-              {/* Consultation info */}
-              <div className="space-y-2.5 text-xs border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Fecha</span>
-                  <span className="font-semibold text-slate-800">{cDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Hora</span>
-                  <span className="font-semibold text-slate-800">{cDate.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Estado</span>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isUpcoming ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'}`}>
-                    {isUpcoming ? 'Próxima' : 'Realizada'}
-                  </span>
-                </div>
-                {selected.duration_minutes != null && (
+                {/* Consultation info */}
+                <div className="space-y-2.5 text-xs border-t border-slate-100 pt-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Duración</span>
-                    <span className="font-semibold text-slate-800 flex items-center gap-1">
-                      <Timer className="w-3 h-3 text-teal-500" />
-                      {selected.duration_minutes} min
+                    <span className="text-slate-500">Fecha</span>
+                    <span className="font-semibold text-slate-800">
+                      {cDate.toLocaleDateString('es-VE', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
                     </span>
                   </div>
-                )}
-              </div>
-
-              {/* Patient details */}
-              {(() => {
-                const patientData = patients.find(p => p.id === selected.patient_id)
-                const details = [
-                  patientData?.cedula && { label: 'Cédula', value: patientData.cedula },
-                  patientData?.age && { label: 'Edad', value: `${patientData.age} años` },
-                  patientData?.sex && { label: 'Sexo', value: patientData.sex === 'male' ? 'Masculino' : patientData.sex === 'female' ? 'Femenino' : patientData.sex },
-                  selected.patient_phone && { label: 'Teléfono', value: selected.patient_phone },
-                  patientData?.email && { label: 'Email', value: patientData.email },
-                  patientData?.blood_type && { label: 'Sangre', value: patientData.blood_type },
-                ].filter(Boolean) as { label: string; value: string }[]
-
-                return details.length > 0 ? (
-                  <div className="space-y-2 text-xs border-t border-slate-100 pt-3 mt-3">
-                    {details.map(d => (
-                      <div key={d.label} className="flex items-center justify-between">
-                        <span className="text-slate-500">{d.label}</span>
-                        <span className="font-semibold text-slate-800 text-right break-all max-w-[55%]">{d.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null
-              })()}
-
-              {/* Medical alerts */}
-              {(() => {
-                const patientData = patients.find(p => p.id === selected.patient_id)
-                const hasAlerts = patientData?.allergies || patientData?.chronic_conditions
-                return hasAlerts ? (
-                  <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
-                    {patientData.allergies && (
-                      <div className="flex items-start gap-1.5 text-xs text-amber-800">
-                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
-                        <span><strong>Alergias:</strong> {patientData.allergies}</span>
-                      </div>
-                    )}
-                    {patientData.chronic_conditions && (
-                      <div className="flex items-start gap-1.5 text-xs text-amber-800">
-                        <Heart className="w-3 h-3 shrink-0 mt-0.5" />
-                        <span><strong>Condiciones:</strong> {patientData.chronic_conditions}</span>
-                      </div>
-                    )}
-                  </div>
-                ) : null
-              })()}
-
-              {/* Payment — collapsible */}
-              <div className="border-t border-slate-100 mt-3 pt-3">
-                <button onClick={() => setShowPaymentDetails(!showPaymentDetails)}
-                  className="w-full flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-bold text-slate-600 uppercase">Pago</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${ps.color}`}>
-                      <span className={`w-1 h-1 rounded-full ${ps.dot}`} />{ps.label}
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Hora</span>
+                    <span className="font-semibold text-slate-800">
+                      {cDate.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    {showPaymentDetails ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
                   </div>
-                </button>
-                {showPaymentDetails && (
-                  <div className="mt-3 space-y-2">
-                    {/* === SELECT con auto-save (ronda 14) ===
-                        onChange dispara updatePagoStatus que actualiza Supabase + payments table
-                        + sincroniza el badge informativo de la izquierda automaticamente */}
-                    <div>
-                      <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Estado del pago
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={normalizePaymentStatus(report.payment_status)}
-                          disabled={pagoSaving}
-                          onChange={(e) => {
-                            const next = e.target.value as 'pending' | 'approved'
-                            if (next === normalizePaymentStatus(report.payment_status)) return
-                            updatePagoStatus(selected.id, next, selected.appointment_id)
-                          }}
-                          className={`w-full text-xs font-semibold border-2 rounded-lg py-2 pl-3 pr-9 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none bg-white ${
-                            pagoSaving ? 'border-slate-200 text-slate-400 cursor-wait' : 'border-slate-200 text-slate-700 hover:border-teal-300 cursor-pointer'
-                          }`}
-                        >
-                          {(['pending', 'approved'] as const).map(key => (
-                            <option key={key} value={key}>
-                              {PAYMENT_STATUS[key].label}
-                            </option>
-                          ))}
-                        </select>
-                        {/* Spinner o chevron a la derecha */}
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                          {pagoSaving ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
-                          ) : (
-                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                          )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Estado</span>
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${isUpcoming ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'}`}
+                    >
+                      {isUpcoming ? 'Próxima' : 'Realizada'}
+                    </span>
+                  </div>
+                  {selected.duration_minutes != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Duración</span>
+                      <span className="font-semibold text-slate-800 flex items-center gap-1">
+                        <Timer className="w-3 h-3 text-teal-500" />
+                        {selected.duration_minutes} min
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Patient details */}
+                {(() => {
+                  const patientData = patients.find((p) => p.id === selected.patient_id);
+                  const details = [
+                    patientData?.cedula && { label: 'Cédula', value: patientData.cedula },
+                    patientData?.age && { label: 'Edad', value: `${patientData.age} años` },
+                    patientData?.sex && {
+                      label: 'Sexo',
+                      value:
+                        patientData.sex === 'male'
+                          ? 'Masculino'
+                          : patientData.sex === 'female'
+                            ? 'Femenino'
+                            : patientData.sex,
+                    },
+                    selected.patient_phone && { label: 'Teléfono', value: selected.patient_phone },
+                    patientData?.email && { label: 'Email', value: patientData.email },
+                    patientData?.blood_type && { label: 'Sangre', value: patientData.blood_type },
+                  ].filter(Boolean) as { label: string; value: string }[];
+
+                  return details.length > 0 ? (
+                    <div className="space-y-2 text-xs border-t border-slate-100 pt-3 mt-3">
+                      {details.map((d) => (
+                        <div key={d.label} className="flex items-center justify-between">
+                          <span className="text-slate-500">{d.label}</span>
+                          <span className="font-semibold text-slate-800 text-right break-all max-w-[55%]">
+                            {d.value}
+                          </span>
                         </div>
-                      </div>
-                      {pagoSaving && (
-                        <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Guardando…
-                        </p>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Medical alerts */}
+                {(() => {
+                  const patientData = patients.find((p) => p.id === selected.patient_id);
+                  const hasAlerts = patientData?.allergies || patientData?.chronic_conditions;
+                  return hasAlerts ? (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+                      {patientData.allergies && (
+                        <div className="flex items-start gap-1.5 text-xs text-amber-800">
+                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Alergias:</strong> {patientData.allergies}
+                          </span>
+                        </div>
+                      )}
+                      {patientData.chronic_conditions && (
+                        <div className="flex items-start gap-1.5 text-xs text-amber-800">
+                          <Heart className="w-3 h-3 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Condiciones:</strong> {patientData.chronic_conditions}
+                          </span>
+                        </div>
                       )}
                     </div>
-                    {appointmentData && (appointmentData.payment_method || appointmentData.plan_price) && (
-                      <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
-                        {appointmentData.plan_name && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Plan:</span>
-                            <span className="font-semibold text-slate-800">{appointmentData.plan_name}</span>
+                  ) : null;
+                })()}
+
+                {/* Payment — collapsible */}
+                <div className="border-t border-slate-100 mt-3 pt-3">
+                  <button
+                    onClick={() => setShowPaymentDetails(!showPaymentDetails)}
+                    className="w-full flex items-center justify-between text-xs"
+                  >
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="font-bold text-slate-600 uppercase">Pago</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${ps.color}`}
+                      >
+                        <span className={`w-1 h-1 rounded-full ${ps.dot}`} />
+                        {ps.label}
+                      </span>
+                      {showPaymentDetails ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                  </button>
+                  {showPaymentDetails && (
+                    <div className="mt-3 space-y-2">
+                      {/* === SELECT con auto-save (ronda 14) ===
+                        onChange dispara updatePagoStatus que actualiza Supabase + payments table
+                        + sincroniza el badge informativo de la izquierda automaticamente */}
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Estado del pago
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={normalizePaymentStatus(report.payment_status)}
+                            disabled={pagoSaving}
+                            onChange={(e) => {
+                              const next = e.target.value as 'pending' | 'approved';
+                              if (next === normalizePaymentStatus(report.payment_status)) return;
+                              updatePagoStatus(selected.id, next, selected.appointment_id);
+                            }}
+                            className={`w-full text-xs font-semibold border-2 rounded-lg py-2 pl-3 pr-9 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none bg-white ${
+                              pagoSaving
+                                ? 'border-slate-200 text-slate-400 cursor-wait'
+                                : 'border-slate-200 text-slate-700 hover:border-teal-300 cursor-pointer'
+                            }`}
+                          >
+                            {(['pending', 'approved'] as const).map((key) => (
+                              <option key={key} value={key}>
+                                {PAYMENT_STATUS[key].label}
+                              </option>
+                            ))}
+                          </select>
+                          {/* Spinner o chevron a la derecha */}
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            {pagoSaving ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                            )}
                           </div>
-                        )}
-                        {appointmentData.plan_price != null && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Monto:</span>
-                            <div className="text-right">
-                              <span className="font-semibold text-slate-800">${appointmentData.plan_price.toFixed(2)}</span>
-                              {bcvRate && <span className="block text-[10px] text-slate-400">{toBs(appointmentData.plan_price)}</span>}
-                            </div>
-                          </div>
-                        )}
-                        {appointmentData.payment_method && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Método:</span>
-                            <span className="font-semibold text-slate-800">{appointmentData.payment_method.replace(/_/g, ' ')}</span>
-                          </div>
+                        </div>
+                        {pagoSaving && (
+                          <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Guardando…
+                          </p>
                         )}
                       </div>
-                    )}
-                    {appointmentData?.payment_receipt_url && (
-                      <a href={appointmentData.payment_receipt_url} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 pt-1">
-                        <FileText className="w-3 h-3" /> Ver comprobante
-                      </a>
-                    )}
-                  </div>
-                )}
+                      {appointmentData &&
+                        (appointmentData.payment_method || appointmentData.plan_price) && (
+                          <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
+                            {appointmentData.plan_name && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500">Plan:</span>
+                                <span className="font-semibold text-slate-800">
+                                  {appointmentData.plan_name}
+                                </span>
+                              </div>
+                            )}
+                            {appointmentData.plan_price != null && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500">Monto:</span>
+                                <div className="text-right">
+                                  <span className="font-semibold text-slate-800">
+                                    ${appointmentData.plan_price.toFixed(2)}
+                                  </span>
+                                  {bcvRate && (
+                                    <span className="block text-[10px] text-slate-400">
+                                      {toBs(appointmentData.plan_price)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {appointmentData.payment_method && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500">Método:</span>
+                                <span className="font-semibold text-slate-800">
+                                  {appointmentData.payment_method.replace(/_/g, ' ')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      {appointmentData?.payment_receipt_url && (
+                        <a
+                          href={appointmentData.payment_receipt_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 pt-1"
+                        >
+                          <FileText className="w-3 h-3" /> Ver comprobante
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
           )}
         </div>
 
@@ -2823,48 +3705,97 @@ function ConsultationsPage() {
                   <Pill className="w-5 h-5 text-teal-600" />
                   <h2 className="text-lg font-bold text-slate-900">Nueva receta</h2>
                 </div>
-                <button onClick={() => setShowRecipe(false)} className="text-slate-400 hover:text-slate-600">
+                <button
+                  onClick={() => setShowRecipe(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
                 {recipe.medications.map((med, idx) => (
-                  <div key={idx} className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+                  <div
+                    key={idx}
+                    className="bg-white border border-slate-200 rounded-lg p-4 space-y-3"
+                  >
                     <div className="flex items-start gap-2">
                       <div className="flex-1 space-y-2">
-                        <input type="text" placeholder="Nombre del medicamento" value={med.name}
-                          onChange={e => setRecipe(p => ({
-                            ...p,
-                            medications: p.medications.map((m, i) => i === idx ? { ...m, name: e.target.value } : m)
-                          }))}
-                          className={fi} />
-                        <input type="text" placeholder="Dosis (ej: 500mg)" value={med.dose}
-                          onChange={e => setRecipe(p => ({
-                            ...p,
-                            medications: p.medications.map((m, i) => i === idx ? { ...m, dose: e.target.value } : m)
-                          }))}
-                          className={fi} />
-                        <input type="text" placeholder="Frecuencia (ej: cada 8h)" value={med.frequency}
-                          onChange={e => setRecipe(p => ({
-                            ...p,
-                            medications: p.medications.map((m, i) => i === idx ? { ...m, frequency: e.target.value } : m)
-                          }))}
-                          className={fi} />
-                        <input type="text" placeholder="Duración (ej: 7 días)" value={med.duration}
-                          onChange={e => setRecipe(p => ({
-                            ...p,
-                            medications: p.medications.map((m, i) => i === idx ? { ...m, duration: e.target.value } : m)
-                          }))}
-                          className={fi} />
-                        <input type="text" placeholder="Indicaciones" value={med.indications}
-                          onChange={e => setRecipe(p => ({
-                            ...p,
-                            medications: p.medications.map((m, i) => i === idx ? { ...m, indications: e.target.value } : m)
-                          }))}
-                          className={fi} />
+                        <input
+                          type="text"
+                          placeholder="Nombre del medicamento"
+                          value={med.name}
+                          onChange={(e) =>
+                            setRecipe((p) => ({
+                              ...p,
+                              medications: p.medications.map((m, i) =>
+                                i === idx ? { ...m, name: e.target.value } : m,
+                              ),
+                            }))
+                          }
+                          className={fi}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Dosis (ej: 500mg)"
+                          value={med.dose}
+                          onChange={(e) =>
+                            setRecipe((p) => ({
+                              ...p,
+                              medications: p.medications.map((m, i) =>
+                                i === idx ? { ...m, dose: e.target.value } : m,
+                              ),
+                            }))
+                          }
+                          className={fi}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Frecuencia (ej: cada 8h)"
+                          value={med.frequency}
+                          onChange={(e) =>
+                            setRecipe((p) => ({
+                              ...p,
+                              medications: p.medications.map((m, i) =>
+                                i === idx ? { ...m, frequency: e.target.value } : m,
+                              ),
+                            }))
+                          }
+                          className={fi}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Duración (ej: 7 días)"
+                          value={med.duration}
+                          onChange={(e) =>
+                            setRecipe((p) => ({
+                              ...p,
+                              medications: p.medications.map((m, i) =>
+                                i === idx ? { ...m, duration: e.target.value } : m,
+                              ),
+                            }))
+                          }
+                          className={fi}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Indicaciones"
+                          value={med.indications}
+                          onChange={(e) =>
+                            setRecipe((p) => ({
+                              ...p,
+                              medications: p.medications.map((m, i) =>
+                                i === idx ? { ...m, indications: e.target.value } : m,
+                              ),
+                            }))
+                          }
+                          className={fi}
+                        />
                       </div>
-                      <button onClick={() => removeMedication(idx)} className="text-red-500 hover:text-red-700 mt-1">
+                      <button
+                        onClick={() => removeMedication(idx)}
+                        className="text-red-500 hover:text-red-700 mt-1"
+                      >
                         <X className="w-5 h-5" />
                       </button>
                     </div>
@@ -2875,15 +3806,30 @@ function ConsultationsPage() {
               {/* Quick medications from templates */}
               {quickMeds.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-2">Medicamentos frecuentes (clic para agregar):</p>
+                  <p className="text-xs font-semibold text-slate-500 mb-2">
+                    Medicamentos frecuentes (clic para agregar):
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {quickMeds.map(q => (
-                      <button key={q.id}
-                        onClick={() => setRecipe(p => ({
-                          ...p,
-                          medications: [...p.medications, { name: q.name, dose: q.details || '', frequency: '', duration: '', indications: '' }]
-                        }))}
-                        className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium">
+                    {quickMeds.map((q) => (
+                      <button
+                        key={q.id}
+                        onClick={() =>
+                          setRecipe((p) => ({
+                            ...p,
+                            medications: [
+                              ...p.medications,
+                              {
+                                name: q.name,
+                                dose: q.details || '',
+                                frequency: '',
+                                duration: '',
+                                indications: '',
+                              },
+                            ],
+                          }))
+                        }
+                        className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium"
+                      >
                         + {q.name}
                       </button>
                     ))}
@@ -2891,22 +3837,43 @@ function ConsultationsPage() {
                 </div>
               )}
 
-              <button onClick={addMedication} className="w-full border-2 border-dashed border-teal-300 rounded-xl py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50">
+              <button
+                onClick={addMedication}
+                className="w-full border-2 border-dashed border-teal-300 rounded-xl py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50"
+              >
                 + Agregar medicamento
               </button>
 
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-1.5 block">Notas adicionales</label>
-                <RichTextEditor value={recipe.notes} onChange={html => setRecipe(p => ({ ...p, notes: html }))}
-                  placeholder="Ej: Tomar con comida, evitar sol..." />
+                <label className="text-sm font-medium text-slate-700 mb-1.5 block">
+                  Notas adicionales
+                </label>
+                <RichTextEditor
+                  value={recipe.notes}
+                  onChange={(html) => setRecipe((p) => ({ ...p, notes: html }))}
+                  placeholder="Ej: Tomar con comida, evitar sol..."
+                />
               </div>
 
               <div className="flex gap-3">
-                <button onClick={() => setShowRecipe(false)} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50">
+                <button
+                  onClick={() => setShowRecipe(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
                   Cancelar
                 </button>
-                <button onClick={saveRecipe} disabled={isSavingRecipe} className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-                  {isSavingRecipe ? 'Guardando...' : <><Save className="w-4 h-4" /> Guardar receta</>}
+                <button
+                  onClick={saveRecipe}
+                  disabled={isSavingRecipe}
+                  className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {isSavingRecipe ? (
+                    'Guardando...'
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" /> Guardar receta
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -2916,136 +3883,191 @@ function ConsultationsPage() {
         {/* L1 (2026-04-29) FIX: MODAL "GENERAR INFORME" — vivía solo en la vista
             list (línea ~3286) pero el botón está en la vista consultation, así
             que el setState disparaba pero React nunca renderizaba el modal. */}
-        {showGenerateReport && selected && (() => {
-          const effective = getEffectiveBlocks(selected)
-          const printable = effective.filter(b => b.printable)
-          console.log('[generar-informe] MODAL RENDERING (consultation view)', { effectiveCount: effective.length, printableCount: printable.length })
-          return (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !generatingReport && setShowGenerateReport(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-teal-600" />
+        {showGenerateReport &&
+          selected &&
+          (() => {
+            const effective = getEffectiveBlocks(selected);
+            const printable = effective.filter((b) => b.printable);
+            console.log('[generar-informe] MODAL RENDERING (consultation view)', {
+              effectiveCount: effective.length,
+              printableCount: printable.length,
+            });
+            return (
+              <div
+                className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+                onClick={() => !generatingReport && setShowGenerateReport(false)}
+              >
+                <div
+                  className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-teal-600" />
+                      </div>
+                      <h2 className="text-lg font-bold text-slate-900">Generar informe</h2>
                     </div>
-                    <h2 className="text-lg font-bold text-slate-900">Generar informe</h2>
-                  </div>
-                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport} className="text-slate-400 hover:text-slate-600 disabled:opacity-50">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                <p className="text-sm text-slate-600">Selecciona los bloques que quieres incluir en el PDF.</p>
-                {generatedReportUrl && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
-                    <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5" /> Informe generado
-                    </p>
-                    <a
-                      href={generatedReportUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 underline hover:text-emerald-800"
-                    >
-                      Abrir PDF en nueva pestaña <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
                     <button
-                      onClick={() => navigator.clipboard?.writeText(generatedReportUrl).catch(() => {})}
-                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 ml-3"
+                      onClick={() => setShowGenerateReport(false)}
+                      disabled={generatingReport}
+                      className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
                     >
-                      Copiar enlace
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
-                )}
-                <div className="space-y-2 border border-slate-100 rounded-xl p-3">
-                  {printable.length === 0 && (
-                    <p className="text-xs text-slate-400 italic">No hay bloques compartibles en esta consulta.</p>
+                  <p className="text-sm text-slate-600">
+                    Selecciona los bloques que quieres incluir en el PDF.
+                  </p>
+                  {generatedReportUrl && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                      <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5" /> Informe generado
+                      </p>
+                      <a
+                        href={generatedReportUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 underline hover:text-emerald-800"
+                      >
+                        Abrir PDF en nueva pestaña <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        onClick={() =>
+                          navigator.clipboard?.writeText(generatedReportUrl).catch(() => {})
+                        }
+                        className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 ml-3"
+                      >
+                        Copiar enlace
+                      </button>
+                    </div>
                   )}
-                  {printable.map(b => (
-                    <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
-                      <input type="checkbox" checked={reportSelectedKeys.has(b.key)} onChange={e => {
-                          setReportSelectedKeys(prev => {
-                            const next = new Set(prev)
-                            if (e.target.checked) next.add(b.key)
-                            else next.delete(b.key)
-                            return next
-                          })
-                        }}
-                        className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
-                      <span className="text-sm text-slate-700">{b.label}</span>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport}
-                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-                    Cancelar
-                  </button>
-                  <button onClick={async () => {
-                      if (reportSelectedKeys.size === 0) { alert('Selecciona al menos un bloque'); return }
-                      setGeneratingReport(true)
-                      setGeneratedReportUrl(null)
-                      try {
-                        const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-                        let body = ''
-                        const debugBlocks: { key: string; label: string; hasContent: boolean }[] = []
-                        // FIX 2026-04-29: si el doctor seleccionó un bloque que está
-                        // vacío, igual lo incluimos con placeholder "Sin información
-                        // registrada". Antes los bloques vacíos se silenciaban con
-                        // `continue` y el doctor solo veía los bloques con contenido,
-                        // pensando que había un bug.
-                        for (const b of printable) {
-                          if (!reportSelectedKeys.has(b.key)) continue
-                          const piece = (b.key === 'informe' || b.key === 'notes')
-                            ? generateInformeHtml()
-                            : generateBlockHtml(b.key, b.label)
-                          debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece })
-                          if (piece) {
-                            body += piece
-                          } else {
-                            body += `<div class="section"><div class="section-title">${b.label}</div><div class="section-content"><em style="color:#94a3b8">Sin información registrada en este bloque.</em></div></div>`
+                  <div className="space-y-2 border border-slate-100 rounded-xl p-3">
+                    {printable.length === 0 && (
+                      <p className="text-xs text-slate-400 italic">
+                        No hay bloques compartibles en esta consulta.
+                      </p>
+                    )}
+                    {printable.map((b) => (
+                      <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={reportSelectedKeys.has(b.key)}
+                          onChange={(e) => {
+                            setReportSelectedKeys((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(b.key);
+                              else next.delete(b.key);
+                              return next;
+                            });
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 accent-teal-500"
+                        />
+                        <span className="text-sm text-slate-700">{b.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowGenerateReport(false)}
+                      disabled={generatingReport}
+                      className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (reportSelectedKeys.size === 0) {
+                          alert('Selecciona al menos un bloque');
+                          return;
+                        }
+                        setGeneratingReport(true);
+                        setGeneratedReportUrl(null);
+                        try {
+                          const dateStr = new Date(selected.consultation_date).toLocaleDateString(
+                            'es-VE',
+                            { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' },
+                          );
+                          let body = '';
+                          const debugBlocks: { key: string; label: string; hasContent: boolean }[] =
+                            [];
+                          // FIX 2026-04-29: si el doctor seleccionó un bloque que está
+                          // vacío, igual lo incluimos con placeholder "Sin información
+                          // registrada". Antes los bloques vacíos se silenciaban con
+                          // `continue` y el doctor solo veía los bloques con contenido,
+                          // pensando que había un bug.
+                          for (const b of printable) {
+                            if (!reportSelectedKeys.has(b.key)) continue;
+                            const piece =
+                              b.key === 'informe' || b.key === 'notes'
+                                ? generateInformeHtml()
+                                : generateBlockHtml(b.key, b.label);
+                            debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece });
+                            if (piece) {
+                              body += piece;
+                            } else {
+                              body += `<div class="section"><div class="section-title">${b.label}</div><div class="section-content"><em style="color:#94a3b8">Sin información registrada en este bloque.</em></div></div>`;
+                            }
                           }
+                          if (!body) {
+                            const lista = debugBlocks.map((d) => `• ${d.label}: vacío`).join('\n');
+                            body = `<div class="section"><div class="section-title">Sin contenido</div><div class="section-content">No hay información registrada en los bloques seleccionados de esta consulta.<br><br>${lista.replace(/\n/g, '<br>')}</div></div>`;
+                            console.warn(
+                              '[generate-report] generando PDF de placeholder; bloques sin contenido:',
+                              debugBlocks,
+                            );
+                          }
+                          const html = buildPdfHtml(
+                            'informe',
+                            'Informe Médico',
+                            body,
+                            selected.patient_name,
+                            selected.consultation_code,
+                            dateStr,
+                          );
+                          const res = await fetch('/api/doctor/share-pdf', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              htmlContent: html,
+                              fileName: `informe-${selected.consultation_code || selected.id}`,
+                              consultationCode: selected.consultation_code,
+                            }),
+                          });
+                          const data = await res.json().catch(() => ({}));
+                          if (!res.ok || !data.url) {
+                            console.error('[generate-report] response error:', {
+                              status: res.status,
+                              data,
+                            });
+                            alert(data.error || `Error generando el PDF (status ${res.status})`);
+                            return;
+                          }
+                          setGeneratedReportUrl(data.url);
+                        } catch (err: any) {
+                          console.error('[generate-report] error:', err);
+                          alert(`Error generando el informe: ${err?.message || 'desconocido'}`);
+                        } finally {
+                          setGeneratingReport(false);
                         }
-                        if (!body) {
-                          const lista = debugBlocks.map(d => `• ${d.label}: vacío`).join('\n')
-                          body = `<div class="section"><div class="section-title">Sin contenido</div><div class="section-content">No hay información registrada en los bloques seleccionados de esta consulta.<br><br>${lista.replace(/\n/g, '<br>')}</div></div>`
-                          console.warn('[generate-report] generando PDF de placeholder; bloques sin contenido:', debugBlocks)
-                        }
-                        const html = buildPdfHtml('informe', 'Informe Médico', body, selected.patient_name, selected.consultation_code, dateStr)
-                        const res = await fetch('/api/doctor/share-pdf', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            htmlContent: html,
-                            fileName: `informe-${selected.consultation_code || selected.id}`,
-                            consultationCode: selected.consultation_code,
-                          }),
-                        })
-                        const data = await res.json().catch(() => ({}))
-                        if (!res.ok || !data.url) {
-                          console.error('[generate-report] response error:', { status: res.status, data })
-                          alert(data.error || `Error generando el PDF (status ${res.status})`)
-                          return
-                        }
-                        setGeneratedReportUrl(data.url)
-                      } catch (err: any) {
-                        console.error('[generate-report] error:', err)
-                        alert(`Error generando el informe: ${err?.message || 'desconocido'}`)
-                      } finally {
-                        setGeneratingReport(false)
-                      }
-                    }}
-                    disabled={generatingReport || reportSelectedKeys.size === 0}
-                    className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-                    {generatingReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-                    {generatingReport ? 'Generando...' : 'Generar PDF'}
-                  </button>
+                      }}
+                      disabled={generatingReport || reportSelectedKeys.size === 0}
+                      className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                    >
+                      {generatingReport ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Printer className="w-4 h-4" />
+                      )}
+                      {generatingReport ? 'Generando...' : 'Generar PDF'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })()}
+            );
+          })()}
       </>
-    )
+    );
   }
 
   return (
@@ -3058,7 +4080,11 @@ function ConsultationsPage() {
           <div className="flex-1 min-w-0">
             <h1
               className="font-semibold tracking-tight"
-              style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(22px, 3.2vw, 32px)', color: 'var(--dh-ink)' }}
+              style={{
+                fontFamily: 'var(--dh-font-display)',
+                fontSize: 'clamp(22px, 3.2vw, 32px)',
+                color: 'var(--dh-ink)',
+              }}
             >
               Consultas
             </h1>
@@ -3070,8 +4096,12 @@ function ConsultationsPage() {
             onClick={() => setShowNewConsultation(true)}
             className="flex items-center justify-center sm:justify-start gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold text-white hover:-translate-y-px transition-all shrink-0"
             style={{ background: 'var(--dh-ink)' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-turquoise-700)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--dh-ink)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--dh-turquoise-700)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--dh-ink)';
+            }}
           >
             <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
           </button>
@@ -3080,13 +4110,40 @@ function ConsultationsPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {[
-            { label: 'Total', value: consultations.length, color: 'text-slate-700', bg: 'bg-white', filter: 'all' as TimeFilter },
-            { label: 'Hoy', value: todayCount, color: 'text-teal-700', bg: 'bg-teal-50 border-teal-200', filter: 'today' as TimeFilter },
-            { label: 'Próximas', value: upcoming, color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', filter: 'upcoming' as TimeFilter },
-            { label: 'Realizadas', value: consultations.length - upcoming, color: 'text-slate-600', bg: 'bg-slate-50', filter: 'past' as TimeFilter },
-          ].map(s => (
-            <button key={s.filter} onClick={() => setTimeFilter(timeFilter === s.filter ? 'all' : s.filter)}
-              className={`border rounded-xl p-3 sm:p-4 text-center transition-all hover:shadow-sm ${s.bg} ${timeFilter === s.filter ? 'ring-2 ring-teal-400 ring-offset-1' : 'border-slate-200'}`}>
+            {
+              label: 'Total',
+              value: consultations.length,
+              color: 'text-slate-700',
+              bg: 'bg-white',
+              filter: 'all' as TimeFilter,
+            },
+            {
+              label: 'Hoy',
+              value: todayCount,
+              color: 'text-teal-700',
+              bg: 'bg-teal-50 border-teal-200',
+              filter: 'today' as TimeFilter,
+            },
+            {
+              label: 'Próximas',
+              value: upcoming,
+              color: 'text-blue-700',
+              bg: 'bg-blue-50 border-blue-200',
+              filter: 'upcoming' as TimeFilter,
+            },
+            {
+              label: 'Realizadas',
+              value: consultations.length - upcoming,
+              color: 'text-slate-600',
+              bg: 'bg-slate-50',
+              filter: 'past' as TimeFilter,
+            },
+          ].map((s) => (
+            <button
+              key={s.filter}
+              onClick={() => setTimeFilter(timeFilter === s.filter ? 'all' : s.filter)}
+              className={`border rounded-xl p-3 sm:p-4 text-center transition-all hover:shadow-sm ${s.bg} ${timeFilter === s.filter ? 'ring-2 ring-teal-400 ring-offset-1' : 'border-slate-200'}`}
+            >
               <p className={`text-xl sm:text-2xl font-bold ${s.color}`}>{s.value}</p>
               <p className="text-xs text-slate-500 font-medium mt-0.5">{s.label}</p>
             </button>
@@ -3097,9 +4154,18 @@ function ConsultationsPage() {
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por paciente o código..." className={fi + ' pl-9'} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por paciente o código..."
+              className={fi + ' pl-9'}
+            />
           </div>
-          <select value={timeFilter} onChange={e => setTimeFilter(e.target.value as TimeFilter)} className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-400 text-slate-600 bg-white shrink-0">
+          <select
+            value={timeFilter}
+            onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
+            className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-400 text-slate-600 bg-white shrink-0"
+          >
             <option value="all">Todas</option>
             <option value="today">Hoy</option>
             <option value="upcoming">Próximas</option>
@@ -3117,86 +4183,142 @@ function ConsultationsPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-slate-400 text-sm">Cargando...</div>
+            <div className="flex items-center justify-center py-16 text-slate-400 text-sm">
+              Cargando...
+            </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <ClipboardList className="w-10 h-10 text-slate-200 mb-3" />
               <p className="text-slate-500 font-semibold text-sm">Sin consultas</p>
-              <p className="text-slate-400 text-xs mt-1">Las consultas aparecen cuando se agendan desde la página de booking o se crean en el módulo de pacientes.</p>
+              <p className="text-slate-400 text-xs mt-1">
+                Las consultas aparecen cuando se agendan desde la página de booking o se crean en el
+                módulo de pacientes.
+              </p>
             </div>
           ) : (
             filtered.map((c, i) => {
-              const cDate = new Date(c.consultation_date)
-              const isToday = c.consultation_date.startsWith(today)
-              const isUpcoming = cDate > now
-              const ps = PAYMENT_STATUS[c.payment_status]
-              const hasReport = c.diagnosis || c.notes
+              const cDate = new Date(c.consultation_date);
+              const isToday = c.consultation_date.startsWith(today);
+              const isUpcoming = cDate > now;
+              const ps = PAYMENT_STATUS[c.payment_status];
+              const hasReport = c.diagnosis || c.notes;
 
               return (
-                <button key={c.id} onClick={() => openConsultation(c)}
-                  className={`w-full flex flex-col sm:flex-row items-start gap-3 sm:gap-4 px-4 sm:px-5 py-4 text-left hover:bg-slate-50 transition-colors ${i < filtered.length - 1 ? 'border-b border-slate-100' : ''}`}>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isToday ? 'g-bg' : isUpcoming ? 'bg-blue-50' : 'bg-slate-100'}`}>
-                    {isToday ? <Stethoscope className="w-5 h-5 text-white" /> : isUpcoming ? <Clock className="w-5 h-5 text-blue-500" /> : <CheckCircle className="w-5 h-5 text-slate-400" />}
+                <button
+                  key={c.id}
+                  onClick={() => openConsultation(c)}
+                  className={`w-full flex flex-col sm:flex-row items-start gap-3 sm:gap-4 px-4 sm:px-5 py-4 text-left hover:bg-slate-50 transition-colors ${i < filtered.length - 1 ? 'border-b border-slate-100' : ''}`}
+                >
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isToday ? 'g-bg' : isUpcoming ? 'bg-blue-50' : 'bg-slate-100'}`}
+                  >
+                    {isToday ? (
+                      <Stethoscope className="w-5 h-5 text-white" />
+                    ) : isUpcoming ? (
+                      <Clock className="w-5 h-5 text-blue-500" />
+                    ) : (
+                      <CheckCircle className="w-5 h-5 text-slate-400" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                      <p className="text-sm font-bold text-slate-900 break-words">{c.patient_name}</p>
-                      <span className="text-[10px] font-mono text-slate-400 shrink-0">{c.consultation_code}</span>
-                      {isToday && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 shrink-0">Hoy</span>}
-                      {!isToday && isUpcoming && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">Próxima</span>}
+                      <p className="text-sm font-bold text-slate-900 break-words">
+                        {c.patient_name}
+                      </p>
+                      <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                        {c.consultation_code}
+                      </span>
+                      {isToday && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 shrink-0">
+                          Hoy
+                        </span>
+                      )}
+                      {!isToday && isUpcoming && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">
+                          Próxima
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2 text-xs text-slate-400">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
-                        <span>{cDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })} · {cDate.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>
+                          {cDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })} ·{' '}
+                          {cDate.toLocaleTimeString('es-VE', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
                       </div>
-                      {c.chief_complaint && <><span className="hidden sm:inline text-slate-200">·</span><span className="italic truncate">{c.chief_complaint}</span></>}
+                      {c.chief_complaint && (
+                        <>
+                          <span className="hidden sm:inline text-slate-200">·</span>
+                          <span className="italic truncate">{c.chief_complaint}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-                    {hasReport && <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full hidden sm:inline-block">Con informe</span>}
+                    {hasReport && (
+                      <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full hidden sm:inline-block">
+                        Con informe
+                      </span>
+                    )}
 
                     {/* === RONDA 17 — BADGE ASISTENCIA (estilo OUTLINED, azul/gris) === */}
                     {(() => {
-                      const isAttended = c.status === 'completed'
-                      const isNoShow = c.status === 'no_show'
-                      const isInProgress = c.status === 'in_progress'
-                      const label = isAttended ? 'Atendió' : isNoShow ? 'No atendió' : isInProgress ? 'En curso' : 'Por asistir'
+                      const isAttended = c.status === 'completed';
+                      const isNoShow = c.status === 'no_show';
+                      const isInProgress = c.status === 'in_progress';
+                      const label = isAttended
+                        ? 'Atendió'
+                        : isNoShow
+                          ? 'No atendió'
+                          : isInProgress
+                            ? 'En curso'
+                            : 'Por asistir';
                       const cls = isAttended
                         ? 'border-blue-300 text-blue-700 bg-transparent'
                         : isNoShow
-                        ? 'border-red-300 text-red-600 bg-transparent'
-                        : isInProgress
-                        ? 'border-blue-200 text-blue-600 bg-transparent'
-                        : 'border-slate-300 text-slate-600 bg-transparent'
+                          ? 'border-red-300 text-red-600 bg-transparent'
+                          : isInProgress
+                            ? 'border-blue-200 text-blue-600 bg-transparent'
+                            : 'border-slate-300 text-slate-600 bg-transparent';
                       return (
                         <span
                           className={`text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${cls}`}
                           title={`Asistencia: ${label}`}
                         >
-                          {isAttended ? <UserCheck className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                          {isAttended ? (
+                            <UserCheck className="w-3 h-3" />
+                          ) : (
+                            <User className="w-3 h-3" />
+                          )}
                           <span className="hidden sm:inline">{label}</span>
                         </span>
-                      )
+                      );
                     })()}
 
                     {/* === RONDA 17 — BADGE PAGO (estilo SÓLIDO, verde/naranja, icono billete) === */}
                     {(() => {
-                      const isPaid = c.payment_status === 'approved'
-                      const cls = isPaid ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
-                      const label = isPaid ? 'Pagado' : 'Pendiente'
+                      const isPaid = c.payment_status === 'approved';
+                      const cls = isPaid ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white';
+                      const label = isPaid ? 'Pagado' : 'Pendiente';
                       return (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${cls}`} title={`Pago: ${label}`}>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${cls}`}
+                          title={`Pago: ${label}`}
+                        >
                           <Banknote className="w-3 h-3" />
                           <span className="hidden sm:inline">{label}</span>
                         </span>
-                      )
+                      );
                     })()}
 
                     <ChevronRight className="w-4 h-4 text-slate-300" />
                   </div>
                 </button>
-              )
+              );
             })
           )}
         </div>
@@ -3208,9 +4330,9 @@ function ConsultationsPage() {
           open={showNewConsultation}
           onClose={() => setShowNewConsultation(false)}
           onSuccess={() => {
-            setShowNewConsultation(false)
+            setShowNewConsultation(false);
             // Refrescar listado de consultas tras crear
-            window.location.reload()
+            window.location.reload();
           }}
           initialContext={{ origin: 'dashboard_btn' }}
         />
@@ -3224,7 +4346,10 @@ function ConsultationsPage() {
                   <Calendar className="w-5 h-5 text-teal-600" />
                   <h2 className="text-lg font-bold text-slate-900">Nueva consulta</h2>
                 </div>
-                <button onClick={() => setShowNewConsultation(false)} className="text-slate-400 hover:text-slate-600">
+                <button
+                  onClick={() => setShowNewConsultation(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -3232,39 +4357,66 @@ function ConsultationsPage() {
               <div className="space-y-4">
                 {/* Step 1: Patient search (identical to agenda) */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Paciente <span className="text-red-400">*</span></label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Paciente <span className="text-red-400">*</span>
+                  </label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="text"
                       placeholder="Buscar paciente..."
-                      value={newConsultation.patient_id ? patients.find(p => p.id === newConsultation.patient_id)?.full_name || patientSearchText : patientSearchText}
-                      onChange={e => {
-                        setPatientSearchText(e.target.value)
-                        if (newConsultation.patient_id) setNewConsultation(p => ({ ...p, patient_id: '' }))
+                      value={
+                        newConsultation.patient_id
+                          ? patients.find((p) => p.id === newConsultation.patient_id)?.full_name ||
+                            patientSearchText
+                          : patientSearchText
+                      }
+                      onChange={(e) => {
+                        setPatientSearchText(e.target.value);
+                        if (newConsultation.patient_id)
+                          setNewConsultation((p) => ({ ...p, patient_id: '' }));
                       }}
                       className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                     />
                     {newConsultation.patient_id && (
-                      <button onClick={() => { setNewConsultation(p => ({ ...p, patient_id: '' })); setPatientSearchText('') }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <button
+                        onClick={() => {
+                          setNewConsultation((p) => ({ ...p, patient_id: '' }));
+                          setPatientSearchText('');
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
                         <X className="w-4 h-4" />
                       </button>
                     )}
                   </div>
                   {!newConsultation.patient_id && patientSearchText.length > 0 && (
                     <div className="border border-slate-200 rounded-lg max-h-36 overflow-y-auto">
-                      {patients.filter(p => p.full_name.toLowerCase().includes(patientSearchText.toLowerCase())).length === 0 ? (
-                        <p className="text-xs text-slate-400 p-3 text-center">No se encontro paciente</p>
+                      {patients.filter((p) =>
+                        p.full_name.toLowerCase().includes(patientSearchText.toLowerCase()),
+                      ).length === 0 ? (
+                        <p className="text-xs text-slate-400 p-3 text-center">
+                          No se encontro paciente
+                        </p>
                       ) : (
-                        patients.filter(p => p.full_name.toLowerCase().includes(patientSearchText.toLowerCase())).slice(0, 8).map(p => (
-                          <button key={p.id}
-                            onClick={() => { setNewConsultation(prev => ({ ...prev, patient_id: p.id })); setPatientSearchText('') }}
-                            className="w-full text-left px-3 py-2 hover:bg-teal-50 text-sm text-slate-700 border-b border-slate-100 last:border-b-0 flex items-center justify-between">
-                            <span className="font-medium">{p.full_name}</span>
-                            {p.phone && <span className="text-xs text-slate-400">{p.phone}</span>}
-                          </button>
-                        ))
+                        patients
+                          .filter((p) =>
+                            p.full_name.toLowerCase().includes(patientSearchText.toLowerCase()),
+                          )
+                          .slice(0, 8)
+                          .map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                setNewConsultation((prev) => ({ ...prev, patient_id: p.id }));
+                                setPatientSearchText('');
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-teal-50 text-sm text-slate-700 border-b border-slate-100 last:border-b-0 flex items-center justify-between"
+                            >
+                              <span className="font-medium">{p.full_name}</span>
+                              {p.phone && <span className="text-xs text-slate-400">{p.phone}</span>}
+                            </button>
+                          ))
                       )}
                     </div>
                   )}
@@ -3272,7 +4424,7 @@ function ConsultationsPage() {
                     <div className="flex items-center gap-2 bg-teal-50 rounded-lg px-3 py-2">
                       <CheckCircle className="w-4 h-4 text-teal-500" />
                       <span className="text-sm font-semibold text-teal-700">
-                        {patients.find(p => p.id === newConsultation.patient_id)?.full_name}
+                        {patients.find((p) => p.id === newConsultation.patient_id)?.full_name}
                       </span>
                     </div>
                   )}
@@ -3280,37 +4432,58 @@ function ConsultationsPage() {
 
                 {/* Step 2: Date and time slot selection */}
                 <div className="space-y-3">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fecha y hora</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Fecha y hora
+                  </label>
 
                   {/* Date selector */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <button type="button" onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))} disabled={weekOffset === 0}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))}
+                        disabled={weekOffset === 0}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition-colors"
+                      >
                         <ChevronDown className="w-4 h-4 rotate-90" />
                       </button>
                       <span className="text-xs text-slate-400">Selecciona un día</span>
-                      <button type="button" onClick={() => setWeekOffset(weekOffset + 1)} disabled={weekOffset * 5 + 5 >= availableDates.length}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => setWeekOffset(weekOffset + 1)}
+                        disabled={weekOffset * 5 + 5 >= availableDates.length}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition-colors"
+                      >
                         <ChevronDown className="w-4 h-4 -rotate-90" />
                       </button>
                     </div>
                     <div className="grid grid-cols-5 gap-1.5">
-                      {weekDates.map(d => {
-                        const isSelected = selectedDate === d.date
-                        const isToday = d.date === today
+                      {weekDates.map((d) => {
+                        const isSelected = selectedDate === d.date;
+                        const isToday = d.date === today;
                         return (
-                          <button key={d.date} type="button"
-                            onClick={() => { setSelectedDate(d.date); setSelectedTime(''); setNewConsultation(p => ({ ...p, consultation_date: '' })) }}
+                          <button
+                            key={d.date}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDate(d.date);
+                              setSelectedTime('');
+                              setNewConsultation((p) => ({ ...p, consultation_date: '' }));
+                            }}
                             className={`py-2 px-1 rounded-xl text-center transition-all border-2 ${
                               isSelected
                                 ? 'border-teal-400 bg-teal-50 text-teal-700'
                                 : 'border-slate-100 bg-white hover:border-teal-200 text-slate-600'
-                            }`}>
-                            <p className="text-[10px] font-medium capitalize">{d.label.split(' ')[0]}</p>
-                            <p className={`text-sm font-bold ${isToday ? 'text-teal-600' : ''}`}>{d.label.split(' ').slice(1).join(' ')}</p>
+                            }`}
+                          >
+                            <p className="text-[10px] font-medium capitalize">
+                              {d.label.split(' ')[0]}
+                            </p>
+                            <p className={`text-sm font-bold ${isToday ? 'text-teal-600' : ''}`}>
+                              {d.label.split(' ').slice(1).join(' ')}
+                            </p>
                           </button>
-                        )
+                        );
                       })}
                     </div>
                   </div>
@@ -3321,31 +4494,40 @@ function ConsultationsPage() {
                       <p className="text-xs text-slate-400 mb-2">Horarios disponibles</p>
                       {timeSlotsForDate.length === 0 ? (
                         <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-700">
-                          No hay horarios disponibles para este día. Configura tu disponibilidad en Agenda.
+                          No hay horarios disponibles para este día. Configura tu disponibilidad en
+                          Agenda.
                         </div>
                       ) : (
                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
-                          {timeSlotsForDate.map(time => {
-                            const booked = isTimeBooked(selectedDate, time)
-                            const isSelected = selectedTime === time
+                          {timeSlotsForDate.map((time) => {
+                            const booked = isTimeBooked(selectedDate, time);
+                            const isSelected = selectedTime === time;
                             return (
-                              <button key={time} type="button"
+                              <button
+                                key={time}
+                                type="button"
                                 disabled={booked}
                                 onClick={() => {
-                                  setSelectedTime(time)
-                                  const dateTimeISO = new Date(`${selectedDate}T${time}:00`).toISOString()
-                                  setNewConsultation(p => ({ ...p, consultation_date: dateTimeISO }))
+                                  setSelectedTime(time);
+                                  const dateTimeISO = new Date(
+                                    `${selectedDate}T${time}:00`,
+                                  ).toISOString();
+                                  setNewConsultation((p) => ({
+                                    ...p,
+                                    consultation_date: dateTimeISO,
+                                  }));
                                 }}
                                 className={`py-2 px-2 rounded-lg text-xs font-semibold transition-all ${
                                   booked
                                     ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through'
                                     : isSelected
-                                    ? 'bg-teal-500 text-white shadow-md'
-                                    : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-600'
-                                }`}>
+                                      ? 'bg-teal-500 text-white shadow-md'
+                                      : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-600'
+                                }`}
+                              >
                                 {time}
                               </button>
-                            )
+                            );
                           })}
                         </div>
                       )}
@@ -3356,7 +4538,11 @@ function ConsultationsPage() {
                     <div className="flex items-center gap-2 bg-teal-50 rounded-lg px-3 py-2">
                       <CheckCircle className="w-4 h-4 text-teal-500" />
                       <span className="text-sm font-semibold text-teal-700">
-                        {new Date(`${selectedDate}T${selectedTime}:00`).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })} a las {selectedTime}
+                        {new Date(`${selectedDate}T${selectedTime}:00`).toLocaleDateString(
+                          'es-VE',
+                          { weekday: 'long', day: 'numeric', month: 'long' },
+                        )}{' '}
+                        a las {selectedTime}
                       </span>
                     </div>
                   )}
@@ -3364,33 +4550,63 @@ function ConsultationsPage() {
 
                 {/* Step 3: Reason */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Motivo de consulta</label>
-                  <input type="text" placeholder="Ej: Revision general, dolor de cabeza..." value={newConsultation.reason}
-                    onChange={e => setNewConsultation(p => ({ ...p, reason: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none" />
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Motivo de consulta
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Revision general, dolor de cabeza..."
+                    value={newConsultation.reason}
+                    onChange={(e) => setNewConsultation((p) => ({ ...p, reason: e.target.value }))}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  />
                 </div>
 
                 {/* Step 4: Plan selector */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan de consulta <span className="text-red-400">*</span></label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Plan de consulta <span className="text-red-400">*</span>
+                  </label>
                   {pricingPlans.length === 0 ? (
                     <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-700">
-                      No tienes planes configurados. <a href="/doctor/services" className="font-bold underline">Configura tus servicios</a>
+                      No tienes planes configurados.{' '}
+                      <a href="/doctor/services" className="font-bold underline">
+                        Configura tus servicios
+                      </a>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-2">
-                      {pricingPlans.map(plan => (
-                        <button key={plan.id} type="button"
-                          onClick={() => setNewConsultation(p => ({ ...p, plan_id: plan.id, amount: String(plan.price_usd) }))}
-                          className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${newConsultation.plan_id === plan.id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
+                      {pricingPlans.map((plan) => (
+                        <button
+                          key={plan.id}
+                          type="button"
+                          onClick={() =>
+                            setNewConsultation((p) => ({
+                              ...p,
+                              plan_id: plan.id,
+                              amount: String(plan.price_usd),
+                            }))
+                          }
+                          className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${newConsultation.plan_id === plan.id ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+                        >
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-semibold text-slate-800">{plan.name}</span>
+                            <span className="text-sm font-semibold text-slate-800">
+                              {plan.name}
+                            </span>
                             <div className="text-right">
-                              <span className="text-sm font-bold text-teal-600">${plan.price_usd.toFixed(2)}</span>
-                              {bcvRate && <span className="block text-[11px] text-slate-400">{toBs(plan.price_usd)}</span>}
+                              <span className="text-sm font-bold text-teal-600">
+                                ${plan.price_usd.toFixed(2)}
+                              </span>
+                              {bcvRate && (
+                                <span className="block text-[11px] text-slate-400">
+                                  {toBs(plan.price_usd)}
+                                </span>
+                              )}
                             </div>
                           </div>
-                          <span className="text-xs text-slate-400">{plan.duration_minutes} min</span>
+                          <span className="text-xs text-slate-400">
+                            {plan.duration_minutes} min
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -3401,11 +4617,19 @@ function ConsultationsPage() {
                 {newConsultation.plan_id && (
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Metodo de pago <span className="text-red-400">*</span></label>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Metodo de pago <span className="text-red-400">*</span>
+                      </label>
                       <select
                         value={newConsultation.payment_method}
-                        onChange={e => setNewConsultation(p => ({ ...p, payment_method: e.target.value as any }))}
-                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none">
+                        onChange={(e) =>
+                          setNewConsultation((p) => ({
+                            ...p,
+                            payment_method: e.target.value as any,
+                          }))
+                        }
+                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                      >
                         <option value="">-- Selecciona metodo de pago --</option>
                         {[
                           { value: 'efectivo', label: 'Efectivo USD' },
@@ -3416,64 +4640,125 @@ function ConsultationsPage() {
                           { value: 'binance', label: 'Binance' },
                           { value: 'pos', label: 'POS / Punto de venta' },
                           { value: 'seguro', label: 'Seguro' },
-                        ].filter(m => doctorPaymentMethods.length === 0 || doctorPaymentMethods.includes(m.value)).map(m => (
-                          <option key={m.value} value={m.value}>{m.label}</option>
-                        ))}
+                        ]
+                          .filter(
+                            (m) =>
+                              doctorPaymentMethods.length === 0 ||
+                              doctorPaymentMethods.includes(m.value),
+                          )
+                          .map((m) => (
+                            <option key={m.value} value={m.value}>
+                              {m.label}
+                            </option>
+                          ))}
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Referencia / Nro. comprobante</label>
-                      <input type="text" value={newConsultation.payment_reference}
-                        onChange={e => setNewConsultation(p => ({ ...p, payment_reference: e.target.value }))}
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Referencia / Nro. comprobante
+                      </label>
+                      <input
+                        type="text"
+                        value={newConsultation.payment_reference}
+                        onChange={(e) =>
+                          setNewConsultation((p) => ({ ...p, payment_reference: e.target.value }))
+                        }
                         placeholder="Ej: #12345, ultimo 4 digitos..."
-                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none" />
+                        className="w-full mt-1.5 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                      />
                     </div>
 
                     {/* Comprobante upload */}
-                    {newConsultation.payment_method && requiresReceipt(newConsultation.payment_method) && (
-                      <div className="border border-dashed border-slate-300 rounded-xl p-4 space-y-2 bg-slate-50/50">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Adjuntar comprobante <span className="text-xs font-normal normal-case text-slate-400">(opcional)</span></p>
-                        <label className="flex items-center justify-center border-2 border-dashed border-teal-300/50 rounded-xl p-3 cursor-pointer hover:bg-white/80 transition-colors">
-                          <input type="file" accept="image/*,application/pdf" onChange={e => setReceiptFile(e.target.files?.[0] || null)} className="hidden" />
-                          <div className="text-center">
-                            <Upload className="w-4 h-4 mx-auto mb-1 text-teal-500" />
-                            {/* AUDIT FIX 2026-04-28 (TS-2/TS-3): nullish coalescing en lugar de ternary. */}
-                            <p className="text-xs font-medium text-slate-600">{receiptFile?.name ?? 'JPG, PNG o PDF'}</p>
-                          </div>
-                        </label>
-                        {receiptFile && <p className="text-xs text-slate-500">{((receiptFile?.size ?? 0) / 1024 / 1024).toFixed(2)} MB</p>}
-                      </div>
-                    )}
+                    {newConsultation.payment_method &&
+                      requiresReceipt(newConsultation.payment_method) && (
+                        <div className="border border-dashed border-slate-300 rounded-xl p-4 space-y-2 bg-slate-50/50">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Adjuntar comprobante{' '}
+                            <span className="text-xs font-normal normal-case text-slate-400">
+                              (opcional)
+                            </span>
+                          </p>
+                          <label className="flex items-center justify-center border-2 border-dashed border-teal-300/50 rounded-xl p-3 cursor-pointer hover:bg-white/80 transition-colors">
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                              className="hidden"
+                            />
+                            <div className="text-center">
+                              <Upload className="w-4 h-4 mx-auto mb-1 text-teal-500" />
+                              {/* AUDIT FIX 2026-04-28 (TS-2/TS-3): nullish coalescing en lugar de ternary. */}
+                              <p className="text-xs font-medium text-slate-600">
+                                {receiptFile?.name ?? 'JPG, PNG o PDF'}
+                              </p>
+                            </div>
+                          </label>
+                          {receiptFile && (
+                            <p className="text-xs text-slate-500">
+                              {((receiptFile?.size ?? 0) / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                          )}
+                        </div>
+                      )}
                   </div>
                 )}
 
                 {/* Step 6: Comments */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Comentarios / Notas</label>
-                  <textarea placeholder="Notas adicionales sobre la consulta..." value={newConsultation.comments}
-                    onChange={e => setNewConsultation(p => ({ ...p, comments: e.target.value }))}
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Comentarios / Notas
+                  </label>
+                  <textarea
+                    placeholder="Notas adicionales sobre la consulta..."
+                    value={newConsultation.comments}
+                    onChange={(e) =>
+                      setNewConsultation((p) => ({ ...p, comments: e.target.value }))
+                    }
                     rows={3}
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none" />
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none"
+                  />
                 </div>
 
                 {/* Email notification toggle */}
                 <label className="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                  <input type="checkbox" checked={newConsultation.sendEmail}
-                    onChange={e => setNewConsultation(p => ({ ...p, sendEmail: e.target.checked }))}
-                    className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
+                  <input
+                    type="checkbox"
+                    checked={newConsultation.sendEmail}
+                    onChange={(e) =>
+                      setNewConsultation((p) => ({ ...p, sendEmail: e.target.checked }))
+                    }
+                    className="w-4 h-4 rounded border-slate-300 accent-teal-500"
+                  />
                   <div>
-                    <span className="text-sm font-semibold text-slate-700">Enviar correo al paciente</span>
-                    <p className="text-xs text-slate-500">Se enviara un email con los detalles de la consulta</p>
+                    <span className="text-sm font-semibold text-slate-700">
+                      Enviar correo al paciente
+                    </span>
+                    <p className="text-xs text-slate-500">
+                      Se enviara un email con los detalles de la consulta
+                    </p>
                   </div>
                 </label>
               </div>
 
               <div className="flex gap-3">
-                <button onClick={() => setShowNewConsultation(false)} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50">
+                <button
+                  onClick={() => setShowNewConsultation(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
                   Cancelar
                 </button>
-                <button onClick={createNewConsultation} disabled={isCreatingConsultation} className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-                  {isCreatingConsultation ? 'Creando...' : <><Plus className="w-4 h-4" /> Crear consulta</>}
+                <button
+                  onClick={createNewConsultation}
+                  disabled={isCreatingConsultation}
+                  className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {isCreatingConsultation ? (
+                    'Creando...'
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" /> Crear consulta
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -3483,140 +4768,195 @@ function ConsultationsPage() {
             Lista los bloques printable de la consulta con checkboxes (todos marcados),
             y al click de "Generar PDF" sube el HTML a share-pdf y abre la URL.
             Usa generateBlockHtml/generateInformeHtml que respetan la plantilla del doctor. */}
-        {showGenerateReport && selected && (() => {
-          const effective = getEffectiveBlocks(selected)
-          const printable = effective.filter(b => b.printable)
-          console.log('[generar-informe] MODAL RENDERING', { effectiveCount: effective.length, printableCount: printable.length })
-          return (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !generatingReport && setShowGenerateReport(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-teal-600" />
+        {showGenerateReport &&
+          selected &&
+          (() => {
+            const effective = getEffectiveBlocks(selected);
+            const printable = effective.filter((b) => b.printable);
+            console.log('[generar-informe] MODAL RENDERING', {
+              effectiveCount: effective.length,
+              printableCount: printable.length,
+            });
+            return (
+              <div
+                className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+                onClick={() => !generatingReport && setShowGenerateReport(false)}
+              >
+                <div
+                  className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-teal-600" />
+                      </div>
+                      <h2 className="text-lg font-bold text-slate-900">Generar informe</h2>
                     </div>
-                    <h2 className="text-lg font-bold text-slate-900">Generar informe</h2>
-                  </div>
-                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport} className="text-slate-400 hover:text-slate-600 disabled:opacity-50">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                <p className="text-sm text-slate-600">Selecciona los bloques que quieres incluir en el PDF.</p>
-                {/* FIX 2026-04-29: link clickeable post-generación (Safari friendly). */}
-                {generatedReportUrl && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
-                    <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5" /> Informe generado
-                    </p>
-                    <a
-                      href={generatedReportUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 underline hover:text-emerald-800"
-                    >
-                      Abrir PDF en nueva pestaña <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
                     <button
-                      onClick={() => navigator.clipboard?.writeText(generatedReportUrl).catch(() => {})}
-                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 ml-3"
+                      onClick={() => setShowGenerateReport(false)}
+                      disabled={generatingReport}
+                      className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
                     >
-                      Copiar enlace
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
-                )}
-                <div className="space-y-2 border border-slate-100 rounded-xl p-3">
-                  {printable.length === 0 && (
-                    <p className="text-xs text-slate-400 italic">No hay bloques compartibles en esta consulta.</p>
+                  <p className="text-sm text-slate-600">
+                    Selecciona los bloques que quieres incluir en el PDF.
+                  </p>
+                  {/* FIX 2026-04-29: link clickeable post-generación (Safari friendly). */}
+                  {generatedReportUrl && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                      <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5" /> Informe generado
+                      </p>
+                      <a
+                        href={generatedReportUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 underline hover:text-emerald-800"
+                      >
+                        Abrir PDF en nueva pestaña <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        onClick={() =>
+                          navigator.clipboard?.writeText(generatedReportUrl).catch(() => {})
+                        }
+                        className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 ml-3"
+                      >
+                        Copiar enlace
+                      </button>
+                    </div>
                   )}
-                  {printable.map(b => (
-                    <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
-                      <input type="checkbox" checked={reportSelectedKeys.has(b.key)} onChange={e => {
-                          setReportSelectedKeys(prev => {
-                            const next = new Set(prev)
-                            if (e.target.checked) next.add(b.key)
-                            else next.delete(b.key)
-                            return next
-                          })
-                        }}
-                        className="w-4 h-4 rounded border-slate-300 accent-teal-500" />
-                      <span className="text-sm text-slate-700">{b.label}</span>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowGenerateReport(false)} disabled={generatingReport}
-                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-                    Cancelar
-                  </button>
-                  <button onClick={async () => {
-                      if (reportSelectedKeys.size === 0) { alert('Selecciona al menos un bloque'); return }
-                      setGeneratingReport(true)
-                      setGeneratedReportUrl(null)
-                      try {
-                        const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-                        let body = ''
-                        const debugBlocks: { key: string; label: string; hasContent: boolean }[] = []
-                        // FIX 2026-04-29: si el doctor seleccionó un bloque que está
-                        // vacío, igual lo incluimos con placeholder "Sin información
-                        // registrada". Antes los bloques vacíos se silenciaban con
-                        // `continue` y el doctor solo veía los bloques con contenido,
-                        // pensando que había un bug.
-                        for (const b of printable) {
-                          if (!reportSelectedKeys.has(b.key)) continue
-                          const piece = (b.key === 'informe' || b.key === 'notes')
-                            ? generateInformeHtml()
-                            : generateBlockHtml(b.key, b.label)
-                          debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece })
-                          if (piece) {
-                            body += piece
-                          } else {
-                            body += `<div class="section"><div class="section-title">${b.label}</div><div class="section-content"><em style="color:#94a3b8">Sin información registrada en este bloque.</em></div></div>`
+                  <div className="space-y-2 border border-slate-100 rounded-xl p-3">
+                    {printable.length === 0 && (
+                      <p className="text-xs text-slate-400 italic">
+                        No hay bloques compartibles en esta consulta.
+                      </p>
+                    )}
+                    {printable.map((b) => (
+                      <label key={b.key} className="flex items-center gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={reportSelectedKeys.has(b.key)}
+                          onChange={(e) => {
+                            setReportSelectedKeys((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(b.key);
+                              else next.delete(b.key);
+                              return next;
+                            });
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 accent-teal-500"
+                        />
+                        <span className="text-sm text-slate-700">{b.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowGenerateReport(false)}
+                      disabled={generatingReport}
+                      className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (reportSelectedKeys.size === 0) {
+                          alert('Selecciona al menos un bloque');
+                          return;
+                        }
+                        setGeneratingReport(true);
+                        setGeneratedReportUrl(null);
+                        try {
+                          const dateStr = new Date(selected.consultation_date).toLocaleDateString(
+                            'es-VE',
+                            { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' },
+                          );
+                          let body = '';
+                          const debugBlocks: { key: string; label: string; hasContent: boolean }[] =
+                            [];
+                          // FIX 2026-04-29: si el doctor seleccionó un bloque que está
+                          // vacío, igual lo incluimos con placeholder "Sin información
+                          // registrada". Antes los bloques vacíos se silenciaban con
+                          // `continue` y el doctor solo veía los bloques con contenido,
+                          // pensando que había un bug.
+                          for (const b of printable) {
+                            if (!reportSelectedKeys.has(b.key)) continue;
+                            const piece =
+                              b.key === 'informe' || b.key === 'notes'
+                                ? generateInformeHtml()
+                                : generateBlockHtml(b.key, b.label);
+                            debugBlocks.push({ key: b.key, label: b.label, hasContent: !!piece });
+                            if (piece) {
+                              body += piece;
+                            } else {
+                              body += `<div class="section"><div class="section-title">${b.label}</div><div class="section-content"><em style="color:#94a3b8">Sin información registrada en este bloque.</em></div></div>`;
+                            }
                           }
+                          // FIX 2026-04-29: si NINGÚN bloque tiene contenido, aún así
+                          // generamos un PDF con un placeholder explicando — antes el
+                          // doctor recibía solo un alert y no entendía qué pasaba.
+                          if (!body) {
+                            const lista = debugBlocks.map((d) => `• ${d.label}: vacío`).join('\n');
+                            body = `<div class="section"><div class="section-title">Sin contenido</div><div class="section-content">No hay información registrada en los bloques seleccionados de esta consulta.<br><br>${lista.replace(/\n/g, '<br>')}</div></div>`;
+                            console.warn(
+                              '[generate-report] generando PDF de placeholder; bloques sin contenido:',
+                              debugBlocks,
+                            );
+                          }
+                          const html = buildPdfHtml(
+                            'informe',
+                            'Informe Médico',
+                            body,
+                            selected.patient_name,
+                            selected.consultation_code,
+                            dateStr,
+                          );
+                          const res = await fetch('/api/doctor/share-pdf', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              htmlContent: html,
+                              fileName: `informe-${selected.consultation_code || selected.id}`,
+                              consultationCode: selected.consultation_code,
+                            }),
+                          });
+                          const data = await res.json().catch(() => ({}));
+                          if (!res.ok || !data.url) {
+                            console.error('[generate-report] response error:', {
+                              status: res.status,
+                              data,
+                            });
+                            alert(data.error || `Error generando el PDF (status ${res.status})`);
+                            return;
+                          }
+                          // FIX 2026-04-29: en lugar de window.open (bloqueado por Safari
+                          // post-await), mostramos un link clickeable dentro del modal.
+                          setGeneratedReportUrl(data.url);
+                        } catch (err: any) {
+                          console.error('[generate-report] error:', err);
+                          alert(`Error generando el informe: ${err?.message || 'desconocido'}`);
+                        } finally {
+                          setGeneratingReport(false);
                         }
-                        // FIX 2026-04-29: si NINGÚN bloque tiene contenido, aún así
-                        // generamos un PDF con un placeholder explicando — antes el
-                        // doctor recibía solo un alert y no entendía qué pasaba.
-                        if (!body) {
-                          const lista = debugBlocks.map(d => `• ${d.label}: vacío`).join('\n')
-                          body = `<div class="section"><div class="section-title">Sin contenido</div><div class="section-content">No hay información registrada en los bloques seleccionados de esta consulta.<br><br>${lista.replace(/\n/g, '<br>')}</div></div>`
-                          console.warn('[generate-report] generando PDF de placeholder; bloques sin contenido:', debugBlocks)
-                        }
-                        const html = buildPdfHtml('informe', 'Informe Médico', body, selected.patient_name, selected.consultation_code, dateStr)
-                        const res = await fetch('/api/doctor/share-pdf', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            htmlContent: html,
-                            fileName: `informe-${selected.consultation_code || selected.id}`,
-                            consultationCode: selected.consultation_code,
-                          }),
-                        })
-                        const data = await res.json().catch(() => ({}))
-                        if (!res.ok || !data.url) {
-                          console.error('[generate-report] response error:', { status: res.status, data })
-                          alert(data.error || `Error generando el PDF (status ${res.status})`)
-                          return
-                        }
-                        // FIX 2026-04-29: en lugar de window.open (bloqueado por Safari
-                        // post-await), mostramos un link clickeable dentro del modal.
-                        setGeneratedReportUrl(data.url)
-                      } catch (err: any) {
-                        console.error('[generate-report] error:', err)
-                        alert(`Error generando el informe: ${err?.message || 'desconocido'}`)
-                      } finally {
-                        setGeneratingReport(false)
-                      }
-                    }}
-                    disabled={generatingReport || reportSelectedKeys.size === 0}
-                    className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
-                    {generatingReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-                    {generatingReport ? 'Generando...' : 'Generar PDF'}
-                  </button>
+                      }}
+                      disabled={generatingReport || reportSelectedKeys.size === 0}
+                      className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                    >
+                      {generatingReport ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Printer className="w-4 h-4" />
+                      )}
+                      {generatingReport ? 'Generando...' : 'Generar PDF'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })()}
+            );
+          })()}
 
         {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
         {confirmDeleteConsulta && (
@@ -3629,13 +4969,19 @@ function ConsultationsPage() {
                 <h2 className="text-lg font-bold text-slate-900">Eliminar consulta</h2>
               </div>
               <p className="text-sm text-slate-600">
-                ¿Estás seguro de eliminar la consulta de <span className="font-bold">{confirmDeleteConsulta.patient_name}</span> ({confirmDeleteConsulta.consultation_code})?
+                ¿Estás seguro de eliminar la consulta de{' '}
+                <span className="font-bold">{confirmDeleteConsulta.patient_name}</span> (
+                {confirmDeleteConsulta.consultation_code})?
               </p>
               <p className="text-xs text-slate-400">
-                Se eliminará la consulta, cita vinculada en agenda, historial clínico, recetas, registros financieros y el evento de Google Calendar asociado.
+                Se eliminará la consulta, cita vinculada en agenda, historial clínico, recetas,
+                registros financieros y el evento de Google Calendar asociado.
               </p>
               <div className="flex gap-2 pt-2">
-                <button onClick={() => setConfirmDeleteConsulta(null)} className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                <button
+                  onClick={() => setConfirmDeleteConsulta(null)}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
                   Cancelar
                 </button>
                 <button
@@ -3643,7 +4989,11 @@ function ConsultationsPage() {
                   disabled={deletingConsulta}
                   className="flex-1 py-2.5 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {deletingConsulta ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deletingConsulta ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
                   {deletingConsulta ? 'Eliminando...' : 'Eliminar'}
                 </button>
               </div>
@@ -3652,51 +5002,111 @@ function ConsultationsPage() {
         )}
       </div>
     </>
-  )
+  );
 }
 
-function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (html: string) => void; placeholder?: string }) {
-  const editorRef = useRef<HTMLDivElement>(null)
-  const [isActive, setIsActive] = useState(false)
-  const initializedRef = useRef(false)
+function RichTextEditor({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (html: string) => void;
+  placeholder?: string;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [isActive, setIsActive] = useState(false);
+  const initializedRef = useRef(false);
 
   // Set initial content when value changes externally (e.g., opening a consultation)
   useEffect(() => {
     if (editorRef.current && !isActive) {
       // Only update if the editor content differs from the prop value
-      const currentHTML = editorRef.current.innerHTML
-      const isEmpty = !currentHTML || currentHTML === '<br>' || currentHTML.startsWith('<span class="text-slate-400">')
+      const currentHTML = editorRef.current.innerHTML;
+      const isEmpty =
+        !currentHTML ||
+        currentHTML === '<br>' ||
+        currentHTML.startsWith('<span class="text-slate-400">');
       if (value && (isEmpty || !initializedRef.current)) {
-        editorRef.current.innerHTML = value
-        initializedRef.current = true
+        editorRef.current.innerHTML = value;
+        initializedRef.current = true;
       } else if (!value && !isActive) {
-        editorRef.current.innerHTML = ''
-        initializedRef.current = false
+        editorRef.current.innerHTML = '';
+        initializedRef.current = false;
       }
     }
-  }, [value, isActive])
+  }, [value, isActive]);
 
   const execCommand = (command: string, value?: string) => {
-    document.execCommand(command, false, value)
-    if (editorRef.current) onChange(editorRef.current.innerHTML)
-  }
+    document.execCommand(command, false, value);
+    if (editorRef.current) onChange(editorRef.current.innerHTML);
+  };
 
   return (
     <div className="border border-slate-200 rounded-xl overflow-hidden">
       {/* Toolbar */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-200 bg-slate-50 flex-wrap">
-        <button type="button" onClick={() => execCommand('bold')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center font-bold text-sm transition-colors" title="Negrita (Ctrl+B)">B</button>
-        <button type="button" onClick={() => execCommand('italic')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center italic text-sm transition-colors" title="Cursiva (Ctrl+I)">I</button>
-        <button type="button" onClick={() => execCommand('underline')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center underline text-sm transition-colors" title="Subrayado (Ctrl+U)">U</button>
+        <button
+          type="button"
+          onClick={() => execCommand('bold')}
+          className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center font-bold text-sm transition-colors"
+          title="Negrita (Ctrl+B)"
+        >
+          B
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('italic')}
+          className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center italic text-sm transition-colors"
+          title="Cursiva (Ctrl+I)"
+        >
+          I
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('underline')}
+          className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center underline text-sm transition-colors"
+          title="Subrayado (Ctrl+U)"
+        >
+          U
+        </button>
         <div className="w-px h-5 bg-slate-200 mx-1" />
-        <button type="button" onClick={() => execCommand('insertUnorderedList')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-sm transition-colors" title="Lista de puntos">•</button>
-        <button type="button" onClick={() => execCommand('insertOrderedList')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-sm transition-colors" title="Lista numerada">1.</button>
+        <button
+          type="button"
+          onClick={() => execCommand('insertUnorderedList')}
+          className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-sm transition-colors"
+          title="Lista de puntos"
+        >
+          •
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('insertOrderedList')}
+          className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-sm transition-colors"
+          title="Lista numerada"
+        >
+          1.
+        </button>
         <div className="w-px h-5 bg-slate-200 mx-1" />
-        <label className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center cursor-pointer transition-colors" title="Color de texto">
+        <label
+          className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center cursor-pointer transition-colors"
+          title="Color de texto"
+        >
           <span className="text-sm font-semibold text-slate-600">A</span>
-          <input type="color" className="w-0 h-0 opacity-0" onChange={e => execCommand('foreColor', e.target.value)} />
+          <input
+            type="color"
+            className="w-0 h-0 opacity-0"
+            onChange={(e) => execCommand('foreColor', e.target.value)}
+          />
         </label>
-        <button type="button" onClick={() => execCommand('removeFormat')} className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-xs text-slate-400 transition-colors" title="Limpiar formato">✕</button>
+        <button
+          type="button"
+          onClick={() => execCommand('removeFormat')}
+          className="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center text-xs text-slate-400 transition-colors"
+          title="Limpiar formato"
+        >
+          ✕
+        </button>
       </div>
       {/* Editor area */}
       <div
@@ -3704,7 +5114,9 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
         contentEditable
         className="min-h-[300px] px-4 py-3 text-sm text-slate-800 outline-none"
         style={{ touchAction: 'auto' }}
-        onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
+        onInput={() => {
+          if (editorRef.current) onChange(editorRef.current.innerHTML);
+        }}
         onFocus={() => setIsActive(true)}
         onBlur={() => setIsActive(false)}
         suppressContentEditableWarning={true}
@@ -3712,7 +5124,8 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
       />
       <style>{`[data-placeholder]:empty:not(:focus):before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }`}</style>
     </div>
-  )
+  );
 }
 
-const fi = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors'
+const fi =
+  'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors';
