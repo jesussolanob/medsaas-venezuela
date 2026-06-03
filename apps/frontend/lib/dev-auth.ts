@@ -21,6 +21,7 @@ export type { DevUser, DevUserRole } from './dev-auth.edge';
 export {
   DEV_DOCTOR_UUID,
   DEV_PATIENT_UUID,
+  DEV_ADMIN_UUID,
   resolveFromRaw,
   getDevUserFromRequest,
 } from './dev-auth.edge';

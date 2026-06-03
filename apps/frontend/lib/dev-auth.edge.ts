@@ -45,6 +45,12 @@ export const DEV_DOCTOR_UUID = '00000000-0000-4000-8000-000000000001';
  */
 export const DEV_PATIENT_UUID = '00000000-0000-4000-8000-000000000002';
 
+/**
+ * UUID v4 fijo para el super_admin de desarrollo.
+ * Login dev-stub: setear dev_user_id=<este>  dev_user_role=super_admin.
+ */
+export const DEV_ADMIN_UUID = '00000000-0000-4000-8000-000000000003';
+
 const DEFAULT_USER_ROLE: DevUserRole = 'doctor';
 
 function isValidRole(value: string | null | undefined): value is DevUserRole {
