@@ -41,6 +41,17 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
 > Server Actions. Cada handler hace queries directas a Supabase. La migración los
 > reescribe como controllers NestJS → use cases → repositorios Sequelize.
 
+### Migración del frontend (en curso — eliminar Supabase, conectar al backend)
+
+- **Fundación ✅** (`lib/api-client.server.ts` BFF, `lib/dev-auth.ts` stub, `proxy.ts` middleware Next 16)
+  - piloto **patients** (`app/doctor/patients/actions.ts` thin-proxy, cero @supabase). E2E verificado.
+- **Patrón:** reescribir el cuerpo de cada `actions.ts`/route handler → llamar al backend vía BFF,
+  quitando `@supabase/*`; UI (.tsx) intacta. Auth = dev-stub (x-dev-\*) → Auth0 Fase 4.
+- **Pendiente:** encadenar el resto de módulos (appointments, consultations, ehr/prescriptions,
+  packages/booking, finances, doctor-settings, admin, patient-portal); luego borrar `lib/supabase/*`.
+- **Diferido Fase 5** (sin endpoint backend aún): IA/Gemini, email/Resend, PDF, storage→GCS, calendar, cron.
+- UI a CONSERVAR: 104 `.tsx` (Next.js 16 + Tailwind teal/slate). 0 componentes cliente usan Supabase.
+
 ## Módulos backend NestJS (`apps/backend/src/modules/`)
 
 Estado (orden `migracion/modulos/`):

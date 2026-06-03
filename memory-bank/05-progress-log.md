@@ -368,3 +368,34 @@ Email Resend. Tests Playwright E2E.
   paciente; N+1 en algunos listados; last_sign_in tracking (Auth0, Fase 4); GlobalExceptionFilter mapear
   FK violations a 422.
 - Próximo posible: QA dedicado · Fase 4 (Auth0/sesión única/Cloudflare) · integración frontend (BFF).
+
+## 2026-06-03 — Migración del FRONTEND (en curso) — fundación + piloto patients
+
+- **Norte (instrucción del usuario):** ELIMINAR Supabase por completo del frontend; todo a GCP.
+  Conservar 100% la UI y Next.js (no se reescriben componentes). Auth = **dev-stub** en Etapa 1
+  (Auth0 en Fase 4). Storage Supabase → GCS (Fase 5). Objetivo: `apps/frontend` con CERO `@supabase/*`.
+- **Estrategia (decisión del usuario):** thin-proxy — reescribir el CUERPO de los route handlers/
+  `actions.ts` para llamar al backend NestJS vía un BFF client, sin tocar la UI (.tsx).
+- **Fundación (✅ commiteada, e2e verificado):**
+  - `apps/frontend/lib/api-client.server.ts` — BFF SERVER-ONLY → NestJS (BACKEND_INTERNAL_URL,
+    default http://localhost:3001). Adjunta headers x-dev-user-id/role; parsea envelope; devuelve
+    `Result<T, AppError>`. Listo para Auth0 en Fase 4 (solo cambia getDevUser()).
+  - `apps/frontend/lib/dev-auth.ts` — STUB Etapa 1. `getDevUser()` (server) + `getDevUserFromRequest()`
+    (edge, para proxy). `DEV_DOCTOR_UUID='00000000-0000-4000-8000-000000000001'` (sembrar profile con
+    ese id para e2e). Reemplaza la sesión Supabase.
+  - `apps/frontend/proxy.ts` — **middleware de Next 16** (convención `proxy` confirmada en el código de
+    Next: PROXY_FILENAME='proxy', reemplaza a middleware). Gating por rol con dev-auth, CERO @supabase.
+    `middleware.ts` ELIMINADO (Next 16 crashea si coexisten).
+  - Piloto: `app/doctor/patients/actions.ts` → thin-proxy a NestJS, cero @supabase. UI intacta.
+  - tsconfig frontend: `noUncheckedIndexedAccess:false` (override con comentario de deuda — el legacy
+    no cumple strict en ~192 lugares; resolver en sprint de calidad).
+- **E2E REAL verificado** (Docker + backend dist + next dev + profile sembrado): sin cookie→307 /login;
+  patient en /doctor→307 /patient/dashboard (RBAC); doctor→200; /api/patients devuelve datos del NestJS
+  con PII enmascarada; 0 referencias a Supabase en el HTML; proxy.ts activo en el log. tsc 0 errores.
+- **Patrón establecido y replicable.** Próximo: encadenar el resto de módulos del frontend
+  (appointments, consultations, ehr/prescriptions, packages/booking, finances, doctor-settings, admin,
+  patient-portal) con el mismo thin-proxy, quitando @supabase; luego eliminar lib/supabase/\*.
+- **Diferido (Fase 5, no parte del "funciona igual"):** rutas de integración sin endpoint backend —
+  IA/Gemini, email/Resend, PDF de recetas, storage/uploads (→ GCS), calendar-sync, cron, promotions, onboarding.
+- **PARADA EN QA:** el usuario hará el QA visual/funcional él mismo (que el front se vea/funcione igual
+  que antes, sobre el backend nuevo). NO ejecutar qa-agent.

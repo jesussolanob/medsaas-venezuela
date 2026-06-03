@@ -142,3 +142,8 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
 - **Dinero:** `Money` VO (USD/BS, no-negativo en construcción). Pero los AGREGADOS con signo (net =
   ingresos − gastos, que puede ser negativo) se calculan como `number` plano, NO por el constructor de
   Money. Tasa USDT cacheada en Redis (TTL 600s) con fallback a `app_settings`; guard contra NaN.
+- **Migración del frontend (BFF):** `apps/frontend` se reconecta al backend y ELIMINA Supabase.
+  Thin-proxy: route handlers / `actions.ts` llaman al backend vía `lib/api-client.server.ts`
+  (SERVER-ONLY, `Result<T,AppError>`), sin tocar la UI. Auth = dev-stub (`lib/dev-auth.ts`, headers
+  x-dev-\*) en Etapa 1 → Auth0 Fase 4. Middleware = `proxy.ts` (convención Next 16, reemplaza
+  middleware.ts). El frontend NUNCA importa apps/backend (solo HTTP). Storage → GCS (Fase 5).
