@@ -1,102 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/auth-guards'
-import { resolveBlocksForDoctor } from '@/lib/consultation-blocks'
+/**
+ * /api/doctor/consultation-blocks — configuración de bloques de consulta del doctor.
+ *
+ * ETAPA 1 — thin-proxy al módulo NestJS `consultation-blocks`. doctorId se deriva del
+ * dev-stub en el backend (anti-IDOR). El GET devuelve { catalog, doctor_config, resolved,
+ * specialty_defaults, doctor_specialty }; el PUT reemplaza toda la config (transaccional).
+ *
+ * NOTA Etapa 1: el legacy permitía a super_admin operar sobre otro doctor_id; el backend
+ * lo restringe al propio doctor (user.sub). El super_admin pathway es Etapa 2.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { backendGet, backendPut } from '@/lib/api-client.server';
 
-// GET /api/doctor/consultation-blocks
-// Retorna: { catalog: [...], resolved: [...], doctor_config: [...] }
-export async function GET(req: NextRequest) {
-  const guard = await requireRole(['doctor', 'super_admin'])
-  if (!guard.ok) return guard.response
-  const { admin, profile } = guard
-
-  const { searchParams } = new URL(req.url)
-  const doctorId = searchParams.get('doctor_id') || profile.id
-
-  // Validar: si es doctor solo puede ver la suya; super_admin cualquiera
-  if (profile.role !== 'super_admin' && doctorId !== profile.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  // Traer el specialty del doctor
-  const { data: doctorProfile } = await admin
-    .from('profiles').select('specialty').eq('id', doctorId).single()
-
-  const [catalogRes, doctorRes, resolved, specialtyRes] = await Promise.all([
-    admin.from('consultation_block_catalog').select('*').order('key'),
-    admin.from('doctor_consultation_blocks').select('*').eq('doctor_id', doctorId),
-    resolveBlocksForDoctor({ doctorId, specialty: doctorProfile?.specialty }),
-    doctorProfile?.specialty
-      ? admin.from('specialty_default_blocks').select('*').eq('specialty', doctorProfile.specialty)
-      : Promise.resolve({ data: [] }),
-  ])
-
-  return NextResponse.json({
-    catalog: catalogRes.data || [],
-    doctor_config: doctorRes.data || [],
-    resolved,
-    specialty_defaults: specialtyRes.data || [],
-    doctor_specialty: doctorProfile?.specialty || null,
-  })
+interface BlocksResponse {
+  catalog: unknown[];
+  doctor_config: unknown[];
+  resolved: unknown[];
+  specialty_defaults: unknown[];
+  doctor_specialty: string | null;
 }
 
-// PUT /api/doctor/consultation-blocks — reemplaza TODA la config del doctor
-// body: { blocks: [{ block_key, enabled, sort_order, custom_label, printable, send_to_patient }] }
-export async function PUT(req: NextRequest) {
-  const guard = await requireRole(['doctor', 'super_admin'])
-  if (!guard.ok) return guard.response
-  const { admin, profile } = guard
-
-  const body = await req.json()
-  const { doctor_id, blocks } = body
-  const targetDoctor = doctor_id || profile.id
-
-  if (profile.role !== 'super_admin' && targetDoctor !== profile.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-  if (!Array.isArray(blocks)) {
-    return NextResponse.json({ error: 'blocks debe ser un array' }, { status: 400 })
-  }
-
-  // Validar que al menos un bloque esté enabled=true
-  const enabledCount = blocks.filter((b: any) => b.enabled !== false).length
-  if (enabledCount === 0) {
+export async function GET() {
+  const result = await backendGet<BlocksResponse>('/api/doctor/consultation-blocks');
+  if (!result.ok) {
     return NextResponse.json(
-      { error: 'Debes tener al menos un bloque activo en tu configuración' },
-      { status: 400 }
-    )
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
   }
+  return NextResponse.json(result.value);
+}
 
-  // Validar que todos los block_key existan en el catálogo
-  const { data: catalog } = await admin.from('consultation_block_catalog').select('key')
-  const validKeys = new Set((catalog || []).map((c: any) => c.key))
-  for (const b of blocks) {
-    if (!b.block_key || !validKeys.has(b.block_key)) {
-      return NextResponse.json(
-        { error: `block_key inválido: ${b.block_key}` },
-        { status: 400 }
-      )
-    }
+export async function PUT(req: NextRequest) {
+  const body = await req.json();
+  const result = await backendPut<{ success: true; blocks_saved: number }>(
+    '/api/doctor/consultation-blocks',
+    { blocks: body?.blocks },
+  );
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
   }
-
-  // Estrategia simple: DELETE + INSERT (pequeño volumen)
-  await admin.from('doctor_consultation_blocks').delete().eq('doctor_id', targetDoctor)
-
-  const rows = blocks.map((b: any, idx: number) => ({
-    doctor_id: targetDoctor,
-    block_key: b.block_key,
-    enabled: b.enabled ?? true,
-    sort_order: b.sort_order ?? idx,
-    custom_label: b.custom_label || null,
-    custom_content_type: b.custom_content_type || null,
-    printable: b.printable ?? null,
-    send_to_patient: b.send_to_patient ?? null,
-    updated_at: new Date().toISOString(),
-  }))
-
-  if (rows.length > 0) {
-    const { error } = await admin.from('doctor_consultation_blocks').insert(rows)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ success: true, blocks_saved: rows.length })
+  return NextResponse.json(result.value);
 }
