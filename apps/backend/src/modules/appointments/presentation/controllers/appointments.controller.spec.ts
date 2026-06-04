@@ -4,11 +4,14 @@ import { CreateAppointmentUseCase } from '../../application/use-cases/appointmen
 import { UpdateAppointmentStatusUseCase } from '../../application/use-cases/appointments/update-appointment-status.use-case';
 import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
+import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
 import {
   Appointment,
   type AppointmentCreateParams,
 } from '../../domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../domain/errors/appointment-not-found.error';
+import { AppointmentConflictError } from '../../domain/errors/appointment-conflict.error';
+import { AppointmentNotReschedulableError } from '../../domain/errors/appointment-not-reschedulable.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { AppointmentListResult } from '../../domain/repositories/appointment.repository';
 
@@ -58,6 +61,7 @@ describe('AppointmentsController', () => {
   const mockUpdateStatusUseCase = { execute: jest.fn() };
   const mockGetAgendaUseCase = { execute: jest.fn() };
   const mockGetByIdUseCase = { execute: jest.fn() };
+  const mockRescheduleUseCase = { execute: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -69,6 +73,7 @@ describe('AppointmentsController', () => {
         { provide: UpdateAppointmentStatusUseCase, useValue: mockUpdateStatusUseCase },
         { provide: GetDoctorAgendaUseCase, useValue: mockGetAgendaUseCase },
         { provide: GetAppointmentByIdUseCase, useValue: mockGetByIdUseCase },
+        { provide: RescheduleAppointmentUseCase, useValue: mockRescheduleUseCase },
       ],
     }).compile();
 
@@ -186,6 +191,53 @@ describe('AppointmentsController', () => {
       expect(mockCreateUseCase.execute).not.toHaveBeenCalledWith(
         expect.objectContaining({ doctor_id: 'malicious-other-doctor' }),
       );
+    });
+  });
+
+  describe('PUT /api/appointments/:id/reschedule', () => {
+    const newDate = '2026-06-11T14:00:00.000Z';
+
+    it('delegates to RescheduleAppointmentUseCase with correct params', async () => {
+      const rescheduled = makeAppointment({ scheduledAt: new Date(newDate) });
+      mockRescheduleUseCase.execute.mockResolvedValue(rescheduled);
+
+      const dto = { scheduled_at: newDate };
+      const response = await controller.rescheduleAppointment(APPT_ID, dto, mockUser);
+
+      expect(response.success).toBe(true);
+      expect(mockRescheduleUseCase.execute).toHaveBeenCalledWith({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: new Date(newDate),
+      });
+    });
+
+    it('propagates AppointmentNotFoundError', async () => {
+      mockRescheduleUseCase.execute.mockRejectedValue(new AppointmentNotFoundError(APPT_ID));
+
+      await expect(
+        controller.rescheduleAppointment(APPT_ID, { scheduled_at: newDate }, mockUser),
+      ).rejects.toBeInstanceOf(AppointmentNotFoundError);
+    });
+
+    it('propagates AppointmentConflictError when slot is occupied', async () => {
+      mockRescheduleUseCase.execute.mockRejectedValue(
+        new AppointmentConflictError(new Date(newDate)),
+      );
+
+      await expect(
+        controller.rescheduleAppointment(APPT_ID, { scheduled_at: newDate }, mockUser),
+      ).rejects.toBeInstanceOf(AppointmentConflictError);
+    });
+
+    it('propagates AppointmentNotReschedulableError for terminal statuses', async () => {
+      mockRescheduleUseCase.execute.mockRejectedValue(
+        new AppointmentNotReschedulableError('cancelled'),
+      );
+
+      await expect(
+        controller.rescheduleAppointment(APPT_ID, { scheduled_at: newDate }, mockUser),
+      ).rejects.toBeInstanceOf(AppointmentNotReschedulableError);
     });
   });
 

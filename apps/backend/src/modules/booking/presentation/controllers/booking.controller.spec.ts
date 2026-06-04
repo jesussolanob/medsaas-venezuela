@@ -1,9 +1,11 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingController } from './booking.controller';
 import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking.use-case';
 import { GetBookingDoctorInfoUseCase } from '../../application/use-cases/booking/get-booking-doctor-info.use-case';
 import { GetBookingPlansUseCase } from '../../application/use-cases/booking/get-booking-plans.use-case';
 import { GetBookingPackagesUseCase } from '../../application/use-cases/booking/get-booking-packages.use-case';
+import { GetAvailableSlotsUseCase } from '../../application/use-cases/booking/get-available-slots.use-case';
 import { DoctorNotFoundError } from '../../application/use-cases/booking/create-booking.use-case';
 import { Appointment } from '../../../appointments/domain/entities/appointment.entity';
 import { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
@@ -45,6 +47,7 @@ describe('BookingController', () => {
   let mockGetDoctorInfo: jest.Mocked<GetBookingDoctorInfoUseCase>;
   let mockGetPlans: jest.Mocked<GetBookingPlansUseCase>;
   let mockGetPackages: jest.Mocked<GetBookingPackagesUseCase>;
+  let mockGetSlots: jest.Mocked<GetAvailableSlotsUseCase>;
 
   beforeEach(async () => {
     mockCreateUseCase = { execute: jest.fn() } as unknown as jest.Mocked<CreateBookingUseCase>;
@@ -53,6 +56,7 @@ describe('BookingController', () => {
     } as unknown as jest.Mocked<GetBookingDoctorInfoUseCase>;
     mockGetPlans = { execute: jest.fn() } as unknown as jest.Mocked<GetBookingPlansUseCase>;
     mockGetPackages = { execute: jest.fn() } as unknown as jest.Mocked<GetBookingPackagesUseCase>;
+    mockGetSlots = { execute: jest.fn() } as unknown as jest.Mocked<GetAvailableSlotsUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BookingController],
@@ -61,6 +65,7 @@ describe('BookingController', () => {
         { provide: GetBookingDoctorInfoUseCase, useValue: mockGetDoctorInfo },
         { provide: GetBookingPlansUseCase, useValue: mockGetPlans },
         { provide: GetBookingPackagesUseCase, useValue: mockGetPackages },
+        { provide: GetAvailableSlotsUseCase, useValue: mockGetSlots },
       ],
     }).compile();
 
@@ -114,6 +119,55 @@ describe('BookingController', () => {
       const response = await controller.getPatientPackages('doc-001', '');
       expect(response.data).toEqual([]);
       expect(mockGetPackages.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDoctorSlots', () => {
+    const slotsResult = {
+      date: '2026-06-10',
+      slots: [
+        { time: '08:00', available: true },
+        { time: '08:30', available: false },
+      ],
+    };
+
+    it('delegates to GetAvailableSlotsUseCase with doctorId and date', async () => {
+      mockGetSlots.execute.mockResolvedValue(slotsResult);
+
+      const response = await controller.getDoctorSlots('doc-001', '2026-06-10');
+
+      expect(response.success).toBe(true);
+      expect(response.data).toEqual(slotsResult);
+      expect(mockGetSlots.execute).toHaveBeenCalledWith('doc-001', '2026-06-10');
+    });
+
+    it('propagates DoctorNotFoundError (404) when doctor not found', async () => {
+      mockGetSlots.execute.mockRejectedValue(new DoctorNotFoundError());
+
+      await expect(controller.getDoctorSlots('bad-id', '2026-06-10')).rejects.toThrow(
+        DoctorNotFoundError,
+      );
+    });
+
+    it('throws BadRequestException when date is missing', async () => {
+      await expect(
+        controller.getDoctorSlots('doc-001', undefined as unknown as string),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockGetSlots.execute).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when date has invalid format (not YYYY-MM-DD)', async () => {
+      await expect(controller.getDoctorSlots('doc-001', '10-06-2026')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(mockGetSlots.execute).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when date is a valid format but invalid calendar date', async () => {
+      await expect(controller.getDoctorSlots('doc-001', '2026-13-01')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(mockGetSlots.execute).not.toHaveBeenCalled();
     });
   });
 

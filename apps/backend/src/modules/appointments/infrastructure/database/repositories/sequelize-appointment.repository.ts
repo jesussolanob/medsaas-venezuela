@@ -201,6 +201,28 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     });
   }
 
+  async findActiveByDoctorAndDateRange(
+    doctorId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Appointment[]> {
+    const rows = await this.appointmentModel.findAll({
+      where: {
+        doctorId,
+        scheduledAt: { [Op.between]: [from, to] },
+        status: { [Op.in]: ACTIVE_STATUSES },
+      },
+      order: [['scheduledAt', 'ASC']],
+    });
+    return rows.map((r) => this.toDomain(r));
+  }
+
+  async updateScheduledAt(id: string, scheduledAt: Date): Promise<Appointment> {
+    await this.appointmentModel.update({ scheduledAt }, { where: { id } });
+    const updated = await this.appointmentModel.findByPk(id);
+    return this.toDomain(updated as AppointmentModel);
+  }
+
   private toDomain(row: AppointmentModel): Appointment {
     return Appointment.create({
       id: row.id,

@@ -1,24 +1,40 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import { CreateBookingDtoSchema, type CreateBookingDto } from '@delta/shared-types';
+import { z } from 'zod';
 import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking.use-case';
 import { GetBookingDoctorInfoUseCase } from '../../application/use-cases/booking/get-booking-doctor-info.use-case';
 import { GetBookingPlansUseCase } from '../../application/use-cases/booking/get-booking-plans.use-case';
 import { GetBookingPackagesUseCase } from '../../application/use-cases/booking/get-booking-packages.use-case';
+import { GetAvailableSlotsUseCase } from '../../application/use-cases/booking/get-available-slots.use-case';
 
 interface SuccessResponse<T> {
   success: true;
   data: T;
 }
 
+/** Zod schema for the ?date= query param — strict YYYY-MM-DD format. */
+const DateQuerySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be in YYYY-MM-DD format')
+  .refine((s) => !isNaN(Date.parse(`${s}T00:00:00Z`)), {
+    message: 'date is not a valid calendar date',
+  });
+
 /**
  * BookingController — public endpoints (no auth required).
  *
  * Global prefix 'api' is set in main.ts.
  * All logic lives in use cases — the controller only orchestrates and formats.
- *
- * DEFERRED (not implemented, requires doctor_schedule table which does not exist):
- *   - GET /booking/:doctorId/slots?date=YYYY-MM-DD  → slot availability
  */
 @Controller('booking')
 export class BookingController {
@@ -27,6 +43,7 @@ export class BookingController {
     private readonly getDoctorInfo: GetBookingDoctorInfoUseCase,
     private readonly getPlans: GetBookingPlansUseCase,
     private readonly getPackages: GetBookingPackagesUseCase,
+    private readonly getSlots: GetAvailableSlotsUseCase,
   ) {}
 
   /**
@@ -71,6 +88,39 @@ export class BookingController {
     }
     const packages = await this.getPackages.execute(doctorId, email);
     return { success: true, data: packages };
+  }
+
+  /**
+   * GET /api/booking/:doctorId/slots?date=YYYY-MM-DD
+   *
+   * Public endpoint — no auth required.
+   * Returns the list of time slots for the doctor on the given date, each marked
+   * as available or occupied by an active appointment.
+   *
+   * Anti-enumeration: 404 when the doctor does not exist or is inactive (same as
+   * /info and /plans endpoints) — prevents oracle-style probing.
+   *
+   * Strict date validation: ?date must match YYYY-MM-DD and be a valid calendar date.
+   * Invalid → 422 (ZodValidationPipe behaviour).
+   *
+   * Shape: { success: true, data: { date: string, slots: [{ time: 'HH:MM', available: boolean }] } }
+   */
+  @Get(':doctorId/slots')
+  async getDoctorSlots(
+    @Param('doctorId', ParseUUIDPipe) doctorId: string,
+    @Query('date') rawDate: string,
+  ): Promise<SuccessResponse<unknown>> {
+    // Validate ?date strictly — YYYY-MM-DD and valid calendar date
+    const parsed = DateQuerySchema.safeParse(rawDate);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        message: 'Validation failed',
+        errors: parsed.error.issues.map((i) => ({ path: 'date', message: i.message })),
+      });
+    }
+
+    const result = await this.getSlots.execute(doctorId, parsed.data);
+    return { success: true, data: result };
   }
 
   /**

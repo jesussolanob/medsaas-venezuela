@@ -8,14 +8,17 @@ import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation
 import {
   CreateAppointmentDtoSchema,
   UpdateAppointmentStatusDtoSchema,
+  RescheduleAppointmentDtoSchema,
   type CreateAppointmentDto,
   type UpdateAppointmentStatusDto,
+  type RescheduleAppointmentDto,
   type AppointmentStatus,
 } from '@delta/shared-types';
 import { CreateAppointmentUseCase } from '../../application/use-cases/appointments/create-appointment.use-case';
 import { UpdateAppointmentStatusUseCase } from '../../application/use-cases/appointments/update-appointment-status.use-case';
 import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
+import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
 import { maskAppointmentPii } from '../mappers/appointment.mapper';
 
 interface SuccessResponse<T> {
@@ -35,9 +38,6 @@ interface PaginatedResponse<T> {
  * Global prefix 'api' is set in main.ts — do NOT repeat it here.
  * All endpoints require DevAuthGuard (Etapa 1 only).
  *
- * DEFERRED (not implemented, requires doctor_schedule table):
- *   - GET /appointments/slots  → GetDoctorSlotsUseCase
- *   - PUT /appointments/:id/reschedule → RescheduleAppointmentUseCase
  */
 @Controller('appointments')
 @UseGuards(DevAuthGuard)
@@ -47,6 +47,7 @@ export class AppointmentsController {
     private readonly updateStatus: UpdateAppointmentStatusUseCase,
     private readonly getDoctorAgenda: GetDoctorAgendaUseCase,
     private readonly getById: GetAppointmentByIdUseCase,
+    private readonly reschedule: RescheduleAppointmentUseCase,
   ) {}
 
   /** GET /api/appointments — paginated list with PII masking applied by the mapper. */
@@ -108,6 +109,27 @@ export class AppointmentsController {
       doctor_id: user.sub,
     });
     return { success: true, data: appointment };
+  }
+
+  /**
+   * PUT /api/appointments/:id/reschedule — reschedule an existing appointment.
+   *
+   * Validates: ownership, reschedulable status (scheduled|confirmed), and slot availability.
+   * Records the change in appointment_changes_log.
+   * Body: { scheduled_at: ISO8601 datetime string }
+   */
+  @Put(':id/reschedule')
+  async rescheduleAppointment(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(RescheduleAppointmentDtoSchema)) dto: RescheduleAppointmentDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<unknown>> {
+    const updated = await this.reschedule.execute({
+      appointmentId: id,
+      actorId: user.sub,
+      newScheduledAt: new Date(dto.scheduled_at),
+    });
+    return { success: true, data: updated };
   }
 
   /** PUT /api/appointments/:id/status — update appointment status. */

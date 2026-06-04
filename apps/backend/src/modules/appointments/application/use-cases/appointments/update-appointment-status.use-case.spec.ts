@@ -57,11 +57,13 @@ function makeRepo(
     updateStatus: jest
       .fn()
       .mockImplementation((_id, status) => Promise.resolve(makeAppointment({ status }))),
+    updateScheduledAt: jest.fn(),
     hasSlotConflict: jest.fn(),
     hasDuplicate: jest.fn(),
     findPackageById: jest.fn(),
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn().mockResolvedValue(undefined),
+    findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue([]),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }

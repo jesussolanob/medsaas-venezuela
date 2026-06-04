@@ -27,11 +27,13 @@ function makeRepo(
     list: jest.fn(),
     save: jest.fn().mockImplementation((appt: Appointment) => Promise.resolve(appt)),
     updateStatus: jest.fn(),
+    updateScheduledAt: jest.fn(),
     hasSlotConflict: jest.fn().mockResolvedValue(false),
     hasDuplicate: jest.fn().mockResolvedValue(false),
     findPackageById: jest.fn(),
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn(),
+    findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue([]),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }

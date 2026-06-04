@@ -10,6 +10,7 @@ import { CreateAppointmentUseCase } from './application/use-cases/appointments/c
 import { UpdateAppointmentStatusUseCase } from './application/use-cases/appointments/update-appointment-status.use-case';
 import { GetDoctorAgendaUseCase } from './application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from './application/use-cases/appointments/get-appointment-by-id.use-case';
+import { RescheduleAppointmentUseCase } from './application/use-cases/appointments/reschedule-appointment.use-case';
 
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
 
@@ -27,6 +28,8 @@ import { AppointmentsController } from './presentation/controllers/appointments.
     UpdateAppointmentStatusUseCase,
     GetDoctorAgendaUseCase,
     GetAppointmentByIdUseCase,
+    RescheduleAppointmentUseCase,
   ],
+  exports: [APPOINTMENT_REPOSITORY],
 })
 export class AppointmentsModule {}

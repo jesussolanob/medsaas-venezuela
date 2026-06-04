@@ -87,4 +87,17 @@ export interface IAppointmentRepository {
 
   /** Append an entry to appointment_changes_log. */
   logStatusChange(entry: AuditLogEntry): Promise<void>;
+
+  /**
+   * Returns all active (scheduled/confirmed) appointments for a doctor
+   * within a date range [from, to] inclusive.
+   * Used by the slot-availability use case to determine occupied slots.
+   */
+  findActiveByDoctorAndDateRange(doctorId: string, from: Date, to: Date): Promise<Appointment[]>;
+
+  /**
+   * Updates the scheduledAt of an existing appointment.
+   * Returns the updated entity.
+   */
+  updateScheduledAt(id: string, scheduledAt: Date): Promise<Appointment>;
 }

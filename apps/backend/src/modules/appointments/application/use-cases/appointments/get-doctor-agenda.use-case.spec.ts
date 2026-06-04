@@ -47,11 +47,13 @@ function makeRepo(items: Appointment[]): jest.Mocked<IAppointmentRepository> {
     list: jest.fn().mockResolvedValue({ items, total: items.length, page: 1, limit: 20 }),
     save: jest.fn(),
     updateStatus: jest.fn(),
+    updateScheduledAt: jest.fn(),
     hasSlotConflict: jest.fn(),
     hasDuplicate: jest.fn(),
     findPackageById: jest.fn(),
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn(),
+    findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue([]),
   } as jest.Mocked<IAppointmentRepository>;
 }
 
