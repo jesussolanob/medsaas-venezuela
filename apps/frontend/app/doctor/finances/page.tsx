@@ -7,7 +7,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client'; // FASE 5: payments, accounts_payable, consultations, realtime
 import { getDoctorId } from '@/app/doctor/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { fetchPayments as sharedFetchPayments, formatUsd, formatBs } from '@/lib/finances';
+import { formatUsd, formatBs } from '@/lib/finances';
+import { getPayments } from './payments-actions';
 import {
   DollarSign,
   TrendingUp,
@@ -154,13 +155,9 @@ export default function FinancesPage() {
       if (!doctorId) return;
       const user = { id: doctorId };
 
-      // FUENTE UNICA (ronda 15): leemos pagos APROBADOS desde la tabla `payments`
-      // mediante el helper compartido. Garantiza que Dashboard, Cobros y Finanzas
-      // muestren EXACTAMENTE el mismo total — sin drift entre appointments.status y payments.status.
-      const paid = await sharedFetchPayments(supabase, {
-        doctorId: user.id,
-        status: 'approved',
-      });
+      // FUENTE UNICA: pagos APROBADOS vía backend (BFF). Garantiza que Dashboard,
+      // Cobros y Finanzas muestren el mismo total. ETAPA 1: doctorId lo deriva el backend.
+      const paid = await getPayments({ status: 'approved' });
       setIncomes(
         paid.map((p) => ({
           id: p.id,

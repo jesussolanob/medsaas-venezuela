@@ -1,10 +1,20 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: payments, payment_items, storage, realtime
+// payments/payment_items YA migrados al backend (payments-actions). createClient queda
+// SOLO para piezas Fase 5: storage de comprobantes, realtime, PDF de recibo, lectura de
+// pricing_plans (openAddItemModal) y export a Excel (appointments).
+import { createClient } from '@/lib/supabase/client';
 import { getDoctorId } from '@/app/doctor/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { fetchPayments as sharedFetchPayments, formatUsd, formatBs } from '@/lib/finances';
+import { formatUsd, formatBs } from '@/lib/finances';
+import {
+  getPayments,
+  updatePaymentStatus as updatePaymentStatusAction,
+  getPaymentItems,
+  addPaymentItem,
+  removePaymentItem,
+} from '@/app/doctor/finances/payments-actions';
 import { formatPaymentMethod } from '@/lib/payment-methods';
 import { buildReceiptHtml } from '@/lib/receipt-pdf';
 import {
@@ -141,15 +151,9 @@ export default function CobrosPage() {
   // Antes leia de `appointments.status` (legacy) lo que causaba drift con el dashboard.
   const fetchPayments = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
-    const doctorId = await getDoctorId();
-    if (!doctorId) return;
-    const user = { id: doctorId };
 
-    const rows = await sharedFetchPayments(supabase, {
-      doctorId: user.id,
-      status: tab, // 'pending' | 'approved'
-    });
+    // ETAPA 1: vía backend (BFF). doctorId lo deriva el backend del dev-stub.
+    const rows = await getPayments({ status: tab }); // 'pending' | 'approved'
 
     // Adaptar al shape Payment de esta vista
     setPayments(
@@ -320,45 +324,27 @@ export default function CobrosPage() {
     if (!selectedPayment) return;
     setAddingItem(true);
     try {
-      const supabase = createClient();
-      const doctorId = await getDoctorId();
-      if (!doctorId) throw new Error('No autenticado');
-      const user = { id: doctorId };
+      // ETAPA 1: el backend inserta el payment_item, recalcula payments.amount_usd
+      // (base + sum items) y sincroniza appointments.plan_price en una transacción.
+      const result = await addPaymentItem(selectedPayment.id, {
+        name: item.name,
+        amountUsd: item.price_usd,
+        sourceType: item.type,
+        sourceId: item.id,
+      });
+      if (!result.success) throw new Error(result.error);
 
-      // 1) INSERT en payment_items (BD)
-      const { data: inserted, error: insertErr } = await supabase
-        .from('payment_items')
-        .insert({
-          payment_id: selectedPayment.id,
-          doctor_id: user.id,
-          name: item.name,
-          amount_usd: item.price_usd,
-          source_type: item.type,
-          source_id: item.id,
-        })
-        .select('id, name, amount_usd')
-        .single();
-      if (insertErr) throw insertErr;
-
-      // 2) Recalcular total: payments.amount_usd = base + sum(items)
-      // Para no perder el monto base original lo guardamos cuando no hay items aun.
-      // Logica simple: tomar el plan_price actual (que ya incluye items previos) y sumar el nuevo
       const newTotal = (selectedPayment.plan_price || 0) + item.price_usd;
-      await supabase.from('payments').update({ amount_usd: newTotal }).eq('id', selectedPayment.id);
-      const { data: appt } = await supabase
-        .from('appointments')
-        .select('id')
-        .eq('payment_id', selectedPayment.id)
-        .maybeSingle();
-      if (appt?.id) {
-        await supabase.from('appointments').update({ plan_price: newTotal }).eq('id', appt.id);
+      if (result.item) {
+        setExtraItems((prev) => [
+          ...prev,
+          {
+            id: result.item!.id,
+            name: result.item!.name,
+            amount: Number(result.item!.amount_usd),
+          },
+        ]);
       }
-
-      // 3) Actualizar state local con el item recien insertado
-      setExtraItems((prev) => [
-        ...prev,
-        { id: inserted.id, name: inserted.name, amount: Number(inserted.amount_usd) },
-      ]);
       setSelectedPayment((prev) => (prev ? { ...prev, plan_price: newTotal } : prev));
 
       setActionToast({ type: 'success', msg: `${item.name} agregado al cobro` });
@@ -378,21 +364,11 @@ export default function CobrosPage() {
     if (!selectedPayment) return;
     if (!confirm('¿Eliminar este cargo del cobro?')) return;
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('payment_items').delete().eq('id', itemId);
-      if (error) throw error;
+      // ETAPA 1: el backend borra el item, recalcula el total y sincroniza la cita.
+      const result = await removePaymentItem(selectedPayment.id, itemId);
+      if (!result.success) throw new Error(result.error);
 
       const newTotal = Math.max(0, (selectedPayment.plan_price || 0) - amount);
-      await supabase.from('payments').update({ amount_usd: newTotal }).eq('id', selectedPayment.id);
-      const { data: appt } = await supabase
-        .from('appointments')
-        .select('id')
-        .eq('payment_id', selectedPayment.id)
-        .maybeSingle();
-      if (appt?.id) {
-        await supabase.from('appointments').update({ plan_price: newTotal }).eq('id', appt.id);
-      }
-
       setExtraItems((prev) => prev.filter((i) => i.id !== itemId));
       setSelectedPayment((prev) => (prev ? { ...prev, plan_price: newTotal } : prev));
       setActionToast({ type: 'success', msg: 'Cargo eliminado' });
@@ -408,16 +384,9 @@ export default function CobrosPage() {
   async function loadExtraItems(paymentId: string) {
     setLoadingExtras(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('payment_items')
-        .select('id, name, amount_usd')
-        .eq('payment_id', paymentId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      setExtraItems(
-        (data || []).map((d) => ({ id: d.id, name: d.name, amount: Number(d.amount_usd) })),
-      );
+      // ETAPA 1: items vía backend (BFF).
+      const data = await getPaymentItems(paymentId);
+      setExtraItems(data.map((d) => ({ id: d.id, name: d.name, amount: Number(d.amount_usd) })));
     } catch (err) {
       console.error('[loadExtraItems]', err);
       setExtraItems([]);
@@ -519,33 +488,13 @@ export default function CobrosPage() {
   async function updatePaymentStatus(paymentId: string, newStatus: 'pending' | 'approved') {
     setUpdatingStatus(true);
     setActionToast(null);
-    const supabase = createClient();
     try {
-      // 1. Update FUENTE DE VERDAD = payments
-      const { error: payErr } = await supabase
-        .from('payments')
-        .update({
-          status: newStatus,
-          paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
-        })
-        .eq('id', paymentId);
-      if (payErr) throw payErr;
+      // ETAPA 1: el backend actualiza payments.status/paid_at Y sincroniza
+      // consultations.payment_status en una transacción (fuente de verdad).
+      const result = await updatePaymentStatusAction(paymentId, newStatus);
+      if (!result.success) throw new Error(result.error);
 
-      // 2. Encontrar appointment vinculado para sincronizar consultations.payment_status
-      const { data: appt } = await supabase
-        .from('appointments')
-        .select('id, consultation_id')
-        .eq('payment_id', paymentId)
-        .maybeSingle();
-
-      if (appt?.consultation_id) {
-        await supabase
-          .from('consultations')
-          .update({ payment_status: newStatus })
-          .eq('id', appt.consultation_id);
-      }
-
-      // 3. Toast de exito + refresh
+      // Toast de exito + refresh
       setActionToast({
         type: 'success',
         msg:
