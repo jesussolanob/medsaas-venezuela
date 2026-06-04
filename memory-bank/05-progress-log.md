@@ -584,6 +584,96 @@ Email Resend. Tests Playwright E2E.
   consultations register-payment (consultation_payments, módulo `payments` commit a5d8dee).
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
 
+### 2026-06-04 — Grupo A: subscriptions-ops (extend/suspend/reactivate) — backend + frontend (commit 27520d3)
+
+> Instrucción del usuario: desarrollar TODO lo pendiente hasta los bloqueantes (Auth0, proveedor de
+> email sin definir, IA). A partir de aquí se usa el EQUIPO DE AGENTES (backend-agent implementer →
+> code-reviewer/security-agent → lead verifica) por pedido explícito del usuario.
+
+- **Backend (módulo admin):** `IAdminRepository.getSubscriptionSnapshot` + `applyManualSubscriptionChange`
+  (transaccional: subscriptions + profiles snapshot + subscription_changes_log; mismo patrón que billing
+  approveAndExtend, log vía raw INSERT con QueryTypes.UPDATE/INSERT). 3 use cases: Extend (anchor
+  max(now,expiry)+N meses, trial→basic), Suspend, Reactivate (1 mes si vencida). DoctorNotFoundError.
+  `admin.controller`: POST `/api/admin/subscriptions/{extend,suspend,reactivate}` (super_admin, Zod DTOs).
+- **Frontend:** 3 route handlers thin-proxy (reemplazan `lib/subscription.ts`+requireSuperAdmin, sin Supabase).
+  Consumidor: `/admin/subscriptions`. (El GET `subscriptions/route.ts` sigue Supabase → track admin data-pages.)
+- **Fix aislamiento tests (importante):** `sequelize-consultation-payment.spec` y `sequelize-ehr.spec`
+  compartían ids fijos `f1000000` → race bajo jest PARALELO (no en `--runInBand`). Reasignado el primero a
+  `f2000000`. LECCIÓN: los specs de integración (DB real `deltamedical`) deben usar ids fijos disjuntos.
+- **Verificado (lead):** build 0, lint 0, **928/928 tests**, dist bootea (3 rutas, sin crash DI), curl real
+  (extend trial→basic + log manual_grant; suspend; reactivate; RBAC doctor→403; months 0→400).
+- **PENDIENTE Grupo A:** promotions · agenda-slots · consultation-blocks · exports CSV · admin-config.
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
+### 2026-06-04 — Grupo A: promotions (backend-agent + lead) — commit 5772454
+
+- **Primer módulo construido con el EQUIPO DE AGENTES** (pedido del usuario): `backend-agent` (Sonnet) como
+  implementer con spec preciso del lead → lead verificó (build/lint/test/boot/curl), cableó frontend y commiteó.
+- Módulo `promotions` DDD: tabla `plan_promotions` (mig 20260604000000), entidad con invariante
+  promo<original (InvalidPromotionError 400), 5 use cases, controller admin (super_admin) + público
+  (`GET /api/promotions`, mapper sin campos sensibles). Frontend: route handlers admin/promotions +
+  /api/promotions thin-proxy, sin Supabase.
+- Verificado (lead): migrate verde, build 0, lint 0, **986/986 tests**, dist bootea (5 rutas, sin Sequelize
+  en providers), curl real (POST 201; público sin is_active/created_at; promo>=original→400; doctor→403).
+- **Grupo A restante:** agenda-slots (entrelazado: doctor-settings schedule + appointments booked + booking
+  público — tratar con cuidado) · consultation-blocks (2 tablas nuevas, CRUD) · exports CSV · admin-config.
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
+### 2026-06-04 — Grupo A: consultation-blocks (backend-agent + lead) — commit 3d621d9
+
+- Módulo `consultation-blocks` DDD. Migración 20260604000001: 3 tablas nuevas
+  (consultation_block_catalog, doctor_consultation_blocks, specialty_default_blocks) + seed; añadida
+  columna `default_enabled` al catálogo (true solo en los 4 core: chief_complaint/diagnosis/treatment/
+  prescription) que el legacy `lib/consultation-blocks.ts` asumía pero el SQL no definía.
+- `resolveBlocks()` replica la cascada de merge del legacy (override doctor > default especialidad >
+  catálogo). Controller doctor: GET (5 claves) + PUT transaccional (DELETE+INSERT). doctorId de user.sub
+  (super_admin-sobre-otro-doctor diferido a Etapa 2). Errores EmptyBlockConfig/InvalidBlockKey 400.
+- Frontend: route handler `/api/doctor/consultation-blocks` (GET/PUT) thin-proxy, sin Supabase.
+- Verificado (lead): migrate, build 0, lint 0, **1010/1010 tests**, dist bootea (sin Sequelize en
+  providers), curl real (estructura; key inválida 400; 0 enabled 400; sin auth 403).
+- **🎉 Grupo A: 3/6** (subscriptions-ops, promotions, consultation-blocks). **Restan:** exports CSV,
+  admin-config, agenda-slots (este último entrelazado — con cuidado).
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
+### 2026-06-04 — Grupo A: exports CSV (inline) — commit 3d6cab1
+
+- `export-subscriptions` (huérfano, sin consumidor UI) → route handler thin-proxy a backendGet
+  `/api/admin/doctors` (DoctorWithActivity, profiles-based: id/fullName/email/specialty/plan/status/
+  expiresAt); CSV serializado en la capa de presentación. Sin Supabase. `export-payments` sigue 410
+  (flujo de aprobaciones retirado). Hecho INLINE (no agente — trivial). Cap 100 doctores (ok beta).
+- **🎉 Grupo A: 4/6.** Restan **admin-config** y **agenda-slots**.
+
+### ⏸️ PUNTO DE RETOME (2026-06-04 — fin de jornada larga)
+
+**Hecho hoy (todo commiteado en feature/migracion-backend, sin push):**
+
+- Frontend-wiring COMPLETO (6 slices) + endpoint backend `consultations/with-patient` (ADR-005).
+- Grupo A 4/6: subscriptions-ops · promotions · consultation-blocks · exports CSV.
+- Suite backend: **1010 tests verdes**, build/lint 0, dist bootea. tsc/eslint frontend 0.
+- **Equipo de agentes en uso** (pedido del usuario): backend-agent (Sonnet) implementer con spec del lead
+  → lead verifica (build/lint/test/boot dist/curl) + cablea frontend + commitea. Funcionó bien.
+
+**PENDIENTE (instrucción usuario: desarrollar TODO hasta los bloqueantes Auth0 / proveedor-email / IA):**
+
+- **Grupo A restante (2):**
+  - **admin-config** (AMPLIO, entrelazado): `app/api/admin/admins` (gestión de admins, tabla `admin_roles`
+    NUEVA) · `app/api/admin/app-settings` (get/set `app_settings` — OJO finances ya maneja usdt-rate y admin
+    tiene getSettings read-only; consolidar sin duplicar) · `app/api/admin/change-plan` o edición de PRECIOS
+    de `plan_configs` (admin ya tiene togglePlan; falta update price) · `bcv-rate` (¿duplica usdt-rate de
+    finances? revisar). Scoping cuidadoso para no duplicar con finances/admin existentes.
+  - **agenda-slots** (EL MÁS ENTRELAZADO, 3 módulos): slots públicos `GET /api/booking/:doctorId/slots?date=`
+    = `DoctorSchedule.generateSlotsForDate` (VO ya existe en doctor-settings, tabla `doctor_schedules` existe)
+    MENOS citas ya reservadas (appointments repo) → diferido en booking module. + Reschedule de cita
+    (legacy `/api/doctor/reschedule`, RPC reschedule_appointment; diferido en appointments module: validar
+    ownership + conflicto de slot). Cruza doctor-settings + appointments + booking.
+- **NO tocar (bloqueantes):** Auth0 (Fase 4: register/recovery/booking-signup/createDoctor/admin data-pages
+  auth), proveedor de email (sin definir), IA/Gemini. Todo lo demás de Fase 5 que NO sea email/IA es
+  construible (PDF, storage→GCS, calendar, cron) pero el usuario marcó parar en esos 3 bloqueantes.
+- **Reglas:** módulo backend = DDD + migración .cjs (timestamp > 20260604000001) + tests + boot dist + curl;
+  NUNCA Sequelize en providers; commit body ≤100 chars/línea (hook commitlint). Frontend = thin-proxy, sin
+  tocar JSX. Lead verifica con EXIT real lo que el agente declare.
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
 ### 2026-06-04 — Frontend-wiring COMPLETO: invoices + register-payment + billing (+ endpoint backend)
 
 > Instrucción del usuario: "continúa hasta completar todo, toma el control según prioridades".
