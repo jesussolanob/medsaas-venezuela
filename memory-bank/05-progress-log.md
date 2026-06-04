@@ -663,7 +663,45 @@ Email Resend. Tests Playwright E2E.
   (flujo de aprobaciones retirado). Hecho INLINE (no agente — trivial). Cap 100 doctores (ok beta).
 - **🎉 Grupo A: 4/6.** Restan **admin-config** y **agenda-slots**.
 
-### ⏸️ PUNTO DE RETOME (2026-06-04 — fin de jornada larga)
+### 2026-06-04 — Grupo A COMPLETO 6/6 (admin-config + agenda-slots) — commits 297f565, 5cbc47c
+
+- **admin-config (extiende módulo admin):** `PUT /api/admin/settings` (upsert app_settings, bloquea claves
+  sensibles), `PUT /api/admin/plans/:planKey/config` (edita price/name/trial_days/sort_order), `GET
+/api/admin/admins` + `PUT /api/admin/admins/:id/role` (otorga/revoca super_admin, guard último-super_admin).
+  Sin tablas nuevas (profiles.role + app_settings). bcv-rate NO duplicado (ya en finances usdt-rate).
+  createUser-con-password diferido (Auth0). +35 tests.
+- **agenda-slots (extiende booking + appointments):** `GET /api/booking/:doctorId/slots?date=` (público:
+  generateSlotsForDate − citas activas; shape `{date, slots:[{time,available}]}`; 404 anti-enumeración) +
+  `PUT /api/appointments/:id/reschedule` (doctor: ownership + slot libre + estado + changes_log). Sin migración.
+- **🎉 GRUPO A 6/6:** subscriptions-ops · promotions · consultation-blocks · exports · admin-config · agenda-slots.
+  - mejora **capabilities** (RBAC por BD). **Backend pendiente: NINGUNO** (hasta los bloqueantes).
+- Suite backend **1116 tests verdes**. 2 fixes de aislamiento de specs de integración (ids fijos disjuntos:
+  ehr=f1000000, prescription=f2000000, consultation-payment=f3000000) — race jest paralelo, no en runInBand.
+
+### ⏸️ PUNTO DE RETOME (2026-06-04 — backend 100%, falta cableo frontend + review cycle)
+
+**Backend COMPLETO** (10 módulos base + Grupo A 6/6 + capabilities + endpoint with-patient). 1116 tests, build/
+lint 0. Falta SOLO frontend + el ciclo de review.
+
+**PENDIENTE = cableo frontend (no + Supabase donde haya API) + features MVP no bloqueadas:**
+
+- **Capabilities (consumo):** sidebars doctor/admin/patient gating por capacidad (`getMyCapabilities`+`can`,
+  combinado con plan_features) + UI admin `/admin/roles` (editar role-capabilities + botón refresh cache).
+- **Admin data-pages → backends ya hechos:** `/admin/subscriptions` (extend/suspend/reactivate ya con route
+  handlers; falta lista+app-settings+promotions), `/admin/promotions`, `/admin/settings` (PUT settings),
+  `/admin/plans` (price edit), `/admin/doctors`, `/admin/patients`, gestión de admins.
+- **agenda-slots frontend:** booking `book/[doctorId]` slots (GET /api/booking/:doctorId/slots) + reschedule
+  en agenda (PUT /api/appointments/:id/reschedule).
+- **Otros residuales Supabase no bloqueados** + features MVP 7.x sin Auth0/email/IA.
+
+**LUEGO (instrucción del usuario): CICLO DE REVIEW** — code-reviewer + security-agent, iterar (implementer
+corrige → re-review) hasta veredicto bueno. NO cerrar sin esto.
+
+**Bloqueantes (NO tocar):** Auth0 (Fase 4), proveedor de email (sin definir), IA/Gemini.
+**Migraciones nuevas creadas hoy:** 20260604000000 (plan_promotions), 000001 (consultation-blocks x3),
+000002 (role_capabilities). Próxima usar timestamp > 20260604000002.
+
+### (histórico) PUNTO DE RETOME previo
 
 **Hecho hoy (todo commiteado en feature/migracion-backend, sin push):**
 
