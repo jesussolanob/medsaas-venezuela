@@ -1,44 +1,34 @@
-import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { redirect } from 'next/navigation';
+/**
+ * /admin/plan-features — configuración de features por plan (server component).
+ *
+ * ETAPA 1 — lee del módulo NestJS `admin` (`GET /api/admin/plan-features`) vía el BFF
+ * server-only. El RBAC (super_admin) de /admin lo aplica `proxy.ts`. Sin Supabase.
+ * Mapea el shape camelCase del backend al `PlanFeature` (snake_case) que usa el cliente.
+ */
+import { backendGet } from '@/lib/api-client.server';
 import PlanFeaturesClient from './PlanFeaturesClient';
 
+interface BackendPlanFeature {
+  id: string;
+  plan: string;
+  featureKey: string;
+  featureLabel: string;
+  enabled: boolean;
+}
+
 export default async function PlanFeaturesPage() {
-  const supabase = await createClient();
+  const result = await backendGet<BackendPlanFeature[]>('/api/admin/plan-features');
+  const rows = result.ok && Array.isArray(result.value) ? result.value : [];
 
-  // Verify user is authenticated and is an admin
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const initialData = rows.map((f) => ({
+    id: f.id,
+    plan: f.plan,
+    feature_key: f.featureKey,
+    feature_label: f.featureLabel,
+    enabled: f.enabled,
+    created_at: '',
+    updated_at: '',
+  }));
 
-  if (!user) {
-    redirect('/login');
-  }
-
-  const admin = createAdminClient();
-
-  // Check if user is admin
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
-    redirect('/');
-  }
-
-  // Fetch all plan features
-  const { data: planFeatures, error } = await admin
-    .from('plan_features')
-    .select('*')
-    .order('plan')
-    .order('feature_key');
-
-  if (error) {
-    console.error('Error fetching plan features:', error);
-    throw new Error('Failed to load plan features');
-  }
-
-  return <PlanFeaturesClient initialData={planFeatures || []} />;
+  return <PlanFeaturesClient initialData={initialData} />;
 }

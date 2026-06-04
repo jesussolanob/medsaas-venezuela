@@ -2,8 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   ADMIN_REPOSITORY,
   type IAdminRepository,
+  type DoctorDetail,
 } from '../../../domain/repositories/admin.repository';
-import type { DoctorWithActivity } from '../../../domain/entities/doctor-with-activity.entity';
 import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 
 export interface GetDoctorDetailInput {
@@ -11,7 +11,8 @@ export interface GetDoctorDetailInput {
 }
 
 /**
- * Returns the full detail of a single doctor, including subscription and activity status.
+ * Returns the enriched detail of a single doctor including profile fields,
+ * subscription data, activity status, and current-month stats.
  *
  * Throws DoctorNotFoundError when no doctor profile with the given ID exists.
  */
@@ -22,8 +23,8 @@ export class GetDoctorDetailUseCase {
     private readonly adminRepo: IAdminRepository,
   ) {}
 
-  async execute(input: GetDoctorDetailInput): Promise<DoctorWithActivity> {
-    const doctor = await this.adminRepo.findDoctorById(input.doctorId);
+  async execute(input: GetDoctorDetailInput): Promise<DoctorDetail> {
+    const doctor = await this.adminRepo.findDoctorDetail(input.doctorId);
     if (!doctor) throw new DoctorNotFoundError(input.doctorId);
     return doctor;
   }

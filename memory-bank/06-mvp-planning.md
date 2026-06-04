@@ -59,8 +59,10 @@ role-capabilities (toggles optimistas + refresh de caché) con route handlers th
 de cita cableado (`/api/doctor/reschedule` → `PUT /api/appointments/:id/reschedule`) · thin-proxy de
 `toggle-doctor` (suspend/reactivate) y `setup-promotions` deprecado. Review cycle: code-reviewer +
 security-agent → 0 CRITICAL/HIGH. tsc 0, código nuevo sin errores eslint. Detalle en 05-progress-log.
-**PENDIENTE admin data-pages (requieren endpoint backend nuevo, no simple proxy):** doctor-details (PII),
-plan-features (por path + label), subscription-stats (growth chart) · booking slots (offices vs schedules).
+**ADMIN DATA-PAGES ✅ (2026-06-04):** doctor-details (backend ampliado: phone/cedula/city/state + stats),
+subscription-stats (nuevo `GET /admin/subscriptions/growth`), plan-features (frontend-only) — todo cableado,
+review 0 CRITICAL/HIGH. **PENDIENTE:** booking slots (offices vs schedules — pase dedicado) + handlers sin
+backend/dev-tooling (change-plan, toggle-subscription, settings-data, invoice-pdf/send-invoice, fix-role, seed).
 
 > HALLAZGO (2026-06-03): hay DOS sistemas de pago. `consultation_payments` (secundario, 1 caller:
 > consultations page) = módulo `payments`. `payments`+`payment_items` (PRINCIPAL, fuente de verdad

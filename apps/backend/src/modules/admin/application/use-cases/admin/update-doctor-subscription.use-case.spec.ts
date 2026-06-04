@@ -21,6 +21,8 @@ const makeRepo = (
     getDashboardData: jest.fn(),
     listDoctors: jest.fn(),
     findDoctorById: jest.fn().mockResolvedValue(doctor),
+    findDoctorDetail: jest.fn(),
+    getDoctorGrowth: jest.fn(),
     listSubscriptions: jest.fn(),
     updateDoctorSubscription: jest.fn().mockResolvedValue(undefined),
     getSubscriptionSnapshot: jest.fn(),

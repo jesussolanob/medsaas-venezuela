@@ -7,6 +7,9 @@ import type {
   AdminDashboardData,
   DoctorListFilters,
   DoctorListResult,
+  DoctorDetail,
+  DoctorGrowthData,
+  DoctorGrowthPoint,
   SubscriptionListFilters,
   SubscriptionListResult,
   SubscriptionRow,
@@ -39,6 +42,17 @@ interface CountRow {
 interface PatientCountRow {
   doctor_id: string;
   count: string;
+}
+
+interface MonthlyGrowthRow {
+  month: string;
+  count: string;
+}
+
+interface DoctorStatsRow {
+  patient_count: string;
+  consultation_count: string;
+  monthly_revenue: string | null;
 }
 
 /**
@@ -188,6 +202,121 @@ export class SequelizeAdminRepository implements IAdminRepository {
 
     const sub = await this.subscriptionModel.findOne({ where: { doctorId } });
     return this.profileRowToDomainWithSub(row, sub ?? undefined);
+  }
+
+  async findDoctorDetail(doctorId: string): Promise<DoctorDetail | null> {
+    const row = await this.profileModel.findOne({
+      where: { id: doctorId, role: 'doctor' },
+    });
+
+    if (!row) return null;
+
+    const sub = await this.subscriptionModel.findOne({ where: { doctorId } });
+
+    // Compute current-month boundaries for stats queries
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const [statsRows] = await this.sequelize.query<DoctorStatsRow>(
+      `SELECT
+         (SELECT COUNT(*) FROM patients WHERE doctor_id = :doctorId AND deleted_at IS NULL) AS patient_count,
+         (SELECT COUNT(*) FROM consultations
+           WHERE doctor_id = :doctorId
+             AND consultation_date >= :monthStart
+             AND consultation_date < :monthEnd) AS consultation_count,
+         (SELECT COALESCE(SUM(amount), 0) FROM consultations
+           WHERE doctor_id = :doctorId
+             AND payment_status = 'approved'
+             AND consultation_date >= :monthStart
+             AND consultation_date < :monthEnd) AS monthly_revenue`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { doctorId, monthStart, monthEnd },
+      },
+    );
+
+    const stats = statsRows ?? {
+      patient_count: '0',
+      consultation_count: '0',
+      monthly_revenue: '0',
+    };
+
+    const base = this.profileRowToDomainWithSub(row, sub ?? undefined);
+
+    return {
+      id: row.id,
+      fullName: row.fullName,
+      email: row.email,
+      specialty: row.specialty,
+      phone: row.phone ?? null,
+      cedula: row.cedula ?? null,
+      city: row.city ?? null,
+      state: row.state ?? null,
+      isActive: row.isActive ?? null,
+      createdAt: row.createdAt,
+      subscriptionStatus: base.subscriptionStatus,
+      subscriptionPlan: base.subscriptionPlan,
+      subscriptionExpiresAt: base.subscriptionExpiresAt,
+      activityStatus: base.activityStatus,
+      lastSignInAt: base.lastSignInAt,
+      patientCount: parseInt(stats.patient_count ?? '0', 10),
+      consultationCount: parseInt(stats.consultation_count ?? '0', 10),
+      monthlyRevenue: parseFloat(stats.monthly_revenue ?? '0') || 0,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Growth analytics
+  // ---------------------------------------------------------------------------
+
+  async getDoctorGrowth(): Promise<DoctorGrowthData> {
+    // Generate the last 6 calendar months (current + 5 previous), oldest first
+    const months: string[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      months.push(`${d.getFullYear()}-${mm}`);
+    }
+
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+    // Count new doctor registrations grouped by calendar month
+    const rows = await this.sequelize.query<MonthlyGrowthRow>(
+      `SELECT
+         TO_CHAR(created_at, 'YYYY-MM') AS month,
+         COUNT(*)::text AS count
+       FROM profiles
+       WHERE role = 'doctor'
+         AND created_at >= :since
+       GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+       ORDER BY month ASC`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { since: sixMonthsAgo },
+      },
+    );
+
+    const countByMonth = new Map<string, number>(rows.map((r) => [r.month, parseInt(r.count, 10)]));
+
+    // Build the chart data filling in 0 for months with no registrations
+    const chartData: DoctorGrowthPoint[] = months.map((m) => ({
+      month: m,
+      count: countByMonth.get(m) ?? 0,
+    }));
+
+    const currentMonth = months[months.length - 1] ?? '';
+    const previousMonth = months[months.length - 2] ?? '';
+
+    const newThisMonth = countByMonth.get(currentMonth) ?? 0;
+    const prevCount = countByMonth.get(previousMonth) ?? 0;
+
+    // Avoid division by zero: if previous month is 0 → momGrowth = 0
+    const momGrowth =
+      prevCount === 0 ? 0 : Math.round(((newThisMonth - prevCount) / prevCount) * 100);
+
+    return { chartData, newThisMonth, momGrowth };
   }
 
   // ---------------------------------------------------------------------------

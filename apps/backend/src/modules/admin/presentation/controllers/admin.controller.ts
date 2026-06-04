@@ -43,6 +43,7 @@ import {
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDoctorsListUseCase } from '../../application/use-cases/admin/get-doctors-list.use-case';
 import { GetDoctorDetailUseCase } from '../../application/use-cases/admin/get-doctor-detail.use-case';
+import { GetDoctorGrowthUseCase } from '../../application/use-cases/admin/get-doctor-growth.use-case';
 import { UpdateDoctorSubscriptionUseCase } from '../../application/use-cases/admin/update-doctor-subscription.use-case';
 import { GetSubscriptionsUseCase } from '../../application/use-cases/admin/get-subscriptions.use-case';
 import { GetPlansUseCase } from '../../application/use-cases/admin/get-plans.use-case';
@@ -107,6 +108,7 @@ export class AdminController {
     private readonly updatePlanOp: UpdatePlanUseCase,
     private readonly listAdminUsersOp: ListAdminUsersUseCase,
     private readonly setUserRoleOp: SetUserRoleUseCase,
+    private readonly getDoctorGrowthOp: GetDoctorGrowthUseCase,
   ) {}
 
   /** GET /api/admin/dashboard — KPIs: doctor counts by activity, appointments, patients, expiring subscriptions */
@@ -179,7 +181,7 @@ export class AdminController {
     };
   }
 
-  /** GET /api/admin/doctors/:id — detail for a single doctor */
+  /** GET /api/admin/doctors/:id — enriched detail for a single doctor */
   @Get('doctors/:id')
   async getDoctorById(@Param('id') id: string): Promise<SuccessResponse<unknown>> {
     const doctor = await this.getDoctorDetail.execute({ doctorId: id });
@@ -190,11 +192,20 @@ export class AdminController {
         fullName: doctor.fullName,
         email: doctor.email,
         specialty: doctor.specialty,
+        phone: doctor.phone,
+        cedula: doctor.cedula,
+        city: doctor.city,
+        state: doctor.state,
+        isActive: doctor.isActive,
+        createdAt: doctor.createdAt,
         subscriptionStatus: doctor.subscriptionStatus,
         subscriptionPlan: doctor.subscriptionPlan,
         subscriptionExpiresAt: doctor.subscriptionExpiresAt,
         activityStatus: doctor.activityStatus,
         lastSignInAt: doctor.lastSignInAt,
+        patientCount: doctor.patientCount,
+        consultationCount: doctor.consultationCount,
+        monthlyRevenue: doctor.monthlyRevenue,
       },
     };
   }
@@ -221,6 +232,20 @@ export class AdminController {
       notes: body.notes ?? null,
     });
     return { success: true, data: { updated: true } };
+  }
+
+  /**
+   * GET /api/admin/subscriptions/growth — doctor registration growth for the last 6 months.
+   *
+   * This static-path route is declared BEFORE any parametric subscription routes to
+   * guarantee NestJS resolves it first (no collision risk with a future :param).
+   *
+   * Shape: { success: true, data: { chartData: [{ month, count }], momGrowth, newThisMonth } }
+   */
+  @Get('subscriptions/growth')
+  async subscriptionsGrowth(): Promise<SuccessResponse<unknown>> {
+    const data = await this.getDoctorGrowthOp.execute();
+    return { success: true, data };
   }
 
   /**

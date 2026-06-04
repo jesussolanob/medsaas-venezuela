@@ -18,10 +18,34 @@ interface PlanFeaturesClientProps {
 }
 
 const PLANS = [
-  { key: 'trial', label: 'Trial', bgColor: 'bg-slate-100', textColor: 'text-slate-700', borderColor: 'border-slate-300' },
-  { key: 'basic', label: 'Basic', bgColor: 'bg-blue-100', textColor: 'text-blue-700', borderColor: 'border-blue-300' },
-  { key: 'professional', label: 'Professional', bgColor: 'bg-teal-100', textColor: 'text-teal-700', borderColor: 'border-teal-300' },
-  { key: 'enterprise', label: 'Enterprise', bgColor: 'bg-violet-100', textColor: 'text-violet-700', borderColor: 'border-violet-300' },
+  {
+    key: 'trial',
+    label: 'Trial',
+    bgColor: 'bg-slate-100',
+    textColor: 'text-slate-700',
+    borderColor: 'border-slate-300',
+  },
+  {
+    key: 'basic',
+    label: 'Basic',
+    bgColor: 'bg-blue-100',
+    textColor: 'text-blue-700',
+    borderColor: 'border-blue-300',
+  },
+  {
+    key: 'professional',
+    label: 'Professional',
+    bgColor: 'bg-teal-100',
+    textColor: 'text-teal-700',
+    borderColor: 'border-teal-300',
+  },
+  {
+    key: 'clinic',
+    label: 'Clinic',
+    bgColor: 'bg-violet-100',
+    textColor: 'text-violet-700',
+    borderColor: 'border-violet-300',
+  },
 ];
 
 const LOCKED_FEATURES = ['dashboard', 'settings'];
@@ -59,10 +83,10 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
     (featureId: string, _plan: string, feature_key: string, currentEnabled: boolean) => {
       if (LOCKED_FEATURES.includes(feature_key)) return;
       setFeatures((prev) =>
-        prev.map((f) => (f.id === featureId ? { ...f, enabled: !currentEnabled } : f))
+        prev.map((f) => (f.id === featureId ? { ...f, enabled: !currentEnabled } : f)),
       );
     },
-    []
+    [],
   );
 
   // Save all changes to API
@@ -85,6 +109,7 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
           body: JSON.stringify({
             plan: feature.plan,
             feature_key: feature.feature_key,
+            feature_label: feature.feature_label,
             enabled: feature.enabled,
           }),
         });
@@ -96,7 +121,10 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
 
     if (errorCount === 0) {
       setSavedFeatures([...features]);
-      showToast('success', `${changed.length} cambio${changed.length > 1 ? 's' : ''} guardado${changed.length > 1 ? 's' : ''} exitosamente`);
+      showToast(
+        'success',
+        `${changed.length} cambio${changed.length > 1 ? 's' : ''} guardado${changed.length > 1 ? 's' : ''} exitosamente`,
+      );
     } else {
       showToast('error', `Error al guardar ${errorCount} de ${changed.length} cambios`);
     }
@@ -110,7 +138,7 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
       acc[plan.key] = features.filter((f) => f.plan === plan.key);
       return acc;
     },
-    {} as Record<string, PlanFeature[]>
+    {} as Record<string, PlanFeature[]>,
   );
 
   return (
@@ -120,7 +148,9 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
         <div className="mb-8 flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Módulos por Plan</h1>
-            <p className="text-slate-600 mt-2">Administra los módulos habilitados para cada plan de suscripción</p>
+            <p className="text-slate-600 mt-2">
+              Administra los módulos habilitados para cada plan de suscripción
+            </p>
           </div>
           {hasChanges && (
             <button
@@ -185,7 +215,7 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
                                   feature.id,
                                   plan.key,
                                   feature.feature_key,
-                                  feature.enabled
+                                  feature.enabled,
                                 )
                               }
                               disabled={isLocked || isLoading}
@@ -193,8 +223,8 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
                                 feature.enabled
                                   ? 'bg-teal-500'
                                   : isLocked
-                                  ? 'bg-slate-200 cursor-not-allowed'
-                                  : 'bg-slate-300'
+                                    ? 'bg-slate-200 cursor-not-allowed'
+                                    : 'bg-slate-300'
                               } ${isLocked ? 'opacity-60' : ''}`}
                               aria-label={`Toggle ${feature.feature_label}`}
                             >

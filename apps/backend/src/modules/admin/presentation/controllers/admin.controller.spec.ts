@@ -13,6 +13,7 @@ import { Reflector } from '@nestjs/core';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDoctorsListUseCase } from '../../application/use-cases/admin/get-doctors-list.use-case';
 import { GetDoctorDetailUseCase } from '../../application/use-cases/admin/get-doctor-detail.use-case';
+import { GetDoctorGrowthUseCase } from '../../application/use-cases/admin/get-doctor-growth.use-case';
 import { UpdateDoctorSubscriptionUseCase } from '../../application/use-cases/admin/update-doctor-subscription.use-case';
 import { GetSubscriptionsUseCase } from '../../application/use-cases/admin/get-subscriptions.use-case';
 import { GetPlansUseCase } from '../../application/use-cases/admin/get-plans.use-case';
@@ -29,6 +30,7 @@ import { UpdatePlanUseCase } from '../../application/use-cases/admin/update-plan
 import { ListAdminUsersUseCase } from '../../application/use-cases/admin/list-admin-users.use-case';
 import { SetUserRoleUseCase } from '../../application/use-cases/admin/set-user-role.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
+import type { DoctorDetail, DoctorGrowthData } from '../../domain/repositories/admin.repository';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
 import { SettingNotAllowedError } from '../../domain/errors/setting-not-allowed.error';
 import { AdminUserNotFoundError } from '../../domain/errors/admin-user-not-found.error';
@@ -59,6 +61,40 @@ const sampleDoctor = new DoctorWithActivity(
   null,
 );
 
+const sampleDoctorDetail: DoctorDetail = {
+  id: 'doc-1',
+  fullName: 'Dr. House',
+  email: 'house@test.com',
+  specialty: 'Diagnostics',
+  phone: null,
+  cedula: null,
+  city: null,
+  state: null,
+  isActive: true,
+  createdAt: new Date('2025-01-01'),
+  subscriptionStatus: 'active',
+  subscriptionPlan: 'professional',
+  subscriptionExpiresAt: new Date('2026-12-31'),
+  activityStatus: 'inactive',
+  lastSignInAt: null,
+  patientCount: 5,
+  consultationCount: 2,
+  monthlyRevenue: 100,
+};
+
+const sampleGrowthData: DoctorGrowthData = {
+  chartData: [
+    { month: '2026-01', count: 1 },
+    { month: '2026-02', count: 2 },
+    { month: '2026-03', count: 0 },
+    { month: '2026-04', count: 3 },
+    { month: '2026-05', count: 2 },
+    { month: '2026-06', count: 4 },
+  ],
+  newThisMonth: 4,
+  momGrowth: 100,
+};
+
 const samplePlan = new PlanConfig('basic', 'Basic', 10, 0, true, null, 1);
 
 const sampleFeature = {
@@ -74,7 +110,7 @@ const buildModule = async (): Promise<TestingModule> => {
   const mockDoctorsList = {
     execute: jest.fn().mockResolvedValue({ items: [sampleDoctor], total: 1, page: 1, limit: 20 }),
   };
-  const mockDoctorDetail = { execute: jest.fn().mockResolvedValue(sampleDoctor) };
+  const mockDoctorDetail = { execute: jest.fn().mockResolvedValue(sampleDoctorDetail) };
   const mockUpdateSub = { execute: jest.fn().mockResolvedValue(undefined) };
   const mockGetSubs = {
     execute: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
@@ -114,6 +150,7 @@ const buildModule = async (): Promise<TestingModule> => {
     ]),
   };
   const mockSetUserRole = { execute: jest.fn().mockResolvedValue(undefined) };
+  const mockDoctorGrowth = { execute: jest.fn().mockResolvedValue(sampleGrowthData) };
 
   return Test.createTestingModule({
     controllers: [AdminController],
@@ -137,6 +174,7 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: UpdatePlanUseCase, useValue: mockUpdatePlan },
       { provide: ListAdminUsersUseCase, useValue: mockListAdminUsers },
       { provide: SetUserRoleUseCase, useValue: mockSetUserRole },
+      { provide: GetDoctorGrowthUseCase, useValue: mockDoctorGrowth },
     ],
   })
     .overrideGuard(DevAuthGuard)
@@ -186,10 +224,36 @@ describe('AdminController', () => {
   });
 
   describe('GET /admin/doctors/:id', () => {
-    it('returns doctor detail', async () => {
+    it('returns doctor detail with enriched fields', async () => {
       const result = await controller.getDoctorById('doc-1');
       expect(result.success).toBe(true);
-      expect((result.data as { id: string }).id).toBe('doc-1');
+      const data = result.data as Record<string, unknown>;
+      expect(data.id).toBe('doc-1');
+      expect(data.patientCount).toBe(5);
+      expect(data.consultationCount).toBe(2);
+      expect(data.monthlyRevenue).toBe(100);
+    });
+
+    it('includes profile extension fields in detail response', async () => {
+      const result = await controller.getDoctorById('doc-1');
+      const data = result.data as Record<string, unknown>;
+      expect('phone' in data).toBe(true);
+      expect('cedula' in data).toBe(true);
+      expect('city' in data).toBe(true);
+      expect('state' in data).toBe(true);
+      expect('isActive' in data).toBe(true);
+      expect('createdAt' in data).toBe(true);
+    });
+  });
+
+  describe('GET /admin/subscriptions/growth', () => {
+    it('returns growth chart data with 6 months', async () => {
+      const result = await controller.subscriptionsGrowth();
+      expect(result.success).toBe(true);
+      const data = result.data as typeof sampleGrowthData;
+      expect(data.chartData).toHaveLength(6);
+      expect(data.newThisMonth).toBe(4);
+      expect(data.momGrowth).toBe(100);
     });
   });
 

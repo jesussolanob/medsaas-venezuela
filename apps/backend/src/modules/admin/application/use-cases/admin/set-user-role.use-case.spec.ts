@@ -27,6 +27,8 @@ const makeRepo = (
     getDashboardData: jest.fn(),
     listDoctors: jest.fn(),
     findDoctorById: jest.fn(),
+    findDoctorDetail: jest.fn(),
+    getDoctorGrowth: jest.fn(),
     listSubscriptions: jest.fn(),
     updateDoctorSubscription: jest.fn(),
     getSubscriptionSnapshot: jest.fn(),

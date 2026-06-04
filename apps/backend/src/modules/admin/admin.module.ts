@@ -30,6 +30,7 @@ import { UpsertSettingUseCase } from './application/use-cases/admin/upsert-setti
 import { UpdatePlanUseCase } from './application/use-cases/admin/update-plan.use-case';
 import { ListAdminUsersUseCase } from './application/use-cases/admin/list-admin-users.use-case';
 import { SetUserRoleUseCase } from './application/use-cases/admin/set-user-role.use-case';
+import { GetDoctorGrowthUseCase } from './application/use-cases/admin/get-doctor-growth.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -88,6 +89,7 @@ import { AdminController } from './presentation/controllers/admin.controller';
     UpdatePlanUseCase,
     ListAdminUsersUseCase,
     SetUserRoleUseCase,
+    GetDoctorGrowthUseCase,
   ],
 })
 export class AdminModule {}

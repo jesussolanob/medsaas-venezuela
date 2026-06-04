@@ -1,80 +1,78 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+/**
+ * /api/admin/doctor-details — detalle de un médico para el drawer admin.
+ *
+ * ETAPA 1 — thin-proxy al módulo NestJS `admin` (`GET /api/admin/doctors/:id`, super_admin).
+ * El backend devuelve un shape plano camelCase; aquí lo re-mapeamos al shape anidado
+ * `{ profile, subscription, patientCount, consultationCount, monthlyRevenue }` que espera
+ * `DoctorDetailDrawer`. Sin Supabase.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { backendGet } from '@/lib/api-client.server';
+
+interface BackendDoctorDetail {
+  id: string;
+  fullName: string;
+  email: string;
+  specialty: string | null;
+  phone: string | null;
+  cedula: string | null;
+  city: string | null;
+  state: string | null;
+  isActive: boolean | null;
+  createdAt: string | null;
+  subscriptionStatus: string | null;
+  subscriptionPlan: string | null;
+  subscriptionExpiresAt: string | null;
+  patientCount: number;
+  consultationCount: number;
+  monthlyRevenue: number;
+}
 
 export async function GET(req: NextRequest) {
-  const doctorId = req.nextUrl.searchParams.get('id')
-  if (!doctorId) return NextResponse.json({ error: 'Missing doctor id' }, { status: 400 })
-
-  // Verify the caller is authenticated and is a super_admin
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-
-  const admin = createAdminClient()
-  const { data: callerProfile } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (!callerProfile || !['super_admin', 'admin'].includes(callerProfile.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const doctorId = req.nextUrl.searchParams.get('id');
+  if (!doctorId) {
+    return NextResponse.json({ error: 'Missing doctor id' }, { status: 400 });
+  }
+  // Validate UUID before interpolating into the backend path (anti path-traversal).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(doctorId)) {
+    return NextResponse.json({ error: 'ID de médico inválido' }, { status: 400 });
   }
 
-  // Use admin client to bypass RLS
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('*')
-    .eq('id', doctorId)
-    .single()
+  const result = await backendGet<BackendDoctorDetail>(`/api/admin/doctors/${doctorId}`);
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
 
-  if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 })
-
-  // Get patient count from patients table
-  const { count: patientCount } = await admin
-    .from('patients')
-    .select('*', { count: 'exact', head: true })
-    .eq('doctor_id', doctorId)
-
-  // Get all citas this month from consultations table (single source of truth)
-  // Includes both doctor-created and booking-created consultations
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-
-  const { data: allConsultations } = await admin
-    .from('consultations')
-    .select('id, plan_price, consultation_date, created_at')
-    .eq('doctor_id', doctorId)
-    .or(`consultation_date.gte.${monthStart},created_at.gte.${monthStart}`)
-
-  // Also count appointments that might not have a consultation yet
-  const { data: appointments } = await admin
-    .from('appointments')
-    .select('id, plan_price, consultation_id')
-    .eq('doctor_id', doctorId)
-    .gte('created_at', monthStart)
-
-  // Appointments without a linked consultation (not yet converted)
-  const orphanAppointments = (appointments || []).filter(a => !a.consultation_id)
-
-  // Plan + status + expires_at ya vienen en profile (columnas en profiles)
-  const subscription = profile
-    ? {
-        plan: profile.plan || 'trial',
-        status: profile.subscription_status || 'active',
-        current_period_end: profile.subscription_expires_at || null,
-      }
-    : null
-
-  const consRevenue = (allConsultations || []).reduce((sum, c) => sum + (c.plan_price || 0), 0)
-  const orphanRevenue = orphanAppointments.reduce((sum, a) => sum + (a.plan_price || 0), 0)
-  const totalCitas = (allConsultations?.length || 0) + orphanAppointments.length
+  const d = result.value;
+  if (!d) {
+    return NextResponse.json({ error: 'Médico no encontrado' }, { status: 404 });
+  }
 
   return NextResponse.json({
-    profile,
-    patientCount: patientCount || 0,
-    consultationCount: totalCitas,
-    monthlyRevenue: consRevenue + orphanRevenue,
-    subscription,
-  })
+    profile: {
+      id: d.id,
+      full_name: d.fullName,
+      email: d.email,
+      specialty: d.specialty,
+      phone: d.phone,
+      cedula: d.cedula,
+      city: d.city,
+      state: d.state,
+      is_active: d.isActive,
+      created_at: d.createdAt,
+    },
+    subscription: {
+      plan: d.subscriptionPlan ?? 'trial',
+      status: d.subscriptionStatus ?? 'active',
+      current_period_end: d.subscriptionExpiresAt,
+      trial_ends_at: d.subscriptionPlan === 'trial' ? d.subscriptionExpiresAt : null,
+    },
+    patientCount: d.patientCount,
+    consultationCount: d.consultationCount,
+    monthlyRevenue: d.monthlyRevenue,
+  });
 }

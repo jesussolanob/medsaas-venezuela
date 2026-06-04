@@ -45,6 +45,18 @@ export class ProfileAdminModel extends Model {
   @Column({ type: DataType.DATE, allowNull: true, field: 'subscription_expires_at' })
   declare subscriptionExpiresAt: Date | null;
 
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare phone: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare cedula: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare city: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare state: string | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 

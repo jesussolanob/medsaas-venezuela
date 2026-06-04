@@ -144,6 +144,60 @@ export interface PatientStats {
   patientsByDoctor: Array<{ doctorId: string; count: number }>;
 }
 
+/**
+ * Enriched doctor detail — extends base identity with profile fields and
+ * activity stats scoped to the current month.
+ *
+ * NOTE: phone and cedula are PII. This type is admin-only; never use it
+ * outside super_admin-guarded contexts and never log its fields.
+ */
+export interface DoctorDetail {
+  id: string;
+  /** PII — full name. Admin-only. */
+  fullName: string;
+  /** PII — email. Admin-only. Do NOT log. */
+  email: string;
+  specialty: string | null;
+  /** PII — phone. Admin-only. Do NOT log. */
+  phone: string | null;
+  /** PII — cedula. Admin-only. Do NOT log. */
+  cedula: string | null;
+  city: string | null;
+  state: string | null;
+  isActive: boolean | null;
+  createdAt: Date;
+  subscriptionStatus: string | null;
+  subscriptionPlan: string | null;
+  subscriptionExpiresAt: Date | null;
+  activityStatus: 'active' | 'cold' | 'inactive';
+  lastSignInAt: Date | null;
+  /** Total patients assigned to this doctor (soft-deleted excluded). */
+  patientCount: number;
+  /** Consultations created in the current calendar month. */
+  consultationCount: number;
+  /** Sum of approved consultation amounts in the current calendar month (0 if none). */
+  monthlyRevenue: number;
+}
+
+/** One data point in the doctor-growth chart. */
+export interface DoctorGrowthPoint {
+  /** Calendar month in YYYY-MM format (e.g. "2026-06"). */
+  month: string;
+  count: number;
+}
+
+export interface DoctorGrowthData {
+  chartData: DoctorGrowthPoint[];
+  /** New doctor registrations in the current calendar month. */
+  newThisMonth: number;
+  /**
+   * Month-over-month growth percentage vs the previous month.
+   * Rounded integer. 0 when the previous month had 0 registrations
+   * (avoids Infinity / division-by-zero).
+   */
+  momGrowth: number;
+}
+
 // ---------------------------------------------------------------------------
 // Repository interface — implemented by infrastructure layer
 // ---------------------------------------------------------------------------
@@ -155,6 +209,10 @@ export interface IAdminRepository {
   // Doctors
   listDoctors(filters: DoctorListFilters): Promise<DoctorListResult>;
   findDoctorById(doctorId: string): Promise<DoctorWithActivity | null>;
+  findDoctorDetail(doctorId: string): Promise<DoctorDetail | null>;
+
+  // Growth analytics
+  getDoctorGrowth(): Promise<DoctorGrowthData>;
 
   // Subscriptions
   listSubscriptions(filters: SubscriptionListFilters): Promise<SubscriptionListResult>;

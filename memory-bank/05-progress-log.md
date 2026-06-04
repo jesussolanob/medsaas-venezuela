@@ -725,18 +725,44 @@ Email Resend. Tests Playwright E2E.
   chartData/momGrowth/newThisMonth). Quedan en Supabase, documentados. Bloqueados puros: `invoice-pdf`/
   `send-invoice` (PDF/email F5), `fix-role` (Auth0 F4), `seed`/`reset-database` (dev-tooling Supabase).
 
-### ⏸️ PUNTO DE RETOME (2026-06-04 — backend 100% + cableo frontend de capabilities/agenda hecho + review ✅)
+### 2026-06-04 — Admin data-pages: backend (doctor-detail + growth) + cableo frontend (review ✅)
 
-**Backend COMPLETO** (10 módulos base + Grupo A 6/6 + capabilities + endpoint with-patient). 1116 tests, build/
-lint 0. **Frontend de capabilities (sidebars + /admin/roles) + reschedule + thin-proxy admin (toggle-doctor,
-setup-promotions) HECHO y revisado (0 CRITICAL/HIGH).**
+> Equipo de agentes: módulos backend → **backend-agent** (`be-admin-detail`, regla); cableo frontend →
+> lead inline; review → code-reviewer + security-agent. El lead re-verificó TODO en disco antes de cablear.
 
-**PENDIENTE (requiere construir endpoints backend nuevos — NO es simple thin-proxy):**
+- **Backend (backend-agent, módulo `admin`, SIN migración):**
+  - Ampliado `GET /api/admin/doctors/:id`: `ProfileAdminModel` + phone/cedula/city/state (columnas que ya
+    existían en `profiles`, faltaba mapearlas); use-case+repo devuelven además isActive, createdAt y **stats**
+    (patientCount, consultationCount del mes, monthlyRevenue = SUM consultations.amount approved del mes).
+    Sin PII de pacientes (solo conteos/sumas).
+  - NUEVO `GET /api/admin/subscriptions/growth` (`GetDoctorGrowthUseCase`): chart de médicos por mes (6 meses,
+    0-fill), newThisMonth, momGrowth (guard prev=0 → 0). Redis TTL 300 + degradación. Ruta antes de `:param`.
+  - **Verificación lead (disco):** build 0, lint 0, **1126 tests**, dist bootea sin crash DI, **curl real**:
+    growth 200 (newThisMonth=8), detail 200 (phone/cedula/city/state + patientCount + stats), RBAC doctor→403.
+- **Frontend (lead inline, thin-proxy + reshape, sin Supabase):**
+  - `doctor-details` → re-mapea el shape plano del backend a `{profile, subscription, patientCount,
+consultationCount, monthlyRevenue}` (drawer). UUID guard + trial_ends_at solo si plan='trial'.
+  - `subscription-stats` → passthrough a growth.
+  - **plan-features = FRONTEND-ONLY** (los endpoints backend ya existían): `page.tsx` (server) lee vía
+    `backendGet` + mapea camelCase→snake; route handler GET/PUT (PUT a `/plan-features/:plan/:featureKey` con
+    `{feature_label,enabled}`); client añade feature_label + fix `enterprise`→`clinic` (key real de BD).
+- **Review cycle ✅:** code-reviewer + security-agent → **0 CRITICAL / 0 HIGH**. Fixes: UUID guard
+  doctor-details, trial_ends_at condicional, enterprise→clinic, logger.warn growth → mensaje (no objeto err,
+  anti-fuga de credenciales Redis). Diferido: ParseUUIDPipe en `@Param('id')` backend (Etapa 2).
 
-- Admin data-pages aún en Supabase: `doctor-details` (detail con PII/contacto), `plan-features`
-  (GET server-side + PUT por path con label), `subscription-stats` (growth chart). Construir esos endpoints
-  backend primero, luego cablear. Son pure-Postgres (no bloqueados por Auth0/email/IA).
-- booking slots: reconciliar `doctor_offices` (front) vs `doctor_schedules` (backend) — pase dedicado.
+### ⏸️ PUNTO DE RETOME (2026-06-04 — backend 100% + cableo frontend admin/capabilities/agenda + review ✅)
+
+**Backend COMPLETO** (10 base + Grupo A 6/6 + capabilities + with-patient + admin doctor-detail/growth).
+**Frontend cableado y revisado (0 CRITICAL/HIGH):** capabilities en sidebars + `/admin/roles` · reschedule ·
+thin-proxy admin (toggle-doctor, setup-promotions, doctor-details, subscription-stats, plan-features).
+
+**PENDIENTE:**
+
+- **booking slots** (`book/[doctorId]`): reconciliar `doctor_offices` (front, multi-consultorio) vs
+  `doctor_schedules` (backend `GET /booking/:id/slots`) — modelos distintos; pase dedicado de producto.
+- Admin handlers aún en Supabase SIN backend/dev-tooling: `change-plan`, `toggle-subscription`, `settings-data`
+  (huérfanos), `invoice-pdf`/`send-invoice` (PDF/email F5), `fix-role` (Auth0 F4), `seed`/`reset-database` (dev).
+- Otros residuales Supabase no bloqueados + features MVP 7.x sin Auth0/email/IA.
 
 **Bloqueantes (NO tocar):** Auth0 (Fase 4), proveedor de email (sin definir), IA/Gemini.
 

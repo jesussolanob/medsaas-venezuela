@@ -29,6 +29,8 @@ const makeRepo = (): jest.Mocked<IAdminRepository> =>
     getDashboardData: jest.fn(),
     listDoctors: jest.fn(),
     findDoctorById: jest.fn(),
+    findDoctorDetail: jest.fn(),
+    getDoctorGrowth: jest.fn(),
     listSubscriptions: jest.fn().mockResolvedValue(result),
     updateDoctorSubscription: jest.fn(),
     getSubscriptionSnapshot: jest.fn(),
