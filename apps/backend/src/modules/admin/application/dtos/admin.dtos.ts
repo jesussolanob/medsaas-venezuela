@@ -54,6 +54,34 @@ export type TogglePlanFeatureBody = z.infer<typeof TogglePlanFeatureBodySchema>;
 /** Valid values for the ?activity_status= query parameter. */
 export const VALID_ACTIVITY_STATUSES = ['active', 'cold', 'inactive'] as const;
 
+// ---------------------------------------------------------------------------
+// POST /admin/subscriptions/{extend,suspend,reactivate} — manual ops
+// ---------------------------------------------------------------------------
+
+export const ExtendSubscriptionBodySchema = z
+  .object({
+    doctor_id: z.string().uuid({ message: 'doctor_id must be a valid UUID' }),
+    months: z.number().int().min(1).max(120),
+    reason: z.string().max(500).nullable().optional(),
+  })
+  .strict();
+export type ExtendSubscriptionBody = z.infer<typeof ExtendSubscriptionBodySchema>;
+
+export const SuspendSubscriptionBodySchema = z
+  .object({
+    doctor_id: z.string().uuid({ message: 'doctor_id must be a valid UUID' }),
+    reason: z.string().max(500).nullable().optional(),
+  })
+  .strict();
+export type SuspendSubscriptionBody = z.infer<typeof SuspendSubscriptionBodySchema>;
+
+export const ReactivateSubscriptionBodySchema = z
+  .object({
+    doctor_id: z.string().uuid({ message: 'doctor_id must be a valid UUID' }),
+  })
+  .strict();
+export type ReactivateSubscriptionBody = z.infer<typeof ReactivateSubscriptionBodySchema>;
+
 /** Valid values for the ?subscription_status= query parameter. */
 export const VALID_SUBSCRIPTION_STATUSES = [
   'trial',

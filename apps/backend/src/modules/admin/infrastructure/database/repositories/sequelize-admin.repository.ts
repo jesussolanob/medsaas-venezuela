@@ -11,6 +11,8 @@ import type {
   SubscriptionListResult,
   SubscriptionRow,
   UpdateSubscriptionParams,
+  SubscriptionSnapshot,
+  ManualSubscriptionChangeParams,
   PlanFeatureRow,
   AppSetting,
   PatientStats,
@@ -258,6 +260,79 @@ export class SequelizeAdminRepository implements IAdminRepository {
       },
       { where: { id: params.doctorId } },
     );
+  }
+
+  /**
+   * Reads the current subscription snapshot from the profiles row (always present
+   * for a doctor; the subscriptions row may not exist). Returns null if no profile.
+   */
+  async getSubscriptionSnapshot(doctorId: string): Promise<SubscriptionSnapshot | null> {
+    const profile = await this.profileModel.findByPk(doctorId);
+    if (!profile) return null;
+    return {
+      doctorId,
+      plan: (profile.plan ?? null) as SubscriptionPlan | null,
+      status: (profile.subscriptionStatus ?? null) as SubscriptionStatus | null,
+      expiresAt: profile.subscriptionExpiresAt ?? null,
+    };
+  }
+
+  /**
+   * Applies a manual subscription change (extend/suspend/reactivate) atomically:
+   *   1. Update the subscriptions row (if present — 0 rows is harmless).
+   *   2. Sync the profiles snapshot.
+   *   3. Append an immutable subscription_changes_log entry.
+   * Mirrors the billing approveAndExtend transaction (same tables / log shape).
+   */
+  async applyManualSubscriptionChange(params: ManualSubscriptionChangeParams): Promise<void> {
+    const t = await this.sequelize.transaction();
+    try {
+      const now = new Date();
+
+      const subUpdate: Record<string, unknown> = { status: params.newStatus, updatedAt: now };
+      if (params.newExpiresAt) subUpdate.currentPeriodEnd = params.newExpiresAt;
+      if (params.newPlan) subUpdate.plan = params.newPlan;
+      await this.subscriptionModel.update(subUpdate, {
+        where: { doctorId: params.doctorId },
+        transaction: t,
+      });
+
+      const profileUpdate: Record<string, unknown> = {
+        subscriptionStatus: params.newStatus,
+        updatedAt: now,
+      };
+      if (params.newExpiresAt) profileUpdate.subscriptionExpiresAt = params.newExpiresAt;
+      if (params.newPlan) profileUpdate.plan = params.newPlan;
+      await this.profileModel.update(profileUpdate, {
+        where: { id: params.doctorId },
+        transaction: t,
+      });
+
+      await this.sequelize.query(
+        `INSERT INTO subscription_changes_log
+           (id, doctor_id, action, actor_id, actor_role, reason, subscription_expires_at, metadata, created_at)
+         VALUES
+           (uuid_generate_v4(), :doctorId, :action, :actorId, :actorRole, :reason, :expiresAt, CAST(:metadata AS jsonb), now())`,
+        {
+          replacements: {
+            doctorId: params.doctorId,
+            action: params.action,
+            actorId: params.actorId,
+            actorRole: params.actorRole,
+            reason: params.reason ?? null,
+            expiresAt: params.newExpiresAt ?? null,
+            metadata: JSON.stringify(params.metadata ?? {}),
+          },
+          type: QueryTypes.INSERT,
+          transaction: t,
+        },
+      );
+
+      await t.commit();
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------------

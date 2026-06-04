@@ -80,6 +80,31 @@ export interface UpdateSubscriptionParams {
   notes?: string | null;
 }
 
+/** Current subscription snapshot read from the profiles row (always present). */
+export interface SubscriptionSnapshot {
+  doctorId: string;
+  plan: SubscriptionPlan | null;
+  status: SubscriptionStatus | null;
+  expiresAt: Date | null;
+}
+
+export type SubscriptionChangeAction = 'extended' | 'suspended' | 'reactivated' | 'manual_grant';
+
+/** Manual subscription operation (extend/suspend/reactivate) applied atomically. */
+export interface ManualSubscriptionChangeParams {
+  doctorId: string;
+  action: SubscriptionChangeAction;
+  actorId: string;
+  actorRole: string;
+  reason?: string | null;
+  newStatus: SubscriptionStatus;
+  /** When provided, updates current_period_end / subscription_expires_at. */
+  newExpiresAt?: Date | null;
+  /** When provided, updates the plan (e.g. trial → basic on first paid extend). */
+  newPlan?: SubscriptionPlan | null;
+  metadata?: Record<string, unknown>;
+}
+
 export interface PlanFeatureRow {
   id: string;
   plan: string;
@@ -114,6 +139,10 @@ export interface IAdminRepository {
   // Subscriptions
   listSubscriptions(filters: SubscriptionListFilters): Promise<SubscriptionListResult>;
   updateDoctorSubscription(params: UpdateSubscriptionParams): Promise<void>;
+
+  // Subscription manual ops (extend / suspend / reactivate)
+  getSubscriptionSnapshot(doctorId: string): Promise<SubscriptionSnapshot | null>;
+  applyManualSubscriptionChange(params: ManualSubscriptionChangeParams): Promise<void>;
 
   // Plans
   listPlans(): Promise<PlanConfig[]>;

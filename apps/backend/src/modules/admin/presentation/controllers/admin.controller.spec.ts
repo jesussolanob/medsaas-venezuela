@@ -21,6 +21,9 @@ import { GetPlanFeaturesUseCase } from '../../application/use-cases/admin/get-pl
 import { TogglePlanFeatureUseCase } from '../../application/use-cases/admin/toggle-plan-feature.use-case';
 import { GetPatientsStatsUseCase } from '../../application/use-cases/admin/get-patients-stats.use-case';
 import { GetSettingsUseCase } from '../../application/use-cases/admin/get-settings.use-case';
+import { ExtendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/extend-doctor-subscription.use-case';
+import { SuspendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/suspend-doctor-subscription.use-case';
+import { ReactivateDoctorSubscriptionUseCase } from '../../application/use-cases/admin/reactivate-doctor-subscription.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
 
@@ -77,6 +80,9 @@ const buildModule = async (): Promise<TestingModule> => {
       .fn()
       .mockResolvedValue([{ key: 'app_name', value: 'Delta', updatedAt: new Date() }]),
   };
+  const mockExtendSub = { execute: jest.fn().mockResolvedValue({ newExpiresAt: new Date() }) };
+  const mockSuspendSub = { execute: jest.fn().mockResolvedValue(undefined) };
+  const mockReactivateSub = { execute: jest.fn().mockResolvedValue({ newExpiresAt: null }) };
 
   return Test.createTestingModule({
     controllers: [AdminController],
@@ -93,6 +99,9 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: TogglePlanFeatureUseCase, useValue: mockToggleFeature },
       { provide: GetPatientsStatsUseCase, useValue: mockPatientsStats },
       { provide: GetSettingsUseCase, useValue: mockSettings },
+      { provide: ExtendDoctorSubscriptionUseCase, useValue: mockExtendSub },
+      { provide: SuspendDoctorSubscriptionUseCase, useValue: mockSuspendSub },
+      { provide: ReactivateDoctorSubscriptionUseCase, useValue: mockReactivateSub },
     ],
   })
     .overrideGuard(DevAuthGuard)

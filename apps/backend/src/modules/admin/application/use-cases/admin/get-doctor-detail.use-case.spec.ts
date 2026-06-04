@@ -21,6 +21,8 @@ const makeRepo = (returnValue: DoctorWithActivity | null = doctor): jest.Mocked<
     findDoctorById: jest.fn().mockResolvedValue(returnValue),
     listSubscriptions: jest.fn(),
     updateDoctorSubscription: jest.fn(),
+    getSubscriptionSnapshot: jest.fn(),
+    applyManualSubscriptionChange: jest.fn(),
     listPlans: jest.fn(),
     findPlanByKey: jest.fn(),
     togglePlan: jest.fn(),

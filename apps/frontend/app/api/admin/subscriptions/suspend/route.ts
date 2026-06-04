@@ -1,23 +1,28 @@
 /**
  * POST /api/admin/subscriptions/suspend
  * body: { doctor_id: string; reason?: string }
+ *
+ * ETAPA 1 — thin-proxy al módulo NestJS `admin` (subscriptions-ops).
+ * RBAC (super_admin) lo enforce el backend.
  */
-import { NextRequest, NextResponse } from 'next/server'
-import { requireSuperAdmin } from '@/lib/auth-guards'
-import { suspendSubscription } from '@/lib/subscription'
+import { NextRequest, NextResponse } from 'next/server';
+import { backendPost } from '@/lib/api-client.server';
 
 export async function POST(req: NextRequest) {
-  const guard = await requireSuperAdmin()
-  if (!guard.ok) return guard.response
-  const { doctor_id, reason } = await req.json()
-  if (!doctor_id) return NextResponse.json({ error: 'doctor_id requerido' }, { status: 400 })
+  const { doctor_id, reason } = await req.json();
+  if (!doctor_id) return NextResponse.json({ error: 'doctor_id requerido' }, { status: 400 });
 
-  const r = await suspendSubscription({
+  const result = await backendPost<{ suspended: true }>('/api/admin/subscriptions/suspend', {
     doctor_id,
-    actor_id: guard.user.id,
-    actor_role: 'super_admin',
-    reason,
-  })
-  if (!r.success) return NextResponse.json({ error: r.error }, { status: 500 })
-  return NextResponse.json(r)
+    reason: reason ?? null,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

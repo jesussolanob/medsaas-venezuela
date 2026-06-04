@@ -23,6 +23,8 @@ const makeRepo = (
     findDoctorById: jest.fn().mockResolvedValue(doctor),
     listSubscriptions: jest.fn(),
     updateDoctorSubscription: jest.fn().mockResolvedValue(undefined),
+    getSubscriptionSnapshot: jest.fn(),
+    applyManualSubscriptionChange: jest.fn(),
     listPlans: jest.fn(),
     findPlanByKey: jest.fn(),
     togglePlan: jest.fn(),

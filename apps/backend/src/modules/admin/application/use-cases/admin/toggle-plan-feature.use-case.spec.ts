@@ -21,6 +21,8 @@ const makeRepo = (returnValue: PlanFeatureRow = featureRow): jest.Mocked<IAdminR
     findDoctorById: jest.fn(),
     listSubscriptions: jest.fn(),
     updateDoctorSubscription: jest.fn(),
+    getSubscriptionSnapshot: jest.fn(),
+    applyManualSubscriptionChange: jest.fn(),
     listPlans: jest.fn(),
     findPlanByKey: jest.fn(),
     togglePlan: jest.fn(),

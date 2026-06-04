@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  Post,
   Put,
   Query,
   UseGuards,
@@ -13,15 +14,25 @@ import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '../../../../presentation/decorators/current-user.decorator';
+import {
   UpdateSubscriptionBodySchema,
   TogglePlanBodySchema,
   TogglePlanFeatureBodySchema,
+  ExtendSubscriptionBodySchema,
+  SuspendSubscriptionBodySchema,
+  ReactivateSubscriptionBodySchema,
   VALID_ACTIVITY_STATUSES,
   VALID_SUBSCRIPTION_STATUSES,
   VALID_SUBSCRIPTION_PLANS,
   type UpdateSubscriptionBody,
   type TogglePlanBody,
   type TogglePlanFeatureBody,
+  type ExtendSubscriptionBody,
+  type SuspendSubscriptionBody,
+  type ReactivateSubscriptionBody,
 } from '../../application/dtos/admin.dtos';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDoctorsListUseCase } from '../../application/use-cases/admin/get-doctors-list.use-case';
@@ -34,6 +45,9 @@ import { GetPlanFeaturesUseCase } from '../../application/use-cases/admin/get-pl
 import { TogglePlanFeatureUseCase } from '../../application/use-cases/admin/toggle-plan-feature.use-case';
 import { GetPatientsStatsUseCase } from '../../application/use-cases/admin/get-patients-stats.use-case';
 import { GetSettingsUseCase } from '../../application/use-cases/admin/get-settings.use-case';
+import { ExtendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/extend-doctor-subscription.use-case';
+import { SuspendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/suspend-doctor-subscription.use-case';
+import { ReactivateDoctorSubscriptionUseCase } from '../../application/use-cases/admin/reactivate-doctor-subscription.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -76,6 +90,9 @@ export class AdminController {
     private readonly togglePlanFeature: TogglePlanFeatureUseCase,
     private readonly getPatientsStats: GetPatientsStatsUseCase,
     private readonly getSettings: GetSettingsUseCase,
+    private readonly extendSubscriptionOp: ExtendDoctorSubscriptionUseCase,
+    private readonly suspendSubscriptionOp: SuspendDoctorSubscriptionUseCase,
+    private readonly reactivateSubscriptionOp: ReactivateDoctorSubscriptionUseCase,
   ) {}
 
   /** GET /api/admin/dashboard — KPIs: doctor counts by activity, appointments, patients, expiring subscriptions */
@@ -190,6 +207,57 @@ export class AdminController {
       notes: body.notes ?? null,
     });
     return { success: true, data: { updated: true } };
+  }
+
+  /**
+   * POST /api/admin/subscriptions/extend — extend a doctor's subscription by N months.
+   * Body: { doctor_id, months, reason? }
+   */
+  @Post('subscriptions/extend')
+  async extendSubscription(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(ExtendSubscriptionBodySchema)) body: ExtendSubscriptionBody,
+  ): Promise<SuccessResponse<{ newExpiresAt: Date }>> {
+    const result = await this.extendSubscriptionOp.execute({
+      doctorId: body.doctor_id,
+      months: body.months,
+      actorId: user.sub,
+      reason: body.reason ?? null,
+    });
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/admin/subscriptions/suspend — suspend a doctor's subscription.
+   * Body: { doctor_id, reason? }
+   */
+  @Post('subscriptions/suspend')
+  async suspendSubscription(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(SuspendSubscriptionBodySchema)) body: SuspendSubscriptionBody,
+  ): Promise<SuccessResponse<{ suspended: true }>> {
+    await this.suspendSubscriptionOp.execute({
+      doctorId: body.doctor_id,
+      actorId: user.sub,
+      reason: body.reason ?? null,
+    });
+    return { success: true, data: { suspended: true } };
+  }
+
+  /**
+   * POST /api/admin/subscriptions/reactivate — reactivate a suspended subscription.
+   * Body: { doctor_id }
+   */
+  @Post('subscriptions/reactivate')
+  async reactivateSubscription(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(ReactivateSubscriptionBodySchema)) body: ReactivateSubscriptionBody,
+  ): Promise<SuccessResponse<{ newExpiresAt: Date | null }>> {
+    const result = await this.reactivateSubscriptionOp.execute({
+      doctorId: body.doctor_id,
+      actorId: user.sub,
+    });
+    return { success: true, data: result };
   }
 
   /**

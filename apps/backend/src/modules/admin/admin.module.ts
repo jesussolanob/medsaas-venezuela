@@ -23,6 +23,9 @@ import { GetPlanFeaturesUseCase } from './application/use-cases/admin/get-plan-f
 import { TogglePlanFeatureUseCase } from './application/use-cases/admin/toggle-plan-feature.use-case';
 import { GetPatientsStatsUseCase } from './application/use-cases/admin/get-patients-stats.use-case';
 import { GetSettingsUseCase } from './application/use-cases/admin/get-settings.use-case';
+import { ExtendDoctorSubscriptionUseCase } from './application/use-cases/admin/extend-doctor-subscription.use-case';
+import { SuspendDoctorSubscriptionUseCase } from './application/use-cases/admin/suspend-doctor-subscription.use-case';
+import { ReactivateDoctorSubscriptionUseCase } from './application/use-cases/admin/reactivate-doctor-subscription.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -74,6 +77,9 @@ import { AdminController } from './presentation/controllers/admin.controller';
     TogglePlanFeatureUseCase,
     GetPatientsStatsUseCase,
     GetSettingsUseCase,
+    ExtendDoctorSubscriptionUseCase,
+    SuspendDoctorSubscriptionUseCase,
+    ReactivateDoctorSubscriptionUseCase,
   ],
 })
 export class AdminModule {}

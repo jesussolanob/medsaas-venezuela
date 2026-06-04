@@ -23,9 +23,9 @@ import { ConsultationPayment } from '../../../domain/entities/consultation-payme
 const TEST_DB_URL =
   process.env.DATABASE_URL ?? 'postgres://delta:delta_dev_password@localhost:5432/deltamedical';
 
-const DOCTOR_ID = 'f1000000-0000-0000-0000-000000000001';
-const PATIENT_ID = 'f1000000-0000-0000-0000-000000000002';
-const CONSULTATION_ID = 'f1000000-0000-0000-0000-000000000003';
+const DOCTOR_ID = 'f2000000-0000-0000-0000-000000000001';
+const PATIENT_ID = 'f2000000-0000-0000-0000-000000000002';
+const CONSULTATION_ID = 'f2000000-0000-0000-0000-000000000003';
 
 describe('SequelizeConsultationPaymentRepository (integration)', () => {
   let sequelize: Sequelize;
