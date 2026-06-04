@@ -21,6 +21,7 @@ import { PatientPortalModule } from './modules/patient-portal/patient-portal.mod
 import { AdminModule } from './modules/admin/admin.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { LeadsModule } from './modules/leads/leads.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { BillingModule } from './modules/billing/billing.module';
     AdminModule,
     PaymentsModule,
     BillingModule,
+    LeadsModule,
   ],
   controllers: [HealthController],
   providers: [
