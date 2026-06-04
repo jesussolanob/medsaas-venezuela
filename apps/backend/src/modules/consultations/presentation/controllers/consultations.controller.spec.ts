@@ -6,6 +6,7 @@ import { ApprovePaymentUseCase } from '../../application/use-cases/consultations
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
+import { ListConsultationsWithPatientUseCase } from '../../application/use-cases/consultations/list-consultations-with-patient.use-case';
 import { Consultation } from '../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../domain/errors/consultation-not-found.error';
 import { PaymentAlreadyApprovedError } from '../../domain/errors/payment-already-approved.error';
@@ -46,6 +47,7 @@ describe('ConsultationsController', () => {
   const mockGetById = { execute: jest.fn() };
   const mockGetHistory = { execute: jest.fn() };
   const mockList = { execute: jest.fn() };
+  const mockListWithPatient = { execute: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -59,10 +61,41 @@ describe('ConsultationsController', () => {
         { provide: GetConsultationByIdUseCase, useValue: mockGetById },
         { provide: GetPatientConsultationHistoryUseCase, useValue: mockGetHistory },
         { provide: ListConsultationsUseCase, useValue: mockList },
+        { provide: ListConsultationsWithPatientUseCase, useValue: mockListWithPatient },
       ],
     }).compile();
 
     controller = module.get<ConsultationsController>(ConsultationsController);
+  });
+
+  describe('listWithPatient', () => {
+    it('returns the doctor consultations enriched with patient data', async () => {
+      const items = [
+        {
+          id: CONSULTATION_ID,
+          consultation_code: 'DLT-202606-0001',
+          consultation_date: now.toISOString(),
+          patient_id: PATIENT_ID,
+          patient_name: 'Juan Pérez',
+          patient_phone: '04141234567',
+          patient_email: 'juan@example.com',
+        },
+      ];
+      mockListWithPatient.execute.mockResolvedValue(items);
+
+      const result = await controller.listWithPatient(mockUser);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(items);
+    });
+
+    it('passes doctorId from the authenticated user and a bounded limit', async () => {
+      mockListWithPatient.execute.mockResolvedValue([]);
+
+      await controller.listWithPatient(mockUser, '999');
+
+      expect(mockListWithPatient.execute).toHaveBeenCalledWith({ doctorId: DOCTOR_ID, limit: 200 });
+    });
   });
 
   describe('list', () => {
