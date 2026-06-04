@@ -49,14 +49,15 @@
 
 ### Consultations (módulo ✅ — campos clínicos cifrados)
 
-| Endpoint                                | Método | Notas                                                                            |
-| --------------------------------------- | ------ | -------------------------------------------------------------------------------- |
-| `/api/consultations`                    | GET    | Lista paginada (filtros date_from/to ISO, payment_status pending/approved).      |
-| `/api/consultations/:id`                | GET    | Detalle clínico descifrado (ownership).                                          |
-| `/api/consultations/patient/:patientId` | GET    | Historial del paciente (ownership).                                              |
-| `/api/consultations`                    | POST   | Crea con `consultation_code` único DLT-YYYYMM-XXXX (retry ante colisión UNIQUE). |
-| `/api/consultations/:id`                | PUT    | Actualiza campos clínicos.                                                       |
-| `/api/consultations/:id/payment`        | PUT    | Aprueba pago (pending→approved). Ya aprobado → PaymentAlreadyApprovedError.      |
+| Endpoint                                | Método | Notas                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/consultations`                    | GET    | Lista paginada (filtros date_from/to ISO, payment_status pending/approved).                                                                                                                                                                           |
+| `/api/consultations/:id`                | GET    | Detalle clínico descifrado (ownership).                                                                                                                                                                                                               |
+| `/api/consultations/patient/:patientId` | GET    | Historial del paciente (ownership).                                                                                                                                                                                                                   |
+| `/api/consultations/with-patient`       | GET    | **Billing:** consultas del doctor con patient_name/phone/email DESCIFRADOS (owner-scoped, mapper dedicado NO enmascarado). Declarado ANTES de `:id`. `?limit` máx 200. Anti-IDOR doble scope. ⚠️ expone PII al doctor dueño → revisar en QA security. |
+| `/api/consultations`                    | POST   | Crea con `consultation_code` único DLT-YYYYMM-XXXX (retry ante colisión UNIQUE).                                                                                                                                                                      |
+| `/api/consultations/:id`                | PUT    | Actualiza campos clínicos.                                                                                                                                                                                                                            |
+| `/api/consultations/:id/payment`        | PUT    | Aprueba pago (pending→approved). Ya aprobado → PaymentAlreadyApprovedError.                                                                                                                                                                           |
 
 ### EHR + Prescriptions (módulo ✅ — campos clínicos cifrados; ParseUUIDPipe en params; create-prescription valida ownership del paciente)
 

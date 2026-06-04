@@ -56,6 +56,14 @@ GlobalExceptionFilter).
   `next dev/build` nativo. Decidir al ejecutar Paso de migración del frontend.
 - **ADR-004:** Backend NestJS + Sequelize + DDD. IA actual es **Gemini** (no
   OpenAI/Anthropic) — el `INotification`/AI port debe abstraer el proveedor.
+- **ADR-005 (2026-06-04):** Lecturas con PII descifrada **owner-scoped** para features del propio doctor.
+  `GET /api/consultations/with-patient` (billing) devuelve patient_name/phone/email descifrados —
+  excepción justificada al masking por defecto: el doctor es dueño/autor y necesita el dato para emitir
+  recibos. Regla: doble scope anti-IDOR (consultas Y pacientes filtrados por user.sub), **mapper dedicado**
+  (NUNCA reusar el list mapper enmascarado), endpoint NO expuesto a admin/terceros. Sin audit por fila (no
+  es /reveal de datos enmascarados, es acceso del dueño vía feature). El use case cruza módulos inyectando
+  `PATIENT_REPOSITORY` (PatientsModule importado) — patrón ya usado por booking. **Pendiente:** pasar
+  security-agent en QA sobre este endpoint.
 
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 

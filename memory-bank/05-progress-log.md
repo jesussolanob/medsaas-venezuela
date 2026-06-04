@@ -583,3 +583,39 @@ Email Resend. Tests Playwright E2E.
   `/api/admin/invoices` + `/api/admin/mark-invoice-paid` → backend invoices; ver qué página los consume),
   consultations register-payment (consultation_payments, módulo `payments` commit a5d8dee).
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
+### 2026-06-04 — Frontend-wiring COMPLETO: invoices + register-payment + billing (+ endpoint backend)
+
+> Instrucción del usuario: "continúa hasta completar todo, toma el control según prioridades".
+> Cerrado TODO el bloque frontend-wiring. Commits: ee215ff, d225dff, a96fd12, db221fe, + spec.
+
+- **admin/invoices ✅ (ee215ff):** `/api/admin/invoices` (POST) y `/api/admin/mark-invoice-paid` →
+  thin-proxy a backend `billing` invoices (POST create FAC-num, PUT :id/paid). Sin consumidor de UI aún
+  (huérfanos), pero ya sin Supabase y alineados. GAP: sin join profiles (doctor_name='Unknown').
+- **consultations register-payment ✅ (ee215ff):** `/api/doctor/payments` (GET/POST/PATCH) → módulo
+  backend `payments` (consultation_payments). POST register (backend verifica ownership + sync
+  consultation.payment_status); PATCH action approve/reject → PUT :id/approve|:id/reject. Consumidor:
+  botón "registrar pago" en `app/doctor/consultations` (el resto de esa página sigue Supabase = Fase 5:
+  storage/IA/templates/quick_items/blocks).
+- **Backend NUEVO: `GET /api/consultations/with-patient` ✅ (d225dff):** desbloquea billing.
+  `ListConsultationsWithPatientUseCase` une consultas del doctor con patient_name/phone/email
+  DESCIFRADOS (inyecta CONSULTATION_REPOSITORY + PATIENT_REPOSITORY; PatientsModule importado, patrón de
+  booking). Anti-IDOR doble scope. Mapper dedicado (NO el list enmascarado). Declarado antes de `@Get(':id')`.
+  Verificado: build/lint verdes, dist bootea (ruta mapeada, sin crash DI), **curl real**: doctor→200 con
+  'Juan Pérez Dev' descifrado mientras `/api/patients` lo enmascara ('Juan D.'); sin headers→403; otro
+  doctor→lista propia. 920/920 tests (2 nuevos del endpoint + fix DI del controller.spec).
+- **doctor/billing ✅ (db221fe):** página 100% sin Supabase. Nuevo `app/doctor/billing/actions.ts`
+  (getBillingConsultations/Profile/Services/Stats). `/api/doctor/billing` route handler → backend
+  billing-documents: POST transforma items UI `{id,description,qty,unit_price}` → backend
+  `{description,quantity,unitPrice,total}`; GET para stats. page.tsx: swap de 4 lecturas Supabase →
+  server actions SIN tocar JSX. El selector de consultas ahora muestra el nombre real del paciente.
+- **Fix incidental (a96fd12):** lint pre-existente del módulo billing (QueryTypes no usado +
+  eslint-disable sobrante) que rompía `nx lint backend`. Ahora `nx lint backend` EXIT 0.
+- **Verificación global:** frontend tsc 0 + eslint 0 errores; backend build 0, lint 0, 920/920 tests,
+  dist bootea, curl real del endpoint nuevo.
+- **🎉 BLOQUE FRONTEND-WIRING COMPLETO:** suggestions(doctor+admin) · leads/crm · admin-aprobaciones ·
+  admin-invoices · consultation-payments · doctor/billing — todo cableado al backend, sin Supabase.
+- **SEGURIDAD pendiente de QA:** el endpoint `consultations/with-patient` expone PII descifrada (solo al
+  doctor dueño, doble scope). Recomendado pasar security-agent en la ronda de QA. Sin audit por fila
+  (acceso del dueño a sus propios datos vía feature, no /reveal de datos enmascarados).
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
