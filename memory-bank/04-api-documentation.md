@@ -168,6 +168,40 @@
 > CreateBooking crea la fila `payments` (status pending) y enlaza `appointments.payment_id`.
 > Diferido Fase 5: subida de comprobante (storage→GCS), realtime, PDF de recibo.
 
+### Billing — suscripciones y facturación (módulo ✅ 2026-06-04)
+
+#### Subscription Payments (admin)
+
+| Endpoint                                       | Método | Roles       | Notas                                                                                                                                                                                     |
+| ---------------------------------------------- | ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/admin/subscription-payments`             | GET    | super_admin | Lista pagos de suscripción. Query: `?status=pending\|approved\|rejected`, `?page`, `?limit`.                                                                                              |
+| `/api/admin/subscription-payments/:id/approve` | PUT    | super_admin | Aprueba el pago. TRANSACCIONAL: marca payment approved + extiende subscriptions.current_period_end + sync profiles snapshot (status=active) + inserta subscription_changes_log. Sin body. |
+| `/api/admin/subscription-payments/:id/reject`  | PUT    | super_admin | Rechaza el pago. Body: `{ reason?: string }`. Inserta subscription_changes_log.                                                                                                           |
+
+> La extensión de suscripción parte de max(now, currentExpiresAt) + payment.duration_months.
+> Lanza SubscriptionPaymentNotFoundError(404) y SubscriptionPaymentAlreadyResolvedError(422) si procede.
+> Reemplaza: `app/api/admin/payments/route.ts` + `approve/route.ts` + `reject/route.ts`.
+
+#### Invoices — facturas de plataforma (admin)
+
+| Endpoint                       | Método | Roles       | Notas                                                                                                                          |
+| ------------------------------ | ------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/admin/invoices`          | POST   | super_admin | Crea factura. Body: `{ doctor_id (uuid), amount (number), currency? (3 chars), description? }`. Número auto FAC-YYYYMMDD-XXXX. |
+| `/api/admin/invoices`          | GET    | super_admin | Lista todas las facturas paginadas. `?page`, `?limit`.                                                                         |
+| `/api/admin/invoices/:id/paid` | PUT    | super_admin | Marca factura como pagada (idempotente). Sin body. Lanza InvoiceNotFoundError(404).                                            |
+
+> Reemplaza: `app/api/admin/invoices/route.ts` + `app/api/admin/mark-invoice-paid/route.ts`.
+
+#### Billing Documents — documentos fiscales (doctor)
+
+| Endpoint              | Método | Roles  | Notas                                                                                                                                                                                                    |
+| --------------------- | ------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/billing` | GET    | doctor | Lista documentos propios (anti-IDOR: doctorId=user.sub). `?page`, `?limit`. Respuesta NO incluye patientId (PII).                                                                                        |
+| `/api/doctor/billing` | POST   | doctor | Crea documento. Body: `{ doc_type, total, items?, iva_amount?, igtf_amount?, bcv_rate?, total_bs?, notes?, currency?, consultation_id?, payment_id?, patient_id? }`. Número auto `<TYPE>-YYYYMMDD-XXXX`. |
+
+> doctorId SIEMPRE de user.sub. patientId se almacena pero no se devuelve en respuestas (anti-PII).
+> Reemplaza: `app/api/doctor/billing/route.ts` + `lib/subscription.ts` (extendSubscription/logSubscriptionChange).
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por

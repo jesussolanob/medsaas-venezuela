@@ -498,13 +498,38 @@ Email Resend. Tests Playwright E2E.
   del add-item modal, export Excel, gastos financial_transactions (→ /api/finances/transactions luego).
 - **SLICE PAGOS COMPLETO** (backend + frontend) de punta a punta sin Supabase.
 
-### ⏸️ PUNTO DE RETOME (al 2026-06-04)
+### 2026-06-04 — Grupo A: módulo billing BACKEND ✅
+
+- Construido por backend-agent: DDD 4 capas en `modules/billing/` + migración `20260603000002-billing.cjs`.
+- **4 tablas nuevas:** `subscription_payments`, `invoices`, `billing_documents`, `subscription_changes_log`.
+- **Dominio:** SubscriptionPayment (approve/reject con guard de doble-resolución), Invoice (markPaid idempotente),
+  BillingDocument. Errores tipados: SubscriptionPaymentNotFoundError, SubscriptionPaymentAlreadyResolvedError,
+  InvoiceNotFoundError, BillingDocumentNotOwnedError.
+- **8 use cases:** listSubscriptionPayments, approveSubscriptionPayment (TRANSACCIONAL: payment→subscriptions→profiles→log),
+  rejectSubscriptionPayment, createInvoice (número FAC-YYYYMMDD-XXXX), listInvoices, markInvoicePaid,
+  listBillingDocuments, createBillingDocument (número por tipo, status issued).
+- **3 controllers:** SubscriptionPayments (super_admin, 3 rutas), Invoices (super_admin, 3 rutas),
+  BillingDocuments (doctor DevAuthGuard, 2 rutas). Anti-IDOR: doctorId siempre de user.sub.
+- **Patrón updateDoctorSubscription replicado:** approveAndExtend atomicamente: (a) payment→approved,
+  (b) subscriptions.current_period_end=newExpiresAt, (c) profiles snapshot (status=active, expiresAt),
+  (d) subscription_changes_log entry. Extiende desde max(now, currentExpiresAt) + durationMonths.
+- **ProfileAdminModel + AdminSubscriptionModel reutilizados** (forFeature, no redefinidos — patrón correcto).
+- VERIFICADO: migrate ✓ · build ✓ · **128 suites / 799 tests verdes** (0 regresiones en admin/finances) ·
+  dist bootea: BillingModule cargado, 8 rutas mapeadas, sin crash DI. EXIT=143 (SIGTERM limpio).
+- VERIFICACIÓN EXTRA DEL LEAD (commit 60ba1df): curl real contra Postgres → admin/subscription-payments,
+  admin/invoices, doctor/billing = 200; RBAC = doctor→403 en endpoints admin; approveAndExtend revisado
+  línea a línea (transacción atómica con commit/rollback). Coherente con sequelize-admin.repository.
+- **Reemplaza legacy:** `app/api/admin/payments/route.ts` (+approve/reject), `app/api/admin/invoices/route.ts`,
+  `app/api/admin/mark-invoice-paid/route.ts`, `app/api/doctor/billing/route.ts`, `lib/subscription.ts`.
+- Diferidos documentados (Fase 5): email (paymentApproved + sendInvoice), PDF de factura, subscription-ops
+  standalone (suspend/reactivate/extend manual).
+
+### ⏸️ PUNTO DE RETOME (al 2026-06-04 — post billing)
 
 - **Hecho:** Backend base 10/10 + grupo A: payments(consultation) ✅ + payments principales(finances) ✅
-  - **frontend cobros/finanzas cableado ✅**. Frontend auth: BFF + DOCTOR + PATIENT + ADMIN auth + LOGIN ✅.
+  - **billing ✅** · Frontend cobros/finanzas cableado ✅ · Frontend auth ✅.
     Todo en `feature/migracion-backend` (local, sin push).
-- **Siguiente grupo A:** `billing`/facturación (tablas nuevas `subscription_payments`, `invoices`,
-  `billing_documents`) — reemplaza admin/payments(approve/reject), admin/invoices, doctor/billing.
+- **Siguiente grupo A:** subs-ops · promotions · leads · reminders · agenda-slots (y cablear billing al frontend).
 - **Reglas:** módulo backend = DDD 4 capas + migración .cjs + tests + boot dist + curl real (pitfall
   Sequelize-en-providers). Frontend = editar SOLO datos en .tsx; server actions / api-client.server.
 - **Lección lead:** verificar tsc/eslint con EXIT REAL y bootear dist + curl; verificar en disco lo que

@@ -58,7 +58,19 @@ consultation-blocks → exports CSV → admin config**.
   sin PII (solo patient_id). 61 tests verdes, dist bootea. **Pendiente: cablear el frontend** (cobros +
   `app/api/doctor/payments` route handler) a estos endpoints. NO confundir con `subscription_payments` (→ billing).
 
-### Próximo módulo grupo A: `billing` (investigación hecha 2026-06-04)
+### `billing` — ✅ BACKEND HECHO (commit 60ba1df, 2026-06-04)
+
+Módulo `apps/backend/src/modules/billing/` + mig. `20260603000002-billing.cjs` (4 tablas:
+subscription_payments, invoices, billing_documents, subscription_changes_log). Endpoints:
+`GET/PUT /api/admin/subscription-payments` (+:id/approve,:id/reject, super_admin), `POST/GET/PUT
+/api/admin/invoices` (+:id/paid, super_admin), `GET/POST /api/doctor/billing` (doctor, anti-IDOR).
+`approveAndExtend`: transacción de 5 pasos (marca pago→extiende subscriptions.current_period_end→
+sincroniza profiles snapshot→log) coherente con sequelize-admin.repository. 141 tests dirigidos + 799
+suite; dist bootea; curl real 200; RBAC verificado (doctor→403). Diferido Fase 5: emails, PDF factura,
+subscription-ops standalone (suspend/reactivate/extend manual). **Pendiente: cablear frontend**
+(admin payments/invoices pages + doctor/billing page).
+
+#### (investigación original billing, ya implementada)
 
 Dominio entrelazado con subscriptions — diseñar fronteras con cuidado. Tablas nuevas:
 

@@ -118,6 +118,16 @@ Estado (orden `migracion/modulos/`):
   usa Supabase (solo tipos + formatters). Residual Supabase en esas pantallas (Fase 5): storage de
   comprobantes, realtime, PDF de recibo, lectura de pricing_plans (add-item modal), export Excel,
   y gastos `financial_transactions` (usar /api/finances/transactions más adelante). tsc 0.
+- 13 **billing** → ✅ DDD. Módulo `modules/billing/`. Mig. `20260603000002-billing.cjs`. 4 tablas nuevas:
+  `subscription_payments` (pago de suscripción de la plataforma, workflow pending→approved/rejected),
+  `invoices` (facturas admin→doctor, número FAC-YYYYMMDD-XXXX), `billing_documents` (documentos fiscales
+  del doctor, número por tipo), `subscription_changes_log` (audit log inmutable). 8 use cases.
+  Rutas: `/api/admin/subscription-payments` (GET/approve/reject) · `/api/admin/invoices` (POST/GET/paid) ·
+  `/api/doctor/billing` (GET/POST). Anti-IDOR: doctorId de user.sub. approveSubscriptionPayment TRANSACCIONAL
+  (payment+subscriptions+profiles+log). ProfileAdminModel + AdminSubscriptionModel reutilizados (forFeature).
+  128 suites / 799 tests verdes; dist bootea 8 rutas sin crash DI. Diferido Fase 5: email, PDF.
+  Reemplaza legacy: `app/api/admin/payments/*` · `app/api/admin/invoices/` · `app/api/admin/mark-invoice-paid`
+  - `app/api/doctor/billing` · `lib/subscription.ts` (extendSubscription/logSubscriptionChange).
 
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.
