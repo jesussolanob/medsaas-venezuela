@@ -15,8 +15,14 @@ import {
   Trash2,
   ArrowLeft,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: profiles, consultations, patients
+// MIGRATED (Etapa 1): profile/consultations/services/stats via NestJS backend (thin-proxy).
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import {
+  getBillingConsultations,
+  getBillingProfile,
+  getBillingServices,
+  getBillingStats,
+} from '@/app/doctor/billing/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { getProfessionalTitle } from '@/lib/professional-title';
 
@@ -92,78 +98,33 @@ export default function BillingPage() {
   const currentDocNumber = genDocNumber(docType);
 
   useEffect(() => {
-    const supabase = createClient();
-    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: data stays Supabase.
+    // MIGRATED (Etapa 1): identity from dev-auth stub; data via NestJS backend.
     getDevDoctorId().then(async (id) => {
       if (!id) return;
-      const user = { id };
 
-      // Get doctor profile with logo
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, specialty, phone, email, logo_url, professional_title')
-        .eq('id', user.id)
-        .single();
+      // Doctor profile (avatar_url mapped to logo_url in the action)
+      const profile = await getBillingProfile();
       if (profile) setDoctorProfile(profile as DoctorProfile);
 
-      // Get consultations with patient info
-      const { data } = await supabase
-        .from('consultations')
-        .select('id, consultation_code, consultation_date, patients(full_name, phone, email)')
-        .eq('doctor_id', user.id)
-        .order('consultation_date', { ascending: false });
-
+      // Consultations enriched with decrypted patient info (owner-scoped backend endpoint)
+      const cons = await getBillingConsultations();
       setConsultations(
-        (data ?? []).map((c) => ({
+        cons.map((c) => ({
           id: c.id,
           consultation_code: c.consultation_code,
           consultation_date: c.consultation_date,
-          patient_name:
-            !Array.isArray(c.patients) && c.patients
-              ? (c.patients as { full_name: string }).full_name
-              : 'Paciente',
-          patient_phone:
-            !Array.isArray(c.patients) && c.patients
-              ? (c.patients as { phone: string | null }).phone
-              : null,
-          patient_email:
-            !Array.isArray(c.patients) && c.patients
-              ? (c.patients as { email: string | null }).email
-              : null,
+          patient_name: c.patient_name || 'Paciente',
+          patient_phone: c.patient_phone,
+          patient_email: c.patient_email,
         })),
       );
 
-      // Get services
-      // AUDIT FIX 2026-04-28 (C-8): pricing_plans es la fuente única; type='service'.
-      const { data: svcs } = await supabase
-        .from('pricing_plans')
-        .select('*')
-        .eq('doctor_id', user.id)
-        .eq('type', 'service')
-        .eq('is_active', true)
-        .order('name');
-      if (svcs) setServices(svcs as Service[]);
+      // Active services (pricing_plans)
+      const svcs = await getBillingServices();
+      setServices(svcs as Service[]);
 
-      // Load billing document stats
-      const { data: docs } = await supabase
-        .from('billing_documents')
-        .select('doc_type, total')
-        .eq('doctor_id', user.id);
-
-      const stats = {
-        facturas: (docs ?? []).filter((d) => d.doc_type === 'factura').length,
-        recibos: (docs ?? []).filter((d) => d.doc_type === 'recibo').length,
-        presupuestos: (docs ?? []).filter((d) => d.doc_type === 'presupuesto').length,
-        totalFacturas: (docs ?? [])
-          .filter((d) => d.doc_type === 'factura')
-          .reduce((s, d) => s + (d.total || 0), 0),
-        totalRecibos: (docs ?? [])
-          .filter((d) => d.doc_type === 'recibo')
-          .reduce((s, d) => s + (d.total || 0), 0),
-        totalPresupuestos: (docs ?? [])
-          .filter((d) => d.doc_type === 'presupuesto')
-          .reduce((s, d) => s + (d.total || 0), 0),
-      };
+      // Billing document stats
+      const stats = await getBillingStats();
       setDocStats(stats);
       setLoading(false);
     });

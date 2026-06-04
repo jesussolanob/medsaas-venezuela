@@ -1,104 +1,97 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { NextRequest, NextResponse } from 'next/server'
+/**
+ * /api/doctor/billing — documentos de facturación del doctor (billing_documents).
+ *
+ * ETAPA 1 — thin-proxy al módulo NestJS `billing` (billing-documents). doctorId se
+ * deriva del dev-stub en el backend (anti-IDOR). El backend genera el número de
+ * documento y persiste.
+ *
+ * La UI manda items como { id, description, qty, unit_price }; el backend espera
+ * { description, quantity, unitPrice, total } → se transforma aquí (capa de datos).
+ *
+ * GAP backend: el response no expone patient_id (anti-PII). DEFERRED Fase 5: PDF, email.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { backendGet, backendPost } from '@/lib/api-client.server';
 
-function genDocNumber(type: string): string {
-  const prefixes: Record<string, string> = {
-    factura: 'FAC',
-    recibo: 'REC',
-    presupuesto: 'PRE',
-  }
-  const prefix = prefixes[type] || 'DOC'
-  const d = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const rand = Math.random().toString(36).substring(2, 6).toUpperCase()
-  return `${prefix}-${d}-${rand}`
+interface UiLineItem {
+  id?: string;
+  description: string;
+  qty: number;
+  unit_price: number;
 }
 
-// GET /api/doctor/billing — List billing documents for doctor
+interface BackendBillingDoc {
+  id: string;
+  docNumber: string;
+  docType: string;
+  total: number;
+  [key: string]: unknown;
+}
+
+// GET /api/doctor/billing — list billing documents for the authenticated doctor
 export async function GET(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+  const { searchParams } = new URL(req.url);
+  const qs = new URLSearchParams();
+  qs.set('limit', searchParams.get('limit') || '100');
+  qs.set('page', searchParams.get('page') || '1');
 
-  const admin = createAdminClient()
-  const { searchParams } = new URL(req.url)
-  const docType = searchParams.get('doc_type')
-  const limit = parseInt(searchParams.get('limit') || '50')
-  const offset = parseInt(searchParams.get('offset') || '0')
-
-  let query = admin
-    .from('billing_documents')
-    .select(`
-      *,
-      patients(id, full_name),
-      consultations(id, consultation_code)
-    `, { count: 'exact' })
-    .eq('doctor_id', user.id)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (docType) query = query.eq('doc_type', docType)
-
-  const { data, error, count } = await query
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ data: data ?? [], total: count ?? 0 })
-}
-
-// POST /api/doctor/billing — Create billing document (receipt/estimate/invoice)
-export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
-
-  const body = await req.json()
-  const {
-    doc_type,
-    consultation_id,
-    payment_id,
-    patient_id,
-    items,
-    subtotal,
-    total,
-    iva_amount,
-    igtf_amount,
-    bcv_rate,
-    total_bs,
-    notes,
-    currency,
-  } = body
-
-  if (!doc_type || !total) {
-    return NextResponse.json({ error: 'doc_type y total requeridos' }, { status: 400 })
+  const result = await backendGet<BackendBillingDoc[]>(`/api/doctor/billing?${qs.toString()}`);
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
   }
 
-  const admin = createAdminClient()
-  const docNumber = genDocNumber(doc_type)
+  const data = Array.isArray(result.value) ? result.value : [];
+  return NextResponse.json({ data, total: data.length });
+}
 
-  const { data, error } = await admin
-    .from('billing_documents')
-    .insert({
-      doc_number: docNumber,
-      doc_type,
-      doctor_id: user.id,
-      consultation_id: consultation_id || null,
-      payment_id: payment_id || null,
-      patient_id: patient_id || null,
-      items: items || [],
-      subtotal: subtotal || total,
-      total,
-      iva_amount: iva_amount || 0,
-      igtf_amount: igtf_amount || 0,
-      bcv_rate: bcv_rate || null,
-      total_bs: total_bs || null,
-      notes: notes || null,
-      currency: currency || 'USD',
-      status: 'issued',
-    })
-    .select()
-    .single()
+// POST /api/doctor/billing — create a billing document (receipt/estimate/invoice)
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { doc_type, total } = body ?? {};
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!doc_type || total === undefined || total === null) {
+    return NextResponse.json({ error: 'doc_type y total requeridos' }, { status: 400 });
+  }
 
-  return NextResponse.json({ success: true, document: data, docNumber })
+  // Transform UI items → backend item shape.
+  const items = Array.isArray(body.items)
+    ? (body.items as UiLineItem[]).map((i) => ({
+        description: i.description,
+        quantity: Math.max(1, Math.round(Number(i.qty) || 1)),
+        unitPrice: Number(i.unit_price) || 0,
+        total: (Number(i.qty) || 0) * (Number(i.unit_price) || 0),
+      }))
+    : [];
+
+  const result = await backendPost<BackendBillingDoc>('/api/doctor/billing', {
+    doc_type,
+    total,
+    items,
+    subtotal: body.subtotal ?? null,
+    iva_amount: body.iva_amount ?? 0,
+    igtf_amount: body.igtf_amount ?? 0,
+    bcv_rate: body.bcv_rate ?? null,
+    total_bs: body.total_bs ?? null,
+    notes: body.notes ?? null,
+    currency: body.currency || 'USD',
+    consultation_id: body.consultation_id ?? null,
+    payment_id: body.payment_id ?? null,
+    patient_id: body.patient_id ?? null,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    document: result.value,
+    docNumber: result.value.docNumber,
+  });
 }
