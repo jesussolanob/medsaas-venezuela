@@ -64,6 +64,18 @@ GlobalExceptionFilter).
   es /reveal de datos enmascarados, es acceso del dueño vía feature). El use case cruza módulos inyectando
   `PATIENT_REPOSITORY` (PatientsModule importado) — patrón ya usado por booking. **Pendiente:** pasar
   security-agent en QA sobre este endpoint.
+- **ADR-006 (2026-06-04):** **RBAC por capacidades definido en BD** (módulo `capabilities`). Qué módulos/
+  acciones (view/create/edit/delete) puede cada ROL se define en la tabla `role_capabilities` (seed por rol).
+  Resolución **por request en el backend** (use case `ResolveCapabilities(role)` con cache Redis
+  `capabilities:{role}` TTL 300s + invalidación al editar; degrada a BD si Redis cae; default-deny). El token
+  (DevAuthGuard hoy, Auth0 mañana) lleva **solo el rol** — las capacidades NO se hornean en el token, así un
+  cambio en BD aplica al instante sin re-login (requisito explícito del usuario). El resolver es agnóstico de
+  la fuente de auth (lee `CurrentUser.role`), por eso Auth0-ready sin cambios. Enforcement: `CapabilitiesGuard`
+  - `@RequireCapability(module, action)` en el backend (coexiste con `RolesGuard`, que sigue para "debe ser
+    super_admin"). Frontend consume `GET /api/me/capabilities` para gating de vistas (helper `can()` en
+    `lib/capabilities.ts`). **Combinación con plan_features:** un módulo se muestra si el ROL puede verlo
+    (capacidades) Y el PLAN lo habilita (plan_features) — dos puertas ortogonales. Admin edita vía
+    `GET/PUT /api/admin/role-capabilities` (super_admin).
 
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 

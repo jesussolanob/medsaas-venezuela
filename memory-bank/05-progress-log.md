@@ -635,6 +635,26 @@ Email Resend. Tests Playwright E2E.
   admin-config, agenda-slots (este último entrelazado — con cuidado).
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
 
+### 2026-06-04 — MEJORA: RBAC por capacidades en BD (módulo capabilities) — commits 5650c94, c929e10
+
+> Pedido del usuario: roles y "qué ve cada rol en las vistas" definidos en BD, consumible por el frontend,
+> Auth0-ready, y que quitar un módulo a un rol desde BD aplique sin re-login. Decisión (ADR-006): BD resuelta
+> por request (Redis) + endpoint + guard; token lleva SOLO el rol. Granularidad módulo+acción.
+
+- **Backend `capabilities` (backend-agent + lead):** tabla `role_capabilities` (mig 20260604000002, seed por
+  rol). `ResolveCapabilities(role)` → mapa {module:{view,create,edit,delete}}, cache Redis TTL 300s + degrada
+  a BD, default-deny. `GET /api/me/capabilities`. `CapabilitiesGuard` + `@RequireCapability(module,action)`
+  (coexiste con RolesGuard). Admin `GET/PUT /api/admin/role-capabilities` (PUT upsert + invalida cache →
+  aplica al instante). Verificado (lead): migrate, build 0, lint 0, **1052/1052 tests**, dist bootea (sin
+  Sequelize en providers), curl (doctor 15 módulos; patient 6 sin agenda; PUT quita finances.view y GET
+  inmediato lo refleja; admin doctor→403).
+- **Frontend primitivo (c929e10):** `lib/capabilities.ts` (helper `can()` client-safe) + server action
+  `getMyCapabilities()`.
+- **PENDIENTE consumo (próximo pase, capa de datos):** cablear sidebars doctor/admin/patient para gating por
+  capacidad COMBINADO con plan_features + UI admin `/admin/roles` (parte de admin-config) + opcional
+  `@RequireCapability` en endpoints sensibles.
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
 ### 2026-06-04 — Grupo A: exports CSV (inline) — commit 3d6cab1
 
 - `export-subscriptions` (huérfano, sin consumidor UI) → route handler thin-proxy a backendGet
@@ -708,4 +728,37 @@ Email Resend. Tests Playwright E2E.
 - **SEGURIDAD pendiente de QA:** el endpoint `consultations/with-patient` expone PII descifrada (solo al
   doctor dueño, doble scope). Recomendado pasar security-agent en la ronda de QA. Sin audit por fila
   (acceso del dueño a sus propios datos vía feature, no /reveal de datos enmascarados).
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
+### 2026-06-04 — Módulo capabilities (RBAC por capacidades, DB-driven) — backend-agent + lead
+
+- **Módulo FUNDACIONAL** `apps/backend/src/modules/capabilities/` (DDD 4 capas). Migración
+  `20260604000002-role-capabilities.cjs`: tabla `role_capabilities` (uuid PK, role, module_key,
+  action, allowed boolean, UNIQUE(role,module_key,action), INDEX(role)) + seed data-driven para
+  5 roles (super_admin/admin/doctor/assistant/patient) con 4 acciones (view/create/edit/delete)
+  sobre sus respectivos módulos. Seed via loops — NO inserts manuales.
+- **Dominio:** `RoleCapability` entity (withAllowed inmutable), `buildCapabilityMap()` (default-deny:
+  acción ausente = false), `CapabilityDeniedError` (httpStatus=403, code=CAPABILITY_DENIED),
+  `IRoleCapabilityRepository` (findByRole, findAll, upsert ON CONFLICT DO UPDATE).
+- **Use cases:**
+  - `ResolveCapabilitiesUseCase`: lee Redis key `capabilities:{role}` TTL 300s → fallback DB en
+    try/catch (degradación silenciosa si Redis cae). Escribe cache post-DB en try/catch.
+  - `ListAllCapabilitiesUseCase`: todas las filas agrupadas por rol (admin).
+  - `SetCapabilityUseCase`: upsert + `DEL capabilities:{role}` (invalidación directa, try/catch).
+- **Presentación:**
+  - `GET /api/me/capabilities` (DevAuthGuard): mapa `{role, modules:{moduleKey:{view,create,edit,delete}}}`.
+    Auth0-ready: consume `@CurrentUser().role`, agnóstico de la fuente de auth.
+  - `CapabilitiesGuard` + `@RequireCapability(moduleKey, action)`: guard reutilizable para
+    enforcement en cualquier módulo. Fail-closed si resolveCapabilities lanza.
+  - `GET /api/admin/role-capabilities` (super_admin): todas las filas por rol.
+  - `PUT /api/admin/role-capabilities` (super_admin): upsert + invalida cache. Zod DTO con
+    UserRoleSchema + enum action.
+- **Tests:** 42 tests en 8 suites. domain/ 100%, use-cases/ 100%, controllers/ 100%, guard/ 100%.
+  Suite global: **1052/1052 tests verdes** (0 regresiones). Build ✓, lint 0.
+- **Verificado (lead, curl real):** GET /api/me/capabilities doctor → 15 módulos todos 4 acciones.
+  patient → 6 módulos restringidos (sin agenda, sin delete). PUT admin finances.view=false para doctor
+  → GET inmediato muestra finances.view=false (cache invalidada). doctor→ GET admin → 403. super_admin
+  GET admin → 5 roles, doctor=60 filas (15×4). Dist bootea sin crash DI.
+- **Diseño:** NO se hornea el mapa en el token — aplicación SIN re-login de cambios en BD.
+  Coexiste con RolesGuard (RolesGuard=quién eres; CapabilitiesGuard=qué puedes hacer).
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.

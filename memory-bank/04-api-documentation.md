@@ -203,6 +203,18 @@
 > doctorId SIEMPRE de user.sub. patientId se almacena pero no se devuelve en respuestas (anti-PII).
 > Reemplaza: `app/api/doctor/billing/route.ts` + `lib/subscription.ts` (extendSubscription/logSubscriptionChange).
 
+### Capabilities — RBAC por capacidades (DB-driven) ✅
+
+| Endpoint                       | Método | Roles                     | Notas                                                                                                                                                                                  |
+| ------------------------------ | ------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---- | ------------------------------------------------------------------- |
+| `/api/me/capabilities`         | GET    | Cualquier rol autenticado | Mapa `{role, modules:{[moduleKey]:{view,create,edit,delete}}}` del rol del usuario autenticado. Cache Redis TTL 300s; fallback DB si Redis cae. Default-deny (acción ausente = false). |
+| `/api/admin/role-capabilities` | GET    | super_admin               | Todos los rows agrupados por rol: `{[role]: [{id, role, module_key, action, allowed}]}`.                                                                                               |
+| `/api/admin/role-capabilities` | PUT    | super_admin               | Upsert ON CONFLICT. Body: `{role (UserRole), module_key (string), action (view                                                                                                         | create | edit | delete), allowed (boolean)}`. Invalida Redis `capabilities:{role}`. |
+
+Decorator reutilizable: `@RequireCapability('finanzas', 'view')` en conjunto con `CapabilitiesGuard`.
+Coexiste con RolesGuard (RolesGuard = identidad mínima; CapabilitiesGuard = permiso granular por módulo+acción).
+Aplica sin re-login — el token solo lleva el rol; el mapa de permisos se resuelve en BD/Redis.
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por
