@@ -1,109 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+/**
+ * /api/admin/promotions — gestión de promociones de planes (admin).
+ *
+ * ETAPA 1 — thin-proxy al módulo NestJS `promotions`. RBAC (super_admin) lo enforce
+ * el backend. La validación promo<original es invariante de dominio (400).
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { backendGet, backendPost, backendPut, backendDelete } from '@/lib/api-client.server';
 
-// GET /api/admin/promotions — List all promotions
+function fail(error: { message: string; status: number }) {
+  return NextResponse.json({ error: error.message }, { status: error.status || 500 });
+}
+
+// GET — list all promotions
 export async function GET() {
-  try {
-    const admin = createAdminClient()
-    const { data, error } = await admin
-      .from('plan_promotions')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
-    return NextResponse.json(data || [])
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
-  }
+  const result = await backendGet<unknown[]>('/api/admin/promotions');
+  if (!result.ok) return fail(result.error);
+  return NextResponse.json(Array.isArray(result.value) ? result.value : []);
 }
 
-// POST /api/admin/promotions — Create a new promotion
+// POST — create a promotion
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const { plan_key, duration_months, original_price_usd, promo_price_usd, label, is_active, ends_at } = body
-
-    if (!plan_key || !duration_months || original_price_usd == null || promo_price_usd == null) {
-      return NextResponse.json({ error: 'Faltan campos requeridos: plan_key, duration_months, original_price_usd, promo_price_usd' }, { status: 400 })
-    }
-
-    if (Number(promo_price_usd) >= Number(original_price_usd)) {
-      return NextResponse.json({ error: 'El precio promocional debe ser menor al original' }, { status: 400 })
-    }
-
-    const admin = createAdminClient()
-    const insertData = {
-      plan_key: String(plan_key),
-      duration_months: Number(duration_months),
-      original_price_usd: Number(original_price_usd),
-      promo_price_usd: Number(promo_price_usd),
-      label: label || `Oferta ${duration_months} meses`,
-      is_active: is_active ?? true,
-      ends_at: ends_at ? new Date(ends_at).toISOString() : null,
-    }
-
-    const { data, error } = await admin
-      .from('plan_promotions')
-      .insert(insertData)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('[API promotions POST] Supabase error:', error)
-      return NextResponse.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 })
-    }
-
-    return NextResponse.json(data)
-  } catch (err: any) {
-    console.error('[API promotions POST] Error:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
-  }
+  const body = await req.json();
+  const result = await backendPost<unknown>('/api/admin/promotions', body);
+  if (!result.ok) return fail(result.error);
+  return NextResponse.json(result.value);
 }
 
-// PUT /api/admin/promotions — Update a promotion
+// PUT — update a promotion (legacy body shape: { id, ...updates })
 export async function PUT(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const { id, ...updates } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
-    }
-
-    const admin = createAdminClient()
-    const { data, error } = await admin
-      .from('plan_promotions')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) throw error
-    return NextResponse.json(data)
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
-  }
+  const { id, ...updates } = await req.json();
+  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+  const result = await backendPut<unknown>(`/api/admin/promotions/${id}`, updates);
+  if (!result.ok) return fail(result.error);
+  return NextResponse.json(result.value);
 }
 
-// DELETE /api/admin/promotions — Delete a promotion
+// DELETE — delete a promotion (?id=)
 export async function DELETE(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const id = searchParams.get('id')
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
-    }
-
-    const admin = createAdminClient()
-    const { error } = await admin
-      .from('plan_promotions')
-      .delete()
-      .eq('id', id)
-
-    if (error) throw error
-    return NextResponse.json({ success: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
-  }
+  const id = new URL(req.url).searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+  const result = await backendDelete<unknown>(`/api/admin/promotions/${id}`);
+  if (!result.ok) return fail(result.error);
+  return NextResponse.json({ success: true });
 }
