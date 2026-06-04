@@ -58,6 +58,20 @@ consultation-blocks → exports CSV → admin config**.
   sin PII (solo patient_id). 61 tests verdes, dist bootea. **Pendiente: cablear el frontend** (cobros +
   `app/api/doctor/payments` route handler) a estos endpoints. NO confundir con `subscription_payments` (→ billing).
 
+### Próximo módulo grupo A: `billing` (investigación hecha 2026-06-04)
+
+Dominio entrelazado con subscriptions — diseñar fronteras con cuidado. Tablas nuevas:
+
+- `subscription_payments` (doctor paga la plataforma): id, doctor_id, amount_usd, method,
+  reference_number, duration_months, status(pending|approved|rejected), reviewed_by, reviewed_at,
+  created_at. Aprobar → EXTIENDE la suscripción (`extendSubscription`: subscriptions +
+  `subscription_changes_log`) + email (Fase 5). Reemplaza admin/payments(+approve/reject).
+- `invoices` (admin factura al doctor): ver `app/api/admin/invoices` + mark-invoice-paid + send-invoice(email F5).
+- `billing_documents` (docs del doctor): `app/api/doctor/billing` (GET/POST).
+  Incluye lógica de subscriptions-ops (extend/reactivate/suspend) que comparte `extendSubscription` +
+  `subscription_changes_log` → considerar construir `subscription_changes_log` (tabla nueva) aquí.
+  Diferido Fase 5: emails (sendPaymentApprovedEmail), PDF de factura (invoice-pdf).
+
 ## Reglas de priorización
 
 1. La migración de arquitectura (Fases 1-3) precede a cualquier feature MVP nueva.
