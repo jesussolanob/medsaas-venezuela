@@ -1,82 +1,135 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { NextResponse } from 'next/server'
+/**
+ * app/api/suggestions/route.ts
+ *
+ * ETAPA 1 — thin-proxy to the NestJS `suggestions` module via api-client.server (BFF).
+ * Replaces the direct Supabase (doctor_suggestions) queries.
+ *
+ * Role-aware routing (dev-auth stub):
+ *   - super_admin → /api/admin/suggestions  (sees all doctors' suggestions, can respond)
+ *   - doctor      → /api/doctor/suggestions (own mailbox: list + create)
+ *
+ * Status vocabulary differs between the legacy UI and the backend, so we map
+ * both directions here WITHOUT touching the .tsx (data-layer only):
+ *   UI       backend
+ *   pending  pending
+ *   in_progress  reviewed | planned
+ *   resolved     done | rejected
+ *
+ * GAP (backend, Fase 5 / mejora): the backend does not join `profiles`
+ * (doctor full_name/specialty), so the admin list shows those fields empty.
+ */
 
-// GET: Fetch suggestions (admin gets all, doctor gets own)
-export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+import { NextResponse } from 'next/server';
+import { backendGet, backendPost, backendPut } from '@/lib/api-client.server';
+import { getDevUser } from '@/lib/dev-auth';
 
-  const admin = createAdminClient()
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+type UiStatus = 'pending' | 'in_progress' | 'resolved';
 
-  let query = admin.from('doctor_suggestions').select('*, profiles(full_name, email, specialty)')
-
-  if (profile?.role === 'doctor') {
-    query = query.eq('doctor_id', user.id)
-  }
-
-  const { data, error } = await query.order('created_at', { ascending: false })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json(data)
+interface SuggestionDto {
+  id: string;
+  doctor_id?: string;
+  subject: string;
+  message: string;
+  category: string;
+  status: string;
+  admin_response?: string | null;
+  created_at: string;
+  updated_at?: string;
 }
 
-// POST: Doctor creates a suggestion
-export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+/** Map a backend status to the legacy UI status the pages render. */
+function backendToUiStatus(status: string): UiStatus {
+  switch (status) {
+    case 'reviewed':
+    case 'planned':
+      return 'in_progress';
+    case 'done':
+    case 'rejected':
+      return 'resolved';
+    default:
+      return 'pending';
+  }
+}
 
-  const body = await request.json()
-  const { subject, message, category } = body
+/** Map a legacy UI status to the backend status the API accepts. */
+function uiToBackendStatus(status: string): 'pending' | 'reviewed' | 'done' {
+  switch (status) {
+    case 'in_progress':
+      return 'reviewed';
+    case 'resolved':
+      return 'done';
+    default:
+      return 'pending';
+  }
+}
 
-  if (!subject || !message) {
-    return NextResponse.json({ error: 'Subject and message required' }, { status: 400 })
+function toUiSuggestion(s: SuggestionDto): SuggestionDto {
+  return { ...s, status: backendToUiStatus(s.status) };
+}
+
+// GET: list suggestions (admin → all; doctor → own)
+export async function GET() {
+  const user = await getDevUser();
+  const isAdmin = user.role === 'super_admin';
+  const path = isAdmin ? '/api/admin/suggestions' : '/api/doctor/suggestions';
+
+  const result = await backendGet<SuggestionDto[]>(path);
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
   }
 
-  const admin = createAdminClient()
-  const { data, error } = await admin.from('doctor_suggestions').insert({
-    doctor_id: user.id,
+  const items = Array.isArray(result.value) ? result.value.map(toUiSuggestion) : [];
+  return NextResponse.json(items);
+}
+
+// POST: doctor creates a suggestion
+export async function POST(request: Request) {
+  const body = await request.json();
+  const { subject, message, category } = body ?? {};
+
+  if (!subject || !message) {
+    return NextResponse.json({ error: 'Subject and message required' }, { status: 400 });
+  }
+
+  const result = await backendPost<SuggestionDto>('/api/doctor/suggestions', {
     subject,
     message,
     category: category || 'general',
-    status: 'pending',
-  }).select().single()
+  });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
 
-  return NextResponse.json(data)
+  return NextResponse.json(toUiSuggestion(result.value));
 }
 
-// PATCH: Admin marks suggestion as read/resolved
+// PATCH: admin updates status / responds
 export async function PATCH(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const body = await request.json();
+  const { id, status, admin_response } = body ?? {};
 
-  const body = await request.json()
-  const { id, status, admin_response } = body
+  if (!id) {
+    return NextResponse.json({ error: 'id required' }, { status: 400 });
+  }
 
-  const admin = createAdminClient()
-  const updates: Record<string, any> = {}
-  if (status) updates.status = status
-  if (admin_response) updates.admin_response = admin_response
-  updates.updated_at = new Date().toISOString()
+  const result = await backendPut<SuggestionDto>(`/api/admin/suggestions/${id}`, {
+    status: uiToBackendStatus(status),
+    admin_response: admin_response ?? null,
+  });
 
-  const { data, error } = await admin
-    .from('doctor_suggestions')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single()
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json(data)
+  return NextResponse.json(toUiSuggestion(result.value));
 }

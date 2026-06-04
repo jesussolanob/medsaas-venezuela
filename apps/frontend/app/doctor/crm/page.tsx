@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: leads, lead_messages
+// MIGRATED (Etapa 1): leads via NestJS backend (thin-proxy). lead_messages → Fase 5 (client-local).
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import { getLeads, createLead, updateLeadStage } from '@/app/doctor/crm/actions';
 import {
   MessageCircle,
   Phone,
@@ -152,59 +153,36 @@ export default function CRMPage() {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: leads data stays Supabase.
+    // MIGRATED (Etapa 1): identity from dev-auth stub; leads via NestJS backend.
     getDevDoctorId().then(async (id) => {
       if (!id) return;
-      const user = { id };
-      setDoctorId(user.id);
+      setDoctorId(id);
 
       try {
-        const { data: leadsData } = await supabase
-          .from('leads')
-          .select('*')
-          .eq('doctor_id', user.id);
+        const existing = await getLeads();
 
-        if (leadsData && leadsData.length > 0) {
-          setLeads(leadsData as Lead[]);
+        if (existing.length > 0) {
+          setLeads(existing as Lead[]);
         } else {
-          // Seed leads
-          const { data: inserted } = await supabase
-            .from('leads')
-            .insert(
-              SEED_LEADS.map((lead) => ({
-                doctor_id: user.id,
-                ...lead,
-              })),
-            )
-            .select();
-
-          if (inserted) {
-            setLeads(inserted as Lead[]);
-          }
-        }
-
-        try {
-          const { data: messagesData } = await supabase
-            .from('lead_messages')
-            .select('*')
-            .eq('doctor_id', user.id);
-
-          if (messagesData) {
-            const grouped = messagesData.reduce((acc: Record<string, Message[]>, msg: Message) => {
-              if (!acc[msg.lead_id]) acc[msg.lead_id] = [];
-              acc[msg.lead_id].push(msg);
-              return acc;
-            }, {});
-            setMessages(grouped);
-          }
-        } catch (e) {
-          // lead_messages table doesn't exist, use local state only
+          // Seed demo leads on first load (preserves legacy behavior).
+          const created = await Promise.all(
+            SEED_LEADS.map((lead) =>
+              createLead({
+                name: lead.name,
+                phone: lead.phone,
+                channel: lead.channel,
+                message: lead.message,
+                stage: lead.stage,
+              }),
+            ),
+          );
+          setLeads(created.filter((l): l is NonNullable<typeof l> => l !== null) as Lead[]);
         }
       } catch (e) {
         console.error('Error loading leads:', e);
       }
 
+      // lead_messages (chat) has no backend yet → Fase 5; messages stay client-local.
       setLoading(false);
     });
   }, []);
@@ -253,9 +231,8 @@ export default function CRMPage() {
 
   const handleDropOnStage = async (stage: LeadStage) => {
     if (!draggedLead || !doctorId) return;
-    const supabase = createClient();
     try {
-      await supabase.from('leads').update({ stage }).eq('id', draggedLead.id);
+      await updateLeadStage(draggedLead.id, stage);
       setLeads((prev) => prev.map((l) => (l.id === draggedLead.id ? { ...l, stage } : l)));
     } catch (e) {
       console.error('Error updating lead stage:', e);
@@ -267,23 +244,17 @@ export default function CRMPage() {
     e.preventDefault();
     if (!newLeadData.name || !newLeadData.phone || !doctorId) return;
 
-    const supabase = createClient();
     try {
-      const { data } = await supabase
-        .from('leads')
-        .insert({
-          doctor_id: doctorId,
-          name: newLeadData.name,
-          phone: newLeadData.phone,
-          channel: newLeadData.channel,
-          stage: 'new',
-          message: newLeadData.message,
-        })
-        .select()
-        .single();
+      const data = await createLead({
+        name: newLeadData.name,
+        phone: newLeadData.phone,
+        channel: newLeadData.channel,
+        message: newLeadData.message,
+        stage: 'new',
+      });
 
       if (data) {
-        setLeads((prev) => [data, ...prev]);
+        setLeads((prev) => [data as Lead, ...prev]);
       }
     } catch (e) {
       console.error('Error creating lead:', e);
@@ -296,7 +267,6 @@ export default function CRMPage() {
   const handleSendMessage = async () => {
     if (!messageInput.trim() || !selectedLead || !doctorId) return;
 
-    const supabase = createClient();
     const newMsg: Message = {
       id: Math.random().toString(36),
       lead_id: selectedLead.id,
@@ -306,17 +276,12 @@ export default function CRMPage() {
       created_at: new Date().toISOString(),
     };
 
+    // lead_messages (chat) has no backend yet → Fase 5; kept in client-local state.
     setMessages((prev) => ({
       ...prev,
       [selectedLead.id]: [...(prev[selectedLead.id] || []), newMsg],
     }));
     setMessageInput('');
-
-    try {
-      await supabase.from('lead_messages').insert(newMsg);
-    } catch (e) {
-      // Table doesn't exist, messages stay in local state
-    }
 
     // Update last_activity
     setLeads((prev) =>
