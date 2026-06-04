@@ -42,9 +42,13 @@ recordatorios automáticos (Cloud Scheduler). Estado: pendiente.
 > pura (solo Postgres), construible YA. Grupo B = Auth0 (Fase 4). Grupo C = servicios
 > externos IA/email/PDF/storage/calendar/cron/pasarela (Fase 5).
 
-Orden grupo A (por valor de negocio): **payments(cobros) → billing/facturación →
-subscriptions-ops → promotions → leads/crm → reminders → agenda-slots → suggestions →
-consultation-blocks → exports CSV → admin config**.
+Orden grupo A — estado al 2026-06-04:
+**payments(cobros) ✅ → billing ✅ → leads/crm ✅ → suggestions ✅ →**
+PENDIENTE: subscriptions-ops · promotions · agenda-slots · consultation-blocks · exports CSV ·
+admin-config (roles/admins, plan-edit, app-settings). **reminders → DIFERIDO Fase 5** (el envío real
+es WhatsApp/email client-side; solo reminders_settings sería CRUD de bajo valor ahora).
+Frontend pendiente de cablear: billing (admin payments/invoices + doctor/billing), leads (crm),
+suggestions (doctor+admin).
 
 > HALLAZGO (2026-06-03): hay DOS sistemas de pago. `consultation_payments` (secundario, 1 caller:
 > consultations page) = módulo `payments`. `payments`+`payment_items` (PRINCIPAL, fuente de verdad

@@ -524,14 +524,30 @@ Email Resend. Tests Playwright E2E.
 - Diferidos documentados (Fase 5): email (paymentApproved + sendInvoice), PDF de factura, subscription-ops
   standalone (suspend/reactivate/extend manual).
 
-### ⏸️ PUNTO DE RETOME (al 2026-06-04 — post billing)
+### 2026-06-04 — Grupo A: leads ✅ + suggestions ✅ (commits a6256d8, e504d7c)
 
-- **Hecho:** Backend base 10/10 + grupo A: payments(consultation) ✅ + payments principales(finances) ✅
-  - **billing ✅** · Frontend cobros/finanzas cableado ✅ · Frontend auth ✅.
-    Todo en `feature/migracion-backend` (local, sin push).
-- **Siguiente grupo A:** subs-ops · promotions · leads · reminders · agenda-slots (y cablear billing al frontend).
+- **leads (CRM)**: módulo `modules/leads/` sobre tabla `leads` existente (sin migración). CRUD + kanban
+  stage. `/api/doctor/leads`. 62 tests; boot+curl 200. VERIFICADO por el lead.
+- **suggestions**: módulo `modules/suggestions/` + mig. `doctor_suggestions`. Doctor crea/lista; admin
+  (super_admin) lista todas + responde. 57 tests; boot+curl 200; RBAC doctor→403. VERIFICADO por el lead.
+- **reminders DIFERIDO Fase 5** (envío real WhatsApp/email client-side; settings CRUD bajo valor).
+
+### ⏸️ PUNTO DE RETOME (al 2026-06-04 — post leads/suggestions)
+
+- **Hecho:** Backend base 10/10 + grupo A: payments(consultation) ✅ · finances-payments ✅ · billing ✅ ·
+  leads ✅ · suggestions ✅. Frontend: auth (doctor/patient/admin/login) ✅ + cobros/finanzas cableado ✅.
+  Todo en `feature/migracion-backend` (local, sin push). Suite backend: 918 tests verdes.
+- **PENDIENTE grupo A (backend):** subscriptions-ops (suspend/reactivate/extend manual — extiende billing,
+  reusa subscription_changes_log) · promotions (tabla nueva) · agenda-slots (doctor_schedules existe;
+  appointments slots/reschedule) · consultation-blocks (tablas nuevas consultation_block_catalog +
+  doctor_consultation_blocks) · exports CSV (payments/subscriptions) · admin-config (roles/admins,
+  plan-edit precios, app-settings).
+- **PENDIENTE frontend (cablear a backend ya hecho):** billing (admin payments/invoices + doctor/billing),
+  leads (`app/doctor/crm`), suggestions (doctor+admin), consultations register-payment (consultation_payments).
+- **PENDIENTE Fase 4 (Auth0):** register, recovery, booking signup, createDoctor, admin data-pages auth.
+- **PENDIENTE Fase 5:** IA/Gemini, email/Resend, PDF, storage→GCS, calendar, cron, reminders dispatch.
 - **Reglas:** módulo backend = DDD 4 capas + migración .cjs + tests + boot dist + curl real (pitfall
   Sequelize-en-providers). Frontend = editar SOLO datos en .tsx; server actions / api-client.server.
-- **Lección lead:** verificar tsc/eslint con EXIT REAL y bootear dist + curl; verificar en disco lo que
-  cualquier agente declare. Dos sistemas de pago — no confundir consultation_payments vs payments.
+- **Lección lead:** verificar build/tests con EXIT REAL + bootear dist + curl + RBAC; verificar en disco
+  lo que cualquier agente declare. Patrón establecido: spec preciso → backend-agent (Sonnet) → lead verifica → commit.
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.

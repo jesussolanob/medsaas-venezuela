@@ -129,6 +129,14 @@ Estado (orden `migracion/modulos/`):
   Reemplaza legacy: `app/api/admin/payments/*` · `app/api/admin/invoices/` · `app/api/admin/mark-invoice-paid`
   - `app/api/doctor/billing` · `lib/subscription.ts` (extendSubscription/logSubscriptionChange).
 
+- 14 **leads (CRM)** → ✅ DDD (commit a6256d8). Tabla `leads` (ya existía). `modules/leads/`. Rutas
+  `/api/doctor/leads` GET/POST, `/:id` PUT/DELETE, `/:id/stage` PUT. Stages new|contacted|qualified|
+  appointment|converted|lost. Anti-IDOR. 62 tests, boot+curl 200. Reemplaza `app/doctor/crm`.
+- 15 **suggestions** → ✅ DDD (commit e504d7c, mig. 20260603000003 `doctor_suggestions`). `modules/suggestions/`.
+  Doctor: `/api/doctor/suggestions` GET/POST. Admin (super_admin): `/api/admin/suggestions` GET, `/:id` PUT
+  (status+admin_response). 57 tests, boot+curl 200, RBAC doctor→403. Reemplaza `app/api/suggestions`.
+- **reminders → DIFERIDO Fase 5** (envío real WhatsApp/email es client-side; reminders_settings CRUD de bajo valor).
+
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.
 
