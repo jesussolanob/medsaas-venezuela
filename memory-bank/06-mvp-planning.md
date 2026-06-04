@@ -47,8 +47,10 @@ Orden grupo A — estado al 2026-06-04:
 PENDIENTE: subscriptions-ops · promotions · agenda-slots · consultation-blocks · exports CSV ·
 admin-config (roles/admins, plan-edit, app-settings). **reminders → DIFERIDO Fase 5** (el envío real
 es WhatsApp/email client-side; solo reminders_settings sería CRUD de bajo valor ahora).
-Frontend pendiente de cablear: billing (admin payments/invoices + doctor/billing), leads (crm),
-suggestions (doctor+admin).
+Frontend cableado al 2026-06-04: **suggestions (doctor+admin) ✅ · leads/crm ✅ · admin aprobaciones de
+pagos ✅** (commits a7ba116, 027f3ba). Frontend pendiente de cablear: doctor/billing (page completa — 4
+lecturas Supabase en 3 módulos, no half-wire por incoherencia cross-DB), admin/invoices (route handlers),
+consultations register-payment.
 
 > HALLAZGO (2026-06-03): hay DOS sistemas de pago. `consultation_payments` (secundario, 1 caller:
 > consultations page) = módulo `payments`. `payments`+`payment_items` (PRINCIPAL, fuente de verdad

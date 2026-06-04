@@ -551,3 +551,35 @@ Email Resend. Tests Playwright E2E.
 - **Lección lead:** verificar build/tests con EXIT REAL + bootear dist + curl + RBAC; verificar en disco
   lo que cualquier agente declare. Patrón establecido: spec preciso → backend-agent (Sonnet) → lead verifica → commit.
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
+### 2026-06-04 — Frontend: cablear suggestions + leads + admin-aprobaciones al backend (commits a7ba116, 027f3ba)
+
+- **suggestions (doctor + admin) ✅ (a7ba116):** `/api/suggestions/route.ts` reescrito como thin-proxy.
+  GET enruta por rol (doctor→`/api/doctor/suggestions`, super_admin→`/api/admin/suggestions`); POST→doctor;
+  PATCH→`/api/admin/suggestions/:id`. **Mapeo de estados UI↔backend** (UI usa pending|in_progress|resolved;
+  backend usa pending|reviewed|planned|done|rejected): backend→UI (reviewed/planned→in_progress, done/rejected→
+  resolved) y UI→backend (in_progress→reviewed, resolved→done). CERO cambios a los .tsx (ambas páginas ya
+  consumían el route handler vía fetch).
+- **leads/crm ✅ (a7ba116):** nuevo `app/doctor/crm/actions.ts` (getLeads/createLead/updateLeadStage) thin-proxy
+  a `/api/doctor/leads`. `crm/page.tsx` swap de capa de datos Supabase→backend SIN tocar JSX (useEffect, seeding
+  demo vía createLead, handleDropOnStage, handleAddLead). `lead_messages` (chat) sin backend → Fase 5, queda
+  client-local (se quitó el insert a Supabase). crm 100% sin Supabase.
+- **admin aprobaciones de pagos ✅ (027f3ba):** 3 route handlers → backend `billing` (subscription-payments):
+  `/api/admin/payments` (GET list, ?status, limit=100, mapea camelCase→snake_case PaymentRow + rellena null),
+  `/api/admin/payments/approve` (PUT :id/approve — el use-case backend hace la transacción atómica:
+  pago→subscription→profiles→changes_log), `/api/admin/payments/reject` (PUT :id/reject {reason}). RBAC
+  super_admin lo enforce el backend vía rol reenviado. Consumidores: `app/admin/aprobaciones` + approve/reject de
+  `app/admin/subscriptions`. Quitado requireSuperAdmin/extendSubscription/email del handler (backend lo hace).
+- **Verificación:** `tsc --noEmit` frontend EXIT 0 (0 errores); `eslint` 0 en los handlers nuevos; sin Supabase
+  en los archivos tocados.
+- **GAP backend documentado (Fase 5/mejora):** `/api/admin/suggestions` y `/api/admin/subscription-payments` NO
+  hacen join de `profiles` (full_name/specialty/email) → las listas admin muestran esos campos vacíos. El backend
+  tampoco expone amount_bs/bcv_rate_used/receipt_url/notes/rejection_reason de los pagos. Emails diferidos Fase 5.
+- **NO cableado a propósito — `doctor/billing` page:** lee billing_documents(stats) + profiles + consultations +
+  pricing_plans(services) de Supabase (4 lecturas en 3 módulos: doctor-settings, consultations[PII patient_name],
+  finances). Cablear solo el write (`/api/doctor/billing`) crearía **incoherencia cross-DB** en Etapa 1 (write→
+  Docker Postgres, stats read→Supabase). Requiere un pase dedicado migrando las 4 lecturas + el write/stats juntos.
+- **Pendiente del bloque frontend-wiring:** doctor/billing (page completa), admin/invoices (route handlers
+  `/api/admin/invoices` + `/api/admin/mark-invoice-paid` → backend invoices; ver qué página los consume),
+  consultations register-payment (consultation_payments, módulo `payments` commit a5d8dee).
+- **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
