@@ -113,7 +113,11 @@ Estado (orden `migracion/modulos/`):
   Anti-IDOR, transacciones, sin PII de patients cifrados. **Integrado en booking** (CreateBooking crea el
   payment + enlaza appointment.payment_id). 227 tests dirigidos + 732 suite; dist bootea; curl real 200.
   Storage de comprobante + realtime + PDF de recibo → Fase 5.
-  **Pendiente: cablear frontend** (cobros + dashboard + finanzas vía `lib/finances.ts`).
+  **Frontend cableado ✅ (commit e0f30c4):** `app/doctor/finances/payments-actions.ts` (BFF) +
+  `cobros/page.tsx` y `finances/page.tsx` migrados (lista, estado, items). `lib/finances.ts` ya NO
+  usa Supabase (solo tipos + formatters). Residual Supabase en esas pantallas (Fase 5): storage de
+  comprobantes, realtime, PDF de recibo, lectura de pricing_plans (add-item modal), export Excel,
+  y gastos `financial_transactions` (usar /api/finances/transactions más adelante). tsc 0.
 
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.

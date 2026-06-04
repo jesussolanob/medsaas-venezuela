@@ -487,12 +487,24 @@ Email Resend. Tests Playwright E2E.
 - Pendiente del slice: cablear frontend. `lib/finances.ts` (fetchPayments/fetchPaymentTotals) es compartido
   por cobros+dashboard+finanzas → migrarlo cascada a las 3. cobros también usa storage/realtime/PDF → Fase 5.
 
-### ⏸️ PUNTO DE RETOME (al 2026-06-03)
+### 2026-06-04 — Frontend: cobros + finanzas cableados a /api/finances/payments (commit e0f30c4)
 
-- **Hecho:** Backend base 10/10 + grupo A: payments(consultation) ✅ + payments principales(finances) ✅.
-  Frontend: BFF + DOCTOR + PATIENT + ADMIN auth + LOGIN dev-stub ✅. Todo en `feature/migracion-backend` (local).
-- **Siguiente:** cablear frontend de **cobros + dashboard + finanzas** a `/api/finances/payments*`
-  (migrar `lib/finances.ts` → BFF; storage/realtime/PDF de recibo → Fase 5). Luego seguir grupo A: billing.
+- `app/doctor/finances/payments-actions.ts` (server actions BFF): getPayments, updatePaymentStatus,
+  getPaymentItems, addPaymentItem, removePaymentItem. `cobros/page.tsx` y `finances/page.tsx` migrados
+  (lista/estado/items via backend; el backend recalcula totales y sincroniza consulta/cita).
+  `lib/finances.ts` SIN Supabase (solo PaymentRow/FinanceFilters + formatUsd/formatBs). tsc 0; eslint sin
+  errores nuevos (los de cobros son pre-existentes: any en catches/realtime/PDF, set-state-in-effect).
+- Residual Supabase (Fase 5) en cobros/finanzas: storage comprobantes, realtime, PDF recibo, pricing_plans
+  del add-item modal, export Excel, gastos financial_transactions (→ /api/finances/transactions luego).
+- **SLICE PAGOS COMPLETO** (backend + frontend) de punta a punta sin Supabase.
+
+### ⏸️ PUNTO DE RETOME (al 2026-06-04)
+
+- **Hecho:** Backend base 10/10 + grupo A: payments(consultation) ✅ + payments principales(finances) ✅
+  - **frontend cobros/finanzas cableado ✅**. Frontend auth: BFF + DOCTOR + PATIENT + ADMIN auth + LOGIN ✅.
+    Todo en `feature/migracion-backend` (local, sin push).
+- **Siguiente grupo A:** `billing`/facturación (tablas nuevas `subscription_payments`, `invoices`,
+  `billing_documents`) — reemplaza admin/payments(approve/reject), admin/invoices, doctor/billing.
 - **Reglas:** módulo backend = DDD 4 capas + migración .cjs + tests + boot dist + curl real (pitfall
   Sequelize-en-providers). Frontend = editar SOLO datos en .tsx; server actions / api-client.server.
 - **Lección lead:** verificar tsc/eslint con EXIT REAL y bootear dist + curl; verificar en disco lo que
