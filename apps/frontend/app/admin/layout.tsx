@@ -23,24 +23,45 @@ import {
   PanelLeftClose,
   Pin,
   X,
+  Shield,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
 import SearchCommandPalette from './SearchCommandPalette';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
+import { getMyCapabilities } from '@/app/capabilities-actions';
+import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
 
-// 7 tabs del design (orden del PROMPT.md):
-// Dashboard · Especialistas · Aprobaciones · Pacientes · Finanzas · Suscripciones · Configuración
-const navItems = [
-  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-  { name: 'Especialistas', href: '/admin/doctors', icon: Users },
-  { name: 'Aprobaciones', href: '/admin/aprobaciones', icon: ClipboardCheck },
-  { name: 'Pacientes', href: '/admin/patients', icon: UsersRound },
-  { name: 'Finanzas', href: '/admin/finanzas', icon: TrendingUp },
-  { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
-  { name: 'Sugerencias', href: '/admin/suggestions', icon: MessageSquarePlus },
-  { name: 'Configuración', href: '/admin/settings', icon: Settings },
+type AdminNavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
+
+// 8 tabs del design (orden del PROMPT.md):
+// Dashboard · Especialistas · Aprobaciones · Pacientes · Finanzas · Suscripciones · Roles · Configuración
+const navItems: AdminNavItem[] = [
+  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, moduleKey: 'dashboard' },
+  { name: 'Especialistas', href: '/admin/doctors', icon: Users, moduleKey: 'doctors' },
+  {
+    name: 'Aprobaciones',
+    href: '/admin/aprobaciones',
+    icon: ClipboardCheck,
+    moduleKey: 'approvals',
+  },
+  { name: 'Pacientes', href: '/admin/patients', icon: UsersRound, moduleKey: 'patients' },
+  { name: 'Finanzas', href: '/admin/finanzas', icon: TrendingUp }, // sin gating: no hay módulo 'finances' para admin en el seed (beta)
+  {
+    name: 'Suscripciones',
+    href: '/admin/subscriptions',
+    icon: CreditCard,
+    moduleKey: 'subscriptions',
+  },
+  { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
+  {
+    name: 'Sugerencias',
+    href: '/admin/suggestions',
+    icon: MessageSquarePlus,
+    moduleKey: 'suggestions',
+  },
+  { name: 'Configuración', href: '/admin/settings', icon: Settings, moduleKey: 'settings' },
 ];
 
 function isPathActive(pathname: string, href: string) {
@@ -52,6 +73,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
 
   const [pinned, setPinned] = useState(true);
   const [hovered, setHovered] = useState(false);
@@ -61,6 +83,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       const saved = localStorage.getItem('delta_admin_sidebar_pinned');
       if (saved !== null) setPinned(saved === 'true');
     } catch {}
+  }, []);
+
+  useEffect(() => {
+    getMyCapabilities()
+      .then(setCaps)
+      .catch(() => setCaps(EMPTY_CAPABILITIES));
   }, []);
 
   const togglePin = useCallback(() => {
@@ -185,27 +213,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {navItems.map((item) => {
-              const active = isPathActive(pathname, item.href);
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={clsx(
-                    'flex items-center gap-3 px-3.5 py-2.5 text-sm rounded-[var(--dh-r-md)] transition-all',
-                    active && 'nav-item-active',
-                  )}
-                  style={{
-                    color: active ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
-                    fontWeight: active ? 600 : 500,
-                  }}
-                >
-                  <item.icon className="w-[18px] h-[18px] shrink-0" />
-                  {item.name}
-                </Link>
-              );
-            })}
+            {navItems
+              .filter(
+                (item) => caps === null || !item.moduleKey || can(caps, item.moduleKey, 'view'),
+              )
+              .map((item) => {
+                const active = isPathActive(pathname, item.href);
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={clsx(
+                      'flex items-center gap-3 px-3.5 py-2.5 text-sm rounded-[var(--dh-r-md)] transition-all',
+                      active && 'nav-item-active',
+                    )}
+                    style={{
+                      color: active ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
+                      fontWeight: active ? 600 : 500,
+                    }}
+                  >
+                    <item.icon className="w-[18px] h-[18px] shrink-0" />
+                    {item.name}
+                  </Link>
+                );
+              })}
           </nav>
 
           {/* Footer: status + logout */}

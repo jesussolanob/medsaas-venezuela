@@ -19,17 +19,19 @@ import { getPatientDashboard, getPatientProfile } from './actions';
 import SearchCommandPalette from './SearchCommandPalette';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
+import { getMyCapabilities } from '@/app/capabilities-actions';
+import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
 
-type NavItem = { name: string; href: string; icon: any };
+type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 
 // RONDA 40: "Recetas" reemplazado por "Mi seguimiento" (Shared Health Space).
 // Las recetas siguen accesibles como un tipo de archivo dentro del seguimiento.
 const navItems: NavItem[] = [
-  { name: 'Inicio', href: '/patient', icon: LayoutDashboard },
-  { name: 'Mis citas', href: '/patient/appointments', icon: Calendar },
-  { name: 'Mis informes', href: '/patient/reports', icon: FileText },
+  { name: 'Inicio', href: '/patient', icon: LayoutDashboard, moduleKey: 'dashboard' },
+  { name: 'Mis citas', href: '/patient/appointments', icon: Calendar, moduleKey: 'appointments' },
+  { name: 'Mis informes', href: '/patient/reports', icon: FileText, moduleKey: 'reports' },
   { name: 'Mi seguimiento', href: '/patient/seguimiento', icon: FolderHeart },
-  { name: 'Mi perfil', href: '/patient/profile', icon: User },
+  { name: 'Mi perfil', href: '/patient/profile', icon: User, moduleKey: 'profile' },
 ];
 
 function isPathActive(pathname: string, href: string) {
@@ -46,12 +48,21 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
   const [user, setUser] = useState<{ email: string; user_metadata: { full_name: string } } | null>(
     null,
   );
   const [doctorName, setDoctorName] = useState('');
   const [loading, setLoading] = useState(true);
   const isPublicRoute = publicRoutes.some((r) => pathname.startsWith(r));
+
+  useEffect(() => {
+    if (!isPublicRoute) {
+      getMyCapabilities()
+        .then(setCaps)
+        .catch(() => setCaps(EMPTY_CAPABILITIES));
+    }
+  }, [isPublicRoute]);
 
   useEffect(() => {
     if (isPublicRoute) {
@@ -103,6 +114,12 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
   const activeTitle =
     navItems.find((i) => isPathActive(pathname, i.href))?.name ?? 'Portal del Paciente';
+
+  function isItemVisible(item: NavItem): boolean {
+    if (caps === null) return true;
+    if (!item.moduleKey) return true;
+    return can(caps, item.moduleKey, 'view');
+  }
 
   const NavLink = ({ item }: { item: NavItem }) => {
     const active = isPathActive(pathname, item.href);
@@ -164,7 +181,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map((i) => (
+        {navItems.filter(isItemVisible).map((i) => (
           <NavLink key={i.href} item={i} />
         ))}
       </nav>

@@ -678,10 +678,67 @@ Email Resend. Tests Playwright E2E.
 - Suite backend **1116 tests verdes**. 2 fixes de aislamiento de specs de integración (ids fijos disjuntos:
   ehr=f1000000, prescription=f2000000, consultation-payment=f3000000) — race jest paralelo, no en runInBand.
 
-### ⏸️ PUNTO DE RETOME (2026-06-04 — backend 100%, falta cableo frontend + review cycle)
+### 2026-06-04 — Frontend: capabilities en sidebars + /admin/roles + thin-proxy admin/reschedule (review cycle ✅)
+
+> Equipo de agentes (pedido del usuario): UI sustancial → frontend-agent; thin-proxy de route handlers →
+> lead inline (regla CLAUDE.md); review final → code-reviewer + security-agent. El usuario eligió
+> "lead inline + agentes solo para review" tras un check-in de proceso a mitad de sesión.
+
+- **Gating por capabilities en los 3 sidebars (frontend-agent `fe-caps`):** `doctor/layout.tsx`,
+  `admin/layout.tsx`, `patient/layout.tsx`. Cada `NavItem` lleva `moduleKey?`; se carga `getMyCapabilities()`
+  en useEffect (`.then(setCaps)`, deny-all ante error con `EMPTY_CAPABILITIES`); un item se muestra si
+  `caps===null` (cargando, evita flash-of-empty) || `!moduleKey` (no modelado, ungated) || `can(caps,moduleKey)`.
+  En doctor, sección colapsable sin items visibles se oculta entera. JSX/estilos/orden intactos. Mapeo de
+  module_keys del seed real (doctor 15 / admin 13 / patient 6). Añadido item "Roles" al nav admin.
+- **`/admin/roles` REESCRITO (lead inline — el frontend-agent murió por cierre de socket tras Task 1A;
+  verificado en disco y completado el resto):** editor de la matriz role-capabilities (selector de rol →
+  tabla módulos × {view,create,edit,delete} con toggles optimistas + rollback) + botón "Refrescar caché".
+  Reemplaza la página legacy de admin-users (rol ficticio `vendedor` + permisos inventados que NO existían
+  en backend). Route handlers NUEVOS thin-proxy: `app/api/admin/role-capabilities/route.ts` (GET/PUT, con
+  guard mínimo de shape) + `/refresh/route.ts` (POST). Sin Supabase.
+- **Thin-proxy de route handlers admin (lead inline):**
+  - `toggle-doctor` → `POST /api/admin/subscriptions/{suspend,reactivate}` (action suspend/activate). Coherente:
+    la lista de doctores ya lee del backend (`/api/admin/doctors`). Conserva el contrato de los consumidores.
+  - `setup-promotions` → DEPRECADO 410 (la tabla plan_promotions se crea con la migración Sequelize). Sin Supabase.
+- **Reschedule (lead inline):** `app/api/doctor/reschedule` → `PUT /api/appointments/:id/reschedule`
+  (body `{scheduled_at}`). Valida UUID antes de interpolar (anti path-traversal en el proxy), mapea códigos
+  de error del backend a es-VE (APPOINTMENT_CONFLICT/NOT_RESCHEDULABLE/NOT_FOUND). El page.tsx (2989 líneas)
+  NO se tocó (ya llamaba al route handler con `{appointmentId, newDate}` y solo lee `res.ok`).
+  Google Calendar sync DIFERIDO Fase 5.
+- **Review cycle ✅ (code-reviewer + security-agent en paralelo):** ambos APROBADO — **0 CRITICAL / 0 HIGH**.
+  Fixes aplicados por el lead: validación UUID en reschedule (security MEDIUM), guard de shape en PUT
+  role-capabilities, `icon: any`→`React.ElementType` en doctor/layout, `EMPTY_CAPABILITIES` (DRY) en los 3
+  catch, `AppError` importado en vez de redeclarado, comentario en Finanzas (sin gating, beta), refactor del
+  load de /admin/roles a IIFE async (0 errores eslint nuevos en código propio).
+- **Verificación lead:** frontend `tsc --noEmit` EXIT 0; eslint: código nuevo CLEAN; los 4 errores
+  `set-state-in-effect` restantes son PRE-EXISTENTES en los layouts (setPinned/setOpenSections/setLoading) +
+  2 warnings de imports sin usar pre-existentes. Backend NO tocado (0 ediciones) — sus endpoints
+  (capabilities, reschedule, suspend/reactivate) ya curl-verificados en sus commits originales.
+- **NO migrado a propósito — booking slots (`book/[doctorId]`):** genera slots CLIENT-SIDE desde
+  `doctor_offices` (Supabase), modelo de datos DISTINTO al `doctor_schedules` que usa el backend
+  `GET /api/booking/:doctorId/slots`. Swap cambiaría comportamiento + arrastra signup (Auth0) y storage
+  (Fase 5). Es el cruce "con cuidado" ya documentado → requiere pase dedicado (reconciliar offices vs schedules).
+- **Admin route handlers que NO son thin-proxy-ables (requieren endpoint backend nuevo, NO simple proxy):**
+  `doctor-details` (el detail backend no expone phone/cedula/created_at/is_active ni nesting profile/subscription
+  que el DoctorDetailDrawer necesita) · `plan-features` (page.tsx lee Supabase server-side + el PUT pide
+  `feature_label` que el cliente no envía) · `subscription-stats` (el dashboard backend no provee
+  chartData/momGrowth/newThisMonth). Quedan en Supabase, documentados. Bloqueados puros: `invoice-pdf`/
+  `send-invoice` (PDF/email F5), `fix-role` (Auth0 F4), `seed`/`reset-database` (dev-tooling Supabase).
+
+### ⏸️ PUNTO DE RETOME (2026-06-04 — backend 100% + cableo frontend de capabilities/agenda hecho + review ✅)
 
 **Backend COMPLETO** (10 módulos base + Grupo A 6/6 + capabilities + endpoint with-patient). 1116 tests, build/
-lint 0. Falta SOLO frontend + el ciclo de review.
+lint 0. **Frontend de capabilities (sidebars + /admin/roles) + reschedule + thin-proxy admin (toggle-doctor,
+setup-promotions) HECHO y revisado (0 CRITICAL/HIGH).**
+
+**PENDIENTE (requiere construir endpoints backend nuevos — NO es simple thin-proxy):**
+
+- Admin data-pages aún en Supabase: `doctor-details` (detail con PII/contacto), `plan-features`
+  (GET server-side + PUT por path con label), `subscription-stats` (growth chart). Construir esos endpoints
+  backend primero, luego cablear. Son pure-Postgres (no bloqueados por Auth0/email/IA).
+- booking slots: reconciliar `doctor_offices` (front) vs `doctor_schedules` (backend) — pase dedicado.
+
+**Bloqueantes (NO tocar):** Auth0 (Fase 4), proveedor de email (sin definir), IA/Gemini.
 
 **PENDIENTE = cableo frontend (no + Supabase donde haya API) + features MVP no bloqueadas:**
 

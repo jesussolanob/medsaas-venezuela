@@ -53,6 +53,15 @@ Commits a7ba116, 027f3ba, ee215ff, d225dff, a96fd12, db221fe. Todo cableado al b
 Para billing se construyó el endpoint backend `GET /api/consultations/with-patient` (PII descifrada,
 owner-scoped) que faltaba. Backend: build/lint verdes, 920/920 tests, dist bootea, curl real verificado.
 
+**🎉 CABLEO FRONTEND CAPABILITIES + AGENDA (2026-06-04):** gating por capabilities en sidebars doctor/admin/
+patient (consume `getMyCapabilities`+`can`, deny-all, sin flash) · UI `/admin/roles` = editor de la matriz
+role-capabilities (toggles optimistas + refresh de caché) con route handlers thin-proxy nuevos · reschedule
+de cita cableado (`/api/doctor/reschedule` → `PUT /api/appointments/:id/reschedule`) · thin-proxy de
+`toggle-doctor` (suspend/reactivate) y `setup-promotions` deprecado. Review cycle: code-reviewer +
+security-agent → 0 CRITICAL/HIGH. tsc 0, código nuevo sin errores eslint. Detalle en 05-progress-log.
+**PENDIENTE admin data-pages (requieren endpoint backend nuevo, no simple proxy):** doctor-details (PII),
+plan-features (por path + label), subscription-stats (growth chart) · booking slots (offices vs schedules).
+
 > HALLAZGO (2026-06-03): hay DOS sistemas de pago. `consultation_payments` (secundario, 1 caller:
 > consultations page) = módulo `payments`. `payments`+`payment_items` (PRINCIPAL, fuente de verdad
 > financiera de cobros/dashboard/finanzas, ver `lib/finances.ts`) = construido EN el módulo `finances`.

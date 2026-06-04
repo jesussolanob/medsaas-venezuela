@@ -136,6 +136,16 @@ Estado (orden `migracion/modulos/`):
   Doctor: `/api/doctor/suggestions` GET/POST. Admin (super_admin): `/api/admin/suggestions` GET, `/:id` PUT
   (status+admin_response). 57 tests, boot+curl 200, RBAC doctor→403. Reemplaza `app/api/suggestions`.
 - **reminders → DIFERIDO Fase 5** (envío real WhatsApp/email es client-side; reminders_settings CRUD de bajo valor).
+- 16 **capabilities (RBAC DB-driven)** → ✅ DDD (mig. `20260604000002-role-capabilities.cjs`). Módulo
+  FUNDACIONAL. Tabla `role_capabilities` (UNIQUE role+module_key+action; INDEX role). Seed data-driven
+  para 5 roles: super_admin/admin (13 módulos×4acc), doctor (15×4), assistant (restringido), patient
+  (portal). `ResolveCapabilitiesUseCase` con Redis TTL 300s + fallback DB (degradación silenciosa).
+  `SetCapabilityUseCase` invalida `DEL capabilities:{role}` (direct key, no SCAN). `CapabilitiesGuard`
+  - `@RequireCapability(moduleKey,action)` reutilizable (fail-closed). `GET /api/me/capabilities`
+    (para frontend), `GET/PUT /api/admin/role-capabilities` (super_admin). 42 tests, 100% domain+use-cases.
+    Coexiste con RolesGuard (roles = identidad; capabilities = permisos granulares). Auth0-ready
+    (resuelve por `@CurrentUser().role`). Cambios en BD aplican sin re-login (cache TTL 300s).
+    `modules/capabilities/`.
 
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.
