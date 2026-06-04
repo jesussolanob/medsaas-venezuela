@@ -8,6 +8,7 @@ import { ROLE_CAPABILITY_REPOSITORY } from './domain/repositories/role-capabilit
 import { ResolveCapabilitiesUseCase } from './application/use-cases/capabilities/resolve-capabilities.use-case';
 import { ListAllCapabilitiesUseCase } from './application/use-cases/capabilities/list-all-capabilities.use-case';
 import { SetCapabilityUseCase } from './application/use-cases/capabilities/set-capability.use-case';
+import { RefreshCapabilitiesCacheUseCase } from './application/use-cases/capabilities/refresh-capabilities-cache.use-case';
 
 import { RolesGuard } from '../../presentation/guards/roles.guard';
 import { CapabilitiesGuard } from './presentation/guards/capabilities.guard';
@@ -43,6 +44,7 @@ import { AdminCapabilitiesController } from './presentation/controllers/admin-ca
     ResolveCapabilitiesUseCase,
     ListAllCapabilitiesUseCase,
     SetCapabilityUseCase,
+    RefreshCapabilitiesCacheUseCase,
   ],
   exports: [
     // Export guard and use case so other modules can apply @RequireCapability()

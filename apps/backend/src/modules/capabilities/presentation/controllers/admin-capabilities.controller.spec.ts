@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminCapabilitiesController } from './admin-capabilities.controller';
 import { ListAllCapabilitiesUseCase } from '../../application/use-cases/capabilities/list-all-capabilities.use-case';
 import { SetCapabilityUseCase } from '../../application/use-cases/capabilities/set-capability.use-case';
+import { RefreshCapabilitiesCacheUseCase } from '../../application/use-cases/capabilities/refresh-capabilities-cache.use-case';
 import { RoleCapability } from '../../domain/entities/role-capability.entity';
 
 const makeRow = (
@@ -22,6 +23,7 @@ const makeRow = (
 
 const mockListAll = { execute: jest.fn() };
 const mockSetCapability = { execute: jest.fn() };
+const mockRefreshCache = { execute: jest.fn() };
 
 describe('AdminCapabilitiesController', () => {
   let controller: AdminCapabilitiesController;
@@ -32,6 +34,7 @@ describe('AdminCapabilitiesController', () => {
       providers: [
         { provide: ListAllCapabilitiesUseCase, useValue: mockListAll },
         { provide: SetCapabilityUseCase, useValue: mockSetCapability },
+        { provide: RefreshCapabilitiesCacheUseCase, useValue: mockRefreshCache },
       ],
     }).compile();
 
@@ -89,6 +92,17 @@ describe('AdminCapabilitiesController', () => {
       expect(result.success).toBe(true);
       expect(result.data.allowed).toBe(false);
       expect(result.data.module_key).toBe('finances');
+    });
+  });
+
+  describe('POST /admin/role-capabilities/refresh', () => {
+    it('flushes the cache and returns the number of keys deleted', async () => {
+      mockRefreshCache.execute.mockResolvedValue({ keysDeleted: 3 });
+
+      const result = await controller.refresh();
+
+      expect(mockRefreshCache.execute).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ success: true, data: { keysDeleted: 3 } });
     });
   });
 });

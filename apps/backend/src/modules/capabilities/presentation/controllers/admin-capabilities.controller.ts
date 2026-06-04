@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Put, UseGuards } from '@nestjs/common';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
@@ -10,6 +10,7 @@ import {
 } from '../../application/dtos/capability.dto';
 import { ListAllCapabilitiesUseCase } from '../../application/use-cases/capabilities/list-all-capabilities.use-case';
 import { SetCapabilityUseCase } from '../../application/use-cases/capabilities/set-capability.use-case';
+import { RefreshCapabilitiesCacheUseCase } from '../../application/use-cases/capabilities/refresh-capabilities-cache.use-case';
 import type { RoleCapability } from '../../domain/entities/role-capability.entity';
 
 interface SuccessResponse<T> {
@@ -50,6 +51,7 @@ export class AdminCapabilitiesController {
   constructor(
     private readonly listAll: ListAllCapabilitiesUseCase,
     private readonly setCapability: SetCapabilityUseCase,
+    private readonly refreshCache: RefreshCapabilitiesCacheUseCase,
   ) {}
 
   /**
@@ -85,5 +87,19 @@ export class AdminCapabilitiesController {
       allowed: dto.allowed,
     });
     return { success: true, data: toCapabilityRow(saved) };
+  }
+
+  /**
+   * POST /api/admin/role-capabilities/refresh
+   *
+   * Flushes ALL cached role capabilities from Redis (SCAN + DEL `capabilities:*`).
+   * Escape hatch for out-of-band DB changes that bypass the PUT endpoint and thus
+   * never trigger per-role invalidation. Returns the number of keys deleted.
+   */
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(): Promise<SuccessResponse<{ keysDeleted: number }>> {
+    const result = await this.refreshCache.execute();
+    return { success: true, data: result };
   }
 }
