@@ -22,6 +22,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { LeadsModule } from './modules/leads/leads.module';
     PaymentsModule,
     BillingModule,
     LeadsModule,
+    SuggestionsModule,
   ],
   controllers: [HealthController],
   providers: [
