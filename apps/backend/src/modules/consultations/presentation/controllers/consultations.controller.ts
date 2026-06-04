@@ -31,6 +31,7 @@ import { ApprovePaymentUseCase } from '../../application/use-cases/consultations
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
+import { ListConsultationsWithPatientUseCase } from '../../application/use-cases/consultations/list-consultations-with-patient.use-case';
 import { toConsultationResponse, toConsultationListItem } from '../mappers/consultation.mapper';
 
 /**
@@ -93,7 +94,27 @@ export class ConsultationsController {
     private readonly getById: GetConsultationByIdUseCase,
     private readonly getHistory: GetPatientConsultationHistoryUseCase,
     private readonly listConsultations: ListConsultationsUseCase,
+    private readonly listConsultationsWithPatient: ListConsultationsWithPatientUseCase,
   ) {}
+
+  /**
+   * GET /api/consultations/with-patient — the doctor's consultations enriched with
+   * the patient's decrypted name/phone/email (for billing receipts/estimates).
+   *
+   * Declared BEFORE @Get(':id') so the static path is not captured by the param route.
+   * Anti-IDOR: doctorId comes from user.sub; patients are scoped to the same doctor.
+   */
+  @Get('with-patient')
+  async listWithPatient(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('limit') limit = '100',
+  ): Promise<SuccessResponse<unknown[]>> {
+    const items = await this.listConsultationsWithPatient.execute({
+      doctorId: user.sub,
+      limit: Math.min(200, Math.max(1, parseInt(limit, 10) || 100)),
+    });
+    return { success: true, data: items };
+  }
 
   /** GET /api/consultations — paginated list with optional filters. */
   @Get()
