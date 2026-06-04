@@ -455,18 +455,27 @@ Email Resend. Tests Playwright E2E.
 - **Auth-recovery — Fase 4:** register, auth/callback (OAuth), forgot-password, reset-password, onboarding
   son flujos del proveedor de auth → quedan en Supabase hasta Auth0.
 
-### ⏸️ PUNTO DE RETOME (al 2026-06-03, fin de sesión)
+### 2026-06-03 — GRUPO A módulo 1: payments (cobros) BACKEND ✅ (commit a5d8dee)
 
-- **Hecho:** Backend 10/10 ✅. Frontend: fundación BFF ✅ + ÁREA DOCTOR ✅ + ÁREA PATIENT ✅ + ADMIN auth ✅
-  - LOGIN dev-stub ✅. Commiteado en `feature/migracion-backend` (local, sin push). tsc 0.
-- **Siguiente — DECISIÓN PENDIENTE del usuario (sequencing):**
-  - Opción A: construir endpoints backend que faltan para ADMIN (finanzas/payments/invoices/promotions/
-    packages/reminders/roles/plan-edit) y luego migrar admin frontend + sus route handlers.
-  - Opción B: migrar BOOKING público (dedicado: separar signup→Fase 4, storage→Fase 5, cablear info/plans/
-    packages/POST al backend).
-  - Opción C: dejar admin/booking/recovery en Supabase (Fase 4/5) y hacer el barrido de lo migrable.
-- **Reglas:** editar SOLO datos en .tsx (nunca JSX/estilos); server-only en módulos server; api-client.server
-  (server) o server actions (desde 'use client'); proxy.ts = middleware Next 16.
-- **Lección lead:** verificar tsc/eslint con EXIT REAL (NO el del pipe). Verificar en disco lo que cualquier
-  agente declare (un frontend-agent murió por socket sin escribir nada). Apagar agente antes de commitear.
+- Decisión con el usuario: para paridad con el proyecto original faltan APIs backend (63 route handlers
+  legacy). Grupo A = lógica pura (Postgres), construible ya; B = Auth0 (Fase 4); C = IA/email/PDF/
+  storage/calendar/cron/pasarela (Fase 5). Orden A: payments→billing→subs-ops→promotions→leads→
+  reminders→agenda-slots→suggestions→consultation-blocks→exports→admin-config.
+- **payments** construido por backend-agent (Sonnet), VERIFICADO por el lead: DDD 4 capas en
+  `modules/payments/` + migración `consultation_payments`. Endpoints `GET/POST /api/doctor/payments`,
+  `PUT :id/approve|reject`. Anti-IDOR, transacciones (sync consultation.payment_status), sin PII.
+  migrate ✓ · build ✓ · 61/61 tests ✓ · **dist bootea, 4 rutas mapeadas, sin crash DI** (lead lo confirmó).
+- Pendiente del slice: cablear el frontend de cobros (`app/doctor/cobros` + route handler
+  `app/api/doctor/payments`) a estos endpoints (quitar Supabase).
+
+### ⏸️ PUNTO DE RETOME (al 2026-06-03)
+
+- **Hecho:** Backend base 10/10 + **payments (grupo A #1) ✅**. Frontend: fundación BFF + DOCTOR + PATIENT
+  - ADMIN auth + LOGIN dev-stub ✅. Commiteado en `feature/migracion-backend` (local, sin push). tsc 0.
+- **Siguiente:** o bien (a) cablear frontend de cobros al nuevo módulo payments, o (b) seguir grupo A
+  con **billing/facturación** (tablas `subscription_payments`, `invoices`, `billing_documents`).
+- **Reglas:** módulo backend = DDD 4 capas + migración .cjs + tests + boot dist (pitfall Sequelize-en-
+  providers). Frontend = editar SOLO datos en .tsx; server actions o api-client.server; proxy.ts middleware.
+- **Lección lead:** verificar tsc/eslint con EXIT REAL (no el del pipe) y bootear dist; verificar en disco
+  lo que cualquier agente declare (un frontend-agent murió por socket sin escribir nada).
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.

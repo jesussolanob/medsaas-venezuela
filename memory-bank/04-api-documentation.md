@@ -139,6 +139,18 @@
 > Nota: `POST /admin/settings/usdt-rate` vive en el módulo finances (no duplicado). lastSignInAt/activity
 > tracking llega en Fase 4 (auth).
 
+### Módulo `payments` (cobros de consulta) — Grupo A ✅ (2026-06-03)
+
+| Endpoint                           | Método | Notas                                                                               |
+| ---------------------------------- | ------ | ----------------------------------------------------------------------------------- |
+| `/api/doctor/payments`             | GET    | Lista paginada del doctor. Filtros: `consultation_id`, `status`, `limit`, `offset`. |
+| `/api/doctor/payments`             | POST   | Registra pago (Zod). Verifica ownership de la consulta. status='pending'.           |
+| `/api/doctor/payments/:id/approve` | PUT    | pending→approved. Sincroniza `consultations.payment_status='approved'`.             |
+| `/api/doctor/payments/:id/reject`  | PUT    | pending→rejected. Body opcional `{notes}`.                                          |
+
+> doctorId SIEMPRE de `user.sub` (anti-IDOR). Respuesta sin PII (solo `patient_id`). Transacciones
+> envuelven el pago + sync de la consulta. Reemplaza legacy `app/api/doctor/payments` (GET/POST/PATCH→PUT).
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por

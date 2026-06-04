@@ -97,7 +97,15 @@ Estado (orden `migracion/modulos/`):
 - 08 admin → ✅ DDD. super_admin: dashboard KPIs, médicos+actividad, suscripciones, planes/features
   (toggle), stats, settings. Todos con @Roles('super_admin')+RolesGuard. `modules/admin/`.
 
-**🎉 TODOS los módulos del backend completos (10/10).** 614 tests verdes; dist boota sin colisión.
+**🎉 Módulos base del backend (10/10).** 614 tests verdes; dist boota sin colisión.
+
+### Grupo A — APIs nuevas (paridad con proyecto original, desde 2026-06-03)
+
+- 11 **payments (cobros)** → ✅ DDD. `consultation_payments` (tabla nueva, mig. 20260603000000).
+  Historial de pagos por consulta: register → approve/reject. Anti-IDOR (doctorId de user.sub +
+  ownership de consulta), transacciones que sincronizan `consultations.payment_status`, sin PII
+  (solo patient_id). `modules/payments/`. Reemplaza `app/api/doctor/payments`. 61 tests; dist bootea.
+  Pendiente: cablear frontend (cobros). Siguiente en grupo A: billing/facturación.
 
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.
