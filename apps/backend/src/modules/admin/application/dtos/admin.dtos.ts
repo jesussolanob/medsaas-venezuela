@@ -100,3 +100,67 @@ export const VALID_SUBSCRIPTION_PLANS = [
   'clinic',
   'enterprise',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// PUT /admin/settings — upsert a single app_settings key-value pair
+// ---------------------------------------------------------------------------
+
+export const UpsertSettingBodySchema = z
+  .object({
+    key: z.string().min(1, 'key is required').max(200),
+    /**
+     * Value is accepted as string or any JSON-serialisable type.
+     * Non-string values are coerced to JSON strings before reaching the repo.
+     */
+    value: z.union([
+      z.string(),
+      z.number(),
+      z.boolean(),
+      z.record(z.string(), z.unknown()),
+      z.array(z.unknown()),
+    ]),
+  })
+  .strict();
+
+export type UpsertSettingBody = z.infer<typeof UpsertSettingBodySchema>;
+
+// ---------------------------------------------------------------------------
+// PUT /admin/plans/:planKey/config — edit plan price and other editable fields
+// ---------------------------------------------------------------------------
+
+export const UpdatePlanBodySchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    price: z.number().min(0).optional(),
+    trial_days: z.number().int().min(0).optional(),
+    sort_order: z.number().int().min(0).optional(),
+  })
+  .strict()
+  .refine(
+    (body) =>
+      body.name !== undefined ||
+      body.price !== undefined ||
+      body.trial_days !== undefined ||
+      body.sort_order !== undefined,
+    { message: 'At least one field (name, price, trial_days, sort_order) must be provided' },
+  );
+
+export type UpdatePlanBody = z.infer<typeof UpdatePlanBodySchema>;
+
+// ---------------------------------------------------------------------------
+// PUT /admin/admins/:id/role — set a user's role (grant/revoke super_admin)
+// ---------------------------------------------------------------------------
+
+/**
+ * Roles that can be set via this endpoint.
+ * 'admin' is intentionally excluded — the DB enum uses 'super_admin' directly.
+ * 'assistant' and 'patient' are excluded because elevating/demoting to those
+ * roles is not a valid admin management operation.
+ */
+export const SetUserRoleBodySchema = z
+  .object({
+    role: z.enum(['super_admin', 'doctor']),
+  })
+  .strict();
+
+export type SetUserRoleBody = z.infer<typeof SetUserRoleBodySchema>;

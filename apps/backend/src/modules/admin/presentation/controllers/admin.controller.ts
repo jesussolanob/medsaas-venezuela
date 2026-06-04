@@ -24,6 +24,9 @@ import {
   ExtendSubscriptionBodySchema,
   SuspendSubscriptionBodySchema,
   ReactivateSubscriptionBodySchema,
+  UpsertSettingBodySchema,
+  UpdatePlanBodySchema,
+  SetUserRoleBodySchema,
   VALID_ACTIVITY_STATUSES,
   VALID_SUBSCRIPTION_STATUSES,
   VALID_SUBSCRIPTION_PLANS,
@@ -33,6 +36,9 @@ import {
   type ExtendSubscriptionBody,
   type SuspendSubscriptionBody,
   type ReactivateSubscriptionBody,
+  type UpsertSettingBody,
+  type UpdatePlanBody,
+  type SetUserRoleBody,
 } from '../../application/dtos/admin.dtos';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDoctorsListUseCase } from '../../application/use-cases/admin/get-doctors-list.use-case';
@@ -48,6 +54,10 @@ import { GetSettingsUseCase } from '../../application/use-cases/admin/get-settin
 import { ExtendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/extend-doctor-subscription.use-case';
 import { SuspendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/suspend-doctor-subscription.use-case';
 import { ReactivateDoctorSubscriptionUseCase } from '../../application/use-cases/admin/reactivate-doctor-subscription.use-case';
+import { UpsertSettingUseCase } from '../../application/use-cases/admin/upsert-setting.use-case';
+import { UpdatePlanUseCase } from '../../application/use-cases/admin/update-plan.use-case';
+import { ListAdminUsersUseCase } from '../../application/use-cases/admin/list-admin-users.use-case';
+import { SetUserRoleUseCase } from '../../application/use-cases/admin/set-user-role.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -93,6 +103,10 @@ export class AdminController {
     private readonly extendSubscriptionOp: ExtendDoctorSubscriptionUseCase,
     private readonly suspendSubscriptionOp: SuspendDoctorSubscriptionUseCase,
     private readonly reactivateSubscriptionOp: ReactivateDoctorSubscriptionUseCase,
+    private readonly upsertSettingOp: UpsertSettingUseCase,
+    private readonly updatePlanOp: UpdatePlanUseCase,
+    private readonly listAdminUsersOp: ListAdminUsersUseCase,
+    private readonly setUserRoleOp: SetUserRoleUseCase,
   ) {}
 
   /** GET /api/admin/dashboard — KPIs: doctor counts by activity, appointments, patients, expiring subscriptions */
@@ -389,5 +403,102 @@ export class AdminController {
   async settings(): Promise<SuccessResponse<unknown[]>> {
     const settings = await this.getSettings.execute();
     return { success: true, data: settings };
+  }
+
+  /**
+   * PUT /api/admin/settings — upsert a single key-value pair in app_settings.
+   *
+   * Body: { key: string, value: string | number | boolean | object | array }
+   * Non-string values are serialised to JSON before being stored.
+   *
+   * Protected keys (encryption_key, jwt_secret, usdt_rate_raw) are rejected with 422.
+   * usdt_rate_raw is owned by the finances module — use POST /api/admin/settings/usdt-rate
+   * to update the USDT/BCV rate (already implemented in finances/settings.controller.ts).
+   */
+  @Put('settings')
+  async upsertSetting(
+    @Body(new ZodValidationPipe(UpsertSettingBodySchema)) body: UpsertSettingBody,
+  ): Promise<SuccessResponse<unknown>> {
+    const valueStr = typeof body.value === 'string' ? body.value : JSON.stringify(body.value);
+
+    const saved = await this.upsertSettingOp.execute({ key: body.key, value: valueStr });
+    return { success: true, data: saved };
+  }
+
+  /**
+   * PUT /api/admin/plans/:planKey/config — edit plan editable fields (name, price, trial_days, sort_order).
+   *
+   * At least one field must be provided. is_active is NOT accepted here — use
+   * PUT /api/admin/plans/:planKey (TogglePlan) to activate/deactivate.
+   */
+  @Put('plans/:planKey/config')
+  async updatePlanConfig(
+    @Param('planKey') planKey: string,
+    @Body(new ZodValidationPipe(UpdatePlanBodySchema)) body: UpdatePlanBody,
+  ): Promise<SuccessResponse<unknown>> {
+    const updated = await this.updatePlanOp.execute({
+      planKey,
+      name: body.name,
+      price: body.price,
+      trialDays: body.trial_days,
+      sortOrder: body.sort_order,
+    });
+    return {
+      success: true,
+      data: {
+        planKey: updated.planKey,
+        name: updated.name,
+        priceUsd: updated.priceUsd,
+        trialDays: updated.trialDays,
+        isActive: updated.isActive,
+        description: updated.description,
+        sortOrder: updated.sortOrder,
+      },
+    };
+  }
+
+  /**
+   * GET /api/admin/admins — list all super_admin profiles.
+   *
+   * NOTE: This endpoint returns PII (full name, email). It is super_admin–only
+   * and must never be cached or logged.
+   */
+  @Get('admins')
+  async listAdmins(): Promise<SuccessResponse<unknown[]>> {
+    const admins = await this.listAdminUsersOp.execute();
+    return {
+      success: true,
+      data: admins.map((a) => ({
+        id: a.id,
+        fullName: a.fullName,
+        email: a.email,
+        role: a.role,
+        createdAt: a.createdAt,
+      })),
+    };
+  }
+
+  /**
+   * PUT /api/admin/admins/:id/role — grant or revoke super_admin role.
+   *
+   * Body: { role: 'super_admin' | 'doctor' }
+   *
+   * Business rules enforced by SetUserRoleUseCase:
+   *   - Target user must exist.
+   *   - Actor cannot demote themselves.
+   *   - The last super_admin cannot be demoted.
+   */
+  @Put('admins/:id/role')
+  async setAdminRole(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') targetId: string,
+    @Body(new ZodValidationPipe(SetUserRoleBodySchema)) body: SetUserRoleBody,
+  ): Promise<SuccessResponse<{ updated: true }>> {
+    await this.setUserRoleOp.execute({
+      targetUserId: targetId,
+      actorUserId: user.sub,
+      newRole: body.role,
+    });
+    return { success: true, data: { updated: true } };
   }
 }

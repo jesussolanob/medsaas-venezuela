@@ -24,8 +24,19 @@ import { GetSettingsUseCase } from '../../application/use-cases/admin/get-settin
 import { ExtendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/extend-doctor-subscription.use-case';
 import { SuspendDoctorSubscriptionUseCase } from '../../application/use-cases/admin/suspend-doctor-subscription.use-case';
 import { ReactivateDoctorSubscriptionUseCase } from '../../application/use-cases/admin/reactivate-doctor-subscription.use-case';
+import { UpsertSettingUseCase } from '../../application/use-cases/admin/upsert-setting.use-case';
+import { UpdatePlanUseCase } from '../../application/use-cases/admin/update-plan.use-case';
+import { ListAdminUsersUseCase } from '../../application/use-cases/admin/list-admin-users.use-case';
+import { SetUserRoleUseCase } from '../../application/use-cases/admin/set-user-role.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
+import { SettingNotAllowedError } from '../../domain/errors/setting-not-allowed.error';
+import { AdminUserNotFoundError } from '../../domain/errors/admin-user-not-found.error';
+import {
+  UpsertSettingBodySchema,
+  UpdatePlanBodySchema,
+  SetUserRoleBodySchema,
+} from '../../application/dtos/admin.dtos';
 
 const dashboardData = {
   totalDoctors: 5,
@@ -83,6 +94,26 @@ const buildModule = async (): Promise<TestingModule> => {
   const mockExtendSub = { execute: jest.fn().mockResolvedValue({ newExpiresAt: new Date() }) };
   const mockSuspendSub = { execute: jest.fn().mockResolvedValue(undefined) };
   const mockReactivateSub = { execute: jest.fn().mockResolvedValue({ newExpiresAt: null }) };
+  const mockUpsertSetting = {
+    execute: jest
+      .fn()
+      .mockResolvedValue({ key: 'app_name', value: 'Delta', updatedAt: new Date() }),
+  };
+  const mockUpdatePlan = {
+    execute: jest.fn().mockResolvedValue(samplePlan),
+  };
+  const mockListAdminUsers = {
+    execute: jest.fn().mockResolvedValue([
+      {
+        id: 'uuid-admin',
+        fullName: 'Alice',
+        email: 'alice@delta.com',
+        role: 'super_admin',
+        createdAt: new Date(),
+      },
+    ]),
+  };
+  const mockSetUserRole = { execute: jest.fn().mockResolvedValue(undefined) };
 
   return Test.createTestingModule({
     controllers: [AdminController],
@@ -102,6 +133,10 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: ExtendDoctorSubscriptionUseCase, useValue: mockExtendSub },
       { provide: SuspendDoctorSubscriptionUseCase, useValue: mockSuspendSub },
       { provide: ReactivateDoctorSubscriptionUseCase, useValue: mockReactivateSub },
+      { provide: UpsertSettingUseCase, useValue: mockUpsertSetting },
+      { provide: UpdatePlanUseCase, useValue: mockUpdatePlan },
+      { provide: ListAdminUsersUseCase, useValue: mockListAdminUsers },
+      { provide: SetUserRoleUseCase, useValue: mockSetUserRole },
     ],
   })
     .overrideGuard(DevAuthGuard)
@@ -326,6 +361,129 @@ describe('AdminController', () => {
       expect(() => pipe.transform({ feature_label: 'Agenda', enabled: 1 })).toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('PUT /admin/settings', () => {
+    it('returns saved setting on successful upsert', async () => {
+      const result = await controller.upsertSetting({ key: 'app_name', value: 'Delta' });
+      expect(result.success).toBe(true);
+      expect((result.data as { key: string }).key).toBe('app_name');
+    });
+
+    it('propagates SettingNotAllowedError for protected keys', async () => {
+      const mockUpsertSettingOp = module.get(
+        UpsertSettingUseCase,
+      ) as jest.Mocked<UpsertSettingUseCase>;
+      mockUpsertSettingOp.execute.mockRejectedValueOnce(
+        new SettingNotAllowedError('encryption_key'),
+      );
+
+      await expect(
+        controller.upsertSetting({ key: 'encryption_key', value: 'hacked' }),
+      ).rejects.toThrow(SettingNotAllowedError);
+    });
+  });
+
+  describe('PUT /admin/plans/:planKey/config', () => {
+    it('returns updated plan on success', async () => {
+      const result = await controller.updatePlanConfig('basic', { price: 15 });
+      expect(result.success).toBe(true);
+      expect((result.data as { planKey: string }).planKey).toBe('basic');
+    });
+  });
+
+  describe('GET /admin/admins', () => {
+    it('returns list of admin users', async () => {
+      const result = await controller.listAdmins();
+      expect(result.success).toBe(true);
+      expect(Array.isArray(result.data)).toBe(true);
+      expect((result.data[0] as { role: string }).role).toBe('super_admin');
+    });
+  });
+
+  describe('PUT /admin/admins/:id/role', () => {
+    const actor = { sub: 'uuid-actor', role: 'super_admin' as const, email: 'actor@dev.local' };
+
+    it('returns updated: true on success', async () => {
+      const result = await controller.setAdminRole(actor, 'uuid-target', { role: 'doctor' });
+      expect(result.success).toBe(true);
+      expect(result.data.updated).toBe(true);
+    });
+
+    it('propagates AdminUserNotFoundError when target does not exist', async () => {
+      const mockSetRole = module.get(SetUserRoleUseCase) as jest.Mocked<SetUserRoleUseCase>;
+      mockSetRole.execute.mockRejectedValueOnce(new AdminUserNotFoundError('nonexistent'));
+
+      await expect(
+        controller.setAdminRole(actor, 'nonexistent', { role: 'doctor' }),
+      ).rejects.toThrow(AdminUserNotFoundError);
+    });
+  });
+
+  describe('Input validation — UpsertSettingBodySchema', () => {
+    const pipe = new ZodValidationPipe(UpsertSettingBodySchema);
+
+    it('accepts string value', () => {
+      expect(() => pipe.transform({ key: 'app_name', value: 'Delta' })).not.toThrow();
+    });
+
+    it('accepts numeric value', () => {
+      expect(() => pipe.transform({ key: 'price', value: 10 })).not.toThrow();
+    });
+
+    it('accepts boolean value', () => {
+      expect(() => pipe.transform({ key: 'feature_on', value: true })).not.toThrow();
+    });
+
+    it('rejects missing key', () => {
+      expect(() => pipe.transform({ value: 'Delta' })).toThrow(BadRequestException);
+    });
+
+    it('rejects empty key', () => {
+      expect(() => pipe.transform({ key: '', value: 'Delta' })).toThrow(BadRequestException);
+    });
+  });
+
+  describe('Input validation — UpdatePlanBodySchema', () => {
+    const pipe = new ZodValidationPipe(UpdatePlanBodySchema);
+
+    it('accepts price-only update', () => {
+      expect(() => pipe.transform({ price: 20 })).not.toThrow();
+    });
+
+    it('accepts all editable fields', () => {
+      expect(() =>
+        pipe.transform({ name: 'Pro', price: 30, trial_days: 7, sort_order: 2 }),
+      ).not.toThrow();
+    });
+
+    it('rejects empty body (at least one field required)', () => {
+      expect(() => pipe.transform({})).toThrow(BadRequestException);
+    });
+
+    it('rejects negative price', () => {
+      expect(() => pipe.transform({ price: -5 })).toThrow(BadRequestException);
+    });
+  });
+
+  describe('Input validation — SetUserRoleBodySchema', () => {
+    const pipe = new ZodValidationPipe(SetUserRoleBodySchema);
+
+    it('accepts super_admin role', () => {
+      expect(() => pipe.transform({ role: 'super_admin' })).not.toThrow();
+    });
+
+    it('accepts doctor role', () => {
+      expect(() => pipe.transform({ role: 'doctor' })).not.toThrow();
+    });
+
+    it('rejects patient role (not a valid admin management role)', () => {
+      expect(() => pipe.transform({ role: 'patient' })).toThrow(BadRequestException);
+    });
+
+    it('rejects missing role', () => {
+      expect(() => pipe.transform({})).toThrow(BadRequestException);
     });
   });
 

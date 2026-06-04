@@ -16,6 +16,8 @@ import type {
   PlanFeatureRow,
   AppSetting,
   PatientStats,
+  AdminUserRow,
+  UpdatePlanParams,
 } from '../../../domain/repositories/admin.repository';
 import type { PlanConfig } from '../../../domain/value-objects/plan-config.vo';
 import { PlanConfig as PlanConfigVO } from '../../../domain/value-objects/plan-config.vo';
@@ -493,6 +495,80 @@ export class SequelizeAdminRepository implements IAdminRepository {
   }
 
   // ---------------------------------------------------------------------------
+  // App settings — upsert
+  // ---------------------------------------------------------------------------
+
+  async upsertSetting(key: string, value: string): Promise<AppSetting> {
+    const rows = await this.sequelize.query<{ key: string; value: string; updated_at: Date }>(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES (:key, :value, NOW())
+       ON CONFLICT (key)
+       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+       RETURNING key, value, updated_at`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { key, value },
+      },
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error(`upsertSetting returned no row for key='${key}'`);
+    }
+    return { key: row.key, value: row.value, updatedAt: row.updated_at };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plans — editable fields update
+  // ---------------------------------------------------------------------------
+
+  async updatePlan(params: UpdatePlanParams): Promise<PlanConfig> {
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (params.name !== undefined) updates.name = params.name;
+    if (params.price !== undefined) updates.price = params.price;
+    if (params.trialDays !== undefined) updates.trialDays = params.trialDays;
+    if (params.sortOrder !== undefined) updates.sortOrder = params.sortOrder;
+
+    await this.planConfigModel.update(updates, { where: { planKey: params.planKey } });
+
+    const updated = await this.planConfigModel.findOne({ where: { planKey: params.planKey } });
+    if (!updated) {
+      throw new Error(`Plan '${params.planKey}' disappeared after update`);
+    }
+    return this.planRowToVo(updated);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin user management
+  // ---------------------------------------------------------------------------
+
+  async listAdminUsers(): Promise<AdminUserRow[]> {
+    const rows = await this.profileModel.findAll({
+      where: { role: 'super_admin' },
+      order: [['createdAt', 'ASC']],
+    });
+    return rows.map((r) => this.profileRowToAdminUser(r));
+  }
+
+  async findProfileById(userId: string): Promise<AdminUserRow | null> {
+    const row = await this.profileModel.findByPk(userId);
+    if (!row) return null;
+    return this.profileRowToAdminUser(row);
+  }
+
+  async countSuperAdmins(): Promise<number> {
+    const result = await this.sequelize.query<CountRow>(
+      `SELECT COUNT(*) as count FROM profiles WHERE role = 'super_admin'`,
+      { type: QueryTypes.SELECT },
+    );
+    return parseInt(result[0]?.count ?? '0', 10);
+  }
+
+  async setUserRole(userId: string, role: string): Promise<void> {
+    await this.profileModel.update({ role, updatedAt: new Date() }, { where: { id: userId } });
+  }
+
+  // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
@@ -520,6 +596,16 @@ export class SequelizeAdminRepository implements IAdminRepository {
       subscriptionExpiresAt,
       lastSignInAt,
     );
+  }
+
+  private profileRowToAdminUser(row: ProfileAdminModel): AdminUserRow {
+    return {
+      id: row.id,
+      fullName: row.fullName,
+      email: row.email,
+      role: row.role,
+      createdAt: row.createdAt,
+    };
   }
 
   private planRowToVo(row: PlanConfigModel): PlanConfigVO {

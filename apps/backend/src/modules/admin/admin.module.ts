@@ -26,6 +26,10 @@ import { GetSettingsUseCase } from './application/use-cases/admin/get-settings.u
 import { ExtendDoctorSubscriptionUseCase } from './application/use-cases/admin/extend-doctor-subscription.use-case';
 import { SuspendDoctorSubscriptionUseCase } from './application/use-cases/admin/suspend-doctor-subscription.use-case';
 import { ReactivateDoctorSubscriptionUseCase } from './application/use-cases/admin/reactivate-doctor-subscription.use-case';
+import { UpsertSettingUseCase } from './application/use-cases/admin/upsert-setting.use-case';
+import { UpdatePlanUseCase } from './application/use-cases/admin/update-plan.use-case';
+import { ListAdminUsersUseCase } from './application/use-cases/admin/list-admin-users.use-case';
+import { SetUserRoleUseCase } from './application/use-cases/admin/set-user-role.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -80,6 +84,10 @@ import { AdminController } from './presentation/controllers/admin.controller';
     ExtendDoctorSubscriptionUseCase,
     SuspendDoctorSubscriptionUseCase,
     ReactivateDoctorSubscriptionUseCase,
+    UpsertSettingUseCase,
+    UpdatePlanUseCase,
+    ListAdminUsersUseCase,
+    SetUserRoleUseCase,
   ],
 })
 export class AdminModule {}

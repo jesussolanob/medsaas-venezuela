@@ -119,6 +119,26 @@ export interface AppSetting {
   updatedAt: Date;
 }
 
+/** Lightweight profile row for admin listing (PII — admin-only context). */
+export interface AdminUserRow {
+  id: string;
+  /** PII — full name. Admin-only context. */
+  fullName: string;
+  /** PII — email. Admin-only context. Do NOT log. */
+  email: string;
+  role: string;
+  createdAt: Date;
+}
+
+/** Fields that super_admin can edit on a plan_config row. */
+export interface UpdatePlanParams {
+  planKey: string;
+  name?: string;
+  price?: number;
+  trialDays?: number;
+  sortOrder?: number;
+}
+
 export interface PatientStats {
   totalPatients: number;
   patientsByDoctor: Array<{ doctorId: string; count: number }>;
@@ -163,4 +183,14 @@ export interface IAdminRepository {
 
   // App settings (no secrets)
   getSettings(): Promise<AppSetting[]>;
+  upsertSetting(key: string, value: string): Promise<AppSetting>;
+
+  // Plans — extended edit
+  updatePlan(params: UpdatePlanParams): Promise<PlanConfig>;
+
+  // Admin user management (via profiles.role)
+  listAdminUsers(): Promise<AdminUserRow[]>;
+  findProfileById(userId: string): Promise<AdminUserRow | null>;
+  countSuperAdmins(): Promise<number>;
+  setUserRole(userId: string, role: string): Promise<void>;
 }
