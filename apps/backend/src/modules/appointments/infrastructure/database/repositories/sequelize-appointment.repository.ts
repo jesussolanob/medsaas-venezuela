@@ -108,6 +108,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         sessionNumber: appointment.sessionNumber,
         chiefComplaint: appointment.chiefComplaint,
         appointmentCode: appointment.appointmentCode,
+        paymentId: appointment.paymentId ?? null,
       },
       { transaction },
     );
@@ -227,6 +228,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       sessionNumber: row.sessionNumber,
       chiefComplaint: row.chiefComplaint,
       appointmentCode: row.appointmentCode,
+      paymentId: row.paymentId ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

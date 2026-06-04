@@ -21,6 +21,8 @@ import { BookingController } from './presentation/controllers/booking.controller
 // PatientsModule exports PATIENT_REPOSITORY.
 import { PackagesModule } from '../packages/packages.module';
 import { PatientsModule } from '../patients/patients.module';
+// FinancesModule exports PAYMENT_REPOSITORY for CreateBookingUseCase.
+import { FinancesModule } from '../finances/finances.module';
 
 // APPOINTMENT_REPOSITORY binding for CreateBookingUseCase.
 import { APPOINTMENT_REPOSITORY } from '../appointments/domain/repositories/appointment.repository';
@@ -33,6 +35,9 @@ import { AppointmentChangesLogModel } from '../appointments/infrastructure/datab
     SequelizeModule.forFeature([ProfileModel, AppointmentModel, AppointmentChangesLogModel]),
     PackagesModule,
     PatientsModule,
+    // FinancesModule provides PAYMENT_REPOSITORY for CreateBookingUseCase.
+    // This creates the payment record atomically during booking.
+    FinancesModule,
   ],
   controllers: [BookingController],
   providers: [

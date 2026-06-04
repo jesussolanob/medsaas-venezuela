@@ -105,6 +105,16 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'appointment_code' })
   declare appointmentCode: string | null;
 
+  /**
+   * FK → payments(id) — set by CreateBookingUseCase when a payment is created
+   * alongside an appointment. Nullable for legacy rows and package-only bookings.
+   *
+   * This is the link used by fetchPayments (lib/finances.ts) to join payments → appointments.
+   * Added by migration 20260603000001-payments-and-items.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'payment_id' })
+  declare paymentId: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

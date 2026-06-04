@@ -44,6 +44,7 @@ export class Appointment {
     public readonly sessionNumber: number | null,
     public readonly chiefComplaint: string | null,
     public readonly appointmentCode: string | null,
+    public readonly paymentId: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
@@ -96,6 +97,7 @@ export class Appointment {
       params.sessionNumber ?? null,
       params.chiefComplaint ?? null,
       params.appointmentCode ?? null,
+      params.paymentId ?? null,
       params.createdAt,
       params.updatedAt,
     );
@@ -128,6 +130,11 @@ export interface AppointmentCreateParams {
   sessionNumber?: number | null;
   chiefComplaint?: string | null;
   appointmentCode?: string | null;
+  /**
+   * FK → payments(id). Set by CreateBookingUseCase when the booking creates
+   * a payment record. Null for legacy rows and package-only bookings.
+   */
+  paymentId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

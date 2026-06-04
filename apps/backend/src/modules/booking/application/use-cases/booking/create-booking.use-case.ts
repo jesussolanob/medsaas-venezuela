@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { CreateBookingDto } from '@delta/shared-types';
 import { Sequelize } from 'sequelize-typescript';
@@ -20,6 +20,10 @@ import {
   BOOKING_DOCTOR_LOADER,
   type IBookingDoctorLoader,
 } from '../../../domain/repositories/booking-doctor.repository';
+import {
+  PAYMENT_REPOSITORY,
+  type IPaymentRepository,
+} from '../../../../finances/domain/repositories/payment.repository';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -56,6 +60,16 @@ export class CreateBookingUseCase {
     private readonly consumePackageSession: ConsumePackageSessionUseCase,
     private readonly crypto: CryptoService,
     private readonly sequelize: Sequelize,
+    /**
+     * Payment repository — optional to preserve backward compatibility with
+     * existing tests that do not inject it. When present, a payment record is
+     * created atomically inside the booking transaction.
+     *
+     * TODO(cleanup): make this required once all test suites are updated.
+     */
+    @Optional()
+    @Inject(PAYMENT_REPOSITORY)
+    private readonly paymentRepo: IPaymentRepository | null = null,
   ) {}
 
   async execute(dto: CreateBookingDto): Promise<CreateBookingResult> {
@@ -121,7 +135,36 @@ export class CreateBookingUseCase {
     });
 
     const savedAppointment = await this.sequelize.transaction(async (t) => {
-      const saved = await this.appointmentRepo.save(appointment, t);
+      // Create payment record first so we have the paymentId for the appointment link.
+      // If paymentRepo is not available (legacy / test context), skip silently.
+      let paymentId: string | null = null;
+      if (this.paymentRepo) {
+        const paymentAmount = dto.package_id ? 0 : (dto.plan_price ?? 0);
+        const newPayment = await this.paymentRepo.create({
+          id: randomUUID(),
+          doctorId: dto.doctor_id,
+          patientId: patient.id,
+          amountUsd: paymentAmount,
+          amountBs: dto.bcv_rate && paymentAmount ? paymentAmount * dto.bcv_rate : null,
+          bcvRate: dto.bcv_rate ?? null,
+          currency: 'USD',
+          methodSnapshot: dto.package_id ? 'package' : (dto.payment_method ?? null),
+          paymentReference: dto.payment_reference ?? null,
+          status: 'pending',
+          packageId: dto.package_id ?? null,
+          paymentCode: appointmentCode,
+          transaction: t,
+        });
+        paymentId = newPayment.id;
+      }
+
+      // Build appointment with paymentId link (immutable Appointment — reconstruct with paymentId)
+      const appointmentWithPayment = Appointment.create({
+        ...appointment,
+        paymentId,
+      });
+
+      const saved = await this.appointmentRepo.save(appointmentWithPayment, t);
 
       if (dto.package_id) {
         await this.consumePackageSession.execute({
