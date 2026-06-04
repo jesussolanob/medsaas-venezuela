@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { randomUUID } from 'crypto';
 import { Sequelize } from 'sequelize-typescript';
-import { QueryTypes } from 'sequelize';
 import type {
   ISubscriptionPaymentRepository,
   CreateSubscriptionPaymentParams,

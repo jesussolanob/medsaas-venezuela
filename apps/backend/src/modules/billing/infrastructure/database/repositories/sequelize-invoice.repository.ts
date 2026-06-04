@@ -76,7 +76,6 @@ export class SequelizeInvoiceRepository implements IInvoiceRepository {
 
     const updated = await this.model.findByPk(id);
     // The caller validated existence before calling markPaid, so this is safe.
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return this.rowToDomain(updated!);
   }
 
