@@ -101,11 +101,19 @@ Estado (orden `migracion/modulos/`):
 
 ### Grupo A — APIs nuevas (paridad con proyecto original, desde 2026-06-03)
 
-- 11 **payments (cobros)** → ✅ DDD. `consultation_payments` (tabla nueva, mig. 20260603000000).
-  Historial de pagos por consulta: register → approve/reject. Anti-IDOR (doctorId de user.sub +
-  ownership de consulta), transacciones que sincronizan `consultations.payment_status`, sin PII
-  (solo patient_id). `modules/payments/`. Reemplaza `app/api/doctor/payments`. 61 tests; dist bootea.
-  Pendiente: cablear frontend (cobros). Siguiente en grupo A: billing/facturación.
+- 11 **payments (consultation_payments)** → ✅ DDD. Tabla `consultation_payments` (mig. 20260603000000).
+  Sistema SECUNDARIO: lo usa solo `consultations/page.tsx` (registrar pago al cerrar consulta).
+  `modules/payments/`, rutas `/api/doctor/payments`. 61 tests.
+- 12 **finanzas-pagos (payments + payment_items)** → ✅ DDD, EN el módulo `finances`
+  (mig. 20260603000001). Sistema PRINCIPAL = fuente de verdad financiera (`lib/finances.ts`).
+  Tablas `payments` (amount_usd/bs, bcv_rate, status pending|approved, paid_at, package_id) +
+  `payment_items` (line-items) + `appointments.payment_id` FK. Rutas `/api/finances/payments`:
+  GET lista (joins appointment+consultation), GET /totals (KPIs), PUT :id/status (sync
+  consultations.payment_status), GET/POST/DELETE :id/items (recalcula total + sync appointment.plan_price).
+  Anti-IDOR, transacciones, sin PII de patients cifrados. **Integrado en booking** (CreateBooking crea el
+  payment + enlaza appointment.payment_id). 227 tests dirigidos + 732 suite; dist bootea; curl real 200.
+  Storage de comprobante + realtime + PDF de recibo → Fase 5.
+  **Pendiente: cablear frontend** (cobros + dashboard + finanzas vía `lib/finances.ts`).
 
 > Nota: `doctor_schedules` ya existe (mig. 000005) → los slots de appointments/booking (antes
 > diferidos por falta de esta tabla) ya son implementables si se requieren.

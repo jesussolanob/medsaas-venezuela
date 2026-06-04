@@ -472,10 +472,29 @@ Email Resend. Tests Playwright E2E.
 
 - **Hecho:** Backend base 10/10 + **payments (grupo A #1) ✅**. Frontend: fundación BFF + DOCTOR + PATIENT
   - ADMIN auth + LOGIN dev-stub ✅. Commiteado en `feature/migracion-backend` (local, sin push). tsc 0.
-- **Siguiente:** o bien (a) cablear frontend de cobros al nuevo módulo payments, o (b) seguir grupo A
-  con **billing/facturación** (tablas `subscription_payments`, `invoices`, `billing_documents`).
-- **Reglas:** módulo backend = DDD 4 capas + migración .cjs + tests + boot dist (pitfall Sequelize-en-
-  providers). Frontend = editar SOLO datos en .tsx; server actions o api-client.server; proxy.ts middleware.
-- **Lección lead:** verificar tsc/eslint con EXIT REAL (no el del pipe) y bootear dist; verificar en disco
-  lo que cualquier agente declare (un frontend-agent murió por socket sin escribir nada).
+
+### 2026-06-03 — Grupo A: pagos PRINCIPALES (payments+payment_items) BACKEND ✅ (commit 188ee9b)
+
+- HALLAZGO: el frontend de cobros NO usa `consultation_payments` (lo que se construyó primero, commit
+  a5d8dee) sino `payments`+`payment_items` (fuente de verdad financiera, `lib/finances.ts`). Decisión con
+  el usuario (Opción 1): construir el sistema PRINCIPAL.
+- Construido por backend-agent EN el módulo `finances` (mig. 20260603000001): tablas `payments` +
+  `payment_items` + `appointments.payment_id` FK. 6 endpoints `/api/finances/payments*` (lista con joins,
+  totals KPI, status, items CRUD). Anti-IDOR, transacciones (sync consultations.payment_status +
+  appointments.plan_price). Integrado en CreateBooking (crea payment + enlaza appointment).
+- VERIFICADO por el lead: migrate ✓, build ✓, 227 dirigidos + 732 suite ✓, dist bootea (FinancesModule+
+  BookingModule sin crash DI, 6 rutas), **curl real GET payments/totals → 200** (SQL raw de joins válido).
+- Pendiente del slice: cablear frontend. `lib/finances.ts` (fetchPayments/fetchPaymentTotals) es compartido
+  por cobros+dashboard+finanzas → migrarlo cascada a las 3. cobros también usa storage/realtime/PDF → Fase 5.
+
+### ⏸️ PUNTO DE RETOME (al 2026-06-03)
+
+- **Hecho:** Backend base 10/10 + grupo A: payments(consultation) ✅ + payments principales(finances) ✅.
+  Frontend: BFF + DOCTOR + PATIENT + ADMIN auth + LOGIN dev-stub ✅. Todo en `feature/migracion-backend` (local).
+- **Siguiente:** cablear frontend de **cobros + dashboard + finanzas** a `/api/finances/payments*`
+  (migrar `lib/finances.ts` → BFF; storage/realtime/PDF de recibo → Fase 5). Luego seguir grupo A: billing.
+- **Reglas:** módulo backend = DDD 4 capas + migración .cjs + tests + boot dist + curl real (pitfall
+  Sequelize-en-providers). Frontend = editar SOLO datos en .tsx; server actions / api-client.server.
+- **Lección lead:** verificar tsc/eslint con EXIT REAL y bootear dist + curl; verificar en disco lo que
+  cualquier agente declare. Dos sistemas de pago — no confundir consultation_payments vs payments.
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.

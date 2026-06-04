@@ -46,6 +46,11 @@ Orden grupo A (por valor de negocio): **payments(cobros) → billing/facturació
 subscriptions-ops → promotions → leads/crm → reminders → agenda-slots → suggestions →
 consultation-blocks → exports CSV → admin config**.
 
+> HALLAZGO (2026-06-03): hay DOS sistemas de pago. `consultation_payments` (secundario, 1 caller:
+> consultations page) = módulo `payments`. `payments`+`payment_items` (PRINCIPAL, fuente de verdad
+> financiera de cobros/dashboard/finanzas, ver `lib/finances.ts`) = construido EN el módulo `finances`.
+> Ambos backends ✅. El frontend de cobros/dashboard/finanzas usa el PRINCIPAL → cablear ese.
+
 - **payments (cobros) — ✅ BACKEND HECHO (commit a5d8dee, 2026-06-03):** módulo DDD
   `apps/backend/src/modules/payments/` + migración `20260603000000-consultation-payments.cjs`.
   Endpoints: `GET/POST /api/doctor/payments`, `PUT /api/doctor/payments/:id/{approve,reject}`.
