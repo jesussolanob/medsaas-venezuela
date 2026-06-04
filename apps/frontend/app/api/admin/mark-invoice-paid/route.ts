@@ -1,49 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+/**
+ * POST /api/admin/mark-invoice-paid — marca una factura como pagada.
+ * body: { invoiceId }
+ *
+ * ETAPA 1 — thin-proxy al módulo NestJS `billing` (invoices). markPaid es
+ * idempotente en el backend. RBAC (super_admin) lo enforce el backend.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { backendPut } from '@/lib/api-client.server';
 
 export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-    }
+  const { invoiceId } = await req.json();
 
-    const admin = createAdminClient()
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || !['super_admin', 'admin'].includes(profile.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const { invoiceId } = await req.json()
-
-    if (!invoiceId) {
-      return NextResponse.json({ error: 'Missing invoiceId' }, { status: 400 })
-    }
-
-    const { data, error } = await admin
-      .from('invoices')
-      .update({
-        status: 'paid',
-        paid_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', invoiceId)
-      .select()
-      .single()
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true, invoice: data })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+  if (!invoiceId) {
+    return NextResponse.json({ error: 'Missing invoiceId' }, { status: 400 });
   }
+
+  const result = await backendPut<unknown>(`/api/admin/invoices/${invoiceId}/paid`, {});
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
+
+  return NextResponse.json({ success: true, invoice: result.value });
 }
