@@ -25,6 +25,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { ConsultationBlocksModule } from './modules/consultation-blocks/consultation-blocks.module';
+import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ConsultationBlocksModule } from './modules/consultation-blocks/consulta
     SuggestionsModule,
     PromotionsModule,
     ConsultationBlocksModule,
+    CapabilitiesModule,
   ],
   controllers: [HealthController],
   providers: [
