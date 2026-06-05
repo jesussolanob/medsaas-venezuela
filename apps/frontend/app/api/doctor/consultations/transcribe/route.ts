@@ -16,87 +16,99 @@
  * Response:
  *   { ok: true, transcript: string, suggestion?: { block_key: string; content: string }[] }
  *   { ok: false, error: string }
+ *
+ * FASE 5/6: pendiente backend — Gemini AI transcription not yet implemented in
+ * NestJS. This handler calls the Gemini API directly (no Supabase dependency).
  */
 
-import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/auth-guards'
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth-guards';
 
 // 2026-05-02: el modelo flash con audio es 2.5-flash. lite no soporta audio aún.
-const GEMINI_MODEL = process.env.GEMINI_AUDIO_MODEL || 'gemini-2.5-flash'
-const MAX_BYTES = 20 * 1024 * 1024 // 20 MB
+const GEMINI_MODEL = process.env.GEMINI_AUDIO_MODEL || 'gemini-2.5-flash';
+const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
 const ALLOWED_MIMES = new Set([
-  'audio/webm', 'audio/webm;codecs=opus',
-  'audio/ogg', 'audio/ogg;codecs=opus',
-  'audio/mp4', 'audio/m4a', 'audio/x-m4a',
-  'audio/mpeg', 'audio/mp3',
-  'audio/wav', 'audio/x-wav',
-])
+  'audio/webm',
+  'audio/webm;codecs=opus',
+  'audio/ogg',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+  'audio/m4a',
+  'audio/x-m4a',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+]);
 
 export async function POST(req: NextRequest) {
-  const guard = await requireRole(['doctor', 'super_admin'])
-  if (!guard.ok) return guard.response
+  const guard = await requireRole(['doctor', 'super_admin']);
+  if (!guard.ok) return guard.response;
 
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
       { ok: false, error: 'GEMINI_API_KEY no configurada' },
       { status: 500 },
-    )
+    );
   }
 
-  let formData: FormData
+  let formData: FormData;
   try {
-    formData = await req.formData()
+    formData = await req.formData();
   } catch {
-    return NextResponse.json({ ok: false, error: 'FormData inválido' }, { status: 400 })
+    return NextResponse.json({ ok: false, error: 'FormData inválido' }, { status: 400 });
   }
 
-  const audio = formData.get('audio') as File | null
+  const audio = formData.get('audio') as File | null;
   if (!audio) {
-    return NextResponse.json({ ok: false, error: 'Campo "audio" requerido' }, { status: 400 })
+    return NextResponse.json({ ok: false, error: 'Campo "audio" requerido' }, { status: 400 });
   }
   if (audio.size > MAX_BYTES) {
     return NextResponse.json(
-      { ok: false, error: `Audio demasiado grande (max ${MAX_BYTES / 1024 / 1024} MB). Graba en sesiones más cortas.` },
+      {
+        ok: false,
+        error: `Audio demasiado grande (max ${MAX_BYTES / 1024 / 1024} MB). Graba en sesiones más cortas.`,
+      },
       { status: 413 },
-    )
+    );
   }
 
   // Normalizar mime type — algunos browsers mandan codecs=opus extra
-  const rawMime = audio.type || 'audio/webm'
-  const mime = rawMime.split(';')[0].trim()
+  const rawMime = audio.type || 'audio/webm';
+  const mime = rawMime.split(';')[0].trim();
   if (!ALLOWED_MIMES.has(rawMime) && !ALLOWED_MIMES.has(mime)) {
     return NextResponse.json(
       { ok: false, error: `Formato no soportado: ${rawMime}` },
       { status: 415 },
-    )
+    );
   }
 
   // Convertir a base64
-  const buffer = Buffer.from(await audio.arrayBuffer())
-  const base64 = buffer.toString('base64')
+  const buffer = Buffer.from(await audio.arrayBuffer());
+  const base64 = buffer.toString('base64');
 
-  // Lista de bloques disponibles (opcional — si el cliente la envía, Gemini intenta
-  // sugerir cómo distribuir el texto entre ellos)
-  const availableBlocksRaw = formData.get('available_blocks') as string | null
-  let availableBlocks: { key: string; label: string }[] = []
+  // Lista de bloques disponibles (opcional)
+  const availableBlocksRaw = formData.get('available_blocks') as string | null;
+  let availableBlocks: { key: string; label: string }[] = [];
   try {
     if (availableBlocksRaw) {
-      const parsed = JSON.parse(availableBlocksRaw)
-      if (Array.isArray(parsed)) availableBlocks = parsed.slice(0, 20)
+      const parsed = JSON.parse(availableBlocksRaw);
+      if (Array.isArray(parsed)) availableBlocks = parsed.slice(0, 20);
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
-  // Idioma — el prompt asume es-VE pero soporta override
-  const language = (formData.get('language') as string | null) || 'es-VE'
+  const language = (formData.get('language') as string | null) || 'es-VE';
 
-  // Prompt del sistema
-  const blocksHint = availableBlocks.length > 0
-    ? `\n\nLos bloques disponibles en la plantilla del doctor son:\n${availableBlocks
-        .map(b => `  • "${b.key}" → ${b.label}`)
-        .join('\n')}\n\nDespués de la transcripción, sugiere cómo distribuir el contenido entre estos bloques. Devuelve un JSON al final del mensaje con la siguiente estructura EXACTA:\n\`\`\`json\n{ "suggestions": [ { "block_key": "chief_complaint", "content": "..." }, ... ] }\n\`\`\``
-    : ''
+  const blocksHint =
+    availableBlocks.length > 0
+      ? `\n\nLos bloques disponibles en la plantilla del doctor son:\n${availableBlocks
+          .map((b) => `  • "${b.key}" → ${b.label}`)
+          .join('\n')}\n\nDespués de la transcripción, sugiere cómo distribuir el contenido entre estos bloques. Devuelve un JSON al final del mensaje con la siguiente estructura EXACTA:\n\`\`\`json\n{ "suggestions": [ { "block_key": "chief_complaint", "content": "..." }, ... ] }\n\`\`\``
+      : '';
 
   const prompt = `Eres un asistente médico profesional. Vas a recibir el AUDIO de una consulta médica grabada por un especialista en Venezuela.
 
@@ -108,11 +120,10 @@ Tu trabajo:
 
 Idioma del audio: ${language}.
 
-Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te pidieron sugerencias de bloques, después de la transcripción devuelve el bloque JSON marcado con \`\`\`json y \`\`\`.`
+Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te pidieron sugerencias de bloques, después de la transcripción devuelve el bloque JSON marcado con \`\`\`json y \`\`\`.`;
 
-  // Llamar a Gemini
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -130,38 +141,49 @@ Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te
           maxOutputTokens: 8192,
         },
       }),
-    })
+    });
 
     if (!res.ok) {
-      const errText = await res.text()
-      console.error('[transcribe] Gemini error:', res.status, errText.slice(0, 500))
+      const errText = await res.text();
+      console.error('[transcribe] Gemini error:', res.status, errText.slice(0, 500));
       return NextResponse.json(
         { ok: false, error: `Error del servicio de transcripción (${res.status})` },
         { status: 502 },
-      )
+      );
     }
 
-    const data = await res.json()
-    const fullText: string = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const data = await res.json();
+    const fullText: string = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (!fullText) {
-      return NextResponse.json({ ok: false, error: 'Gemini retornó respuesta vacía' }, { status: 500 })
+      return NextResponse.json(
+        { ok: false, error: 'Gemini retornó respuesta vacía' },
+        { status: 500 },
+      );
     }
 
-    // Extraer el JSON de sugerencias si Gemini lo devolvió
-    let suggestions: { block_key: string; content: string }[] = []
-    let transcript = fullText
-    const jsonMatch = fullText.match(/```json\s*([\s\S]*?)\s*```/)
+    let suggestions: { block_key: string; content: string }[] = [];
+    let transcript = fullText;
+    const jsonMatch = fullText.match(/```json\s*([\s\S]*?)\s*```/);
     if (jsonMatch) {
-      transcript = fullText.replace(jsonMatch[0], '').trim()
+      transcript = fullText.replace(jsonMatch[0], '').trim();
       try {
-        const parsed = JSON.parse(jsonMatch[1])
+        const parsed = JSON.parse(jsonMatch[1]);
         if (Array.isArray(parsed?.suggestions)) {
           suggestions = parsed.suggestions
-            .filter((s: any) => s && typeof s.block_key === 'string' && typeof s.content === 'string')
-            .map((s: any) => ({ block_key: s.block_key, content: s.content }))
+            .filter(
+              (s: unknown): s is { block_key: string; content: string } =>
+                s !== null &&
+                typeof s === 'object' &&
+                typeof (s as Record<string, unknown>).block_key === 'string' &&
+                typeof (s as Record<string, unknown>).content === 'string',
+            )
+            .map((s: { block_key: string; content: string }) => ({
+              block_key: s.block_key,
+              content: s.content,
+            }));
         }
       } catch (e) {
-        console.warn('[transcribe] no pude parsear JSON de sugerencias:', e)
+        console.warn('[transcribe] no pude parsear JSON de sugerencias:', e);
       }
     }
 
@@ -174,12 +196,10 @@ Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te
         mime,
         model: GEMINI_MODEL,
       },
-    })
-  } catch (err: any) {
-    console.error('[transcribe] error inesperado:', err?.message)
-    return NextResponse.json(
-      { ok: false, error: err?.message || 'Error de red al transcribir' },
-      { status: 500 },
-    )
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error de red al transcribir';
+    console.error('[transcribe] error inesperado:', message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

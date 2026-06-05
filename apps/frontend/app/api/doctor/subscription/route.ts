@@ -1,42 +1,53 @@
 /**
  * GET /api/doctor/subscription
  * Devuelve el estado completo de la suscripción del doctor + opciones de planes.
+ *
+ * FASE 5/6: pendiente backend — subscription_payments and profiles queries still
+ * use createAdminClient locally. Migrate once NestJS implements a doctor-facing
+ * subscription status endpoint.
  */
-import { NextResponse } from 'next/server'
-import { requireRole } from '@/lib/auth-guards'
-import { getAppSettings, computeDurationOptions } from '@/lib/subscription'
+import { NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth-guards';
+import { getAppSettings, computeDurationOptions } from '@/lib/subscription';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET() {
-  const guard = await requireRole(['doctor', 'assistant', 'super_admin'])
-  if (!guard.ok) return guard.response
-  const { admin, user } = guard
+  const guard = await requireRole(['doctor', 'assistant', 'super_admin']);
+  if (!guard.ok) return guard.response;
 
-  // Estado actual del doctor
+  // FASE 5/6: pendiente backend — Supabase admin used for profile + payment history
+  const admin = createAdminClient();
+
   const { data: profile } = await admin
     .from('profiles')
     .select('id, plan, subscription_status, subscription_expires_at, role')
-    .eq('id', user.id)
-    .single()
+    .eq('id', guard.user.id)
+    .single();
 
-  if (!profile) return NextResponse.json({ error: 'Profile no encontrado' }, { status: 404 })
+  if (!profile) return NextResponse.json({ error: 'Profile no encontrado' }, { status: 404 });
 
-  const now = new Date()
-  const expiresAt = profile.subscription_expires_at ? new Date(profile.subscription_expires_at) : null
-  const daysRemaining = expiresAt ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / 86400000)) : 0
-  const isExpired = expiresAt ? expiresAt < now : true
-  const isInTrial = profile.subscription_status === 'trial' || profile.plan === 'trial'
+  const now = new Date();
+  const expiresAt = profile.subscription_expires_at
+    ? new Date(profile.subscription_expires_at)
+    : null;
+  const daysRemaining = expiresAt
+    ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / 86400000))
+    : 0;
+  const isExpired = expiresAt ? expiresAt < now : true;
+  const isInTrial =
+    profile.subscription_status === 'trial' || profile.plan === 'trial';
 
-  // Settings públicos (precio, métodos disponibles)
-  const settings = await getAppSettings()
-  const durationOptions = await computeDurationOptions()
+  const settings = await getAppSettings();
+  const durationOptions = await computeDurationOptions();
 
-  // Historial de pagos del doctor
   const { data: payments } = await admin
     .from('subscription_payments')
-    .select('id, amount_usd, duration_months, method, reference_number, status, created_at, rejection_reason')
-    .eq('doctor_id', user.id)
+    .select(
+      'id, amount_usd, duration_months, method, reference_number, status, created_at, rejection_reason',
+    )
+    .eq('doctor_id', guard.user.id)
     .order('created_at', { ascending: false })
-    .limit(10)
+    .limit(10);
 
   return NextResponse.json({
     state: {
@@ -58,5 +69,5 @@ export async function GET() {
     },
     stripe_enabled: settings.stripe_enabled,
     payments: payments || [],
-  })
+  });
 }
