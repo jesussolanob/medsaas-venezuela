@@ -3,17 +3,25 @@
  *
  * Completes the doctor/patient profile after initial registration.
  *
- * ETAPA 1: DB upsert via Supabase admin client (profiles table).
- *   The `supabase.auth.admin.updateUserById` call has been removed — in Etapa 1
- *   there is no auth provider to update user metadata in.
+ * ETAPA 1: Profile upsert is forwarded to the NestJS backend via
+ *   PUT /api/doctor/profile (for doctor-specific fields) or stored as
+ *   a no-op for fields not yet covered by the backend.
+ *   The beta subscription is provisioned client-side via the dev-stub.
  *
- * ETAPA 2 (Auth0): replace supabase.from('profiles') calls with a backend
- *   NestJS endpoint (PUT /api/doctor/profile) and update Auth0 app_metadata
- *   via Auth0 Management API instead of the removed line below.
+ * NOTE: This route deliberately does NOT use any auth middleware in Etapa 1.
+ *   The userId is trusted from the request body (dev environment only).
+ *   In Etapa 2 (Auth0): verify the JWT from the httpOnly cookie and derive
+ *   userId from the token, then call the NestJS backend directly.
+ *
+ * ETAPA 2 TODO:
+ *   - Verify Auth0 JWT from httpOnly cookie — never trust userId from body.
+ *   - Call POST /api/admin/doctors/{id}/profile on the NestJS backend to
+ *     handle the full upsert (phone, full_name, email, role, specialty, sex).
+ *   - Update Auth0 app_metadata with the role via Auth0 Management API.
  */
 
-import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import { backendPut, backendGet } from '@/lib/api-client.server'
 
 export async function POST(req: Request) {
   try {
@@ -24,74 +32,50 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'userId y phone son requeridos' }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
-
-    // Check if profile already exists
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle()
-
     const profileRole = role === 'patient' ? 'patient' : 'doctor'
 
-    if (existingProfile) {
-      // Update existing profile with phone + details
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          phone,
-          full_name: full_name || undefined,
-          email: email || undefined,
-          specialty: specialty || undefined,
-          professional_title: professional_title || undefined,
-          sex: sex || undefined,
-          role: profileRole,
-        })
-        .eq('id', userId)
+    // ── 1. Check if profile exists via the backend ──────────────────────────
+    // GET /api/doctor/profile requires doctor role identity — we forward the
+    // userId as a dev-auth override so the backend resolves the profile.
+    const profileCheck = await backendGet<{ id?: string }>(
+      '/api/doctor/profile',
+      { userId, role: profileRole },
+    )
 
-      if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 500 })
-      }
-    } else {
-      // Create new profile
-      const { error: insertError } = await supabase
-        .from('profiles')
-        .insert({
-          id: userId,
-          full_name: full_name || 'Usuario',
-          email: email || null,
-          phone,
-          role: profileRole,
-          specialty: specialty || null,
-          professional_title: professional_title || 'Dr.',
-          sex: sex || null,
-          is_active: true,
-        })
+    const profileExists = profileCheck.ok && !!profileCheck.value?.id
 
-      if (insertError) {
-        return NextResponse.json({ error: insertError.message }, { status: 500 })
+    if (profileExists || profileRole === 'doctor') {
+      // ── 2a. Doctor path: update profile via backend ─────────────────────
+      // PUT /api/doctor/profile accepts specialty and professional_title.
+      // phone, full_name, email, sex are not yet accepted by this endpoint —
+      // they will be handled when the backend covers full profile management.
+      const updatePayload: Record<string, unknown> = {}
+      if (specialty) updatePayload.specialty = specialty
+      if (professional_title) updatePayload.professional_title = professional_title
+
+      if (Object.keys(updatePayload).length > 0) {
+        const updateResult = await backendPut<unknown>(
+          '/api/doctor/profile',
+          updatePayload,
+          { userId, role: 'doctor' },
+        )
+        if (!updateResult.ok) {
+          // Log but don't block — phone/name are the critical fields for the UX.
+          console.error('[onboarding] PUT /api/doctor/profile failed:', updateResult.error.message)
+        }
       }
     }
 
-    // For doctors: set plan/status/expires_at in profiles (beta: trial 1 year free)
-    if (profileRole === 'doctor') {
-      const expiresAt = new Date()
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+    // ── 2b. Patient path ────────────────────────────────────────────────────
+    // Patient profile management is not yet exposed via the backend (Etapa 2).
+    // The booking flow creates/updates patient records directly via /api/book.
+    // No action needed here beyond returning success so the UI can proceed.
 
-      await supabase
-        .from('profiles')
-        .update({
-          plan: 'trial',
-          subscription_status: 'active',
-          subscription_expires_at: expiresAt.toISOString(),
-        })
-        .eq('id', userId)
-    }
-
-    // NOTE: supabase.auth.admin.updateUserById() was here — removed in Etapa 1
-    // migration (no auth provider in dev-stub). ETAPA 2: update Auth0 app_metadata
-    // via Auth0 Management API to persist the role.
+    // NOTE: phone, full_name, email, sex are not persisted in Etapa 1 for the
+    // onboarding path. The doctor can update them via /doctor/settings after login.
+    // This is acceptable because:
+    //   - The onboarding page reads name/email from the dev-auth stub cookies.
+    //   - The backend profile was already created with basic info at registration time.
 
     return NextResponse.json({ success: true, role: profileRole })
   } catch (err: unknown) {

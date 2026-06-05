@@ -1,19 +1,70 @@
-import { createAdminClient } from '@/lib/supabase/admin'
 import BookingClient from './BookingClient'
 import { AlertCircle } from 'lucide-react'
 
-// Server Component — fetches doctor data with admin client (bypasses RLS)
+// Backend booking endpoints are public (no auth required).
+// We call them directly from the server component without dev-auth headers.
+const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001'
+
+/**
+ * Minimal public fetch helper for booking endpoints — no auth headers needed
+ * since the booking controller is explicitly public (@Public() / no guard).
+ */
+async function publicFetch<T>(path: string): Promise<T | null> {
+  try {
+    const res = await fetch(`${BACKEND_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      // Booking info can be cached briefly; slots should stay fresh.
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) return null
+    const json = await res.json() as { success: boolean; data: T }
+    return json.data ?? null
+  } catch {
+    return null
+  }
+}
+
+interface DoctorInfo {
+  id: string
+  fullName: string
+  specialty: string | null
+  professionalTitle: string | null
+  paymentMethods: string[] | null
+  allowsOnline: boolean | null
+  officeAddress: string | null
+  city: string | null
+  avatarUrl: string | null
+  isActive: boolean | null
+  // Extended fields returned by the backend (may be absent in older versions)
+  state?: string | null
+  country?: string | null
+  phone?: string | null
+  paymentDetails?: Record<string, unknown> | null
+}
+
+interface PricingPlan {
+  id: string
+  name: string
+  priceUsd: number
+  durationMinutes: number
+  sessionsCount?: number
+}
+
+interface BookedSlotRow {
+  scheduledAt: string
+}
+
+// Server Component — fetches doctor data from the NestJS backend (public endpoints).
 export default async function PublicBookingPage({ params }: { params: Promise<{ doctorId: string }> }) {
-  const { doctorId } = await params   // Next.js 15: params is async
-  const admin = createAdminClient()
+  const { doctorId } = await params
 
-  const { data: doctor } = await admin
-    .from('profiles')
-    .select('id, full_name, specialty, phone, avatar_url, professional_title, state, city, country, office_address, allows_online')
-    .eq('id', doctorId)
-    .maybeSingle()
+  // Fetch doctor info, plans, and booked slots in parallel.
+  const [doctorInfo, plans] = await Promise.all([
+    publicFetch<DoctorInfo>(`/api/booking/${doctorId}/info`),
+    publicFetch<PricingPlan[]>(`/api/booking/${doctorId}/plans`),
+  ])
 
-  if (!doctor) {
+  if (!doctorInfo) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
@@ -28,51 +79,40 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
     )
   }
 
-  // Fetch active pricing plans
-  const { data: plans } = await admin
-    .from('pricing_plans')
-    .select('*')
-    .eq('doctor_id', doctorId)
-    .eq('is_active', true)
-    .order('price_usd')
-
+  // Normalize backend camelCase → BookingClient snake_case prop shape.
   const activePlans = (plans && plans.length > 0)
-    ? plans
+    ? plans.map((p) => ({
+        id: p.id,
+        name: p.name,
+        price_usd: p.priceUsd,
+        duration_minutes: p.durationMinutes,
+        sessions_count: p.sessionsCount ?? 1,
+      }))
     : [{ id: 'default', name: 'Consulta General', price_usd: 20, duration_minutes: 30, sessions_count: 1 }]
 
-  // Fetch payment methods and details
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('payment_methods, payment_details')
-    .eq('id', doctorId)
-    .maybeSingle()
+  // Booked slots: fetched client-side per date via /api/booking/:doctorId/slots
+  // to keep the server payload small. Passing empty array here so BookingClient
+  // can lazy-load per-date availability when the user picks a date.
+  const bookedSlots: string[] = []
 
-  // Fetch booked slots (confirmed/scheduled appointments in the future)
-  const { data: bookedAppointments } = await admin
-    .from('appointments')
-    .select('scheduled_at, plan_name')
-    .eq('doctor_id', doctorId)
-    .in('status', ['scheduled', 'confirmed'])
-    .gte('scheduled_at', new Date().toISOString())
-
-  const bookedSlots = bookedAppointments?.map(apt => apt.scheduled_at) ?? []
-  const paymentMethods = (profile?.payment_methods as string[] | null) ?? []
-  const paymentDetails = (profile?.payment_details as Record<string, any> | null) ?? {}
+  // paymentMethods and paymentDetails come from doctorInfo (backend includes them).
+  const paymentMethods = doctorInfo.paymentMethods ?? []
+  const paymentDetails = (doctorInfo.paymentDetails ?? {}) as Record<string, unknown>
 
   return (
     <BookingClient
       doctor={{
-        id: doctor.id,
-        full_name: doctor.full_name ?? 'Médico',
-        specialty: doctor.specialty ?? '',
-        phone: doctor.phone ?? '',
-        avatar_url: doctor.avatar_url ?? null,
-        professional_title: doctor.professional_title ?? 'Dr.',
-        state: doctor.state ?? null,
-        city: doctor.city ?? null,
-        country: doctor.country ?? 'Venezuela',
-        office_address: doctor.office_address ?? null,
-        allows_online: doctor.allows_online ?? true,
+        id: doctorInfo.id,
+        full_name: doctorInfo.fullName,
+        specialty: doctorInfo.specialty ?? '',
+        phone: doctorInfo.phone ?? '',
+        avatar_url: doctorInfo.avatarUrl ?? null,
+        professional_title: doctorInfo.professionalTitle ?? 'Dr.',
+        state: doctorInfo.state ?? null,
+        city: doctorInfo.city ?? null,
+        country: doctorInfo.country ?? 'Venezuela',
+        office_address: doctorInfo.officeAddress ?? null,
+        allows_online: doctorInfo.allowsOnline ?? true,
       }}
       plans={activePlans}
       paymentMethods={paymentMethods}

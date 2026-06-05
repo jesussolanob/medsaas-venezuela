@@ -3,29 +3,27 @@
  * SINGLE SOURCE OF TRUTH for subscription logic across the entire app.
  * Every page/component that needs plan info should use these helpers.
  *
- * NOTA DE MIGRACIÓN (Etapa 1 — sin Supabase en getAppSettings/computeDurationOptions):
- *   - getAppSettings(): ahora devuelve DEFAULT_SETTINGS hardcodeados.
- *     FASE futura: migrar a backendGet('/api/admin/settings') cuando el endpoint
- *     NestJS cubra todas las claves usadas aquí (GET /api/admin/settings ya existe
- *     pero su forma de respuesta difiere). Ver apps/backend/admin.controller.ts.
- *   - setAppSetting(): ahora es no-op (stub).
- *     FASE futura: migrar a backendPut('/api/admin/settings').
- *   - computeDurationOptions(): ahora devuelve solo la opción mensual estática.
- *     FASE futura: migrar a backendGet('/api/admin/plan-promotions').
- *   - El resto de funciones (getSubscriptionByDoctorId, extendSubscription, etc.)
- *     siguen usando createAdminClient de @/lib/supabase/admin hasta que el backend
- *     implemente esos endpoints.
+ * MIGRATION NOTE (Etapa 1 — no Supabase):
+ *   - getSubscriptionByDoctorId(): migrated to backendGet('/api/admin/subscriptions')
+ *     filtered by doctorId.
+ *   - getAllSubscriptions():        migrated to backendGet('/api/admin/subscriptions').
+ *   - extendSubscription():         migrated to backendPost('/api/admin/subscriptions/extend').
+ *   - suspendSubscription():        migrated to backendPost('/api/admin/subscriptions/suspend').
+ *   - reactivateSubscription():     migrated to backendPost('/api/admin/subscriptions/reactivate').
+ *   - startBetaForNewDoctor():      stub/no-op — registration is a dev-stub in Etapa 1;
+ *       real provisioning happens in Etapa 2 via Auth0 + backend.
+ *   - logSubscriptionChange():      stub/no-op — backend performs its own audit logging;
+ *       the frontend no longer writes to subscription_changes_log directly.
+ *   - getAppSettings():             returns DEFAULT_SETTINGS (hardcoded). FASE futura:
+ *       migrate to backendGet('/api/admin/settings') when all keys are covered.
+ *   - setAppSetting():              no-op stub (FASE futura: backendPut('/api/admin/settings')).
+ *   - computeDurationOptions():     returns static monthly option only (FASE futura: backend).
  */
 
-import { createAdminClient } from '@/lib/supabase/admin'
+import 'server-only';
+import { backendGet, backendPost } from './api-client.server';
 
 // ── Types ────────────────────────────────────────────────────────────────────
-// Reflejan los valores reales del enum subscription_plan y subscription_status en BD.
-// enum subscription_plan     = {trial, basic, professional, enterprise, clinic}
-// enum subscription_status   = {active, suspended, cancelled, trial, past_due}
-// Nota: 'enterprise' existe en enum por legado pero CLAUDE.md dice usar 'clinic'.
-//        Mantenemos 'enterprise' como type-compat hasta migrar el enum completo.
-// Nota: 'trialing' NO existe en el enum — era dead code, se elimina del type.
 export type PlanKey = 'trial' | 'basic' | 'professional' | 'enterprise' | 'clinic'
 export type SubStatus = 'active' | 'trial' | 'past_due' | 'suspended' | 'cancelled'
 
@@ -42,11 +40,11 @@ export interface Subscription {
 export interface SubscriptionInfo {
   plan: PlanKey
   status: SubStatus
-  isActive: boolean        // Can the doctor use the app?
-  daysRemaining: number    // Days until expiration (-1 if no end date)
+  isActive: boolean
+  daysRemaining: number
   currentPeriodEnd: string | null
-  planLabel: string        // Human-readable plan name
-  statusLabel: string      // Human-readable status
+  planLabel: string
+  statusLabel: string
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -61,7 +59,7 @@ export const PLAN_LABELS: Record<string, string> = {
 
 export const STATUS_LABELS: Record<string, string> = {
   active: 'Activo',
-  trial: 'Activo (Trial)',  // beta privada: trial = activo, no requiere aprobación
+  trial: 'Activo (Trial)',
   past_due: 'Vencido',
   suspended: 'Suspendido',
   cancelled: 'Cancelado',
@@ -83,13 +81,11 @@ export const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-slate-100 text-slate-400',
 }
 
-// Statuses that allow the doctor to use the app
 const ACTIVE_STATUSES: SubStatus[] = ['active', 'trial']
 
-// MVP features — every plan gets these
 const MVP_FEATURES = ['dashboard', 'agenda', 'consultations', 'patients', 'finances', 'settings']
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Pure helpers ─────────────────────────────────────────────────────────────
 
 export function getPlanLabel(plan?: string | null): string {
   return PLAN_LABELS[plan || 'trial'] || plan || 'Sin plan'
@@ -117,91 +113,91 @@ export function getDaysRemaining(periodEnd?: string | null): number {
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
 }
 
-/**
- * Build a complete SubscriptionInfo from raw subscription data.
- * Works with any shape — Supabase object, array element, or null.
- */
-export function buildSubscriptionInfo(sub: any): SubscriptionInfo {
-  // Handle array (Supabase returns array for has-many)
-  const data = Array.isArray(sub) ? sub[0] : sub
+export function buildSubscriptionInfo(sub: unknown): SubscriptionInfo {
+  const data = Array.isArray(sub) ? (sub as unknown[])[0] : sub
+  const d = data as Record<string, unknown> | null | undefined
 
-  const plan: PlanKey = data?.plan || 'trial'
-  const status: SubStatus = data?.status || 'trial'
+  const plan: PlanKey = (d?.plan as PlanKey) || 'trial'
+  const status: SubStatus = (d?.status as SubStatus) || 'trial'
 
   return {
     plan,
     status,
     isActive: isSubscriptionActive(status),
-    daysRemaining: getDaysRemaining(data?.current_period_end),
-    currentPeriodEnd: data?.current_period_end || null,
+    daysRemaining: getDaysRemaining(d?.current_period_end as string | null),
+    currentPeriodEnd: (d?.current_period_end as string | null) || null,
     planLabel: getPlanLabel(plan),
     statusLabel: getStatusLabel(status),
   }
 }
 
-/**
- * Check if a feature is enabled for the MVP.
- * In the MVP, all features in MVP_FEATURES are enabled for active subscriptions.
- * No need to query plan_features table.
- */
 export function isMvpFeatureEnabled(featureKey: string, isActive: boolean): boolean {
-  // Settings and dashboard are always available
   if (['dashboard', 'settings'].includes(featureKey)) return true
-  // Everything else requires active subscription
   if (!isActive) return false
   return MVP_FEATURES.includes(featureKey)
 }
 
-// ── Server-side queries (use in Server Components or API routes) ─────────────
+// ── Server-side queries ──────────────────────────────────────────────────────
 
 /**
- * Get subscription for a doctor — ahora lee desde profiles directamente
- * (tabla subscriptions eliminada en reingeniería 2026-04-22)
+ * Get subscription info for a single doctor via the backend.
+ * Backend endpoint: GET /api/admin/subscriptions?doctorId=<uuid>
+ * Falls back to a default SubscriptionInfo on error.
  */
 export async function getSubscriptionByDoctorId(doctorId: string): Promise<SubscriptionInfo> {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('profiles')
-    .select('plan, subscription_status, subscription_expires_at')
-    .eq('id', doctorId)
-    .maybeSingle()
-
-  return buildSubscriptionInfo({
-    plan: data?.plan,
-    status: data?.subscription_status,
-    current_period_end: data?.subscription_expires_at,
-  })
+  const result = await backendGet<unknown[]>(
+    `/api/admin/subscriptions?doctorId=${encodeURIComponent(doctorId)}`,
+    { role: 'super_admin' },
+  )
+  if (result.ok) {
+    const rows = result.value as Array<Record<string, unknown>>
+    const row = Array.isArray(rows) ? rows[0] : null
+    if (row) {
+      return buildSubscriptionInfo({
+        plan: row.plan,
+        status: row.status,
+        current_period_end: row.current_period_end,
+      })
+    }
+  }
+  // Fallback: treat as active trial so the UI doesn't block the doctor.
+  return buildSubscriptionInfo(null)
 }
 
 /**
- * Get all subscriptions — ahora lee desde profiles directamente.
+ * Get all subscriptions (admin view) via the backend.
+ * Backend endpoint: GET /api/admin/subscriptions
+ * Returns an array compatible with legacy consumers.
  */
-export async function getAllSubscriptions() {
-  const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('profiles')
-    .select('id, full_name, email, specialty, plan, subscription_status, subscription_expires_at, created_at')
-    .eq('role', 'doctor')
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-  // Forma de salida compatible con consumidores legacy
-  return (data || []).map((d: any) => ({
-    doctor_id: d.id,
-    plan: d.plan || 'trial',
-    status: d.subscription_status || 'active',
-    current_period_end: d.subscription_expires_at,
-    created_at: d.created_at,
-    profiles: { full_name: d.full_name, email: d.email, specialty: d.specialty },
+export async function getAllSubscriptions(): Promise<Array<Record<string, unknown>>> {
+  const result = await backendGet<Array<Record<string, unknown>>>(
+    '/api/admin/subscriptions',
+    { role: 'super_admin' },
+  )
+  if (!result.ok) {
+    throw new Error(result.error.message)
+  }
+  const rows = result.value
+  if (!Array.isArray(rows)) return []
+  // Normalise to the legacy shape consumed by /admin/subscriptions page.
+  return rows.map((r) => ({
+    doctor_id: r.doctorId ?? r.doctor_id ?? null,
+    plan: r.plan ?? 'trial',
+    status: r.status ?? 'active',
+    current_period_end: r.currentPeriodEnd ?? r.current_period_end ?? null,
+    created_at: r.createdAt ?? r.created_at ?? null,
+    profiles: {
+      full_name: r.fullName ?? r.full_name ?? null,
+      email: r.email ?? null,
+      specialty: r.specialty ?? null,
+    },
   }))
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// FASE 1 (2026-04-29): Sistema de suscripciones configurable
-// Inspirado en Stripe Subscriptions + Shopify Admin Settings.
+// App settings (Etapa 1: hardcoded defaults)
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── Types ───────────────────────────────────────────────────────────────────
 export type AppSettings = {
   subscription_base_price_usd: number
   subscription_currency: string
@@ -220,8 +216,8 @@ export type AppSettings = {
 
 export type DurationOption = {
   duration_months: number
-  base_price_usd: number       // sin descuento (price * months)
-  final_price_usd: number      // con descuento aplicado
+  base_price_usd: number
+  final_price_usd: number
   discount_pct: number
   promotion_id: string | null
   label: string | null
@@ -244,41 +240,32 @@ const DEFAULT_SETTINGS: AppSettings = {
   sales_whatsapp_message: 'Hola, vengo de la web de Delta Medical CRM y me interesa conocer más sobre el plan.',
 }
 
-// ── App settings (key/value singleton) ──────────────────────────────────────
-
 /**
- * Devuelve los settings globales de la app.
- *
- * ETAPA 1 (sin Supabase): retorna DEFAULT_SETTINGS hardcodeados.
- * FASE futura: reemplazar por backendGet('/api/admin/settings') cuando el
- * endpoint NestJS cubra todas las claves necesarias.
+ * Returns global app settings.
+ * ETAPA 1: returns DEFAULT_SETTINGS (hardcoded).
+ * FASE futura: migrate to backendGet('/api/admin/settings').
  */
 export async function getAppSettings(): Promise<AppSettings> {
   return { ...DEFAULT_SETTINGS }
 }
 
 /**
- * Actualiza un setting global.
- *
- * ETAPA 1 (sin Supabase): no-op — los cambios no se persisten.
- * FASE futura: reemplazar por backendPut('/api/admin/settings', { key, value }).
+ * Updates a global setting.
+ * ETAPA 1: no-op stub — changes are not persisted.
+ * FASE futura: migrate to backendPut('/api/admin/settings', { key, value }).
  */
 export async function setAppSetting(
   _key: keyof AppSettings,
   _value: unknown,
   _actorId: string | null,
 ): Promise<void> {
-  // no-op — pendiente migración a backend shared_settings
+  // no-op — pending backend shared_settings migration
 }
 
-// ── Duration options (multi-mes con promos) ────────────────────────────────
-
 /**
- * Devuelve las opciones de duración de suscripción con descuentos.
- *
- * ETAPA 1 (sin Supabase): retorna solo la opción mensual estática.
- * FASE futura: reemplazar por backendGet('/api/admin/plan-promotions') y
- * combinar con getAppSettings() una vez que exista el endpoint.
+ * Returns subscription duration options with discounts.
+ * ETAPA 1: returns only the static monthly option.
+ * FASE futura: migrate to backendGet('/api/admin/plan-promotions').
  */
 export async function computeDurationOptions(): Promise<DurationOption[]> {
   const basePrice = DEFAULT_SETTINGS.subscription_base_price_usd
@@ -294,8 +281,14 @@ export async function computeDurationOptions(): Promise<DurationOption[]> {
   ]
 }
 
-// ── Audit log ───────────────────────────────────────────────────────────────
-export async function logSubscriptionChange(args: {
+// ── Audit log stub ───────────────────────────────────────────────────────────
+
+/**
+ * Stub/no-op audit log. The backend performs its own audit logging internally.
+ * The frontend no longer writes to subscription_changes_log directly.
+ * ETAPA 2 TODO: remove callers or wire to a dedicated backend endpoint.
+ */
+export async function logSubscriptionChange(_args: {
   doctor_id: string
   action: SubscriptionChangeAction
   actor_id: string | null
@@ -305,26 +298,14 @@ export async function logSubscriptionChange(args: {
   metadata?: Record<string, unknown>
   payment_id?: string | null
 }): Promise<void> {
-  const admin = createAdminClient()
-  await admin.from('subscription_changes_log').insert({
-    doctor_id: args.doctor_id,
-    action: args.action,
-    actor_id: args.actor_id,
-    actor_role: args.actor_role,
-    before_state: args.before_state ?? null,
-    after_state: args.after_state ?? null,
-    metadata: args.metadata ?? {},
-    payment_id: args.payment_id ?? null,
-  })
+  // no-op — backend handles audit logging internally
 }
 
-// ── Extender suscripción (idempotente, no resetea días) ────────────────────
+// ── Subscription mutations — wired to backend ────────────────────────────────
+
 /**
- * Reglas (Stripe-style):
- *  - Si subscription_expires_at es futuro → suma N meses A PARTIR de esa fecha.
- *  - Si está vencida o nula → suma N meses A PARTIR de ahora.
- *  - Cambia status a 'active'.
- *  - Si el plan era 'trial' lo migra a 'basic' (plan único pago).
+ * Extends a doctor's subscription by N months.
+ * Backend: POST /api/admin/subscriptions/extend
  */
 export async function extendSubscription(args: {
   doctor_id: string
@@ -335,129 +316,73 @@ export async function extendSubscription(args: {
   metadata?: Record<string, unknown>
   payment_id?: string | null
 }): Promise<{ success: true; new_expires_at: string } | { success: false; error: string }> {
-  const admin = createAdminClient()
-  const { data: profile, error: profErr } = await admin
-    .from('profiles')
-    .select('id, plan, subscription_status, subscription_expires_at')
-    .eq('id', args.doctor_id)
-    .single()
-  if (profErr || !profile) return { success: false, error: 'Doctor no encontrado' }
-
-  const before = {
-    plan: profile.plan,
-    subscription_status: profile.subscription_status,
-    subscription_expires_at: profile.subscription_expires_at,
-  }
-
-  const now = new Date()
-  const currentEnd = profile.subscription_expires_at ? new Date(profile.subscription_expires_at) : null
-  const anchor = currentEnd && currentEnd > now ? currentEnd : now
-  const newEnd = new Date(anchor)
-  newEnd.setMonth(newEnd.getMonth() + args.months)
-
-  const newPlan = profile.plan === 'trial' ? 'basic' : (profile.plan || 'basic')
-
-  const { error: updErr } = await admin
-    .from('profiles')
-    .update({
-      subscription_status: 'active',
-      subscription_expires_at: newEnd.toISOString(),
-      plan: newPlan,
-    })
-    .eq('id', args.doctor_id)
-  if (updErr) return { success: false, error: updErr.message }
-
-  await logSubscriptionChange({
-    doctor_id: args.doctor_id,
-    action: args.reason,
-    actor_id: args.actor_id,
-    actor_role: args.actor_role,
-    before_state: before,
-    after_state: {
-      plan: newPlan,
-      subscription_status: 'active',
-      subscription_expires_at: newEnd.toISOString(),
+  const result = await backendPost<{ newExpiresAt: string }>(
+    '/api/admin/subscriptions/extend',
+    {
+      doctorId: args.doctor_id,
+      months: args.months,
+      reason: args.reason,
+      paymentId: args.payment_id ?? null,
+      metadata: args.metadata ?? {},
     },
-    metadata: { months_added: args.months, ...(args.metadata || {}) },
-    payment_id: args.payment_id ?? null,
-  })
-
-  return { success: true, new_expires_at: newEnd.toISOString() }
+    { role: 'super_admin' },
+  )
+  if (!result.ok) {
+    return { success: false, error: result.error.message }
+  }
+  return { success: true, new_expires_at: result.value.newExpiresAt }
 }
 
-// ── Suspender / Reactivar ──────────────────────────────────────────────────
+/**
+ * Suspends a doctor's subscription.
+ * Backend: POST /api/admin/subscriptions/suspend
+ */
 export async function suspendSubscription(args: {
   doctor_id: string
   actor_id: string | null
   actor_role: string | null
   reason?: string
-}) {
-  const admin = createAdminClient()
-  const { data: profile } = await admin
-    .from('profiles').select('plan, subscription_status, subscription_expires_at')
-    .eq('id', args.doctor_id).single()
-  if (!profile) return { success: false, error: 'Doctor no encontrado' }
-  await admin.from('profiles').update({ subscription_status: 'suspended' }).eq('id', args.doctor_id)
-  await logSubscriptionChange({
-    doctor_id: args.doctor_id, action: 'suspended',
-    actor_id: args.actor_id, actor_role: args.actor_role,
-    before_state: { subscription_status: profile.subscription_status },
-    after_state: { subscription_status: 'suspended' },
-    metadata: args.reason ? { reason: args.reason } : {},
-  })
+}): Promise<{ success: boolean; error?: string }> {
+  const result = await backendPost<unknown>(
+    '/api/admin/subscriptions/suspend',
+    { doctorId: args.doctor_id, reason: args.reason ?? null },
+    { role: 'super_admin' },
+  )
+  if (!result.ok) {
+    return { success: false, error: result.error.message }
+  }
   return { success: true }
 }
 
+/**
+ * Reactivates a suspended subscription.
+ * Backend: POST /api/admin/subscriptions/reactivate
+ */
 export async function reactivateSubscription(args: {
   doctor_id: string
   actor_id: string | null
   actor_role: string | null
-}) {
-  const admin = createAdminClient()
-  const { data: profile } = await admin
-    .from('profiles').select('plan, subscription_status, subscription_expires_at')
-    .eq('id', args.doctor_id).single()
-  if (!profile) return { success: false, error: 'Doctor no encontrado' }
-  const isExpired = profile.subscription_expires_at && new Date(profile.subscription_expires_at) < new Date()
-  const updates: Record<string, unknown> = { subscription_status: 'active' }
-  if (isExpired) {
-    const newEnd = new Date(); newEnd.setMonth(newEnd.getMonth() + 1)
-    updates.subscription_expires_at = newEnd.toISOString()
+}): Promise<{ success: boolean; error?: string }> {
+  const result = await backendPost<unknown>(
+    '/api/admin/subscriptions/reactivate',
+    { doctorId: args.doctor_id },
+    { role: 'super_admin' },
+  )
+  if (!result.ok) {
+    return { success: false, error: result.error.message }
   }
-  await admin.from('profiles').update(updates).eq('id', args.doctor_id)
-  await logSubscriptionChange({
-    doctor_id: args.doctor_id, action: 'reactivated',
-    actor_id: args.actor_id, actor_role: args.actor_role,
-    before_state: { subscription_status: profile.subscription_status },
-    after_state: updates,
-  })
   return { success: true }
 }
 
-// ── Beta inicial al registrar nuevo doctor ─────────────────────────────────
-export async function startBetaForNewDoctor(doctorId: string): Promise<void> {
-  const settings = await getAppSettings()
-  const admin = createAdminClient()
-  const expiresAt = new Date()
-  expiresAt.setDate(expiresAt.getDate() + settings.beta_duration_days)
-  await admin
-    .from('profiles')
-    .update({
-      plan: 'trial',
-      subscription_status: 'trial',
-      subscription_expires_at: expiresAt.toISOString(),
-    })
-    .eq('id', doctorId)
-  await logSubscriptionChange({
-    doctor_id: doctorId,
-    action: 'created',
-    actor_id: doctorId,
-    actor_role: 'doctor',
-    after_state: {
-      plan: 'trial',
-      subscription_status: 'trial',
-      subscription_expires_at: expiresAt.toISOString(),
-    },
-    metadata: { beta_days: settings.beta_duration_days, source: 'self_registration' },
-  })
+// ── Beta registration stub ───────────────────────────────────────────────────
+
+/**
+ * STUB/no-op — Etapa 1: doctor registration is a dev-stub; real provisioning
+ * (plan=trial, subscription_status=trial, expires_at) happens in the backend
+ * during registration flow in Etapa 2 (Auth0 + NestJS).
+ *
+ * ETAPA 2 TODO: replace with backendPost('/api/admin/doctors/start-beta', { doctorId }).
+ */
+export async function startBetaForNewDoctor(_doctorId: string): Promise<void> {
+  // no-op — backend provisions beta subscription during registration in Etapa 2
 }

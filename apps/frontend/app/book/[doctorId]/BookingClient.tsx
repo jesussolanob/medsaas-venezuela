@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import {
   Calendar, Clock, User, Phone, Mail, CheckCircle, Activity, AlertCircle,
   ChevronLeft, ChevronRight, ChevronDown, Upload, Video, MapPin,
@@ -208,18 +207,23 @@ export default function BookingClient({
   const { rate: bcvRate, toBs } = useBcvRate()
 
   // Auth state
-  const [authUser, setAuthUser] = useState<any>(null)
-  // RONDA 19a: bloqueo de UI cuando el usuario logueado es el mismo doctor o un admin
-  const [authRole, setAuthRole] = useState<string | null>(null)
-  const isOwnerDoctor = !!authUser && authUser.id === doctor.id
+  // ETAPA 1: Auth0 not available — booking always runs in guest mode.
+  // ETAPA 2: replace with Auth0 session (user object from httpOnly cookie).
+  // Type includes user_metadata so existing JSX branches type-check (they are unreachable at runtime).
+  const [authUser] = useState<{ id: string; email?: string; user_metadata?: Record<string, string> } | null>(null)
+  const [authRole] = useState<string | null>(null)
+  const isOwnerDoctor = false
   const isAdmin = authRole === 'admin' || authRole === 'super_admin'
   const previewModeBlocked = isOwnerDoctor || isAdmin
-  const [authReady, setAuthReady] = useState(false)
+  // authReady=true immediately: no async auth check needed without Supabase/Auth0.
+  const [authReady] = useState(true)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
 
   // Accordion step (1-7)
   const [activeStep, setActiveStep] = useState(1)
-  const [guestMode, setGuestMode] = useState(false)
+  // ETAPA 1: Auth0 not available — start in guest mode immediately.
+  // ETAPA 2: set to false initially and resolve from Auth0 session on mount.
+  const [guestMode, setGuestMode] = useState(true)
 
   // Active package (prepaid sessions)
   const [activePackage, setActivePackage] = useState<ActivePackage | null>(null)
@@ -283,48 +287,22 @@ export default function BookingClient({
     })
   }
 
-  // Fetch active packages for this doctor (try auth_user_id first, then patient_id)
-  const fetchActivePackages = async (userId: string) => {
+  // Fetch active packages for this doctor via backend booking endpoint.
+  // Requires patient email (only available after guest step) — called lazily.
+  // ETAPA 2 TODO: replace with Auth0 session-based package lookup.
+  const fetchActivePackages = async (email: string) => {
+    if (!email) return
     try {
-      const supabase = createClient()
-
-      // Try by auth_user_id first
-      const { data: pkgByAuth } = await supabase
-        .from('patient_packages')
-        .select('id, plan_name, total_sessions, used_sessions')
-        .eq('auth_user_id', userId)
-        .eq('doctor_id', doctor.id)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (pkgByAuth && pkgByAuth.used_sessions < pkgByAuth.total_sessions) {
-        setActivePackage(pkgByAuth)
-        return
-      }
-
-      // Fallback: find patient record by auth_user_id and query by patient_id
-      const { data: patientRecord } = await supabase
-        .from('patients')
-        .select('id')
-        .eq('auth_user_id', userId)
-        .eq('doctor_id', doctor.id)
-        .maybeSingle()
-
-      if (patientRecord) {
-        const { data: pkgByPatient } = await supabase
-          .from('patient_packages')
-          .select('id, plan_name, total_sessions, used_sessions')
-          .eq('patient_id', patientRecord.id)
-          .eq('doctor_id', doctor.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (pkgByPatient && pkgByPatient.used_sessions < pkgByPatient.total_sessions) {
-          setActivePackage(pkgByPatient)
+      const res = await fetch(
+        `/api/booking/${doctor.id}/packages?email=${encodeURIComponent(email)}`,
+      )
+      if (!res.ok) return
+      const json = await res.json() as { success: boolean; data?: ActivePackage[] }
+      const pkgs = json.data
+      if (Array.isArray(pkgs) && pkgs.length > 0) {
+        const pkg = pkgs[0]
+        if (pkg && pkg.used_sessions < pkg.total_sessions) {
+          setActivePackage(pkg)
         }
       }
     } catch (err) {
@@ -332,56 +310,22 @@ export default function BookingClient({
     }
   }
 
-  // Check auth on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setAuthUser(user)
-          // RONDA 19a: leer role para detectar doctores/admins en preview mode
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .maybeSingle()
-          setAuthRole(prof?.role ?? null)
-          setForm(f => ({
-            ...f,
-            full_name: user.user_metadata?.full_name || f.full_name,
-            email: user.email || f.email,
-            phone: user.user_metadata?.phone || f.phone,
-            cedula: user.user_metadata?.cedula || f.cedula,
-          }))
-          fetchActivePackages(user.id)
-        }
-      } catch (err) {
-        console.error('Auth check error:', err)
-      }
-      setAuthReady(true)
-    }
-    checkAuth()
-  }, [])
-
-  // Fetch doctor offices on mount
+  // Fetch doctor offices on mount via the backend offices endpoint.
+  // GET /api/doctor/offices — requires doctor identity, but booking is public.
+  // ETAPA 2 TODO: expose a public /api/booking/:doctorId/offices endpoint.
+  // For now we degrade gracefully: no offices → generic time slots are used.
   useEffect(() => {
     const fetchOffices = async () => {
       try {
-        const supabase = createClient()
-        const { data } = await supabase
-          .from('doctor_offices')
-          .select('id, name, address, city, phone, schedule, slot_duration, buffer_minutes')
-          .eq('doctor_id', doctor.id)
-          .eq('is_active', true)
-        setDoctorOffices((data || []).map(o => ({
-          ...o,
-          schedule: o.schedule || [],
-          slot_duration: o.slot_duration || 30,
-          buffer_minutes: o.buffer_minutes || 10,
-        })))
-      } catch (err) {
-        console.error('Error fetching offices:', err)
+        const res = await fetch(`/api/booking/${doctor.id}/slots?date=${new Date().toISOString().slice(0, 10)}`)
+        // We only use the offices fetch to pre-configure slot generation.
+        // The slots endpoint gives us availability per date; we still use the
+        // local generateSlots() for the weekly calendar display.
+        // If the endpoint fails, generic slots are shown — acceptable degradation.
+        if (!res.ok) return
+        // No offices data in this endpoint — leave doctorOffices empty to use generic slots.
+      } catch {
+        // Degrade silently — generateSlots() uses generic fallback.
       }
     }
     fetchOffices()
@@ -401,87 +345,31 @@ export default function BookingClient({
   }, [selectedDate, doctorOffices])
 
   // ── Auth Handlers ─────────────────────────────────────────────────────────
+  // ETAPA 1: Patient auth (login/register) requires Auth0 (Etapa 2).
+  // Both handlers degrade to guest mode — show a clear message to the user.
+
   const handleAuthLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
-    setSubmitting(true)
-    try {
-      const supabase = createClient()
-      const { data, error: authErr } = await supabase.auth.signInWithPassword({
-        email: form.email.trim(),
-        password: form.password.trim(),
-      })
-      if (authErr || !data.user) {
-        setError(authErr?.message || 'Email o contraseña inválidos')
-        setSubmitting(false)
-        return
-      }
-      setAuthUser(data.user)
-      setForm(f => ({
-        ...f,
-        full_name: data.user.user_metadata?.full_name || f.full_name,
-        phone: data.user.user_metadata?.phone || f.phone,
-        cedula: data.user.user_metadata?.cedula || f.cedula,
-      }))
-      fetchActivePackages(data.user.id)
-    } catch (err: any) {
-      setError(err?.message || 'Error al iniciar sesión')
-    }
-    setSubmitting(false)
+    setError('Inicio de sesión no disponible en esta versión. Continúa como invitado.')
+    setAuthMode(null)
+    setGuestMode(true)
   }
 
   const handleAuthRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Validate required fields before switching to guest mode
+    if (!form.full_name.trim() || !form.email.trim()) {
+      setError('Nombre y email son obligatorios')
+      return
+    }
+    // Degrade: treat as guest booking (no account creation in Etapa 1)
     setError('')
-    if (form.password !== form.passwordConfirm) {
-      setError('Las contraseñas no coinciden')
-      return
+    setAuthMode(null)
+    setGuestMode(true)
+    // Attempt to load packages by email (backend supports email lookup)
+    if (form.email.trim()) {
+      await fetchActivePackages(form.email.trim())
     }
-    if (!form.full_name.trim() || !form.email.trim() || !form.phone.trim()) {
-      setError('Nombre, email y teléfono son obligatorios')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const supabase = createClient()
-      const { data, error: authErr } = await supabase.auth.signUp({
-        email: form.email.trim(),
-        password: form.password.trim(),
-        options: {
-          data: {
-            full_name: form.full_name.trim(),
-            cedula: form.cedula.trim(),
-            phone: form.phone.trim(),
-            role: 'patient',
-          },
-        },
-      })
-      if (authErr || !data.user) {
-        setError(authErr?.message || 'Error al registrarse')
-        setSubmitting(false)
-        return
-      }
-
-      // RONDA 33: zero-friction onboarding — UPSERT en profiles con role=patient + phone
-      // Asi el callback de auth no manda al usuario al onboarding (ya tiene role + phone).
-      // Si el upsert falla (RLS, etc.) no bloqueamos el registro — el onboarding actua de fallback.
-      try {
-        await supabase.from('profiles').upsert({
-          id: data.user.id,
-          email: form.email.trim(),
-          full_name: form.full_name.trim(),
-          phone: form.phone.trim(),
-          role: 'patient',
-        }, { onConflict: 'id' })
-      } catch (profErr) {
-        console.warn('[register] profile upsert failed (non-blocking):', profErr)
-      }
-
-      setAuthUser(data.user)
-    } catch (err: any) {
-      setError(err?.message || 'Error al registrarse')
-    }
-    setSubmitting(false)
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -507,25 +395,12 @@ export default function BookingClient({
 
     setSubmitting(true)
     try {
-      const supabase = createClient()
-      let accessToken: string | null = null
-      let sessionEmail: string | null = null
-
-      if (authUser) {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) {
-          setError('Sesión expirada. Recarga la página.')
-          setSubmitting(false)
-          return
-        }
-        accessToken = session.access_token
-        sessionEmail = session.user.email || null
-      }
-
-      const patientName = (form.full_name.trim() || authUser?.user_metadata?.full_name || 'Paciente').trim()
-      const patientPhone = (form.phone.trim() || authUser?.user_metadata?.phone || '').trim()
-      const patientCedula = (form.cedula.trim() || authUser?.user_metadata?.cedula || '').trim()
-      const patientEmail = sessionEmail || form.email.trim()
+      // ETAPA 1: guest mode only — no Auth0 session available.
+      // ETAPA 2: read Auth0 session from httpOnly cookie.
+      const patientName = form.full_name.trim() || 'Paciente'
+      const patientPhone = form.phone.trim()
+      const patientCedula = form.cedula.trim()
+      const patientEmail = form.email.trim()
 
       // Upload receipt via BFF proxy → backend MinIO.
       let receiptUrl = null
@@ -564,7 +439,6 @@ export default function BookingClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           doctorId: doctor.id,
-          accessToken,
           patientName,
           patientPhone: patientPhone || null,
           patientEmail,
@@ -579,18 +453,8 @@ export default function BookingClient({
           receiptUrl,
           appointmentMode: appointmentMode || 'presencial',
           packageId: usingPackage ? activePackage?.id : null,
-          // RONDA 33: datos clinicos opcionales para persistir en patients
-          patientClinical: {
-            birth_date: form.birth_date || null,
-            sex: form.sex || null,
-            blood_type: form.blood_type || null,
-            allergies: form.allergies?.trim() || null,
-            chronic_conditions: form.chronic_conditions?.trim() || null,
-            address: form.address?.trim() || null,
-            city: form.city?.trim() || null,
-            emergency_contact_name: form.emergency_contact_name?.trim() || null,
-            emergency_contact_phone: form.emergency_contact_phone?.trim() || null,
-          },
+          // ETAPA 2 TODO: forward patientClinical to backend CreateBookingDto
+          // when the backend schema is extended to accept it.
         }),
       })
 

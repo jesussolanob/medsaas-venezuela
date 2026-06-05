@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User, Clock, LayoutGrid } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import { getDevIdentityAction } from './identity-action'
 // ETAPA 1: onboarding identity comes from the dev-stub cookie (set at login).
 // ETAPA 2 (Auth0): remove getDevIdentityAction import and use Auth0 session.
@@ -82,34 +81,51 @@ export default function OnboardingPage() {
       setUserName('')
       setUserEmail('')
 
-      // Check if profile already exists and is complete (DB query still works).
-      const supabase = createClient()
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, phone, full_name, email')
-        .eq('id', devUser.id)
-        .maybeSingle()
+      // Check profile completion via backend (GET /api/doctor/profile).
+      // Falls back gracefully if the request fails.
+      try {
+        const profileRes = await fetch('/api/doctor/profile', {
+          headers: {
+            'x-dev-user-id': devUser.id,
+            'x-dev-user-role': devUser.role,
+          },
+        })
+        if (profileRes.ok) {
+          const profileJson = await profileRes.json() as {
+            success: boolean
+            data?: { phone?: string | null; role?: string | null; fullName?: string | null; email?: string | null }
+          }
+          const profile = profileJson.data
+          if (profile?.fullName) setUserName(profile.fullName)
+          if (profile?.email) setUserEmail(profile.email)
 
-      if (profile?.full_name) setUserName(profile.full_name)
-      if (profile?.email) setUserEmail(profile.email)
+          if (profile?.phone) {
+            // Already onboarded — redirect by role
+            const profileRole = profile.role
+            if (profileRole === 'super_admin' || profileRole === 'admin') {
+              router.push('/admin')
+            } else if (profileRole === 'patient') {
+              router.push('/patient/dashboard')
+            } else {
+              router.push('/doctor')
+            }
+            return
+          }
 
-      if (profile?.phone) {
-        // Already onboarded — redirect
-        if (profile.role === 'super_admin' || profile.role === 'admin') {
-          router.push('/admin')
-        } else if (profile.role === 'patient') {
-          router.push('/patient/dashboard')
+          // Pre-select role from the profile
+          if (profile?.role === 'patient') setRole('patient')
+          else if (profile?.role === 'doctor') setRole('doctor')
+          else {
+            if (devUser.role === 'patient') setRole('patient')
+            else setRole('doctor')
+          }
         } else {
-          router.push('/doctor')
+          // Profile not found or error — use role from dev cookie
+          if (devUser.role === 'patient') setRole('patient')
+          else setRole('doctor')
         }
-        return
-      }
-
-      // Pre-select role from the dev cookie role or existing profile role.
-      if (profile?.role === 'patient') setRole('patient')
-      else if (profile?.role === 'doctor') setRole('doctor')
-      else {
-        // Fallback: use the role from the dev-auth cookie.
+      } catch {
+        // Network error — fall back to dev cookie role
         if (devUser.role === 'patient') setRole('patient')
         else setRole('doctor')
       }
@@ -174,41 +190,38 @@ export default function OnboardingPage() {
     }
   }
 
-  // F5 (2026-04-29): carga el catálogo de bloques + specialty defaults y
-  // pre-marca los core + los enabled por defaults de la especialidad seleccionada.
+  // F5 (2026-04-29): carga el catálogo de bloques desde el backend
+  // (GET /api/doctor/consultation-blocks) y pre-marca los core + specialty defaults.
   async function loadBlocksCatalog() {
+    if (!userId) return
     setBlocksLoading(true)
-    // F-FONDO (2026-04-29): pre-marcar core inmediatamente para que el doctor
-    // siempre tenga al menos los 4 bloques esenciales seleccionados aunque la
-    // query del catalog tarde o falle. Antes el botón "Continuar" quedaba
-    // disabled si el state estaba vacío al renderizar el step 3.
+    // Pre-mark core blocks immediately so the button is never disabled.
     setSelectedBlocks(new Set(CORE_BLOCK_KEYS))
     try {
-      const supabase = createClient()
-      const [catalogRes, specialtyRes] = await Promise.all([
-        supabase
-          .from('consultation_block_catalog')
-          .select('key, default_label, default_content_type, description')
-          .order('key'),
-        specialty
-          ? supabase
-              .from('specialty_default_blocks')
-              .select('block_key, enabled')
-              .eq('specialty', specialty)
-          : Promise.resolve({ data: [] as { block_key: string; enabled: boolean }[] }),
-      ])
+      const res = await fetch('/api/doctor/consultation-blocks', {
+        headers: {
+          'x-dev-user-id': userId,
+          'x-dev-user-role': 'doctor',
+        },
+      })
+      if (!res.ok) throw new Error(`status ${res.status}`)
 
-      const cat = (catalogRes.data || []) as CatalogBlock[]
-      const specialtyDefaults = ((specialtyRes.data || []) as { block_key: string; enabled: boolean }[])
-        .filter(s => s.enabled)
-        .map(s => s.block_key)
+      const json = await res.json() as {
+        success: boolean
+        data?: {
+          catalog?: Array<{ key: string; default_label: string; default_content_type: string; description: string | null }>
+          specialty_defaults?: Array<{ block_key: string; enabled: boolean }>
+        }
+      }
+
+      const cat = (json.data?.catalog || []) as CatalogBlock[]
+      const specialtyDefaults = (json.data?.specialty_defaults || [])
+        .filter((s: { block_key: string; enabled: boolean }) => s.enabled)
+        .map((s: { block_key: string; enabled: boolean }) => s.block_key)
 
       const preselected = new Set<string>()
-      // Core siempre pre-marcado
       for (const k of CORE_BLOCK_KEYS) preselected.add(k)
-      // Defaults de la especialidad
       for (const k of specialtyDefaults) preselected.add(k)
-      // Filtrar a llaves que realmente existan en el catálogo
       const validKeys = new Set(cat.map(c => c.key))
       const final = new Set<string>()
       for (const k of preselected) if (validKeys.has(k)) final.add(k)
@@ -216,8 +229,7 @@ export default function OnboardingPage() {
       setCatalog(cat)
       setSelectedBlocks(final)
     } catch (err) {
-      // Si falla la carga, mostramos el catálogo vacío y el doctor podrá
-      // continuar — la app igual cae al fallback de bloques core.
+      // Fallback: show empty catalog; doctor can continue with core blocks only.
       console.error('Error cargando catálogo de bloques:', err)
     } finally {
       setBlocksLoading(false)
@@ -234,38 +246,42 @@ export default function OnboardingPage() {
     })
   }
 
-  // F5 (2026-04-29): guarda los bloques marcados y avanza al paso 4 (pending).
+  // F5 (2026-04-29): guarda los bloques marcados via PUT /api/doctor/consultation-blocks
+  // y avanza al paso 4 (pending).
   async function saveBlocksAndContinue() {
     if (!userId) return
     setSavingBlocks(true)
     setError('')
     try {
-      const supabase = createClient()
-      // Bulk insert: una fila por bloque seleccionado, ordenado por la posición
-      // del catálogo (que ya viene ordenado por key). Si la PK ya existe (caso
-      // poco probable en onboarding), usamos upsert para idempotencia.
-      const rows = catalog
+      const selectedKeys = catalog
         .filter(c => selectedBlocks.has(c.key))
         .map((c, idx) => ({
-          doctor_id: userId,
           block_key: c.key,
           enabled: true,
           sort_order: idx,
         }))
 
-      if (rows.length > 0) {
-        const { error: insertError } = await supabase
-          .from('doctor_consultation_blocks')
-          .upsert(rows, { onConflict: 'doctor_id,block_key' })
-        if (insertError) {
-          setError(insertError.message)
+      if (selectedKeys.length > 0) {
+        const res = await fetch('/api/doctor/consultation-blocks', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-dev-user-id': userId,
+            'x-dev-user-role': 'doctor',
+          },
+          body: JSON.stringify({ blocks: selectedKeys }),
+        })
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({})) as { message?: string }
+          setError(errJson.message || 'Error al guardar bloques')
           setSavingBlocks(false)
           return
         }
       }
       setStep(4)
-    } catch (err: any) {
-      setError(err?.message || 'Error al guardar bloques')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al guardar bloques'
+      setError(msg)
     } finally {
       setSavingBlocks(false)
     }

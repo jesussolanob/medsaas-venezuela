@@ -8,16 +8,17 @@
  * requires Auth0 (Etapa 2 / Fase 6).
  *
  * Non-auth helpers (getBCVRate, getActivePlans, getActivePromotions,
- * getPaymentAccounts) still query the DB via createAdminClient and are
- * unaffected by the auth migration.
+ * getPaymentAccounts) now source data from the NestJS backend or degrade
+ * gracefully when no backend endpoint exists yet.
  *
  * ETAPA 2 (Auth0): replace stub bodies with Auth0 Management API calls
  * to provision users, then call the NestJS backend to create the profile.
  */
 
-import { createAdminClient } from '@/lib/supabase/admin';
+import 'server-only';
 import { revalidatePath } from 'next/cache';
 import { DEV_DOCTOR_UUID, DEV_PATIENT_UUID } from '@/lib/dev-auth.edge';
+import { backendGet } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,7 +94,7 @@ export async function resendConfirmation(
 }
 
 // ---------------------------------------------------------------------------
-// Tasa BCV — no auth dependency, unaffected
+// Tasa BCV — external API, no Supabase dependency
 // ---------------------------------------------------------------------------
 
 export type BCVRateResult = { rate: number; updated: string } | null;
@@ -172,7 +173,7 @@ export async function getBCVRate(): Promise<BCVRateResult> {
 }
 
 // ---------------------------------------------------------------------------
-// Active plans — DB query only, no auth dependency
+// Active plans — sourced from NestJS backend (GET /api/admin/plans)
 // ---------------------------------------------------------------------------
 
 export type PlanConfigPublic = {
@@ -184,21 +185,35 @@ export type PlanConfigPublic = {
 };
 
 export async function getActivePlans(): Promise<PlanConfigPublic[]> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from('plan_configs')
-    .select('plan_key, name, price, trial_days, description')
-    .eq('is_active', true)
-    .order('sort_order');
-  if (error) {
-    console.error('Error fetching plans:', error.message);
+  const result = await backendGet<Array<Record<string, unknown>>>(
+    '/api/admin/plans',
+    // Plans endpoint requires super_admin role to read.
+    { role: 'super_admin' },
+  );
+
+  if (!result.ok) {
+    console.error('[register/getActivePlans] backend error:', result.error.message);
     return [];
   }
-  return data ?? [];
+
+  const rows = result.value;
+  if (!Array.isArray(rows)) return [];
+
+  // Filter to active plans only and normalize camelCase → snake_case shape.
+  return rows
+    .filter((r) => r.isActive === true)
+    .map((r) => ({
+      plan_key: String(r.planKey ?? ''),
+      name: String(r.name ?? ''),
+      price: typeof r.priceUsd === 'number' ? r.priceUsd : 0,
+      trial_days: typeof r.trialDays === 'number' ? r.trialDays : 0,
+      description: r.description != null ? String(r.description) : null,
+    }));
 }
 
 // ---------------------------------------------------------------------------
-// Active promotions — DB query only, no auth dependency
+// Active promotions — no backend endpoint yet → degrade to empty array
+// ETAPA 2 TODO: wire to GET /api/admin/plan-promotions once the endpoint exists.
 // ---------------------------------------------------------------------------
 
 export type PromotionPublic = {
@@ -211,22 +226,14 @@ export type PromotionPublic = {
 };
 
 export async function getActivePromotions(): Promise<PromotionPublic[]> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from('plan_promotions')
-    .select('id, plan_key, duration_months, original_price_usd, promo_price_usd, label')
-    .eq('is_active', true)
-    .or('ends_at.is.null,ends_at.gt.' + new Date().toISOString())
-    .order('duration_months');
-  if (error) {
-    console.error('Error fetching promotions:', error.message);
-    return [];
-  }
-  return data ?? [];
+  // Stub: promotions endpoint not yet available in the backend.
+  // Returns empty array so the register page renders without promotions.
+  return [];
 }
 
 // ---------------------------------------------------------------------------
-// Payment accounts — DB query only, no auth dependency
+// Payment accounts — no backend endpoint yet → degrade to empty array
+// ETAPA 2 TODO: wire to GET /api/admin/payment-accounts once the endpoint exists.
 // ---------------------------------------------------------------------------
 
 export type PaymentAccount = {
@@ -240,16 +247,7 @@ export type PaymentAccount = {
 };
 
 export async function getPaymentAccounts(): Promise<PaymentAccount[]> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from('payment_accounts')
-    .select('*')
-    .eq('is_active', true)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    console.error('Error obteniendo cuentas:', error.message);
-    return [];
-  }
-  return data ?? [];
+  // Stub: payment accounts endpoint not yet available in the backend.
+  // Returns empty array; the register page renders without payment accounts.
+  return [];
 }
