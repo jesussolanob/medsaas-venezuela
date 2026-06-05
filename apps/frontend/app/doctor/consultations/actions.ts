@@ -17,8 +17,8 @@
  *   GET    /api/consultations/patient/:id   → patient history
  *   GET    /api/consultations/:id           → single consultation
  *   POST   /api/consultations               → create
- *   PUT    /api/consultations/:id           → update
- *   PUT    /api/consultations/:id/payment   → approve payment
+ *   PUT    /api/consultations/:id           → update clinical fields (strict schema)
+ *   PUT    /api/consultations/:id/payment   → approve payment (requires amount + payment_method)
  *
  * DEFERRED — Fase 5:
  *   - blocks_data / blocks_snapshot (report builder)
@@ -169,7 +169,15 @@ export async function createConsultation(input: {
   };
 }
 
-/** Update clinical fields on a consultation. */
+/**
+ * Update clinical fields on a consultation.
+ *
+ * Only the four fields accepted by UpdateConsultationDtoSchema (.strict()) are
+ * forwarded. The consultation_date field is not part of that schema — callers
+ * that need to change it must use a separate endpoint (not yet available in
+ * Etapa 1). Passing it here would cause a Zod strict validation error on the
+ * backend.
+ */
 export async function updateConsultation(
   consultationId: string,
   fields: {
@@ -177,7 +185,6 @@ export async function updateConsultation(
     notes?: string | null;
     diagnosis?: string | null;
     treatment?: string | null;
-    consultation_date?: string;
   },
 ): Promise<ConsultationActionResult> {
   const result = await backendPut<Consultation>(`/api/consultations/${consultationId}`, fields);
@@ -190,13 +197,34 @@ export async function updateConsultation(
   return { success: true };
 }
 
-/** Approve payment on a consultation. */
+/**
+ * Approve payment on a consultation (pending → approved).
+ *
+ * Calls PUT /api/consultations/:id/payment — the dedicated payment approval
+ * endpoint. The generic PUT /:id (UpdateConsultationDto) uses .strict() and
+ * does NOT accept payment_status, so this action must use the /payment path.
+ *
+ * @param consultationId - UUID of the consultation to approve.
+ * @param amount         - Amount collected (non-negative number, in USD or local).
+ * @param paymentMethod  - Human-readable label, e.g. "Pago Móvil", "Zelle".
+ * @param paymentDate    - Optional ISO-8601 date string of when payment occurred.
+ */
 export async function approveConsultationPayment(
   consultationId: string,
+  amount: number,
+  paymentMethod: string,
+  paymentDate?: string,
 ): Promise<ConsultationActionResult> {
-  const result = await backendPut<Consultation>(`/api/consultations/${consultationId}`, {
-    payment_status: 'approved',
-  });
+  const body: Record<string, unknown> = {
+    amount,
+    payment_method: paymentMethod,
+  };
+  if (paymentDate) body.payment_date = paymentDate;
+
+  const result = await backendPut<Consultation>(
+    `/api/consultations/${consultationId}/payment`,
+    body,
+  );
 
   if (!result.ok) {
     return { success: false, error: appErrorToString(result.error) };
