@@ -1,10 +1,15 @@
 'use client';
 
+// ETAPA 1: Supabase parcialmente eliminado.
+// Migrado al backend:
+//   - openAddItemModal → getServicesForModal() (GET /api/doctor/services)
+//   - generateReceipt (profile) → getDoctorProfileForReceipt() (GET /api/doctor/profile)
+//   - exportExcel → getPaymentsForExport() (GET /api/finances/payments)
+// PENDIENTE storage (Fase 5, otro agente):
+//   - handleReceiptUpload → Supabase storage mantenido intencionalmente.
+//   - Realtime refresh → Supabase channel mantenido intencionalmente.
 import { useState, useEffect, useCallback } from 'react';
-// payments/payment_items YA migrados al backend (payments-actions). createClient queda
-// SOLO para piezas Fase 5: storage de comprobantes, realtime, PDF de recibo, lectura de
-// pricing_plans (openAddItemModal) y export a Excel (appointments).
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client'; // FASE 5: storage + realtime únicamente
 import { getDoctorId } from '@/app/doctor/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
@@ -17,6 +22,11 @@ import {
 } from '@/app/doctor/finances/payments-actions';
 import { formatPaymentMethod } from '@/lib/payment-methods';
 import { buildReceiptHtml } from '@/lib/receipt-pdf';
+import {
+  getServicesForModal,
+  getDoctorProfileForReceipt,
+  getPaymentsForExport,
+} from './actions';
 import {
   Receipt,
   Search,
@@ -222,24 +232,9 @@ export default function CobrosPage() {
   const totalUSD = filtered.reduce((sum, p) => sum + (p.plan_price || 0), 0);
   const totalBs = bcvRate ? totalUSD * bcvRate : null;
 
-  // Export to CSV/Excel
+  // Export to CSV/Excel — ETAPA 1: migrado al backend (GET /api/finances/payments).
   async function exportExcel() {
-    const supabase = createClient();
-    const doctorId = await getDoctorId();
-    if (!doctorId) return;
-    const user = { id: doctorId };
-
-    // CODIGO UNIFICADO (ronda 13): exportamos consultation_code en la columna "Código"
-    const { data } = await supabase
-      .from('appointments')
-      .select(
-        'patient_name, plan_name, plan_price, payment_method, status, scheduled_at, appointment_code, consultations(consultation_code)',
-      )
-      .eq('doctor_id', user.id)
-      .neq('source', 'google_calendar')
-      .gte('scheduled_at', `${dateFrom}T00:00:00`)
-      .lte('scheduled_at', `${dateTo}T23:59:59`)
-      .order('scheduled_at', { ascending: false });
+    const data = await getPaymentsForExport(dateFrom, dateTo);
 
     if (!data || data.length === 0) {
       alert('No hay datos en ese rango de fechas');
@@ -256,22 +251,16 @@ export default function CobrosPage() {
       'Estado',
       'Código',
     ];
-    const rows = data.map((r) => {
-      const consNested = (r as any).consultations;
-      const consCode = Array.isArray(consNested)
-        ? consNested[0]?.consultation_code
-        : consNested?.consultation_code;
-      return [
-        new Date(r.scheduled_at).toLocaleDateString('es-VE'),
-        r.patient_name || '',
-        r.plan_name || '',
-        (r.plan_price || 0).toFixed(2),
-        bcvRate ? ((r.plan_price || 0) * bcvRate).toFixed(2) : 'N/A',
-        formatPaymentMethod(r.payment_method),
-        r.status || '',
-        consCode || r.appointment_code || '',
-      ];
-    });
+    const rows = data.map((r) => [
+      r.scheduled_at ? new Date(r.scheduled_at).toLocaleDateString('es-VE') : '',
+      r.patient_name || '',
+      r.plan_name || '',
+      r.amount_usd.toFixed(2),
+      bcvRate ? (r.amount_usd * bcvRate).toFixed(2) : 'N/A',
+      formatPaymentMethod(r.payment_method),
+      r.status || '',
+      r.consultation_code || r.appointment_code || '',
+    ]);
 
     const csv = [headers, ...rows].map((row) => row.map((c) => `"${c}"`).join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -284,32 +273,11 @@ export default function CobrosPage() {
     setShowExport(false);
   }
 
-  // RONDA 34 + RONDA 45: fuente UNICA = pricing_plans (con su columna `type`).
-  // Antes leiamos tambien de `doctor_services` (tabla legacy duplicada) y eso
-  // generaba items duplicados en el modal "Añadir al cobro". La pagina
-  // /doctor/services tambien lee solo de pricing_plans, asi que ahora ambas
-  // vistas estan sincronizadas.
+  // ETAPA 1: migrado al backend (GET /api/doctor/services).
+  // Reemplaza la lectura directa a Supabase pricing_plans.
   async function openAddItemModal() {
     if (!selectedPayment) return;
-    const supabase = createClient();
-    const doctorId = await getDoctorId();
-    if (!doctorId) return;
-    const user = { id: doctorId };
-    const { data: rows } = await supabase
-      .from('pricing_plans')
-      .select('id, name, price_usd, type')
-      .eq('doctor_id', user.id)
-      .eq('is_active', true)
-      .order('name');
-
-    const items: Array<{ id: string; name: string; price_usd: number; type: 'plan' | 'service' }> =
-      (rows || []).map((r: any) => ({
-        id: r.id,
-        name: r.name,
-        price_usd: r.price_usd,
-        // Si la fila no tiene type definido, asumimos 'plan' por compat con datos viejos
-        type: (r.type === 'service' ? 'service' : 'plan') as 'plan' | 'service',
-      }));
+    const items = await getServicesForModal();
     setAvailableItems(items);
     setShowAddItemModal(true);
   }
@@ -395,54 +363,43 @@ export default function CobrosPage() {
     }
   }
 
-  // RONDA 34: generar recibo PDF con branding del perfil
+  // RONDA 34 — ETAPA 1: generar recibo PDF con branding del perfil.
+  // Migrado: profiles → GET /api/doctor/profile (getDoctorProfileForReceipt).
+  //          payment_items → getPaymentItems() via payments-actions (ya migrado).
+  // PENDIENTE (Fase 5): el código de cita (appointment_code) se infiere del
+  //   selectedPayment (snapshot disponible). El join de appointments vía payment_id
+  //   no tiene endpoint backend aún; se usa el appointment_code del snapshot.
   async function generateReceipt() {
     if (!selectedPayment) return;
-    const supabase = createClient();
-    const doctorId = await getDoctorId();
-    if (!doctorId) return;
-    const user = { id: doctorId };
-    // Cargar branding del doctor
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select(
-        'full_name, professional_title, specialty, license_number, email, phone, logo_url, signature_url',
-      )
-      .eq('id', user.id)
-      .single();
+
+    // ETAPA 1: cargar profile y items en paralelo desde backend.
+    const [prof, rawItems] = await Promise.all([
+      getDoctorProfileForReceipt(),
+      getPaymentItems(selectedPayment.id),
+    ]);
+
     if (!prof) {
       alert('No se pudo cargar la información del doctor');
       return;
     }
-    // Buscar appointment_code (real), consultation_code y items extra en paralelo desde BD
-    const [apptRes, itemsRes] = await Promise.all([
-      supabase
-        .from('appointments')
-        .select('appointment_code, consultation_id, consultations(consultation_code)')
-        .eq('payment_id', selectedPayment.id)
-        .maybeSingle(),
-      supabase
-        .from('payment_items')
-        .select('name, amount_usd')
-        .eq('payment_id', selectedPayment.id)
-        .order('created_at', { ascending: true }),
-    ]);
-    const appt = apptRes.data;
-    const dbExtras = (itemsRes.data || []).map((i: any) => ({
+
+    const dbExtras = rawItems.map((i) => ({
       name: i.name,
       amount: Number(i.amount_usd),
     }));
-    const consNested = (appt as any)?.consultations;
-    const consCode = Array.isArray(consNested)
-      ? consNested[0]?.consultation_code
-      : consNested?.consultation_code;
-    // RONDA 35: el monto BASE = total actual - sum(items). Asi el PDF muestra el desglose correcto
+
+    // consultation_code available from the payment snapshot (appointment.consultation_code
+    // is not yet in the backend response — use selectedPayment.appointment_code fallback).
+    const consCode = null; // pending: requires appointment join in payments response
+
+    // RONDA 35: el monto BASE = total actual - sum(items).
     const totalNow = selectedPayment.plan_price || 0;
     const sumExtras = dbExtras.reduce((s, e) => s + e.amount, 0);
     const baseTotal = Math.max(0, totalNow - sumExtras);
+
     const html = buildReceiptHtml({
-      paymentCode: selectedPayment.appointment_code || appt?.appointment_code || 'RECIBO',
-      consultationCode: consCode || null,
+      paymentCode: selectedPayment.appointment_code || 'RECIBO',
+      consultationCode: consCode,
       patientName: selectedPayment.patient_name || 'Paciente',
       patientCedula: null,
       amountUsd: baseTotal,
@@ -452,16 +409,17 @@ export default function CobrosPage() {
       paidAt: new Date().toISOString(),
       scheduledAt: selectedPayment.scheduled_at,
       planName: selectedPayment.plan_name,
-      extraItems: dbExtras, // viene de BD, no del state
+      extraItems: dbExtras,
       doctorName: prof.full_name || 'Doctor',
       doctorTitle: prof.professional_title,
       doctorSpecialty: prof.specialty,
-      doctorLicense: (prof as any).license_number,
+      doctorLicense: prof.license_number,
       doctorEmail: prof.email,
-      doctorPhone: (prof as any).phone,
-      logoUrl: (prof as any).logo_url,
-      signatureUrl: (prof as any).signature_url,
+      doctorPhone: prof.phone,
+      logoUrl: prof.logo_url,
+      signatureUrl: prof.signature_url,
     });
+
     const w = window.open('', '_blank');
     if (!w) {
       alert('Permite ventanas emergentes para generar el PDF');

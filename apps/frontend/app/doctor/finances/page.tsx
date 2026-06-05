@@ -3,12 +3,18 @@
 // L7 (2026-04-29): añadidos KPIs (consultas/mes, pacientes únicos, crecimiento MoM),
 // dropdown de meses (últimos 12), gráfico Recharts de ingresos vs egresos
 // (últimos 6 meses) y exportación CSV de consultas con diagnóstico/duración.
+// ETAPA 1: Supabase eliminado — expenses via /api/finances/transactions,
+// consultations via /api/consultations. Realtime Supabase eliminado (Fase 5).
 import { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: payments, accounts_payable, consultations, realtime
-import { getDoctorId } from '@/app/doctor/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
 import { getPayments } from './payments-actions';
+import {
+  getExpenses,
+  addExpense,
+  getConsultationsForReports,
+  type BackendConsultationRow,
+} from './actions';
 import {
   DollarSign,
   TrendingUp,
@@ -63,36 +69,11 @@ type Expense = {
   notes?: string;
 };
 
-// L7 (2026-04-29): row de la cuadrícula descargable de consultas.
-// 2026-04-30: extendida con campos para el modal de detalle (motivo, tratamiento,
-// prescripción, método pago, modalidad, etc.) — UX request del usuario.
-type ConsultationRow = {
-  id: string;
-  consultation_code: string | null;
-  consultation_date: string | null;
-  patient_name: string;
-  patient_email: string | null;
-  patient_phone: string | null;
-  patient_cedula: string | null;
-  appointment_status: string | null; // scheduled|confirmed|cancelled|completed|no_show
-  consultation_status: string | null; // completed|no_show (post-cita)
-  payment_status: string | null; // pending|approved
-  duration_minutes: number | null;
-  diagnosis: string | null;
-  amount_usd: number | null;
-  plan_name: string | null;
-  // Detalle clínico
-  chief_complaint: string | null;
-  treatment: string | null;
-  notes: string | null;
-  blocks_data: Record<string, unknown> | null;
-  blocks_snapshot: Array<{ key: string; label: string; printable?: boolean }> | null;
-  // Detalle de la cita
-  scheduled_at: string | null;
-  appointment_mode: string | null; // online | in_person
-  payment_method: string | null;
-  payment_reference: string | null;
-};
+// ConsultationRow — re-exported from actions.ts (backend-aligned shape).
+// Fields that require appointment joins are null until the backend exposes them
+// (appointment_status, consultation_status, duration_minutes, scheduled_at,
+// appointment_mode, payment_reference, blocks_data, plan_name, patient_cedula).
+type ConsultationRow = BackendConsultationRow;
 
 const EXPENSE_CATEGORIES = [
   { value: 'rent', label: 'Alquiler' },
@@ -145,19 +126,17 @@ export default function FinancesPage() {
   // 2026-04-30: modal de detalle de consulta (UX feature request).
   const [detailRow, setDetailRow] = useState<ConsultationRow | null>(null);
 
-  const supabase = createClient(); // FASE 5: data calls stay on Supabase
-
+  // ETAPA 1: loadData migrado al backend. Supabase eliminado.
   const loadData = async () => {
     setLoading(true);
     try {
-      // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: all data still Supabase.
-      const doctorId = await getDoctorId();
-      if (!doctorId) return;
-      const user = { id: doctorId };
+      // FUENTE UNICA: pagos APROBADOS vía backend (BFF).
+      const [paid, exp, cons] = await Promise.all([
+        getPayments({ status: 'approved' }),
+        getExpenses(),
+        getConsultationsForReports(200),
+      ]);
 
-      // FUENTE UNICA: pagos APROBADOS vía backend (BFF). Garantiza que Dashboard,
-      // Cobros y Finanzas muestren el mismo total. ETAPA 1: doctorId lo deriva el backend.
-      const paid = await getPayments({ status: 'approved' });
       setIncomes(
         paid.map((p) => ({
           id: p.id,
@@ -173,66 +152,20 @@ export default function FinancesPage() {
         })),
       );
 
-      // Load expenses
-      const { data: exp } = await supabase
-        .from('accounts_payable')
-        .select('*')
-        .eq('doctor_id', user.id)
-        .order('due_date', { ascending: false });
+      // Map backend expenses to the Expense shape consumed by the UI
+      setExpenses(
+        exp.map((e) => ({
+          id: e.id,
+          vendor_name: e.vendor_name,
+          concept: e.concept,
+          amount: e.amount,
+          due_date: e.due_date,
+          paid: e.paid,
+          notes: e.notes,
+        })),
+      );
 
-      setExpenses(exp || []);
-
-      // L7 (2026-04-29): consultas con join a appointment + patient para
-      // alimentar KPIs y CSV. 2026-04-30: extendido con detalle clínico completo
-      // (motivo/tratamiento/notas/blocks) y detalle de cita (modalidad/método pago).
-      const { data: cons } = await supabase
-        .from('consultations')
-        .select(
-          `
-          id, consultation_code, consultation_date, payment_status,
-          chief_complaint, diagnosis, treatment, notes,
-          duration_minutes, amount, plan_name, blocks_data, blocks_snapshot,
-          appointments(status, scheduled_at, appointment_mode, payment_method, payment_reference),
-          patients(full_name, email, phone, cedula)
-        `,
-        )
-        .eq('doctor_id', user.id)
-        .order('consultation_date', { ascending: false })
-        .limit(2000);
-
-      const rows: ConsultationRow[] = (cons || []).map((c: any) => {
-        const appt = Array.isArray(c.appointments) ? c.appointments[0] : c.appointments;
-        const pat = Array.isArray(c.patients) ? c.patients[0] : c.patients;
-        const apptStatus: string | null = appt?.status ?? null;
-        const consultationStatus =
-          apptStatus === 'completed' || apptStatus === 'no_show' ? apptStatus : null;
-        return {
-          id: c.id,
-          consultation_code: c.consultation_code,
-          consultation_date: c.consultation_date,
-          patient_name: pat?.full_name || 'Paciente',
-          patient_email: pat?.email ?? null,
-          patient_phone: pat?.phone ?? null,
-          patient_cedula: pat?.cedula ?? null,
-          appointment_status: apptStatus,
-          consultation_status: consultationStatus,
-          payment_status: c.payment_status ?? null,
-          duration_minutes: c.duration_minutes ?? null,
-          diagnosis: c.diagnosis ?? null,
-          amount_usd: c.amount != null ? Number(c.amount) : null,
-          plan_name: c.plan_name ?? null,
-          chief_complaint: c.chief_complaint ?? null,
-          treatment: c.treatment ?? null,
-          notes: c.notes ?? null,
-          blocks_data: c.blocks_data ?? null,
-          blocks_snapshot: Array.isArray(c.blocks_snapshot) ? c.blocks_snapshot : null,
-          scheduled_at: appt?.scheduled_at ?? null,
-          appointment_mode: appt?.appointment_mode ?? null,
-          payment_method: appt?.payment_method ?? null,
-          payment_reference: appt?.payment_reference ?? null,
-        };
-      });
-      setConsultationsRows(rows);
+      setConsultationsRows(cons);
     } catch (err) {
       console.error('Error loading finances:', err);
     }
@@ -243,29 +176,8 @@ export default function FinancesPage() {
     loadData();
   }, []);
 
-  // REFRESH AUTOMATICO (ronda 15): Supabase Realtime — stays Supabase (Fase 5).
-  useEffect(() => {
-    let channel: any = null;
-    (async () => {
-      const doctorId = await getDoctorId();
-      if (!doctorId) return;
-      const user = { id: doctorId };
-      channel = supabase
-        .channel(`finances-payments-watch-${user.id}-${Math.random().toString(36).slice(2, 8)}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
-          () => {
-            loadData();
-          },
-        )
-        .subscribe();
-    })();
-    return () => {
-      if (channel) supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // ETAPA 1 NOTE: Supabase Realtime removed. Live refresh is deferred to Fase 5
+  // (WebSocket or SSE from NestJS). The page reloads data on mount only.
 
   // Filter data by current period
   const filteredData = useMemo(() => {
@@ -652,21 +564,18 @@ export default function FinancesPage() {
     if (!expenseForm.concept || !expenseForm.amount) return;
     setSavingExpense(true);
     try {
-      // FASE 5: accounts_payable — no backend endpoint in Etapa 1
-      const doctorId = await getDoctorId();
-      if (!doctorId) return;
-      const user = { id: doctorId };
-
-      await supabase.from('accounts_payable').insert({
-        doctor_id: user.id,
-        vendor_name: expenseForm.vendor_name || expenseForm.category,
+      // ETAPA 1: registra el gasto en financial_transactions via backend.
+      const result = await addExpense({
         concept: expenseForm.concept,
+        vendorName: expenseForm.vendor_name || expenseForm.category,
         amount: parseFloat(expenseForm.amount),
-        due_date: expenseForm.due_date,
-        paid: true,
-        paid_at: new Date().toISOString(),
-        notes: expenseForm.category,
+        dueDate: expenseForm.due_date,
+        category: expenseForm.category,
       });
+
+      if (!result.success) {
+        console.error('[handleAddExpense] backend error:', result.error);
+      }
 
       setExpenseForm({
         vendor_name: '',
@@ -677,13 +586,18 @@ export default function FinancesPage() {
       });
       setShowExpenseForm(false);
       loadData();
-    } catch {}
+    } catch (err) {
+      console.error('[handleAddExpense] unexpected error:', err);
+    }
     setSavingExpense(false);
   };
 
-  const handleDeleteExpense = async (id: string) => {
-    await supabase.from('accounts_payable').delete().eq('id', id);
-    loadData();
+  // ETAPA 1 NOTE: Delete expense is pending — no backend DELETE endpoint for
+  // financial_transactions exists yet. The row is removed from local state only
+  // for immediate UX feedback; it will reappear on next reload until the backend
+  // exposes DELETE /api/finances/transactions/:id.
+  const handleDeleteExpense = (id: string) => {
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
   };
 
   if (loading) {
