@@ -46,6 +46,8 @@ const makeRepo = (
     findProfileById: jest.fn().mockResolvedValue(profile),
     countSuperAdmins: jest.fn().mockResolvedValue(superAdminCount),
     setUserRole: jest.fn().mockResolvedValue(undefined),
+    getDashboardOverview: jest.fn(),
+    getRecentDoctors: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('SetUserRoleUseCase', () => {

@@ -5,6 +5,57 @@ import type {
 
 export const SUBSCRIPTION_PAYMENT_REPOSITORY = 'SUBSCRIPTION_PAYMENT_REPOSITORY';
 
+// ---------------------------------------------------------------------------
+// Finance stats types (admin aggregates — no patient PII)
+// ---------------------------------------------------------------------------
+
+/** One monthly bucket for the finance chart (last 6 months). */
+export interface MonthBucket {
+  /** Short Spanish month label, e.g. "Jun" */
+  label: string;
+  total: number;
+}
+
+/** A recently-approved payment row enriched with the doctor's name. */
+export interface RecentApprovedRow {
+  id: string;
+  /** PII — doctor name. Admin-only context. */
+  doctorName: string;
+  amountUsd: number;
+  method: string;
+  reviewedAt: Date;
+}
+
+/** A pending payment row enriched with doctor identity for dashboard display. */
+export interface PendingPaymentRow {
+  id: string;
+  /** PII — doctor name. Admin-only context. */
+  doctorName: string;
+  /** PII — doctor specialty. Admin-only context. */
+  specialty: string | null;
+  amountUsd: number;
+  method: string;
+  createdAt: Date;
+}
+
+/**
+ * Aggregated finance stats derived from subscription_payments.
+ *
+ * SECURITY NOTE: doctorName / specialty are doctor-level PII (NOT patient PII).
+ * This type is intentionally admin-only.
+ */
+export interface FinanceStats {
+  mtdRevenue: number;
+  prevMtdRevenue: number;
+  momChange: number;
+  pendingTotal: number;
+  pendingCount: number;
+  totalApproved: number;
+  monthBuckets: MonthBucket[];
+  recentApproved: RecentApprovedRow[];
+  pendingPayments: PendingPaymentRow[];
+}
+
 export interface CreateSubscriptionPaymentParams {
   id: string;
   doctorId: string;
@@ -39,6 +90,12 @@ export interface ISubscriptionPaymentRepository {
    * Lists subscription payments with optional status filter (paginated).
    */
   list(filters: SubscriptionPaymentListFilters): Promise<SubscriptionPaymentListResult>;
+
+  /**
+   * Aggregates finance KPIs from subscription_payments for the admin finance page.
+   * Joins profiles for doctor name/specialty (doctor PII — admin-only).
+   */
+  getFinanceStats(): Promise<FinanceStats>;
 
   /**
    * Finds a subscription payment by id.

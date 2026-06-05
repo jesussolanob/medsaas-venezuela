@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { randomUUID } from 'crypto';
+import { QueryTypes } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import type {
   ISubscriptionPaymentRepository,
@@ -8,6 +9,10 @@ import type {
   ApproveSubscriptionPaymentParams,
   SubscriptionPaymentListFilters,
   SubscriptionPaymentListResult,
+  FinanceStats,
+  MonthBucket,
+  RecentApprovedRow,
+  PendingPaymentRow,
 } from '../../../domain/repositories/subscription-payment.repository';
 import {
   SubscriptionPayment,
@@ -201,6 +206,177 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
       await t.rollback();
       throw err;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Finance stats aggregate (admin — doctor PII only, no patient PII)
+  // ---------------------------------------------------------------------------
+
+  async getFinanceStats(): Promise<FinanceStats> {
+    const now = new Date();
+    const mtdStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const prevMonthEnd = mtdStart;
+
+    // --- MTD revenue and previous month MTD revenue ---
+    interface RevenueRow {
+      mtd: string | null;
+      prev_mtd: string | null;
+      pending_total: string | null;
+      pending_count: string;
+      total_approved: string;
+    }
+
+    const [revenue] = await this.sequelize.query<RevenueRow>(
+      `SELECT
+         (SELECT COALESCE(SUM(amount_usd), 0)
+            FROM subscription_payments
+           WHERE status = 'approved'
+             AND reviewed_at >= :mtdStart
+             AND reviewed_at < :now)                       AS mtd,
+
+         (SELECT COALESCE(SUM(amount_usd), 0)
+            FROM subscription_payments
+           WHERE status = 'approved'
+             AND reviewed_at >= :prevMonthStart
+             AND reviewed_at < :prevMonthEnd)              AS prev_mtd,
+
+         (SELECT COALESCE(SUM(amount_usd), 0)
+            FROM subscription_payments
+           WHERE status = 'pending')                       AS pending_total,
+
+         (SELECT COUNT(*)
+            FROM subscription_payments
+           WHERE status = 'pending')::text                  AS pending_count,
+
+         (SELECT COUNT(*)
+            FROM subscription_payments
+           WHERE status = 'approved')::text                 AS total_approved`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { mtdStart, now, prevMonthStart, prevMonthEnd },
+      },
+    );
+
+    const mtdRevenue = parseFloat(revenue?.mtd ?? '0') || 0;
+    const prevMtdRevenue = parseFloat(revenue?.prev_mtd ?? '0') || 0;
+    const pendingTotal = parseFloat(revenue?.pending_total ?? '0') || 0;
+    const pendingCount = parseInt(revenue?.pending_count ?? '0', 10);
+    const totalApproved = parseInt(revenue?.total_approved ?? '0', 10);
+
+    let momChange: number;
+    if (prevMtdRevenue > 0) {
+      momChange = Math.round(((mtdRevenue - prevMtdRevenue) / prevMtdRevenue) * 100);
+    } else {
+      momChange = mtdRevenue > 0 ? 100 : 0;
+    }
+
+    // --- Month buckets (last 6 months, approved payments) ---
+    const SPANISH_MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const sixMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
+
+    interface BucketRow {
+      year_month: string;
+      total: string;
+    }
+
+    const bucketRows = await this.sequelize.query<BucketRow>(
+      `SELECT
+         TO_CHAR(reviewed_at, 'YYYY-MM') AS year_month,
+         COALESCE(SUM(amount_usd), 0)::text AS total
+       FROM subscription_payments
+       WHERE status = 'approved'
+         AND reviewed_at >= :since
+       GROUP BY TO_CHAR(reviewed_at, 'YYYY-MM')
+       ORDER BY year_month ASC`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { since: sixMonthsAgo },
+      },
+    );
+
+    const bucketMap = new Map<string, number>(
+      bucketRows.map((r) => [r.year_month, parseFloat(r.total) || 0]),
+    );
+
+    // Build complete 6-month range (fill missing months with 0)
+    const monthBuckets: MonthBucket[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const label = SPANISH_MONTHS[d.getUTCMonth()] ?? key;
+      monthBuckets.push({ label, total: bucketMap.get(key) ?? 0 });
+    }
+
+    // --- Recent approved (top 20) with doctor name ---
+    interface RecentApprovedDbRow {
+      id: string;
+      doctor_name: string;
+      amount_usd: string;
+      method: string;
+      reviewed_at: Date;
+    }
+
+    const recentRows = await this.sequelize.query<RecentApprovedDbRow>(
+      `SELECT sp.id, COALESCE(p.full_name, '') AS doctor_name,
+              sp.amount_usd, sp.method, sp.reviewed_at
+         FROM subscription_payments sp
+         LEFT JOIN profiles p ON p.id = sp.doctor_id
+        WHERE sp.status = 'approved'
+        ORDER BY sp.reviewed_at DESC
+        LIMIT 20`,
+      { type: QueryTypes.SELECT },
+    );
+
+    const recentApproved: RecentApprovedRow[] = recentRows.map((r) => ({
+      id: r.id,
+      doctorName: r.doctor_name,
+      amountUsd: parseFloat(r.amount_usd) || 0,
+      method: r.method,
+      reviewedAt: r.reviewed_at,
+    }));
+
+    // --- Pending payments (top 4) with doctor name + specialty ---
+    interface PendingDbRow {
+      id: string;
+      doctor_name: string;
+      specialty: string | null;
+      amount_usd: string;
+      method: string;
+      created_at: Date;
+    }
+
+    const pendingRows = await this.sequelize.query<PendingDbRow>(
+      `SELECT sp.id, COALESCE(p.full_name, '') AS doctor_name,
+              p.specialty, sp.amount_usd, sp.method, sp.created_at
+         FROM subscription_payments sp
+         LEFT JOIN profiles p ON p.id = sp.doctor_id
+        WHERE sp.status = 'pending'
+        ORDER BY sp.created_at DESC
+        LIMIT 4`,
+      { type: QueryTypes.SELECT },
+    );
+
+    const pendingPayments: PendingPaymentRow[] = pendingRows.map((r) => ({
+      id: r.id,
+      doctorName: r.doctor_name,
+      specialty: r.specialty ?? null,
+      amountUsd: parseFloat(r.amount_usd) || 0,
+      method: r.method,
+      createdAt: r.created_at,
+    }));
+
+    return {
+      mtdRevenue,
+      prevMtdRevenue,
+      momChange,
+      pendingTotal,
+      pendingCount,
+      totalApproved,
+      monthBuckets,
+      recentApproved,
+      pendingPayments,
+    };
   }
 
   // ---------------------------------------------------------------------------

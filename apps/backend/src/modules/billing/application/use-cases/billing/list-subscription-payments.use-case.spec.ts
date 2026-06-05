@@ -29,6 +29,7 @@ describe('ListSubscriptionPaymentsUseCase', () => {
       save: jest.fn(),
       approveAndExtend: jest.fn(),
       reject: jest.fn(),
+      getFinanceStats: jest.fn(),
     };
     useCase = new ListSubscriptionPaymentsUseCase(mockRepo);
   });

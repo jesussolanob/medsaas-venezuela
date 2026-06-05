@@ -41,6 +41,8 @@ import {
   type SetUserRoleBody,
 } from '../../application/dtos/admin.dtos';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
+import { GetDashboardOverviewUseCase } from '../../application/use-cases/admin/get-dashboard-overview.use-case';
+import { GetRecentDoctorsUseCase } from '../../application/use-cases/admin/get-recent-doctors.use-case';
 import { GetDoctorsListUseCase } from '../../application/use-cases/admin/get-doctors-list.use-case';
 import { GetDoctorDetailUseCase } from '../../application/use-cases/admin/get-doctor-detail.use-case';
 import { GetDoctorGrowthUseCase } from '../../application/use-cases/admin/get-doctor-growth.use-case';
@@ -91,6 +93,8 @@ interface PaginatedResponse<T> {
 export class AdminController {
   constructor(
     private readonly getDashboard: GetAdminDashboardUseCase,
+    private readonly getDashboardOverview: GetDashboardOverviewUseCase,
+    private readonly getRecentDoctors: GetRecentDoctorsUseCase,
     private readonly getDoctorsList: GetDoctorsListUseCase,
     private readonly getDoctorDetail: GetDoctorDetailUseCase,
     private readonly updateSubscription: UpdateDoctorSubscriptionUseCase,
@@ -116,6 +120,56 @@ export class AdminController {
   async dashboard(): Promise<SuccessResponse<unknown>> {
     const data = await this.getDashboard.execute();
     return { success: true, data };
+  }
+
+  /**
+   * GET /api/admin/dashboard/overview — supplemental KPIs for the admin home page.
+   *
+   * Returns fields NOT present in GET /api/admin/dashboard:
+   *   - appointmentsToday / appointmentsThisMonth (appointments + walk-in consultations)
+   *   - activeSubscriptions / trialSubscriptions counts
+   *   - recentDoctors: top 5 doctors by created_at desc (id, fullName, specialty, subscriptionStatus)
+   *
+   * NOTE: This route MUST be declared BEFORE 'doctors' (no-param) and other sub-paths to
+   * prevent NestJS from treating 'overview' as a doctor :id parameter.
+   *
+   * Cached in Redis (TTL 120s) with graceful fallback to DB.
+   */
+  @Get('dashboard/overview')
+  async dashboardOverview(): Promise<SuccessResponse<unknown>> {
+    const data = await this.getDashboardOverview.execute();
+    return { success: true, data };
+  }
+
+  /**
+   * GET /api/admin/doctors/recent?days=7 — doctors registered in the last N days.
+   *
+   * Query params:
+   *   - days: integer in [1, 30], default 7
+   *
+   * Returns up to 10 doctors ordered by created_at desc.
+   * Used by the admin notification bell to surface newly joined doctors.
+   *
+   * SECURITY: Returns doctor full name + email (PII). Guarded by @Roles('super_admin').
+   *
+   * NOTE: This static-path route MUST be declared BEFORE 'doctors/:id' to avoid
+   * NestJS treating 'recent' as a doctor id.
+   */
+  @Get('doctors/recent')
+  async recentDoctors(
+    @Query('days') daysRaw = '7',
+  ): Promise<SuccessResponse<unknown[]>> {
+    const days = Math.min(30, Math.max(1, parseInt(daysRaw, 10) || 7));
+    const doctors = await this.getRecentDoctors.execute({ days });
+    return {
+      success: true,
+      data: doctors.map((d) => ({
+        id: d.id,
+        fullName: d.fullName,
+        email: d.email,
+        createdAt: d.createdAt,
+      })),
+    };
   }
 
   /**

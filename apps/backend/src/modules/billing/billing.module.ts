@@ -28,6 +28,7 @@ import { ListInvoicesUseCase } from './application/use-cases/billing/list-invoic
 import { MarkInvoicePaidUseCase } from './application/use-cases/billing/mark-invoice-paid.use-case';
 import { ListBillingDocumentsUseCase } from './application/use-cases/billing/list-billing-documents.use-case';
 import { CreateBillingDocumentUseCase } from './application/use-cases/billing/create-billing-document.use-case';
+import { GetFinanceStatsUseCase } from './application/use-cases/billing/get-finance-stats.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -94,6 +95,9 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
     // Use cases — billing documents
     ListBillingDocumentsUseCase,
     CreateBillingDocumentUseCase,
+
+    // Use cases — finance stats (admin aggregate)
+    GetFinanceStatsUseCase,
   ],
 })
 export class BillingModule {}

@@ -31,6 +31,8 @@ import { UpdatePlanUseCase } from './application/use-cases/admin/update-plan.use
 import { ListAdminUsersUseCase } from './application/use-cases/admin/list-admin-users.use-case';
 import { SetUserRoleUseCase } from './application/use-cases/admin/set-user-role.use-case';
 import { GetDoctorGrowthUseCase } from './application/use-cases/admin/get-doctor-growth.use-case';
+import { GetDashboardOverviewUseCase } from './application/use-cases/admin/get-dashboard-overview.use-case';
+import { GetRecentDoctorsUseCase } from './application/use-cases/admin/get-recent-doctors.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -90,6 +92,8 @@ import { AdminController } from './presentation/controllers/admin.controller';
     ListAdminUsersUseCase,
     SetUserRoleUseCase,
     GetDoctorGrowthUseCase,
+    GetDashboardOverviewUseCase,
+    GetRecentDoctorsUseCase,
   ],
 })
 export class AdminModule {}

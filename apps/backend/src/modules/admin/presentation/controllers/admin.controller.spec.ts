@@ -11,6 +11,8 @@ import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Reflector } from '@nestjs/core';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
+import { GetDashboardOverviewUseCase } from '../../application/use-cases/admin/get-dashboard-overview.use-case';
+import { GetRecentDoctorsUseCase } from '../../application/use-cases/admin/get-recent-doctors.use-case';
 import { GetDoctorsListUseCase } from '../../application/use-cases/admin/get-doctors-list.use-case';
 import { GetDoctorDetailUseCase } from '../../application/use-cases/admin/get-doctor-detail.use-case';
 import { GetDoctorGrowthUseCase } from '../../application/use-cases/admin/get-doctor-growth.use-case';
@@ -151,6 +153,16 @@ const buildModule = async (): Promise<TestingModule> => {
   };
   const mockSetUserRole = { execute: jest.fn().mockResolvedValue(undefined) };
   const mockDoctorGrowth = { execute: jest.fn().mockResolvedValue(sampleGrowthData) };
+  const mockDashboardOverview = {
+    execute: jest.fn().mockResolvedValue({
+      appointmentsToday: 3,
+      appointmentsThisMonth: 20,
+      activeSubscriptions: 10,
+      trialSubscriptions: 5,
+      recentDoctors: [],
+    }),
+  };
+  const mockRecentDoctors = { execute: jest.fn().mockResolvedValue([]) };
 
   return Test.createTestingModule({
     controllers: [AdminController],
@@ -175,6 +187,8 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: ListAdminUsersUseCase, useValue: mockListAdminUsers },
       { provide: SetUserRoleUseCase, useValue: mockSetUserRole },
       { provide: GetDoctorGrowthUseCase, useValue: mockDoctorGrowth },
+      { provide: GetDashboardOverviewUseCase, useValue: mockDashboardOverview },
+      { provide: GetRecentDoctorsUseCase, useValue: mockRecentDoctors },
     ],
   })
     .overrideGuard(DevAuthGuard)

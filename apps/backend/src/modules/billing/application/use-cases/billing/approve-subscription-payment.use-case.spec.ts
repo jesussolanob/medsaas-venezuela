@@ -31,6 +31,7 @@ describe('ApproveSubscriptionPaymentUseCase', () => {
       save: jest.fn(),
       approveAndExtend: jest.fn().mockResolvedValue(undefined),
       reject: jest.fn(),
+      getFinanceStats: jest.fn(),
     };
     useCase = new ApproveSubscriptionPaymentUseCase(mockRepo);
   });

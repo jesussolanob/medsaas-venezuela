@@ -201,6 +201,39 @@ export interface DoctorGrowthPoint {
   count: number;
 }
 
+// ---------------------------------------------------------------------------
+// Dashboard overview (supplemental KPIs) — no patient PII
+// ---------------------------------------------------------------------------
+
+/** Lightweight doctor row for "recent doctors" notification bell. */
+export interface RecentDoctorRow {
+  id: string;
+  /** PII — full name. Admin-only. */
+  fullName: string;
+  /** PII — email. Admin-only. */
+  email: string;
+  createdAt: Date;
+}
+
+/**
+ * Additional KPIs for the admin home dashboard (complements AdminDashboardData).
+ * These fields are intentionally separated to avoid invalidating the existing cache.
+ */
+export interface DashboardOverview {
+  appointmentsToday: number;
+  appointmentsThisMonth: number;
+  activeSubscriptions: number;
+  trialSubscriptions: number;
+  recentDoctors: Array<{
+    id: string;
+    /** PII — full name. Admin-only. */
+    fullName: string;
+    specialty: string | null;
+    subscriptionStatus: string | null;
+    createdAt: Date;
+  }>;
+}
+
 export interface DoctorGrowthData {
   chartData: DoctorGrowthPoint[];
   /** New doctor registrations in the current calendar month. */
@@ -220,6 +253,12 @@ export interface DoctorGrowthData {
 export interface IAdminRepository {
   // Dashboard
   getDashboardData(): Promise<AdminDashboardData>;
+
+  /** Supplemental KPIs for the admin home (appointments today/month, subscription counts, recent doctors). */
+  getDashboardOverview(): Promise<DashboardOverview>;
+
+  /** Returns doctors created within the last N days, ordered by created_at desc, limit 10. */
+  getRecentDoctors(days: number): Promise<RecentDoctorRow[]>;
 
   // Doctors
   listDoctors(filters: DoctorListFilters): Promise<DoctorListResult>;

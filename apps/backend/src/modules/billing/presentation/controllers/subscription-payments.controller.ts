@@ -14,6 +14,7 @@ import {
 import { ListSubscriptionPaymentsUseCase } from '../../application/use-cases/billing/list-subscription-payments.use-case';
 import { ApproveSubscriptionPaymentUseCase } from '../../application/use-cases/billing/approve-subscription-payment.use-case';
 import { RejectSubscriptionPaymentUseCase } from '../../application/use-cases/billing/reject-subscription-payment.use-case';
+import { GetFinanceStatsUseCase } from '../../application/use-cases/billing/get-finance-stats.use-case';
 import type { SubscriptionPaymentStatus } from '../../domain/entities/subscription-payment.entity';
 
 const VALID_STATUSES: SubscriptionPaymentStatus[] = ['pending', 'approved', 'rejected'];
@@ -30,12 +31,17 @@ interface PaginatedResponse<T> {
 }
 
 /**
- * Admin controller for subscription payment management.
+ * Controller for admin subscription payment management and finance KPIs.
  *
  * All endpoints require DevAuthGuard + RolesGuard with 'super_admin'.
- * Replaces: apps/frontend/app/api/admin/payments/route.ts (+ approve, reject).
+ *
+ * Routes:
+ *   GET  /api/admin/subscription-payments         — paginated payment list
+ *   PUT  /api/admin/subscription-payments/:id/approve
+ *   PUT  /api/admin/subscription-payments/:id/reject
+ *   GET  /api/admin/finance-stats                 — aggregated finance KPIs
  */
-@Controller('admin/subscription-payments')
+@Controller('admin')
 @UseGuards(DevAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class SubscriptionPaymentsController {
@@ -43,12 +49,13 @@ export class SubscriptionPaymentsController {
     private readonly listPayments: ListSubscriptionPaymentsUseCase,
     private readonly approvePayment: ApproveSubscriptionPaymentUseCase,
     private readonly rejectPayment: RejectSubscriptionPaymentUseCase,
+    private readonly getFinanceStatsUseCase: GetFinanceStatsUseCase,
   ) {}
 
   /**
    * GET /api/admin/subscription-payments?status=pending|approved|rejected
    */
-  @Get()
+  @Get('subscription-payments')
   async list(
     @Query('status') statusRaw?: string,
     @Query('page') page = '1',
@@ -75,7 +82,7 @@ export class SubscriptionPaymentsController {
   /**
    * PUT /api/admin/subscription-payments/:id/approve
    */
-  @Put(':id/approve')
+  @Put('subscription-payments/:id/approve')
   async approve(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload,
@@ -91,7 +98,7 @@ export class SubscriptionPaymentsController {
    * PUT /api/admin/subscription-payments/:id/reject
    * Body: { reason?: string }
    */
-  @Put(':id/reject')
+  @Put('subscription-payments/:id/reject')
   async reject(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload,
@@ -104,6 +111,28 @@ export class SubscriptionPaymentsController {
       reason: body.reason,
     });
     return { success: true, data: { rejected: true } };
+  }
+
+  /**
+   * GET /api/admin/finance-stats
+   *
+   * Returns aggregated finance KPIs from subscription_payments:
+   *   - MTD revenue vs previous month (momChange %)
+   *   - Pending payments total + count
+   *   - Total approved count
+   *   - Monthly revenue buckets (last 6 months, es-VE short labels)
+   *   - Top 20 recently-approved payments (doctor name)
+   *   - Top 4 pending payments (doctor name + specialty) for the dashboard widget
+   *
+   * Cached in Redis (TTL 120s) with fallback to DB when Redis is unavailable.
+   *
+   * SECURITY: doctorName / specialty are doctor-level PII. This endpoint is
+   * guarded at the class level by @Roles('super_admin').
+   */
+  @Get('finance-stats')
+  async financeStats(): Promise<SuccessResponse<unknown>> {
+    const data = await this.getFinanceStatsUseCase.execute();
+    return { success: true, data };
   }
 
   // ---------------------------------------------------------------------------

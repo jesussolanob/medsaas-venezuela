@@ -31,6 +31,8 @@ const makeRepo = (plan: PlanConfig | null = basicPlan): jest.Mocked<IAdminReposi
     findProfileById: jest.fn(),
     countSuperAdmins: jest.fn(),
     setUserRole: jest.fn(),
+    getDashboardOverview: jest.fn(),
+    getRecentDoctors: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('UpdatePlanUseCase', () => {

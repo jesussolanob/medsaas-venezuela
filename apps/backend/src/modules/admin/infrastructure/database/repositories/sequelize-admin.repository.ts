@@ -21,6 +21,8 @@ import type {
   PatientStats,
   AdminUserRow,
   UpdatePlanParams,
+  DashboardOverview,
+  RecentDoctorRow,
 } from '../../../domain/repositories/admin.repository';
 import type { PlanConfig } from '../../../domain/value-objects/plan-config.vo';
 import { PlanConfig as PlanConfigVO } from '../../../domain/value-objects/plan-config.vo';
@@ -740,6 +742,131 @@ export class SequelizeAdminRepository implements IAdminRepository {
 
   async setUserRole(userId: string, role: string): Promise<void> {
     await this.profileModel.update({ role, updatedAt: new Date() }, { where: { id: userId } });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dashboard overview (supplemental KPIs)
+  // ---------------------------------------------------------------------------
+
+  async getDashboardOverview(): Promise<DashboardOverview> {
+    const now = new Date();
+    // Today boundaries in UTC (simple, stable — no TZ dependency on server)
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const todayEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+    );
+    // Current month boundaries
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+    interface OverviewAggRow {
+      appts_today: string;
+      appts_this_month: string;
+      active_subs: string;
+      trial_subs: string;
+    }
+
+    const [agg] = await this.sequelize.query<OverviewAggRow>(
+      `SELECT
+         -- Appointments today (appointments table)
+         (SELECT COUNT(*) FROM appointments
+           WHERE scheduled_at >= :todayStart AND scheduled_at < :todayEnd)
+         +
+         -- Walk-in consultations today without a linked appointment
+         (SELECT COUNT(*) FROM consultations
+           WHERE consultation_date >= :todayStart AND consultation_date < :todayEnd
+             AND appointment_id IS NULL)
+           AS appts_today,
+
+         -- Appointments this month
+         (SELECT COUNT(*) FROM appointments
+           WHERE scheduled_at >= :monthStart AND scheduled_at < :monthEnd)
+         +
+         (SELECT COUNT(*) FROM consultations
+           WHERE consultation_date >= :monthStart AND consultation_date < :monthEnd
+             AND appointment_id IS NULL)
+           AS appts_this_month,
+
+         -- Active subscriptions (doctor profiles)
+         (SELECT COUNT(*) FROM profiles
+           WHERE role = 'doctor' AND subscription_status = 'active')
+           AS active_subs,
+
+         -- Trial subscriptions (doctor profiles)
+         (SELECT COUNT(*) FROM profiles
+           WHERE role = 'doctor' AND plan = 'trial' AND subscription_status = 'trial')
+           AS trial_subs`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { todayStart, todayEnd, monthStart, monthEnd },
+      },
+    );
+
+    const appointmentsToday = parseInt(agg?.appts_today ?? '0', 10);
+    const appointmentsThisMonth = parseInt(agg?.appts_this_month ?? '0', 10);
+    const activeSubscriptions = parseInt(agg?.active_subs ?? '0', 10);
+    const trialSubscriptions = parseInt(agg?.trial_subs ?? '0', 10);
+
+    // Top 5 most-recently registered doctors
+    const recentRows = await this.profileModel.findAll({
+      where: { role: 'doctor' },
+      order: [['createdAt', 'DESC']],
+      limit: 5,
+    });
+
+    const recentDoctors = recentRows.map((r) => ({
+      id: r.id,
+      fullName: r.fullName,
+      specialty: r.specialty ?? null,
+      subscriptionStatus: r.subscriptionStatus ?? null,
+      createdAt: r.createdAt,
+    }));
+
+    return {
+      appointmentsToday,
+      appointmentsThisMonth,
+      activeSubscriptions,
+      trialSubscriptions,
+      recentDoctors,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recent doctors (notification bell)
+  // ---------------------------------------------------------------------------
+
+  async getRecentDoctors(days: number): Promise<RecentDoctorRow[]> {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    interface RawDoctorRow {
+      id: string;
+      full_name: string;
+      email: string;
+      created_at: Date;
+    }
+
+    const rows = await this.sequelize.query<RawDoctorRow>(
+      `SELECT id, full_name, email, created_at
+         FROM profiles
+        WHERE role = 'doctor'
+          AND created_at >= :since
+        ORDER BY created_at DESC
+        LIMIT 10`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { since },
+      },
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      fullName: r.full_name,
+      email: r.email,
+      createdAt: r.created_at,
+    }));
   }
 
   // ---------------------------------------------------------------------------
