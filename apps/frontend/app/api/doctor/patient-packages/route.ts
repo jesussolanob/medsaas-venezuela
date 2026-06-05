@@ -28,32 +28,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: result.value });
   }
 
-  // FASE 5/6: pendiente backend — super_admin and patient roles not yet supported
-  // by NestJS PackagesController. Fall back to Supabase admin for now.
-  const { createAdminClient } = await import('@/lib/supabase/admin');
-  const admin = createAdminClient();
-
-  let query = admin
-    .from('patient_packages')
-    .select(
-      `id, doctor_id, patient_id, auth_user_id,
-       package_template_id, plan_name, specialty,
-       total_sessions, used_sessions, status,
-       purchased_amount_usd, created_at, updated_at,
-       doctor:doctor_id(full_name, specialty),
-       patient:patient_id(full_name, email)`,
-    )
-    .order('created_at', { ascending: false });
-
-  if (guard.profile.role === 'patient') {
-    query = query.eq('auth_user_id', guard.profile.id);
-  } else if (patientId) {
-    query = query.eq('patient_id', patientId);
-  }
-
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data: data || [] });
+  // FASE 5/6: el listado de paquetes para super_admin/patient está pendiente de
+  // backend (NestJS PackagesController solo soporta acceso doctor-scoped). Sin
+  // Supabase: se devuelve vacío hasta que exista el endpoint.
+  return NextResponse.json({ data: [] });
 }
 
 // POST /api/doctor/patient-packages — asigna paquete a un paciente

@@ -26,56 +26,20 @@ export async function GET() {
   return NextResponse.json({ data });
 }
 
-// POST /api/admin/admins — crea un nuevo super_admin
-// FASE 5/6: pendiente backend — requires Supabase Auth admin.createUser locally
-// until the backend implements user provisioning with an identity provider.
-export async function POST(req: NextRequest) {
+// POST /api/admin/admins — crea un nuevo super_admin.
+// ETAPA 1: DESHABILITADO. La creación de usuarios con contraseña requiere un
+// proveedor de identidad (Auth0 — Fase 4). Sin Supabase.
+export async function POST() {
   const guard = await requireSuperAdmin();
   if (!guard.ok) return guard.response;
 
-  // FASE 5/6: pendiente backend — Supabase admin used for user creation only
-  const { createAdminClient } = await import('@/lib/supabase/admin');
-  const admin = createAdminClient();
-
-  const body = await req.json();
-  const { email, password, full_name, phone } = body;
-
-  if (!email || !password || !full_name) {
-    return NextResponse.json(
-      { error: 'email, password y full_name son requeridos' },
-      { status: 400 },
-    );
-  }
-  if ((password as string).length < 8) {
-    return NextResponse.json(
-      { error: 'El password debe tener al menos 8 caracteres' },
-      { status: 400 },
-    );
-  }
-
-  const { data: authData, error: authErr } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name, role: 'super_admin' },
-  });
-  if (authErr) {
-    return NextResponse.json({ error: authErr.message }, { status: 400 });
-  }
-
-  const userId = authData.user.id;
-
-  const { error: pErr } = await admin.from('profiles').upsert(
-    { id: userId, email, full_name, phone: phone || null, role: 'super_admin' },
-    { onConflict: 'id' },
+  return NextResponse.json(
+    {
+      error: 'La creación de administradores estará disponible en una próxima versión (Auth0).',
+      code: 'NOT_IMPLEMENTED',
+    },
+    { status: 501 },
   );
-
-  if (pErr) {
-    await admin.auth.admin.deleteUser(userId).catch(() => {});
-    return NextResponse.json({ error: pErr.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true, id: userId, email, full_name });
 }
 
 // DELETE /api/admin/admins?id=<uuid> — revoca un super_admin (degrada a doctor)

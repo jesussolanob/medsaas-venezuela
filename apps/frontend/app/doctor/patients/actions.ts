@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/patients/actions.ts
  *
@@ -204,9 +206,6 @@ function mapConsultation(c: BackendConsultation): Consultation {
   };
 }
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 // ---------------------------------------------------------------------------
 // Doctor identity

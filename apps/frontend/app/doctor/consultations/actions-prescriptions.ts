@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/consultations/actions-prescriptions.ts
  *
@@ -51,9 +53,6 @@ export type PrescriptionActionResult =
 // Helpers
 // ---------------------------------------------------------------------------
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 // ---------------------------------------------------------------------------
 // Prescriptions

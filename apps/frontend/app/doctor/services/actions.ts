@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/services/actions.ts
  *
@@ -30,9 +32,6 @@ export type ServiceActionResult =
   | { success: true; service?: DoctorService }
   | { success: false; error: string };
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 /** Fetch all pricing plans for the authenticated doctor. */
 export async function getDoctorServices(): Promise<DoctorService[]> {

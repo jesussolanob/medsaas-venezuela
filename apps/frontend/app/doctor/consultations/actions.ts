@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/consultations/actions.ts
  *
@@ -63,9 +65,6 @@ export type ConsultationActionResult = { success: true } | { success: false; err
 // Helpers
 // ---------------------------------------------------------------------------
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 // ---------------------------------------------------------------------------
 // List / read

@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/ehr/actions.ts
  *
@@ -109,9 +111,6 @@ interface BackendPrescription {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 // ---------------------------------------------------------------------------
 // Identity (replaces supabase.auth.getUser in the EHR page)

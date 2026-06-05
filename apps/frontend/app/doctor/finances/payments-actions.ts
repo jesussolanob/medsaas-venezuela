@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/finances/payments-actions.ts
  *
@@ -45,9 +47,6 @@ interface Envelope<T> {
   data: T;
 }
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 /** Fetch the authenticated doctor's payments (joined with appointment + consultation). */
 export async function getPayments(filters: PaymentsFilters = {}): Promise<PaymentRow[]> {

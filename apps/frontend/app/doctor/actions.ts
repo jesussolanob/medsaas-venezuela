@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/actions.ts
  *
@@ -59,9 +61,6 @@ interface BackendProfile {
 
 export type DoctorProfile = BackendProfile;
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 /** Fetch the doctor's profile from the NestJS backend. */
 export async function getDoctorProfile(): Promise<DoctorProfile | null> {

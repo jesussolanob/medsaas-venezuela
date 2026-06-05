@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/cobros/actions.ts
  *
@@ -56,9 +58,6 @@ export type PaymentExportRow = {
   consultation_code: string | null;
 };
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 // ---------------------------------------------------------------------------
 // Receipt / comprobante URL persistence

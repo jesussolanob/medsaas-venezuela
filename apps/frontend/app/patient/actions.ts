@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/patient/actions.ts
  *
@@ -115,9 +117,6 @@ export type PatientActionResult = { success: true } | { success: false; error: s
 // Helpers
 // ---------------------------------------------------------------------------
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 interface Envelope<T> {
   success: boolean;

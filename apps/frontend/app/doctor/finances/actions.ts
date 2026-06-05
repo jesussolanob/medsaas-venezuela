@@ -1,5 +1,7 @@
 'use server';
 
+import { appErrorToString } from '@/lib/app-error';
+
 /**
  * app/doctor/finances/actions.ts
  *
@@ -115,9 +117,6 @@ interface ConsultationWithPatient {
   patient_email: string | null;
 }
 
-function appErrorToString(error: AppError): string {
-  return error.message ?? `Error ${error.status}`;
-}
 
 // ---------------------------------------------------------------------------
 // Expenses (financial_transactions type='expense')
