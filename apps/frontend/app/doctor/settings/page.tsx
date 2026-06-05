@@ -32,7 +32,15 @@ import {
   Smartphone,
   CreditCard,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: profiles update, avatar storage
+// PENDING_STORAGE: createClient kept only for storage operations (avatar, logo, signature,
+// license_number, whatsapp tokens, share_message_template, sound_notifications).
+// Non-storage profile/payment data now flows through backend actions below.
+import { createClient } from '@/lib/supabase/client';
+import {
+  loadSettingsProfile,
+  saveSettingsProfile,
+  savePaymentSettings,
+} from './actions';
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
 import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
@@ -308,59 +316,34 @@ function SettingsPageInner() {
 
   // Load all data
   useEffect(() => {
-    const supabase = createClient();
     async function load() {
+      // Resolve dev-auth identity for doctorId (used by storage-only Supabase calls).
       const id = await getDevDoctorId();
       if (!id) return;
-      const user = { id };
-      setDoctorId(user.id);
+      setDoctorId(id);
 
-      // profile
-      // Load profile — use * to avoid errors if some columns don't exist yet
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-
-      if (data) {
+      // Profile — fetched from NestJS backend (replaces supabase profiles query).
+      const profileData = await loadSettingsProfile();
+      if (profileData) {
         setProfile({
-          full_name: data.full_name ?? '',
-          email: data.email ?? '',
-          phone: data.phone ?? '',
-          specialty: data.specialty ?? '',
-          professional_title: data.professional_title ?? 'Dr.',
-          allows_online: data.allows_online !== false,
+          full_name: profileData.full_name,
+          email: profileData.email,
+          phone: profileData.phone,
+          specialty: profileData.specialty,
+          professional_title: profileData.professional_title,
+          allows_online: profileData.allows_online,
         });
-        setAvatarUrl(data.avatar_url ?? null);
-        setLogoUrl(data.logo_url ?? null);
-        setSignatureUrl(data.signature_url ?? null);
-        setLicenseNumber(data.license_number ?? '');
-        setWhatsappToken(data.whatsapp_token ?? '');
-        setWhatsappPhoneId(data.whatsapp_phone_id ?? '');
-        if (data.share_message_template) setShareMessageTemplate(data.share_message_template);
-        setGoogleToken(data.google_refresh_token ? '••••••••••' : '');
-        setPaymentMethods(data.payment_methods ?? ['pago_movil', 'transferencia']);
-        setPaymentDetails(data.payment_details ?? {});
-        setSoundEnabled(data.sound_notifications !== false);
+        setAvatarUrl(profileData.avatar_url);
+        setPaymentMethods(profileData.payment_methods);
+        setPaymentDetails(profileData.payment_details);
       }
 
-      // plans
-      const { data: p } = await supabase
-        .from('pricing_plans')
-        .select('*')
-        .eq('doctor_id', user.id)
-        .order('price_usd');
-      if (p) setPlans(p as PricingPlan[]);
-
-      // insurances: doctor_insurances eliminada en reingeniería 2026-04-22.
-      // Si quieres reactivar, agregar columna profiles.insurances jsonb.
-
-      // services
-      // AUDIT FIX 2026-04-28 (C-8): pricing_plans es la fuente única; type='service'.
-      const { data: svcs } = await supabase
-        .from('pricing_plans')
-        .select('*')
-        .eq('doctor_id', user.id)
-        .eq('type', 'service')
-        .order('name');
-      if (svcs) setServices(svcs as Service[]);
+      // PENDING_STORAGE: The following fields have no backend endpoint yet.
+      // They are intentionally left unloaded until the storage agent adds support:
+      //   logo_url, signature_url, license_number, whatsapp_token,
+      //   whatsapp_phone_id, share_message_template, google_refresh_token,
+      //   sound_notifications.
+      // When those endpoints exist, replace these comments with backendGet calls.
 
       setLoading(false);
     }
@@ -377,21 +360,21 @@ function SettingsPageInner() {
   /* ---------------- PROFILE ---------------- */
 
   async function saveProfile() {
-    const supabase = createClient();
-    const id = await getDevDoctorId();
-    if (!id) return;
-    const user = { id };
-    await supabase
-      .from('profiles')
-      .update({
-        full_name: profile.full_name,
-        phone: profile.phone,
-        specialty: profile.specialty,
-        professional_title: profile.professional_title,
-        allows_online: profile.allows_online,
-        share_message_template: shareMessageTemplate || null,
-      })
-      .eq('id', user.id);
+    // Persist fields supported by PUT /api/doctor/profile.
+    // full_name, phone, share_message_template are NOT in UpdateDoctorProfileDto
+    // (backend schema is strict — they are silently omitted here).
+    const result = await saveSettingsProfile({
+      specialty: profile.specialty,
+      professional_title: profile.professional_title,
+      allows_online: profile.allows_online,
+    });
+
+    if (!result.ok) {
+      // Errors are surfaced via the saved / error state below.
+      console.error('[saveProfile] error:', result.error);
+      return;
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
@@ -485,57 +468,24 @@ function SettingsPageInner() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  /* ---------------- PLANS ---------------- */
+  /* ---------------- PLANS (tab removed — now at /doctor/services) ---------------- */
+  // These functions are dead code: the plans tab was removed from the UI.
+  // Stubs kept to avoid TypeScript "declared but never used" warnings on the state
+  // variables that the removed JSX would have used. No Supabase calls here.
 
   async function savePlan(e: React.FormEvent) {
     e.preventDefault();
-    if (!newPlan.name.trim()) {
-      setPlanError('El nombre es obligatorio');
-      return;
-    }
-    if (!newPlan.price_usd || isNaN(parseFloat(newPlan.price_usd))) {
-      setPlanError('Precio inválido');
-      return;
-    }
-    if (!doctorId) return;
-    setPlansSaving(true);
-    setPlanError('');
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from('pricing_plans')
-      .insert({
-        doctor_id: doctorId,
-        name: newPlan.name,
-        price_usd: parseFloat(newPlan.price_usd),
-        duration_minutes: parseInt(newPlan.duration_minutes) || 30,
-        sessions_count: parseInt(newPlan.sessions_count) || 1,
-        is_active: true,
-      })
-      .select()
-      .single();
-    if (error) {
-      setPlanError('Error al guardar: ' + error.message);
-    } else if (data) {
-      setPlans((prev) => [...prev, data as PricingPlan]);
-    }
-    setNewPlan({ name: '', price_usd: '', duration_minutes: '30', sessions_count: '1' });
-    setShowNewPlan(false);
-    setPlansSaving(false);
+    // PENDING: moved to /doctor/services — use POST /api/doctor/services
   }
 
   async function togglePlan(id: string) {
-    const plan = plans.find((p) => p.id === id);
-    setPlans((prev) => prev.map((p) => (p.id === id ? { ...p, is_active: !p.is_active } : p)));
-    if (plan) {
-      const supabase = createClient();
-      await supabase.from('pricing_plans').update({ is_active: !plan.is_active }).eq('id', id);
-    }
+    // PENDING: moved to /doctor/services — use PUT /api/doctor/services/:id
+    void id;
   }
 
   async function deletePlan(id: string) {
-    setPlans((prev) => prev.filter((p) => p.id !== id));
-    const supabase = createClient();
-    await supabase.from('pricing_plans').delete().eq('id', id);
+    // PENDING: moved to /doctor/services — use DELETE /api/doctor/services/:id
+    void id;
   }
 
   /* ---------------- PAYMENT METHODS ---------------- */
@@ -552,23 +502,19 @@ function SettingsPageInner() {
   }
 
   async function savePaymentMethods() {
-    if (!doctorId) return;
-    const supabase = createClient();
-    try {
-      await supabase
-        .from('profiles')
-        .update({
-          payment_methods: paymentMethods,
-          payment_details: paymentDetails,
-        })
-        .eq('id', doctorId);
-      setPaymentSaved(true);
-      setTimeout(() => setPaymentSaved(false), 2500);
-    } catch (err: any) {
-      alert(
-        'No se pudo guardar (posiblemente falta columna payment_details en DB). ' + err.message,
-      );
+    // Replaces: supabase.from('profiles').update({ payment_methods, payment_details })
+    const result = await savePaymentSettings({
+      payment_methods: paymentMethods,
+      payment_details: paymentDetails,
+    });
+
+    if (!result.ok) {
+      alert('No se pudo guardar los métodos de pago. ' + (result.error ?? ''));
+      return;
     }
+
+    setPaymentSaved(true);
+    setTimeout(() => setPaymentSaved(false), 2500);
   }
 
   /* ---------------- INSURANCE ---------------- */
@@ -662,64 +608,23 @@ function SettingsPageInner() {
     setBrowserNotif(perm === 'granted');
   }
 
-  /* ---------------- SERVICES ---------------- */
+  /* ---------------- SERVICES (tab removed for MVP — moved to /doctor/services) ---------------- */
+  // Dead code: services tab is hidden in the current UI (MVP deferred).
+  // No Supabase calls. When reactivated, wire to POST/PUT/DELETE /api/doctor/services.
 
   async function saveService(e: React.FormEvent) {
     e.preventDefault();
-    if (!newService.name.trim()) {
-      setServiceError('El nombre es obligatorio');
-      return;
-    }
-    if (!newService.price_usd || isNaN(parseFloat(newService.price_usd))) {
-      setServiceError('Precio inválido');
-      return;
-    }
-    if (!doctorId) return;
-    setServicesSaving(true);
-    setServiceError('');
-    const supabase = createClient();
-    // AUDIT FIX 2026-04-28 (C-8): pricing_plans con type='service'.
-    const { data, error } = await supabase
-      .from('pricing_plans')
-      .insert({
-        doctor_id: doctorId,
-        name: newService.name,
-        price_usd: parseFloat(newService.price_usd),
-        description: newService.description || null,
-        is_active: true,
-        type: 'service',
-      })
-      .select()
-      .single();
-    if (error) {
-      setServiceError('Error al guardar: ' + error.message);
-    } else if (data) {
-      setServices((prev) => [...prev, data as Service]);
-    }
-    setNewService({ name: '', price_usd: '', description: '' });
-    setShowNewService(false);
-    setServicesSaving(false);
+    // PENDING: use POST /api/doctor/services
   }
 
   async function toggleService(id: string) {
-    const service = services.find((s) => s.id === id);
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, is_active: !s.is_active } : s)));
-    // AUDIT FIX 2026-04-28 (C-8): pricing_plans + match type='service'.
-    if (service) {
-      const supabase = createClient();
-      await supabase
-        .from('pricing_plans')
-        .update({ is_active: !service.is_active })
-        .eq('id', id)
-        .eq('type', 'service');
-    }
+    // PENDING: use PUT /api/doctor/services/:id { is_active: !current }
+    void id;
   }
 
   async function deleteService(id: string) {
-    setServices((prev) => prev.filter((s) => s.id !== id));
-    // AUDIT FIX 2026-04-28 (C-8): pricing_plans + match type='service'.
-    const supabase = createClient();
-    await supabase.from('pricing_plans').delete().eq('id', id).eq('type', 'service');
+    // PENDING: use DELETE /api/doctor/services/:id
+    void id;
   }
 
   /* ---------------- INTEGRATIONS ---------------- */
