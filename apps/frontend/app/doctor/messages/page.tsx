@@ -1,159 +1,84 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase-client'; // FASE 5: patient_messages
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
-import { MessageCircle, AlertCircle, Search } from 'lucide-react';
+import { MessageCircle, Search } from 'lucide-react';
+import {
+  listMessageThreads,
+  getMessageThread,
+  sendMessage,
+  type ConversationView,
+  type MessageView,
+} from './actions';
 
-interface Conversation {
-  patient_id: string;
-  patient_name: string;
-  last_message: string;
-  last_message_time: string;
-  unread_count: number;
-}
-
-interface Message {
-  id: string;
-  body: string;
-  direction: string;
-  created_at: string;
-  read_at?: string;
-}
-
-interface Patient {
-  id: string;
-  full_name: string;
-  phone: string;
-  cedula: string;
-}
+// ConversationView and MessageView are imported from ./actions.
+// Keeping local aliases so the JSX below compiles without changes.
+type Conversation = ConversationView;
+type Message = MessageView;
 
 export default function DoctorMessagesPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [patient, setPatient] = useState<Patient | null>(null);
+  // patientName is derived from the selected conversation (already masked by backend)
+  const [selectedPatientName, setSelectedPatientName] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [loadingThread, setLoadingThread] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
-    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: patient_messages stays Supabase.
-    getDevDoctorId().then((id) => {
-      if (id) {
-        setDoctorId(id);
-        loadConversations(id);
-      }
+    // NOTE: Realtime (postgres_changes) subscription removed — no WS replacement in Etapa 1.
+    // Messages refresh only on explicit user interaction (select conversation / send message).
+    listMessageThreads().then((threads) => {
+      setConversations(threads);
+      setLoading(false);
     });
   }, []);
 
-  const loadConversations = async (dId: string) => {
-    try {
-      // Obtener todos los pacientes del doctor y su último mensaje
-      const { data: msgs } = await supabase
-        .from('patient_messages')
-        .select('patient_id, body, created_at')
-        .eq('doctor_id', dId)
-        .order('created_at', { ascending: false });
-
-      if (msgs) {
-        const grouped: Record<string, any> = {};
-        for (const msg of msgs) {
-          if (!grouped[msg.patient_id]) {
-            grouped[msg.patient_id] = msg;
-          }
-        }
-
-        // Obtener nombres de pacientes
-        const { data: patients } = await supabase
-          .from('patients')
-          .select('id, full_name')
-          .in('id', Object.keys(grouped));
-
-        const convs: Conversation[] = [];
-        for (const patId in grouped) {
-          const pat = patients?.find((p) => p.id === patId);
-          convs.push({
-            patient_id: patId,
-            patient_name: pat?.full_name || 'Paciente desconocido',
-            last_message: grouped[patId].body,
-            last_message_time: grouped[patId].created_at,
-            unread_count: 0,
-          });
-        }
-
-        setConversations(convs);
-        setLoading(false);
-      }
-    } catch (err) {
-      console.error('Error cargando conversaciones:', err);
-      setLoading(false);
-    }
-  };
-
   const handleSelectConversation = async (patientId: string) => {
     setSelectedPatientId(patientId);
+    setLoadingThread(true);
+    setSendError(null);
 
-    // Cargar mensajes
-    const { data: msgs } = await supabase
-      .from('patient_messages')
-      .select('id, body, direction, created_at, read_at')
-      .eq('patient_id', patientId)
-      .eq('doctor_id', doctorId!)
-      .order('created_at', { ascending: true });
+    // Resolve patient display name from the already-loaded conversations list
+    const conv = conversations.find((c) => c.patient_id === patientId);
+    setSelectedPatientName(conv?.patient_name ?? 'Paciente');
 
-    if (msgs) setMessages(msgs);
-
-    // Cargar datos del paciente
-    const { data: pat } = await supabase
-      .from('patients')
-      .select('id, full_name, phone, cedula')
-      .eq('id', patientId)
-      .single();
-
-    if (pat) setPatient(pat);
-
-    // Marcar como leído
-    if (doctorId) {
-      await supabase
-        .from('patient_messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('patient_id', patientId)
-        .eq('doctor_id', doctorId)
-        .is('read_at', true);
+    const { messages: msgs, error } = await getMessageThread(patientId);
+    if (!error) {
+      setMessages(msgs);
     }
+    setLoadingThread(false);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedPatientId || !doctorId) return;
+    if (!newMessage.trim() || !selectedPatientId) return;
 
     setSendingMessage(true);
+    setSendError(null);
     try {
-      await supabase.from('patient_messages').insert({
-        patient_id: selectedPatientId,
-        doctor_id: doctorId,
-        body: newMessage.trim(),
-        direction: 'doctor_to_patient',
-      });
+      const { message, error } = await sendMessage(selectedPatientId, newMessage);
+
+      if (error) {
+        setSendError(error);
+        return;
+      }
 
       setNewMessage('');
 
-      // Recargar mensajes
-      const { data: msgs } = await supabase
-        .from('patient_messages')
-        .select('id, body, direction, created_at, read_at')
-        .eq('patient_id', selectedPatientId)
-        .eq('doctor_id', doctorId)
-        .order('created_at', { ascending: true });
-
-      if (msgs) setMessages(msgs);
-    } catch (err) {
-      console.error('Error enviando mensaje:', err);
+      // Append the sent message optimistically; fallback to re-fetching the full thread
+      if (message) {
+        setMessages((prev) => [...prev, message]);
+      } else {
+        const { messages: refreshed } = await getMessageThread(selectedPatientId);
+        setMessages(refreshed);
+      }
+    } finally {
+      setSendingMessage(false);
     }
-    setSendingMessage(false);
   };
 
   if (loading) {
@@ -199,10 +124,14 @@ export default function DoctorMessagesPage() {
                   }`}
                 >
                   <p className="font-semibold text-slate-900 text-sm">{conv.patient_name}</p>
-                  <p className="text-xs text-slate-500 truncate mt-1">{conv.last_message}</p>
                   <p className="text-xs text-slate-400 mt-1">
                     {new Date(conv.last_message_time).toLocaleDateString('es-VE')}
                   </p>
+                  {conv.unread_count > 0 && (
+                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-500 text-white mt-1">
+                      {conv.unread_count}
+                    </span>
+                  )}
                 </button>
               ))
           )}
@@ -211,15 +140,15 @@ export default function DoctorMessagesPage() {
 
       {/* Chat */}
       <div className="flex-1 flex flex-col">
-        {selectedPatientId && patient ? (
+        {selectedPatientId ? (
           <>
             {/* Header */}
             <div className="p-6 border-b border-slate-200 bg-white rounded-t-2xl">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-semibold text-slate-900">{patient.full_name}</p>
-                  <p className="text-sm text-slate-500">
-                    {patient.cedula} · {patient.phone}
+                  <p className="font-semibold text-slate-900">{selectedPatientName}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Los datos de contacto se muestran en la ficha del paciente
                   </p>
                 </div>
               </div>
@@ -227,7 +156,11 @@ export default function DoctorMessagesPage() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {messages.length === 0 ? (
+              {loadingThread ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-slate-400 text-sm">Cargando mensajes...</p>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
                   <p className="text-slate-500 text-sm">Inicia una conversación</p>
                 </div>
@@ -252,6 +185,11 @@ export default function DoctorMessagesPage() {
                 ))
               )}
             </div>
+
+            {/* Send error */}
+            {sendError && (
+              <p className="px-6 pb-2 text-xs text-red-500">{sendError}</p>
+            )}
 
             {/* Input */}
             <form

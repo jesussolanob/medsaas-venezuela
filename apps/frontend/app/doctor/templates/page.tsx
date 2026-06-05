@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-// Supabase client retained for doctor_templates table reads/writes and profiles query.
-// Storage uploads (logo, signature) now use /api/storage/upload (backend MinIO).
-// TODO Fase 5: replace doctor_templates CRUD with backend API endpoints.
-import { createClient } from '@/lib/supabase/client';
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import { getDoctorProfile } from '@/app/doctor/actions';
+import {
+  loadTemplateConfigs,
+  saveTemplateConfig,
+  applyTemplateConfigToAll,
+  type UpsertTemplateInput,
+} from './actions';
 import {
   FileEdit,
   Upload,
@@ -142,17 +144,8 @@ export default function TemplatesPage() {
   }, []);
 
   async function loadTemplates() {
-    const supabase = createClient();
-    const id = await getDevDoctorId();
-    if (!id) return;
-    const user = { id };
-
-    // Load doctor profile (incluye logo y firma globales — RONDA 17 source of truth)
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name, specialty, logo_url, signature_url')
-      .eq('id', user.id)
-      .single();
+    // ── 1) Cargar perfil del doctor (nombre, especialidad, logo y firma globales — RONDA 17 source of truth)
+    const profile = await getDoctorProfile();
     if (profile) {
       setDoctorName(profile.full_name || '');
       setDoctorSpecialty(profile.specialty || '');
@@ -160,7 +153,7 @@ export default function TemplatesPage() {
       setProfileSignatureUrl((profile as any).signature_url || null);
     }
 
-    // ── 1) Cargar bloques del doctor vía API para resolver la cascada
+    // ── 2) Cargar bloques del doctor vía API para resolver la cascada
     //     doctor_consultation_blocks → specialty_default_blocks → catalog
     let dynamicTabs: TemplateTab[] = FALLBACK_TABS;
     try {
@@ -169,7 +162,6 @@ export default function TemplatesPage() {
       const catalog: any[] = j.catalog || [];
       const doctorCfg: any[] = j.doctor_config || [];
       const specialtyDef: any[] = j.specialty_defaults || [];
-      const catalogMap = new Map(catalog.map((c: any) => [c.key, c]));
       const doctorMap = new Map(doctorCfg.map((c: any) => [c.block_key, c]));
       const specialtyMap = new Map(specialtyDef.map((s: any) => [s.block_key, s]));
 
@@ -224,24 +216,24 @@ export default function TemplatesPage() {
       setActiveTab(dynamicTabs[0]?.key || 'informe');
     }
 
-    // ── 2) Cargar plantillas guardadas
-    const { data } = await supabase.from('doctor_templates').select('*').eq('doctor_id', user.id);
+    // ── 3) Cargar plantillas guardadas desde el backend (NestJS doctor-templates)
+    const savedMap = await loadTemplateConfigs();
 
     const initialConfigs: Record<string, TemplateConfig> = {};
-    for (const t of dynamicTabs) initialConfigs[t.key] = { ...DEFAULT_CONFIG };
-    if (data) {
-      data.forEach((t: any) => {
-        initialConfigs[t.template_type] = {
-          logo_url: t.logo_url,
-          signature_url: t.signature_url,
-          font_family: t.font_family || 'Inter',
-          header_text: t.header_text || '',
-          footer_text: t.footer_text || '',
-          show_logo: t.show_logo !== false,
-          show_signature: t.show_signature !== false,
-          primary_color: t.primary_color || '#0891b2',
-        };
-      });
+    for (const t of dynamicTabs) {
+      const saved = savedMap[t.key];
+      initialConfigs[t.key] = saved
+        ? {
+            logo_url: saved.logo_url,
+            signature_url: saved.signature_url,
+            font_family: saved.font_family || 'Inter',
+            header_text: saved.header_text || '',
+            footer_text: saved.footer_text || '',
+            show_logo: saved.show_logo !== false,
+            show_signature: saved.show_signature !== false,
+            primary_color: saved.primary_color || '#0891b2',
+          }
+        : { ...DEFAULT_CONFIG };
     }
     setConfigs(initialConfigs);
 
@@ -291,14 +283,7 @@ export default function TemplatesPage() {
   async function saveTemplate() {
     setSaving(true);
     try {
-      const supabase = createClient();
-      const id = await getDevDoctorId();
-      if (!id) return;
-      const user = { id };
-
-      const payload = {
-        doctor_id: user.id,
-        template_type: activeTab,
+      const input: UpsertTemplateInput = {
         logo_url: config.logo_url,
         signature_url: config.signature_url,
         font_family: config.font_family,
@@ -309,25 +294,14 @@ export default function TemplatesPage() {
         primary_color: config.primary_color,
       };
 
-      // Upsert: update if exists, insert if not
-      const { data: existing } = await supabase
-        .from('doctor_templates')
-        .select('id')
-        .eq('doctor_id', user.id)
-        .eq('template_type', activeTab)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase.from('doctor_templates').update(payload).eq('id', existing.id);
-      } else {
-        await supabase.from('doctor_templates').insert(payload);
+      const result = await saveTemplateConfig(activeTab, input);
+      if (!result.ok) {
+        alert(result.error ?? 'Error al guardar plantilla');
+        return;
       }
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch (err) {
-      console.error('Error saving template:', err);
-      alert('Error al guardar plantilla');
     } finally {
       setSaving(false);
     }
@@ -336,50 +310,37 @@ export default function TemplatesPage() {
   async function applyToAll() {
     setSaving(true);
     try {
-      const supabase = createClient();
-      const id = await getDevDoctorId();
-      if (!id) return;
-      const user = { id };
-
       const currentConfig = configs[activeTab];
-      const newConfigs = { ...configs };
+      const input: UpsertTemplateInput = {
+        logo_url: currentConfig.logo_url,
+        signature_url: currentConfig.signature_url,
+        font_family: currentConfig.font_family,
+        header_text: currentConfig.header_text,
+        footer_text: currentConfig.footer_text,
+        show_logo: currentConfig.show_logo,
+        show_signature: currentConfig.show_signature,
+        primary_color: currentConfig.primary_color,
+      };
 
-      for (const tab of templateTabs) {
-        newConfigs[tab.key] = { ...currentConfig };
+      const result = await applyTemplateConfigToAll(
+        input,
+        templateTabs.map((t) => t.key),
+      );
 
-        const payload = {
-          doctor_id: user.id,
-          template_type: tab.key,
-          logo_url: currentConfig.logo_url,
-          signature_url: currentConfig.signature_url,
-          font_family: currentConfig.font_family,
-          header_text: currentConfig.header_text,
-          footer_text: currentConfig.footer_text,
-          show_logo: currentConfig.show_logo,
-          show_signature: currentConfig.show_signature,
-          primary_color: currentConfig.primary_color,
-        };
-
-        const { data: existing } = await supabase
-          .from('doctor_templates')
-          .select('id')
-          .eq('doctor_id', user.id)
-          .eq('template_type', tab.key)
-          .maybeSingle();
-
-        if (existing) {
-          await supabase.from('doctor_templates').update(payload).eq('id', existing.id);
-        } else {
-          await supabase.from('doctor_templates').insert(payload);
-        }
+      if (!result.ok) {
+        alert(result.error ?? 'Error al aplicar a todas las plantillas');
+        return;
       }
 
+      // Mirror the applied config locally so the UI reflects the change immediately
+      const newConfigs = { ...configs };
+      for (const tab of templateTabs) {
+        newConfigs[tab.key] = { ...currentConfig };
+      }
       setConfigs(newConfigs);
+
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch (err) {
-      console.error('Error applying to all:', err);
-      alert('Error al aplicar a todas las plantillas');
     } finally {
       setSaving(false);
     }
