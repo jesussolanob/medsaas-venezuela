@@ -44,4 +44,11 @@ export interface IPackageRepository {
     currentUsedSessions: number,
     transaction?: Transaction,
   ): Promise<boolean>;
+
+  /**
+   * Lists all packages for a doctor (all statuses) with optional patient and status filters.
+   * Used by the doctor's package dashboard and session counters.
+   * SECURITY: doctorId is always from the authenticated caller — never from the body.
+   */
+  listByDoctor(filters: PackageListFilters): Promise<PatientPackage[]>;
 }

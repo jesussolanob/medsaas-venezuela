@@ -31,6 +31,7 @@ describe('ConsumePackageSessionUseCase', () => {
       findActiveByEmailHash: jest.fn(),
       save: jest.fn(),
       consumeSessionOptimistic: jest.fn(),
+      listByDoctor: jest.fn(),
     };
     useCase = new ConsumePackageSessionUseCase(mockRepo);
   });

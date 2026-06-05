@@ -92,7 +92,8 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
       useClass: SequelizePricingPlanRepository,
     },
 
-    // Use cases
+    // Use cases — exported here so other modules can resolve GetDoctorProfileUseCase
+    // and DOCTOR_PROFILE_REPOSITORY when they need to join profile data (e.g. cita-360).
     GetDoctorProfileUseCase,
     UpdateDoctorProfileUseCase,
     GetDoctorScheduleUseCase,
@@ -106,5 +107,8 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     GetDoctorExchangeRateUseCase,
     SetDoctorExchangeRateUseCase,
   ],
+  // Export DOCTOR_PROFILE_REPOSITORY so other modules (e.g. AppointmentsModule for cita-360)
+  // can inject the doctor profile without duplicating model registrations.
+  exports: [DOCTOR_PROFILE_REPOSITORY],
 })
 export class DoctorSettingsModule {}

@@ -85,4 +85,10 @@ export interface IConsultationRepository {
     page: number,
     limit: number,
   ): Promise<ConsultationListResult>;
+
+  /**
+   * Finds a consultation by its appointment_id, scoped to doctorId (anti-IDOR).
+   * Returns null when no consultation is linked to that appointment.
+   */
+  findByAppointmentId(appointmentId: string, doctorId: string): Promise<Consultation | null>;
 }

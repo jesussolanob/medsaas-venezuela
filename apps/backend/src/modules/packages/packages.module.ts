@@ -11,6 +11,7 @@ import { PRICING_PLAN_REPOSITORY } from './domain/repositories/pricing-plan.repo
 import { CreatePackageUseCase } from './application/use-cases/packages/create-package.use-case';
 import { GetPatientPackagesUseCase } from './application/use-cases/packages/get-patient-packages.use-case';
 import { ConsumePackageSessionUseCase } from './application/use-cases/packages/consume-package-session.use-case';
+import { GetDoctorPackagesUseCase } from './application/use-cases/packages/get-doctor-packages.use-case';
 
 import { PackagesController } from './presentation/controllers/packages.controller';
 
@@ -35,6 +36,7 @@ import { PatientModel } from '../patients/infrastructure/database/models/patient
     CreatePackageUseCase,
     GetPatientPackagesUseCase,
     ConsumePackageSessionUseCase,
+    GetDoctorPackagesUseCase,
   ],
   // Exported so the BookingModule can inject the package repo and pricing plan repo
   // without duplicating model registrations.

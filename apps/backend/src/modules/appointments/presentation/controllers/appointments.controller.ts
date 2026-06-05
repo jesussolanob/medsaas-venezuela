@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import {
   CurrentUser,
@@ -19,7 +19,9 @@ import { UpdateAppointmentStatusUseCase } from '../../application/use-cases/appo
 import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
+import { GetAppointment360UseCase } from '../../application/use-cases/appointments/get-appointment-360.use-case';
 import { maskAppointmentPii } from '../mappers/appointment.mapper';
+import { mapAppointment360Response } from '../mappers/appointment-360.mapper';
 
 interface SuccessResponse<T> {
   success: true;
@@ -48,6 +50,7 @@ export class AppointmentsController {
     private readonly getDoctorAgenda: GetDoctorAgendaUseCase,
     private readonly getById: GetAppointmentByIdUseCase,
     private readonly reschedule: RescheduleAppointmentUseCase,
+    private readonly get360: GetAppointment360UseCase,
   ) {}
 
   /** GET /api/appointments — paginated list with PII masking applied by the mapper. */
@@ -148,5 +151,30 @@ export class AppointmentsController {
     };
     const appointment = await this.updateStatus.execute(updatedDto);
     return { success: true, data: appointment };
+  }
+
+  /**
+   * GET /api/appointments/:id/detail
+   *
+   * Returns the full 360° aggregate for a single appointment:
+   * appointment + consultation (clinical PHI decrypted) + payment + paymentItems
+   * + patient PII (decrypted, owner-scoped per ADR-005) + doctor profile
+   * + rescheduleChain + changeLog.
+   *
+   * SECURITY:
+   *   - Double anti-IDOR: appointment.doctor_id === user.sub enforced in use case.
+   *   - Patient PII only exposed to the owning doctor (not to admin or third parties).
+   *   - Dedicated response mapper — NEVER reuse the masked list mapper.
+   */
+  @Get(':id/detail')
+  async getDetail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<unknown>> {
+    const result = await this.get360.execute({
+      appointmentId: id,
+      doctorId: user.sub,
+    });
+    return { success: true, data: mapAppointment360Response(result) };
   }
 }

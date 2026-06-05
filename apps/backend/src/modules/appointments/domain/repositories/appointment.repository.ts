@@ -100,4 +100,33 @@ export interface IAppointmentRepository {
    * Returns the updated entity.
    */
   updateScheduledAt(id: string, scheduledAt: Date): Promise<Appointment>;
+
+  /**
+   * Returns all appointments that share the same consultation_id as the given appointment.
+   * Used to build the reschedule chain for cita-360 detail view.
+   * Excludes the source appointment itself. Scoped to doctorId for anti-IDOR.
+   */
+  findRescheduleChain(consultationId: string, excludeId: string, doctorId: string): Promise<Appointment[]>;
+
+  /**
+   * Returns all audit log entries for the given appointment, ordered by created_at ASC.
+   * Used by the cita-360 detail view to display the change history.
+   */
+  findChangeLogs(appointmentId: string): Promise<ChangeLogEntry[]>;
+
+  /**
+   * Finds a single appointment by ID scoped to doctorId (anti-IDOR for detail views).
+   * Returns null when the appointment does not exist or belongs to another doctor.
+   */
+  findByIdForDoctor(id: string, doctorId: string): Promise<Appointment | null>;
+}
+
+/** Audit log entry returned by findChangeLogs. */
+export interface ChangeLogEntry {
+  id: string;
+  appointmentId: string;
+  actorId: string;
+  oldStatus: string | null;
+  newStatus: string;
+  createdAt: Date;
 }

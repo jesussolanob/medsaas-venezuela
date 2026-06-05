@@ -41,6 +41,7 @@ describe('ApprovePaymentUseCase', () => {
       updatePayment: jest.fn(),
       list: jest.fn(),
       findByPatient: jest.fn(),
+      findByAppointmentId: jest.fn(),
     };
     useCase = new ApprovePaymentUseCase(mockRepo);
   });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import {
   CurrentUser,
@@ -8,10 +8,41 @@ import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation
 import { CreatePackageDtoSchema, type CreatePackageDto } from '@delta/shared-types';
 import { CreatePackageUseCase } from '../../application/use-cases/packages/create-package.use-case';
 import { GetPatientPackagesUseCase } from '../../application/use-cases/packages/get-patient-packages.use-case';
+import { GetDoctorPackagesUseCase } from '../../application/use-cases/packages/get-doctor-packages.use-case';
+import type { PatientPackage } from '../../domain/entities/patient-package.entity';
 
 interface SuccessResponse<T> {
   success: true;
   data: T;
+}
+
+/** Serialized package row for API responses. */
+interface PackageResponseItem {
+  id: string;
+  patientId: string | null;
+  planName: string;
+  totalSessions: number;
+  usedSessions: number;
+  remainingSessions: number;
+  status: string;
+  purchasedAmountUsd: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toPackageResponse(pkg: PatientPackage): PackageResponseItem {
+  return {
+    id: pkg.id,
+    patientId: pkg.patientId,
+    planName: pkg.planName,
+    totalSessions: pkg.totalSessions,
+    usedSessions: pkg.usedSessions,
+    remainingSessions: pkg.remainingSessions,
+    status: pkg.status,
+    purchasedAmountUsd: pkg.purchasedAmountUsd,
+    createdAt: pkg.createdAt.toISOString(),
+    updatedAt: pkg.updatedAt.toISOString(),
+  };
 }
 
 /**
@@ -21,7 +52,6 @@ interface SuccessResponse<T> {
  * prevent cross-doctor IDOR via body injection.
  *
  * DEFERRED (not implemented):
- *   - GET /packages/patient/:patientId (patient portal — requires patient auth)
  *   - DELETE /packages/:id (soft-cancel — not in Etapa 1 scope)
  */
 @Controller('packages')
@@ -30,7 +60,29 @@ export class PackagesController {
   constructor(
     private readonly createPackage: CreatePackageUseCase,
     private readonly getPatientPackages: GetPatientPackagesUseCase,
+    private readonly getDoctorPackages: GetDoctorPackagesUseCase,
   ) {}
+
+  /**
+   * GET /api/packages/doctor
+   * Returns all packages for the authenticated doctor (all patients).
+   * Optional query params: ?patient_id=<uuid>&status=active|completed
+   *
+   * SECURITY: doctorId always taken from user.sub — cannot access other doctor's packages.
+   */
+  @Get('doctor')
+  async listForDoctor(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('patient_id') patientId?: string,
+    @Query('status') status?: 'active' | 'completed',
+  ): Promise<SuccessResponse<PackageResponseItem[]>> {
+    const packages = await this.getDoctorPackages.execute({
+      doctorId: user.sub,
+      patientId: patientId ?? null,
+      status: status ?? null,
+    });
+    return { success: true, data: packages.map(toPackageResponse) };
+  }
 
   /**
    * GET /api/packages/patient/:patientId

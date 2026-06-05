@@ -41,3 +41,4 @@ export * from './dtos/upsert-reminders-settings.dto';
 export * from './dtos/send-message.dto';
 export * from './dtos/update-doctor-exchange-rate.dto';
 export * from './dtos/attach-payment-receipt.dto';
+export * from './dtos/create-quick-item.dto';

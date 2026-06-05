@@ -47,6 +47,7 @@ function makeAppointment(overrides: Partial<AppointmentCreateParams> = {}): Appo
 function makeRepo(appointment: Appointment | null): jest.Mocked<IAppointmentRepository> {
   return {
     findById: jest.fn().mockResolvedValue(appointment),
+    findByIdForDoctor: jest.fn().mockResolvedValue(appointment),
     list: jest.fn(),
     save: jest.fn(),
     updateStatus: jest.fn(),
@@ -57,6 +58,8 @@ function makeRepo(appointment: Appointment | null): jest.Mocked<IAppointmentRepo
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn(),
     findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue([]),
+    findRescheduleChain: jest.fn().mockResolvedValue([]),
+    findChangeLogs: jest.fn().mockResolvedValue([]),
   } as jest.Mocked<IAppointmentRepository>;
 }
 

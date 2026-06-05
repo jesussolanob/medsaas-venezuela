@@ -21,6 +21,7 @@ describe('CreatePackageUseCase', () => {
       findActiveByEmailHash: jest.fn(),
       save: jest.fn(),
       consumeSessionOptimistic: jest.fn(),
+      listByDoctor: jest.fn(),
     };
     useCase = new CreatePackageUseCase(mockRepo);
   });

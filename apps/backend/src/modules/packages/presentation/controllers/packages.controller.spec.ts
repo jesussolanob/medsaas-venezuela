@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PackagesController } from './packages.controller';
 import { CreatePackageUseCase } from '../../application/use-cases/packages/create-package.use-case';
 import { GetPatientPackagesUseCase } from '../../application/use-cases/packages/get-patient-packages.use-case';
+import { GetDoctorPackagesUseCase } from '../../application/use-cases/packages/get-doctor-packages.use-case';
 import { PatientPackage } from '../../domain/entities/patient-package.entity';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 
@@ -24,16 +25,19 @@ describe('PackagesController', () => {
   let controller: PackagesController;
   let mockCreateUseCase: jest.Mocked<CreatePackageUseCase>;
   let mockGetUseCase: jest.Mocked<GetPatientPackagesUseCase>;
+  let mockGetDoctorPackagesUseCase: jest.Mocked<GetDoctorPackagesUseCase>;
 
   beforeEach(async () => {
     mockCreateUseCase = { execute: jest.fn() } as unknown as jest.Mocked<CreatePackageUseCase>;
     mockGetUseCase = { execute: jest.fn() } as unknown as jest.Mocked<GetPatientPackagesUseCase>;
+    mockGetDoctorPackagesUseCase = { execute: jest.fn() } as unknown as jest.Mocked<GetDoctorPackagesUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PackagesController],
       providers: [
         { provide: CreatePackageUseCase, useValue: mockCreateUseCase },
         { provide: GetPatientPackagesUseCase, useValue: mockGetUseCase },
+        { provide: GetDoctorPackagesUseCase, useValue: mockGetDoctorPackagesUseCase },
       ],
     })
       .overrideGuard(DevAuthGuard)
@@ -41,6 +45,58 @@ describe('PackagesController', () => {
       .compile();
 
     controller = module.get<PackagesController>(PackagesController);
+  });
+
+  describe('listForDoctor', () => {
+    it('returns all packages for the authenticated doctor', async () => {
+      mockGetDoctorPackagesUseCase.execute.mockResolvedValue([makePkg()]);
+
+      const response = await controller.listForDoctor(mockUser);
+
+      expect(response.success).toBe(true);
+      expect(Array.isArray(response.data)).toBe(true);
+      expect(response.data).toHaveLength(1);
+      expect(mockGetDoctorPackagesUseCase.execute).toHaveBeenCalledWith({
+        doctorId: 'doc-001',
+        patientId: null,
+        status: null,
+      });
+    });
+
+    it('passes optional patient_id filter', async () => {
+      mockGetDoctorPackagesUseCase.execute.mockResolvedValue([]);
+
+      await controller.listForDoctor(mockUser, 'pat-001');
+
+      expect(mockGetDoctorPackagesUseCase.execute).toHaveBeenCalledWith({
+        doctorId: 'doc-001',
+        patientId: 'pat-001',
+        status: null,
+      });
+    });
+
+    it('passes optional status filter', async () => {
+      mockGetDoctorPackagesUseCase.execute.mockResolvedValue([]);
+
+      await controller.listForDoctor(mockUser, undefined, 'active');
+
+      expect(mockGetDoctorPackagesUseCase.execute).toHaveBeenCalledWith({
+        doctorId: 'doc-001',
+        patientId: null,
+        status: 'active',
+      });
+    });
+
+    it('serializes packages with remainingSessions computed', async () => {
+      mockGetDoctorPackagesUseCase.execute.mockResolvedValue([makePkg()]);
+
+      const response = await controller.listForDoctor(mockUser);
+
+      const item = response.data[0]!;
+      expect(item.remainingSessions).toBe(10); // totalSessions - usedSessions = 10 - 0
+      expect(item.totalSessions).toBe(10);
+      expect(item.usedSessions).toBe(0);
+    });
   });
 
   describe('listForPatient', () => {

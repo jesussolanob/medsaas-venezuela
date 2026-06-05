@@ -5,6 +5,7 @@ import { UpdateAppointmentStatusUseCase } from '../../application/use-cases/appo
 import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
+import { GetAppointment360UseCase } from '../../application/use-cases/appointments/get-appointment-360.use-case';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -62,6 +63,7 @@ describe('AppointmentsController', () => {
   const mockGetAgendaUseCase = { execute: jest.fn() };
   const mockGetByIdUseCase = { execute: jest.fn() };
   const mockRescheduleUseCase = { execute: jest.fn() };
+  const mockGet360UseCase = { execute: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -74,6 +76,7 @@ describe('AppointmentsController', () => {
         { provide: GetDoctorAgendaUseCase, useValue: mockGetAgendaUseCase },
         { provide: GetAppointmentByIdUseCase, useValue: mockGetByIdUseCase },
         { provide: RescheduleAppointmentUseCase, useValue: mockRescheduleUseCase },
+        { provide: GetAppointment360UseCase, useValue: mockGet360UseCase },
       ],
     }).compile();
 
@@ -256,6 +259,50 @@ describe('AppointmentsController', () => {
 
       expect(mockUpdateStatusUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ id: APPT_ID, actor_id: DOCTOR_ID }),
+      );
+    });
+  });
+
+  describe('GET /api/appointments/:id/detail (getDetail)', () => {
+    const appointment = makeAppointment();
+    const mockResult = {
+      appointment,
+      consultation: null,
+      payment: null,
+      paymentItems: [],
+      patient: null,
+      doctor: null,
+      rescheduleChain: [],
+      changeLog: [],
+    };
+
+    it('delegates to GetAppointment360UseCase and returns mapped response', async () => {
+      mockGet360UseCase.execute.mockResolvedValue(mockResult);
+
+      const response = await controller.getDetail(APPT_ID, mockUser);
+
+      expect(response.success).toBe(true);
+      expect(mockGet360UseCase.execute).toHaveBeenCalledWith({
+        appointmentId: APPT_ID,
+        doctorId: DOCTOR_ID,
+      });
+      // Verify the response data contains the expected keys
+      const data = response.data as Record<string, unknown>;
+      expect(data).toHaveProperty('appointment');
+      expect(data).toHaveProperty('consultation');
+      expect(data).toHaveProperty('payment');
+      expect(data).toHaveProperty('paymentItems');
+      expect(data).toHaveProperty('patient');
+      expect(data).toHaveProperty('doctor');
+      expect(data).toHaveProperty('rescheduleChain');
+      expect(data).toHaveProperty('changeLog');
+    });
+
+    it('propagates AppointmentNotFoundError', async () => {
+      mockGet360UseCase.execute.mockRejectedValue(new AppointmentNotFoundError(APPT_ID));
+
+      await expect(controller.getDetail(APPT_ID, mockUser)).rejects.toBeInstanceOf(
+        AppointmentNotFoundError,
       );
     });
   });

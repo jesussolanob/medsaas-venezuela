@@ -31,6 +31,7 @@ import { DoctorTemplatesModule } from './modules/doctor-templates/doctor-templat
 import { RemindersModule } from './modules/reminders/reminders.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { MessagesModule } from './modules/messages/messages.module';
+import { QuickItemsModule } from './modules/quick-items/quick-items.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { MessagesModule } from './modules/messages/messages.module';
     RemindersModule,
     StorageModule,
     MessagesModule,
+    QuickItemsModule,
   ],
   controllers: [HealthController],
   providers: [

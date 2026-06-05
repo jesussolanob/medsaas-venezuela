@@ -254,6 +254,14 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     };
   }
 
+  async findByAppointmentId(appointmentId: string, doctorId: string): Promise<import('../../../domain/entities/consultation.entity').Consultation | null> {
+    const row = await this.consultationModel.findOne({
+      where: { appointmentId, doctorId } as WhereOptions,
+    });
+    if (!row) return null;
+    return this.toDomain(row);
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------

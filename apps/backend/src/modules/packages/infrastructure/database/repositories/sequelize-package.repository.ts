@@ -68,6 +68,24 @@ export class SequelizePackageRepository implements IPackageRepository {
     return this.toDomain(row);
   }
 
+  async listByDoctor(
+    filters: import('../../../domain/repositories/package.repository').PackageListFilters,
+  ): Promise<PatientPackage[]> {
+    const where: Record<string, unknown> = { doctorId: filters.doctorId };
+    if (filters.patientId) {
+      where['patientId'] = filters.patientId;
+    }
+    if (filters.status) {
+      where['status'] = filters.status;
+    }
+
+    const rows = await this.packageModel.findAll({
+      where: where as WhereOptions,
+      order: [['createdAt', 'DESC']],
+    });
+    return rows.map((r) => this.toDomain(r));
+  }
+
   /**
    * Consume one session with an optimistic lock.
    *

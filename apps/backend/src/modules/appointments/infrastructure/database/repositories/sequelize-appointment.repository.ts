@@ -12,6 +12,7 @@ import type {
   DuplicateCheckParams,
   PackageInfo,
   AuditLogEntry,
+  ChangeLogEntry,
 } from '../../../domain/repositories/appointment.repository';
 import { AppointmentModel } from '../models/appointment.model';
 import { AppointmentChangesLogModel } from '../models/appointment-changes-log.model';
@@ -221,6 +222,58 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     await this.appointmentModel.update({ scheduledAt }, { where: { id } });
     const updated = await this.appointmentModel.findByPk(id);
     return this.toDomain(updated as AppointmentModel);
+  }
+
+  async findByIdForDoctor(id: string, doctorId: string): Promise<Appointment | null> {
+    const row = await this.appointmentModel.findOne({
+      where: { id, doctorId } as WhereOptions,
+    });
+    if (!row) return null;
+    return this.toDomain(row);
+  }
+
+  async findRescheduleChain(
+    consultationId: string,
+    excludeId: string,
+    doctorId: string,
+  ): Promise<Appointment[]> {
+    const rows = await this.appointmentModel.findAll({
+      where: {
+        consultationId,
+        doctorId,
+        id: { [Op.ne]: excludeId },
+      } as WhereOptions,
+      order: [['scheduledAt', 'ASC']],
+    });
+    return rows.map((r) => this.toDomain(r));
+  }
+
+  async findChangeLogs(appointmentId: string): Promise<ChangeLogEntry[]> {
+    interface RawLogRow {
+      id: string;
+      appointment_id: string;
+      actor_id: string;
+      old_status: string | null;
+      new_status: string;
+      created_at: string;
+    }
+
+    const rows = await this.sequelize.query<RawLogRow>(
+      `SELECT id, appointment_id, actor_id, old_status, new_status, created_at
+       FROM appointment_changes_log
+       WHERE appointment_id = :appointmentId
+       ORDER BY created_at ASC`,
+      { replacements: { appointmentId }, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      appointmentId: r.appointment_id,
+      actorId: r.actor_id,
+      oldStatus: r.old_status,
+      newStatus: r.new_status,
+      createdAt: new Date(r.created_at),
+    }));
   }
 
   private toDomain(row: AppointmentModel): Appointment {
