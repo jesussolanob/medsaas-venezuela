@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User, Clock, LayoutGrid } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getDevIdentityAction } from './identity-action'
+// ETAPA 1: onboarding identity comes from the dev-stub cookie (set at login).
+// ETAPA 2 (Auth0): remove getDevIdentityAction import and use Auth0 session.
 
 // F5 (2026-04-29): bloques mínimos que SIEMPRE quedan pre-marcados (core).
 // Reflejan los del fallback hardcoded de la consulta para que el doctor nunca
@@ -66,22 +69,29 @@ export default function OnboardingPage() {
   const [savingBlocks, setSavingBlocks] = useState(false)
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) {
+    // ETAPA 1 dev-stub: resolve identity from cookies via server action.
+    // ETAPA 2 (Auth0): replace getDevIdentityAction() with Auth0 session read.
+    getDevIdentityAction().then(async (devUser) => {
+      if (!devUser.id) {
         router.push('/login')
         return
       }
-      setUserId(user.id)
-      setUserName(user.user_metadata?.full_name || user.user_metadata?.name || '')
-      setUserEmail(user.email || '')
+      setUserId(devUser.id)
+      // In Etapa 1 we have no user metadata — use placeholder name/email.
+      // ETAPA 2: read full_name and email from the Auth0 ID token claims.
+      setUserName('')
+      setUserEmail('')
 
-      // Check if profile already exists and is complete
+      // Check if profile already exists and is complete (DB query still works).
+      const supabase = createClient()
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, phone')
-        .eq('id', user.id)
+        .select('role, phone, full_name, email')
+        .eq('id', devUser.id)
         .maybeSingle()
+
+      if (profile?.full_name) setUserName(profile.full_name)
+      if (profile?.email) setUserEmail(profile.email)
 
       if (profile?.phone) {
         // Already onboarded — redirect
@@ -95,19 +105,13 @@ export default function OnboardingPage() {
         return
       }
 
-      // If profile exists with a role, pre-select it
+      // Pre-select role from the dev cookie role or existing profile role.
       if (profile?.role === 'patient') setRole('patient')
-      else if (profile?.role) setRole('doctor')
+      else if (profile?.role === 'doctor') setRole('doctor')
       else {
-        // AUDIT FIX 2026-04-28 (FASE 5D): si llegamos aquí desde un first-time
-        // OAuth, el trigger BD creó el profile con role NULL. Revisamos si
-        // /register guardó el rol intencional en localStorage para
-        // pre-seleccionarlo en vez de mostrar 'doctor' por default.
-        try {
-          const pending = localStorage.getItem('pending_role')
-          if (pending === 'patient') setRole('patient')
-          else if (pending === 'doctor') setRole('doctor')
-        } catch { /* ignore */ }
+        // Fallback: use the role from the dev-auth cookie.
+        if (devUser.role === 'patient') setRole('patient')
+        else setRole('doctor')
       }
 
       setLoading(false)

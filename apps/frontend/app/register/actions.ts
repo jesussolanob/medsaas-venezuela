@@ -1,358 +1,255 @@
-'use server'
+'use server';
 
-import { createAdminClient } from '@/lib/supabase/admin'
-import { revalidatePath } from 'next/cache'
-import { sendWelcomeEmail } from '@/lib/email'
+/**
+ * register/actions.ts
+ *
+ * ETAPA 1: auth-related actions (registerDoctor, registerPatient,
+ * confirmUserEmail, resendConfirmation) are DEV-STUBS — real user creation
+ * requires Auth0 (Etapa 2 / Fase 6).
+ *
+ * Non-auth helpers (getBCVRate, getActivePlans, getActivePromotions,
+ * getPaymentAccounts) still query the DB via createAdminClient and are
+ * unaffected by the auth migration.
+ *
+ * ETAPA 2 (Auth0): replace stub bodies with Auth0 Management API calls
+ * to provision users, then call the NestJS backend to create the profile.
+ */
+
+import { createAdminClient } from '@/lib/supabase/admin';
+import { revalidatePath } from 'next/cache';
+import { DEV_DOCTOR_UUID, DEV_PATIENT_UUID } from '@/lib/dev-auth.edge';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export type RegisterInput = {
-  full_name: string
-  cedula: string
-  email: string
-  password: string
-  specialty: string
-  phone: string
-  plan: 'trial' | 'basic' | 'professional' | 'clinic'
-  sex?: string
-  professional_title?: string
-  clinic_name?: string
-  clinic_city?: string
-}
+  full_name: string;
+  cedula: string;
+  email: string;
+  password: string;
+  specialty: string;
+  phone: string;
+  plan: 'trial' | 'basic' | 'professional' | 'clinic';
+  sex?: string;
+  professional_title?: string;
+  clinic_name?: string;
+  clinic_city?: string;
+};
 
 export type RegisterResult =
   | { success: true; doctorId: string }
-  | { success: false; error: string }
+  | { success: false; error: string };
 
-export async function registerDoctor(input: RegisterInput): Promise<RegisterResult> {
-  const supabase = createAdminClient()
-
-  // 1. Create auth user (email_confirm: true → Beta: auto-confirm so they can login immediately)
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: { full_name: input.full_name, role: 'doctor' },
-  })
-
-  if (authError) {
-    if (authError.message.includes('already registered')) {
-      return { success: false, error: 'Este email ya está registrado. ¿Ya tienes cuenta? Inicia sesión.' }
-    }
-    return { success: false, error: authError.message }
-  }
-
-  const userId = authData.user.id
-
-  // 2. Create profile
-  const { error: profileError } = await supabase.from('profiles').upsert({
-    id: userId,
-    full_name: input.full_name,
-    cedula: input.cedula || null,
-    email: input.email,
-    specialty: input.specialty || null,
-    phone: input.phone || null,
-    sex: input.sex || null,
-    professional_title: input.professional_title || 'Dr.',
-    role: 'doctor',
-    is_active: true,
-  })
-
-  if (profileError) {
-    await supabase.auth.admin.deleteUser(userId)
-    return { success: false, error: profileError.message }
-  }
-
-  // 3. Set plan + status — duración configurable desde app_settings.beta_duration_days
-  //    (default 365 días si no está configurado).
-  const { data: betaSetting } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'beta_duration_days')
-    .maybeSingle()
-  const betaDays = Number(betaSetting?.value) || 365
-
-  const expiresAt = new Date()
-  expiresAt.setDate(expiresAt.getDate() + betaDays)
-
-  const { error: planErr } = await supabase
-    .from('profiles')
-    .update({
-      plan: 'trial',
-      subscription_status: 'trial',
-      subscription_expires_at: expiresAt.toISOString(),
-    })
-    .eq('id', userId)
-
-  if (planErr) {
-    console.error('Error seteando plan:', planErr.message)
-  }
-
-  // Audit trail
-  try {
-    await supabase.from('subscription_changes_log').insert({
-      doctor_id: userId,
-      action: 'created',
-      actor_id: userId,
-      actor_role: 'doctor',
-      after_state: {
-        plan: 'trial',
-        subscription_status: 'trial',
-        subscription_expires_at: expiresAt.toISOString(),
-      },
-      metadata: { beta_days: betaDays, source: 'self_registration' },
-    })
-  } catch (e) {
-    console.warn('[register] log entry failed:', e)
-  }
-
-  // Welcome email (no-bloqueante: si falla solo loggea)
-  try {
-    await sendWelcomeEmail({
-      to: input.email,
-      doctor_name: input.full_name,
-      beta_days: betaDays,
-    })
-  } catch (e) {
-    console.warn('[register] welcome email failed:', e)
-  }
-
-  revalidatePath('/admin/doctors')
-
-  return { success: true, doctorId: userId }
+// ---------------------------------------------------------------------------
+// STUB: Register Doctor
+// ETAPA 2 TODO: Call Auth0 Management API to create the user, then call
+//   POST /api/admin/doctors (backend) to provision the profile + subscription.
+// ---------------------------------------------------------------------------
+export async function registerDoctor(_input: RegisterInput): Promise<RegisterResult> {
+  // Etapa 1: Real user creation with password requires Auth0 (Etapa 2).
+  // Return dev-stub success so the UI flow completes locally.
+  // In production this stub MUST be replaced before launch.
+  console.warn('[register] registerDoctor is a dev-stub (Etapa 2: Auth0)');
+  revalidatePath('/admin/doctors');
+  return { success: true, doctorId: DEV_DOCTOR_UUID };
 }
 
-// ── Register Patient (Beta: auto-confirm email) ─────────────────────────────
+// ---------------------------------------------------------------------------
+// STUB: Register Patient
+// ETAPA 2 TODO: Call Auth0 Management API to create the patient user, then
+//   call the NestJS backend to create the patient profile.
+// ---------------------------------------------------------------------------
 
 export type RegisterPatientInput = {
-  full_name: string
-  email: string
-  password: string
-  phone?: string
+  full_name: string;
+  email: string;
+  password: string;
+  phone?: string;
+};
+
+export async function registerPatient(_input: RegisterPatientInput): Promise<RegisterResult> {
+  // Etapa 1: Real user creation with password requires Auth0 (Etapa 2).
+  console.warn('[register] registerPatient is a dev-stub (Etapa 2: Auth0)');
+  return { success: true, doctorId: DEV_PATIENT_UUID };
 }
 
-export async function registerPatient(input: RegisterPatientInput): Promise<RegisterResult> {
-  const supabase = createAdminClient()
+// ---------------------------------------------------------------------------
+// STUB: Email confirmation helpers
+// ETAPA 2 TODO: Auth0 handles email confirmation automatically; remove these.
+// ---------------------------------------------------------------------------
 
-  // Create auth user with auto-confirmed email (beta)
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email: input.email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: { full_name: input.full_name, role: 'patient' },
-  })
-
-  if (authError) {
-    if (authError.message.includes('already registered')) {
-      return { success: false, error: 'Este email ya está registrado. Intenta iniciar sesión.' }
-    }
-    return { success: false, error: authError.message }
-  }
-
-  const userId = authData.user.id
-
-  // Create profile
-  const { error: profileError } = await supabase.from('profiles').upsert({
-    id: userId,
-    full_name: input.full_name,
-    email: input.email,
-    phone: input.phone || null,
-    role: 'patient',
-    is_active: true,
-  })
-
-  if (profileError) {
-    await supabase.auth.admin.deleteUser(userId)
-    return { success: false, error: profileError.message }
-  }
-
-  // BUG-018 fix: merge de guest → registered
-  // Si el paciente agendó como invitado antes (mismo email), hay rows en `patients`
-  // sin auth_user_id. Las linkeamos a esta nueva cuenta para que sus citas/consultas
-  // aparezcan en el dashboard del paciente recién registrado.
-  try {
-    const { data: guestPatients } = await supabase
-      .from('patients')
-      .select('id')
-      .eq('email', input.email)
-      .is('auth_user_id', null)
-
-    if (guestPatients && guestPatients.length > 0) {
-      const guestIds = guestPatients.map((p) => p.id)
-      // Linkear todas las filas de patient con el nuevo auth_user_id
-      await supabase
-        .from('patients')
-        .update({ auth_user_id: userId })
-        .in('id', guestIds)
-      console.log(`[registerPatient] Merged ${guestIds.length} guest patient(s) for ${input.email}`)
-    }
-  } catch (mergeErr) {
-    console.warn('[registerPatient] guest merge skipped:', mergeErr)
-  }
-
-  return { success: true, doctorId: userId }
+export async function confirmUserEmail(
+  _email: string,
+): Promise<{ success: boolean; error?: string }> {
+  // Etapa 1: no-op stub. Auth0 handles confirmation in Etapa 2.
+  return { success: true };
 }
 
-// ── Confirm unconfirmed email (for existing stuck users) ─────────────────────
-
-export async function confirmUserEmail(email: string): Promise<{ success: boolean; error?: string }> {
-  const supabase = createAdminClient()
-
-  // Find user by email
-  const { data: { users }, error: listErr } = await supabase.auth.admin.listUsers()
-  if (listErr) return { success: false, error: listErr.message }
-
-  const user = users.find(u => u.email === email)
-  if (!user) return { success: false, error: 'Usuario no encontrado' }
-
-  // Confirm email using admin API
-  const { error } = await supabase.auth.admin.updateUserById(user.id, {
-    email_confirm: true,
-  })
-
-  if (error) return { success: false, error: error.message }
-  return { success: true }
+export async function resendConfirmation(
+  email: string,
+): Promise<{ success: boolean; error?: string }> {
+  return confirmUserEmail(email);
 }
 
-// ── Resend confirmation / auto-confirm for beta ──────────────────────────────
+// ---------------------------------------------------------------------------
+// Tasa BCV — no auth dependency, unaffected
+// ---------------------------------------------------------------------------
 
-export async function resendConfirmation(email: string): Promise<{ success: boolean; error?: string }> {
-  // In beta, we just auto-confirm the email
-  return confirmUserEmail(email)
-}
-
-// ── Register Clinic (Centro de Salud) ──────────────────────────────────────────
-// REMOVED 2026-04-22: registerClinic + tabla clinics eliminadas en reingeniería MVP.
-// Beta privada solo soporta médicos individuales. Si el formulario /register
-// usaba este flujo, debe migrarse a registerDoctor.
-
-// ── Tasa BCV ──────────────────────────────────────────────────────────────────
-export type BCVRateResult = { rate: number; updated: string } | null
+export type BCVRateResult = { rate: number; updated: string } | null;
 
 export async function getBCVRate(): Promise<BCVRateResult> {
   // Source 1: fawazahmed0/currency-api CDN (fastest, no rate limits)
   try {
     const res = await fetch(
       'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json',
-      { cache: 'no-store' }
-    )
+      { cache: 'no-store' },
+    );
     if (res.ok) {
-      const data = await res.json()
-      // Response: { date: "2026-04-19", usd: { ves: 479.65 } }
-      const vesRate = data?.usd?.ves ?? data?.ves
+      const data = await res.json();
+      const vesRate = data?.usd?.ves ?? data?.ves;
       if (vesRate && vesRate > 0) {
         return {
           rate: parseFloat(Number(vesRate).toFixed(2)),
           updated: data.date ?? new Date().toLocaleDateString('es-VE'),
-        }
+        };
       }
     }
-  } catch { /* try next source */ }
+  } catch {
+    /* try next source */
+  }
 
   // Source 1b: currency-api fallback CDN
   try {
     const res = await fetch(
       'https://latest.currency-api.pages.dev/v1/currencies/usd.min.json',
-      { cache: 'no-store' }
-    )
+      { cache: 'no-store' },
+    );
     if (res.ok) {
-      const data = await res.json()
-      const vesRate = data?.usd?.ves ?? data?.ves
+      const data = await res.json();
+      const vesRate = data?.usd?.ves ?? data?.ves;
       if (vesRate && vesRate > 0) {
         return {
           rate: parseFloat(Number(vesRate).toFixed(2)),
           updated: data.date ?? new Date().toLocaleDateString('es-VE'),
-        }
+        };
       }
     }
-  } catch { /* try next source */ }
+  } catch {
+    /* try next source */
+  }
 
   // Source 2: dolarapi.com
   try {
     const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
       next: { revalidate: 3600 },
-    })
-    if (!res.ok) throw new Error('fetch failed')
-    const data = await res.json()
-    const rate = data.promedio ?? data.precio ?? data.price ?? null
-    if (!rate) throw new Error('no rate')
+    });
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const rate = data.promedio ?? data.precio ?? data.price ?? null;
+    if (!rate) throw new Error('no rate');
     return {
       rate: parseFloat(rate),
       updated: data.fechaActualizacion ?? new Date().toLocaleDateString('es-VE'),
-    }
-  } catch { /* try next source */ }
+    };
+  } catch {
+    /* try next source */
+  }
 
   // Source 3: pydolarve.org
   try {
     const res2 = await fetch('https://pydolarve.org/api/v2/dollar?page=bcv', {
       next: { revalidate: 3600 },
-    })
-    if (!res2.ok) throw new Error('fetch2 failed')
-    const d2 = await res2.json()
-    const rate2 = d2.monitors?.usd?.price ?? d2.price ?? null
-    if (!rate2) throw new Error('no rate2')
-    return { rate: parseFloat(rate2), updated: new Date().toLocaleDateString('es-VE') }
+    });
+    if (!res2.ok) throw new Error('fetch2 failed');
+    const d2 = await res2.json();
+    const rate2 = d2.monitors?.usd?.price ?? d2.price ?? null;
+    if (!rate2) throw new Error('no rate2');
+    return { rate: parseFloat(rate2), updated: new Date().toLocaleDateString('es-VE') };
   } catch {
-    return null
+    return null;
   }
 }
 
-// uploadPaymentReceipt eliminada — el flujo de comprobantes de pago se removió
-// junto con el módulo de aprobaciones. En beta privada las suscripciones son
-// trial activo automático por 1 año.
+// ---------------------------------------------------------------------------
+// Active plans — DB query only, no auth dependency
+// ---------------------------------------------------------------------------
 
-// ── Obtener planes activos ────────────────────────────────────────────────────
 export type PlanConfigPublic = {
-  plan_key: string; name: string; price: number
-  trial_days: number; description: string | null
-}
+  plan_key: string;
+  name: string;
+  price: number;
+  trial_days: number;
+  description: string | null;
+};
 
 export async function getActivePlans(): Promise<PlanConfigPublic[]> {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('plan_configs')
     .select('plan_key, name, price, trial_days, description')
     .eq('is_active', true)
-    .order('sort_order')
-  if (error) { console.error('Error fetching plans:', error.message); return [] }
-  return data ?? []
+    .order('sort_order');
+  if (error) {
+    console.error('Error fetching plans:', error.message);
+    return [];
+  }
+  return data ?? [];
 }
 
-// ── Obtener promociones activas ──────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Active promotions — DB query only, no auth dependency
+// ---------------------------------------------------------------------------
+
 export type PromotionPublic = {
-  id: string
-  plan_key: string
-  duration_months: number
-  original_price_usd: number
-  promo_price_usd: number
-  label: string
-}
+  id: string;
+  plan_key: string;
+  duration_months: number;
+  original_price_usd: number;
+  promo_price_usd: number;
+  label: string;
+};
 
 export async function getActivePromotions(): Promise<PromotionPublic[]> {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('plan_promotions')
     .select('id, plan_key, duration_months, original_price_usd, promo_price_usd, label')
     .eq('is_active', true)
     .or('ends_at.is.null,ends_at.gt.' + new Date().toISOString())
-    .order('duration_months')
-  if (error) { console.error('Error fetching promotions:', error.message); return [] }
-  return data ?? []
+    .order('duration_months');
+  if (error) {
+    console.error('Error fetching promotions:', error.message);
+    return [];
+  }
+  return data ?? [];
 }
 
-// ── Cuentas de cobro del admin ────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Payment accounts — DB query only, no auth dependency
+// ---------------------------------------------------------------------------
+
 export type PaymentAccount = {
-  id: string; type: string; bank_name: string | null
-  account_holder: string | null; phone: string | null
-  rif: string | null; notes: string | null
-}
+  id: string;
+  type: string;
+  bank_name: string | null;
+  account_holder: string | null;
+  phone: string | null;
+  rif: string | null;
+  notes: string | null;
+};
 
 export async function getPaymentAccounts(): Promise<PaymentAccount[]> {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('payment_accounts')
     .select('*')
     .eq('is_active', true)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: true });
 
-  if (error) { console.error('Error obteniendo cuentas:', error.message); return [] }
-  return data ?? []
+  if (error) {
+    console.error('Error obteniendo cuentas:', error.message);
+    return [];
+  }
+  return data ?? [];
 }

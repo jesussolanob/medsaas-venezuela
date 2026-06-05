@@ -1,147 +1,35 @@
+/**
+ * /api/seed-accounts — DEPRECATED
+ *
+ * This endpoint previously created Supabase Auth test accounts (ivana@gmail.com
+ * / ivana2@gmail.com) for local development.
+ *
+ * ETAPA 1: Supabase Auth is removed. The dev-stub identity is provided via
+ *   cookies (dev_user_id / dev_user_role) set by the login page. Seed data
+ *   should be inserted directly into the Postgres DB.
+ *
+ * ETAPA 2 (Auth0): if a seed endpoint is needed again, implement it using
+ *   the Auth0 Management API to create test users.
+ *
+ * Returns 410 Gone for all methods.
+ */
+
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 
-// GET+POST /api/seed-accounts — Create test patient and doctor accounts
-// 🚫 Deshabilitado en producción (CR-004). Sólo dev local.
-export async function GET() {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  }
-  return handler()
+function gone(): NextResponse {
+  return NextResponse.json(
+    {
+      error: 'Este endpoint fue deprecado en la migración Etapa 1 (eliminación de Supabase Auth). ' +
+        'Usa el seed directo en la BD o el login dev-stub con cookies dev_user_id/dev_user_role.',
+    },
+    { status: 410 },
+  )
 }
-export async function POST() {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  }
-  return handler()
+
+export function GET(): NextResponse {
+  return gone()
 }
-async function handler() {
-  const supabase = createAdminClient()
 
-  try {
-    // 1. Create patient account (ivana@gmail.com)
-    let patientUserId: string | null = null
-
-    const { data: patientAuth, error: patientAuthErr } = await supabase.auth.admin.createUser({
-      email: 'ivana@gmail.com',
-      password: '12345678',
-      email_confirm: true,
-      user_metadata: { full_name: 'Ivana Solano', role: 'patient' },
-    })
-
-    if (patientAuthErr) {
-      if (!patientAuthErr.message.includes('already registered')) {
-        return NextResponse.json({ error: patientAuthErr.message }, { status: 500 })
-      }
-      // If already exists, try to find the user
-      const { data: { users } } = await supabase.auth.admin.listUsers()
-      const existing = users?.find(u => u.email === 'ivana@gmail.com')
-      if (existing) {
-        patientUserId = existing.id
-      } else {
-        return NextResponse.json({ error: 'Patient user exists but cannot be found' }, { status: 500 })
-      }
-    } else {
-      patientUserId = patientAuth.user.id
-    }
-
-    // 2. Create patient profile
-    if (patientUserId) {
-      await supabase.from('profiles').upsert({
-        id: patientUserId,
-        full_name: 'Ivana Solano',
-        role: 'patient',
-        email: 'ivana@gmail.com',
-        is_active: true,
-      })
-    }
-
-    // 3. Create doctor account (ivana2@gmail.com)
-    let doctorUserId: string | null = null
-
-    const { data: doctorAuth, error: doctorAuthErr } = await supabase.auth.admin.createUser({
-      email: 'ivana2@gmail.com',
-      password: '12345678',
-      email_confirm: true,
-      user_metadata: { full_name: 'Ivana Solano', role: 'doctor' },
-    })
-
-    if (doctorAuthErr) {
-      if (!doctorAuthErr.message.includes('already registered')) {
-        return NextResponse.json({ error: doctorAuthErr.message }, { status: 500 })
-      }
-      // If already exists, try to find the user
-      const { data: { users } } = await supabase.auth.admin.listUsers()
-      const existing = users?.find(u => u.email === 'ivana2@gmail.com')
-      if (existing) {
-        doctorUserId = existing.id
-      } else {
-        return NextResponse.json({ error: 'Doctor user exists but cannot be found' }, { status: 500 })
-      }
-    } else {
-      doctorUserId = doctorAuth.user.id
-    }
-
-    // 4. Create doctor profile
-    if (doctorUserId) {
-      await supabase.from('profiles').upsert({
-        id: doctorUserId,
-        full_name: 'Ivana Solano',
-        role: 'doctor',
-        specialty: 'Psicología',
-        professional_title: 'Psic.',
-        email: 'ivana2@gmail.com',
-        is_active: true,
-      })
-    }
-
-    // 5. Create subscription for doctor (free plan for 30 days)
-    if (doctorUserId) {
-      const now = new Date()
-      const expires = new Date(now)
-      expires.setDate(expires.getDate() + 30)
-
-      await supabase
-        .from('profiles')
-        .update({
-          plan: 'basic',
-          subscription_status: 'active',
-          subscription_expires_at: expires.toISOString(),
-        })
-        .eq('id', doctorUserId)
-    }
-
-    // 6. Create patient record linking ivana@gmail.com to ivana2@gmail.com doctor
-    if (patientUserId && doctorUserId) {
-      await supabase.from('patients').insert({
-        doctor_id: doctorUserId,
-        full_name: 'Ivana Solano',
-        email: 'ivana@gmail.com',
-        auth_user_id: patientUserId,
-        source: 'manual',
-      })
-    }
-
-    return NextResponse.json({
-      success: true,
-      patientAccount: {
-        email: 'ivana@gmail.com',
-        password: '12345678',
-        userId: patientUserId,
-      },
-      doctorAccount: {
-        email: 'ivana2@gmail.com',
-        password: '12345678',
-        userId: doctorUserId,
-        specialty: 'Psicología',
-        subscriptionPlan: 'basic',
-        expiresIn: '30 days',
-      },
-    })
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error occurred' },
-      { status: 500 }
-    )
-  }
+export function POST(): NextResponse {
+  return gone()
 }

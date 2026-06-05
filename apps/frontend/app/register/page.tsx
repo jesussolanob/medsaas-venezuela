@@ -8,7 +8,6 @@ import {
   User, Phone, Stethoscope, ChevronDown, CheckCircle2
 } from 'lucide-react'
 import { registerDoctor, registerPatient } from './actions'
-import { createClient } from '@/lib/supabase/client'
 
 const specialties = [
   'Cardiología', 'Dermatología', 'Endocrinología', 'Gastroenterología',
@@ -57,28 +56,9 @@ export default function RegisterPage() {
   const [professionalTitle, setProfessionalTitle] = useState('Dr.')
 
   async function handleGoogleRegister() {
-    setGoogleLoading(true)
-    setError('')
-    try {
-      const supabase = createClient()
-      const intendedRole = role === 'especialista' ? 'doctor' : 'patient'
-      // AUDIT FIX 2026-04-28 (FASE 5D): el rol del registro se persiste en
-      // localStorage; /onboarding lo lee si profile.role llega NULL desde el
-      // trigger BD `handle_new_user_signup`. Supabase OAuth no permite enviar
-      // user_metadata custom desde signInWithOAuth, por eso el client-side hop.
-      try { localStorage.setItem('pending_role', intendedRole) } catch { /* ignore */ }
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: { prompt: 'select_account' },
-        },
-      })
-      if (error) { setError(error.message); setGoogleLoading(false) }
-    } catch (err: any) {
-      setError(err?.message || 'Error al conectar con Google')
-      setGoogleLoading(false)
-    }
+    // ETAPA 2 TODO (Auth0): Trigger the Auth0 Google social connection flow.
+    // In Etapa 1 there is no OAuth provider configured — show a stub message.
+    setError('Registro con Google disponible próximamente (Etapa 2 — Auth0).')
   }
 
   async function handlePatientRegister(e: React.FormEvent) {

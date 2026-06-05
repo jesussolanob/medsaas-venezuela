@@ -8,7 +8,7 @@
  */
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard,
@@ -36,7 +36,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { createClient } from '@/lib/supabase/client';
+import { logoutAction } from './logout-action';
 import DoctorNotificationToast from './DoctorNotificationToast';
 import SearchCommandPalette from './SearchCommandPalette';
 import { Toaster } from '@/components/ui/Toaster';
@@ -107,7 +107,6 @@ function isItemVisible(item: NavItem, caps: Capabilities | null): boolean {
 
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [caps, setCaps] = useState<Capabilities | null>(null);
 
@@ -161,9 +160,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   };
 
   async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push('/login');
+    // ETAPA 1 dev-stub: logoutAction clears dev-auth cookies server-side.
+    // ETAPA 2: will call Auth0 /v2/logout instead.
+    await logoutAction();
   }
 
   const activeTitle =

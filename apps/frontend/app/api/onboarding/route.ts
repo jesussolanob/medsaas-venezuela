@@ -1,3 +1,17 @@
+/**
+ * /api/onboarding — POST
+ *
+ * Completes the doctor/patient profile after initial registration.
+ *
+ * ETAPA 1: DB upsert via Supabase admin client (profiles table).
+ *   The `supabase.auth.admin.updateUserById` call has been removed — in Etapa 1
+ *   there is no auth provider to update user metadata in.
+ *
+ * ETAPA 2 (Auth0): replace supabase.from('profiles') calls with a backend
+ *   NestJS endpoint (PUT /api/doctor/profile) and update Auth0 app_metadata
+ *   via Auth0 Management API instead of the removed line below.
+ */
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
@@ -60,7 +74,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // For doctors: set plan/status/expires_at en profiles (beta: trial 1 año gratis)
+    // For doctors: set plan/status/expires_at in profiles (beta: trial 1 year free)
     if (profileRole === 'doctor') {
       const expiresAt = new Date()
       expiresAt.setFullYear(expiresAt.getFullYear() + 1)
@@ -75,14 +89,14 @@ export async function POST(req: Request) {
         .eq('id', userId)
     }
 
-    // Update auth user metadata with role
-    await supabase.auth.admin.updateUserById(userId, {
-      user_metadata: { role: profileRole },
-    })
+    // NOTE: supabase.auth.admin.updateUserById() was here — removed in Etapa 1
+    // migration (no auth provider in dev-stub). ETAPA 2: update Auth0 app_metadata
+    // via Auth0 Management API to persist the role.
 
     return NextResponse.json({ success: true, role: profileRole })
-  } catch (err: any) {
-    console.error('Onboarding error:', err)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error interno del servidor'
+    console.error('Onboarding error:', message)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
   }
 }
