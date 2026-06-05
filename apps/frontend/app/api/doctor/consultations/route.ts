@@ -10,7 +10,7 @@ import 'server-only';
  *   POST   → POST /api/consultations
  *   PATCH  → PUT  /api/consultations/:id  (body must include { id })
  *
- * DEFERRED — Fase 5 (DELETE stays on Supabase):
+ * DEFERRED — Etapa 2 (DELETE stub 501):
  *   The DELETE handler cascades into: EHR records, prescriptions, the linked
  *   appointment, package session restore, and Google Calendar event deletion.
  *   There is no single backend endpoint that handles this full cascade in Etapa 1.
@@ -31,8 +31,6 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { backendGet, backendPost, backendPut } from '@/lib/api-client.server';
 import { log } from '@/lib/logger';
-import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -214,112 +212,19 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
 // ---------------------------------------------------------------------------
 // DELETE /api/doctor/consultations?id=xxx
 //
-// FASE 5 — NOT MIGRATED. Stays on Supabase until:
-//   - Backend supports cascade delete of EHR + prescriptions + appointment
-//   - Backend supports package session restore (optimistic lock RPC)
-//   - Backend supports Google Calendar event deletion
+// ETAPA 2 — NOT IMPLEMENTED. Stub returns 501 until the NestJS backend
+// provides a coordinating endpoint for cascade delete:
+//   - EHR records + prescriptions cascade
+//   - Package session restore (restore_package_session RPC)
+//   - Google Calendar event deletion
 // ---------------------------------------------------------------------------
 
-export async function DELETE(req: NextRequest): Promise<NextResponse> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-
-  const { searchParams } = new URL(req.url);
-  const consultationId = searchParams.get('id');
-  if (!consultationId) {
-    return NextResponse.json({ error: 'id requerido' }, { status: 400 });
-  }
-
-  const admin = createAdminClient();
-
-  const { data: consultation, error: findErr } = await admin
-    .from('consultations')
-    .select('id, doctor_id, appointment_id')
-    .eq('id', consultationId)
-    .single();
-
-  if (findErr || !consultation) {
-    return NextResponse.json({ error: 'Consulta no encontrada' }, { status: 404 });
-  }
-  if (consultation.doctor_id !== user.id) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
-  }
-
-  try {
-    if (consultation.appointment_id) {
-      await admin.from('ehr_records').delete().eq('appointment_id', consultation.appointment_id);
-    }
-    await admin.from('prescriptions').delete().eq('consultation_id', consultationId);
-    await admin.from('consultations').delete().eq('id', consultationId);
-
-    if (consultation.appointment_id) {
-      const { data: appt } = await admin
-        .from('appointments')
-        .select('id, google_event_id, package_id')
-        .eq('id', consultation.appointment_id)
-        .single();
-
-      if (appt) {
-        // FASE 5: Google Calendar — keep on Supabase
-        if (appt.google_event_id) {
-          try {
-            const { data: profile } = await admin
-              .from('profiles')
-              .select('google_refresh_token')
-              .eq('id', user.id)
-              .single();
-            if (profile?.google_refresh_token) {
-              const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                  client_id: process.env.GOOGLE_CLIENT_ID || '',
-                  client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
-                  refresh_token: profile.google_refresh_token,
-                  grant_type: 'refresh_token',
-                }),
-              });
-              if (tokenRes.ok) {
-                const { access_token } = await tokenRes.json();
-                if (access_token) {
-                  await fetch(
-                    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${appt.google_event_id}?sendUpdates=all`,
-                    { method: 'DELETE', headers: { Authorization: `Bearer ${access_token}` } },
-                  );
-                }
-              }
-            }
-          } catch {
-            /* best-effort — Fase 5 */
-          }
-        }
-
-        // FASE 5: package restore — keep on Supabase
-        if (appt.package_id) {
-          const { error: rpcErr } = await admin.rpc('restore_package_session', {
-            p_appointment_id: consultation.appointment_id,
-            p_reason: 'consultation_deleted',
-          });
-          if (rpcErr)
-            log.warn('[consultations DELETE] restore_package_session failed', {
-              code: rpcErr.code,
-            });
-        }
-
-        await admin.from('appointments').delete().eq('id', consultation.appointment_id);
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      deleted: { consultation: consultationId, appointment: consultation.appointment_id || null },
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al eliminar';
-    log.error('[DELETE consultation]', { msg });
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+export async function DELETE(_req: NextRequest): Promise<NextResponse> {
+  return NextResponse.json(
+    {
+      error: 'Eliminación de consultas disponible próximamente',
+      code: 'NOT_IMPLEMENTED',
+    },
+    { status: 501 },
+  );
 }
