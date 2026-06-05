@@ -1,9 +1,24 @@
 'use client';
 
+/**
+ * DoctorNotificationToast.tsx
+ *
+ * ETAPA 1: Supabase Realtime removed. No WebSocket layer in Etapa 1.
+ *
+ * Strategy: poll GET /api/appointments?status=scheduled&created_after=<iso>
+ * via a server action every 30 seconds. On the first poll we record known IDs
+ * so we only toast truly new bookings on subsequent polls.
+ *
+ * If the backend does not yet expose a `created_after` filter, we filter
+ * client-side against a 2-minute window from the last known timestamp.
+ *
+ * FASE 5: Replace setInterval with a proper SSE / WebSocket push channel
+ * once the backend implements it.
+ */
+
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Bell, X, Calendar, User } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: realtime notifications
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import { getRecentAppointmentsForNotification } from './notification-actions';
 
 type NewBooking = {
   id: string;
@@ -36,7 +51,6 @@ export default function DoctorNotificationToast() {
     if (!soundEnabledRef.current) return;
     try {
       const ctx = new AudioContext();
-      // Pleasant two-tone notification
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -53,7 +67,9 @@ export default function DoctorNotificationToast() {
       osc2.start(ctx.currentTime + 0.15);
       osc1.stop(ctx.currentTime + 0.4);
       osc2.stop(ctx.currentTime + 0.6);
-    } catch {}
+    } catch {
+      // AudioContext may be blocked before user interaction — ignore silently.
+    }
   }, []);
 
   const showToast = useCallback(
@@ -80,52 +96,26 @@ export default function DoctorNotificationToast() {
     }, 500);
   }, []);
 
-  // Poll for new appointments every 30 seconds
+  // Poll for new appointments every 30 seconds via backend server action.
   useEffect(() => {
-    const supabase = createClient();
-
     async function checkNewBookings() {
       try {
-        // FASE 5: realtime notification check stays Supabase
-        const id = await getDevDoctorId();
-        if (!id) return;
-        const user = { id };
+        const recent = await getRecentAppointmentsForNotification();
 
-        // Check recent appointments (last 2 minutes)
-        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-
-        const { data: recentAppts } = await supabase
-          .from('appointments')
-          .select('id, patient_name, scheduled_at, plan_name, plan_price, created_at')
-          .eq('doctor_id', user.id)
-          .gte('created_at', twoMinutesAgo)
-          .order('created_at', { ascending: false })
-          .limit(5);
-
-        const { data: recentConsults } = await supabase
-          .from('consultations')
-          .select('id, patients(full_name), consultation_date, plan_name, amount, created_at')
-          .eq('doctor_id', user.id)
-          .gte('created_at', twoMinutesAgo)
-          .order('created_at', { ascending: false })
-          .limit(5);
-
-        // On first load, just record existing IDs (don't toast)
+        // On first load, record existing IDs so we don't toast stale bookings.
         if (!initializedRef.current) {
-          (recentAppts || []).forEach((a) => knownIdsRef.current.add(`appt-${a.id}`));
-          (recentConsults || []).forEach((c) => knownIdsRef.current.add(`cons-${c.id}`));
+          recent.forEach((a) => knownIdsRef.current.add(`appt-${a.id}`));
           initializedRef.current = true;
           return;
         }
 
-        // Check for new appointments
-        for (const appt of recentAppts || []) {
+        for (const appt of recent) {
           const key = `appt-${appt.id}`;
           if (!knownIdsRef.current.has(key)) {
             knownIdsRef.current.add(key);
             showToast({
               id: appt.id,
-              patient_name: appt.patient_name || 'Paciente',
+              patient_name: appt.patient_name,
               scheduled_at: appt.scheduled_at,
               plan_name: appt.plan_name,
               plan_price: appt.plan_price,
@@ -133,35 +123,13 @@ export default function DoctorNotificationToast() {
             });
           }
         }
-
-        // Check for new consultations
-        for (const cons of recentConsults || []) {
-          const key = `cons-${cons.id}`;
-          if (!knownIdsRef.current.has(key)) {
-            knownIdsRef.current.add(key);
-            const patientName =
-              !Array.isArray(cons.patients) && cons.patients
-                ? (cons.patients as { full_name: string }).full_name
-                : 'Paciente';
-            showToast({
-              id: cons.id,
-              patient_name: patientName,
-              scheduled_at: cons.consultation_date,
-              plan_name: cons.plan_name,
-              plan_price: cons.amount,
-              type: 'consultation',
-            });
-          }
-        }
       } catch (err) {
-        console.error('Notification poll error:', err);
+        // Non-blocking — polling errors do not surface to the user.
+        console.error('[DoctorNotificationToast] poll error:', err);
       }
     }
 
-    // Initial check
     checkNewBookings();
-
-    // Poll every 30 seconds
     const interval = setInterval(checkNewBookings, 30000);
     return () => clearInterval(interval);
   }, [showToast]);

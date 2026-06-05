@@ -32,17 +32,15 @@ import {
   Smartphone,
   CreditCard,
 } from 'lucide-react';
-// Supabase client kept for non-storage DB operations not yet migrated to backend:
-// performRemoveSignature (profiles.signature_url null), saveLicense (profiles.license_number),
-// toggleSound (profiles.sound_notifications), saveIntegrations (whatsapp tokens).
-// Storage uploads (avatar, logo, signature) now use /api/storage/upload (backend MinIO).
-import { createClient } from '@/lib/supabase/client';
 import {
   loadSettingsProfile,
   saveSettingsProfile,
   savePaymentSettings,
+  saveAvatarUrl,
+  saveLogoUrl,
+  saveSignatureUrl,
+  saveLicenseNumber,
 } from './actions';
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
 import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -318,14 +316,11 @@ function SettingsPageInner() {
   // Load all data
   useEffect(() => {
     async function load() {
-      // Resolve dev-auth identity for doctorId (used by storage-only Supabase calls).
-      const id = await getDevDoctorId();
-      if (!id) return;
-      setDoctorId(id);
-
-      // Profile — fetched from NestJS backend (replaces supabase profiles query).
+      // Profile — fetched from NestJS backend. doctorId is resolved from dev-auth
+      // in the server action; we still keep it in state for the booking link.
       const profileData = await loadSettingsProfile();
       if (profileData) {
+        setDoctorId(profileData.id);
         setProfile({
           full_name: profileData.full_name,
           email: profileData.email,
@@ -335,16 +330,13 @@ function SettingsPageInner() {
           allows_online: profileData.allows_online,
         });
         setAvatarUrl(profileData.avatar_url);
+        // Backend now returns logo_url, signature_url, license_number.
+        setLogoUrl(profileData.logo_url ?? null);
+        setSignatureUrl(profileData.signature_url ?? null);
+        setLicenseNumber(profileData.license_number ?? '');
         setPaymentMethods(profileData.payment_methods);
         setPaymentDetails(profileData.payment_details);
       }
-
-      // PENDING_STORAGE: The following fields have no backend endpoint yet.
-      // They are intentionally left unloaded until the storage agent adds support:
-      //   logo_url, signature_url, license_number, whatsapp_token,
-      //   whatsapp_phone_id, share_message_template, google_refresh_token,
-      //   sound_notifications.
-      // When those endpoints exist, replace these comments with backendGet calls.
 
       setLoading(false);
     }
@@ -384,7 +376,7 @@ function SettingsPageInner() {
 
   async function uploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !doctorId) return;
+    if (!file) return;
     setUploadingLogo(true);
     setLogoError('');
     try {
@@ -396,8 +388,13 @@ function SettingsPageInner() {
       if (!res.ok || !json?.data?.url) {
         throw new Error(json?.error?.message ?? 'Error al subir logo');
       }
-      // TODO: persist logo_url via backend profile endpoint once DTO supports it.
-      setLogoUrl(json.data.url + '?t=' + Date.now());
+      const uploadedUrl: string = json.data.url;
+      // Persist logo_url to the backend profile.
+      const saved = await saveLogoUrl(uploadedUrl);
+      if (!saved.ok) {
+        throw new Error(saved.error ?? 'Error al guardar logo en el perfil');
+      }
+      setLogoUrl(uploadedUrl + '?t=' + Date.now());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setLogoError('No se pudo subir el logo. ' + msg);
@@ -408,7 +405,7 @@ function SettingsPageInner() {
 
   async function uploadSignature(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !doctorId) return;
+    if (!file) return;
     setUploadingSignature(true);
     setSignatureError('');
     try {
@@ -420,8 +417,13 @@ function SettingsPageInner() {
       if (!res.ok || !json?.data?.url) {
         throw new Error(json?.error?.message ?? 'Error al subir firma');
       }
-      // TODO: persist signature_url via backend profile endpoint once DTO supports it.
-      setSignatureUrl(json.data.url + '?t=' + Date.now());
+      const uploadedUrl: string = json.data.url;
+      // Persist signature_url to the backend profile.
+      const saved = await saveSignatureUrl(uploadedUrl);
+      if (!saved.ok) {
+        throw new Error(saved.error ?? 'Error al guardar firma en el perfil');
+      }
+      setSignatureUrl(uploadedUrl + '?t=' + Date.now());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setSignatureError('No se pudo subir la firma. ' + msg);
@@ -437,20 +439,22 @@ function SettingsPageInner() {
     setConfirmRemoveSignature(true);
   }
   async function performRemoveSignature() {
-    if (!doctorId) return;
-    const supabase = createClient();
-    await supabase.from('profiles').update({ signature_url: null }).eq('id', doctorId);
-    setSignatureUrl(null);
+    const result = await saveSignatureUrl(null);
+    if (!result.ok) {
+      // Surface the error inline instead of swallowing it.
+      setSignatureError(result.error ?? 'Error al eliminar la firma');
+    } else {
+      setSignatureUrl(null);
+    }
     setConfirmRemoveSignature(false);
   }
 
   async function saveLicense() {
-    if (!doctorId) return;
-    const supabase = createClient();
-    await supabase
-      .from('profiles')
-      .update({ license_number: licenseNumber || null })
-      .eq('id', doctorId);
+    const result = await saveLicenseNumber(licenseNumber || null);
+    if (!result.ok) {
+      console.error('[saveLicense] error:', result.error);
+      return;
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -575,18 +579,13 @@ function SettingsPageInner() {
 
   /* ---------------- NOTIFICATIONS ---------------- */
 
-  async function toggleSound() {
+  function toggleSound() {
+    // sound_notifications is a local-only preference — no backend endpoint in Etapa 1.
+    // Persisted in localStorage so it survives page reloads. If a backend column is
+    // added in a future phase, wire this to PUT /api/doctor/profile { sound_notifications }.
     const next = !soundEnabled;
     setSoundEnabled(next);
     localStorage.setItem('appt_sound_enabled', String(next));
-    if (doctorId) {
-      try {
-        const supabase = createClient();
-        await supabase.from('profiles').update({ sound_notifications: next }).eq('id', doctorId);
-      } catch {
-        /* columna puede no existir */
-      }
-    }
   }
 
   async function requestBrowserNotif() {
@@ -617,18 +616,14 @@ function SettingsPageInner() {
   /* ---------------- INTEGRATIONS ---------------- */
 
   async function saveIntegrations() {
-    const supabase = createClient();
-    const id = await getDevDoctorId();
-    if (!id) return;
-    const user = { id };
+    // FASE 6 STUB — no backend endpoint for whatsapp_token / whatsapp_phone_id yet.
+    // When the WhatsApp integration endpoint is available, replace this with:
+    //   await backendPut('/api/doctor/integrations/whatsapp', { whatsapp_token, whatsapp_phone_id })
+    // The Supabase write has been removed. Credentials are kept in component state only
+    // (they are NOT persisted until the FASE 6 endpoint is implemented).
     setIntegrationsLoading(true);
-    await supabase
-      .from('profiles')
-      .update({
-        whatsapp_token: whatsappToken || null,
-        whatsapp_phone_id: whatsappPhoneId || null,
-      })
-      .eq('id', user.id);
+    // Simulate async so the UI spinner shows consistently.
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
     setIntegrationsLoading(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -711,7 +706,11 @@ function SettingsPageInner() {
               <AvatarUploader
                 doctorId={doctorId}
                 currentUrl={avatarUrl}
-                onUploaded={(url) => setAvatarUrl(url)}
+                onUploaded={async (url) => {
+                  setAvatarUrl(url);
+                  // Persist the uploaded URL to the backend profile.
+                  await saveAvatarUrl(url);
+                }}
               />
             </div>
 

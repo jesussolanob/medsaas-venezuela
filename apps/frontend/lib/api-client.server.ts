@@ -159,6 +159,15 @@ export function backendPut<T>(
   return backendFetch<T>(path, { ...options, method: 'PUT', body });
 }
 
+/** PATCH /api/<path> */
+export function backendPatch<T>(
+  path: string,
+  body: unknown,
+  options: Omit<FetchOptions, 'method' | 'body'> = {},
+): Promise<Result<T, AppError>> {
+  return backendFetch<T>(path, { ...options, method: 'PATCH', body });
+}
+
 /** DELETE /api/<path> */
 export function backendDelete<T>(
   path: string,

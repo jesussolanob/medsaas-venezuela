@@ -31,6 +31,7 @@
  */
 
 import { backendGet, backendPut } from '@/lib/api-client.server';
+import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,9 @@ interface BackendDoctorProfile {
   officeAddress: string | null;
   city: string | null;
   avatarUrl: string | null;
+  logoUrl: string | null;
+  signatureUrl: string | null;
+  licenseNumber: string | null;
   plan: string | null;
   subscriptionStatus: string | null;
 }
@@ -90,6 +94,9 @@ export interface SettingsProfileView {
   office_address: string;
   city: string;
   avatar_url: string | null;
+  logo_url: string | null;
+  signature_url: string | null;
+  license_number: string | null;
   payment_methods: string[];
   payment_details: Record<string, Record<string, string>>;
   // Phone is part of the UI but not yet in the backend profile model.
@@ -122,6 +129,9 @@ function profileToView(b: BackendDoctorProfile): SettingsProfileView {
     office_address: b.officeAddress ?? '',
     city: b.city ?? '',
     avatar_url: b.avatarUrl ?? null,
+    logo_url: b.logoUrl ?? null,
+    signature_url: b.signatureUrl ?? null,
+    license_number: b.licenseNumber ?? null,
     payment_methods: b.paymentMethods ?? ['pago_movil', 'transferencia'],
     payment_details: (b.paymentDetails as Record<string, Record<string, string>>) ?? {},
     phone: '',
@@ -276,21 +286,177 @@ export async function saveSettingsSchedule(input: {
 }
 
 // ---------------------------------------------------------------------------
-// PENDING_STORAGE — operations that still use Supabase Storage / columns
+// Media URL persistence — storage upload already uses /api/storage/upload;
+// these actions persist the returned URL back to the backend profile.
 // ---------------------------------------------------------------------------
-// The following operations are intentionally NOT migrated here.
-// They remain in the page component with Supabase until the storage agent
-// implements the corresponding backend endpoints:
+
+/**
+ * Persist avatar_url after the file is uploaded to MinIO via /api/storage/upload.
+ * Replaces: no Supabase call (AvatarUploader had its own upload-only path).
+ *
+ * Backend: PUT /api/doctor/profile { avatar_url }
+ */
+export async function saveAvatarUrl(avatarUrl: string): Promise<ActionResult> {
+  const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', {
+    avatar_url: avatarUrl,
+  });
+
+  if (!result.ok) {
+    log.error('[saveAvatarUrl] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  revalidatePath('/doctor/settings');
+  return { ok: true };
+}
+
+/**
+ * Persist logo_url after the file is uploaded to MinIO via /api/storage/upload.
+ * Replaces: Supabase profiles.logo_url (PENDING_STORAGE previously).
+ *
+ * Backend: PUT /api/doctor/profile { logo_url }
+ */
+export async function saveLogoUrl(logoUrl: string): Promise<ActionResult> {
+  const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', {
+    logo_url: logoUrl,
+  });
+
+  if (!result.ok) {
+    log.error('[saveLogoUrl] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  revalidatePath('/doctor/settings');
+  return { ok: true };
+}
+
+/**
+ * Persist signature_url after the file is uploaded to MinIO via /api/storage/upload.
+ * Replaces: Supabase profiles.signature_url (PENDING_STORAGE previously).
+ *
+ * Backend: PUT /api/doctor/profile { signature_url }
+ */
+export async function saveSignatureUrl(signatureUrl: string | null): Promise<ActionResult> {
+  const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', {
+    signature_url: signatureUrl,
+  });
+
+  if (!result.ok) {
+    log.error('[saveSignatureUrl] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  revalidatePath('/doctor/settings');
+  return { ok: true };
+}
+
+/**
+ * Persist license_number.
+ * Replaces: supabase.from('profiles').update({ license_number }).eq('id', doctorId)
+ *
+ * Backend: PUT /api/doctor/profile { license_number }
+ */
+export async function saveLicenseNumber(licenseNumber: string | null): Promise<ActionResult> {
+  const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', {
+    license_number: licenseNumber || null,
+  });
+
+  if (!result.ok) {
+    log.error('[saveLicenseNumber] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Exchange rate settings — backend endpoints
+// ---------------------------------------------------------------------------
+
+/** Shape returned by GET /api/doctor/exchange-rate */
+export interface ExchangeRateView {
+  mode: 'usd_bcv' | 'eur_bcv' | 'custom';
+  rate: number | null;
+  label: string;
+  customRate: number | null;
+  customRateLabel: string | null;
+}
+
+/**
+ * Load the doctor's exchange rate configuration.
+ *
+ * Backend: GET /api/doctor/exchange-rate
+ */
+export async function loadExchangeRate(): Promise<ExchangeRateView | null> {
+  const result = await backendGet<ExchangeRateView>('/api/doctor/exchange-rate');
+
+  if (!result.ok) {
+    log.error('[loadExchangeRate] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return null;
+  }
+
+  return result.value;
+}
+
+/**
+ * Persist the doctor's exchange rate configuration.
+ *
+ * Backend: PUT /api/doctor/exchange-rate
+ *   body: { mode, custom_rate?, custom_rate_label? }
+ */
+export async function saveExchangeRate(input: {
+  mode: 'usd_bcv' | 'eur_bcv' | 'custom';
+  custom_rate?: number | null;
+  custom_rate_label?: string | null;
+}): Promise<ActionResult> {
+  const body: Record<string, unknown> = { mode: input.mode };
+  if (input.mode === 'custom') {
+    body.custom_rate = input.custom_rate ?? null;
+    body.custom_rate_label = input.custom_rate_label ?? null;
+  } else {
+    body.custom_rate = null;
+    body.custom_rate_label = null;
+  }
+
+  const result = await backendPut<unknown>('/api/doctor/exchange-rate', body);
+
+  if (!result.ok) {
+    log.error('[saveExchangeRate] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// PENDING — operations with no backend endpoint yet
+// ---------------------------------------------------------------------------
+// The following have no backend endpoint as of Etapa 1 and are NOT migrated:
 //
-//   uploadLogo()          → supabase.storage 'avatars' bucket, logo_url column
-//   uploadSignature()     → supabase.storage 'avatars' bucket, signature_url column
-//   removeSignature()     → supabase profiles.signature_url = null
-//   saveLicense()         → supabase profiles.license_number column
-//   saveIntegrations()    → supabase profiles.whatsapp_token / whatsapp_phone_id
-//   toggleSound()         → supabase profiles.sound_notifications (+ localStorage)
-//   profile.share_message_template → supabase profiles.share_message_template column
-//   AvatarUploader        → already uses its own Supabase-based upload
+//   saveIntegrations()    → whatsapp_token / whatsapp_phone_id → FASE 6 (no endpoint)
+//   toggleSound()         → sound_notifications → local preference (localStorage only)
+//   share_message_template → no backend column yet
+//   google_refresh_token  → OAuth integration (FASE 6)
 //
-// When the storage/integrations agent adds these endpoints, replace each
-// supabase call above with the corresponding backendPost/backendPut call.
+// These are annotated in the page component. No Supabase writes remain for
+// media/license fields — those are now handled by saveLogoUrl / saveSignatureUrl /
+// saveLicenseNumber above.
 // ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@
  */
 
 import { log } from '@/lib/logger';
-import { backendGet, type AppError } from '@/lib/api-client.server';
+import { backendGet, backendPatch, type AppError } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +58,48 @@ export type PaymentExportRow = {
 
 function appErrorToString(error: AppError): string {
   return error.message ?? `Error ${error.status}`;
+}
+
+// ---------------------------------------------------------------------------
+// Receipt / comprobante URL persistence
+// ---------------------------------------------------------------------------
+
+/** Result shape for mutation actions. */
+export interface ReceiptActionResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Persist receipt_url on a payment record after the file has been uploaded to
+ * MinIO via /api/storage/upload.
+ *
+ * Backend: PATCH /api/finances/payments/:paymentId/receipt
+ *   body: { receipt_url }
+ *
+ * Note: The cobros page identifies rows by the `payments.id` field (backfilled
+ * from getPayments()). This is the correct id for this endpoint.
+ *
+ * Replaces: supabase.from('appointments').update({ payment_receipt_url })
+ */
+export async function saveReceiptUrl(
+  paymentId: string,
+  receiptUrl: string,
+): Promise<ReceiptActionResult> {
+  const result = await backendPatch<unknown>(
+    `/api/finances/payments/${paymentId}/receipt`,
+    { receipt_url: receiptUrl },
+  );
+
+  if (!result.ok) {
+    log.error('[saveReceiptUrl] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: appErrorToString(result.error) };
+  }
+
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

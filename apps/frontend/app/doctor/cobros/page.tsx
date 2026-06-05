@@ -1,21 +1,13 @@
 'use client';
 
-// ETAPA 1: Supabase parcialmente eliminado.
+// ETAPA 1: Supabase eliminado de este módulo.
 // Migrado al backend:
 //   - openAddItemModal → getServicesForModal() (GET /api/doctor/services)
 //   - generateReceipt (profile) → getDoctorProfileForReceipt() (GET /api/doctor/profile)
 //   - exportExcel → getPaymentsForExport() (GET /api/finances/payments)
-//   - handleReceiptUpload → storage migrado a /api/storage/upload (backend MinIO). ✅
-// PENDIENTE (Fase 5):
-//   - Realtime refresh → Supabase channel mantenido intencionalmente.
-//   - appointments.payment_receipt_url update → pendiente endpoint backend PATCH.
+//   - handleReceiptUpload → storage via /api/storage/upload + PATCH /api/finances/payments/:id/receipt
+//   - Realtime refresh → removed (no WS in Etapa 1). fetchPayments() called after mutations.
 import { useState, useEffect, useCallback } from 'react';
-// Supabase client retained for:
-//   - Realtime subscription on payments table (real-time refresh).
-//   - appointments.payment_receipt_url update (no backend PATCH endpoint yet).
-// Storage uploads now use /api/storage/upload (backend MinIO). FASE 5: replace remaining DB writes.
-import { createClient } from '@/lib/supabase/client';
-import { getDoctorId } from '@/app/doctor/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
 import {
@@ -31,6 +23,7 @@ import {
   getServicesForModal,
   getDoctorProfileForReceipt,
   getPaymentsForExport,
+  saveReceiptUrl,
 } from './actions';
 import {
   Receipt,
@@ -111,7 +104,7 @@ export default function CobrosPage() {
     if (!selectedPayment) return;
     setUploadingReceipt(true);
     try {
-      // Upload via BFF proxy → backend MinIO.
+      // 1. Upload file to MinIO via BFF storage proxy.
       const fd = new FormData();
       fd.append('file', file);
       fd.append('kind', 'receipt');
@@ -122,15 +115,14 @@ export default function CobrosPage() {
       }
       const publicUrl: string = uploadJson.data.url;
 
-      // Persist the URL back to appointments.payment_receipt_url.
-      // TODO: replace with backend PATCH /api/appointments/:id once that endpoint exists.
-      const supabase = createClient();
-      await supabase
-        .from('appointments')
-        .update({ payment_receipt_url: publicUrl })
-        .eq('id', selectedPayment.id);
+      // 2. Persist the URL to the backend via PATCH /api/finances/payments/:id/receipt.
+      // selectedPayment.id is the payments.id (populated by getPayments() via the backend).
+      const saved = await saveReceiptUrl(selectedPayment.id, publicUrl);
+      if (!saved.ok) {
+        throw new Error(saved.error ?? 'Error al guardar comprobante en el servidor');
+      }
 
-      // Update local state.
+      // 3. Update local state so the UI reflects the change immediately.
       setSelectedPayment((prev) => (prev ? { ...prev, payment_receipt_url: publicUrl } : null));
       setPayments((prev) =>
         prev.map((p) =>
@@ -139,7 +131,7 @@ export default function CobrosPage() {
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
-      console.error('Error uploading receipt:', msg);
+      console.error('[handleReceiptUpload]', msg);
       alert('Error al subir el comprobante. ' + msg);
     } finally {
       setUploadingReceipt(false);
@@ -187,32 +179,9 @@ export default function CobrosPage() {
     fetchPayments();
   }, [fetchPayments]);
 
-  // REFRESH AUTOMATICO (ronda 15): si otra pestaña/vista cambia un pago en `payments`,
-  // suscribirse a Supabase Realtime y refrescar para evitar saldos stale.
-  useEffect(() => {
-    const supabase = createClient();
-    let channel: any = null;
-    (async () => {
-      const doctorId = await getDoctorId();
-      if (!doctorId) return;
-      const user = { id: doctorId };
-      // RONDA 24: nombre unico por instancia para que StrictMode/HMR no cree
-      // dos suscripciones con el mismo nombre acumulando handlers.
-      channel = supabase
-        .channel(`cobros-payments-watch-${user.id}-${Math.random().toString(36).slice(2, 8)}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
-          () => {
-            fetchPayments();
-          },
-        )
-        .subscribe();
-    })();
-    return () => {
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [fetchPayments]);
+  // NOTE (Etapa 1): Supabase Realtime was removed — no WebSocket layer in Etapa 1.
+  // fetchPayments() is called after every mutation (approve, add item, receipt upload)
+  // so the list stays fresh. Polling-based auto-refresh can be added in Fase 5 if needed.
 
   const filtered = payments.filter((p) => {
     if (!searchQuery.trim()) return true;

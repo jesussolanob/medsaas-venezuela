@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: exchange rate settings table
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import { loadExchangeRate, saveExchangeRate } from '../actions';
 import {
   ArrowLeft,
   Loader2,
@@ -36,23 +35,11 @@ export default function ExchangeRateSettingsPage() {
 
   async function load() {
     setLoading(true);
-    const supabase = createClient();
-    const id = await getDevDoctorId();
-    if (!id) {
-      setLoading(false);
-      return;
-    }
-    const user = { id };
-
-    const { data } = await supabase
-      .from('profiles')
-      .select('currency_mode, custom_rate, custom_rate_label')
-      .eq('id', user.id)
-      .single();
+    const data = await loadExchangeRate();
     if (data) {
-      setMode((data.currency_mode as Mode) || 'usd_bcv');
-      setCustomRate(data.custom_rate != null ? String(data.custom_rate) : '');
-      setCustomLabel(data.custom_rate_label || '');
+      setMode(data.mode);
+      setCustomRate(data.customRate != null ? String(data.customRate) : '');
+      setCustomLabel(data.customRateLabel ?? '');
     }
     setLoading(false);
   }
@@ -124,25 +111,20 @@ export default function ExchangeRateSettingsPage() {
         if (!Number.isFinite(n) || n <= 0)
           throw new Error('Ingresa un valor válido para la tasa personalizada');
       }
-      const supabase = createClient();
-      const id = await getDevDoctorId();
-      if (!id) throw new Error('No autenticado');
-      const user = { id };
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          currency_mode: mode,
-          custom_rate: mode === 'custom' ? Number(customRate) : null,
-          custom_rate_label: mode === 'custom' ? customLabel || null : null,
-        })
-        .eq('id', user.id);
-      if (error) throw error;
+      const result = await saveExchangeRate({
+        mode,
+        custom_rate: mode === 'custom' ? Number(customRate) : null,
+        custom_rate_label: mode === 'custom' ? customLabel || null : null,
+      });
+
+      if (!result.ok) throw new Error(result.error ?? 'Error al guardar');
 
       setMsg({ kind: 'ok', text: 'Configuración guardada' });
       loadPreview(mode);
-    } catch (e: any) {
-      setMsg({ kind: 'err', text: e.message || 'Error al guardar' });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al guardar';
+      setMsg({ kind: 'err', text: msg });
     } finally {
       setSaving(false);
     }
