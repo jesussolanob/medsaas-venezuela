@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
 import {
@@ -32,6 +31,13 @@ import PatientForm, { type PatientFormData } from '@/components/patient/PatientF
 import { addPatient } from '@/app/doctor/patients/actions';
 import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
+// MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
+import {
+  getDoctorProfile,
+  getTodayAppointments,
+  getDashboardFinanceSummary,
+  getDashboardAllTimeStats,
+} from '@/app/doctor/dashboard-actions';
 
 type Profile = {
   full_name: string;
@@ -113,168 +119,82 @@ export default function DoctorDashboard() {
     year: 'numeric',
   });
 
+  // ---------------------------------------------------------------------------
+  // MIGRATED (Etapa 1): all data fetching now uses NestJS backend server actions.
+  // Supabase (createClient, payments, appointments, patients, consultations) removed.
+  // Profile fetched from /api/doctor/profile (getDoctorProfile).
+  // Today's appointments from /api/appointments with date range filter.
+  // Monthly finances from /api/finances/summary?month=YYYY-MM.
+  // All-time stats (patients, consultations) from respective count endpoints.
+  //
+  // Supabase Realtime channel removed — re-fetch triggered by selectedMonth change.
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     async function fetchData() {
-      // MIGRATED (Etapa 1): auth identity from dev-auth stub.
-      // FASE 5: all data (profiles, payments, appointments, patients, consultations) stays on
-      // Supabase until backend summary endpoint covers dashboard KPIs.
-      const doctorId = await getDoctorId();
-      if (!doctorId) return;
-      const user = { id: doctorId };
-      const supabase = createClient(); // still needed for FASE 5 data calls
+      try {
+        // Build 'YYYY-MM' string for the selected month.
+        const monthStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}`;
 
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('full_name, specialty, email, professional_title')
-        .eq('id', user.id)
-        .single();
+        // Fetch all independent data in parallel for performance.
+        const [prof, appts, financeSummary, allTimeData] = await Promise.all([
+          getDoctorProfile(),
+          getTodayAppointments(),
+          getDashboardFinanceSummary(monthStr),
+          getDashboardAllTimeStats(),
+        ]);
 
-      // Get today's appointments
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+        // Map profile — DoctorProfile already uses snake_case matching the local Profile type.
+        if (prof) {
+          setProfile({
+            full_name: prof.full_name,
+            specialty: prof.specialty ?? null,
+            email: prof.email,
+            professional_title: prof.professional_title ?? null,
+          });
+        }
 
-      // L2 (2026-04-29): tambien traemos consultation_id para que click en cita
-      // del dashboard navegue a la consulta cuando exista (#11).
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select('id, patient_name, scheduled_at, status, consultation_id')
-        .eq('doctor_id', user.id)
-        .in('status', ['scheduled', 'confirmed', 'completed'])
-        .gte('scheduled_at', today.toISOString())
-        .lt('scheduled_at', tomorrow.toISOString())
-        .order('scheduled_at', { ascending: true });
-
-      const allAppointments: Appointment[] = (appointments || []).map((a) => ({
-        id: a.id,
-        patient_name: a.patient_name,
-        scheduled_at: a.scheduled_at,
-        status: a.status,
-        source: 'appointment',
-        consultation_id: (a as { consultation_id?: string | null }).consultation_id ?? null,
-      }));
-
-      // Get selected month's financial data
-      const monthStart = new Date(selectedMonth.year, selectedMonth.month, 1);
-      const monthEnd = new Date(selectedMonth.year, selectedMonth.month + 1, 0);
-      monthEnd.setHours(23, 59, 59, 999);
-
-      // Financial: ingresos = SUM(payments.amount_usd WHERE status='approved')
-      // (reingeniería 2026-04-22: source of truth = payments table)
-      const { data: approvedThisMonth } = await supabase
-        .from('payments')
-        .select('amount_usd')
-        .eq('doctor_id', user.id)
-        .eq('status', 'approved')
-        .gte('created_at', monthStart.toISOString())
-        .lte('created_at', monthEnd.toISOString());
-
-      let totalRevenue = (approvedThisMonth || []).reduce(
-        (s, p) => s + (Number(p.amount_usd) || 0),
-        0,
-      );
-      let appointmentCount = (approvedThisMonth || []).length;
-
-      // Fallback: si payments aún no tiene data (migración pendiente), suma desde appointments legacy
-      if (totalRevenue === 0 && appointmentCount === 0) {
-        const { data: completedAppts } = await supabase
-          .from('appointments')
-          .select('plan_price')
-          .eq('doctor_id', user.id)
-          .eq('status', 'completed')
-          .neq('source', 'google_calendar')
-          .gte('scheduled_at', monthStart.toISOString())
-          .lte('scheduled_at', monthEnd.toISOString());
-
-        totalRevenue = (completedAppts || []).reduce(
-          (sum, a) => sum + (Number(a.plan_price) || 0),
-          0,
+        // Map DashboardAppointment (camelCase) → local Appointment type (snake_case).
+        // patient_name falls back to empty string when null (masked in list view).
+        setTodayAppointments(
+          appts.map((a) => ({
+            id: a.id,
+            patient_name: a.patientName ?? '',
+            scheduled_at: a.scheduledAt,
+            status: a.status,
+            source: 'appointment' as const,
+            consultation_id: a.consultationId ?? null,
+          })),
         );
-        appointmentCount = (completedAppts || []).length;
+
+        // Map monthly finance summary → FinancialData.
+        // totalIncome = approved income for the month.
+        // consultationCount = approved consultations for the month.
+        setFinancialData({
+          total_revenue: financeSummary?.totalIncome ?? 0,
+          appointment_count: financeSummary?.consultationCount ?? 0,
+        });
+
+        // Map all-time stats.
+        // total_patients: total registered patients (meta.total from /api/patients).
+        // patients_attended: total consultations (meta.total from /api/consultations).
+        // total_revenue_lifetime: current-month income (lifetime endpoint pending).
+        setAllTimeStats({
+          total_revenue_lifetime: allTimeData.totalIncomeCurrentMonth,
+          total_patients: allTimeData.totalPatients,
+          patients_attended: allTimeData.totalConsultations,
+        });
+      } catch (error: unknown) {
+        // Non-fatal — dashboard shows zeros on error; user can refresh.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[DoctorDashboard] fetchData error:', message);
+      } finally {
+        setLoading(false);
       }
-
-      // ── All-time stats ─────────────────────────────────────────────────────
-      // Lifetime revenue: payments aprobados de toda la historia
-      const { data: allApproved } = await supabase
-        .from('payments')
-        .select('amount_usd')
-        .eq('doctor_id', user.id)
-        .eq('status', 'approved');
-
-      let totalRevenueLifetime = (allApproved || []).reduce(
-        (s, p) => s + (Number(p.amount_usd) || 0),
-        0,
-      );
-
-      // Fallback legacy
-      if (totalRevenueLifetime === 0) {
-        const { data: allCompleted } = await supabase
-          .from('appointments')
-          .select('plan_price')
-          .eq('doctor_id', user.id)
-          .eq('status', 'completed')
-          .neq('source', 'google_calendar');
-
-        totalRevenueLifetime = (allCompleted || []).reduce(
-          (sum, a) => sum + (Number(a.plan_price) || 0),
-          0,
-        );
-      }
-
-      // Total de pacientes únicos registrados por este doctor
-      const { count: patientCount } = await supabase
-        .from('patients')
-        .select('id', { count: 'exact', head: true })
-        .eq('doctor_id', user.id);
-
-      // Pacientes atendidos (tienen al menos una consulta aprobada/pendiente o cita completada)
-      const { data: consultedPatients } = await supabase
-        .from('consultations')
-        .select('patient_id')
-        .eq('doctor_id', user.id);
-      const uniquePatientsAttended = new Set(
-        (consultedPatients || []).map((c) => c.patient_id).filter(Boolean),
-      ).size;
-
-      setProfile(prof);
-      setTodayAppointments(allAppointments);
-      setFinancialData({ total_revenue: totalRevenue, appointment_count: appointmentCount });
-      setAllTimeStats({
-        total_revenue_lifetime: totalRevenueLifetime,
-        total_patients: patientCount || 0,
-        patients_attended: uniquePatientsAttended,
-      });
-      setLoading(false);
     }
-    fetchData();
-  }, [selectedMonth]);
 
-  // REFRESH AUTOMATICO (ronda 15): Supabase Realtime subscription — stays Supabase until Fase 5.
-  useEffect(() => {
-    const supabase = createClient();
-    let channel: any = null;
-    (async () => {
-      const doctorId = await getDoctorId();
-      if (!doctorId) return;
-      const user = { id: doctorId };
-      channel = supabase
-        .channel(`dashboard-payments-watch-${user.id}-${Math.random().toString(36).slice(2, 8)}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
-          () => {
-            // Forzar re-render trigger con cambio de selectedMonth a si mismo es feo;
-            // mejor recargar usando setSelectedMonth (mantiene el mes actual)
-            setSelectedMonth((prev) => ({ ...prev }));
-          },
-        )
-        .subscribe();
-    })();
-    return () => {
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, []);
+    void fetchData();
+  }, [selectedMonth]);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -358,7 +278,7 @@ export default function DoctorDashboard() {
       showToast({ type: 'success', message: 'Paciente creado' });
       setShowPatientForm(false);
       setNewAppointmentPatientId(res.patient_id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Re-throw para que PatientForm muestre el error inline
       throw err;
     } finally {

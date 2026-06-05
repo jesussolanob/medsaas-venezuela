@@ -14,24 +14,11 @@ import {
   UserX,
   Repeat,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: consultations with join, patients
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+// MIGRATED (Etapa 1): Supabase client removed. Data now fetched from NestJS backend.
+import { getReportConsultations, type ReportConsultationRecord } from './actions';
 import Link from 'next/link';
 
-type ConsultationRecord = {
-  id: string;
-  consultation_code: string;
-  patient_name: string;
-  patient_cedula?: string;
-  chief_complaint: string;
-  payment_method: string;
-  amount: number;
-  consultation_date: string;
-  status?: string;
-  payment_status?: string;
-  duration_minutes?: number;
-  patient_id?: string;
-};
+type ConsultationRecord = ReportConsultationRecord;
 
 export default function ReportsPage() {
   const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
@@ -50,47 +37,23 @@ export default function ReportsPage() {
   });
 
   useEffect(() => {
-    const supabase = createClient();
-    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: consultations join stays Supabase.
-    getDevDoctorId().then(async (id) => {
-      if (!id) return;
-      const user = { id };
-
-      const { data } = await supabase
-        .from('consultations')
-        .select(
-          'id, consultation_code, chief_complaint, payment_method, amount, consultation_date, status, payment_status, duration_minutes, patient_id, patients(full_name, id_number)',
-        )
-        .eq('doctor_id', user.id)
-        .order('consultation_date', { ascending: false });
-
-      const records: ConsultationRecord[] = (data ?? []).map((c) => ({
-        id: c.id,
-        consultation_code: c.consultation_code,
-        patient_name:
-          !Array.isArray(c.patients) && c.patients
-            ? (c.patients as any).full_name
-            : 'Paciente desconocido',
-        patient_cedula:
-          !Array.isArray(c.patients) && c.patients ? (c.patients as any).id_number : undefined,
-        chief_complaint: c.chief_complaint || '',
-        payment_method: c.payment_method || 'No especificado',
-        amount: c.amount || 0,
-        consultation_date: c.consultation_date,
-        status: c.status,
-        payment_status: c.payment_status,
-        duration_minutes: c.duration_minutes,
-        patient_id: c.patient_id,
-      }));
-      setConsultations(records);
-
-      // Calcular estadísticas
-      calculateStats(records, user.id, supabase);
-      setLoading(false);
-    });
+    // MIGRATED (Etapa 1): replaced Supabase consultations+join query with backend server action.
+    // Patient name and cedula are joined server-side in getReportConsultations().
+    // duration_minutes defaults to 30 min (not yet in backend schema).
+    getReportConsultations()
+      .then((records) => {
+        setConsultations(records);
+        calculateStats(records);
+        setLoading(false);
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[ReportsPage] fetch error:', message);
+        setLoading(false);
+      });
   }, []);
 
-  const calculateStats = async (records: ConsultationRecord[], userId: string, supabase: any) => {
+  const calculateStats = (records: ConsultationRecord[]) => {
     // 1. Horas de consulta por semana
     try {
       if (records.length > 0) {
@@ -111,9 +74,10 @@ export default function ReportsPage() {
     }
 
     // 2. Tasa de no-show
+    // Uses the approximated status field set in getReportConsultations().
     try {
       const total = records.length;
-      let noShow = records.filter((c) => {
+      const noShow = records.filter((c) => {
         if (c.status) return c.status === 'cancelled' || c.status === 'no_show';
         return c.payment_status !== 'paid' && new Date(c.consultation_date) < new Date();
       }).length;
@@ -124,20 +88,15 @@ export default function ReportsPage() {
     }
 
     // 3. Retención de pacientes
+    // Computed client-side from the full list (no extra endpoint needed).
     try {
-      const { data: allConsultations } = await supabase
-        .from('consultations')
-        .select('patient_id')
-        .eq('doctor_id', userId);
-
-      if (allConsultations && allConsultations.length > 0) {
-        const patientCounts = {} as Record<string, number>;
-        allConsultations.forEach((c: any) => {
+      if (records.length > 0) {
+        const patientCounts: Record<string, number> = {};
+        for (const c of records) {
           if (c.patient_id) {
-            patientCounts[c.patient_id] = (patientCounts[c.patient_id] || 0) + 1;
+            patientCounts[c.patient_id] = (patientCounts[c.patient_id] ?? 0) + 1;
           }
-        });
-
+        }
         const totalPatients = Object.keys(patientCounts).length;
         const returning = Object.values(patientCounts).filter((count) => count >= 2).length;
         const pct = totalPatients > 0 ? ((returning / totalPatients) * 100).toFixed(0) : '0';
@@ -164,10 +123,7 @@ export default function ReportsPage() {
 
   const recalculateStatsWithFilter = (from: string, to: string) => {
     const filtered = getFilteredRecords(consultations, from, to);
-    const supabase = createClient();
-    getDevDoctorId().then((id) => {
-      if (id) calculateStats(filtered, id, supabase);
-    });
+    calculateStats(filtered);
   };
 
   const applyFilter = () => {
