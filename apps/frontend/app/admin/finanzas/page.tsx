@@ -7,92 +7,46 @@
  * Distinto del /doctor/finances (que es del doctor individual).
  */
 
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { redirect } from 'next/navigation'
+import { backendGet } from '@/lib/api-client.server'
 import { TrendingUp, DollarSign, ClipboardList, CheckCircle2 } from 'lucide-react'
 import { PageHead, StatCard, Card, StatusPill } from '@/components/dh'
 
 export const revalidate = 60
 
 export default async function AdminFinanzasPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const admin = createAdminClient()
-  const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'super_admin') redirect('/doctor')
-
-  // Stats agregados de pagos de suscripción
-  const { data: approvedPayments } = await admin
-    .from('subscription_payments')
-    .select('id, amount_usd, amount_bs, duration_months, method, reference_number, created_at, reviewed_at, profiles!subscription_payments_doctor_id_fkey(full_name, specialty)')
-    .eq('status', 'approved')
-    .order('reviewed_at', { ascending: false })
-    .limit(20)
-
-  const allApproved = approvedPayments || []
-
-  // Ingresos MTD (mes actual)
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0)
-
-  const { data: mtdData } = await admin
-    .from('subscription_payments')
-    .select('amount_usd')
-    .eq('status', 'approved')
-    .gte('reviewed_at', startOfMonth.toISOString())
-
-  const { data: prevMtdData } = await admin
-    .from('subscription_payments')
-    .select('amount_usd')
-    .eq('status', 'approved')
-    .gte('reviewed_at', startOfPrevMonth.toISOString())
-    .lte('reviewed_at', endOfPrevMonth.toISOString())
-
-  const mtdRevenue = (mtdData || []).reduce((s, p) => s + Number(p.amount_usd || 0), 0)
-  const prevMtdRevenue = (prevMtdData || []).reduce((s, p) => s + Number(p.amount_usd || 0), 0)
-  const momChange = prevMtdRevenue > 0 ? Math.round(((mtdRevenue - prevMtdRevenue) / prevMtdRevenue) * 100) : (mtdRevenue > 0 ? 100 : 0)
-
-  // Pendientes
-  const { data: pendingData } = await admin
-    .from('subscription_payments')
-    .select('amount_usd')
-    .eq('status', 'pending')
-  const pendingTotal = (pendingData || []).reduce((s, p) => s + Number(p.amount_usd || 0), 0)
-  const pendingCount = (pendingData || []).length
-
-  // Total transacciones aprobadas
-  const { count: totalApproved } = await admin
-    .from('subscription_payments')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'approved')
-
-  // Distribución por mes (últimos 6 meses) para el chart
-  const { data: last6Data } = await admin
-    .from('subscription_payments')
-    .select('amount_usd, reviewed_at')
-    .eq('status', 'approved')
-    .gte('reviewed_at', new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString())
-
-  const monthBuckets: { label: string; total: number }[] = []
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const monthLabel = d.toLocaleDateString('es-VE', { month: 'short' })
-    const start = d.getTime()
-    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime()
-    const total = (last6Data || [])
-      .filter(p => {
-        const t = p.reviewed_at ? new Date(p.reviewed_at).getTime() : 0
-        return t >= start && t < end
-      })
-      .reduce((s, p) => s + Number(p.amount_usd || 0), 0)
-    monthBuckets.push({ label: monthLabel, total })
+  // ETAPA 1 — agregados del módulo NestJS `billing` (`GET /api/admin/finance-stats`) vía el BFF.
+  // Sin Supabase. RBAC (super_admin) lo aplica `proxy.ts` + el backend.
+  interface FinanceStats {
+    mtdRevenue: number
+    prevMtdRevenue: number
+    momChange: number
+    pendingTotal: number
+    pendingCount: number
+    totalApproved: number
+    monthBuckets: { label: string; total: number }[]
+    recentApproved: { id: string; doctorName: string; amountUsd: number; method: string; reviewedAt: string | null }[]
   }
+  const statsRes = await backendGet<FinanceStats>('/api/admin/finance-stats')
+  const stats = statsRes.ok ? statsRes.value : null
+
+  const mtdRevenue = stats?.mtdRevenue ?? 0
+  const prevMtdRevenue = stats?.prevMtdRevenue ?? 0
+  const momChange = stats?.momChange ?? 0
+  const pendingTotal = stats?.pendingTotal ?? 0
+  const pendingCount = stats?.pendingCount ?? 0
+  const totalApproved = stats?.totalApproved ?? 0
+  const monthBuckets = stats?.monthBuckets ?? []
   const maxMonthTotal = Math.max(1, ...monthBuckets.map(b => b.total))
+
+  // Transacciones recientes — mapeadas a la forma que consume el JSX existente.
+  const allApproved = (stats?.recentApproved ?? []).map(t => ({
+    id: t.id,
+    amount_usd: t.amountUsd,
+    method: t.method,
+    reviewed_at: t.reviewedAt,
+    created_at: t.reviewedAt,
+    profiles: { full_name: t.doctorName, specialty: null as string | null },
+  }))
 
   return (
     <div>
