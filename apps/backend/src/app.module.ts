@@ -30,6 +30,7 @@ import { OfficesModule } from './modules/offices/offices.module';
 import { DoctorTemplatesModule } from './modules/doctor-templates/doctor-templates.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { MessagesModule } from './modules/messages/messages.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { StorageModule } from './modules/storage/storage.module';
     DoctorTemplatesModule,
     RemindersModule,
     StorageModule,
+    MessagesModule,
   ],
   controllers: [HealthController],
   providers: [
