@@ -225,3 +225,42 @@ deprecado.
 | Endpoint NestJS | Método | Roles | Body | Caché | Reemplaza a (legacy) |
 | --------------- | ------ | ----- | ---- | ----- | -------------------- |
 | _(pendiente)_   |        |       |      |       |                      |
+
+## Módulos nuevos — EPIC eliminar Supabase (2026-06-05)
+
+### `offices` — consultorios del doctor (mig 20260605000000)
+
+Controller `@Controller('doctor/offices')`, `DevAuthGuard`, doctor-scoped anti-IDOR (doctorId = user.sub).
+Tabla `doctor_offices` (name, address, city, phone, schedule JSONB [{day,enabled,start,end} con **day 0=Lunes**],
+slot_duration, buffer_minutes, is_active).
+
+| Endpoint | Método | Notas |
+| --- | --- | --- |
+| `/api/doctor/offices` | GET | Lista offices del doctor (created_at asc). |
+| `/api/doctor/offices` | POST | Crea. Zod CreateOfficeDto (name req; schedule/slot_duration/buffer con defaults). |
+| `/api/doctor/offices/:id` | PUT | Actualiza (ownership; cross-doctor → 404). |
+| `/api/doctor/offices/:id` | DELETE | Elimina (204). |
+| `/api/doctor/offices/:id/toggle` | PATCH | Alterna is_active. |
+
+**`GET /api/booking/:doctorId/slots?date=YYYY-MM-DD` reconstruido:** genera slots desde los offices ACTIVOS del
+doctor (no doctor_schedules). Para el weekday (offset day 0=Lunes vía `(getUTCDay+6)%7`), por cada office activo con
+ese día enabled genera slots start→end paso `slot_duration+buffer`, une+dedup, marca occupied por citas activas.
+Respuesta sin cambios `{date, slots:[{time, available}]}`. Frontend cableado: `/doctor/offices` (actions thin-proxy).
+
+### `doctor-templates` — config plantillas PDF (mig 20260605000001)
+
+Controller `@Controller('doctor/templates')`, `DevAuthGuard`, doctor-scoped. Tabla `doctor_templates`
+(UNIQUE doctor_id+template_type; types: informe|recipe|prescripciones|reposo; logo_url/signature_url solo string,
+uploads=Fase 5).
+
+| Endpoint | Método | Notas |
+| --- | --- | --- |
+| `/api/doctor/templates` | GET | Todas las plantillas del doctor (puede ser []). |
+| `/api/doctor/templates/:templateType` | PUT | Upsert por (doctor, type). Tipo inválido → 400 INVALID_TEMPLATE_TYPE. |
+
+### `reminders` — recordatorios (mig 20260605000002, EN CURSO) — envío=bloqueante Fase 6
+
+Tablas `reminders_settings` (UNIQUE doctor_id) + `reminders_queue` (monitor, vacía en Etapa 1).
+Doctor `@Controller('doctor/reminders')`: GET/PUT `/settings` (upsert), GET `/queue`.
+Admin `@Controller('admin/reminders')` super_admin: GET `/queue` enriquecido con doctor_name — **NUNCA expone PII
+de pacientes** (no descifra patient.full_name).

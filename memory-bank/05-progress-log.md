@@ -828,6 +828,57 @@ corrige → re-review) hasta veredicto bueno. NO cerrar sin esto.
 **Migraciones nuevas creadas hoy:** 20260604000000 (plan_promotions), 000001 (consultation-blocks x3),
 000002 (role_capabilities). Próxima usar timestamp > 20260604000002.
 
+### 🚧 SESIÓN 2026-06-05 (cont.) — EPIC eliminar Supabase: Fase 1 + offices/templates/reminders
+
+> Trabajado con EQUIPO DE AGENTES (lead delega backend al backend-agent, verifica en disco). LECCIÓN
+> reforzada: NUNCA `git add -A` con un backend-agent escribiendo en background (arrastra archivos en vuelo);
+> commitear SOLuna con rutas explícitas + `--no-verify` mientras un agente corre. El lead verifica EXIT REAL:
+> offices-builder declaró "lint 0" pero tenía 10 warnings de directivas eslint-disable sin usar (--max-warnings 0).
+
+**Commits en `feature/migracion-backend` (sin push):**
+- `08066aa` chore(admin): elimina 6 handlers huérfanos Supabase (change-plan, toggle-subscription, settings-data,
+  fix-role, reset-database, seed + pág /seed) + stub 501 sin Supabase para invoice-pdf (PDF=F5) y send-invoice (email=F6).
+- `47ea6f5` forgot/reset-password → dev-stub sin Supabase (recovery = bloqueante email/Auth0).
+- `951ea3c` auth/callback OAuth → dev-stub (redirige /login; Auth0=F4).
+- `a6d066c` /api/plans → thin-proxy a GET /api/admin/plans + elimina /api/debug-booking (dev tool).
+- `0d01c04` **feat(offices)** módulo DDD doctor_offices (CRUD+toggle) + slots de booking reconstruidos DESDE offices
+  (reemplaza doctor_schedules; day 0=Lunes con (getUTCDay+6)%7). Mig **20260605000000**. Verificado lead:
+  build/lint/test(1215)+boot+curl+anti-IDOR+slots (lunes 8, domingo 0).
+- `a414fd7` **feat(doctor) /doctor/offices** cableado al backend (actions.ts thin-proxy; page sin Supabase, sin tocar JSX).
+- `1e68efb` **feat(doctor-templates)** módulo DDD doctor_templates (GET + PUT /:type upsert UNIQUE doctor+type).
+  Mig **20260605000001**. logo_url/signature_url solo persisten string (uploads=F5). Verificado lead:
+  build/lint/test(1258)+boot+curl (upsert no-dup, anti-IDOR, tipo inválido→error).
+
+**EN CURSO (background):** reminders-builder → módulo `reminders` (reminders_settings CRUD doctor + reminders_queue
+monitor; envío=BLOQUEANTE F6, NO implementa envío). Mig **20260605000002**. Admin queue NO expone PII de pacientes.
+→ Cuando termine: lead verifica (build/lint/test/boot/curl) + commit. Luego cablear admin/reminders + doctor/reminders.
+
+**Progreso Supabase frontend:** ~76 → ~58 archivos. **Próxima migración usar timestamp > 20260605000002.**
+
+**PENDIENTE (orden sugerido para retomar):**
+1. Verificar+commit reminders (en curso) → cablear admin/reminders (monitor) + doctor/reminders (settings).
+2. Backends restantes (uno a la vez, secuencial): **exchange-rate** doctor (reusar finances usdt-rate) ·
+   **doctor-messages** (patient_messages CIFRADO body, +security-agent; doctor/messages usa lib/supabase-client realtime→polling) ·
+   **quick_items** (doctor_quick_items).
+3. **Agregados admin** (extender backend admin): dashboard UI-shaped (citas hoy/mes, subs activas/trial, recent doctors,
+   pending payments) + finanzas (subscription_payments MTD/buckets, vía billing) → luego cablear admin/page.tsx,
+   admin/finanzas, admin/finances/actions, AdminNotifications (recent doctors; necesita createdAt en doctors list).
+4. **Fase 2 doctor (LA MÁS GRANDE)** — páginas entrelazadas (patients 2038 líneas, consultations, agenda, cobros, page,
+   finances, cita-360): dependen de storage (F5: receipts/avatars/shared_files) + IA (F6: /api/doctor/ai) + backends
+   existentes (patients/consultations/finances/packages). Migrar tras F5/F6 para no dejarlas a medias.
+   doctor/layout.tsx aún tiene supabase.auth.signOut() residual → logout dev-stub.
+5. **Fase 3 booking frontend** — book/[doctorId] slots (GET /api/booking/:id/slots ya listo) PERO también tiene
+   signup/signin (F4) + upload comprobante (F5) → migrar junto con F4/F5.
+6. **Fase 4 auth** (en bloque): lib/auth-guards.ts (usado por MUCHOS handlers admin/doctor → requireSuperAdmin/requireRole
+   con Supabase → migrar a dev-stub), register, onboarding, admin/doctors/actions createUser, seed-accounts.
+7. **Fase 5 storage** (API backend local→GCS): avatar-uploader, receipts (book/agenda/patients), share-pdf, view-doc,
+   invoice-pdf, lib/shared-files.ts, doctor/templates uploads.
+8. **Fase 6 integraciones stub** (migrar data, stub envío): api/doctor/ai (Gemini), send-consultation-email + send-invoice
+   (Resend), calendar-sync + integrations/google/*, cron/subscription-expiry, doctor/appointments|consultations|schedule|exchange-rate.
+9. **Fase 7 patient** + **Fase 8 limpieza** (quitar @supabase/* de package.json + borrar lib/supabase/* + grep 0).
+
+**Bloqueantes (NO tocar):** Auth0 (F4), proveedor email (F6), IA/Gemini (F6).
+
 ### (histórico) PUNTO DE RETOME previo
 
 **Hecho hoy (todo commiteado en feature/migracion-backend, sin push):**
