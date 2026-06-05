@@ -21,6 +21,12 @@ export interface DoctorProfileCreateParams {
   avatarUrl: string | null;
   plan: string | null;
   subscriptionStatus: string | null;
+  logoUrl: string | null;
+  signatureUrl: string | null;
+  licenseNumber: string | null;
+  currencyMode: string | null;
+  customRate: number | null;
+  customRateLabel: string | null;
 }
 
 export interface DoctorProfileUpdateParams {
@@ -32,6 +38,9 @@ export interface DoctorProfileUpdateParams {
   officeAddress?: string | null;
   city?: string | null;
   avatarUrl?: string | null;
+  logoUrl?: string | null;
+  signatureUrl?: string | null;
+  licenseNumber?: string | null;
 }
 
 export class DoctorProfile {
@@ -50,6 +59,12 @@ export class DoctorProfile {
   readonly avatarUrl: string | null;
   readonly plan: string | null;
   readonly subscriptionStatus: string | null;
+  readonly logoUrl: string | null;
+  readonly signatureUrl: string | null;
+  readonly licenseNumber: string | null;
+  readonly currencyMode: string | null;
+  readonly customRate: number | null;
+  readonly customRateLabel: string | null;
 
   constructor(params: DoctorProfileCreateParams) {
     this.id = params.id;
@@ -67,6 +82,12 @@ export class DoctorProfile {
     this.avatarUrl = params.avatarUrl;
     this.plan = params.plan;
     this.subscriptionStatus = params.subscriptionStatus;
+    this.logoUrl = params.logoUrl;
+    this.signatureUrl = params.signatureUrl;
+    this.licenseNumber = params.licenseNumber;
+    this.currencyMode = params.currencyMode;
+    this.customRate = params.customRate;
+    this.customRateLabel = params.customRateLabel;
   }
 
   /** Public booking link for sharing with patients. */

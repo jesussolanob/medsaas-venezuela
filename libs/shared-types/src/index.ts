@@ -39,3 +39,5 @@ export * from './dtos/create-office.dto';
 export * from './dtos/upsert-doctor-template.dto';
 export * from './dtos/upsert-reminders-settings.dto';
 export * from './dtos/send-message.dto';
+export * from './dtos/update-doctor-exchange-rate.dto';
+export * from './dtos/attach-payment-receipt.dto';

@@ -11,6 +11,8 @@ import type {
   ConsultationSummary,
 } from '../../../domain/repositories/finance.repository';
 import { FinancialTransactionModel } from '../models/financial-transaction.model';
+import { TransactionNotFoundError } from '../../../domain/errors/transaction-not-found.error';
+import { ForbiddenDomainError } from '../../../domain/errors/forbidden-domain.error';
 
 /** Raw row returned by the consultation aggregation query. */
 interface ConsultationAggRow {
@@ -127,6 +129,63 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
 
   async sumExpenses(doctorId: string, month: string): Promise<{ total: number; count: number }> {
     return this.sumByType(doctorId, month, 'expense');
+  }
+
+  async delete(id: string, doctorId: string): Promise<void> {
+    const row = await this.txModel.findOne({
+      where: { id } as WhereOptions,
+    });
+
+    if (!row) throw new TransactionNotFoundError();
+    if (row.doctorId !== doctorId) throw new ForbiddenDomainError('Transaction does not belong to this doctor');
+
+    await this.txModel.destroy({
+      where: { id } as WhereOptions,
+    });
+  }
+
+  async lifetimeIncome(doctorId: string): Promise<{ total: number; consultationCount: number }> {
+    // Sum approved consultations (all time) and manual income (all time) in parallel.
+    const [consultationRows, incomeRows] = await Promise.all([
+      this.sequelize.query<{ approved_total: string | null; approved_count: string | null }>(
+        `SELECT
+           COALESCE(SUM(amount), 0) AS approved_total,
+           COUNT(*)::text           AS approved_count
+         FROM consultations
+         WHERE doctor_id       = :doctorId
+           AND payment_status  = 'approved'`,
+        {
+          replacements: { doctorId },
+          type: QueryTypes.SELECT,
+        },
+      ),
+      this.sequelize.query<{ total: string | null }>(
+        `SELECT COALESCE(SUM(amount), 0) AS total
+         FROM financial_transactions
+         WHERE doctor_id = :doctorId
+           AND type      = 'income'`,
+        {
+          replacements: { doctorId },
+          type: QueryTypes.SELECT,
+        },
+      ),
+    ]);
+
+    const consultationRow = consultationRows[0];
+    const incomeRow = incomeRows[0];
+
+    const consultationTotal = consultationRow
+      ? parseFloat(consultationRow.approved_total ?? '0')
+      : 0;
+    const consultationCount = consultationRow
+      ? parseInt(consultationRow.approved_count ?? '0', 10)
+      : 0;
+    const manualIncome = incomeRow ? parseFloat(incomeRow.total ?? '0') : 0;
+
+    return {
+      total: parseFloat((consultationTotal + manualIncome).toFixed(2)),
+      consultationCount,
+    };
   }
 
   // ---------------------------------------------------------------------------

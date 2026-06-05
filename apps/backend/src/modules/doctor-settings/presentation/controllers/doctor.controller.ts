@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import {
@@ -26,6 +27,8 @@ import {
   type CreatePricingPlanDto,
   UpdatePricingPlanDtoSchema,
   type UpdatePricingPlanDto,
+  UpdateDoctorExchangeRateDtoSchema,
+  type UpdateDoctorExchangeRateDto,
 } from '@delta/shared-types';
 
 import { GetDoctorProfileUseCase } from '../../application/use-cases/doctor-settings/get-doctor-profile.use-case';
@@ -44,9 +47,12 @@ import { GetServicesUseCase } from '../../application/use-cases/doctor-settings/
 import { CreateServiceUseCase } from '../../application/use-cases/doctor-settings/create-service.use-case';
 import { UpdateServiceUseCase } from '../../application/use-cases/doctor-settings/update-service.use-case';
 import { DeleteServiceUseCase } from '../../application/use-cases/doctor-settings/delete-service.use-case';
+import { GetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
+import { SetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
 import type { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import type { DoctorScheduleParams } from '../../domain/value-objects/doctor-schedule.vo';
 import type { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
+import type { DoctorExchangeRateOutput } from '../../application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -82,6 +88,8 @@ export class DoctorController {
     private readonly createService: CreateServiceUseCase,
     private readonly updateService: UpdateServiceUseCase,
     private readonly deleteService: DeleteServiceUseCase,
+    private readonly getDoctorExchangeRate: GetDoctorExchangeRateUseCase,
+    private readonly setDoctorExchangeRate: SetDoctorExchangeRateUseCase,
   ) {}
 
   /** GET /api/doctor/profile */
@@ -107,6 +115,9 @@ export class DoctorController {
       officeAddress: dto.office_address,
       city: dto.city,
       avatarUrl: dto.avatar_url,
+      logoUrl: dto.logo_url,
+      signatureUrl: dto.signature_url,
+      licenseNumber: dto.license_number,
     });
     return { success: true, data: result };
   }
@@ -153,6 +164,41 @@ export class DoctorController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<SubscriptionInfoOutput>> {
     const result = await this.getSubscription.execute(user.sub);
+    return { success: true, data: result };
+  }
+
+  /**
+   * GET /api/doctor/exchange-rate
+   * Returns the doctor's effective exchange rate (custom or global admin rate).
+   */
+  @Get('exchange-rate')
+  async exchangeRate(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<DoctorExchangeRateOutput>> {
+    const result = await this.getDoctorExchangeRate.execute(user.sub);
+    return { success: true, data: result };
+  }
+
+  /**
+   * PUT /api/doctor/exchange-rate
+   * Updates the doctor's exchange-rate preference (mode + optional custom rate).
+   */
+  @Put('exchange-rate')
+  async updateExchangeRate(
+    @Body(new ZodValidationPipe(UpdateDoctorExchangeRateDtoSchema))
+    dto: UpdateDoctorExchangeRateDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<DoctorExchangeRateOutput>> {
+    if (dto.mode === 'custom' && (dto.custom_rate == null || dto.custom_rate <= 0)) {
+      throw new BadRequestException(
+        'custom_rate is required and must be > 0 when mode is "custom"',
+      );
+    }
+    const result = await this.setDoctorExchangeRate.execute(user.sub, {
+      mode: dto.mode,
+      customRate: dto.custom_rate ?? null,
+      customRateLabel: dto.custom_rate_label ?? null,
+    });
     return { success: true, data: result };
   }
 

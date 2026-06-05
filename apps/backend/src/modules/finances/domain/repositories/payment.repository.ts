@@ -106,6 +106,14 @@ export interface IPaymentRepository {
   listItems(paymentId: string, doctorId: string): Promise<PaymentItem[]>;
 
   /**
+   * Attaches a payment receipt URL to a payment.
+   * SECURITY: doctorId enforces ownership — cannot update another doctor's payment.
+   * Throws PaymentNotFoundError (404) when not found.
+   * Throws PaymentNotOwnedError (403) when ownership fails.
+   */
+  attachReceiptUrl(paymentId: string, doctorId: string, receiptUrl: string): Promise<Payment>;
+
+  /**
    * Creates a new payment record. Used by CreateBookingUseCase.
    */
   create(params: {

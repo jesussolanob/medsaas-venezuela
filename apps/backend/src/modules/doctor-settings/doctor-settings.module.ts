@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
+import { FinancesModule } from '../finances/finances.module';
 
 // Models
 import { DoctorProfileModel } from './infrastructure/database/models/doctor-profile.model';
@@ -33,6 +34,8 @@ import { GetServicesUseCase } from './application/use-cases/doctor-settings/get-
 import { CreateServiceUseCase } from './application/use-cases/doctor-settings/create-service.use-case';
 import { UpdateServiceUseCase } from './application/use-cases/doctor-settings/update-service.use-case';
 import { DeleteServiceUseCase } from './application/use-cases/doctor-settings/delete-service.use-case';
+import { GetDoctorExchangeRateUseCase } from './application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
+import { SetDoctorExchangeRateUseCase } from './application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
 
 // Controller
 import { DoctorController } from './presentation/controllers/doctor.controller';
@@ -59,6 +62,8 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
       PlanFeaturesModel,
       PricingPlanModel,
     ]),
+    // Import FinancesModule to access USDT_RATE_STORE for exchange-rate resolution.
+    FinancesModule,
   ],
   controllers: [DoctorController],
   providers: [
@@ -98,6 +103,8 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     CreateServiceUseCase,
     UpdateServiceUseCase,
     DeleteServiceUseCase,
+    GetDoctorExchangeRateUseCase,
+    SetDoctorExchangeRateUseCase,
   ],
 })
 export class DoctorSettingsModule {}

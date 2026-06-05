@@ -16,6 +16,12 @@ const BASE_PARAMS = {
   avatarUrl: null,
   plan: 'professional',
   subscriptionStatus: 'active',
+  logoUrl: null,
+  signatureUrl: null,
+  licenseNumber: null,
+  currencyMode: 'usd_bcv',
+  customRate: null,
+  customRateLabel: null,
 };
 
 describe('DoctorProfile entity', () => {
@@ -71,5 +77,31 @@ describe('DoctorProfile entity', () => {
     const details = { pago_movil: '04121234567', zelle: 'doc@zelle.com' };
     const profile = DoctorProfile.create({ ...BASE_PARAMS, paymentDetails: details });
     expect(profile.paymentDetails).toEqual(details);
+  });
+
+  it('stores logo, signature, and license number', () => {
+    const profile = DoctorProfile.create({
+      ...BASE_PARAMS,
+      logoUrl: 'https://cdn.example.com/logo.png',
+      signatureUrl: 'https://cdn.example.com/sig.png',
+      licenseNumber: 'MED-123456',
+    });
+
+    expect(profile.logoUrl).toBe('https://cdn.example.com/logo.png');
+    expect(profile.signatureUrl).toBe('https://cdn.example.com/sig.png');
+    expect(profile.licenseNumber).toBe('MED-123456');
+  });
+
+  it('stores exchange-rate settings', () => {
+    const profile = DoctorProfile.create({
+      ...BASE_PARAMS,
+      currencyMode: 'custom',
+      customRate: 48.75,
+      customRateLabel: 'Clínica Delta',
+    });
+
+    expect(profile.currencyMode).toBe('custom');
+    expect(profile.customRate).toBe(48.75);
+    expect(profile.customRateLabel).toBe('Clínica Delta');
   });
 });

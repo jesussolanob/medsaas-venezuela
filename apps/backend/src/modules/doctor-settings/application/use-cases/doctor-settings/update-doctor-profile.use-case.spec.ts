@@ -24,6 +24,12 @@ function makeProfile(
     avatarUrl: null,
     plan: 'basic',
     subscriptionStatus: 'active',
+    logoUrl: null,
+    signatureUrl: null,
+    licenseNumber: null,
+    currencyMode: 'usd_bcv',
+    customRate: null,
+    customRateLabel: null,
     ...overrides,
   });
 }
@@ -36,6 +42,7 @@ describe('UpdateDoctorProfileUseCase', () => {
     mockRepo = {
       findByDoctorId: jest.fn(),
       update: jest.fn(),
+      updateExchangeRate: jest.fn(),
     };
     useCase = new UpdateDoctorProfileUseCase(mockRepo);
   });

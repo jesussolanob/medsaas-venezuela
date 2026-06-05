@@ -19,6 +19,8 @@ import { RecordExpenseUseCase } from './application/use-cases/finances/record-ex
 import { ListTransactionsUseCase } from './application/use-cases/finances/list-transactions.use-case';
 import { GetUsdtRateUseCase } from './application/use-cases/finances/get-usdt-rate.use-case';
 import { UpdateUsdtRateUseCase } from './application/use-cases/finances/update-usdt-rate.use-case';
+import { DeleteTransactionUseCase } from './application/use-cases/finances/delete-transaction.use-case';
+import { GetLifetimeIncomeUseCase } from './application/use-cases/finances/get-lifetime-income.use-case';
 
 // Use cases — payments
 import { ListPaymentsUseCase } from './application/use-cases/payments/list-payments.use-case';
@@ -27,6 +29,7 @@ import { UpdatePaymentStatusUseCase } from './application/use-cases/payments/upd
 import { AddPaymentItemUseCase } from './application/use-cases/payments/add-payment-item.use-case';
 import { RemovePaymentItemUseCase } from './application/use-cases/payments/remove-payment-item.use-case';
 import { ListPaymentItemsUseCase } from './application/use-cases/payments/list-payment-items.use-case';
+import { AttachPaymentReceiptUseCase } from './application/use-cases/payments/attach-payment-receipt.use-case';
 
 // Controllers
 import { FinancesController } from './presentation/controllers/finances.controller';
@@ -81,23 +84,27 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
     // Guards
     RolesGuard,
 
-    // Use cases — finances (existing)
+    // Use cases — finances
     GetFinancialSummaryUseCase,
     RecordIncomeUseCase,
     RecordExpenseUseCase,
     ListTransactionsUseCase,
     GetUsdtRateUseCase,
     UpdateUsdtRateUseCase,
+    DeleteTransactionUseCase,
+    GetLifetimeIncomeUseCase,
 
-    // Use cases — payments (new)
+    // Use cases — payments
     ListPaymentsUseCase,
     GetPaymentTotalsUseCase,
     UpdatePaymentStatusUseCase,
     AddPaymentItemUseCase,
     RemovePaymentItemUseCase,
     ListPaymentItemsUseCase,
+    AttachPaymentReceiptUseCase,
   ],
   // Export PAYMENT_REPOSITORY so BookingModule can inject it for CreateBookingUseCase.
-  exports: [PAYMENT_REPOSITORY],
+  // Export USDT_RATE_STORE so DoctorSettingsModule can resolve the effective exchange rate.
+  exports: [PAYMENT_REPOSITORY, USDT_RATE_STORE],
 })
 export class FinancesModule {}

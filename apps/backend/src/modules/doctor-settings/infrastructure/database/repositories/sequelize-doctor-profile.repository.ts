@@ -4,7 +4,10 @@ import {
   DoctorProfile,
   type DoctorProfileUpdateParams,
 } from '../../../domain/entities/doctor-profile.entity';
-import type { IDoctorProfileRepository } from '../../../domain/repositories/doctor-profile.repository';
+import type {
+  IDoctorProfileRepository,
+  ExchangeRateUpdateParams,
+} from '../../../domain/repositories/doctor-profile.repository';
 import { DoctorProfileNotFoundError } from '../../../domain/errors/doctor-profile-not-found.error';
 import { DoctorProfileModel } from '../models/doctor-profile.model';
 
@@ -36,6 +39,25 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       ...(params.officeAddress !== undefined && { officeAddress: params.officeAddress }),
       ...(params.city !== undefined && { city: params.city }),
       ...(params.avatarUrl !== undefined && { avatarUrl: params.avatarUrl }),
+      ...(params.logoUrl !== undefined && { logoUrl: params.logoUrl }),
+      ...(params.signatureUrl !== undefined && { signatureUrl: params.signatureUrl }),
+      ...(params.licenseNumber !== undefined && { licenseNumber: params.licenseNumber }),
+    });
+
+    return this.toDomain(row);
+  }
+
+  async updateExchangeRate(
+    doctorId: string,
+    params: ExchangeRateUpdateParams,
+  ): Promise<DoctorProfile> {
+    const row = await this.model.findByPk(doctorId);
+    if (!row) throw new DoctorProfileNotFoundError(doctorId);
+
+    await row.update({
+      currencyMode: params.currencyMode,
+      customRate: params.customRate,
+      customRateLabel: params.customRateLabel,
     });
 
     return this.toDomain(row);
@@ -58,6 +80,12 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       avatarUrl: row.avatarUrl,
       plan: row.plan,
       subscriptionStatus: row.subscriptionStatus,
+      logoUrl: row.logoUrl,
+      signatureUrl: row.signatureUrl,
+      licenseNumber: row.licenseNumber,
+      currencyMode: row.currencyMode,
+      customRate: row.customRate != null ? Number(row.customRate) : null,
+      customRateLabel: row.customRateLabel,
     });
   }
 }

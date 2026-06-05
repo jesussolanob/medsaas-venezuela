@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -21,6 +22,8 @@ import {
   type UpdatePaymentStatusDto,
   AddPaymentItemDtoSchema,
   type AddPaymentItemDto,
+  AttachPaymentReceiptDtoSchema,
+  type AttachPaymentReceiptDto,
 } from '@delta/shared-types';
 
 import { ListPaymentsUseCase } from '../../application/use-cases/payments/list-payments.use-case';
@@ -29,6 +32,7 @@ import { UpdatePaymentStatusUseCase } from '../../application/use-cases/payments
 import { AddPaymentItemUseCase } from '../../application/use-cases/payments/add-payment-item.use-case';
 import { RemovePaymentItemUseCase } from '../../application/use-cases/payments/remove-payment-item.use-case';
 import { ListPaymentItemsUseCase } from '../../application/use-cases/payments/list-payment-items.use-case';
+import { AttachPaymentReceiptUseCase } from '../../application/use-cases/payments/attach-payment-receipt.use-case';
 import type {
   PaymentWithRelations,
   PaymentTotals,
@@ -150,6 +154,7 @@ export class PaymentsController {
     private readonly addPaymentItem: AddPaymentItemUseCase,
     private readonly removePaymentItem: RemovePaymentItemUseCase,
     private readonly listPaymentItems: ListPaymentItemsUseCase,
+    private readonly attachReceipt: AttachPaymentReceiptUseCase,
   ) {}
 
   /**
@@ -211,6 +216,33 @@ export class PaymentsController {
       status: dto.status,
     });
     return { success: true, data: toStatusOutput(payment) };
+  }
+
+  /**
+   * PATCH /api/finances/payments/:id/receipt
+   * Attaches a payment receipt URL to a payment.
+   * The client uploads the file to storage first, then calls this endpoint with the URL.
+   *
+   * SECURITY:
+   *   - doctorId is from the authenticated user — anti-IDOR.
+   *   - 404 when the payment does not exist.
+   *   - 403 when the payment belongs to another doctor.
+   */
+  @Patch(':id/receipt')
+  async attachReceiptHandler(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(AttachPaymentReceiptDtoSchema)) dto: AttachPaymentReceiptDto,
+  ): Promise<SuccessResponse<{ id: string; payment_receipt_url: string }>> {
+    const payment = await this.attachReceipt.execute({
+      paymentId: id,
+      doctorId: user.sub,
+      receiptUrl: dto.receipt_url,
+    });
+    return {
+      success: true,
+      data: { id: payment.id, payment_receipt_url: payment.paymentReceiptUrl ?? '' },
+    };
   }
 
   /**

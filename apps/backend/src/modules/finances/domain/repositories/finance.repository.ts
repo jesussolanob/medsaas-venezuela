@@ -59,4 +59,18 @@ export interface IFinanceRepository {
    * Returns { total, count }.
    */
   sumExpenses(doctorId: string, month: string): Promise<{ total: number; count: number }>;
+
+  /**
+   * Soft/hard-deletes a financial transaction by id.
+   * SECURITY: doctorId enforces ownership — only the owning doctor can delete.
+   * Only expense-type transactions can be deleted (income entries are read-only audit records).
+   * Throws TransactionNotFoundError when id does not exist or does not belong to doctorId.
+   */
+  delete(id: string, doctorId: string): Promise<void>;
+
+  /**
+   * Returns the all-time total income for a doctor (approved consultations + manual income).
+   * No date filtering applied.
+   */
+  lifetimeIncome(doctorId: string): Promise<{ total: number; consultationCount: number }>;
 }

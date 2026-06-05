@@ -1,4 +1,17 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import {
   CurrentUser,
@@ -23,6 +36,11 @@ import {
   ListTransactionsUseCase,
   type TransactionItem,
 } from '../../application/use-cases/finances/list-transactions.use-case';
+import { DeleteTransactionUseCase } from '../../application/use-cases/finances/delete-transaction.use-case';
+import {
+  GetLifetimeIncomeUseCase,
+  type GetLifetimeIncomeOutput,
+} from '../../application/use-cases/finances/get-lifetime-income.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -66,6 +84,8 @@ export class FinancesController {
     private readonly recordIncome: RecordIncomeUseCase,
     private readonly recordExpense: RecordExpenseUseCase,
     private readonly listTransactions: ListTransactionsUseCase,
+    private readonly deleteTransaction: DeleteTransactionUseCase,
+    private readonly getLifetimeIncome: GetLifetimeIncomeUseCase,
   ) {}
 
   /**
@@ -122,6 +142,33 @@ export class FinancesController {
       date: dto.date ? new Date(dto.date) : undefined,
     });
     return { success: true, data: result };
+  }
+
+  /**
+   * GET /api/finances/lifetime
+   * Returns all-time income totals for the doctor (not month-scoped).
+   * Used for the "Ingresos totales" KPI on the dashboard.
+   */
+  @Get('lifetime')
+  async lifetime(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<GetLifetimeIncomeOutput>> {
+    const result = await this.getLifetimeIncome.execute(user.sub);
+    return { success: true, data: result };
+  }
+
+  /**
+   * DELETE /api/finances/transactions/:id
+   * Deletes a financial transaction owned by the calling doctor.
+   * SECURITY: doctorId is from the authenticated user — anti-IDOR.
+   */
+  @Delete('transactions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteTransactionHandler(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<void> {
+    await this.deleteTransaction.execute({ transactionId: id, doctorId: user.sub });
   }
 
   /** POST /api/finances/expense */

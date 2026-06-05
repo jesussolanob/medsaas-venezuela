@@ -27,6 +27,8 @@ describe('ListTransactionsUseCase', () => {
       getConsultationSummary: jest.fn(),
       sumManualIncome: jest.fn(),
       sumExpenses: jest.fn(),
+      delete: jest.fn(),
+      lifetimeIncome: jest.fn(),
     };
     useCase = new ListTransactionsUseCase(mockRepo);
   });

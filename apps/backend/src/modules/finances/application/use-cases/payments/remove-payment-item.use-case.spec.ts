@@ -17,6 +17,7 @@ describe('RemovePaymentItemUseCase', () => {
       removeItem: jest.fn(),
       listItems: jest.fn(),
       create: jest.fn(),
+      attachReceiptUrl: jest.fn(),
     };
     useCase = new RemovePaymentItemUseCase(mockRepo);
   });

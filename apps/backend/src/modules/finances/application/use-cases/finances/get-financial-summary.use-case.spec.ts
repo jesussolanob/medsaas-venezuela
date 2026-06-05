@@ -24,6 +24,8 @@ describe('GetFinancialSummaryUseCase', () => {
       getConsultationSummary: jest.fn().mockResolvedValue(defaultConsultationSummary),
       sumManualIncome: jest.fn().mockResolvedValue(defaultManualIncome),
       sumExpenses: jest.fn().mockResolvedValue(defaultExpenses),
+      delete: jest.fn(),
+      lifetimeIncome: jest.fn(),
     };
     mockRateStore = {
       getRate: jest.fn().mockResolvedValue(36),

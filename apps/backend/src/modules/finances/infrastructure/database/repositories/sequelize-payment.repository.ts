@@ -324,6 +324,32 @@ export class SequelizePaymentRepository implements IPaymentRepository {
     return rows.map((r) => this.toItemDomain(r));
   }
 
+  async attachReceiptUrl(
+    paymentId: string,
+    doctorId: string,
+    receiptUrl: string,
+  ): Promise<Payment> {
+    const row = await this.paymentModel.findOne({
+      where: { id: paymentId } as Record<string, unknown>,
+    });
+
+    if (!row) throw new PaymentNotFoundError(paymentId);
+    const payment = this.toDomain(row);
+    if (!payment.isOwnedBy(doctorId)) throw new PaymentNotOwnedError();
+
+    await this.paymentModel.update(
+      { paymentReceiptUrl: receiptUrl, updatedAt: new Date() },
+      { where: { id: paymentId } as Record<string, unknown> },
+    );
+
+    // Return updated domain entity
+    const updated = await this.paymentModel.findOne({
+      where: { id: paymentId } as Record<string, unknown>,
+    });
+    if (!updated) throw new PaymentNotFoundError(paymentId);
+    return this.toDomain(updated);
+  }
+
   async create(params: {
     id: string;
     doctorId: string;

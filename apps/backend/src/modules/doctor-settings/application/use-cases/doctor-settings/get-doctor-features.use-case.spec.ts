@@ -26,6 +26,12 @@ function makeProfile(plan: string | null): DoctorProfile {
     avatarUrl: null,
     plan,
     subscriptionStatus: 'active',
+    logoUrl: null,
+    signatureUrl: null,
+    licenseNumber: null,
+    currencyMode: 'usd_bcv',
+    customRate: null,
+    customRateLabel: null,
   });
 }
 
@@ -49,6 +55,7 @@ describe('GetDoctorFeaturesUseCase', () => {
     mockProfileRepo = {
       findByDoctorId: jest.fn(),
       update: jest.fn(),
+      updateExchangeRate: jest.fn(),
     };
     mockFeaturesRepo = {
       findByPlan: jest.fn(),

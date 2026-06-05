@@ -26,6 +26,7 @@ describe('GetPaymentTotalsUseCase', () => {
       removeItem: jest.fn(),
       listItems: jest.fn(),
       create: jest.fn(),
+      attachReceiptUrl: jest.fn(),
     };
     useCase = new GetPaymentTotalsUseCase(mockRepo);
   });

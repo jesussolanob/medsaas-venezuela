@@ -10,6 +10,12 @@ export const UpdateDoctorProfileDtoSchema = z
     office_address: z.string().nullable().optional(),
     city: z.string().nullable().optional(),
     avatar_url: z.string().url().nullable().optional(),
+    /** Doctor/clinic logo URL (uploaded to storage first). */
+    logo_url: z.string().url().nullable().optional(),
+    /** Digital signature image URL (uploaded to storage first). */
+    signature_url: z.string().url().nullable().optional(),
+    /** Professional medical license number. */
+    license_number: z.string().nullable().optional(),
   })
   .strict();
 

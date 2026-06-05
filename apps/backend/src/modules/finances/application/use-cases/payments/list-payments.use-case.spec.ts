@@ -40,6 +40,7 @@ describe('ListPaymentsUseCase', () => {
       removeItem: jest.fn(),
       listItems: jest.fn(),
       create: jest.fn(),
+      attachReceiptUrl: jest.fn(),
     };
     useCase = new ListPaymentsUseCase(mockRepo);
   });

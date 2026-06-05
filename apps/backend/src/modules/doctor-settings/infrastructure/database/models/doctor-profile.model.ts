@@ -74,6 +74,25 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'subscription_status' })
   declare subscriptionStatus: string | null;
 
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'logo_url' })
+  declare logoUrl: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'signature_url' })
+  declare signatureUrl: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'license_number' })
+  declare licenseNumber: string | null;
+
+  @Default('usd_bcv')
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'currency_mode' })
+  declare currencyMode: string | null;
+
+  @Column({ type: DataType.DECIMAL(12, 4), allowNull: true, field: 'custom_rate' })
+  declare customRate: number | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'custom_rate_label' })
+  declare customRateLabel: string | null;
+
   @Default(true)
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;

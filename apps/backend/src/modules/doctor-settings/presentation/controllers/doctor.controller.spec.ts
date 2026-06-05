@@ -10,6 +10,8 @@ import { GetServicesUseCase } from '../../application/use-cases/doctor-settings/
 import { CreateServiceUseCase } from '../../application/use-cases/doctor-settings/create-service.use-case';
 import { UpdateServiceUseCase } from '../../application/use-cases/doctor-settings/update-service.use-case';
 import { DeleteServiceUseCase } from '../../application/use-cases/doctor-settings/delete-service.use-case';
+import { GetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
+import { SetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
 import { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
@@ -34,6 +36,12 @@ function makeProfile(): DoctorProfile {
     avatarUrl: null,
     plan: 'professional',
     subscriptionStatus: 'active',
+    logoUrl: null,
+    signatureUrl: null,
+    licenseNumber: null,
+    currencyMode: 'usd_bcv',
+    customRate: null,
+    customRateLabel: null,
   });
 }
 
@@ -67,6 +75,8 @@ describe('DoctorController', () => {
   const mockCreateService = { execute: jest.fn() };
   const mockUpdateService = { execute: jest.fn() };
   const mockDeleteService = { execute: jest.fn() };
+  const mockGetExchangeRate = { execute: jest.fn() };
+  const mockSetExchangeRate = { execute: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -82,6 +92,8 @@ describe('DoctorController', () => {
         { provide: CreateServiceUseCase, useValue: mockCreateService },
         { provide: UpdateServiceUseCase, useValue: mockUpdateService },
         { provide: DeleteServiceUseCase, useValue: mockDeleteService },
+        { provide: GetDoctorExchangeRateUseCase, useValue: mockGetExchangeRate },
+        { provide: SetDoctorExchangeRateUseCase, useValue: mockSetExchangeRate },
       ],
     }).compile();
 
@@ -104,12 +116,18 @@ describe('DoctorController', () => {
   });
 
   describe('PUT /doctor/profile', () => {
-    it('updates the doctor profile', async () => {
+    it('updates the doctor profile including new media fields', async () => {
       const updated = makeProfile();
       mockUpdateProfile.execute.mockResolvedValue(updated);
 
       const result = await controller.updateProfileHandler(
-        { specialty: 'Cardiología', allows_online: true },
+        {
+          specialty: 'Cardiología',
+          allows_online: true,
+          logo_url: 'https://cdn.example.com/logo.png',
+          signature_url: 'https://cdn.example.com/sig.png',
+          license_number: 'MED-001',
+        },
         USER,
       );
 
@@ -123,6 +141,54 @@ describe('DoctorController', () => {
         officeAddress: undefined,
         city: undefined,
         avatarUrl: undefined,
+        logoUrl: 'https://cdn.example.com/logo.png',
+        signatureUrl: 'https://cdn.example.com/sig.png',
+        licenseNumber: 'MED-001',
+      });
+    });
+  });
+
+  describe('GET /doctor/exchange-rate', () => {
+    it('returns the effective exchange rate', async () => {
+      const rateOutput = {
+        mode: 'usd_bcv',
+        rate: 36.5,
+        label: 'USD → BsS (BCV oficial)',
+        customRate: null,
+        customRateLabel: null,
+      };
+      mockGetExchangeRate.execute.mockResolvedValue(rateOutput);
+
+      const result = await controller.exchangeRate(USER);
+
+      expect(result.success).toBe(true);
+      expect(result.data.mode).toBe('usd_bcv');
+      expect(mockGetExchangeRate.execute).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+  });
+
+  describe('PUT /doctor/exchange-rate', () => {
+    it('updates the exchange rate mode and custom rate', async () => {
+      const rateOutput = {
+        mode: 'custom',
+        rate: 50.0,
+        label: 'Tasa personalizada',
+        customRate: 50.0,
+        customRateLabel: null,
+      };
+      mockSetExchangeRate.execute.mockResolvedValue(rateOutput);
+
+      const result = await controller.updateExchangeRate(
+        { mode: 'custom', custom_rate: 50.0, custom_rate_label: null },
+        USER,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.mode).toBe('custom');
+      expect(mockSetExchangeRate.execute).toHaveBeenCalledWith(DOCTOR_ID, {
+        mode: 'custom',
+        customRate: 50.0,
+        customRateLabel: null,
       });
     });
   });

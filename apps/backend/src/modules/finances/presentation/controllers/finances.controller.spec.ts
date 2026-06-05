@@ -5,6 +5,8 @@ import { GetFinancialSummaryUseCase } from '../../application/use-cases/finances
 import { RecordIncomeUseCase } from '../../application/use-cases/finances/record-income.use-case';
 import { RecordExpenseUseCase } from '../../application/use-cases/finances/record-expense.use-case';
 import { ListTransactionsUseCase } from '../../application/use-cases/finances/list-transactions.use-case';
+import { DeleteTransactionUseCase } from '../../application/use-cases/finances/delete-transaction.use-case';
+import { GetLifetimeIncomeUseCase } from '../../application/use-cases/finances/get-lifetime-income.use-case';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { Reflector } from '@nestjs/core';
@@ -21,12 +23,16 @@ describe('FinancesController', () => {
   let mockIncome: jest.Mocked<RecordIncomeUseCase>;
   let mockExpense: jest.Mocked<RecordExpenseUseCase>;
   let mockList: jest.Mocked<ListTransactionsUseCase>;
+  let mockDeleteTx: jest.Mocked<DeleteTransactionUseCase>;
+  let mockLifetime: jest.Mocked<GetLifetimeIncomeUseCase>;
 
   beforeEach(async () => {
     mockSummary = { execute: jest.fn() } as unknown as jest.Mocked<GetFinancialSummaryUseCase>;
     mockIncome = { execute: jest.fn() } as unknown as jest.Mocked<RecordIncomeUseCase>;
     mockExpense = { execute: jest.fn() } as unknown as jest.Mocked<RecordExpenseUseCase>;
     mockList = { execute: jest.fn() } as unknown as jest.Mocked<ListTransactionsUseCase>;
+    mockDeleteTx = { execute: jest.fn() } as unknown as jest.Mocked<DeleteTransactionUseCase>;
+    mockLifetime = { execute: jest.fn() } as unknown as jest.Mocked<GetLifetimeIncomeUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FinancesController],
@@ -36,6 +42,8 @@ describe('FinancesController', () => {
         { provide: RecordIncomeUseCase, useValue: mockIncome },
         { provide: RecordExpenseUseCase, useValue: mockExpense },
         { provide: ListTransactionsUseCase, useValue: mockList },
+        { provide: DeleteTransactionUseCase, useValue: mockDeleteTx },
+        { provide: GetLifetimeIncomeUseCase, useValue: mockLifetime },
       ],
     })
       .overrideGuard(DevAuthGuard)
@@ -185,6 +193,40 @@ describe('FinancesController', () => {
       expect(mockExpense.execute).toHaveBeenCalledWith(
         expect.objectContaining({ doctorId: 'doctor-uuid-1', amount: 50 }),
       );
+    });
+  });
+
+  describe('DELETE /finances/transactions/:id', () => {
+    it('deletes the transaction and returns 204 (void)', async () => {
+      mockDeleteTx.execute.mockResolvedValue(undefined);
+
+      const result = await controller.deleteTransactionHandler(
+        'aaaabbbb-cccc-dddd-eeee-ffffaaaabbbb',
+        mockUser,
+      );
+
+      expect(result).toBeUndefined();
+      expect(mockDeleteTx.execute).toHaveBeenCalledWith({
+        transactionId: 'aaaabbbb-cccc-dddd-eeee-ffffaaaabbbb',
+        doctorId: 'doctor-uuid-1',
+      });
+    });
+  });
+
+  describe('GET /finances/lifetime', () => {
+    it('returns all-time income totals', async () => {
+      mockLifetime.execute.mockResolvedValue({
+        totalUsd: 5000,
+        totalBs: 182500,
+        consultationCount: 100,
+        rateUsed: 36.5,
+      });
+
+      const result = await controller.lifetime(mockUser);
+
+      expect(result.success).toBe(true);
+      expect(result.data.totalUsd).toBe(5000);
+      expect(mockLifetime.execute).toHaveBeenCalledWith('doctor-uuid-1');
     });
   });
 });

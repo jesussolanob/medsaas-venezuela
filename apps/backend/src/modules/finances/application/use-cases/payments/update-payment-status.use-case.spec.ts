@@ -30,6 +30,7 @@ describe('UpdatePaymentStatusUseCase', () => {
       removeItem: jest.fn(),
       listItems: jest.fn(),
       create: jest.fn(),
+      attachReceiptUrl: jest.fn(),
     };
     useCase = new UpdatePaymentStatusUseCase(mockRepo);
   });
