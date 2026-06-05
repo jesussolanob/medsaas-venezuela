@@ -19,7 +19,7 @@
 | `PUT`  | `/api/admin/plans/:planKey`                     | Activar/desactivar plan                                           |
 | `GET`  | `/api/admin/plan-features`                      | Features por plan                                                 |
 | `PUT`  | `/api/admin/plan-features/:planKey/:featureKey` | Habilitar/deshabilitar feature                                    |
-| `GET`  | `/api/admin/patients`                           | Estadísticas globales de pacientes                                |
+| `GET`  | `/api/admin/patients`                           | Estadísticas globales de pacientes (solo agregados, cero PII)     |
 | `POST` | `/api/admin/settings/usdt-rate`                 | Actualizar tasa USDT                                              |
 | `GET`  | `/api/admin/settings`                           | Configuración general                                             |
 | `GET`  | `/api/admin/subscriptions/growth`               | Crecimiento de médicos últimos 6 meses (chart + momGrowth)        |
@@ -116,6 +116,25 @@ export class PlanConfig {
 - **Input:** `{ planKey, featureKey, enabled }`
 - **Acción:** upsert en `plan_features` + invalidar caché de features en Redis
 - **Tests:** habilita feature, deshabilita feature, invalida caché
+
+### `GetPatientsStatsUseCase` (ampliado 2026-06-04)
+
+- **Output:** `PatientStats` — solo agregados, cero PII.
+- **Shape final:**
+  ```typescript
+  interface PatientStats {
+    totalPatients: number;
+    patientsByDoctor: Array<{ doctorId: string; count: number }>;
+    totalConsultations: number; // COUNT(consultations)
+    totalAppointments: number; // COUNT(appointments)
+    activePatientsLast30Days: number; // COUNT(DISTINCT patient_id) WHERE scheduled_at >= now-30d
+    avgAge: number; // FLOOR(AVG age from birth_date); 0 if no valid rows
+  }
+  ```
+- Implementación: una query SQL con 4 sub-selects + una query separada para `patientsByDoctor`.
+- `birth_date` es `DATEONLY` (no cifrada) — seguro para agregar. Filtra edades ≤0 o ≥130.
+- Queries parametrizadas con `replacements` — nunca concatenación de strings.
+- **Tests:** totalConsultations, totalAppointments, activePatientsLast30Days, avgAge, avgAge=0 sin fechas válidas, shape sin PII (8 tests).
 
 ---
 

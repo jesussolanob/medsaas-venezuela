@@ -144,6 +144,19 @@ export interface UpdatePlanParams {
 export interface PatientStats {
   totalPatients: number;
   patientsByDoctor: Array<{ doctorId: string; count: number }>;
+  /** Total rows in the consultations table (no PII). */
+  totalConsultations: number;
+  /** Total rows in the appointments table (no PII). */
+  totalAppointments: number;
+  /** Distinct patient_ids in appointments with scheduled_at within the last 30 days. */
+  activePatientsLast30Days: number;
+  /**
+   * Integer average age derived from patients.birth_date.
+   * Rows without a birth_date or with an implausible age (≤0 or ≥130) are excluded.
+   * Returns 0 when no valid birth_date rows exist.
+   * NOTE: birth_date is DATEONLY (not encrypted) — safe to aggregate.
+   */
+  avgAge: number;
 }
 
 /**

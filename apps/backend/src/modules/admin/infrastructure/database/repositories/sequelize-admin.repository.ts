@@ -581,11 +581,47 @@ export class SequelizeAdminRepository implements IAdminRepository {
   // ---------------------------------------------------------------------------
 
   async getPatientStats(): Promise<PatientStats> {
-    const totalResult = await this.sequelize.query<CountRow>(
-      `SELECT COUNT(*) as count FROM patients`,
-      { type: QueryTypes.SELECT },
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Fetch all aggregate scalars in a single round-trip.
+    // birth_date is DATEONLY (not encrypted) — safe to use in age arithmetic.
+    // Ages outside (0, 130) are excluded to filter null/implausible values.
+    interface AggRow {
+      total_patients: string;
+      total_consultations: string;
+      total_appointments: string;
+      active_patients_last_30_days: string;
+      avg_age: string | null;
+    }
+
+    const [agg] = await this.sequelize.query<AggRow>(
+      `SELECT
+         (SELECT COUNT(*)                  FROM patients)                                     AS total_patients,
+         (SELECT COUNT(*)                  FROM consultations)                                AS total_consultations,
+         (SELECT COUNT(*)                  FROM appointments)                                 AS total_appointments,
+         (SELECT COUNT(DISTINCT patient_id)
+            FROM appointments
+           WHERE scheduled_at >= :since
+             AND patient_id IS NOT NULL)                                                      AS active_patients_last_30_days,
+         (SELECT FLOOR(AVG(
+                   EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date::date))
+                 ))
+            FROM patients
+           WHERE birth_date IS NOT NULL
+             AND EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date::date)) > 0
+             AND EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date::date)) < 130)               AS avg_age`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { since: thirtyDaysAgo },
+      },
     );
-    const totalPatients = parseInt(totalResult[0]?.count ?? '0', 10);
+
+    const totalPatients = parseInt(agg?.total_patients ?? '0', 10);
+    const totalConsultations = parseInt(agg?.total_consultations ?? '0', 10);
+    const totalAppointments = parseInt(agg?.total_appointments ?? '0', 10);
+    const activePatientsLast30Days = parseInt(agg?.active_patients_last_30_days ?? '0', 10);
+    const avgAge = agg?.avg_age != null ? parseInt(agg.avg_age, 10) : 0;
 
     // LIMIT 100 is intentional — the admin dashboard only needs the top-N doctors
     // by patient count for display purposes. If the platform grows beyond 100 active
@@ -600,7 +636,14 @@ export class SequelizeAdminRepository implements IAdminRepository {
       count: parseInt(r.count, 10),
     }));
 
-    return { totalPatients, patientsByDoctor };
+    return {
+      totalPatients,
+      patientsByDoctor,
+      totalConsultations,
+      totalAppointments,
+      activePatientsLast30Days,
+      avgAge,
+    };
   }
 
   // ---------------------------------------------------------------------------
