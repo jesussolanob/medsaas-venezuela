@@ -17,10 +17,10 @@ import {
   X,
   Phone,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: reminders_settings, appointments
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import { getDoctorProfile } from '@/app/doctor/actions';
+import { getUpcomingConsultations, getUpcomingAppointments } from './actions';
 // L2 (2026-04-29): timezone helpers para que "Hoy" matchee el dia local Caracas.
-import { toLocalYMD, caracasToISO } from '@/lib/timezone';
+import { toLocalYMD } from '@/lib/timezone';
 // L6 (2026-04-29): normaliza telefonos venezolanos (legacy free-text + canonico).
 import { normalizePhoneVE } from '@/lib/phone-utils';
 
@@ -29,7 +29,7 @@ type Consultation = {
   consultation_code: string;
   consultation_date: string;
   chief_complaint: string | null;
-  patient_id: string;
+  patient_id: string | null;
   patient_name: string;
   patient_phone: string | null;
   patient_email: string | null;
@@ -54,105 +54,55 @@ export default function RemindersPage() {
   const [showWhatsAppInfo, setShowWhatsAppInfo] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: reminders data stays Supabase.
-    getDevDoctorId().then(async (id) => {
-      if (!id) return;
-      const user = { id };
-
-      // Fetch doctor profile
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, professional_title, phone')
-        .eq('id', user.id)
-        .single();
-      if (profile) {
-        setDoctorName(`${profile.professional_title || ''} ${profile.full_name || ''}`.trim());
-        setDoctorPhone(profile.phone || '');
-      }
-
-      // L2 (2026-04-29): rango desde el inicio del dia LOCAL Caracas (00:00 -04:00).
-      // Antes usaba `new Date().toISOString()` que excluye consultas de hoy a la
-      // mañana cuando el doctor abre la pagina por la tarde — por eso el filtro
-      // "Hoy" salia vacio si ya habia pasado la hora.
-      const todayCaracasStart = caracasToISO(toLocalYMD(new Date()), '00:00');
-
-      // Fetch upcoming consultations
-      const { data: consults } = await supabase
-        .from('consultations')
-        .select('*, patients(full_name, phone, email)')
-        .eq('doctor_id', user.id)
-        .gte('consultation_date', todayCaracasStart)
-        .order('consultation_date', { ascending: true })
-        .limit(50);
-
-      const consultMapped = (consults ?? []).map((c) => ({
-        id: c.id,
-        consultation_code: c.consultation_code ?? c.id.slice(0, 8),
-        consultation_date: c.consultation_date,
-        chief_complaint: c.chief_complaint,
-        patient_id: c.patient_id,
-        patient_name:
-          (c.patients as { full_name: string; phone: string | null; email: string | null } | null)
-            ?.full_name ?? 'Paciente',
-        patient_phone:
-          (c.patients as { full_name: string; phone: string | null; email: string | null } | null)
-            ?.phone ?? null,
-        patient_email:
-          (c.patients as { full_name: string; phone: string | null; email: string | null } | null)
-            ?.email ?? null,
-        plan_name: c.plan_name || null,
-      }));
-
-      // Fetch upcoming appointments (scheduled/confirmed)
-      // L2 (2026-04-29): mismo rango (inicio del dia local Caracas) que consultas.
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select(
-          'id, appointment_code, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_id, plan_name',
-        )
-        .eq('doctor_id', user.id)
-        .in('status', ['scheduled', 'confirmed'])
-        .gte('scheduled_at', todayCaracasStart)
-        .order('scheduled_at', { ascending: true })
-        .limit(50);
-
-      const apptMapped = (appointments ?? []).map((a) => ({
-        id: `appt-${a.id}`,
-        consultation_code: a.appointment_code ?? a.id.slice(0, 8),
-        consultation_date: a.scheduled_at,
-        chief_complaint: a.chief_complaint,
-        patient_id: a.patient_id,
-        patient_name: a.patient_name ?? 'Paciente',
-        patient_phone: a.patient_phone ?? null,
-        patient_email: a.patient_email ?? null,
-        plan_name: a.plan_name || null,
-      }));
-
-      // Merge avoiding duplicates (same patient + similar time)
-      const combined = [...consultMapped];
-      for (const appt of apptMapped) {
-        const isDup = consultMapped.some((c) => {
-          const diff = Math.abs(
-            new Date(c.consultation_date).getTime() - new Date(appt.consultation_date).getTime(),
+    async function load() {
+      try {
+        // Fetch doctor profile from NestJS backend (replaces supabase.from('profiles'))
+        const profile = await getDoctorProfile();
+        if (profile) {
+          setDoctorName(
+            `${profile.professional_title || ''} ${profile.full_name || ''}`.trim(),
           );
-          return c.patient_name === appt.patient_name && diff < 3600000;
-        });
-        if (!isDup) combined.push(appt);
-      }
-      combined.sort(
-        (a, b) => new Date(a.consultation_date).getTime() - new Date(b.consultation_date).getTime(),
-      );
+          setDoctorPhone(profile.phone || '');
+        }
 
-      setUpcomingConsults(combined);
-      setLoading(false);
-    });
+        // Fetch upcoming consultations with patient PII from NestJS backend.
+        // Replaces: supabase.from('consultations').select('*, patients(...)').
+        // Date filtering is handled in the server action (from today onwards).
+        const consultItems = await getUpcomingConsultations();
+
+        // Fetch upcoming appointments (scheduled + confirmed) with full patient PII.
+        // Replaces: supabase.from('appointments').select(...).in('status', ['scheduled','confirmed']).
+        // The server action performs individual fetches per appointment for unmasked PII.
+        const apptItems = await getUpcomingAppointments();
+
+        // Merge, deduplicating by same patient + time within 1 hour
+        const combined: Consultation[] = [...consultItems];
+        for (const appt of apptItems) {
+          const isDup = consultItems.some((c) => {
+            const diff = Math.abs(
+              new Date(c.consultation_date).getTime() -
+                new Date(appt.consultation_date).getTime(),
+            );
+            return c.patient_name === appt.patient_name && diff < 3600000;
+          });
+          if (!isDup) combined.push(appt);
+        }
+        combined.sort(
+          (a, b) =>
+            new Date(a.consultation_date).getTime() -
+            new Date(b.consultation_date).getTime(),
+        );
+
+        setUpcomingConsults(combined);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void load();
   }, []);
 
   // L2 (2026-04-29): diferencia en DIAS DE CALENDARIO en zona Caracas.
-  // Antes era `Math.ceil(diffMs / 86400000)` que daba 1 cuando una cita
-  // de las 13:00 se consultaba a las 09:00 del MISMO dia — y por eso el
-  // filtro "Hoy" (filterDays=0) excluia citas de hoy mas tarde.
   function daysUntil(dateStr: string): number {
     const todayYMD = toLocalYMD(new Date());
     const apptYMD = toLocalYMD(new Date(dateStr));
