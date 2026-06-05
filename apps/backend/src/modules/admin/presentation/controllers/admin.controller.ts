@@ -467,6 +467,7 @@ export class AdminController {
       price: body.price,
       trialDays: body.trial_days,
       sortOrder: body.sort_order,
+      description: body.description,
     });
     return {
       success: true,

@@ -516,10 +516,28 @@ describe('AdminController', () => {
       expect(() => pipe.transform({ price: 20 })).not.toThrow();
     });
 
-    it('accepts all editable fields', () => {
+    it('accepts all editable fields including description', () => {
       expect(() =>
-        pipe.transform({ name: 'Pro', price: 30, trial_days: 7, sort_order: 2 }),
+        pipe.transform({
+          name: 'Pro',
+          price: 30,
+          trial_days: 7,
+          sort_order: 2,
+          description: 'Best plan',
+        }),
       ).not.toThrow();
+    });
+
+    it('accepts description-only update', () => {
+      expect(() => pipe.transform({ description: 'Updated description' })).not.toThrow();
+    });
+
+    it('accepts null description (clear)', () => {
+      expect(() => pipe.transform({ description: null })).not.toThrow();
+    });
+
+    it('rejects description exceeding 1000 chars', () => {
+      expect(() => pipe.transform({ description: 'x'.repeat(1001) })).toThrow(BadRequestException);
     });
 
     it('rejects empty body (at least one field required)', () => {

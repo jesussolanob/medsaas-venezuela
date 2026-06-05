@@ -657,6 +657,8 @@ export class SequelizeAdminRepository implements IAdminRepository {
     if (params.price !== undefined) updates.price = params.price;
     if (params.trialDays !== undefined) updates.trialDays = params.trialDays;
     if (params.sortOrder !== undefined) updates.sortOrder = params.sortOrder;
+    // description: undefined = no-op; null = clear; string = set
+    if (params.description !== undefined) updates.description = params.description;
 
     await this.planConfigModel.update(updates, { where: { planKey: params.planKey } });
 

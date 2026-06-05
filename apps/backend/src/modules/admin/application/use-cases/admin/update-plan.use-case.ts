@@ -12,6 +12,8 @@ export interface UpdatePlanInput {
   price?: number;
   trialDays?: number;
   sortOrder?: number;
+  /** undefined = do not touch; null = clear the description; string = new value. */
+  description?: string | null;
 }
 
 /**
@@ -40,6 +42,7 @@ export class UpdatePlanUseCase {
       price: input.price,
       trialDays: input.trialDays,
       sortOrder: input.sortOrder,
+      description: input.description,
     });
   }
 }

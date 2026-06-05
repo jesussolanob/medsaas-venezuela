@@ -134,6 +134,7 @@ export const UpdatePlanBodySchema = z
     price: z.number().min(0).optional(),
     trial_days: z.number().int().min(0).optional(),
     sort_order: z.number().int().min(0).optional(),
+    description: z.string().max(1000).nullable().optional(),
   })
   .strict()
   .refine(
@@ -141,8 +142,12 @@ export const UpdatePlanBodySchema = z
       body.name !== undefined ||
       body.price !== undefined ||
       body.trial_days !== undefined ||
-      body.sort_order !== undefined,
-    { message: 'At least one field (name, price, trial_days, sort_order) must be provided' },
+      body.sort_order !== undefined ||
+      body.description !== undefined,
+    {
+      message:
+        'At least one field (name, price, trial_days, sort_order, description) must be provided',
+    },
   );
 
 export type UpdatePlanBody = z.infer<typeof UpdatePlanBodySchema>;

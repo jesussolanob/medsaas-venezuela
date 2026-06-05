@@ -5,6 +5,7 @@ import type { IAdminRepository } from '../../../domain/repositories/admin.reposi
 
 const basicPlan = new PlanConfig('basic', 'Basic', 10, 0, true, null, 1);
 const updatedPlan = new PlanConfig('basic', 'Basic Plus', 15, 0, true, null, 1);
+const updatedWithDescription = new PlanConfig('basic', 'Basic', 10, 0, true, 'Great value plan', 1);
 
 const makeRepo = (plan: PlanConfig | null = basicPlan): jest.Mocked<IAdminRepository> =>
   ({
@@ -66,5 +67,43 @@ describe('UpdatePlanUseCase', () => {
     );
 
     expect(repo.updatePlan).not.toHaveBeenCalled();
+  });
+
+  it('propagates description string to the repo', async () => {
+    const repo = makeRepo();
+    repo.updatePlan.mockResolvedValue(updatedWithDescription);
+    const useCase = new UpdatePlanUseCase(repo);
+
+    const result = await useCase.execute({ planKey: 'basic', description: 'Great value plan' });
+
+    expect(repo.updatePlan).toHaveBeenCalledWith(
+      expect.objectContaining({ planKey: 'basic', description: 'Great value plan' }),
+    );
+    expect(result.description).toBe('Great value plan');
+  });
+
+  it('propagates null description to the repo (clear)', async () => {
+    const repo = makeRepo();
+    const clearedPlan = new PlanConfig('basic', 'Basic', 10, 0, true, null, 1);
+    repo.updatePlan.mockResolvedValue(clearedPlan);
+    const useCase = new UpdatePlanUseCase(repo);
+
+    await useCase.execute({ planKey: 'basic', description: null });
+
+    expect(repo.updatePlan).toHaveBeenCalledWith(
+      expect.objectContaining({ planKey: 'basic', description: null }),
+    );
+  });
+
+  it('does not include description in repo call when omitted (undefined)', async () => {
+    const repo = makeRepo();
+    const useCase = new UpdatePlanUseCase(repo);
+
+    await useCase.execute({ planKey: 'basic', price: 10 });
+
+    const call = repo.updatePlan.mock.calls[0]?.[0];
+    expect(call).toBeDefined();
+    // description key should be present as undefined (passed through from input)
+    expect(call?.description).toBeUndefined();
   });
 });

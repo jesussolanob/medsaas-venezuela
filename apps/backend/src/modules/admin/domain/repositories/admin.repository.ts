@@ -137,6 +137,8 @@ export interface UpdatePlanParams {
   price?: number;
   trialDays?: number;
   sortOrder?: number;
+  /** undefined = do not touch; null = clear the description; string = new value. */
+  description?: string | null;
 }
 
 export interface PatientStats {

@@ -754,15 +754,34 @@ consultationCount, monthlyRevenue}` (drawer). UUID guard + trial_ends_at solo si
 
 **Backend COMPLETO** (10 base + Grupo A 6/6 + capabilities + with-patient + admin doctor-detail/growth).
 **Frontend cableado y revisado (0 CRITICAL/HIGH):** capabilities en sidebars + `/admin/roles` · reschedule ·
-thin-proxy admin (toggle-doctor, setup-promotions, doctor-details, subscription-stats, plan-features).
+thin-proxy admin (toggle-doctor, setup-promotions, doctor-details, subscription-stats, plan-features, **plans**).
 
-**PENDIENTE:**
+### 2026-06-04 — admin/plans cableado + backend `description` en plan config (review ✅)
 
-- **booking slots** (`book/[doctorId]`): reconciliar `doctor_offices` (front, multi-consultorio) vs
-  `doctor_schedules` (backend `GET /booking/:id/slots`) — modelos distintos; pase dedicado de producto.
-- Admin handlers aún en Supabase SIN backend/dev-tooling: `change-plan`, `toggle-subscription`, `settings-data`
-  (huérfanos), `invoice-pdf`/`send-invoice` (PDF/email F5), `fix-role` (Auth0 F4), `seed`/`reset-database` (dev).
-- Otros residuales Supabase no bloqueados + features MVP 7.x sin Auth0/email/IA.
+- **Backend (backend-agent vía SendMessage):** `PUT /api/admin/plans/:planKey/config` ahora acepta `description`
+  (`UpdatePlanBodySchema` + use-case + repo + controller). Contrato undefined=no-op / null=clear / string=set.
+  +6 tests (1132 total). Verificado lead: build/lint 0, dist bootea, **curl real** PUT config con description→200,
+  GET lo refleja.
+- **Frontend (lead inline, sin Supabase):** `app/api/admin/plans/route.ts` NUEVO (GET camelCase→snake + PUT a
+  `/config`); `admin/plans/page.tsx` swap de capa de datos (fetch GET/PUT, JSX intacto). Eliminó un `any` previo.
+- **Review ✅:** code-reviewer + security-agent → **0 CRITICAL/HIGH**. Fix aplicado: textarea description vacío
+  envía `null` (clear) no `''`. Deuda Etapa 2: debounce de onBlur, rate-limit, trim de description.
+
+**PENDIENTE (necesita DEFINICIONES del usuario o desbloqueo):**
+
+- **booking slots** (`book/[doctorId]`): reconciliar `doctor_offices` (front, multi-consultorio, configurado en
+  /doctor/offices) vs `doctor_schedules` (backend `GET /booking/:id/slots`) — modelos DISTINTOS; migrar al backend
+  ignoraría la config de consultorios y rompería disponibilidad. Decisión de producto + el resto del BookingClient
+  está Auth0-bloqueado (signup/signin/packages) + storage (F5). DIFERIDO hasta definición.
+- **admin/patients**: requiere endpoint backend NUEVO que liste pacientes con **PII descifrada cross-doctor** +
+  stats por paciente (hoy GET /admin/patients solo da {totalPatients, patientsByDoctor}). Decisión de seguridad/
+  privacidad mayor (admin viendo PII de todos los pacientes). DIFERIDO.
+- **admin/dashboard** (`admin/page.tsx`): parcial — backend `GET /admin/dashboard` cubre 7 KPIs pero la página
+  agrega subscription_payments (billing). Migrable con composición; medio esfuerzo.
+- **admin/finanzas, AdminNotifications, reminders**: subscription_payments agregados / realtime / reminders → F5.
+- Handlers Supabase sin backend/dev-tooling: `change-plan`, `toggle-subscription`, `settings-data` (huérfanos,
+  sin consumidor), `invoice-pdf`/`send-invoice` (PDF/email F5), `fix-role` (Auth0 F4), `seed`/`reset-database` (dev).
+- Doctor area residuals (storage/realtime/templates/quick_items/offices/messages) → F5.
 
 **Bloqueantes (NO tocar):** Auth0 (Fase 4), proveedor de email (sin definir), IA/Gemini.
 
