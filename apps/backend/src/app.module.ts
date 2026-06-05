@@ -28,6 +28,7 @@ import { ConsultationBlocksModule } from './modules/consultation-blocks/consulta
 import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
 import { OfficesModule } from './modules/offices/offices.module';
 import { DoctorTemplatesModule } from './modules/doctor-templates/doctor-templates.module';
+import { RemindersModule } from './modules/reminders/reminders.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { DoctorTemplatesModule } from './modules/doctor-templates/doctor-templat
     CapabilitiesModule,
     OfficesModule,
     DoctorTemplatesModule,
+    RemindersModule,
   ],
   controllers: [HealthController],
   providers: [
