@@ -750,40 +750,65 @@ consultationCount, monthlyRevenue}` (drawer). UUID guard + trial_ends_at solo si
   doctor-details, trial_ends_at condicional, enterprise→clinic, logger.warn growth → mensaje (no objeto err,
   anti-fuga de credenciales Redis). Diferido: ParseUUIDPipe en `@Param('id')` backend (Etapa 2).
 
-### ⏸️ PUNTO DE RETOME (2026-06-04 — backend 100% + cableo frontend admin/capabilities/agenda + review ✅)
+### 2026-06-04/05 — admin/plans + admin/patients cableados (review ✅)
 
-**Backend COMPLETO** (10 base + Grupo A 6/6 + capabilities + with-patient + admin doctor-detail/growth).
-**Frontend cableado y revisado (0 CRITICAL/HIGH):** capabilities en sidebars + `/admin/roles` · reschedule ·
-thin-proxy admin (toggle-doctor, setup-promotions, doctor-details, subscription-stats, plan-features, **plans**).
+- **admin/plans:** backend `PUT /api/admin/plans/:planKey/config` ahora acepta `description` (contrato
+  undefined=no-op/null=clear/string=set). Frontend `app/api/admin/plans/route.ts` NUEVO + page swap. Review 0 CRIT/HIGH.
+- **admin/patients → SOLO STATS (sin PII):** decisión del usuario (admin nunca ve PII de pacientes; confidencial
+  por médico). `GET /api/admin/patients` extendido con agregados (totalConsultations/totalAppointments/
+  activePatientsLast30Days/avgAge). `AdminPatientsClient.tsx` (tabla PII) ELIMINADO. Verificado curl: cero PII, RBAC 403.
 
-### 2026-06-04 — admin/plans cableado + backend `description` en plan config (review ✅)
+### 🚀 ⏸️ PUNTO DE RETOME (2026-06-05 — EPIC: eliminar Supabase de TODO el proyecto)
 
-- **Backend (backend-agent vía SendMessage):** `PUT /api/admin/plans/:planKey/config` ahora acepta `description`
-  (`UpdatePlanBodySchema` + use-case + repo + controller). Contrato undefined=no-op / null=clear / string=set.
-  +6 tests (1132 total). Verificado lead: build/lint 0, dist bootea, **curl real** PUT config con description→200,
-  GET lo refleja.
-- **Frontend (lead inline, sin Supabase):** `app/api/admin/plans/route.ts` NUEVO (GET camelCase→snake + PUT a
-  `/config`); `admin/plans/page.tsx` swap de capa de datos (fetch GET/PUT, JSX intacto). Eliminó un `any` previo.
-- **Review ✅:** code-reviewer + security-agent → **0 CRITICAL/HIGH**. Fix aplicado: textarea description vacío
-  envía `null` (clear) no `''`. Deuda Etapa 2: debounce de onBlur, rate-limit, trim de description.
+> **DIRECTIVA DEL USUARIO (2026-06-04):** Supabase NO debe existir en el proyecto de ninguna manera. Mantener la
+> funcionalidad; crear las APIs backend que hagan falta. Ver memoria `supabase-elimination-directive.md`.
+> Reconciliación con bloqueantes: **Auth → dev-stub Etapa 1** (cookies, Auth0 es Fase 4); **Storage → API nueva**
+> (local Etapa 1 → GCS); **email/IA → migrar DATA, dejar el envío/generación como stub**. Trabajar con EQUIPO DE
+> AGENTES (lead delega módulos backend al backend-agent, verifica en disco build/lint/test+boot+curl, cablea
+> frontend, review code-reviewer+security-agent hasta 0 CRIT/HIGH).
+>
+> **Decisiones de producto:** admin = SOLO stats, nunca PII de pacientes. booking slots = fuente `doctor_offices`
+> (multi-consultorio), NO `doctor_schedules`.
 
-**PENDIENTE (necesita DEFINICIONES del usuario o desbloqueo):**
+**HECHO (commits en `feature/migracion-backend`, sin push):** a60da5b (capabilities sidebars+/admin/roles+reschedule+
+thin-proxy toggle-doctor/setup-promotions) · 946676f (backend doctor-detail+growth + cableo doctor-details/
+subscription-stats/plan-features) · 8157bef (plan-config description + /admin/plans) · 13fc978 (admin/patients
+solo-stats). Backend: **1138 tests**, build/lint 0. Frontend tsc 0.
 
-- **booking slots** (`book/[doctorId]`): reconciliar `doctor_offices` (front, multi-consultorio, configurado en
-  /doctor/offices) vs `doctor_schedules` (backend `GET /booking/:id/slots`) — modelos DISTINTOS; migrar al backend
-  ignoraría la config de consultorios y rompería disponibilidad. Decisión de producto + el resto del BookingClient
-  está Auth0-bloqueado (signup/signin/packages) + storage (F5). DIFERIDO hasta definición.
-- **admin/patients**: requiere endpoint backend NUEVO que liste pacientes con **PII descifrada cross-doctor** +
-  stats por paciente (hoy GET /admin/patients solo da {totalPatients, patientsByDoctor}). Decisión de seguridad/
-  privacidad mayor (admin viendo PII de todos los pacientes). DIFERIDO.
-- **admin/dashboard** (`admin/page.tsx`): parcial — backend `GET /admin/dashboard` cubre 7 KPIs pero la página
-  agrega subscription_payments (billing). Migrable con composición; medio esfuerzo.
-- **admin/finanzas, AdminNotifications, reminders**: subscription_payments agregados / realtime / reminders → F5.
-- Handlers Supabase sin backend/dev-tooling: `change-plan`, `toggle-subscription`, `settings-data` (huérfanos,
-  sin consumidor), `invoice-pdf`/`send-invoice` (PDF/email F5), `fix-role` (Auth0 F4), `seed`/`reset-database` (dev).
-- Doctor area residuals (storage/realtime/templates/quick_items/offices/messages) → F5.
+**ROADMAP por fases (lo que falta — inventario de archivos con Supabase, `grep -rl "@/lib/supabase\|createClient" apps/frontend/app`):**
 
-**Bloqueantes (NO tocar):** Auth0 (Fase 4), proveedor de email (sin definir), IA/Gemini.
+- **FASE 1 — Admin (casi lista):** HECHO roles/plan-features/plans/doctor-details/subscription-stats/patients.
+  FALTA: `admin/page.tsx` (dashboard — backend GET /admin/dashboard cubre KPIs; falta agregado de ingresos de
+  `subscription_payments`→billing) · `admin/finanzas/page.tsx` (subscription_payments) · `admin/AdminNotifications.tsx`
+  (realtime→polling o quitar) · `admin/reminders/page.tsx` (reminders_queue) · `admin/finances/actions.ts` ·
+  handlers huérfanos/blocked: `api/admin/change-plan`, `toggle-subscription`, `settings-data` (huérfanos→deprecar o
+  thin-proxy), `fix-role` (Auth0→deprecar), `seed`/`reset-database` (dev-tooling Supabase→deprecar),
+  `invoice-pdf`/`send-invoice` (PDF/email→stub F5).
+- **FASE 2 — Doctor área (data pages, la más grande):** `doctor/page.tsx`, `agenda/page.tsx`, `cobros/page.tsx`,
+  `consultations/page.tsx`+`[id]`+`actions.ts`+`actions-prescriptions.ts`, `finances/page.tsx`, `messages/page.tsx`,
+  `patients/page.tsx`, `reports/page.tsx`, `settings/page.tsx`+`exchange-rate`, `templates/page.tsx`, `offices/page.tsx`,
+  `reminders/page.tsx`, `cita-360/page.tsx`+`[id]`, `DoctorNotificationToast.tsx`, `layout.tsx` (logout supabase),
+  `settings/avatar-uploader.tsx` (storage). APIs nuevas backend probables: offices, templates, doctor-messages,
+  doctor-schedule, reminders-settings, quick_items, exchange-rate. (patients/consultations/finances ya tienen backend.)
+- **FASE 3 — Booking (offices):** construir módulo backend `offices` (tabla doctor_offices → migración + CRUD) +
+  generación de slots DESDE offices (reemplaza el actual basado en doctor_schedules); migrar `book/[doctorId]/page.tsx`
+  - `BookingClient.tsx` (slots) + `api/book`. OJO: BookingClient también tiene signup/signin (Fase 4) y upload (Fase 5).
+- **FASE 4 — Auth dev-stub:** `register/page.tsx`+`actions.ts`, `onboarding/page.tsx`+`api/onboarding`,
+  `forgot-password`, `reset-password`, `auth/callback`, `admin/doctors/actions.ts` (createUser), `api/seed-accounts`.
+  Reemplazar supabase.auth.\* por dev-stub/endpoints; flujos de proveedor (OAuth/recovery) = stub hasta Auth0.
+- **FASE 5 — Storage:** API de archivos backend (local Etapa 1 → GCS). Consumidores: avatar-uploader, comprobantes
+  (book/agenda), `api/doctor/share-pdf`, `api/doctor/view-doc`, `api/admin/invoice-pdf`.
+- **FASE 6 — Integraciones (migrar data, stub envío):** `api/doctor/ai` (Gemini), `api/doctor/send-consultation-email`
+  - `api/admin/send-invoice` (Resend), `api/doctor/calendar-sync` + `api/integrations/google/*`, `api/cron/subscription-expiry`,
+    `api/doctor/appointments`, `api/doctor/consultations`, `api/doctor/schedule`, `api/doctor/exchange-rate`, `api/plans`, `api/debug-booking`.
+- **FASE 7 — Patient:** `patient/[patientId]/page.tsx`, `[patientId]/report/[consultationId]`, `reports/page.tsx`,
+  `seguimiento/page.tsx`.
+- **FASE 8 — Limpieza final:** quitar deps `@supabase/*` del package.json + borrar `lib/supabase/*` + `grep` 0 referencias.
+
+**Reglas:** módulo backend = DDD 4 capas + migración .cjs (timestamp > 20260604000002) + tests + boot dist + curl;
+NUNCA Sequelize en providers; commit body ≤100 chars. Frontend = swap de datos sin tocar JSX; server comp→backendGet,
+client→server action/route handler. Lead verifica EXIT real lo que el agente declare.
+**PARADA EN QA:** el usuario hace el QA visual. NO ejecutar qa-agent.
 
 **PENDIENTE = cableo frontend (no + Supabase donde haya API) + features MVP no bloqueadas:**
 
