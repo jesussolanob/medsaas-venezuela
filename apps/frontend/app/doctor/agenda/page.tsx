@@ -24,8 +24,9 @@ import {
   Package,
   RefreshCw,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: appointments, offices, profiles, packages, storage, realtime
+import { createClient } from '@/lib/supabase/client'; // FASE 5: offices, profiles, packages, storage; Supabase permanece para schedule/offices/patients/pricing_plans/receipts
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import { listAgendaAppointments, listPendingAppointments } from './actions'; // MIGRATED: appointments → NestJS backend
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
@@ -344,6 +345,9 @@ export default function AgendaPage() {
   } | null>(null);
 
   // Cargar status reales de consulta + pago cada vez que se abre el modal
+  // FASE 5 (Supabase): appointment detail join con consultation/payment.
+  // En Etapa 1 el backend no expone estos datos en GET /api/appointments/:id.
+  // Se mantiene en Supabase hasta que el backend devuelva consultation_status y payment_status.
   useEffect(() => {
     if (!detailAppt) {
       setDetailStatus({ consulta: null, pago: null });
@@ -351,7 +355,7 @@ export default function AgendaPage() {
     }
     const apptId = detailAppt.appointment_id || detailAppt.id;
     (async () => {
-      const supabase = createClient();
+      const supabase = createClient(); // FASE 5: appointment detail (consulta+pago status)
       const { data: appt } = await supabase
         .from('appointments')
         .select('consultation_id, payment_id')
@@ -523,137 +527,56 @@ export default function AgendaPage() {
       setDoctorPaymentMethods(profileData.payment_methods);
     }
 
-    // 2. Load CONFIRMED consultations (only recent + future — last 30 days + next 60 days)
+    // MIGRATED (Etapa 1): appointments list → NestJS backend via listAgendaAppointments.
+    // Reemplaza las 3 queries Supabase anteriores (consultations join + confirmed + pending).
+    // La separación consultas/citas ya no existe en el frontend: el backend unifica todo
+    // bajo /api/appointments. payment_status por filtro de pago queda DEFERRED (FASE 5):
+    // el backend no expone payment_status en lista en Etapa 1 → siempre null.
+    const slotDuration = config.slot_duration || 30;
     const pastCutoff = new Date();
     pastCutoff.setDate(pastCutoff.getDate() - 30);
     const futureCutoff = new Date();
     futureCutoff.setDate(futureCutoff.getDate() + 60);
 
-    // Cargar consultas con el STATUS real del appointment vinculado (join)
-    const { data: consults } = await supabase
-      .from('consultations')
-      .select(
-        `
-        id, consultation_code, consultation_date, chief_complaint, payment_status,
-        appointment_id, amount,
-        patients(full_name, phone, email),
-        appointments:appointment_id(status)
-      `,
-      )
-      .eq('doctor_id', user.id)
-      .gte('consultation_date', pastCutoff.toISOString())
-      .lte('consultation_date', futureCutoff.toISOString())
-      .order('consultation_date', { ascending: true });
+    const [backendAppts, backendPending] = await Promise.all([
+      // Citas confirmadas/completadas/canceladas/no_show en rango ±30/+60 días
+      listAgendaAppointments(
+        pastCutoff.toISOString(),
+        futureCutoff.toISOString(),
+        slotDuration,
+      ),
+      // Citas pendientes (status=scheduled) sin límite de fecha
+      listPendingAppointments(slotDuration),
+    ]);
 
-    const slotDuration = config.slot_duration || 30;
-    const consultAppts: CalendarAppointment[] = (consults ?? []).map((c) => {
-      const d = new Date(c.consultation_date);
-      const timeStr = toHHMM(d);
-      // Status real: si tiene appointment vinculado, usamos su status; si no, 'confirmed' por legado.
-      const apptObj = Array.isArray((c as any).appointments)
-        ? (c as any).appointments[0]
-        : (c as any).appointments;
-      const realStatus = (apptObj?.status as CalendarAppointment['status']) || 'confirmed';
-      return {
-        // RONDA 25: id = appointment_id si existe (asi matchea con confirmed/pending y NO se duplica
-        // en el calendario). Antes era c.id (consultation.id) → IDs distintos para el mismo evento.
-        id: c.appointment_id || c.id,
-        appointment_id: c.appointment_id ?? null,
-        patient_name:
-          !Array.isArray(c.patients) && c.patients ? (c.patients as any).full_name : 'Paciente',
-        date: dateToYMD(d),
-        isoDate: c.consultation_date,
-        time: timeStr,
-        endTime: addMinutes(timeStr, slotDuration),
-        chief_complaint: c.chief_complaint ?? undefined,
-        status: realStatus,
-        source: 'consultation' as const,
-        consultation_code: c.consultation_code,
-        patient_phone: !Array.isArray(c.patients) && c.patients ? (c.patients as any).phone : null,
-        patient_email: !Array.isArray(c.patients) && c.patients ? (c.patients as any).email : null,
-        // L2 (2026-04-29): expone payment_status para los filtros del calendario.
-        payment_status: (c.payment_status as 'pending' | 'approved' | null) ?? null,
-      };
-    });
-
-    // 3. Load PENDING appointments (not yet accepted)
-    const { data: pending } = await supabase
-      .from('appointments')
-      .select(
-        'id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, patient_cedula, plan_name, plan_price, status, appointment_code, payment_method, payment_receipt_url, appointment_mode, package_id, session_number',
-      )
-      .eq('doctor_id', user.id)
-      .eq('status', 'scheduled')
-      .order('scheduled_at', { ascending: true });
-
-    // 4. Load ALL active-lifecycle appointments (confirmed, completed, cancelled, no_show)
-    //    para que los filtros del calendario funcionen correctamente. Pending ya se carga en #3.
-    const { data: confirmed } = await supabase
-      .from('appointments')
-      .select(
-        'id, scheduled_at, chief_complaint, patient_name, patient_phone, patient_email, plan_name, plan_price, status, appointment_code, meet_link',
-      )
-      .eq('doctor_id', user.id)
-      .in('status', ['confirmed', 'completed', 'cancelled', 'no_show'])
-      .gte('scheduled_at', pastCutoff.toISOString())
-      .lte('scheduled_at', futureCutoff.toISOString())
-      .order('scheduled_at', { ascending: true });
-
-    // Deduplicate: remove confirmed appointments that already have a linked consultation
-    const consultAppointmentIds = new Set(
-      (consults ?? []).filter((c) => c.appointment_id).map((c) => c.appointment_id),
-    );
-    const confirmedAppts: CalendarAppointment[] = (confirmed ?? [])
-      .filter((a) => {
-        // Skip if this appointment already has a consultation linked
-        if (consultAppointmentIds.has(a.id)) return false;
-        // Also skip if same patient + similar time (within 1 hour)
-        return !consultAppts.some((c) => {
-          const timeDiff = Math.abs(
-            new Date(c.isoDate).getTime() - new Date(a.scheduled_at).getTime(),
-          );
-          return c.patient_name === a.patient_name && timeDiff < 3600000;
-        });
-      })
-      .map((a) => {
-        const d = new Date(a.scheduled_at);
-        const timeStr = toHHMM(d);
-        // F1 (2026-04-29): respetar el status real de la BD (confirmed/completed/cancelled/no_show)
-        // en vez de forzar 'confirmed'. Antes el filtro por status no funcionaba porque
-        // todas estas citas terminaban como 'confirmed' aunque en BD estuvieran como completed/cancelled/no_show.
-        const realStatus = (a.status as CalendarAppointment['status']) || 'confirmed';
-        return {
-          id: a.id,
-          patient_name: a.patient_name,
-          date: dateToYMD(d),
-          isoDate: a.scheduled_at,
-          time: timeStr,
-          endTime: addMinutes(timeStr, slotDuration),
-          chief_complaint: a.chief_complaint ?? undefined,
-          status: realStatus,
-          source: 'appointment' as const,
-          appointment_code: a.appointment_code,
-          plan_name: a.plan_name,
-          plan_price: a.plan_price,
-          patient_phone: a.patient_phone,
-          patient_email: a.patient_email,
-          meet_link: a.meet_link,
-          // F1 (2026-04-29): citas sin consulta linkeada no tienen payment_status.
-          // Explicitamente null para que el filtro de pago las excluya cuando paymentFilter !== 'all'.
-          payment_status: null,
-        };
-      });
-
-    // RONDA 25: deduplicar por appointment_id (o id como fallback) — antes usaba
-    // solo `id` pero consultations tienen otro id distinto al appointment, por eso
-    // la misma cita aparecia 2 veces en el calendario.
-    const merged = [...consultAppts, ...confirmedAppts];
-    const dedupKey = (a: CalendarAppointment) => a.appointment_id || a.id;
-    const uniqueAppts = Array.from(new Map(merged.map((a) => [dedupKey(a), a])).values());
+    // Normalizar al shape CalendarAppointment que consume el JSX
+    const uniqueAppts: CalendarAppointment[] = backendAppts
+      .filter((a) => a.status !== 'scheduled') // pending ya viene en backendPending
+      .map((a) => ({
+        id: a.id,
+        appointment_id: a.appointment_id,
+        patient_name: a.patient_name,
+        date: a.date,
+        isoDate: a.isoDate,
+        time: a.time,
+        endTime: a.endTime,
+        chief_complaint: a.chief_complaint,
+        status: a.status,
+        source: a.source,
+        consultation_code: undefined, // FASE 5: el backend no retorna consultation_code en lista
+        appointment_code: a.appointment_code,
+        plan_name: a.plan_name,
+        plan_price: a.plan_price,
+        patient_phone: a.patient_phone,
+        patient_email: a.patient_email,
+        patient_cedula: a.patient_cedula,
+        meet_link: a.meet_link,
+        payment_status: a.payment_status,
+      }));
     setAllAppointments(uniqueAppts);
 
-    // Enrich pending appointments with package total_sessions
-    const pendingList = (pending ?? []) as PendingAppointment[];
+    // Enrich pending appointments with package total_sessions (Supabase — FASE 5)
+    const pendingList: PendingAppointment[] = backendPending.map((p) => ({ ...p }));
     const packageIds = [
       ...new Set(pendingList.filter((p) => p.package_id).map((p) => p.package_id!)),
     ];
@@ -687,68 +610,12 @@ export default function AgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // L2 (2026-04-29): Realtime — escuchar cambios en appointments, consultations
-  // y payments del doctor para refrescar la agenda sin reload. Antes solo se
-  // refrescaba al recargar manualmente, asi un pago aprobado en /doctor/cobros
-  // no actualizaba el filtro "Pago aprobado" hasta refrescar la pagina.
-  useEffect(() => {
-    const supabase = createClient();
-    let channels: any[] = [];
-    (async () => {
-      // FASE 5: Supabase Realtime subscription stays Supabase
-      const id = await getDevDoctorId();
-      if (!id) return;
-      const user = { id };
-      const refresh = () => {
-        loadData();
-      };
-      const suffix = Math.random().toString(36).slice(2, 8);
-      channels = [
-        supabase
-          .channel(`agenda-appts-${user.id}-${suffix}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'appointments',
-              filter: `doctor_id=eq.${user.id}`,
-            },
-            refresh,
-          )
-          .subscribe(),
-        supabase
-          .channel(`agenda-consults-${user.id}-${suffix}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'consultations',
-              filter: `doctor_id=eq.${user.id}`,
-            },
-            refresh,
-          )
-          .subscribe(),
-        supabase
-          .channel(`agenda-payments-${user.id}-${suffix}`)
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'payments', filter: `doctor_id=eq.${user.id}` },
-            refresh,
-          )
-          .subscribe(),
-      ];
-    })();
-    return () => {
-      channels.forEach((c) => {
-        try {
-          supabase.removeChannel(c);
-        } catch {}
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // REALTIME ELIMINADO (Etapa 1 → FASE 5):
+  // Supabase Realtime (postgres_changes en appointments/consultations/payments)
+  // fue removido porque los datos ahora vienen del backend NestJS vía HTTP.
+  // No existe un equivalente WebSocket en Etapa 1. El doctor puede hacer refresh
+  // manual con el botón "Sync Calendar" o recargar la página para ver cambios recientes.
+  // En FASE 5 se puede reimplementar via SSE o WebSocket en el backend.
 
   // ── Save availability to DB ──────────────────────────────────────────────
 
