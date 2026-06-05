@@ -32,9 +32,10 @@ import {
   Smartphone,
   CreditCard,
 } from 'lucide-react';
-// PENDING_STORAGE: createClient kept only for storage operations (avatar, logo, signature,
-// license_number, whatsapp tokens, share_message_template, sound_notifications).
-// Non-storage profile/payment data now flows through backend actions below.
+// Supabase client kept for non-storage DB operations not yet migrated to backend:
+// performRemoveSignature (profiles.signature_url null), saveLicense (profiles.license_number),
+// toggleSound (profiles.sound_notifications), saveIntegrations (whatsapp tokens).
+// Storage uploads (avatar, logo, signature) now use /api/storage/upload (backend MinIO).
 import { createClient } from '@/lib/supabase/client';
 import {
   loadSettingsProfile,
@@ -386,30 +387,23 @@ function SettingsPageInner() {
     if (!file || !doctorId) return;
     setUploadingLogo(true);
     setLogoError('');
-    const supabase = createClient();
-    const ext = file.name.split('.').pop();
-    const path = `logos/${doctorId}.${ext}`;
-    let { error: upErr } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true });
-    if (upErr && upErr.message?.toLowerCase().includes('bucket')) {
-      try {
-        await supabase.storage.createBucket('avatars', { public: true });
-        const retry = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
-        upErr = retry.error;
-      } catch {
-        upErr = { message: 'No se pudo crear el bucket' } as any;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', 'logo');
+      const res = await fetch('/api/storage/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok || !json?.data?.url) {
+        throw new Error(json?.error?.message ?? 'Error al subir logo');
       }
+      // TODO: persist logo_url via backend profile endpoint once DTO supports it.
+      setLogoUrl(json.data.url + '?t=' + Date.now());
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      setLogoError('No se pudo subir el logo. ' + msg);
+    } finally {
+      setUploadingLogo(false);
     }
-    if (upErr) {
-      setLogoError('No se pudo subir el logo. Intenta de nuevo.');
-    } else {
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const url = urlData.publicUrl;
-      await supabase.from('profiles').update({ logo_url: url }).eq('id', doctorId);
-      setLogoUrl(url + '?t=' + Date.now());
-    }
-    setUploadingLogo(false);
   }
 
   async function uploadSignature(e: React.ChangeEvent<HTMLInputElement>) {
@@ -417,30 +411,23 @@ function SettingsPageInner() {
     if (!file || !doctorId) return;
     setUploadingSignature(true);
     setSignatureError('');
-    const supabase = createClient();
-    const ext = file.name.split('.').pop();
-    const path = `signatures/${doctorId}.${ext}`;
-    let { error: upErr } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true });
-    if (upErr && upErr.message?.toLowerCase().includes('bucket')) {
-      try {
-        await supabase.storage.createBucket('avatars', { public: true });
-        const retry = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
-        upErr = retry.error;
-      } catch {
-        upErr = { message: 'No se pudo crear el bucket' } as any;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', 'signature');
+      const res = await fetch('/api/storage/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok || !json?.data?.url) {
+        throw new Error(json?.error?.message ?? 'Error al subir firma');
       }
+      // TODO: persist signature_url via backend profile endpoint once DTO supports it.
+      setSignatureUrl(json.data.url + '?t=' + Date.now());
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      setSignatureError('No se pudo subir la firma. ' + msg);
+    } finally {
+      setUploadingSignature(false);
     }
-    if (upErr) {
-      setSignatureError('No se pudo subir la firma. Intenta de nuevo.');
-    } else {
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const url = urlData.publicUrl;
-      await supabase.from('profiles').update({ signature_url: url }).eq('id', doctorId);
-      setSignatureUrl(url + '?t=' + Date.now());
-    }
-    setUploadingSignature(false);
   }
 
   // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.

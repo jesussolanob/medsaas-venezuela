@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: doctor_templates, storage
+// Supabase client retained for doctor_templates table reads/writes and profiles query.
+// Storage uploads (logo, signature) now use /api/storage/upload (backend MinIO).
+// TODO Fase 5: replace doctor_templates CRUD with backend API endpoints.
+import { createClient } from '@/lib/supabase/client';
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
 import {
   FileEdit,
@@ -252,34 +255,32 @@ export default function TemplatesPage() {
     }));
   }
 
+  // NOTE: Per-template logo/signature upload removed in RONDA 17.
+  // Assets are now sourced from the doctor profile (profileLogoUrl / profileSignatureUrl).
+  // This function is retained as a stub to avoid breaking the logoRef/signatureRef refs
+  // in case they are re-wired in a future iteration.
   async function uploadFile(file: File, type: 'logo' | 'signature') {
     if (type === 'logo') setUploadingLogo(true);
     else setUploadingSignature(true);
 
     try {
-      const supabase = createClient();
-      const id = await getDevDoctorId();
-      if (!id) return;
-      const user = { id };
-
-      const ext = file.name.split('.').pop();
-      const path = `templates/${user.id}/${type}_${activeTab}_${Date.now()}.${ext}`;
-
-      const { error } = await supabase.storage
-        .from('payment-receipts')
-        .upload(path, file, { upsert: true });
-
-      if (error) throw error;
-
-      const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path);
-
-      if (type === 'logo') {
-        updateConfig('logo_url', publicUrl.publicUrl);
-      } else {
-        updateConfig('signature_url', publicUrl.publicUrl);
+      const kind = type === 'logo' ? 'logo' : 'signature';
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', kind);
+      const res = await fetch('/api/storage/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok || !json?.data?.url) {
+        throw new Error(json?.error?.message ?? `Error al subir ${kind}`);
       }
-    } catch (err) {
-      console.error(`Error uploading ${type}:`, err);
+      if (type === 'logo') {
+        updateConfig('logo_url', json.data.url);
+      } else {
+        updateConfig('signature_url', json.data.url);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Error uploading ${type}:`, msg);
       alert(`Error al subir ${type === 'logo' ? 'logo' : 'firma'}`);
     } finally {
       if (type === 'logo') setUploadingLogo(false);

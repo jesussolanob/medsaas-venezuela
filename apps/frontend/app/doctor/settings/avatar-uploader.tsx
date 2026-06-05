@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { User, Camera, Loader2, Check, X, ZoomIn, ZoomOut } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 type Props = {
   doctorId: string | null
@@ -114,21 +113,17 @@ export default function AvatarUploader({ doctorId, currentUrl, onUploaded }: Pro
         out.toBlob(b => b ? res(b) : rej(new Error('blob failed')), 'image/jpeg', 0.9)
       })
 
-      const supabase = createClient()
-      const path = `avatars/${doctorId}.jpg`
-      let { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-      if (upErr && upErr.message?.toLowerCase().includes('bucket')) {
-        try {
-          await supabase.storage.createBucket('avatars', { public: true })
-          const retry = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-          upErr = retry.error
-        } catch { upErr = { message: 'No se pudo crear el bucket' } as any }
-      }
-      if (upErr) throw upErr
+      const fd = new FormData()
+      fd.append('file', new File([blob], `${doctorId}.jpg`, { type: 'image/jpeg' }))
+      fd.append('kind', 'avatar')
 
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-      const finalUrl = urlData.publicUrl + '?t=' + Date.now()
-      await supabase.from('profiles').update({ avatar_url: finalUrl }).eq('id', doctorId)
+      const uploadRes = await fetch('/api/storage/upload', { method: 'POST', body: fd })
+      const uploadJson = await uploadRes.json()
+      if (!uploadRes.ok || !uploadJson?.data?.url) {
+        throw new Error(uploadJson?.error?.message ?? 'Error al subir avatar')
+      }
+
+      const finalUrl = uploadJson.data.url + '?t=' + Date.now()
       onUploaded(finalUrl)
       setSourceImg(null); setSourceDataUrl(null); setZoom(1); setOffset({ x: 0, y: 0 })
     } catch (e: any) {

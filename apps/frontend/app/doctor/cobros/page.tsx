@@ -5,11 +5,16 @@
 //   - openAddItemModal → getServicesForModal() (GET /api/doctor/services)
 //   - generateReceipt (profile) → getDoctorProfileForReceipt() (GET /api/doctor/profile)
 //   - exportExcel → getPaymentsForExport() (GET /api/finances/payments)
-// PENDIENTE storage (Fase 5, otro agente):
-//   - handleReceiptUpload → Supabase storage mantenido intencionalmente.
+//   - handleReceiptUpload → storage migrado a /api/storage/upload (backend MinIO). ✅
+// PENDIENTE (Fase 5):
 //   - Realtime refresh → Supabase channel mantenido intencionalmente.
+//   - appointments.payment_receipt_url update → pendiente endpoint backend PATCH.
 import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: storage + realtime únicamente
+// Supabase client retained for:
+//   - Realtime subscription on payments table (real-time refresh).
+//   - appointments.payment_receipt_url update (no backend PATCH endpoint yet).
+// Storage uploads now use /api/storage/upload (backend MinIO). FASE 5: replace remaining DB writes.
+import { createClient } from '@/lib/supabase/client';
 import { getDoctorId } from '@/app/doctor/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
@@ -106,46 +111,36 @@ export default function CobrosPage() {
     if (!selectedPayment) return;
     setUploadingReceipt(true);
     try {
-      const supabase = createClient();
-      const doctorId = await getDoctorId();
-      if (!doctorId) return;
-      const user = { id: doctorId };
-
-      const ext = file.name.split('.').pop() || 'jpg';
-      const filePath = `receipts/${user.id}/${selectedPayment.id}.${ext}`;
-
-      const { error: uploadErr } = await supabase.storage
-        .from('payment-receipts')
-        .upload(filePath, file, { upsert: true, contentType: file.type });
-
-      if (uploadErr) {
-        // Try creating the bucket if it doesn't exist
-        await supabase.storage.createBucket('payment-receipts', { public: true });
-        const { error: retryErr } = await supabase.storage
-          .from('payment-receipts')
-          .upload(filePath, file, { upsert: true, contentType: file.type });
-        if (retryErr) throw retryErr;
+      // Upload via BFF proxy → backend MinIO.
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', 'receipt');
+      const uploadRes = await fetch('/api/storage/upload', { method: 'POST', body: fd });
+      const uploadJson = await uploadRes.json();
+      if (!uploadRes.ok || !uploadJson?.data?.url) {
+        throw new Error(uploadJson?.error?.message ?? 'Error al subir comprobante');
       }
+      const publicUrl: string = uploadJson.data.url;
 
-      const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(filePath);
-      const publicUrl = urlData.publicUrl;
-
-      // Update the appointment record with the receipt URL
+      // Persist the URL back to appointments.payment_receipt_url.
+      // TODO: replace with backend PATCH /api/appointments/:id once that endpoint exists.
+      const supabase = createClient();
       await supabase
         .from('appointments')
         .update({ payment_receipt_url: publicUrl })
         .eq('id', selectedPayment.id);
 
-      // Update local state
+      // Update local state.
       setSelectedPayment((prev) => (prev ? { ...prev, payment_receipt_url: publicUrl } : null));
       setPayments((prev) =>
         prev.map((p) =>
           p.id === selectedPayment.id ? { ...p, payment_receipt_url: publicUrl } : p,
         ),
       );
-    } catch (err) {
-      console.error('Error uploading receipt:', err);
-      alert('Error al subir el comprobante');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      console.error('Error uploading receipt:', msg);
+      alert('Error al subir el comprobante. ' + msg);
     } finally {
       setUploadingReceipt(false);
     }

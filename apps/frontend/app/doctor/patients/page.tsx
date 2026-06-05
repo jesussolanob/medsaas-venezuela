@@ -398,16 +398,20 @@ export default function PatientsPage() {
       const planAmount = selectedPlan?.price_usd || 0
       const planName = selectedPlan?.name || ''
 
-      // Upload receipt if provided
+      // Upload receipt via BFF proxy → backend MinIO.
       let receiptUrl: string | null = null
       if (receiptFile) {
-        const supabase = createClient()
-        const ext = receiptFile.name.split('.').pop()
-        const path = `${doctorId}/${selected.id}/${Date.now()}.${ext}`
-        const { error: uploadErr } = await supabase.storage.from('payment-receipts').upload(path, receiptFile, { upsert: false })
-        if (uploadErr) { setConsultError(`Error al subir comprobante: ${uploadErr.message}`); setUploadingReceipt(false); return }
-        const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
-        receiptUrl = publicUrl.publicUrl
+        const fd = new FormData()
+        fd.append('file', receiptFile)
+        fd.append('kind', 'receipt')
+        const uploadRes = await fetch('/api/storage/upload', { method: 'POST', body: fd })
+        const uploadJson = await uploadRes.json()
+        if (!uploadRes.ok || !uploadJson?.data?.url) {
+          setConsultError(`Error al subir comprobante: ${uploadJson?.error?.message ?? 'Error desconocido'}`)
+          setUploadingReceipt(false)
+          return
+        }
+        receiptUrl = uploadJson.data.url
       }
 
       // Create consultation via API (auto-creates linked appointment)

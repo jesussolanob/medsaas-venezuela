@@ -527,7 +527,7 @@ export default function BookingClient({
       const patientCedula = (form.cedula.trim() || authUser?.user_metadata?.cedula || '').trim()
       const patientEmail = sessionEmail || form.email.trim()
 
-      // Upload receipt if needed
+      // Upload receipt via BFF proxy → backend MinIO.
       let receiptUrl = null
       if (!usingPackage && !useInsurance && selectedPaymentMethod && requiresReceipt(selectedPaymentMethod as PaymentMethod)) {
         if (!paymentFile) {
@@ -536,15 +536,18 @@ export default function BookingClient({
           return
         }
         try {
-          const ext = paymentFile.name.split('.').pop()
-          const uploaderId = authUser?.id || 'guest'
-          const path = `${doctor.id}/${uploaderId}/${Date.now()}.${ext}`
-          const { error: uploadErr } = await supabase.storage.from('payment-receipts').upload(path, paymentFile, { upsert: false })
-          if (uploadErr) throw uploadErr
-          const { data: publicUrl } = supabase.storage.from('payment-receipts').getPublicUrl(path)
-          receiptUrl = publicUrl.publicUrl
-        } catch (err: any) {
-          setError(`Error al subir comprobante: ${err?.message || 'Contacta al doctor.'}`)
+          const fd = new FormData()
+          fd.append('file', paymentFile)
+          fd.append('kind', 'receipt')
+          const uploadRes = await fetch('/api/storage/upload', { method: 'POST', body: fd })
+          const uploadJson = await uploadRes.json()
+          if (!uploadRes.ok || !uploadJson?.data?.url) {
+            throw new Error(uploadJson?.error?.message ?? 'Error al subir comprobante')
+          }
+          receiptUrl = uploadJson.data.url
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Contacta al doctor.'
+          setError(`Error al subir comprobante: ${msg}`)
           setSubmitting(false)
           return
         }
