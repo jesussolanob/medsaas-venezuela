@@ -1,8 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: doctor_offices
-import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
+import {
+  listOffices,
+  createOffice,
+  updateOffice,
+  deleteOffice,
+  toggleOffice,
+} from './actions';
 import {
   Building2,
   Plus,
@@ -72,21 +77,11 @@ export default function OfficesPage() {
   const [bufferMinutes, setBufferMinutes] = useState(10);
 
   const fetchOffices = useCallback(async () => {
-    const supabase = createClient();
-    const id = await getDevDoctorId();
-    if (!id) return;
-    const user = { id };
-
-    const { data } = await supabase
-      .from('doctor_offices')
-      .select('*')
-      .eq('doctor_id', user.id)
-      .order('created_at', { ascending: true });
-
+    const data = await listOffices();
     setOffices(
-      (data || []).map((o) => ({
+      data.map((o) => ({
         ...o,
-        schedule: o.schedule || DEFAULT_SCHEDULE,
+        schedule: o.schedule?.length ? o.schedule : DEFAULT_SCHEDULE,
         slot_duration: o.slot_duration || 30,
         buffer_minutes: o.buffer_minutes || 10,
       })),
@@ -137,13 +132,8 @@ export default function OfficesPage() {
       return;
     }
     setSaving(true);
-    const supabase = createClient();
-    const id = await getDevDoctorId();
-    if (!id) return;
-    const user = { id };
 
     const payload = {
-      doctor_id: user.id,
       name: name.trim(),
       address: address.trim(),
       city: city.trim(),
@@ -151,13 +141,12 @@ export default function OfficesPage() {
       schedule,
       slot_duration: slotDuration,
       buffer_minutes: bufferMinutes,
-      is_active: true,
     };
 
     if (editing) {
-      await supabase.from('doctor_offices').update(payload).eq('id', editing.id);
+      await updateOffice(editing.id, payload);
     } else {
-      await supabase.from('doctor_offices').insert(payload);
+      await createOffice(payload);
     }
 
     setSaving(false);
@@ -171,19 +160,14 @@ export default function OfficesPage() {
 
   async function performDelete(id: string) {
     setDeleting(id);
-    const supabase = createClient();
-    await supabase.from('doctor_offices').delete().eq('id', id);
+    await deleteOffice(id);
     setDeleting(null);
     setConfirmDelete(null);
     fetchOffices();
   }
 
   async function toggleActive(office: Office) {
-    const supabase = createClient();
-    await supabase
-      .from('doctor_offices')
-      .update({ is_active: !office.is_active })
-      .eq('id', office.id);
+    await toggleOffice(office.id);
     fetchOffices();
   }
 
