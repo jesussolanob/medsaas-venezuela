@@ -29,6 +29,7 @@ describe('GetBookingPackagesUseCase', () => {
       findActiveByEmailHash: jest.fn(),
       save: jest.fn(),
       consumeSessionOptimistic: jest.fn(),
+      listByDoctor: jest.fn(),
     };
     useCase = new GetBookingPackagesUseCase(
       mockRepo,

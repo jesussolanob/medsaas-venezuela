@@ -109,6 +109,9 @@ describe('CreateBookingUseCase', () => {
       incrementPackageSessions: jest.fn(),
       logStatusChange: jest.fn(),
       findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue([]),
+      findByIdForDoctor: jest.fn(),
+      findRescheduleChain: jest.fn().mockResolvedValue([]),
+      findChangeLogs: jest.fn().mockResolvedValue([]),
     };
 
     mockPatientRepo = {

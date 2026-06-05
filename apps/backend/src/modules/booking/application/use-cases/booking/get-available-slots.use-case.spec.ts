@@ -91,6 +91,7 @@ function makeOfficeRepo(offices: Office[] = []): jest.Mocked<IOfficeRepository> 
 function makeAppointmentRepo(occupied: Appointment[] = []): jest.Mocked<IAppointmentRepository> {
   return {
     findById: jest.fn(),
+    findByIdForDoctor: jest.fn(),
     list: jest.fn(),
     save: jest.fn(),
     updateStatus: jest.fn(),
@@ -101,6 +102,8 @@ function makeAppointmentRepo(occupied: Appointment[] = []): jest.Mocked<IAppoint
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn(),
     findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue(occupied),
+    findRescheduleChain: jest.fn().mockResolvedValue([]),
+    findChangeLogs: jest.fn().mockResolvedValue([]),
   } as jest.Mocked<IAppointmentRepository>;
 }
 
