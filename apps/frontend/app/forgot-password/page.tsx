@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Mail, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -20,25 +19,12 @@ export default function ForgotPasswordPage() {
     setLoading(true)
     setError('')
 
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
-
-      if (error) {
-        // No exponemos si el email existe o no — anti-enumeración
-        console.warn('[forgot-password]', error.message)
-      }
-
-      // Siempre mostramos éxito por seguridad (anti email enumeration)
-      setSent(true)
-    } catch {
-      // Igual: no fallar visiblemente
-      setSent(true)
-    } finally {
-      setLoading(false)
-    }
+    // ETAPA 1: la recuperación de contraseña por email es un bloqueante (proveedor de
+    // email/Auth0 sin definir — ver Fase 4/6). Sin Supabase. Mostramos siempre éxito
+    // (anti email-enumeration); el envío real se conectará cuando exista proveedor.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    setSent(true)
+    setLoading(false)
   }
 
   return (

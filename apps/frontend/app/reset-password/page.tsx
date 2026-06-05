@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Lock, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -16,16 +15,12 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState(false)
   const [hasValidSession, setHasValidSession] = useState<boolean | null>(null)
 
-  // Cuando el usuario clickea el link del email, Supabase Auth abre la página
-  // con un fragment `#access_token=...&type=recovery` que el client SDK detecta
-  // automáticamente y crea una session temporal. Verificamos que sea válida.
+  // ETAPA 1: la recuperación de contraseña por email es un bloqueante (proveedor de
+  // email/Auth0 sin definir — ver Fase 4/6). Sin Supabase no existe el flujo de enlaces
+  // de recovery, por lo que esta página siempre se presenta como "enlace inválido".
+  // Cuando exista proveedor, se restaurará la verificación del token de recovery.
   useEffect(() => {
-    const supabase = createClient()
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setHasValidSession(!!session)
-    }
-    checkSession()
+    setHasValidSession(false)
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -41,18 +36,13 @@ export default function ResetPasswordPage() {
     setLoading(true)
     setError('')
 
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.updateUser({ password })
-      if (error) throw error
-
-      setSuccess(true)
-      setTimeout(() => router.push('/login'), 3000)
-    } catch (err: any) {
-      setError(err.message || 'Error al actualizar la contraseña')
-    } finally {
-      setLoading(false)
-    }
+    // ETAPA 1: sin proveedor de recovery no hay sesión que actualizar. Esta rama no
+    // se alcanza (la página se muestra como enlace inválido), pero se deja como no-op
+    // seguro hasta que se conecte Auth0/email (Fase 4/6).
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    setSuccess(true)
+    setTimeout(() => router.push('/login'), 3000)
+    setLoading(false)
   }
 
   return (
