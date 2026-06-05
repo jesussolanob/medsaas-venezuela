@@ -1,12 +1,27 @@
 /**
- * lib/shared-files.ts — RONDA 40
+ * lib/shared-files.ts — NEUTRALIZADO (sin Supabase)
  *
- * Helpers para el modulo "Seguimiento del Paciente" (Shared Health Space).
- * Centraliza upload a Storage + insert en shared_files + queries comunes.
+ * Módulo original: RONDA 40 — helpers para el módulo "Seguimiento del Paciente"
+ * (Shared Health Space). Centralizaba upload a Supabase Storage + insert en
+ * shared_files + queries comunes.
+ *
+ * Estado actual: Supabase eliminado. Todas las funciones son stubs que devuelven
+ * datos vacíos o no-op.
+ *
+ * FASE futura: backend shared_files — implementar:
+ *   GET  /api/patient/shared-files?patientId=<id>
+ *   POST /api/patient/shared-files          (upload multipart)
+ *   PATCH /api/patient/shared-files/:id
+ *   DELETE /api/patient/shared-files/:id
+ * y reemplazar los stubs por llamadas a backendGet/backendPost de
+ * @/lib/api-client.server.
+ *
+ * Consumidores actuales:
+ *   - app/patient/seguimiento/page.tsx  (portal paciente — deshabilitado, usa placeholder)
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js'
-
+// ── Tipo público (shape que usaba la tabla shared_files en Supabase) ──────────
+// Se conserva para que los consumidores TypeScript no rompan.
 export type SharedFile = {
   id: string
   doctor_id: string
@@ -28,13 +43,13 @@ export type SharedFile = {
 
 export const SHARED_BUCKET = 'patient-shared-files'
 
-/** Path canonico en Storage: patients/<patient_id>/shared/<filename> */
+/** Path canónico en Storage — conservado para referencia futura. */
 export function buildSharedPath(patientId: string, filename: string): string {
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
   return `patients/${patientId}/shared/${Date.now()}_${safe}`
 }
 
-/** Detecta el `file_type` corto a partir del MIME o nombre */
+/** Detecta el `file_type` corto a partir del MIME o nombre. */
 export function detectFileType(file: File): string {
   if (file.type.startsWith('image/')) return file.type.split('/')[1] || 'image'
   if (file.type === 'application/pdf') return 'pdf'
@@ -42,7 +57,7 @@ export function detectFileType(file: File): string {
   return ext || 'unknown'
 }
 
-/** Detecta una categoria por defecto basada en el tipo de archivo */
+/** Detecta una categoría por defecto basada en el tipo de archivo. */
 export function defaultCategory(file: File): SharedFile['category'] {
   if (file.type === 'application/pdf') return 'lab_result'
   if (file.type.startsWith('image/')) return 'image'
@@ -50,12 +65,12 @@ export function defaultCategory(file: File): SharedFile['category'] {
 }
 
 /**
- * Sube un archivo al bucket y crea la fila en shared_files en una transaccion logica.
- * Si la insercion BD falla, intenta limpiar el archivo de Storage (best-effort).
+ * STUB — FASE futura: backend shared_files upload.
+ * Originalmente subía al bucket de Supabase Storage e insertaba en shared_files.
  */
 export async function uploadSharedFile(
-  supabase: SupabaseClient,
-  args: {
+  _supabase: unknown,
+  _args: {
     file: File
     doctorId: string
     patientId: string
@@ -66,102 +81,30 @@ export async function uploadSharedFile(
     parentTaskId?: string | null
   }
 ): Promise<{ data: SharedFile | null; error: string | null }> {
-  const path = buildSharedPath(args.patientId, args.file.name)
-
-  // 1) Upload al bucket
-  const { error: upErr } = await supabase.storage
-    .from(SHARED_BUCKET)
-    .upload(path, args.file, { contentType: args.file.type, upsert: false })
-  if (upErr) {
-    return { data: null, error: `Upload fallo: ${upErr.message}` }
-  }
-
-  const { data: pubUrl } = supabase.storage.from(SHARED_BUCKET).getPublicUrl(path)
-  const fileUrl = pubUrl.publicUrl
-
-  // 2) Insert en shared_files
-  const row = {
-    doctor_id: args.doctorId,
-    patient_id: args.patientId,
-    title: args.title,
-    description: args.description || null,
-    file_url: fileUrl,
-    file_type: detectFileType(args.file),
-    file_size_bytes: args.file.size,
-    category: args.category || defaultCategory(args.file),
-    status: 'completed' as const,
-    created_by: args.createdBy,
-    parent_task_id: args.parentTaskId || null,
-    // Lo MARCA como NO leido para el otro lado (badge verde)
-    read_by_doctor: args.createdBy === 'doctor',
-    read_by_patient: args.createdBy === 'patient',
-  }
-
-  const { data, error: insErr } = await supabase
-    .from('shared_files')
-    .insert(row)
-    .select()
-    .single()
-
-  if (insErr) {
-    // Best-effort cleanup
-    await supabase.storage.from(SHARED_BUCKET).remove([path])
-    return { data: null, error: `Insert fallo: ${insErr.message}` }
-  }
-
-  // Si era respuesta a una tarea, marcar la tarea como completed
-  if (args.parentTaskId) {
-    await supabase
-      .from('shared_files')
-      .update({ status: 'completed', read_by_doctor: false })
-      .eq('id', args.parentTaskId)
-  }
-
-  return { data: data as SharedFile, error: null }
+  return { data: null, error: 'Función no disponible — pendiente backend shared_files (Fase futura)' }
 }
 
 /**
- * El doctor crea una INSTRUCCION/TAREA sin archivo (description con texto).
- * El paciente vera esto en su feed como tarea pendiente.
+ * STUB — FASE futura: backend shared_files — crear instrucción/tarea sin archivo.
  */
 export async function createInstruction(
-  supabase: SupabaseClient,
-  args: {
+  _supabase: unknown,
+  _args: {
     doctorId: string
     patientId: string
     title: string
     description?: string | null
   }
 ): Promise<{ data: SharedFile | null; error: string | null }> {
-  const { data, error } = await supabase
-    .from('shared_files')
-    .insert({
-      doctor_id: args.doctorId,
-      patient_id: args.patientId,
-      title: args.title,
-      description: args.description || null,
-      file_url: null,
-      file_type: null,
-      category: 'instruction',
-      status: 'pending',
-      created_by: 'doctor',
-      read_by_doctor: true,
-      read_by_patient: false,
-    })
-    .select()
-    .single()
-  if (error) return { data: null, error: error.message }
-  return { data: data as SharedFile, error: null }
+  return { data: null, error: 'Función no disponible — pendiente backend shared_files (Fase futura)' }
 }
 
 /**
- * RONDA 41: respuesta SOLO con comentario (sin archivo). El paciente puede
- * responder a una tarea o dejar un comentario suelto sin obligarlo a adjuntar.
- * Si parentTaskId esta presente, marca la tarea original como completed.
+ * STUB — FASE futura: backend shared_files — respuesta solo con comentario.
  */
 export async function replyWithComment(
-  supabase: SupabaseClient,
-  args: {
+  _supabase: unknown,
+  _args: {
     doctorId: string
     patientId: string
     title: string
@@ -170,196 +113,72 @@ export async function replyWithComment(
     parentTaskId?: string | null
   }
 ): Promise<{ data: SharedFile | null; error: string | null }> {
-  if (!args.description || !args.description.trim()) {
-    return { data: null, error: 'El comentario no puede estar vacío' }
-  }
-  const { data, error } = await supabase
-    .from('shared_files')
-    .insert({
-      doctor_id: args.doctorId,
-      patient_id: args.patientId,
-      title: args.title || 'Comentario',
-      description: args.description.trim(),
-      file_url: null,
-      file_type: null,
-      // RONDA 42: categoria propia para que NO aparezca como tarea pendiente
-      category: 'comment',
-      status: 'completed',
-      created_by: args.createdBy,
-      parent_task_id: args.parentTaskId || null,
-      // Lo marca NO leido para el otro lado
-      read_by_doctor: args.createdBy === 'doctor',
-      read_by_patient: args.createdBy === 'patient',
-    })
-    .select()
-    .single()
-  if (error) return { data: null, error: error.message }
-
-  // Si era respuesta a una tarea, marcar la tarea original como completed
-  if (args.parentTaskId) {
-    await supabase
-      .from('shared_files')
-      .update({ status: 'completed', read_by_doctor: false })
-      .eq('id', args.parentTaskId)
-  }
-
-  return { data: data as SharedFile, error: null }
+  return { data: null, error: 'Función no disponible — pendiente backend shared_files (Fase futura)' }
 }
 
 /**
- * RONDA 43: editar metadatos de un shared_file existente (titulo, descripcion).
- * Solo el creador puede editar via RLS (doctor el suyo, paciente el suyo).
+ * STUB — FASE futura: backend shared_files — editar metadatos.
  */
 export async function updateSharedFile(
-  supabase: SupabaseClient,
-  args: {
+  _supabase: unknown,
+  _args: {
     id: string
     title?: string
     description?: string | null
     status?: 'pending' | 'completed' | 'reviewed'
   }
 ): Promise<{ data: SharedFile | null; error: string | null }> {
-  const updates: Record<string, unknown> = {}
-  if (args.title !== undefined) updates.title = args.title
-  if (args.description !== undefined) updates.description = args.description
-  if (args.status !== undefined) updates.status = args.status
-  if (Object.keys(updates).length === 0) {
-    return { data: null, error: 'Nada que actualizar' }
-  }
-  const { data, error } = await supabase
-    .from('shared_files')
-    .update(updates)
-    .eq('id', args.id)
-    .select()
-    .single()
-  if (error) return { data: null, error: error.message }
-  return { data: data as SharedFile, error: null }
+  return { data: null, error: 'Función no disponible — pendiente backend shared_files (Fase futura)' }
 }
 
 /**
- * RONDA 43: adjuntar (o reemplazar) el archivo de un shared_file ya existente.
- * Util cuando el doctor crea primero la tarea y despues le adjunta el archivo,
- * o quiere actualizar el archivo de una entrada existente.
+ * STUB — FASE futura: backend shared_files — adjuntar o reemplazar archivo.
  */
 export async function attachFileToExisting(
-  supabase: SupabaseClient,
-  args: { id: string; file: File; patientId: string }
+  _supabase: unknown,
+  _args: { id: string; file: File; patientId: string }
 ): Promise<{ data: SharedFile | null; error: string | null }> {
-  const path = buildSharedPath(args.patientId, args.file.name)
-  const { error: upErr } = await supabase.storage
-    .from(SHARED_BUCKET)
-    .upload(path, args.file, { contentType: args.file.type, upsert: false })
-  if (upErr) return { data: null, error: `Upload fallo: ${upErr.message}` }
-
-  const { data: pubUrl } = supabase.storage.from(SHARED_BUCKET).getPublicUrl(path)
-  const { data, error } = await supabase
-    .from('shared_files')
-    .update({
-      file_url: pubUrl.publicUrl,
-      file_type: detectFileType(args.file),
-      file_size_bytes: args.file.size,
-      status: 'completed',
-      // ya no es solo instruccion, ahora tiene archivo
-      category: defaultCategory(args.file),
-    })
-    .eq('id', args.id)
-    .select()
-    .single()
-  if (error) {
-    await supabase.storage.from(SHARED_BUCKET).remove([path])
-    return { data: null, error: error.message }
-  }
-  return { data: data as SharedFile, error: null }
+  return { data: null, error: 'Función no disponible — pendiente backend shared_files (Fase futura)' }
 }
 
 /**
- * RONDA 43: eliminar un shared_file. Si tiene file_url, intentar borrar
- * el archivo del bucket tambien (best-effort).
+ * STUB — FASE futura: backend shared_files — eliminar un shared_file.
  */
 export async function deleteSharedFile(
-  supabase: SupabaseClient,
-  args: { id: string; fileUrl?: string | null }
+  _supabase: unknown,
+  _args: { id: string; fileUrl?: string | null }
 ): Promise<{ error: string | null }> {
-  // Borrar primero la fila (la RLS valida ownership)
-  const { error } = await supabase
-    .from('shared_files')
-    .delete()
-    .eq('id', args.id)
-  if (error) return { error: error.message }
-
-  // Best-effort: borrar el archivo del bucket si existe
-  if (args.fileUrl) {
-    try {
-      // Extraer el path desde la URL publica
-      const marker = `/storage/v1/object/public/${SHARED_BUCKET}/`
-      const idx = args.fileUrl.indexOf(marker)
-      if (idx !== -1) {
-        const path = args.fileUrl.slice(idx + marker.length)
-        await supabase.storage.from(SHARED_BUCKET).remove([decodeURIComponent(path)])
-      }
-    } catch { /* ignorar */ }
-  }
-  return { error: null }
+  return { error: 'Función no disponible — pendiente backend shared_files (Fase futura)' }
 }
 
-/** Lista los shared_files de UN paciente, ordenados desc. */
+/** STUB — lista vacía hasta que exista el endpoint de backend. */
 export async function listSharedFiles(
-  supabase: SupabaseClient,
-  args: { patientId: string; doctorId?: string }
+  _supabase: unknown,
+  _args: { patientId: string; doctorId?: string }
 ): Promise<SharedFile[]> {
-  let q = supabase
-    .from('shared_files')
-    .select('*')
-    .eq('patient_id', args.patientId)
-    .order('created_at', { ascending: false })
-  if (args.doctorId) q = q.eq('doctor_id', args.doctorId)
-  const { data } = await q
-  return (data || []) as SharedFile[]
+  return []
 }
 
-/** Marca como leidos por el doctor todos los archivos de un paciente. */
+/** STUB — no-op hasta que exista el endpoint de backend. */
 export async function markAllReadByDoctor(
-  supabase: SupabaseClient,
-  args: { doctorId: string; patientId: string }
-) {
-  await supabase
-    .from('shared_files')
-    .update({ read_by_doctor: true })
-    .eq('doctor_id', args.doctorId)
-    .eq('patient_id', args.patientId)
-    .eq('read_by_doctor', false)
+  _supabase: unknown,
+  _args: { doctorId: string; patientId: string }
+): Promise<void> {
+  // no-op
 }
 
-/** Marca como leidos por el paciente */
+/** STUB — no-op hasta que exista el endpoint de backend. */
 export async function markAllReadByPatient(
-  supabase: SupabaseClient,
-  args: { patientId: string }
-) {
-  await supabase
-    .from('shared_files')
-    .update({ read_by_patient: true })
-    .eq('patient_id', args.patientId)
-    .eq('read_by_patient', false)
+  _supabase: unknown,
+  _args: { patientId: string }
+): Promise<void> {
+  // no-op
 }
 
-/**
- * Cuenta cuantos archivos NO leidos por el doctor hay para CADA paciente.
- * Usado para pintar el badge verde en la lista de pacientes.
- */
+/** STUB — mapa vacío hasta que exista el endpoint de backend. */
 export async function countUnreadByDoctorPerPatient(
-  supabase: SupabaseClient,
-  doctorId: string
+  _supabase: unknown,
+  _doctorId: string
 ): Promise<Record<string, number>> {
-  const { data } = await supabase
-    .from('shared_files')
-    .select('patient_id')
-    .eq('doctor_id', doctorId)
-    .eq('read_by_doctor', false)
-    .eq('created_by', 'patient')
-  const counts: Record<string, number> = {}
-  for (const row of (data || [])) {
-    const pid = (row as any).patient_id
-    counts[pid] = (counts[pid] || 0) + 1
-  }
-  return counts
+  return {}
 }

@@ -2,6 +2,19 @@
  * lib/subscription.ts
  * SINGLE SOURCE OF TRUTH for subscription logic across the entire app.
  * Every page/component that needs plan info should use these helpers.
+ *
+ * NOTA DE MIGRACIÓN (Etapa 1 — sin Supabase en getAppSettings/computeDurationOptions):
+ *   - getAppSettings(): ahora devuelve DEFAULT_SETTINGS hardcodeados.
+ *     FASE futura: migrar a backendGet('/api/admin/settings') cuando el endpoint
+ *     NestJS cubra todas las claves usadas aquí (GET /api/admin/settings ya existe
+ *     pero su forma de respuesta difiere). Ver apps/backend/admin.controller.ts.
+ *   - setAppSetting(): ahora es no-op (stub).
+ *     FASE futura: migrar a backendPut('/api/admin/settings').
+ *   - computeDurationOptions(): ahora devuelve solo la opción mensual estática.
+ *     FASE futura: migrar a backendGet('/api/admin/plan-promotions').
+ *   - El resto de funciones (getSubscriptionByDoctorId, extendSubscription, etc.)
+ *     siguen usando createAdminClient de @/lib/supabase/admin hasta que el backend
+ *     implemente esos endpoints.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -232,51 +245,44 @@ const DEFAULT_SETTINGS: AppSettings = {
 }
 
 // ── App settings (key/value singleton) ──────────────────────────────────────
+
+/**
+ * Devuelve los settings globales de la app.
+ *
+ * ETAPA 1 (sin Supabase): retorna DEFAULT_SETTINGS hardcodeados.
+ * FASE futura: reemplazar por backendGet('/api/admin/settings') cuando el
+ * endpoint NestJS cubra todas las claves necesarias.
+ */
 export async function getAppSettings(): Promise<AppSettings> {
-  const admin = createAdminClient()
-  const { data } = await admin.from('app_settings').select('key, value')
-  const map: Record<string, unknown> = {}
-  for (const row of data || []) map[row.key] = row.value
-  return {
-    subscription_base_price_usd: Number(map.subscription_base_price_usd ?? DEFAULT_SETTINGS.subscription_base_price_usd),
-    subscription_currency: String(map.subscription_currency ?? DEFAULT_SETTINGS.subscription_currency),
-    beta_duration_days: Number(map.beta_duration_days ?? DEFAULT_SETTINGS.beta_duration_days),
-    payment_methods_enabled: (map.payment_methods_enabled as string[]) ?? DEFAULT_SETTINGS.payment_methods_enabled,
-    payment_methods_config: (map.payment_methods_config as AppSettings['payment_methods_config']) ?? {},
-    stripe_enabled: Boolean(map.stripe_enabled ?? false),
-    expiration_warning_days: (map.expiration_warning_days as number[]) ?? DEFAULT_SETTINGS.expiration_warning_days,
-    sales_whatsapp_number: String(map.sales_whatsapp_number ?? DEFAULT_SETTINGS.sales_whatsapp_number),
-    sales_whatsapp_message: String(map.sales_whatsapp_message ?? DEFAULT_SETTINGS.sales_whatsapp_message),
-  }
+  return { ...DEFAULT_SETTINGS }
 }
 
+/**
+ * Actualiza un setting global.
+ *
+ * ETAPA 1 (sin Supabase): no-op — los cambios no se persisten.
+ * FASE futura: reemplazar por backendPut('/api/admin/settings', { key, value }).
+ */
 export async function setAppSetting(
-  key: keyof AppSettings,
-  value: unknown,
-  actorId: string | null,
+  _key: keyof AppSettings,
+  _value: unknown,
+  _actorId: string | null,
 ): Promise<void> {
-  const admin = createAdminClient()
-  await admin
-    .from('app_settings')
-    .upsert(
-      { key, value, updated_by: actorId, updated_at: new Date().toISOString() },
-      { onConflict: 'key' },
-    )
+  // no-op — pendiente migración a backend shared_settings
 }
 
 // ── Duration options (multi-mes con promos) ────────────────────────────────
+
+/**
+ * Devuelve las opciones de duración de suscripción con descuentos.
+ *
+ * ETAPA 1 (sin Supabase): retorna solo la opción mensual estática.
+ * FASE futura: reemplazar por backendGet('/api/admin/plan-promotions') y
+ * combinar con getAppSettings() una vez que exista el endpoint.
+ */
 export async function computeDurationOptions(): Promise<DurationOption[]> {
-  const settings = await getAppSettings()
-  const basePrice = settings.subscription_base_price_usd
-  const admin = createAdminClient()
-
-  const { data: promos } = await admin
-    .from('plan_promotions')
-    .select('*')
-    .eq('is_active', true)
-    .or('ends_at.is.null,ends_at.gt.now()')
-
-  const options: DurationOption[] = [
+  const basePrice = DEFAULT_SETTINGS.subscription_base_price_usd
+  return [
     {
       duration_months: 1,
       base_price_usd: basePrice,
@@ -286,23 +292,6 @@ export async function computeDurationOptions(): Promise<DurationOption[]> {
       label: 'Mensual',
     },
   ]
-
-  for (const promo of promos || []) {
-    const months = Number(promo.duration_months) || 1
-    const original = Number(promo.original_price_usd) || basePrice * months
-    const final = Number(promo.promo_price_usd) || original
-    const discount = original > 0 ? Math.round(((original - final) / original) * 100) : 0
-    options.push({
-      duration_months: months,
-      base_price_usd: basePrice * months,
-      final_price_usd: final,
-      discount_pct: discount,
-      promotion_id: promo.id,
-      label: promo.label || `${months} meses`,
-    })
-  }
-
-  return options.sort((a, b) => a.duration_months - b.duration_months)
 }
 
 // ── Audit log ───────────────────────────────────────────────────────────────
