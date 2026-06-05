@@ -31,12 +31,10 @@ import { SequelizeAppointmentRepository } from '../appointments/infrastructure/d
 import { AppointmentModel } from '../appointments/infrastructure/database/models/appointment.model';
 import { AppointmentChangesLogModel } from '../appointments/infrastructure/database/models/appointment-changes-log.model';
 
-// DOCTOR_SCHEDULE_REPOSITORY binding for GetAvailableSlotsUseCase.
-// Declared locally to avoid importing DoctorSettingsModule (which re-registers PricingPlanModel,
-// already registered by PackagesModule → model collision crash on dist boot).
-import { DOCTOR_SCHEDULE_REPOSITORY } from '../doctor-settings/domain/repositories/doctor-schedule.repository';
-import { SequelizeDoctorScheduleRepository } from '../doctor-settings/infrastructure/database/repositories/sequelize-doctor-schedule.repository';
-import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/models/doctor-schedule.model';
+// OfficesModule exports OFFICE_REPOSITORY for GetAvailableSlotsUseCase.
+// Slots are now generated from doctor_offices (active offices + their schedule),
+// replacing the legacy doctor_schedules approach.
+import { OfficesModule } from '../offices/offices.module';
 
 @Module({
   imports: [
@@ -44,15 +42,15 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
       ProfileModel,
       AppointmentModel,
       AppointmentChangesLogModel,
-      // DoctorScheduleModel is safe to register here — it is not registered by any module
-      // that BookingModule transitively imports (PackagesModule, PatientsModule, FinancesModule).
-      DoctorScheduleModel,
+      // Note: OfficeModel is registered inside OfficesModule — do NOT re-register it here.
     ]),
     PackagesModule,
     PatientsModule,
     // FinancesModule provides PAYMENT_REPOSITORY for CreateBookingUseCase.
     // This creates the payment record atomically during booking.
     FinancesModule,
+    // OfficesModule exports OFFICE_REPOSITORY used by GetAvailableSlotsUseCase.
+    OfficesModule,
   ],
   controllers: [BookingController],
   providers: [
@@ -66,12 +64,6 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
     {
       provide: APPOINTMENT_REPOSITORY,
       useClass: SequelizeAppointmentRepository,
-    },
-
-    // Doctor schedule repository binding (GetAvailableSlotsUseCase)
-    {
-      provide: DOCTOR_SCHEDULE_REPOSITORY,
-      useClass: SequelizeDoctorScheduleRepository,
     },
 
     // Use cases
