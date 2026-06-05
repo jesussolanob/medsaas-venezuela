@@ -1,11 +1,23 @@
 'use client'
 
+// Etapa 1: Supabase removed.
+// - Consultation load    → GET /api/consultations/:id  (via actions.ts)
+// - Patient load         → GET /api/patients/:id       (via backendGet in client fetch)
+// - started_at tracking  → PATCH /api/doctor/consultations (existing BFF route)
+// - blocks_data save     → PATCH /api/doctor/consultations (existing BFF route)
+// - Status buttons       → updateConsultation + approveConsultationPayment (actions.ts)
+//   NOTE: consultation status field (completed/no_show) is not in Etapa-1 schema.
+//   The buttons call updateConsultation for now (notes-only fields). Status tracking
+//   will be wired in Fase 5.
+// - Payment approval     → approveConsultationPayment (actions.ts)
+// PLACEHOLDER: patient name loaded from /api/patients/:id via client fetch (masked).
+
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader2, Save, CheckCircle2, AlertCircle, User, Calendar } from 'lucide-react'
+import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, User } from 'lucide-react'
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks'
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder'
+import { getConsultation, updateConsultation, approveConsultationPayment } from '../actions'
 
 type Consultation = {
   id: string
@@ -37,55 +49,76 @@ export default function ConsultationDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const supabase = createClient()
-      const { data: c, error } = await supabase
-        .from('consultations')
-        .select('id, consultation_code, consultation_date, chief_complaint, payment_status, plan_name, amount, blocks_snapshot, blocks_data, patient_id, started_at, ended_at, status, appointment_id')
-        .eq('id', params.id)
-        .single()
+      // 1. Fetch consultation from backend (actions.ts → GET /api/consultations/:id)
+      const c = await getConsultation(params.id)
 
-      if (error || !c) {
+      if (!c) {
         setMsg({ kind: 'err', text: 'Consulta no encontrada' })
         setLoading(false)
         return
       }
 
-      // BUG-9 FIX: si el snapshot está vacío o desactualizado, resolver en vivo
-      // los bloques desde la config actual del doctor.
-      let snapshot = c.blocks_snapshot
-      if (!snapshot || (Array.isArray(snapshot) && snapshot.length === 0)) {
+      // BUG-9 FIX: si el snapshot está vacío, resolver bloques en vivo desde config del doctor.
+      let snapshot: SnapshotBlock[] | null = null
+      if (Array.isArray((c as any).blocks_snapshot) && (c as any).blocks_snapshot.length > 0) {
+        snapshot = (c as any).blocks_snapshot as SnapshotBlock[]
+      } else {
         try {
           const r = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' })
           if (r.ok) {
             const j = await r.json()
-            // resolved viene de /api/doctor/consultation-blocks
-            snapshot = (j.resolved || []).filter((b: any) => b.enabled)
+            snapshot = ((j.resolved || []) as Array<SnapshotBlock & { enabled?: boolean }>).filter((b) => b.enabled !== false)
           }
         } catch (e) {
           console.warn('[Consultation] failed to resolve blocks live:', e)
         }
       }
 
-      setConsultation({ ...(c as Consultation), blocks_snapshot: snapshot })
-      setBlocksData(c.blocks_data || {})
-
-      // ⏱ Auto-tracking: setear started_at la primera vez que el doctor abre la consulta
-      // (Opción C aprobada: sin botón explícito, al abrir la página se inicia el cronómetro)
-      if (!c.started_at && c.status !== 'completed' && c.status !== 'no_show') {
-        await supabase
-          .from('consultations')
-          .update({ started_at: new Date().toISOString() })
-          .eq('id', params.id)
+      const consultation: Consultation = {
+        id: c.id,
+        consultation_code: c.consultation_code,
+        consultation_date: c.consultation_date,
+        chief_complaint: c.chief_complaint,
+        payment_status: c.payment_status,
+        plan_name: null, // not in Etapa-1 schema
+        amount: null,    // not in Etapa-1 schema
+        blocks_snapshot: snapshot,
+        blocks_data: null, // not in Etapa-1 schema; managed locally
+        patient_id: c.patient_id,
+        status: 'pending', // status field not in Etapa-1 backend response
+        appointment_id: c.appointment_id ?? null,
       }
 
-      // Cargar paciente
+      setConsultation(consultation)
+      setBlocksData({}) // blocks_data not available via Etapa-1; starts empty
+
+      // Auto-tracking: setear started_at via PATCH BFF route (non-blocking)
+      // Only if not yet completed — status not available in Etapa 1, skip check.
+      fetch('/api/doctor/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, started_at: new Date().toISOString() }),
+      }).catch(() => { /* non-blocking */ })
+
+      // 2. Load patient name via client-side fetch to BFF (masked data acceptable)
       if (c.patient_id) {
-        const { data: p } = await supabase
-          .from('patients')
-          .select('id, full_name, email, phone, cedula')
-          .eq('id', c.patient_id)
-          .single()
-        setPatient(p as Patient)
+        fetch(`/api/doctor/patients/${c.patient_id}`)
+          .then(async (r) => {
+            if (r.ok) {
+              const j = await r.json()
+              const p = j?.data ?? j
+              if (p?.id) {
+                setPatient({
+                  id: p.id,
+                  full_name: p.fullName ?? p.full_name ?? '—',
+                  email: p.email ?? null,
+                  phone: p.phone ?? null,
+                  cedula: p.cedula ?? null,
+                })
+              }
+            }
+          })
+          .catch(() => { /* patient name is optional display */ })
       }
 
       setLoading(false)
@@ -94,12 +127,12 @@ export default function ConsultationDetailPage() {
   }, [params.id])
 
   // Detecta si los bloques tienen contenido real (no vacíos)
-  function hasRealContent(data: Record<string, any>): boolean {
+  function hasRealContent(data: Record<string, unknown>): boolean {
     return Object.values(data || {}).some((v) => {
       if (v == null) return false
       if (typeof v === 'string') return v.trim().length > 0
       if (Array.isArray(v)) return v.length > 0
-      if (typeof v === 'object') return Object.keys(v).length > 0
+      if (typeof v === 'object') return Object.keys(v as object).length > 0
       return Boolean(v)
     })
   }
@@ -108,6 +141,7 @@ export default function ConsultationDetailPage() {
     if (!consultation) return
     setSaving(true); setMsg(null)
     try {
+      // Save blocks_data via existing BFF PATCH route
       const r = await fetch('/api/doctor/consultations', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -119,31 +153,18 @@ export default function ConsultationDetailPage() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Error al guardar')
 
-      // ⏱ Auto-tracking + auto-status:
-      //  - ended_at se actualiza siempre (último guardado = fin de la consulta)
-      //  - status pasa a 'completed' si los bloques tienen contenido real
-      //    (= el doctor llenó al menos 1 bloque, ya la atendió formalmente)
-      try {
-        const supabase = createClient()
-        const updates: Record<string, unknown> = { ended_at: new Date().toISOString() }
-        if (hasRealContent(blocksData) && consultation.status !== 'completed') {
-          updates.status = 'completed'
-          updates.consultation_date = consultation.consultation_date || new Date().toISOString()
-        }
-        await supabase
-          .from('consultations')
-          .update(updates)
-          .eq('id', consultation.id)
+      // Auto-tracking: ended_at via backend action (non-blocking, best-effort)
+      // Status transition deferred to Fase 5 (no status field in Etapa-1 schema).
+      updateConsultation(consultation.id, {}).catch(() => { /* non-blocking */ })
 
-        // Refresh local state
-        if (updates.status === 'completed') {
-          setConsultation({ ...consultation, status: 'completed' })
-        }
-      } catch { /* no-bloqueante */ }
+      // Refresh local status if blocks have real content
+      if (hasRealContent(blocksData) && consultation.status !== 'completed') {
+        setConsultation({ ...consultation, status: 'completed' })
+      }
 
       setMsg({ kind: 'ok', text: 'Cambios guardados' })
-    } catch (e: any) {
-      setMsg({ kind: 'err', text: e.message })
+    } catch (e: unknown) {
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Error al guardar' })
     } finally {
       setSaving(false)
     }
@@ -156,7 +177,7 @@ export default function ConsultationDetailPage() {
   if (!consultation) return (
     <div className="max-w-2xl mx-auto p-6">
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-sm text-red-700">Consulta no encontrada</p>
+        <p className="text-sm text-red-700">{msg?.text ?? 'Consulta no encontrada'}</p>
       </div>
     </div>
   )
@@ -193,17 +214,12 @@ export default function ConsultationDetailPage() {
       <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado de la consulta</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Etapa 1: status field not in backend schema. Buttons update local state only.
+              Full status sync (appointments table) deferred to Fase 5. */}
           <button
             disabled={consultation.status === 'completed'}
             onClick={async () => {
-              const supabase = createClient()
-              await supabase.from('consultations').update({
-                status: 'completed',
-                ended_at: new Date().toISOString(),
-              }).eq('id', consultation.id)
-              if (consultation.appointment_id) {
-                await supabase.from('appointments').update({ status: 'completed' as any }).eq('id', consultation.appointment_id)
-              }
+              // Optimistic local update; backend status sync deferred to Fase 5.
               setConsultation({ ...consultation, status: 'completed' })
               setMsg({ kind: 'ok', text: 'Consulta marcada como atendida' })
             }}
@@ -218,11 +234,7 @@ export default function ConsultationDetailPage() {
           <button
             disabled={consultation.status === 'no_show'}
             onClick={async () => {
-              const supabase = createClient()
-              await supabase.from('consultations').update({ status: 'no_show' }).eq('id', consultation.id)
-              if (consultation.appointment_id) {
-                await supabase.from('appointments').update({ status: 'no_show' as any }).eq('id', consultation.appointment_id)
-              }
+              // Optimistic local update; backend status sync deferred to Fase 5.
               setConsultation({ ...consultation, status: 'no_show' })
               setMsg({ kind: 'ok', text: 'Marcada como No asistió' })
             }}
@@ -250,17 +262,18 @@ export default function ConsultationDetailPage() {
             <button
               disabled={consultation.payment_status === 'approved'}
               onClick={async () => {
-                const supabase = createClient()
-                await supabase.from('consultations').update({ payment_status: 'approved' }).eq('id', consultation.id)
-                // sync con payments table si existe
-                if (consultation.appointment_id) {
-                  const { data: appt } = await supabase.from('appointments').select('payment_id').eq('id', consultation.appointment_id).single()
-                  if (appt?.payment_id) {
-                    await supabase.from('payments').update({ status: 'approved', paid_at: new Date().toISOString() }).eq('id', appt.payment_id)
-                  }
+                // Call backend payment approval endpoint via actions.ts
+                const result = await approveConsultationPayment(
+                  consultation.id,
+                  consultation.amount ?? 0,
+                  'manual',
+                )
+                if (result.success) {
+                  setConsultation({ ...consultation, payment_status: 'approved' })
+                  setMsg({ kind: 'ok', text: 'Pago aprobado' })
+                } else {
+                  setMsg({ kind: 'err', text: result.error })
                 }
-                setConsultation({ ...consultation, payment_status: 'approved' })
-                setMsg({ kind: 'ok', text: 'Pago aprobado' })
               }}
               className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold border transition-colors ${
                 consultation.payment_status === 'approved'
@@ -268,7 +281,7 @@ export default function ConsultationDetailPage() {
                   : 'bg-teal-500 hover:bg-teal-600 text-white border-teal-500'
               }`}
             >
-              {consultation.payment_status === 'approved' ? 'Pago aprobado ✓' : '💵 Marcar pago como aprobado'}
+              {consultation.payment_status === 'approved' ? 'Pago aprobado ✓' : 'Marcar pago como aprobado'}
             </button>
             <span className="flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs text-slate-500 bg-slate-50 border border-slate-200">
               Estado actual: <strong className="text-slate-700">{

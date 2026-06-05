@@ -7,8 +7,16 @@ import {
   Filter, User, Edit3, Hash, Zap, Calendar, Droplet, Heart, AlertTriangle, UserCheck, Image as ImageIcon, Upload,
   Sparkles, Loader2, Send, FolderHeart, ExternalLink, Pencil, Trash2, ClipboardList
 } from 'lucide-react'
+// Etapa 1: Supabase removed.
+// - pricing_plans → GET /api/doctor/services  (getDoctorServices)
+// - profiles.payment_methods → GET /api/doctor/profile  (getDoctorProfile)
+// - patient_packages → no backend endpoint in Etapa 1 → packageInfo stays empty
+// - shared_files / @/lib/shared-files → Supabase-only lib, no backend endpoint in Etapa 1
+//   Tab "Seguimiento" shows placeholder; write ops are no-ops until Fase 5.
+// - AI button: supabase.auth.getSession() removed; calls /api/doctor/ai without token.
 import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
-import { createClient } from '@/lib/supabase/client'
+import { getDoctorServices } from '@/app/doctor/services/actions'
+import { getDoctorProfile } from '@/app/doctor/actions'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm'
 // RONDA 40: componente compartido de drag & drop
@@ -17,6 +25,21 @@ import UploadDropZone from '@/components/shared/UploadDropZone'
 import MarkdownText from '@/components/shared/MarkdownText'
 // AUDIT FIX 2026-04-28 (C-9): sanitizer para HTML rich-text (defense-in-depth).
 import { sanitizeHtml } from '@/lib/sanitize-html'
+
+// Inline type (mirrors @/lib/shared-files.SharedFile) — no Supabase dependency.
+// Fase 5: replace with backend endpoint and remove this local type.
+type SharedFile = {
+  id: string
+  title: string
+  description: string | null
+  category: string
+  status: string
+  created_by: 'doctor' | 'patient'
+  file_url: string | null
+  file_type: string | null
+  file_size_bytes: number | null
+  created_at: string
+}
 
 interface PatientPackageInfo {
   patientId: string
@@ -68,8 +91,8 @@ export default function PatientsPage() {
   const [aiSummary, setAiSummary] = useState<string>('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
-  // RONDA 40: estado del modulo Seguimiento (shared_files)
-  const [sharedFiles, setSharedFiles] = useState<import('@/lib/shared-files').SharedFile[]>([])
+  // RONDA 40: Seguimiento tab — no backend endpoint in Etapa 1; always empty.
+  const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([])
   const [sharedLoading, setSharedLoading] = useState(false)
   const [unreadByPatient, setUnreadByPatient] = useState<Record<string, number>>({})
   const [newInstructionTitle, setNewInstructionTitle] = useState('')
@@ -79,7 +102,7 @@ export default function PatientsPage() {
   const [doctorUploadTitle, setDoctorUploadTitle] = useState('')
   const [doctorUploadDesc, setDoctorUploadDesc] = useState('')
   // RONDA 43: estado para editar tarea/archivo existente
-  const [editingFile, setEditingFile] = useState<import('@/lib/shared-files').SharedFile | null>(null)
+  const [editingFile, setEditingFile] = useState<SharedFile | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editDesc, setEditDesc] = useState('')
   const [savingEditFile, setSavingEditFile] = useState(false)
@@ -142,59 +165,36 @@ export default function PatientsPage() {
       setDoctorId(id)
       getPatients(id).then(p => { setPatients(p); setLoading(false) })
 
-      // Load package info
-      loadPackageInfo(id)
+      // Load package info — placeholder (no backend endpoint in Etapa 1)
+      loadPackageInfo()
 
-      // RONDA 40: cargar contadores de archivos no leidos por doctor
-      // (para badge verde en la lista de pacientes)
-      loadUnreadCounts(id)
+      // RONDA 40: unread counts — placeholder (shared_files is Supabase-only in Etapa 1)
+      // loadUnreadCounts deferred to Fase 5
 
-      // Load pricing plans and payment methods
-      const supabase = createClient()
-      const { data: plans } = await supabase
-        .from('pricing_plans')
-        .select('id, name, price_usd, duration_minutes')
-        .eq('doctor_id', id)
-        .eq('is_active', true)
-        .order('price_usd')
-      setPricingPlans(plans || [])
+      // Load pricing plans → GET /api/doctor/services (backend)
+      getDoctorServices().then(services => {
+        setPricingPlans(services.map(s => ({
+          id: s.id,
+          name: s.name,
+          price_usd: s.price_usd ?? 0,
+          duration_minutes: s.duration_minutes ?? 30,
+        })))
+      })
 
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('payment_methods')
-        .eq('id', id)
-        .single()
-      if (profileData?.payment_methods && Array.isArray(profileData.payment_methods)) {
-        setDoctorPaymentMethods(profileData.payment_methods)
-      }
+      // Load payment methods → GET /api/doctor/profile (backend)
+      getDoctorProfile().then(profile => {
+        if (profile?.payment_methods && Array.isArray(profile.payment_methods)) {
+          setDoctorPaymentMethods(profile.payment_methods)
+        }
+      })
     })
   }, [])
 
-  async function loadPackageInfo(docId: string) {
-    try {
-      const supabase = createClient()
-      const { data: pkgs } = await supabase
-        .from('patient_packages')
-        .select('patient_id, total_sessions, used_sessions')
-        .eq('doctor_id', docId)
-        .eq('status', 'active')
-
-      const pkgMap: Record<string, PatientPackageInfo> = {}
-      if (pkgs) {
-        pkgs.forEach(pkg => {
-          const pending = pkg.total_sessions - pkg.used_sessions
-          pkgMap[pkg.patient_id] = {
-            patientId: pkg.patient_id,
-            pendingSessions: pending,
-            totalSessions: pkg.total_sessions,
-            usedSessions: pkg.used_sessions
-          }
-        })
-      }
-      setPackageInfo(pkgMap)
-    } catch (err) {
-      console.error('Error loading package info:', err)
-    }
+  function loadPackageInfo() {
+    // PLACEHOLDER: patient_packages has no backend endpoint in Etapa 1.
+    // packageInfo stays empty ({}) — the "Paquete de sesiones activo" card will
+    // not appear. Fase 5: wire GET /api/packages/doctor endpoint here.
+    setPackageInfo({})
   }
 
   function startEditPatient(p: Patient) {
@@ -273,30 +273,18 @@ export default function PatientsPage() {
     loadSharedFiles(p.id)
   }
 
-  // RONDA 40: helpers del modulo Seguimiento
-  async function loadSharedFiles(patientId: string) {
+  // RONDA 40: shared_files — no backend endpoint in Etapa 1.
+  // loadSharedFiles and loadUnreadCounts are stubs; tab shows empty placeholder.
+  // Fase 5: wire /api/shared-files/:patientId endpoint here.
+  function loadSharedFiles(_patientId: string) {
     setSharedLoading(true)
-    try {
-      const { listSharedFiles } = await import('@/lib/shared-files')
-      const supabase = (await import('@/lib/supabase/client')).createClient()
-      const rows = await listSharedFiles(supabase, { patientId })
-      setSharedFiles(rows)
-    } catch (err) {
-      console.error('[loadSharedFiles]', err)
-    } finally {
-      setSharedLoading(false)
-    }
+    setSharedFiles([])
+    setSharedLoading(false)
   }
 
-  async function loadUnreadCounts(currentDoctorId: string) {
-    try {
-      const { countUnreadByDoctorPerPatient } = await import('@/lib/shared-files')
-      const supabase = (await import('@/lib/supabase/client')).createClient()
-      const counts = await countUnreadByDoctorPerPatient(supabase, currentDoctorId)
-      setUnreadByPatient(counts)
-    } catch (err) {
-      console.error('[loadUnreadCounts]', err)
-    }
+  // Unread counts not available without shared_files backend; stays empty.
+  function loadUnreadCounts(_doctorId: string) {
+    setUnreadByPatient({})
   }
 
   // RONDA 19b — handler UNICO para PatientForm. UPDATE si data.id existe, INSERT si no.
@@ -878,13 +866,11 @@ export default function PatientsPage() {
               </button>
               {/* RONDA 40: tab Seguimiento del Paciente con badge verde si hay archivos sin leer */}
               <button
-                onClick={async () => {
+                onClick={() => {
                   setDetailTab('seguimiento')
-                  // marcar como leidos al entrar a la pestaña
-                  if (selected && doctorId) {
-                    const { markAllReadByDoctor } = await import('@/lib/shared-files')
-                    const supabase = (await import('@/lib/supabase/client')).createClient()
-                    await markAllReadByDoctor(supabase, { doctorId, patientId: selected.id })
+                  // Etapa 1: markAllReadByDoctor is Supabase-only; no-op here.
+                  // Fase 5: call backend endpoint to mark files read.
+                  if (selected) {
                     setUnreadByPatient(prev => ({ ...prev, [selected.id]: 0 }))
                   }
                 }}
@@ -985,18 +971,18 @@ export default function PatientsPage() {
                           if (!selected) return
                           setAiLoading(true); setAiError(''); setAiSummary('')
                           try {
-                            const supabase = createClient()
-                            const { data: { session } } = await supabase.auth.getSession()
-                            if (!session?.access_token) { setAiError('Sesión expirada. Recarga.'); setAiLoading(false); return }
+                            // Etapa 1: Supabase auth removed. /api/doctor/ai uses
+                            // x-dev-user headers injected server-side; no Bearer needed.
+                            // Endpoint may return 501 until AI module is wired in Fase 5.
                             const res = await fetch('/api/doctor/ai', {
                               method: 'POST',
-                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+                              headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ action: 'patient_history', patientId: selected.id }),
                             })
                             const data = await res.json()
-                            if (!res.ok) { setAiError(data.error || 'Error de IA'); }
+                            if (!res.ok) { setAiError(data.error || 'Función de IA no disponible aún'); }
                             else setAiSummary(data.result || 'Sin respuesta')
-                          } catch (e: any) { setAiError(e?.message || 'Error') }
+                          } catch (e: unknown) { setAiError(e instanceof Error ? e.message : 'Error') }
                           setAiLoading(false)
                         }}
                         disabled={aiLoading}
@@ -1162,23 +1148,13 @@ export default function PatientsPage() {
                       <button
                         onClick={async () => {
                           if (!doctorId || !selected || !newInstructionTitle.trim()) return
+                          // Etapa 1: shared_files has no backend endpoint. No-op stub.
+                          // Fase 5: wire POST /api/shared-files/instruction here.
                           setSavingInstruction(true)
                           try {
-                            const { createInstruction } = await import('@/lib/shared-files')
-                            const supabase = createClient()
-                            const { error } = await createInstruction(supabase, {
-                              doctorId,
-                              patientId: selected.id,
-                              title: newInstructionTitle.trim(),
-                              description: newInstructionDesc.trim() || null,
-                            })
-                            if (error) {
-                              alert(`Error: ${error}`)
-                            } else {
-                              setNewInstructionTitle('')
-                              setNewInstructionDesc('')
-                              await loadSharedFiles(selected.id)
-                            }
+                            alert('Función de seguimiento no disponible aún. Disponible en Fase 5.')
+                            setNewInstructionTitle('')
+                            setNewInstructionDesc('')
                           } finally {
                             setSavingInstruction(false)
                           }
@@ -1295,11 +1271,8 @@ export default function PatientsPage() {
                                   <button
                                     onClick={async () => {
                                       if (!confirm(`¿Eliminar "${f.title}"? Esta acción no se puede deshacer.`)) return
-                                      const { deleteSharedFile } = await import('@/lib/shared-files')
-                                      const supabase = createClient()
-                                      const { error } = await deleteSharedFile(supabase, { id: f.id, fileUrl: f.file_url })
-                                      if (error) alert(`Error: ${error}`)
-                                      else if (selected) await loadSharedFiles(selected.id)
+                                      // Etapa 1: no backend endpoint for shared_files. No-op.
+                                      alert('Función de seguimiento no disponible aún. Disponible en Fase 5.')
                                     }}
                                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     title="Eliminar"
@@ -1356,23 +1329,9 @@ export default function PatientsPage() {
                     alert('Escribe un comentario o adjunta un archivo')
                     return
                   }
-                  const { replyWithComment } = await import('@/lib/shared-files')
-                  const supabase = createClient()
-                  const { error } = await replyWithComment(supabase, {
-                    doctorId,
-                    patientId: selected.id,
-                    title: doctorUploadTitle.trim() || 'Comentario del doctor',
-                    description: doctorUploadDesc.trim(),
-                    createdBy: 'doctor',
-                  })
-                  if (error) {
-                    alert(`Error: ${error}`)
-                  } else {
-                    setDoctorUploadTitle('')
-                    setDoctorUploadDesc('')
-                    setDoctorUploadModal(false)
-                    await loadSharedFiles(selected.id)
-                  }
+                  // Etapa 1: shared_files has no backend endpoint. No-op stub.
+                  // Fase 5: wire POST /api/shared-files/comment here.
+                  alert('Función de seguimiento no disponible aún. Disponible en Fase 5.')
                 }}
                 disabled={!doctorUploadDesc.trim()}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
@@ -1387,22 +1346,10 @@ export default function PatientsPage() {
               </div>
 
               <UploadDropZone
-                onUpload={async (file) => {
-                  const { uploadSharedFile } = await import('@/lib/shared-files')
-                  const supabase = createClient()
-                  const { error } = await uploadSharedFile(supabase, {
-                    file,
-                    doctorId,
-                    patientId: selected.id,
-                    title: doctorUploadTitle.trim() || file.name,
-                    description: doctorUploadDesc.trim() || null,
-                    createdBy: 'doctor',
-                  })
-                  if (error) throw new Error(error)
-                  setDoctorUploadTitle('')
-                  setDoctorUploadDesc('')
-                  setDoctorUploadModal(false)
-                  await loadSharedFiles(selected.id)
+                onUpload={async (_file) => {
+                  // Etapa 1: shared_files upload has no backend endpoint. No-op stub.
+                  // Fase 5: wire storage upload + POST /api/shared-files here.
+                  throw new Error('Carga de archivos de seguimiento no disponible aún (Fase 5)')
                 }}
                 label="Suelta o selecciona el archivo"
               />
@@ -1446,19 +1393,10 @@ export default function PatientsPage() {
                   onClick={async () => {
                     setSavingEditFile(true)
                     try {
-                      const { updateSharedFile } = await import('@/lib/shared-files')
-                      const supabase = createClient()
-                      const { error } = await updateSharedFile(supabase, {
-                        id: editingFile.id,
-                        title: editTitle.trim() || editingFile.title,
-                        description: editDesc.trim() || null,
-                      })
-                      if (error) {
-                        alert(`Error: ${error}`)
-                      } else {
-                        setEditingFile(null)
-                        if (selected) await loadSharedFiles(selected.id)
-                      }
+                      // Etapa 1: shared_files has no backend endpoint. No-op stub.
+                      // Fase 5: wire PATCH /api/shared-files/:id here.
+                      alert('Edición de archivos de seguimiento no disponible aún (Fase 5).')
+                      setEditingFile(null)
                     } finally {
                       setSavingEditFile(false)
                     }
@@ -1479,17 +1417,10 @@ export default function PatientsPage() {
                     <div className="flex-1 border-t border-slate-200"></div>
                   </div>
                   <UploadDropZone
-                    onUpload={async (file) => {
-                      const { attachFileToExisting } = await import('@/lib/shared-files')
-                      const supabase = createClient()
-                      const { error } = await attachFileToExisting(supabase, {
-                        id: editingFile.id,
-                        file,
-                        patientId: selected.id,
-                      })
-                      if (error) throw new Error(error)
-                      setEditingFile(null)
-                      await loadSharedFiles(selected.id)
+                    onUpload={async (_file) => {
+                      // Etapa 1: no backend endpoint for shared_files. No-op stub.
+                      // Fase 5: wire PATCH /api/shared-files/:id/attach here.
+                      throw new Error('Adjuntar archivo de seguimiento no disponible aún (Fase 5)')
                     }}
                     label="Adjuntar archivo a esta tarea"
                     helperText="PDF, JPG o PNG. Máximo 20MB."
@@ -1514,17 +1445,10 @@ export default function PatientsPage() {
                     <ExternalLink className="w-4 h-4" /> Ver archivo adjunto
                   </a>
                   <UploadDropZone
-                    onUpload={async (file) => {
-                      const { attachFileToExisting } = await import('@/lib/shared-files')
-                      const supabase = createClient()
-                      const { error } = await attachFileToExisting(supabase, {
-                        id: editingFile.id,
-                        file,
-                        patientId: selected.id,
-                      })
-                      if (error) throw new Error(error)
-                      setEditingFile(null)
-                      await loadSharedFiles(selected.id)
+                    onUpload={async (_file) => {
+                      // Etapa 1: no backend endpoint for shared_files. No-op stub.
+                      // Fase 5: wire PATCH /api/shared-files/:id/attach here.
+                      throw new Error('Reemplazar archivo de seguimiento no disponible aún (Fase 5)')
                     }}
                     label="Reemplazar archivo"
                     helperText="Sube un nuevo archivo para reemplazar el actual."

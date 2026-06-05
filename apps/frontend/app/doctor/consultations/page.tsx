@@ -44,11 +44,29 @@ import {
   Timer,
   ExternalLink,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: still needed for doctor_quick_items, doctor_templates, pricing_plans, blocks_data, payments, storage
-import { getDoctorId as getDevDoctorId } from '../actions';
-import { listConsultations, getPatientConsultations } from './actions';
+// Etapa 1: Supabase removed.
+// PLACEHOLDER — following data sources have no backend endpoint yet (Fase 5):
+//   - profiles (doctor name/logo/template/payment_methods) → GET /api/doctor/profile
+//   - doctor_quick_items → no backend endpoint
+//   - pricing_plans → GET /api/doctor/services
+//   - doctor_templates → no backend endpoint
+//   - appointments booked times → no backend endpoint in Etapa 1
+// Those state vars stay empty/zero; the UI handles them gracefully (empty selects etc).
+// MIGRATED in this file:
+//   - consultations list → listConsultations (actions.ts)
+//   - updateConsultaStatus → optimistic local state only (status field not in Etapa-1 schema)
+//   - updatePagoStatus → approveConsultationPayment (actions.ts)
+//   - openConsultation → getConsultation (actions.ts)
+//   - saveReport → updateConsultation (actions.ts)
+//   - autoSave → updateConsultation (actions.ts)
+//   - saveRecipe → createPrescription (actions-prescriptions.ts)
+//   - AI callAI → /api/doctor/ai without Supabase token
+//   - applyAIResult → updateConsultation (actions.ts)
+//   - reposo autoSave → PATCH /api/doctor/consultations (existing BFF route)
+import { getDoctorId as getDevDoctorId, getDoctorProfile, getDoctorServices } from '../actions';
+import { listConsultations, getPatientConsultations, getConsultation, updateConsultation, approveConsultationPayment } from './actions';
 import { getEhrPatients } from '../ehr/actions';
-import { getPatientPrescriptions } from './actions-prescriptions';
+import { getPatientPrescriptions, createPrescription } from './actions-prescriptions';
 import { useBcvRate } from '@/lib/useBcvRate';
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks';
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
@@ -495,35 +513,23 @@ function ConsultationsPage() {
   const weekDates = availableDates.slice(weekOffset * 5, weekOffset * 5 + 5);
 
   useEffect(() => {
-    // MIGRATED (Etapa 1): auth identity + patients + consultations list → NestJS backend.
-    // FASE 5 (still Supabase): profiles, doctor_quick_items, pricing_plans, doctor_templates,
-    //   appointments booked times, blocks_data autosave, payments, storage.
+    // MIGRATED (Etapa 1): all data from NestJS backend.
+    // Supabase removed. FASE 5 placeholders: quick_items, templates stay empty.
     getDevDoctorId().then(async (doctorId) => {
       if (!doctorId) return;
-      const supabase = createClient(); // still needed for FASE 5 calls below
-      const user = { id: doctorId };
       try {
-        // FASE 5: profiles — no backend endpoint in Etapa 1
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select(
-            'full_name, professional_title, share_message_template, payment_methods, logo_url, signature_url, license_number',
-          )
-          .eq('id', user.id)
-          .single();
-        if (profileData) {
-          setDoctorName(
-            `${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim(),
-          );
-          if (profileData.share_message_template)
-            setShareTemplate(profileData.share_message_template);
-          if (profileData.payment_methods && Array.isArray(profileData.payment_methods)) {
-            setDoctorPaymentMethods(profileData.payment_methods);
+        // Doctor profile → GET /api/doctor/profile
+        getDoctorProfile().then(profileData => {
+          if (profileData) {
+            setDoctorName(
+              `${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim(),
+            );
+            if (profileData.payment_methods && Array.isArray(profileData.payment_methods)) {
+              setDoctorPaymentMethods(profileData.payment_methods);
+            }
+            // logo_url, signature_url, license_number not in Etapa-1 profile schema → stays null
           }
-          setDoctorLogo((profileData as any).logo_url || null);
-          setDoctorSignature((profileData as any).signature_url || null);
-          setDoctorLicense((profileData as any).license_number || null);
-        }
+        });
 
         // MIGRATED: patients → GET /api/patients (NestJS backend)
         const ehrPatients = await getEhrPatients();
@@ -542,20 +548,12 @@ function ConsultationsPage() {
           })),
         );
 
-        // Cargar quick items (exámenes y medicamentos frecuentes)
-        const { data: quickItems } = await supabase
-          .from('doctor_quick_items')
-          .select('id, item_type, name, category, details')
-          .eq('doctor_id', user.id)
-          .order('name');
-        if (quickItems) {
-          setQuickExams(quickItems.filter((i) => i.item_type === 'exam'));
-          setQuickMeds(quickItems.filter((i) => i.item_type === 'medication'));
-        }
+        // PLACEHOLDER: doctor_quick_items has no backend endpoint in Etapa 1.
+        // quickExams and quickMeds stay empty — Fase 5.
+        setQuickExams([]);
+        setQuickMeds([]);
 
         // RONDA 39: cargar bloques ACTIVOS del doctor (config viva).
-        // Esta lista se usa cuando una consulta no tiene blocks_snapshot congelado,
-        // para que las pestañas reflejen siempre la ultima configuracion del doctor.
         try {
           const blocksRes = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' });
           if (blocksRes.ok) {
@@ -569,10 +567,6 @@ function ConsultationsPage() {
               send_to_patient: boolean;
             }>;
             setDoctorActiveBlocks(resolved as SnapshotBlock[]);
-            // L1 (2026-04-29) + FIX 2026-04-29: el endpoint devuelve la fila cruda
-            // del catálogo con columnas `default_label/default_content_type/default_printable/...`.
-            // Antes leíamos `c.label`/`c.content_type` (undefined) y el dropdown del
-            // botón "+" se renderizaba con labels vacíos — el doctor veía "nada".
             const catalog = (j.catalog || []) as Array<{
               key: string;
               default_label: string;
@@ -594,14 +588,15 @@ function ConsultationsPage() {
           console.warn('[consultations] no se pudo cargar config de bloques:', err);
         }
 
-        // Cargar planes de precios del doctor
-        const { data: plansData } = await supabase
-          .from('pricing_plans')
-          .select('id, name, price_usd, duration_minutes')
-          .eq('doctor_id', user.id)
-          .eq('is_active', true)
-          .order('price_usd');
-        setPricingPlans(plansData ?? []);
+        // Pricing plans → GET /api/doctor/services
+        getDoctorServices().then(services => {
+          setPricingPlans(services.map(s => ({
+            id: s.id,
+            name: s.name,
+            price_usd: s.price_usd ?? 0,
+            duration_minutes: s.duration_minutes ?? 30,
+          })));
+        });
 
         // Cargar horario del doctor para bloques de citas
         try {
@@ -617,57 +612,13 @@ function ConsultationsPage() {
           /* schedule not configured */
         }
 
-        // Cargar citas existentes para marcar slots ocupados
-        const startOfRange = new Date();
-        const endOfRange = new Date(Date.now() + 30 * 86400000);
-        const { data: existingAppts } = await supabase
-          .from('appointments')
-          .select('scheduled_at')
-          .eq('doctor_id', user.id)
-          .gte('scheduled_at', startOfRange.toISOString())
-          .lte('scheduled_at', endOfRange.toISOString());
-        const { data: existingCons } = await supabase
-          .from('consultations')
-          .select('consultation_date')
-          .eq('doctor_id', user.id)
-          .gte('consultation_date', startOfRange.toISOString())
-          .lte('consultation_date', endOfRange.toISOString());
-        const booked = [
-          ...(existingAppts || []).map((a) => a.scheduled_at),
-          ...(existingCons || []).map((c) => c.consultation_date),
-        ];
-        setBookedTimes(booked);
+        // PLACEHOLDER: booked times (appointments + consultations) — no backend
+        // endpoint for booked slots in Etapa 1. bookedTimes stays empty.
+        // Fase 5: wire GET /api/doctor/booked-slots?from=&to= here.
+        setBookedTimes([]);
 
-        // Cargar configuraciones de plantillas para PDFs
-        const { data: tplData } = await supabase
-          .from('doctor_templates')
-          .select(
-            'template_type, logo_url, signature_url, font_family, header_text, footer_text, show_logo, show_signature, primary_color',
-          )
-          .eq('doctor_id', user.id);
-        if (tplData) {
-          const configs: Record<string, TemplateConfig> = {
-            informe: { ...defaultTemplateConfig },
-            recipe: { ...defaultTemplateConfig },
-            prescripciones: { ...defaultTemplateConfig },
-            reposo: { ...defaultTemplateConfig },
-          };
-          tplData.forEach((t: any) => {
-            if (configs[t.template_type]) {
-              configs[t.template_type] = {
-                logo_url: t.logo_url || null,
-                signature_url: t.signature_url || null,
-                font_family: t.font_family || 'Inter',
-                header_text: t.header_text || '',
-                footer_text: t.footer_text || '',
-                show_logo: t.show_logo ?? true,
-                show_signature: t.show_signature ?? true,
-                primary_color: t.primary_color || '#0891b2',
-              };
-            }
-          });
-          setTemplateConfigs(configs);
-        }
+        // PLACEHOLDER: doctor_templates — no backend endpoint in Etapa 1.
+        // templateConfigs stay at defaultTemplateConfig — Fase 5.
 
         // MIGRATED: consultations list → GET /api/consultations (NestJS backend)
         const backendConsultations = await listConsultations({ limit: 200 });
@@ -697,7 +648,7 @@ function ConsultationsPage() {
         if (openId) {
           const consultationToOpen = consultationsList.find((c) => c.id === openId);
           if (consultationToOpen) {
-            await new Promise((resolve) => setTimeout(resolve, 100)); // Small delay to ensure state is updated
+            await new Promise((resolve) => setTimeout(resolve, 100));
             openConsultation(consultationToOpen);
           }
         }
@@ -731,83 +682,47 @@ function ConsultationsPage() {
   async function updateConsultaStatus(
     consultationId: string,
     newStatus: Consultation['status'],
-    appointmentId: string | null,
+    _appointmentId: string | null,
   ) {
-    const supabase = createClient();
+    // Etapa 1: consultation status field not in backend schema.
+    // Optimistic local update only. Appointment sync deferred to Fase 5.
     try {
-      const { error } = await supabase
-        .from('consultations')
-        .update({ status: newStatus })
-        .eq('id', consultationId);
-      if (error) throw error;
-
-      // Sincronizar el appointment.status (atendida → completed | no_show → no_show)
-      if (appointmentId) {
-        const apptStatus =
-          newStatus === 'completed' ? 'completed' : newStatus === 'no_show' ? 'no_show' : null;
-        if (apptStatus) {
-          await supabase
-            .from('appointments')
-            .update({ status: apptStatus })
-            .eq('id', appointmentId);
-        }
-      }
-
-      // Actualizar estado local
       setSelected((prev) => (prev ? { ...prev, status: newStatus } : prev));
       setConsultations((prev) =>
         prev.map((x) => (x.id === consultationId ? { ...x, status: newStatus } : x)),
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating consulta status:', err);
-      alert(err?.message || 'Error al actualizar estado de la consulta');
+      alert(err instanceof Error ? err.message : 'Error al actualizar estado de la consulta');
     }
   }
 
   async function updatePagoStatus(
     consultationId: string,
     newStatus: 'pending' | 'approved',
-    appointmentId: string | null,
+    _appointmentId: string | null,
   ) {
     setPagoSaving(true);
-    const supabase = createClient();
     try {
-      const { error } = await supabase
-        .from('consultations')
-        .update({ payment_status: newStatus })
-        .eq('id', consultationId);
-      if (error) throw error;
-
-      // Sincronizar payments table — la relación REAL es appointments.payment_id → payments.id
-      // (NO existe payments.consultation_id). Necesitamos appointment_id para llegar al payment.
-      if (appointmentId) {
-        const { data: appt } = await supabase
-          .from('appointments')
-          .select('payment_id')
-          .eq('id', appointmentId)
-          .maybeSingle();
-        if (appt?.payment_id) {
-          await supabase
-            .from('payments')
-            .update({
-              status: newStatus,
-              paid_at: newStatus === 'approved' ? new Date().toISOString() : null,
-            })
-            .eq('id', appt.payment_id);
+      if (newStatus === 'approved') {
+        // Call backend payment approval via action (amount 0 if not known — Fase 5)
+        const result = await approveConsultationPayment(consultationId, 0, 'manual');
+        if (!result.success) {
+          setPagoToast('Error al aprobar el pago');
+          setTimeout(() => setPagoToast(null), 3500);
+          setPagoSaving(false);
+          return;
         }
       }
-
-      // Actualizar estado local — el badge informativo se sincroniza automaticamente con esto
+      // Optimistic update — payments table sync deferred to Fase 5
       setSelected((prev) => (prev ? { ...prev, payment_status: newStatus } : prev));
       setReport((prev) => ({ ...prev, payment_status: newStatus }));
       setConsultations((prev) =>
         prev.map((x) => (x.id === consultationId ? { ...x, payment_status: newStatus } : x)),
       );
-
-      // Toast de exito (auto-dismiss 3s)
       setPagoToast('Estado de pago actualizado correctamente');
       setTimeout(() => setPagoToast(null), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating pago status:', err);
       setPagoToast('Error al actualizar el pago');
       setTimeout(() => setPagoToast(null), 3500);
@@ -817,44 +732,30 @@ function ConsultationsPage() {
   }
 
   async function openConsultation(c: Consultation) {
-    // Fetch fresh data from DB to ensure we have latest notes/diagnosis/treatment
-    const supabase = createClient();
+    // Fetch fresh data from backend → GET /api/consultations/:id
     try {
-      const { data } = await supabase
-        .from('consultations')
-        .select(
-          'id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, status, payment_status, patient_id, appointment_id, started_at, ended_at, duration_minutes, blocks_snapshot, blocks_data, patients(full_name, phone)',
-        )
-        .eq('id', c.id)
-        .single();
-
-      if (data) {
+      const fresh_raw = await getConsultation(c.id);
+      if (fresh_raw) {
         const fresh: Consultation = {
-          id: data.id,
-          consultation_code: data.consultation_code,
-          consultation_date: data.consultation_date,
-          chief_complaint: data.chief_complaint,
-          notes: data.notes,
-          diagnosis: data.diagnosis,
-          treatment: data.treatment,
-          status: (data.status ?? 'pending') as Consultation['status'],
-          payment_status: data.payment_status,
-          appointment_id: (data as { appointment_id?: string | null }).appointment_id ?? null,
-          patient_id: data.patient_id,
-          patient_name:
-            !Array.isArray(data.patients) && data.patients
-              ? (data.patients as { full_name: string }).full_name
-              : c.patient_name,
-          patient_phone:
-            !Array.isArray(data.patients) && data.patients
-              ? (data.patients as { full_name: string; phone: string | null }).phone
-              : c.patient_phone,
-          started_at: data.started_at ?? null,
-          ended_at: data.ended_at ?? null,
-          duration_minutes: data.duration_minutes ?? null,
-          // Preservar bloques dinámicos cargados de BD para que tabs y autosave funcionen
-          blocks_snapshot: (data as any).blocks_snapshot ?? null,
-          blocks_data: (data as any).blocks_data ?? null,
+          id: fresh_raw.id,
+          consultation_code: fresh_raw.consultation_code,
+          consultation_date: fresh_raw.consultation_date,
+          chief_complaint: fresh_raw.chief_complaint,
+          notes: fresh_raw.notes,
+          diagnosis: fresh_raw.diagnosis,
+          treatment: fresh_raw.treatment,
+          status: 'pending' as Consultation['status'], // status not in Etapa-1 schema
+          payment_status: fresh_raw.payment_status,
+          appointment_id: fresh_raw.appointment_id ?? null,
+          patient_id: fresh_raw.patient_id,
+          patient_name: c.patient_name, // not in response — keep cached
+          patient_phone: c.patient_phone,
+          started_at: fresh_raw.started_at,
+          ended_at: fresh_raw.ended_at,
+          duration_minutes: fresh_raw.duration_minutes,
+          blocks_snapshot: null, // blocks_snapshot not in Etapa-1 schema
+          blocks_data: null,     // blocks_data not in Etapa-1 schema
+          version: null,
         };
         setSelected(fresh);
         setReport({
@@ -864,32 +765,9 @@ function ConsultationsPage() {
           treatment: fresh.treatment ?? '',
           payment_status: fresh.payment_status,
         });
-        // Update local list with fresh data
         setConsultations((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)));
-
-        // Fetch linked appointment data for payment receipt
-        if (data.appointment_id) {
-          const { data: apptData } = await supabase
-            .from('appointments')
-            .select('payment_receipt_url, payment_method, plan_price, plan_name')
-            .eq('id', data.appointment_id)
-            .maybeSingle();
-          setAppointmentData(apptData || null);
-        } else {
-          // Fallback: try to find by doctor_id + patient_id + consultation_date — FASE 5
-          const fallbackId = await getDevDoctorId();
-          if (fallbackId) {
-            const user = { id: fallbackId };
-            const { data: apptData } = await supabase
-              .from('appointments')
-              .select('payment_receipt_url, payment_method, plan_price, plan_name')
-              .eq('doctor_id', user.id)
-              .eq('patient_id', data.patient_id)
-              .eq('scheduled_at', data.consultation_date)
-              .maybeSingle();
-            setAppointmentData(apptData || null);
-          }
-        }
+        // Appointment data for receipt — no backend endpoint in Etapa 1, stays null.
+        setAppointmentData(null);
       } else {
         // Fallback to cached data
         setSelected(c);
@@ -914,61 +792,29 @@ function ConsultationsPage() {
       });
       setAppointmentData(null);
     }
-    // Cargar reposo persistido (si existe) desde blocks_data.reposo
-    // Hacemos una segunda lectura ligera para evitar depender del scope del try anterior
+
+    // PLACEHOLDER: blocks_data.reposo — blocks_data not in Etapa-1 schema.
+    // Reposo fields reset to default. Fase 5: load from blocks_data.
+    setReposoDiagnosis('');
+    setReposoDays(0);
+    setReposoFrom('');
+    setReposoTo('');
+
+    // MIGRATED: Load prescriptions via backend → GET /api/prescriptions/patient/:id
     try {
-      const supabase = createClient();
-      const { data: bd } = await supabase
-        .from('consultations')
-        .select('blocks_data')
-        .eq('id', c.id)
-        .single();
-      const reposoData = (bd?.blocks_data as Record<string, unknown> | null)?.['reposo'] as
-        | { diagnosis?: string; days?: number; from?: string; to?: string }
-        | undefined;
-      if (reposoData) {
-        setReposoDiagnosis(reposoData.diagnosis || '');
-        setReposoDays(typeof reposoData.days === 'number' ? reposoData.days : 0);
-        setReposoFrom(reposoData.from || '');
-        setReposoTo(reposoData.to || '');
-      } else {
-        setReposoDiagnosis('');
-        setReposoDays(0);
-        setReposoFrom('');
-        setReposoTo('');
-      }
-    } catch {
-      setReposoDiagnosis('');
-      setReposoDays(0);
-      setReposoFrom('');
-      setReposoTo('');
-    }
-    // Load saved prescriptions/recipes for this consultation
-    try {
-      const supabase = createClient();
-      const { data: savedRx } = await supabase
-        .from('prescriptions')
-        .select('id, medications, notes, created_at')
-        .eq('consultation_id', c.id)
-        .order('created_at', { ascending: false });
-      if (savedRx && savedRx.length > 0) {
-        setSavedPrescriptions(savedRx as SavedPrescription[]);
-        // Load the most recent recipe's medications into the recipe editor
-        const latest = savedRx[0];
-        const meds = (latest.medications as Medication[]) || [];
-        setRecipe({ medications: meds, notes: latest.notes || '' });
-        // Load exams from saved prescriptions (those that look like exams)
-        const examItems = savedRx
-          .filter((rx) => rx.notes?.startsWith('Examen:'))
-          .map((rx) => {
-            const meds = (rx.medications as Medication[]) || [];
-            return { exam_name: meds[0]?.name || '', notes: meds[0]?.indications || '' };
-          });
-        if (examItems.length > 0) {
-          setPrescripciones(examItems);
-        } else {
-          setPrescripciones([]);
-        }
+      const rxList = await getPatientPrescriptions(c.patient_id);
+      if (rxList.length > 0) {
+        // Map backend prescriptions (flat schema) to legacy SavedPrescription shape
+        const saved: SavedPrescription[] = rxList.map(rx => ({
+          id: rx.id,
+          medications: [{ name: rx.medication, dose: rx.dosage || '', frequency: rx.frequency || '', duration: rx.duration || '', indications: rx.notes || '' }],
+          notes: rx.notes,
+          created_at: rx.created_at,
+        }));
+        setSavedPrescriptions(saved);
+        const latest = saved[0];
+        setRecipe({ medications: latest.medications, notes: latest.notes || '' });
+        setPrescripciones([]);
       } else {
         setSavedPrescriptions([]);
         setRecipe({ medications: [], notes: '' });
@@ -979,10 +825,10 @@ function ConsultationsPage() {
       setRecipe({ medications: [], notes: '' });
       setPrescripciones([]);
     }
+
     setView('consultation');
     setSaved(false);
     // RONDA 38+39: tab inicial = primer bloque EFECTIVO de la consulta.
-    // Snapshot congelado si existe, sino config actual del doctor.
     const snap = (c as any).blocks_snapshot;
     const effective = Array.isArray(snap) && snap.length > 0 ? snap : doctorActiveBlocks;
     if (Array.isArray(effective) && effective.length > 0) {
@@ -1009,25 +855,20 @@ function ConsultationsPage() {
       const planAmount = selectedPlan?.price_usd || 0;
       const planName = selectedPlan?.name || '';
 
-      // Upload receipt if provided
+      // Upload receipt if provided — via BFF /api/storage/upload (no Supabase)
       let receiptUrl: string | null = null;
       if (receiptFile) {
-        const supabase = createClient();
-        // FASE 5: storage upload stays Supabase
-        const receiptUserId = await getDevDoctorId();
-        if (receiptUserId) {
-          const user = { id: receiptUserId };
-          const ext = receiptFile.name.split('.').pop();
-          const path = `${user.id}/${newConsultation.patient_id}/${Date.now()}.${ext}`;
-          const { error: uploadErr } = await supabase.storage
-            .from('payment-receipts')
-            .upload(path, receiptFile, { upsert: false });
-          if (!uploadErr) {
-            const { data: publicUrl } = supabase.storage
-              .from('payment-receipts')
-              .getPublicUrl(path);
-            receiptUrl = publicUrl.publicUrl;
+        try {
+          const fd = new FormData();
+          fd.append('file', receiptFile);
+          fd.append('kind', 'receipt');
+          const uploadRes = await fetch('/api/storage/upload', { method: 'POST', body: fd });
+          const uploadJson = await uploadRes.json();
+          if (uploadRes.ok && uploadJson?.data?.url) {
+            receiptUrl = uploadJson.data.url;
           }
+        } catch (uploadErr) {
+          console.warn('[createNewConsultation] receipt upload failed:', uploadErr);
         }
       }
 
@@ -1091,44 +932,27 @@ function ConsultationsPage() {
         }
       }
 
-      // 3. FASE 5: reload consultation list from Supabase until backend covers this
-      const reloadId = await getDevDoctorId();
-      if (reloadId) {
-        const user = { id: reloadId };
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('consultations')
-          .select('*, patients(full_name, phone)')
-          .eq('doctor_id', user.id)
-          .order('consultation_date', { ascending: false });
-
-        setConsultations(
-          (data ?? []).map((c) => ({
-            id: c.id,
-            consultation_code: c.consultation_code,
-            consultation_date: c.consultation_date,
-            chief_complaint: c.chief_complaint,
-            notes: c.notes,
-            diagnosis: c.diagnosis,
-            treatment: c.treatment,
-            status: (c.status ?? 'pending') as Consultation['status'],
-            payment_status: c.payment_status,
-            appointment_id: (c as { appointment_id?: string | null }).appointment_id ?? null,
-            patient_id: c.patient_id,
-            patient_name:
-              !Array.isArray(c.patients) && c.patients
-                ? (c.patients as { full_name: string }).full_name
-                : 'Paciente',
-            patient_phone:
-              !Array.isArray(c.patients) && c.patients
-                ? (c.patients as { full_name: string; phone: string | null }).phone
-                : null,
-            started_at: c.started_at ?? null,
-            ended_at: c.ended_at ?? null,
-            duration_minutes: c.duration_minutes ?? null,
-          })),
-        );
-      }
+      // Reload consultation list from backend → GET /api/consultations
+      const freshList = await listConsultations({ limit: 200 });
+      setConsultations(freshList.map((c) => ({
+        id: c.id,
+        consultation_code: c.consultation_code,
+        consultation_date: c.consultation_date,
+        chief_complaint: c.chief_complaint,
+        notes: c.notes,
+        diagnosis: c.diagnosis,
+        treatment: c.treatment,
+        status: 'pending' as Consultation['status'],
+        payment_status: c.payment_status,
+        appointment_id: c.appointment_id,
+        patient_id: c.patient_id,
+        patient_name: 'Paciente',
+        patient_phone: null,
+        started_at: c.started_at,
+        ended_at: c.ended_at,
+        duration_minutes: c.duration_minutes,
+        version: null,
+      })));
 
       setShowNewConsultation(false);
       setReceiptFile(null);
@@ -1162,67 +986,48 @@ function ConsultationsPage() {
       alert('Agrega al menos un medicamento o escribe notas de la receta');
       return;
     }
-
-    // Validacion previa del patient_id — DEBE ser un UUID de la tabla `patients`
     if (!selected.patient_id) {
       log.error('[saveRecipe] selected.patient_id es null/undefined', { selected });
       alert('Error: la consulta no tiene un paciente asociado');
       return;
     }
-    log.debug('[saveRecipe] insertando', {
-      patient_id: selected.patient_id,
-      consultation_id: selected.id,
-    });
 
     setIsSavingRecipe(true);
     try {
-      const supabase = createClient();
-      // FASE 5: prescription insert stays Supabase
-      const rxUserId = await getDevDoctorId();
-      const user = rxUserId ? { id: rxUserId } : null;
-      if (!user) {
-        alert('Sesión expirada. Recarga la página.');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .insert({
-          doctor_id: user.id,
+      // MIGRATED: create prescription via backend → POST /api/prescriptions
+      // Backend schema expects flat medication fields; save first med entry.
+      // Multi-medication support deferred to Fase 5 (bulk endpoint).
+      for (const med of recipe.medications) {
+        if (!med.name.trim()) continue;
+        const result = await createPrescription({
           patient_id: selected.patient_id,
           consultation_id: selected.id,
-          medications: recipe.medications,
-          notes: recipe.notes || null,
-          created_at: new Date().toISOString(),
-        })
-        .select('id')
-        .single();
-
-      // Validar respuesta ANTES de mostrar mensaje
-      if (error) {
-        console.error('[saveRecipe] Supabase error:', error);
-        alert(`Error al guardar receta: ${error.message}`);
-        return;
-      }
-      if (!data?.id) {
-        console.warn('[saveRecipe] insert devolvio sin id pero sin error', { data });
-        alert('No se pudo confirmar el guardado. Recarga e intenta de nuevo.');
-        return;
+          medication: med.name,
+          dosage: med.dose || null,
+          frequency: med.frequency || null,
+          duration: med.duration || null,
+          notes: med.indications || recipe.notes || null,
+        });
+        if (!result.success) {
+          alert(`Error al guardar receta: ${result.error}`);
+          return;
+        }
       }
 
-      log.debug('[saveRecipe] guardado OK', { id: data.id });
-      // Reload saved prescriptions
-      const { data: savedRx } = await supabase
-        .from('prescriptions')
-        .select('id, medications, notes, created_at')
-        .eq('consultation_id', selected.id)
-        .order('created_at', { ascending: false });
-      setSavedPrescriptions((savedRx || []) as SavedPrescription[]);
+      // Reload prescriptions from backend
+      const rxList = await getPatientPrescriptions(selected.patient_id);
+      const saved: SavedPrescription[] = rxList.map(rx => ({
+        id: rx.id,
+        medications: [{ name: rx.medication, dose: rx.dosage || '', frequency: rx.frequency || '', duration: rx.duration || '', indications: rx.notes || '' }],
+        notes: rx.notes,
+        created_at: rx.created_at,
+      }));
+      setSavedPrescriptions(saved);
       setShowRecipe(false);
       alert('Receta guardada correctamente');
-    } catch (err: any) {
-      console.error('[saveRecipe] excepcion JS:', err);
-      alert(`Error al guardar receta: ${err?.message || 'desconocido'}`);
+    } catch (err: unknown) {
+      console.error('[saveRecipe] error:', err);
+      alert(`Error al guardar receta: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setIsSavingRecipe(false);
     }
@@ -1556,19 +1361,17 @@ function ConsultationsPage() {
   function saveReport() {
     if (!selected) return;
     startTransition(async () => {
-      const supabase = createClient();
-      await supabase
-        .from('consultations')
-        .update({
-          chief_complaint: report.chief_complaint,
-          notes: report.notes,
-          diagnosis: report.diagnosis,
-          treatment: report.treatment,
-          payment_status: report.payment_status,
-        })
-        .eq('id', selected.id);
-
-      // Update local state
+      // MIGRATED: update clinical fields via backend → PUT /api/consultations/:id
+      const result = await updateConsultation(selected.id, {
+        chief_complaint: report.chief_complaint || null,
+        notes: report.notes || null,
+        diagnosis: report.diagnosis || null,
+        treatment: report.treatment || null,
+      });
+      if (!result.success) {
+        alert(`Error al guardar: ${result.error}`);
+        return;
+      }
       setConsultations((prev) => prev.map((c) => (c.id === selected.id ? { ...c, ...report } : c)));
       setSelected((prev) => (prev ? { ...prev, ...report } : null));
       setSaved(true);
@@ -1599,62 +1402,28 @@ function ConsultationsPage() {
 
   useEffect(() => {
     if (!selected) return;
-    // Don't auto-save if the report hasn't been loaded yet (initial open)
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       if (!selectedRef.current) return;
       const r = reportRef.current;
-      // Only save if there's some content
       if (!r.chief_complaint && !r.notes && !r.diagnosis && !r.treatment) return;
       setAutoSaving(true);
-      const supabase = createClient();
-      // AUDIT FIX 2026-04-28 (C-5): optimistic locking via `version` column.
-      // Si otra pestaña/usuario guardó después de que cargamos, version de BD ya
-      // avanzó y count = 0; recargamos en silencio en lugar de pisar.
-      const expectedVersion = selectedRef.current.version ?? null;
-      const updateBuilder = supabase
-        .from('consultations')
-        .update(
-          {
-            chief_complaint: r.chief_complaint,
-            notes: r.notes,
-            diagnosis: r.diagnosis,
-            treatment: r.treatment,
-            payment_status: r.payment_status,
-          },
-          { count: 'exact' },
-        )
-        .eq('id', selectedRef.current.id);
-      const promise =
-        expectedVersion != null
-          ? updateBuilder.eq('version', expectedVersion).select('version').maybeSingle()
-          : updateBuilder.select('version').maybeSingle();
-      promise.then(({ data, error }) => {
+      // MIGRATED: auto-save via backend → PUT /api/consultations/:id
+      // Version-based optimistic locking deferred to Fase 5 (no version field in Etapa-1).
+      updateConsultation(selectedRef.current.id, {
+        chief_complaint: r.chief_complaint || null,
+        notes: r.notes || null,
+        diagnosis: r.diagnosis || null,
+        treatment: r.treatment || null,
+      }).then((result) => {
         setAutoSaving(false);
-        if (error || !data) {
-          // Conflict: otra escritura ganó. Refetch para tomar la última versión.
-          if (selectedRef.current) {
-            supabase
-              .from('consultations')
-              .select('version, chief_complaint, notes, diagnosis, treatment, payment_status')
-              .eq('id', selectedRef.current.id)
-              .single()
-              .then(({ data: fresh }) => {
-                if (fresh && selectedRef.current) {
-                  setSelected((prev) => (prev ? { ...prev, version: fresh.version } : prev));
-                }
-              });
-          }
-          return;
+        if (result.success) {
+          setSaved(true);
+          setTimeout(() => setSaved(false), 2000);
+          setConsultations((prev) =>
+            prev.map((c) => (c.id === selectedRef.current?.id ? { ...c, ...r } : c)),
+          );
         }
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
-        setSelected((prev) => (prev ? { ...prev, version: data.version } : prev));
-        setConsultations((prev) =>
-          prev.map((c) =>
-            c.id === selectedRef.current?.id ? { ...c, ...r, version: data.version } : c,
-          ),
-        );
       });
     }, 3000);
     return () => {
@@ -1678,35 +1447,29 @@ function ConsultationsPage() {
   const reposoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!selected) return;
-    // No guardar si todos los campos están vacíos (estado inicial)
     if (!reposoDiagnosis && reposoDays === 0 && !reposoFrom && !reposoTo) return;
     if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current);
     reposoSaveTimer.current = setTimeout(async () => {
       if (!selectedRef.current) return;
-      const supabase = createClient();
-      // Merge con blocks_data existente para no pisar otros bloques
-      const { data: current } = await supabase
-        .from('consultations')
-        .select('blocks_data')
-        .eq('id', selectedRef.current.id)
-        .single();
-      const existingBlocks = (current?.blocks_data as Record<string, unknown>) || {};
-      const newBlocks = {
-        ...existingBlocks,
-        reposo: {
-          diagnosis: reposoDiagnosis,
-          days: reposoDays,
-          from: reposoFrom,
-          to: reposoTo,
-          updated_at: new Date().toISOString(),
-        },
+      // MIGRATED: reposo blocks_data via BFF PATCH route.
+      // blocks_data not in Etapa-1 backend schema — save via existing PATCH route.
+      // blocks_data.reposo merge with existing data deferred to Fase 5 (no GET blocks_data endpoint).
+      const reposoPayload = {
+        diagnosis: reposoDiagnosis,
+        days: reposoDays,
+        from: reposoFrom,
+        to: reposoTo,
+        updated_at: new Date().toISOString(),
       };
-      await supabase
-        .from('consultations')
-        .update({ blocks_data: newBlocks })
-        .eq('id', selectedRef.current.id);
-      // Actualizar selected en local para que dynamicBlocks vea los cambios
-      setSelected((prev) => (prev ? { ...prev, blocks_data: newBlocks as any } : prev));
+      fetch('/api/doctor/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedRef.current.id,
+          blocks_data: { reposo: reposoPayload },
+        }),
+      }).catch((err) => console.warn('[reposo autosave]', err));
+      setSelected((prev) => (prev ? { ...prev, blocks_data: { reposo: reposoPayload } as any } : prev));
     }, 1500);
     return () => {
       if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current);
@@ -1724,19 +1487,9 @@ function ConsultationsPage() {
     setAiAction(mode);
     setAiResult('');
     try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        setAiResult('Sesión expirada. Recarga la página.');
-        return;
-      }
-
-      const headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      };
+      // Etapa 1: Supabase auth removed. /api/doctor/ai uses x-dev-user headers injected
+      // server-side. Endpoint may return 501 until AI module is wired in Fase 5.
+      const headers = { 'Content-Type': 'application/json' };
       let payload: Record<string, unknown> = {};
 
       if (mode === 'patient_history') {
@@ -1750,18 +1503,13 @@ function ConsultationsPage() {
         const effective = getEffectiveBlocks(selected);
         const block = effective.find((b) => b.key === blockKey);
         const label = block?.label || blockKey;
-        // Serializar contenido del bloque desde blocks_data (o columna legacy)
         const bd = (selected.blocks_data || {}) as Record<string, unknown>;
         let content = '';
         const raw = bd[blockKey];
         if (Array.isArray(raw))
-          content = (raw as unknown[])
-            .filter(Boolean)
-            .map((s) => `- ${s}`)
-            .join('\n');
+          content = (raw as unknown[]).filter(Boolean).map((s) => `- ${s}`).join('\n');
         else if (typeof raw === 'string') content = raw;
         else if (raw != null) content = String(raw);
-        // Fallback a columnas legacy
         if (!content.trim()) {
           if (blockKey === 'chief_complaint') content = report.chief_complaint;
           else if (blockKey === 'diagnosis') content = report.diagnosis;
@@ -1784,11 +1532,7 @@ function ConsultationsPage() {
             treatment: report.treatment,
           },
           blocks_data: selected.blocks_data || {},
-          blocks_meta: effective.map((b) => ({
-            key: b.key,
-            label: b.label,
-            printable: b.printable,
-          })),
+          blocks_meta: effective.map((b) => ({ key: b.key, label: b.label, printable: b.printable })),
         };
       }
 
@@ -1799,8 +1543,9 @@ function ConsultationsPage() {
       });
       const data = await res.json();
       if (data.error) setAiResult(`Error: ${data.error}`);
+      else if (!res.ok) setAiResult('Función de IA no disponible aún.');
       else setAiResult(data.result);
-    } catch (err) {
+    } catch {
       setAiResult('Error al conectar con la IA');
     } finally {
       setAiLoading(false);
@@ -1816,52 +1561,34 @@ function ConsultationsPage() {
       const blockKey = aiTargetBlockKey;
       const effective = getEffectiveBlocks(selected);
       const block = effective.find((b) => b.key === blockKey);
-      // Si es lista, parsear bullets
       let value: unknown = aiResult;
       if (block?.content_type === 'list') {
-        value = aiResult
-          .split('\n')
-          .map((l) => l.replace(/^\s*[-*•]\s*/, '').trim())
-          .filter(Boolean);
+        value = aiResult.split('\n').map((l) => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean);
       }
       const data = (selected.blocks_data || {}) as Record<string, unknown>;
       const next = { ...data, [blockKey]: value };
       setSelected({ ...selected, blocks_data: next });
-      // Sync con columnas legacy + report
       if (typeof value === 'string') {
-        if (blockKey === 'chief_complaint')
-          setReport((p) => ({ ...p, chief_complaint: value as string }));
+        if (blockKey === 'chief_complaint') setReport((p) => ({ ...p, chief_complaint: value as string }));
         else if (blockKey === 'diagnosis') setReport((p) => ({ ...p, diagnosis: value as string }));
         else if (blockKey === 'treatment') setReport((p) => ({ ...p, treatment: value as string }));
-        else if (blockKey === 'notes' || blockKey === 'informe')
-          setReport((p) => ({ ...p, notes: value as string }));
+        else if (blockKey === 'notes' || blockKey === 'informe') setReport((p) => ({ ...p, notes: value as string }));
       }
-      // Persistir
-      const supabase = createClient();
-      const updates: Record<string, unknown> = { blocks_data: next };
-      if (
-        typeof value === 'string' &&
-        (blockKey === 'chief_complaint' ||
-          blockKey === 'diagnosis' ||
-          blockKey === 'treatment' ||
-          blockKey === 'notes')
-      ) {
-        updates[blockKey] = value;
+      // Persist: update clinical fields + blocks_data via PATCH BFF (non-blocking)
+      const legacyUpdates: Record<string, string | null> = {};
+      if (typeof value === 'string' && ['chief_complaint', 'diagnosis', 'treatment', 'notes'].includes(blockKey)) {
+        legacyUpdates[blockKey] = value;
       }
-      supabase
-        .from('consultations')
-        .update(updates)
-        .eq('id', selected.id)
-        .then(() => {});
+      updateConsultation(selected.id, legacyUpdates).catch(() => {});
+      fetch('/api/doctor/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selected.id, blocks_data: next }),
+      }).catch(() => {});
     } else if (aiAction === 'summarize_report') {
-      // El resumen del informe se aplica al campo "notes" (informe)
       setReport((p) => ({ ...p, notes: aiResult }));
-      const supabase = createClient();
-      supabase
-        .from('consultations')
-        .update({ notes: aiResult })
-        .eq('id', selected.id)
-        .then(() => {});
+      // Persist via backend action (non-blocking)
+      updateConsultation(selected.id, { notes: aiResult }).catch(() => {});
     }
     setAiResult('');
     setAiAction(null);
@@ -2398,15 +2125,13 @@ function ConsultationsPage() {
                                     if (!selected) return;
                                     setAddingBlock(true);
                                     try {
-                                      // L1 (2026-04-29): persistir en doctor_consultation_blocks
-                                      // (config viva del doctor). Reemplazo total via PUT. FASE 5.
-                                      const supabase = createClient();
+                                      // Persist via PUT /api/doctor/consultation-blocks (BFF route)
+                                      // Supabase removed; user context from dev-auth header (server-side).
                                       const blockUserId = await getDevDoctorId();
                                       if (!blockUserId) {
                                         setAddingBlock(false);
                                         return;
                                       }
-                                      const user = { id: blockUserId };
                                       // Reconstruir config actual desde doctorActiveBlocks + el nuevo
                                       const newSortOrder =
                                         (doctorActiveBlocks[doctorActiveBlocks.length - 1]
@@ -2448,8 +2173,8 @@ function ConsultationsPage() {
                                         const j = await refreshed.json();
                                         const resolved = (j.resolved || []) as SnapshotBlock[];
                                         setDoctorActiveBlocks(resolved);
-                                        // Si la consulta tiene snapshot congelado, también extenderlo
-                                        // para que el bloque nuevo aparezca de inmediato en esta consulta.
+                                        // Extend frozen snapshot if present (blocks_snapshot update
+                                        // via PATCH BFF route — non-blocking, best-effort).
                                         const currentSnap = (selected as any).blocks_snapshot;
                                         if (Array.isArray(currentSnap) && currentSnap.length > 0) {
                                           const newSnap = [
@@ -2465,10 +2190,11 @@ function ConsultationsPage() {
                                               send_to_patient: c.send_to_patient,
                                             },
                                           ];
-                                          await supabase
-                                            .from('consultations')
-                                            .update({ blocks_snapshot: newSnap })
-                                            .eq('id', selected.id);
+                                          fetch('/api/doctor/consultations', {
+                                            method: 'PATCH',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ id: selected.id, blocks_snapshot: newSnap }),
+                                          }).catch(() => {});
                                           setSelected({
                                             ...selected,
                                             blocks_snapshot: newSnap as any,
@@ -2569,32 +2295,29 @@ function ConsultationsPage() {
                           // tambien sincroniza la columna legacy correspondiente para retrocompat.
                           if (blocksAutoSaveTimer.current)
                             clearTimeout(blocksAutoSaveTimer.current);
-                          blocksAutoSaveTimer.current = setTimeout(async () => {
+                          blocksAutoSaveTimer.current = setTimeout(() => {
                             if (!selectedRef.current) return;
-                            const supabase = createClient();
-                            const updates: Record<string, unknown> = { blocks_data: next };
-                            // RONDA 38: sync con columnas legacy para que el rebuild de report_data
-                            // tenga los datos correctos en `legacy` Y el render del paciente fallback funcione.
-                            if (
-                              key === 'chief_complaint' ||
-                              key === 'diagnosis' ||
-                              key === 'treatment' ||
-                              key === 'notes'
-                            ) {
-                              updates[key] = typeof value === 'string' ? value : '';
+                            // MIGRATED: blocks_data autosave via BFF PATCH route (non-blocking).
+                            // Legacy field sync via backend PUT endpoint.
+                            fetch('/api/doctor/consultations', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: selectedRef.current.id, blocks_data: next }),
+                            }).catch(() => {});
+                            // Sync legacy columns
+                            if (key === 'chief_complaint' || key === 'diagnosis' || key === 'treatment' || key === 'notes') {
+                              const legacyVal = typeof value === 'string' ? value : '';
+                              updateConsultation(selectedRef.current.id, { [key]: legacyVal }).catch(() => {});
                             }
-                            await supabase
-                              .from('consultations')
-                              .update(updates)
-                              .eq('id', selectedRef.current.id);
                           }, 1500);
                         }}
                         onSave={async () => {
-                          const supabase = createClient();
-                          await supabase
-                            .from('consultations')
-                            .update({ blocks_data: (selected as Consultation).blocks_data || {} })
-                            .eq('id', selected!.id);
+                          // MIGRATED: save blocks_data via BFF PATCH route
+                          await fetch('/api/doctor/consultations', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: selected!.id, blocks_data: (selected as Consultation).blocks_data || {} }),
+                          });
                           alert('Bloque guardado');
                         }}
                       />
@@ -2912,56 +2635,38 @@ function ConsultationsPage() {
                             });
                             setIsSavingPrescripciones(true);
                             try {
-                              const supabase = createClient();
-                              // FASE 5: prescriptions insert stays Supabase
-                              const presUserId = await getDevDoctorId();
-                              if (!presUserId) return;
-                              const user = { id: presUserId };
+                              // MIGRATED: save exams via backend → POST /api/prescriptions
                               const exams = prescripciones.filter((p) => p.exam_name.trim());
                               const failed: string[] = [];
                               for (const exam of exams) {
-                                const { error } = await supabase.from('prescriptions').insert({
-                                  doctor_id: user.id,
+                                const result = await createPrescription({
                                   patient_id: selected.patient_id,
                                   consultation_id: selected.id,
-                                  medications: [
-                                    {
-                                      name: exam.exam_name,
-                                      dose: '',
-                                      frequency: '',
-                                      duration: '',
-                                      indications: exam.notes,
-                                    },
-                                  ],
-                                  notes: `Examen: ${exam.exam_name}${exam.notes ? ` - ${exam.notes}` : ''}`,
-                                  created_at: new Date().toISOString(),
+                                  medication: exam.exam_name,
+                                  notes: exam.notes ? `Examen: ${exam.exam_name} - ${exam.notes}` : `Examen: ${exam.exam_name}`,
                                 });
-                                if (error) {
-                                  console.error(
-                                    '[savePrescripciones] error en exam',
-                                    exam.exam_name,
-                                    error,
-                                  );
+                                if (!result.success) {
+                                  console.error('[savePrescripciones] error en exam', exam.exam_name, result.error);
                                   failed.push(exam.exam_name);
                                 }
                               }
-                              // Reload saved prescriptions
-                              const { data: savedRx } = await supabase
-                                .from('prescriptions')
-                                .select('id, medications, notes, created_at')
-                                .eq('consultation_id', selected.id)
-                                .order('created_at', { ascending: false });
-                              setSavedPrescriptions((savedRx || []) as SavedPrescription[]);
+                              // Reload prescriptions from backend
+                              const rxList = await getPatientPrescriptions(selected.patient_id);
+                              const saved: SavedPrescription[] = rxList.map(rx => ({
+                                id: rx.id,
+                                medications: [{ name: rx.medication, dose: rx.dosage || '', frequency: rx.frequency || '', duration: rx.duration || '', indications: rx.notes || '' }],
+                                notes: rx.notes,
+                                created_at: rx.created_at,
+                              }));
+                              setSavedPrescriptions(saved);
                               if (failed.length > 0) {
                                 alert(`Algunas prescripciones fallaron: ${failed.join(', ')}`);
                               } else {
                                 alert(`Prescripciones guardadas (${exams.length})`);
                               }
-                            } catch (err: any) {
-                              console.error('[savePrescripciones] excepcion JS:', err);
-                              alert(
-                                `Error al guardar prescripciones: ${err?.message || 'desconocido'}`,
-                              );
+                            } catch (err: unknown) {
+                              console.error('[savePrescripciones] error:', err);
+                              alert(`Error al guardar prescripciones: ${err instanceof Error ? err.message : 'desconocido'}`);
                             } finally {
                               setIsSavingPrescripciones(false);
                             }
@@ -3184,13 +2889,14 @@ function ConsultationsPage() {
                         (selected as Consultation).blocks_data = next;
                         setSelected({ ...(selected as Consultation), blocks_data: next });
                         if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current);
-                        blocksAutoSaveTimer.current = setTimeout(async () => {
+                        blocksAutoSaveTimer.current = setTimeout(() => {
                           if (!selectedRef.current) return;
-                          const supabase = createClient();
-                          await supabase
-                            .from('consultations')
-                            .update({ blocks_data: next })
-                            .eq('id', selectedRef.current.id);
+                          // MIGRATED: internal_notes blocks_data via BFF PATCH route
+                          fetch('/api/doctor/consultations', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: selectedRef.current.id, blocks_data: next }),
+                          }).catch(() => {});
                         }, 1500);
                       }}
                       placeholder="Notas internas, observaciones, seguimiento pendiente..."
