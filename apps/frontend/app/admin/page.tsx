@@ -12,144 +12,64 @@
  *   Grid 3 cols → cards secundarias (crecimiento, total esp, consultas mes)
  */
 
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Users, Calendar, Heart, ClipboardList, ArrowRight, TrendingUp, Sparkles } from 'lucide-react'
 import { StatCard, Card, Btn, DeltaMark } from '@/components/dh'
 import AdminSubscriptionChart from './AdminSubscriptionChart'
+import { backendGet } from '@/lib/api-client.server'
 
 export const revalidate = 30
 
 export default async function AdminDashboard() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const adminClient = createAdminClient()
-
-  // ── MoM stats ──
-  let momGrowth = 0
-  let newThisMonth = 0
-
-  try {
-    const { data: doctors } = await adminClient
-      .from('profiles')
-      .select('id, created_at')
-      .eq('role', 'doctor')
-      .order('created_at', { ascending: true })
-
-    if (doctors) {
-      const now = new Date()
-      const monthCounts: Record<string, number> = {}
-      const months: string[] = []
-
-      for (let i = 5; i >= 0; i--) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-        const monthKey = date.toISOString().slice(0, 7)
-        monthCounts[monthKey] = 0
-        months.push(monthKey)
-      }
-
-      doctors.forEach((d) => {
-        const monthKey = new Date(d.created_at).toISOString().slice(0, 7)
-        if (monthKey in monthCounts) monthCounts[monthKey]++
-      })
-
-      const currentMonthCount = monthCounts[months[months.length - 1]] || 0
-      const previousMonthCount = monthCounts[months[months.length - 2]] || 0
-
-      if (previousMonthCount > 0) {
-        momGrowth = parseFloat((((currentMonthCount - previousMonthCount) / previousMonthCount) * 100).toFixed(1))
-      } else if (currentMonthCount > 0) {
-        momGrowth = 100
-      }
-      newThisMonth = currentMonthCount
-    }
-  } catch (err) {
-    console.error('Error fetching doctor stats:', err)
+  // ETAPA 1 — agregados de los módulos NestJS `admin` + `billing` vía el BFF (sin Supabase).
+  // RBAC (super_admin) lo aplica `proxy.ts` + el backend.
+  interface DashboardKpis { totalDoctors: number }
+  interface DashboardOverview {
+    appointmentsToday: number
+    appointmentsThisMonth: number
+    activeSubscriptions: number
+    trialSubscriptions: number
+    recentDoctors: { id: string; fullName: string; specialty: string | null; subscriptionStatus: string; createdAt: string }[]
+  }
+  interface Growth { momGrowth: number; newThisMonth: number }
+  interface FinancePending {
+    pendingPayments: { id: string; doctorName: string; specialty: string | null; amountUsd: number; method: string; createdAt: string }[]
   }
 
+  const [dashboardRes, overviewRes, growthRes, financeRes] = await Promise.all([
+    backendGet<DashboardKpis>('/api/admin/dashboard'),
+    backendGet<DashboardOverview>('/api/admin/dashboard/overview'),
+    backendGet<Growth>('/api/admin/subscriptions/growth'),
+    backendGet<FinancePending>('/api/admin/finance-stats'),
+  ])
+
+  const totalDoctors = dashboardRes.ok ? dashboardRes.value.totalDoctors : 0
+  const overview = overviewRes.ok ? overviewRes.value : null
+  const citasHoy = overview?.appointmentsToday ?? 0
+  const totalCitasMonth = overview?.appointmentsThisMonth ?? 0
+  const activeSubscriptions = overview?.activeSubscriptions ?? 0
+  const trialSubscriptions = overview?.trialSubscriptions ?? 0
+  const momGrowth = growthRes.ok ? growthRes.value.momGrowth : 0
+  const newThisMonth = growthRes.ok ? growthRes.value.newThisMonth : 0
+
+  const recentDoctors = (overview?.recentDoctors ?? []).map((d) => ({
+    id: d.id,
+    full_name: d.fullName,
+    specialty: d.specialty,
+    subscription_status: d.subscriptionStatus,
+    created_at: d.createdAt,
+  }))
+
+  const pendingPayments = (financeRes.ok ? financeRes.value.pendingPayments : []).map((p) => ({
+    id: p.id,
+    doctor_id: '',
+    amount_usd: p.amountUsd,
+    method: p.method,
+    created_at: p.createdAt,
+    profiles: { full_name: p.doctorName, specialty: p.specialty } as { full_name: string; specialty: string | null } | null,
+  }))
+
   const now = new Date()
-
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
-
-  // Citas hoy
-  let citasHoy = 0
-  try {
-    const { data: apptsToday } = await adminClient
-      .from('appointments').select('id')
-      .gte('scheduled_at', todayStart).lte('scheduled_at', todayEnd)
-    const { data: consToday } = await adminClient
-      .from('consultations').select('id')
-      .is('appointment_id', null)
-      .gte('consultation_date', todayStart).lte('consultation_date', todayEnd)
-    citasHoy = (apptsToday?.length || 0) + (consToday?.length || 0)
-  } catch {}
-
-  // Consultas mes
-  let totalCitasMonth = 0
-  try {
-    const { data: apptCounts } = await adminClient
-      .from('appointments').select('id')
-      .gte('scheduled_at', startOfMonth).lte('scheduled_at', endOfMonth)
-    const { data: consCounts } = await adminClient
-      .from('consultations').select('id')
-      .is('appointment_id', null)
-      .gte('consultation_date', startOfMonth).lte('consultation_date', endOfMonth)
-    totalCitasMonth = (apptCounts?.length || 0) + (consCounts?.length || 0)
-  } catch {}
-
-  // Doctores activos
-  let totalDoctors = 0
-  try {
-    const { count } = await adminClient
-      .from('profiles').select('id', { count: 'exact', head: true })
-      .eq('role', 'doctor').eq('is_active', true)
-    totalDoctors = count ?? 0
-  } catch {}
-
-  // Suscripciones
-  let activeSubscriptions = 0
-  let trialSubscriptions = 0
-  try {
-    const { count: activeCount } = await adminClient
-      .from('profiles').select('id', { count: 'exact', head: true })
-      .eq('role', 'doctor').eq('subscription_status', 'active')
-    const { count: trialCount } = await adminClient
-      .from('profiles').select('id', { count: 'exact', head: true })
-      .eq('role', 'doctor').eq('plan', 'trial').eq('subscription_status', 'trial')
-    activeSubscriptions = activeCount ?? 0
-    trialSubscriptions = trialCount ?? 0
-  } catch {}
-
-  // Doctores recientes para "Recién registrados"
-  let recentDoctors: { full_name: string; specialty: string | null; subscription_status: string; created_at: string; id: string }[] = []
-  try {
-    const { data } = await adminClient
-      .from('profiles')
-      .select('id, full_name, specialty, subscription_status, created_at')
-      .eq('role', 'doctor')
-      .order('created_at', { ascending: false })
-      .limit(5)
-    recentDoctors = data || []
-  } catch {}
-
-  // Pagos pendientes (cola de aprobación de comprobantes)
-  let pendingPayments: { id: string; doctor_id: string; amount_usd: number; method: string; created_at: string; profiles: { full_name: string; specialty: string | null } | null }[] = []
-  try {
-    const { data } = await adminClient
-      .from('subscription_payments')
-      .select('id, doctor_id, amount_usd, method, created_at, profiles!subscription_payments_doctor_id_fkey ( full_name, specialty )')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(4)
-    pendingPayments = (data as any) || []
-  } catch {}
 
   const hour = now.getHours()
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches'
