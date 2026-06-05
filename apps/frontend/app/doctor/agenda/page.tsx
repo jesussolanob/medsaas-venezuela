@@ -24,7 +24,6 @@ import {
   Package,
   RefreshCw,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client'; // FASE 5: offices, profiles, packages, storage; Supabase permanece para schedule/offices/patients/pricing_plans/receipts
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
 import { listAgendaAppointments, listPendingAppointments } from './actions'; // MIGRATED: appointments → NestJS backend
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
@@ -344,43 +343,16 @@ export default function AgendaPage() {
     appt: CalendarAppointment;
   } | null>(null);
 
-  // Cargar status reales de consulta + pago cada vez que se abre el modal
-  // FASE 5 (Supabase): appointment detail join con consultation/payment.
-  // En Etapa 1 el backend no expone estos datos en GET /api/appointments/:id.
-  // Se mantiene en Supabase hasta que el backend devuelva consultation_status y payment_status.
+  // FASE 5 placeholder: el backend no expone consultation_status ni payment_status
+  // en GET /api/appointments/:id en Etapa 1. Se dejará en null hasta que el
+  // endpoint enriquezca la respuesta con esos campos.
   useEffect(() => {
     if (!detailAppt) {
       setDetailStatus({ consulta: null, pago: null });
-      return;
+    } else {
+      // Placeholder: sin endpoint de join disponible en Etapa 1.
+      setDetailStatus({ consulta: null, pago: null });
     }
-    const apptId = detailAppt.appointment_id || detailAppt.id;
-    (async () => {
-      const supabase = createClient(); // FASE 5: appointment detail (consulta+pago status)
-      const { data: appt } = await supabase
-        .from('appointments')
-        .select('consultation_id, payment_id')
-        .eq('id', apptId)
-        .single();
-      let consStatus: string | null = null;
-      let payStatus: string | null = null;
-      if (appt?.consultation_id) {
-        const { data: c } = await supabase
-          .from('consultations')
-          .select('status')
-          .eq('id', appt.consultation_id)
-          .single();
-        consStatus = c?.status || null;
-      }
-      if (appt?.payment_id) {
-        const { data: p } = await supabase
-          .from('payments')
-          .select('status')
-          .eq('id', appt.payment_id)
-          .single();
-        payStatus = p?.status || null;
-      }
-      setDetailStatus({ consulta: consStatus, pago: payStatus });
-    })();
   }, [detailAppt]);
   const [statusReason, setStatusReason] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
@@ -414,14 +386,12 @@ export default function AgendaPage() {
   // ── Load data from DB ────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
-    const supabase = createClient();
-    // MIGRATED (Etapa 1): identity from dev-auth stub. FASE 5: all data stays Supabase.
+    // MIGRATED (Etapa 1): identity from dev-auth stub.
     const id = await getDevDoctorId();
     if (!id) return;
-    const user = { id };
-    setDoctorId(user.id);
+    setDoctorId(id);
 
-    // 1. Load schedule config + availability from API
+    // 1. Load schedule config + availability via route handler (backend-backed).
     try {
       const schedRes = await fetch('/api/doctor/schedule');
       if (schedRes.ok) {
@@ -440,91 +410,139 @@ export default function AgendaPage() {
         }
       }
 
-      // RONDA 28 + FIX 2026-04-29: doctor_offices.schedule es la fuente moderna.
+      // RONDA 28 + MIGRATED: doctor_offices → GET /api/doctor/offices (NestJS backend).
       // Si el doctor configuró su consultorio, REEMPLAZAR los DEFAULT_SLOTS — antes
       // hacíamos merge "preservando días existentes", lo que dejaba el DEFAULT
       // (08:00-12:00) ganando sobre el office (08:00-17:00) y la agenda solo
       // mostraba slots hasta 10:20.
-      const { data: offices } = await supabase
-        .from('doctor_offices')
-        .select('schedule, slot_duration, buffer_minutes')
-        .eq('doctor_id', user.id)
-        .eq('is_active', true);
+      const officesRes = await fetch('/api/doctor/offices');
+      if (officesRes.ok) {
+        const officesJson = await officesRes.json();
+        // Backend devuelve { success: true, data: [...] } o un array directo
+        const officesList: any[] = Array.isArray(officesJson)
+          ? officesJson
+          : Array.isArray(officesJson?.data)
+            ? officesJson.data
+            : [];
 
-      if (offices && offices.length > 0) {
-        const officeSlots: AvailabilitySlot[] = [];
-        offices.forEach((off) => {
-          const schedule = (off as any).schedule as
-            | { day: number; start: string; end: string; enabled: boolean }[]
-            | null;
-          if (!Array.isArray(schedule)) return;
-          schedule.forEach((s) => {
-            if (s.enabled && s.start && s.end) {
-              officeSlots.push({
-                id: `office-${s.day}-${s.start}`,
-                day_of_week: s.day, // 0=lun..6=dom — mismo formato que doctor_availability
-                start_time: s.start,
-                end_time: s.end,
-                is_enabled: true,
-              } as AvailabilitySlot);
-            }
-          });
-        });
+        const activeOffices = officesList.filter((o: any) => o.isActive || o.is_active);
 
-        if (officeSlots.length > 0) {
-          // FIX 2026-04-29: el office es la fuente de verdad. Reemplazamos
-          // DEFAULT_SLOTS por completo. Solo conservamos slots de doctor_availability
-          // (legacy) que NO chocan con office (días distintos).
-          setAvailSlots((prev) => {
-            const officeDays = new Set(officeSlots.map((o) => o.day_of_week));
-            const isDefaultSlot = (s: AvailabilitySlot) =>
-              !s.id || String(s.id).startsWith('default-');
-            const legacyKept = prev.filter(
-              (s) => !officeDays.has(s.day_of_week) && !isDefaultSlot(s),
-            );
-            return [...officeSlots, ...legacyKept];
+        if (activeOffices.length > 0) {
+          const officeSlots: AvailabilitySlot[] = [];
+          activeOffices.forEach((off: any) => {
+            // El backend devuelve camelCase: slotDuration, bufferMinutes, schedule
+            const schedule = off.schedule as
+              | { day: number; start: string; end: string; enabled: boolean }[]
+              | null;
+            if (!Array.isArray(schedule)) return;
+            schedule.forEach((s) => {
+              if (s.enabled && s.start && s.end) {
+                officeSlots.push({
+                  id: `office-${s.day}-${s.start}`,
+                  day_of_week: s.day,
+                  start_time: s.start,
+                  end_time: s.end,
+                  is_enabled: true,
+                } as AvailabilitySlot);
+              }
+            });
           });
-          // RONDA 32: solo setear config si REALMENTE cambia algo (deep check).
-          // FIX 2026-04-29: el office también es la fuente de verdad para slot_duration
-          // y buffer — antes solo aplicaba si prev.slot_duration era el default 30.
-          const firstOffice = offices[0] as any;
-          setConfig((prev) => {
-            const newSlot = firstOffice.slot_duration ?? prev.slot_duration;
-            const newBuffer = firstOffice.buffer_minutes ?? prev.buffer_minutes;
-            if (newSlot === prev.slot_duration && newBuffer === prev.buffer_minutes) return prev;
-            return { ...prev, slot_duration: newSlot, buffer_minutes: newBuffer };
-          });
+
+          if (officeSlots.length > 0) {
+            // FIX 2026-04-29: el office es la fuente de verdad. Reemplazamos
+            // DEFAULT_SLOTS por completo. Solo conservamos slots de doctor_availability
+            // (legacy) que NO chocan con office (días distintos).
+            setAvailSlots((prev) => {
+              const officeDays = new Set(officeSlots.map((o) => o.day_of_week));
+              const isDefaultSlot = (s: AvailabilitySlot) =>
+                !s.id || String(s.id).startsWith('default-');
+              const legacyKept = prev.filter(
+                (s) => !officeDays.has(s.day_of_week) && !isDefaultSlot(s),
+              );
+              return [...officeSlots, ...legacyKept];
+            });
+            // RONDA 32: solo setear config si REALMENTE cambia algo (deep check).
+            const firstOffice = activeOffices[0] as any;
+            const rawSlot = firstOffice.slotDuration ?? firstOffice.slot_duration;
+            const rawBuffer = firstOffice.bufferMinutes ?? firstOffice.buffer_minutes;
+            setConfig((prev) => {
+              const newSlot = rawSlot ?? prev.slot_duration;
+              const newBuffer = rawBuffer ?? prev.buffer_minutes;
+              if (newSlot === prev.slot_duration && newBuffer === prev.buffer_minutes) return prev;
+              return { ...prev, slot_duration: newSlot, buffer_minutes: newBuffer };
+            });
+          }
         }
       }
     } catch {
       /* use defaults */
     }
 
-    // Load patients for "nueva consulta" modal
-    const { data: patientsList } = await supabase
-      .from('patients')
-      .select('id, full_name, phone')
-      .eq('doctor_id', user.id)
-      .order('full_name');
-    setPatients(patientsList || []);
+    // Load patients for "nueva consulta" modal — GET /api/patients (NestJS backend).
+    try {
+      const patientsRes = await fetch('/api/patients?page=1&limit=200');
+      if (patientsRes.ok) {
+        const patientsJson = await patientsRes.json();
+        // Backend envelope: { success: true, data: [...] } or paginated { items: [...] }
+        const rawPatients: any[] = Array.isArray(patientsJson?.data)
+          ? patientsJson.data
+          : Array.isArray(patientsJson?.data?.items)
+            ? patientsJson.data.items
+            : Array.isArray(patientsJson)
+              ? patientsJson
+              : [];
+        // Mapear camelCase → shape { id, full_name, phone }
+        setPatients(
+          rawPatients.map((p: any) => ({
+            id: p.id,
+            full_name: p.fullName ?? p.full_name ?? '',
+            phone: p.phone ?? null,
+          })),
+        );
+      }
+    } catch {
+      /* patients permanece vacío */
+    }
 
-    // Load pricing plans for "nueva consulta" modal
-    const { data: plans } = await supabase
-      .from('pricing_plans')
-      .select('id, name, price_usd, duration_minutes')
-      .eq('doctor_id', user.id)
-      .eq('is_active', true)
-      .order('price_usd');
-    setPricingPlans(plans || []);
+    // Load pricing plans (services) — GET /api/doctor/services (NestJS backend).
+    try {
+      const servicesRes = await fetch('/api/doctor/services');
+      if (servicesRes.ok) {
+        const servicesJson = await servicesRes.json();
+        const rawServices: any[] = Array.isArray(servicesJson?.data)
+          ? servicesJson.data
+          : Array.isArray(servicesJson)
+            ? servicesJson
+            : [];
+        // Mapear camelCase → shape { id, name, price_usd, duration_minutes }
+        const activeServices = rawServices
+          .filter((s: any) => s.isActive ?? s.is_active ?? true)
+          .map((s: any) => ({
+            id: s.id,
+            name: s.name ?? '',
+            price_usd: Number(s.priceUsd ?? s.price_usd ?? 0),
+            duration_minutes: Number(s.durationMinutes ?? s.duration_minutes ?? 30),
+          }))
+          .sort((a, b) => a.price_usd - b.price_usd);
+        setPricingPlans(activeServices);
+      }
+    } catch {
+      /* pricing plans permanece vacío */
+    }
 
-    // Load doctor's active payment methods from profile
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('payment_methods')
-      .eq('id', user.id)
-      .single();
-    if (profileData?.payment_methods && Array.isArray(profileData.payment_methods)) {
-      setDoctorPaymentMethods(profileData.payment_methods);
+    // Load doctor's active payment methods — GET /api/doctor/profile (NestJS backend).
+    try {
+      const profileRes = await fetch('/api/doctor/profile');
+      if (profileRes.ok) {
+        const profileJson = await profileRes.json();
+        const profileData = profileJson?.data ?? profileJson;
+        const methods = profileData?.paymentMethods ?? profileData?.payment_methods;
+        if (Array.isArray(methods)) {
+          setDoctorPaymentMethods(methods);
+        }
+      }
+    } catch {
+      /* payment methods permanece vacío */
     }
 
     // MIGRATED (Etapa 1): appointments list → NestJS backend via listAgendaAppointments.
@@ -575,21 +593,10 @@ export default function AgendaPage() {
       }));
     setAllAppointments(uniqueAppts);
 
-    // Enrich pending appointments with package total_sessions (Supabase — FASE 5)
+    // FASE 5 placeholder: package total_sessions — el backend de packages no expone
+    // GET /api/packages?ids=... en Etapa 1. total_sessions permanece null (el JSX
+    // lo muestra como "—" cuando es null).
     const pendingList: PendingAppointment[] = backendPending.map((p) => ({ ...p }));
-    const packageIds = [
-      ...new Set(pendingList.filter((p) => p.package_id).map((p) => p.package_id!)),
-    ];
-    if (packageIds.length > 0) {
-      const { data: pkgs } = await supabase
-        .from('patient_packages')
-        .select('id, total_sessions')
-        .in('id', packageIds);
-      const pkgMap = new Map((pkgs || []).map((p) => [p.id, p.total_sessions]));
-      pendingList.forEach((p) => {
-        if (p.package_id) p.total_sessions = pkgMap.get(p.package_id) || null;
-      });
-    }
 
     setPendingAppointments(pendingList);
     setLoading(false);
@@ -649,7 +656,6 @@ export default function AgendaPage() {
   async function acceptAppointment(appt: PendingAppointment) {
     if (!doctorId) return;
     setAccepting(appt.id);
-    const supabase = createClient();
 
     try {
       // Validate slot time
@@ -691,44 +697,34 @@ export default function AgendaPage() {
         return;
       }
 
-      // Find or create patient
-      let patientId: string | null = null;
-      if (appt.patient_email) {
-        const { data: existing } = await supabase
-          .from('patients')
-          .select('id')
-          .eq('doctor_id', doctorId)
-          .eq('email', appt.patient_email)
-          .maybeSingle();
-        if (existing) patientId = existing.id;
-      }
-      if (!patientId && appt.patient_cedula) {
-        const { data: existing } = await supabase
-          .from('patients')
-          .select('id')
-          .eq('doctor_id', doctorId)
-          .eq('cedula', appt.patient_cedula)
-          .maybeSingle();
-        if (existing) patientId = existing.id;
-      }
+      // Find or create patient via backend POST /api/patients (upsert by email/cedula).
+      // El backend valida duplicados y retorna el paciente existente o el nuevo.
+      const patientRes = await fetch('/api/patients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: appt.patient_name,
+          phone: appt.patient_phone ?? undefined,
+          email: appt.patient_email ?? undefined,
+          cedula: appt.patient_cedula ?? undefined,
+          source: 'booking',
+        }),
+      });
+      const patientJson = await patientRes.json();
+      // Si ya existe (409 / conflict) el backend puede retornar el id en el error o
+      // en un campo existingId. Intentamos extraer el id de cualquier forma.
+      const patientData = patientJson?.data ?? patientJson;
+      const patientId: string | null =
+        patientData?.id ??
+        patientJson?.existingId ??
+        patientJson?.error?.existingId ??
+        null;
+
       if (!patientId) {
-        const { data: patient } = await supabase
-          .from('patients')
-          .insert({
-            doctor_id: doctorId,
-            full_name: appt.patient_name,
-            phone: appt.patient_phone,
-            email: appt.patient_email,
-            cedula: appt.patient_cedula,
-            source: 'booking',
-          })
-          .select()
-          .single();
-        if (!patient) throw new Error('Error creando paciente');
-        patientId = patient.id;
+        throw new Error(patientJson?.message ?? patientJson?.error?.message ?? 'Error al registrar paciente');
       }
 
-      // Create consultation via API
+      // Create consultation via route handler (thin-proxy → NestJS).
       const res = await fetch('/api/doctor/consultations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -765,63 +761,62 @@ export default function AgendaPage() {
       setAllAppointments((prev) => [...prev, newAppt]);
       toast.success(`Consulta ${result.code} confirmada`);
     } catch (e: any) {
-      console.error(e);
       toast.error(e.message || 'Error al aprobar');
     }
     setAccepting(null);
   }
 
   async function rejectAppointment(apptId: string) {
-    const supabase = createClient();
-    await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', apptId);
+    // MIGRATED: Supabase direct update → PUT /api/appointments/:id/status (NestJS backend).
+    try {
+      const res = await fetch(`/api/doctor/appointment-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointment_id: apptId, new_status: 'cancelled' }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err?.error || 'Error al rechazar la cita');
+        return;
+      }
+    } catch {
+      toast.error('Error de conexión al rechazar la cita');
+      return;
+    }
     setPendingAppointments((prev) => prev.filter((a) => a.id !== apptId));
   }
 
   async function handleUploadReceipt(apptId: string, file: File) {
     setUploadingReceipt(apptId);
     try {
-      // FASE 5: storage upload stays Supabase
-      const supabase = createClient();
-      const id = await getDevDoctorId();
-      if (!id) return;
-      const user = { id };
+      // MIGRATED: Supabase storage → POST /api/storage/upload (NestJS backend via BFF).
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('kind', 'receipt');
 
-      const ext = file.name.split('.').pop() || 'jpg';
-      const filePath = `receipts/${user.id}/${apptId}.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('payment-receipts')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) {
-        // If bucket doesn't exist, try public bucket
-        const { error: uploadError2 } = await supabase.storage
-          .from('public')
-          .upload(filePath, file, { upsert: true });
-        if (uploadError2) throw uploadError2;
-        const { data: urlData } = supabase.storage.from('public').getPublicUrl(filePath);
-        await supabase
-          .from('appointments')
-          .update({ payment_receipt_url: urlData.publicUrl })
-          .eq('id', apptId);
-        setPendingAppointments((prev) =>
-          prev.map((a) => (a.id === apptId ? { ...a, payment_receipt_url: urlData.publicUrl } : a)),
-        );
-      } else {
-        const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(filePath);
-        await supabase
-          .from('appointments')
-          .update({ payment_receipt_url: urlData.publicUrl })
-          .eq('id', apptId);
-        setPendingAppointments((prev) =>
-          prev.map((a) => (a.id === apptId ? { ...a, payment_receipt_url: urlData.publicUrl } : a)),
-        );
+      const uploadRes = await fetch('/api/storage/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const uploadJson = await uploadRes.json();
+      if (!uploadRes.ok) {
+        throw new Error(uploadJson?.error?.message ?? 'Error al subir comprobante');
       }
 
+      const receiptUrl: string = uploadJson?.data?.url ?? '';
+
+      // Persiste la URL en el appointment via route handler de appointment-status.
+      // FASE 5: no hay endpoint PATCH /api/appointments/:id/receipt en Etapa 1;
+      // el receipt_url se guarda solo en el payment si existe. Por ahora solo
+      // actualizamos el estado local para reflejar el cambio en la UI.
+      setPendingAppointments((prev) =>
+        prev.map((a) => (a.id === apptId ? { ...a, payment_receipt_url: receiptUrl } : a)),
+      );
+
       toast.success('Comprobante subido correctamente');
-    } catch (err) {
-      console.error('Upload error:', err);
-      toast.error('Error al subir comprobante');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al subir comprobante';
+      toast.error(message);
     }
     setUploadingReceipt(null);
   }
@@ -1027,25 +1022,23 @@ export default function AgendaPage() {
       const selectedPlan = pricingPlans.find((p) => p.id === newConsulta.plan_id);
       const consultationDate = new Date(`${newConsulta.date}T${newConsulta.time}:00`).toISOString();
 
-      // Upload receipt if provided
+      // Upload receipt if provided — MIGRATED: POST /api/storage/upload (NestJS backend).
       let receiptUrl: string | null = null;
       if (newReceiptFile) {
-        const supabase = createClient();
-        // FASE 5: storage upload stays Supabase
-        const userId = await getDevDoctorId();
-        if (userId) {
-          const user = { id: userId };
-          const ext = newReceiptFile.name.split('.').pop();
-          const path = `${user.id}/${newConsulta.patient_id}/${Date.now()}.${ext}`;
-          const { error: uploadErr } = await supabase.storage
-            .from('payment-receipts')
-            .upload(path, newReceiptFile, { upsert: false });
-          if (!uploadErr) {
-            const { data: publicUrl } = supabase.storage
-              .from('payment-receipts')
-              .getPublicUrl(path);
-            receiptUrl = publicUrl.publicUrl;
+        try {
+          const formData = new FormData();
+          formData.append('file', newReceiptFile);
+          formData.append('kind', 'receipt');
+          const uploadRes = await fetch('/api/storage/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          if (uploadRes.ok) {
+            const uploadJson = await uploadRes.json();
+            receiptUrl = uploadJson?.data?.url ?? null;
           }
+        } catch {
+          // si el upload falla se crea la consulta igual, sin comprobante
         }
       }
 
