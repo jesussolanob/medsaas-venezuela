@@ -258,9 +258,11 @@ uploads=Fase 5).
 | `/api/doctor/templates` | GET | Todas las plantillas del doctor (puede ser []). |
 | `/api/doctor/templates/:templateType` | PUT | Upsert por (doctor, type). Tipo inválido → 400 INVALID_TEMPLATE_TYPE. |
 
-### `reminders` — recordatorios (mig 20260605000002, EN CURSO) — envío=bloqueante Fase 6
+### `reminders` — recordatorios (mig 20260605000002) ✅ — envío=bloqueante Fase 6
 
 Tablas `reminders_settings` (UNIQUE doctor_id) + `reminders_queue` (monitor, vacía en Etapa 1).
 Doctor `@Controller('doctor/reminders')`: GET/PUT `/settings` (upsert), GET `/queue`.
 Admin `@Controller('admin/reminders')` super_admin: GET `/queue` enriquecido con doctor_name — **NUNCA expone PII
-de pacientes** (no descifra patient.full_name).
+de pacientes** (no descifra patient.full_name). Verificado lead: 1311 tests, boot, curl+anti-IDOR+RBAC 403.
+Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío manual wa.me/mailto) NO usa este módulo
+→ es consultas+citas PII (Fase 2). UI de settings (config 7d/24h) pendiente (Fase 2 doctor/settings).
