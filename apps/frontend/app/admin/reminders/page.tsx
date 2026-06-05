@@ -1,17 +1,33 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { backendGet } from '@/lib/api-client.server'
 import { CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react'
 
-export default async function RemindersPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+/**
+ * /admin/reminders — monitor de la cola de recordatorios.
+ *
+ * ETAPA 1 — lee del módulo NestJS `reminders` (`GET /api/admin/reminders/queue`) vía el BFF.
+ * Sin Supabase. RBAC (super_admin) lo aplica `proxy.ts` + el backend. La cola se llenará en
+ * Fase 6 (envío WhatsApp/email); hasta entonces se muestra vacía.
+ */
+interface AdminQueueRow {
+  id: string
+  doctorName: string
+  offsetType: string
+  channel: string
+  scheduledFor: string
+  status: string
+}
 
-  const { data: reminders } = await supabase
-    .from('reminders_queue')
-    .select('*, appointments(scheduled_at, title), profiles(full_name)')
-    .order('scheduled_for', { ascending: true })
-    .limit(50)
+export default async function RemindersPage() {
+  const result = await backendGet<AdminQueueRow[]>('/api/admin/reminders/queue')
+  // Mapeo a la forma que consume el JSX existente (no se toca el render).
+  const reminders = (result.ok ? result.value : []).map((r) => ({
+    id: r.id,
+    status: r.status,
+    offset_type: r.offsetType,
+    channel: r.channel,
+    scheduled_for: r.scheduledFor,
+    profiles: { full_name: r.doctorName },
+  }))
 
   const statusConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
     pending: { label: 'Pendiente', icon: Clock,        color: 'text-amber-600',   bg: 'bg-amber-50' },
