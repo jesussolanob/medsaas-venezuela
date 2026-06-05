@@ -36,3 +36,4 @@ export * from './dtos/create-lead.dto';
 export * from './dtos/create-suggestion.dto';
 export * from './dtos/reschedule-appointment.dto';
 export * from './dtos/create-office.dto';
+export * from './dtos/upsert-doctor-template.dto';

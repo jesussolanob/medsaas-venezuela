@@ -27,6 +27,7 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
 import { ConsultationBlocksModule } from './modules/consultation-blocks/consultation-blocks.module';
 import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
 import { OfficesModule } from './modules/offices/offices.module';
+import { DoctorTemplatesModule } from './modules/doctor-templates/doctor-templates.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { OfficesModule } from './modules/offices/offices.module';
     ConsultationBlocksModule,
     CapabilitiesModule,
     OfficesModule,
+    DoctorTemplatesModule,
   ],
   controllers: [HealthController],
   providers: [
