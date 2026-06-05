@@ -20,16 +20,42 @@ const ALLOWED_KINDS: ReadonlySet<string> = new Set<UploadKind>([
   'signature',
 ]);
 
+/**
+ * Kinds that must be stored privately.
+ * Uploads return a time-limited signed URL (TTL: 1 hour).
+ * Public kinds (avatar, logo) return a permanent public URL.
+ */
+export const PRIVATE_KINDS: ReadonlySet<string> = new Set<UploadKind>([
+  'receipt',
+  'document',
+  'signature',
+]);
+
 /** Max file size: 10 MB */
 const MAX_BYTES = 10 * 1024 * 1024;
 
-/** Allowed MIME types (images + PDF). */
+/**
+ * Allowed MIME types (images + PDF).
+ * SVG is intentionally excluded — it allows embedded JavaScript (XSS vector)
+ * and has no clinical use case in this system.
+ */
 const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
-  'image/svg+xml',
+  'application/pdf',
+]);
+
+/**
+ * MIME types that must have their magic bytes verified against the buffer.
+ * PDF and all image types listed here require binary signature inspection.
+ */
+const BINARY_MIME_TYPES: ReadonlySet<string> = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
   'application/pdf',
 ]);
 
@@ -72,14 +98,17 @@ export class UploadFileUseCase {
     this.validateKind(input.kind);
     this.validateSize(input.size);
     this.validateMimeType(input.mimetype);
+    await this.validateMagicBytes(input.buffer, input.mimetype);
 
     const path = buildStoragePath(input.kind, input.userId, input.originalname);
+    const isPrivate = PRIVATE_KINDS.has(input.kind);
 
     try {
       return await this.storage.upload({
         buffer: input.buffer,
         path,
         contentType: input.mimetype,
+        isPrivate,
       });
     } catch (err: unknown) {
       const cause = err instanceof Error ? err.message : String(err);
@@ -108,6 +137,34 @@ export class UploadFileUseCase {
     if (!ALLOWED_MIME_TYPES.has(mimetype)) {
       throw new StorageValidationError(
         `Content type "${mimetype}" is not allowed. Allowed: ${[...ALLOWED_MIME_TYPES].join(', ')}`,
+      );
+    }
+  }
+
+  /**
+   * Inspects the buffer's magic bytes using the `file-type` package.
+   * Rejects files where the detected binary signature does not match a
+   * supported type, even if the declared Content-Type is valid.
+   *
+   * This prevents attackers from disguising malicious files (e.g. HTML, JS)
+   * as images by renaming them and sending a spoofed Content-Type header.
+   *
+   * `file-type` is ESM-only; it is imported dynamically to work inside the
+   * CommonJS/NestJS build environment.
+   */
+  private async validateMagicBytes(buffer: Buffer, declaredMime: string): Promise<void> {
+    if (!BINARY_MIME_TYPES.has(declaredMime)) {
+      // Non-binary types are not subject to magic-byte inspection.
+      return;
+    }
+
+    const { fileTypeFromBuffer } = await import('file-type');
+    const detected = await fileTypeFromBuffer(buffer);
+
+    if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
+      throw new StorageValidationError(
+        `File content does not match a supported type. ` +
+        `Declared: ${declaredMime}, detected: ${detected?.mime ?? 'unknown'}`,
       );
     }
   }

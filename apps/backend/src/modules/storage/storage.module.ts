@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { STORAGE_PORT } from './application/ports/storage.port';
 import { createStorageAdapter } from './infrastructure/adapters/storage-adapter.factory';
 import { UploadFileUseCase } from './application/use-cases/upload-file.use-case';
+import { GetSignedUrlUseCase } from './application/use-cases/get-signed-url.use-case';
 import { StorageController } from './presentation/controllers/storage.controller';
 
 /**
@@ -27,6 +28,7 @@ import { StorageController } from './presentation/controllers/storage.controller
       inject: [ConfigService],
     },
     UploadFileUseCase,
+    GetSignedUrlUseCase,
   ],
   exports: [STORAGE_PORT],
 })

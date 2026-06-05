@@ -7,9 +7,15 @@ import type { IStoragePort, StorageUploadInput, StorageUploadResult } from '../.
  * GcsStorageAdapter — storage adapter for production (Google Cloud Storage).
  *
  * Authenticates via Application Default Credentials (ADC) using the
- * GOOGLE_APPLICATION_CREDENTIALS env var. Objects are uploaded as public-read
- * for Etapa 1 parity with MinIO. Etapa 2 should switch to signed URLs with
- * a CDN for access control.
+ * GOOGLE_APPLICATION_CREDENTIALS env var.
+ *
+ * PUBLIC kinds (avatar, logo):
+ *   Objects are uploaded with `public: true` and served via the canonical
+ *   GCS public URL (permanent, no expiry).
+ *
+ * PRIVATE kinds (receipt, document, signature):
+ *   Objects are NOT made public. A v4 signed URL (action: read, TTL: 1 hour)
+ *   is generated after upload and returned as the `url` field.
  *
  * IMPORTANT: Initialization errors are caught and logged as warnings so the
  * boot sequence is not interrupted.
@@ -48,6 +54,19 @@ export class GcsStorageAdapter implements IStoragePort, OnModuleInit {
   async upload(input: StorageUploadInput): Promise<StorageUploadResult> {
     const file = this.storage.bucket(this.bucket).file(input.path);
 
+    if (input.isPrivate) {
+      // Store privately — do NOT call makePublic().
+      await file.save(input.buffer, {
+        contentType: input.contentType,
+        public: false,
+      });
+
+      // Return a time-limited signed URL (v4, read, TTL: 1 hour).
+      const url = await this.getSignedUrl(input.path);
+      return { url, path: input.path };
+    }
+
+    // Public kinds: store with public-read access and return a permanent URL.
     await file.save(input.buffer, {
       contentType: input.contentType,
       public: true,
@@ -57,11 +76,17 @@ export class GcsStorageAdapter implements IStoragePort, OnModuleInit {
     return { url, path: input.path };
   }
 
+  /**
+   * Returns a v4 signed URL valid for 1 hour.
+   * Used for private objects (receipt, document, signature) and for the
+   * GET /api/storage/signed-url endpoint.
+   */
   async getSignedUrl(path: string): Promise<string> {
     const [url] = await this.storage
       .bucket(this.bucket)
       .file(path)
       .getSignedUrl({
+        version: 'v4',
         action: 'read',
         expires: Date.now() + 60 * 60 * 1000, // 1 hour
       });

@@ -10,13 +10,17 @@ function makeConfig(driver: string): ConfigService {
       if (key === 'MINIO_ENDPOINT') return 'localhost';
       if (key === 'MINIO_PORT') return '9000';
       if (key === 'MINIO_USE_SSL') return 'false';
-      if (key === 'MINIO_ACCESS_KEY') return 'delta';
-      if (key === 'MINIO_SECRET_KEY') return 'delta-secret-dev';
       if (key === 'MINIO_BUCKET') return 'delta-uploads';
       if (key === 'MINIO_PUBLIC_URL') return 'http://localhost:9000/delta-uploads';
       if (key === 'GCS_PROJECT_ID') return 'test-project';
       if (key === 'GCS_BUCKET') return 'test-bucket';
       return defaultValue ?? '';
+    },
+    // Credentials use getOrThrow — return values for tests
+    getOrThrow: (key: string): string => {
+      if (key === 'MINIO_ACCESS_KEY') return 'test-access-key';
+      if (key === 'MINIO_SECRET_KEY') return 'test-secret-key';
+      throw new Error(`Missing required config key: ${key}`);
     },
   } as unknown as ConfigService;
 }
