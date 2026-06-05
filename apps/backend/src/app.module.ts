@@ -29,6 +29,7 @@ import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
 import { OfficesModule } from './modules/offices/offices.module';
 import { DoctorTemplatesModule } from './modules/doctor-templates/doctor-templates.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
+import { StorageModule } from './modules/storage/storage.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { RemindersModule } from './modules/reminders/reminders.module';
     OfficesModule,
     DoctorTemplatesModule,
     RemindersModule,
+    StorageModule,
   ],
   controllers: [HealthController],
   providers: [
