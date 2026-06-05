@@ -489,6 +489,91 @@ export async function revealPatient(patientId: string): Promise<Patient | null> 
 }
 
 // ---------------------------------------------------------------------------
+// Patient packages
+// ---------------------------------------------------------------------------
+
+interface BackendPatientPackage {
+  id: string;
+  patientId: string;
+  planName: string;
+  totalSessions: number;
+  usedSessions: number;
+  remainingSessions: number;
+  status: string;
+}
+
+export type PatientPackageInfo = {
+  patientId: string;
+  pendingSessions: number;
+  totalSessions: number;
+  usedSessions: number;
+};
+
+/**
+ * Fetch active packages for a specific patient.
+ *
+ * Maps backend shape { patientId, remainingSessions, ... } to the UI shape
+ * { patientId, pendingSessions, totalSessions, usedSessions }.
+ */
+export async function getPatientPackages(patientId: string): Promise<PatientPackageInfo[]> {
+  const result = await backendGet<BackendPatientPackage[]>(
+    `/api/packages/doctor?patient_id=${patientId}&status=active`,
+  );
+
+  if (!result.ok) {
+    log.error('[getPatientPackages] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+
+  const items = Array.isArray(result.value) ? result.value : [];
+  return items.map((pkg) => ({
+    patientId: pkg.patientId,
+    pendingSessions: pkg.remainingSessions,
+    totalSessions: pkg.totalSessions,
+    usedSessions: pkg.usedSessions,
+  }));
+}
+
+/**
+ * Fetch active packages for ALL patients of the authenticated doctor.
+ *
+ * Calls GET /api/packages/doctor?status=active (no patient_id filter).
+ * Returns a map keyed by patient_id for O(1) lookup in the patients list.
+ */
+export async function getAllActivePackages(): Promise<Record<string, PatientPackageInfo>> {
+  const result = await backendGet<BackendPatientPackage[]>(
+    '/api/packages/doctor?status=active',
+  );
+
+  if (!result.ok) {
+    log.error('[getAllActivePackages] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return {};
+  }
+
+  const items = Array.isArray(result.value) ? result.value : [];
+  const map: Record<string, PatientPackageInfo> = {};
+  for (const pkg of items) {
+    // If multiple active packages for one patient, keep the one with more sessions.
+    const existing = map[pkg.patientId];
+    if (!existing || pkg.remainingSessions > existing.pendingSessions) {
+      map[pkg.patientId] = {
+        patientId: pkg.patientId,
+        pendingSessions: pkg.remainingSessions,
+        totalSessions: pkg.totalSessions,
+        usedSessions: pkg.usedSessions,
+      };
+    }
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
 // All consultations — doctor-wide (kept for reporting compat)
 // ---------------------------------------------------------------------------
 

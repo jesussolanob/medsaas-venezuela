@@ -64,7 +64,7 @@ import {
 //   - applyAIResult → updateConsultation (actions.ts)
 //   - reposo autoSave → PATCH /api/doctor/consultations (existing BFF route)
 import { getDoctorId as getDevDoctorId, getDoctorProfile, getDoctorServices } from '../actions';
-import { listConsultations, getPatientConsultations, getConsultation, updateConsultation, approveConsultationPayment } from './actions';
+import { listConsultations, getPatientConsultations, getConsultation, updateConsultation, approveConsultationPayment, getQuickItems, updateAppointmentStatus } from './actions';
 import { getEhrPatients } from '../ehr/actions';
 import { getPatientPrescriptions, createPrescription } from './actions-prescriptions';
 import { useBcvRate } from '@/lib/useBcvRate';
@@ -548,10 +548,18 @@ function ConsultationsPage() {
           })),
         );
 
-        // PLACEHOLDER: doctor_quick_items has no backend endpoint in Etapa 1.
-        // quickExams and quickMeds stay empty — Fase 5.
-        setQuickExams([]);
-        setQuickMeds([]);
+        // Wire GET /api/doctor/quick-items — fetch exams and medications in parallel.
+        // On error, lists stay empty so the UI degrades gracefully (no chips shown).
+        Promise.all([
+          getQuickItems('exam'),
+          getQuickItems('medication'),
+        ]).then(([exams, meds]) => {
+          setQuickExams(exams);
+          setQuickMeds(meds);
+        }).catch(() => {
+          setQuickExams([]);
+          setQuickMeds([]);
+        });
 
         // RONDA 39: cargar bloques ACTIVOS del doctor (config viva).
         try {
@@ -682,18 +690,22 @@ function ConsultationsPage() {
   async function updateConsultaStatus(
     consultationId: string,
     newStatus: Consultation['status'],
-    _appointmentId: string | null,
+    appointmentId: string | null,
   ) {
-    // Etapa 1: consultation status field not in backend schema.
-    // Optimistic local update only. Appointment sync deferred to Fase 5.
-    try {
-      setSelected((prev) => (prev ? { ...prev, status: newStatus } : prev));
-      setConsultations((prev) =>
-        prev.map((x) => (x.id === consultationId ? { ...x, status: newStatus } : x)),
-      );
-    } catch (err: unknown) {
-      console.error('Error updating consulta status:', err);
-      alert(err instanceof Error ? err.message : 'Error al actualizar estado de la consulta');
+    // Optimistic local update — apply immediately so the UI responds without waiting.
+    setSelected((prev) => (prev ? { ...prev, status: newStatus } : prev));
+    setConsultations((prev) =>
+      prev.map((x) => (x.id === consultationId ? { ...x, status: newStatus } : x)),
+    );
+
+    // If there is a linked appointment, sync its status to the backend.
+    // Only 'completed' and 'no_show' are valid values for PUT /api/appointments/:id/status.
+    if (appointmentId && (newStatus === 'completed' || newStatus === 'no_show')) {
+      const result = await updateAppointmentStatus(appointmentId, newStatus);
+      if (!result.success) {
+        // Non-fatal: optimistic update stays, show a non-blocking warning.
+        console.warn('[updateConsultaStatus] appointment sync failed:', result.error);
+      }
     }
   }
 

@@ -32,7 +32,7 @@ import { appErrorToString } from '@/lib/app-error';
 
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
-import { backendGet, backendPost, backendPut, type AppError } from '@/lib/api-client.server';
+import { backendGet, backendPost, backendPut, backendDelete, type AppError } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,6 +193,144 @@ export async function updateConsultation(
   }
 
   revalidatePath('/doctor/consultations');
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Appointment status sync
+// ---------------------------------------------------------------------------
+
+/**
+ * Update the status of an appointment linked to a consultation.
+ *
+ * Called when the doctor presses "Atendida" (completed) or "No asistió" (no_show)
+ * inside the consultation view. Forwards to PUT /api/appointments/:id/status.
+ *
+ * @param appointmentId - UUID of the appointment to update.
+ * @param status        - 'completed' or 'no_show'.
+ */
+export async function updateAppointmentStatus(
+  appointmentId: string,
+  status: 'completed' | 'no_show',
+): Promise<ConsultationActionResult> {
+  const result = await backendPut<unknown>(`/api/appointments/${appointmentId}/status`, { status });
+
+  if (!result.ok) {
+    log.error('[updateAppointmentStatus] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    // Non-fatal: return error but do not throw — caller applies optimistic update regardless.
+    return { success: false, error: appErrorToString(result.error) };
+  }
+
+  revalidatePath('/doctor/consultations');
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Quick items (doctor_quick_items)
+// ---------------------------------------------------------------------------
+
+interface BackendQuickItem {
+  id: string;
+  doctorId: string;
+  itemType: 'exam' | 'medication';
+  name: string;
+  category: string | null;
+  details: string | null;
+}
+
+export type QuickItemResult = {
+  id: string;
+  item_type: 'exam' | 'medication';
+  name: string;
+  category: string | null;
+  details: string | null;
+};
+
+/**
+ * Fetch quick items for the authenticated doctor, optionally filtered by type.
+ *
+ * Maps backend camelCase { itemType } → UI snake_case { item_type } expected by
+ * the QuickItem type in page.tsx.
+ *
+ * @param type - 'exam' | 'medication'. Omit to get all.
+ */
+export async function getQuickItems(type?: 'exam' | 'medication'): Promise<QuickItemResult[]> {
+  const qs = type ? `?type=${type}` : '';
+  const result = await backendGet<BackendQuickItem[]>(`/api/doctor/quick-items${qs}`);
+
+  if (!result.ok) {
+    log.error('[getQuickItems] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+
+  const items = Array.isArray(result.value) ? result.value : [];
+  return items.map((q) => ({
+    id: q.id,
+    item_type: q.itemType,
+    name: q.name,
+    category: q.category,
+    details: q.details,
+  }));
+}
+
+/**
+ * Create a new quick item for the authenticated doctor.
+ *
+ * @param input.item_type  - 'exam' or 'medication'.
+ * @param input.name       - Display name shown in the UI chips.
+ * @param input.category   - Optional grouping label.
+ * @param input.details    - Optional detail text (e.g. default dose).
+ */
+export async function createQuickItem(input: {
+  item_type: 'exam' | 'medication';
+  name: string;
+  category?: string | null;
+  details?: string | null;
+}): Promise<ConsultationActionResult & { item?: QuickItemResult }> {
+  const body = {
+    item_type: input.item_type,
+    name: input.name,
+    category: input.category ?? null,
+    details: input.details ?? null,
+  };
+
+  const result = await backendPost<BackendQuickItem>('/api/doctor/quick-items', body);
+
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+
+  const q = result.value;
+  return {
+    success: true,
+    item: {
+      id: q.id,
+      item_type: q.itemType,
+      name: q.name,
+      category: q.category,
+      details: q.details,
+    },
+  };
+}
+
+/**
+ * Delete a quick item owned by the authenticated doctor.
+ *
+ * @param itemId - UUID of the quick item to delete.
+ */
+export async function deleteQuickItem(itemId: string): Promise<ConsultationActionResult> {
+  const result = await backendDelete<unknown>(`/api/doctor/quick-items/${itemId}`);
+
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+
   return { success: true };
 }
 

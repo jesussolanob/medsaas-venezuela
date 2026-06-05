@@ -10,11 +10,11 @@ import {
 // Etapa 1: Supabase removed.
 // - pricing_plans → GET /api/doctor/services  (getDoctorServices)
 // - profiles.payment_methods → GET /api/doctor/profile  (getDoctorProfile)
-// - patient_packages → no backend endpoint in Etapa 1 → packageInfo stays empty
+// - patient_packages → GET /api/packages/doctor?status=active (getAllActivePackages)
 // - shared_files / @/lib/shared-files → Supabase-only lib, no backend endpoint in Etapa 1
 //   Tab "Seguimiento" shows placeholder; write ops are no-ops until Fase 5.
 // - AI button: supabase.auth.getSession() removed; calls /api/doctor/ai without token.
-import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, type Patient, type Consultation } from './actions'
+import { getPatients, addPatient, updatePatient, getDoctorId, getConsultations, createConsultation, updateConsultationStatus, updateConsultationNotes, getAllActivePackages, type Patient, type Consultation, type PatientPackageInfo } from './actions'
 import { getDoctorServices } from '@/app/doctor/services/actions'
 import { getDoctorProfile } from '@/app/doctor/actions'
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow'
@@ -41,12 +41,7 @@ type SharedFile = {
   created_at: string
 }
 
-interface PatientPackageInfo {
-  patientId: string
-  pendingSessions: number
-  totalSessions: number
-  usedSessions: number
-}
+// PatientPackageInfo imported from ./actions (same shape as the previous local interface).
 
 // Estados de PAGO: solo 2 — Pendiente | Aprobado. No existe "Cancelado" ni "Rechazado".
 const PAYMENT_STATUS = {
@@ -165,7 +160,7 @@ export default function PatientsPage() {
       setDoctorId(id)
       getPatients(id).then(p => { setPatients(p); setLoading(false) })
 
-      // Load package info — placeholder (no backend endpoint in Etapa 1)
+      // Load package info — GET /api/packages/doctor?status=active
       loadPackageInfo()
 
       // RONDA 40: unread counts — placeholder (shared_files is Supabase-only in Etapa 1)
@@ -191,10 +186,11 @@ export default function PatientsPage() {
   }, [])
 
   function loadPackageInfo() {
-    // PLACEHOLDER: patient_packages has no backend endpoint in Etapa 1.
-    // packageInfo stays empty ({}) — the "Paquete de sesiones activo" card will
-    // not appear. Fase 5: wire GET /api/packages/doctor endpoint here.
-    setPackageInfo({})
+    // Wire GET /api/packages/doctor?status=active → package counters per patient.
+    // On error, packageInfo stays empty so the sessions card simply doesn't render.
+    getAllActivePackages()
+      .then((map) => setPackageInfo(map))
+      .catch(() => setPackageInfo({}))
   }
 
   function startEditPatient(p: Patient) {
