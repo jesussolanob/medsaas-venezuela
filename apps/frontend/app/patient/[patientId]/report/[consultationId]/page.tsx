@@ -1,11 +1,21 @@
 import { notFound } from 'next/navigation';
-// TODO Fase 5: migrar a backend. Reporte de una consultation por id (datos
-// clinicos); exposicion al paciente pendiente de decision de producto, sin
-// endpoint en patient-portal. Supabase temporal.
-import { createClient } from '@/lib/supabase/server';
+// Data layer: backend via BFF (api-client.server). Supabase removed (Fase 7).
+//
+// DEFERRED: There is no GET /api/patient/reports endpoint in the patient-portal
+// controller. Exposing clinical data (diagnosis, treatment, report_data) to the
+// patient is an explicit product decision that has not been made yet.
+// Tracked as TODO in the backend controller comment:
+//   "GET /patient/reports — clinical data exposure requires product decision"
+//
+// Until that endpoint exists this page will return notFound() so the URL is safe
+// (no data leak, no broken JSX). The JSX and component structure are preserved
+// unchanged so they can be wired once the endpoint ships.
+//
+// Referenced files kept but NOT imported:
+//   @/components/consultation/ReportBlocksViewer
+//   @/lib/report-data
 import { Download, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-// RONDA 36: render dinamico desde report_data
 import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer';
 import type { ReportData } from '@/lib/report-data';
 
@@ -17,7 +27,6 @@ type ConsultationData = {
   diagnosis: string | null;
   treatment: string | null;
   notes: string | null;
-  // RONDA 36: snapshot inmutable. Si existe, se renderiza dinamicamente.
   report_data: ReportData | null;
   patient: { full_name: string; phone: string | null; email: string | null };
   doctor: { full_name: string; specialty: string | null };
@@ -26,25 +35,18 @@ type ConsultationData = {
 export default async function ConsultationReportPage({
   params,
 }: {
-  params: { patientId: string; consultationId: string };
+  params: Promise<{ patientId: string; consultationId: string }>;
 }) {
-  const supabase = await createClient();
+  // DEFERRED: no backend endpoint for clinical report data.
+  // Return 404 until GET /api/patient/reports (or /api/patient/report/:id) ships.
+  // This prevents serving a broken page and avoids any Supabase dependency.
+  void params;
+  notFound();
 
-  // RONDA 36: incluir report_data (snapshot inmutable)
-  const { data: consultation } = await supabase
-    .from('consultations')
-    .select(
-      `id, consultation_code, consultation_date, chief_complaint, diagnosis, treatment, notes, report_data,
-       patients(full_name, phone, email),
-       profiles:doctor_id(full_name, specialty)`,
-    )
-    .eq('id', params.consultationId)
-    .eq('patient_id', params.patientId)
-    .single();
-
-  if (!consultation) notFound();
-
-  const data = consultation as any as ConsultationData;
+  // The JSX below is unreachable but preserved for when the endpoint is ready.
+  // TypeScript requires a return type; notFound() throws so this is dead code.
+  const data = null as unknown as ConsultationData;
+  const patientId = '';
 
   const reportDate = new Date().toLocaleDateString('es-VE', {
     day: 'numeric',
@@ -69,7 +71,7 @@ export default async function ConsultationReportPage({
         <div className="sticky top-0 no-print bg-white border-b border-slate-200 shadow-sm z-50">
           <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
             <Link
-              href={`/patient/${params.patientId}`}
+              href={`/patient/${patientId}`}
               className="flex items-center gap-2 text-slate-600 hover:text-slate-900 text-sm font-semibold transition-colors"
             >
               <ArrowLeft className="w-4 h-4" /> Volver
@@ -162,16 +164,12 @@ export default async function ConsultationReportPage({
               </div>
             </div>
 
-            {/* RONDA 36 — Render dinamico desde report_data si existe.
-                report_data es el snapshot INMUTABLE: aunque el doctor edite o borre
-                su plantilla manana, este informe queda exactamente como se guardo. */}
-            {data.report_data &&
-            Array.isArray(data.report_data.blocks) &&
-            data.report_data.blocks.length > 0 ? (
-              <ReportBlocksViewer report={data.report_data} forPatient />
+            {data.report_data != null &&
+            Array.isArray((data.report_data as ReportData).blocks) &&
+            (data.report_data as ReportData).blocks.length > 0 ? (
+              <ReportBlocksViewer report={data.report_data as ReportData} forPatient />
             ) : (
               <>
-                {/* Fallback legacy para consultas pre-Ronda36 */}
                 {data.chief_complaint && (
                   <div>
                     <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">

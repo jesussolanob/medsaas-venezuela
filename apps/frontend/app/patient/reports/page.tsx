@@ -1,12 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { FileText, ChevronDown, ChevronUp } from 'lucide-react';
-// TODO Fase 5: migrar a backend. La exposicion de datos clinicos del paciente
-// (consultations notes/diagnosis/treatment + report_data) es una decision de
-// producto pendiente y aun no tiene endpoint en patient-portal. Supabase temporal.
-import { createClient } from '@/lib/supabase/client';
+// Data layer: backend via BFF server actions. Supabase removed (Fase 7).
+//
+// DEFERRED: clinical consultation data (notes/diagnosis/treatment/report_data)
+// has no patient-portal endpoint yet. The backend controller comment explicitly
+// defers GET /patient/reports pending a product decision on clinical data
+// exposure. Until that endpoint ships, this page shows an empty list.
+//
+// Available and wired:
+//   getPatientProfile()       → GET /api/patient/profile   (identifies the patient)
+//   getPatientPrescriptions() → GET /api/patient/prescriptions (flat list, decrypted)
+//
+// NOT available yet (returns empty):
+//   clinical consultation list with notes/diagnosis/treatment/report_data
+import { getPatientProfile, getPatientPrescriptions } from '@/app/patient/actions';
 // RONDA 36: render dinámico desde report_data (snapshot inmutable)
 import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer';
 import type { ReportData } from '@/lib/report-data';
@@ -40,7 +49,6 @@ interface Report {
 }
 
 export default function ReportsPage() {
-  const router = useRouter();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -48,94 +56,25 @@ export default function ReportsPage() {
   useEffect(() => {
     const loadReports = async () => {
       try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!user) {
-          router.push('/patient/login');
-          return;
-        }
-
-        // Get all patients for this auth user
-        const { data: patients } = await supabase
-          .from('patients')
-          .select('id')
-          .eq('auth_user_id', user.id);
-
-        if (!patients || patients.length === 0) {
+        // Verify patient identity via profile endpoint.
+        // If no profile exists, there are no reports to show.
+        const profiles = await getPatientProfile();
+        if (!profiles || profiles.length === 0) {
           setLoading(false);
           return;
         }
 
-        const patientIds = patients.map((p) => p.id);
+        // DEFERRED: GET /api/patient/reports (clinical consultation exposure) does
+        // not exist yet. The backend controller explicitly defers this pending a
+        // product decision. Until then we return an empty list — the JSX already
+        // handles this gracefully with the "No hay informes disponibles" empty state.
+        //
+        // When the endpoint is ready:
+        //   1. Add getPatientReports() to app/patient/actions.ts
+        //   2. Map the response to the Report[] shape
+        //   3. Merge with getPatientPrescriptions() by consultationId
 
-        // Get consultations with content for these patients
-        // RONDA 36: ahora traemos report_data tambien. Filtramos por consultas
-        // que tengan informe (legacy o nuevo report_data con bloques).
-        const { data: consultationData } = await supabase
-          .from('consultations')
-          .select(
-            'id, consultation_code, consultation_date, chief_complaint, notes, diagnosis, treatment, report_data, doctor_id, patient_id',
-          )
-          .in('patient_id', patientIds)
-          .or(
-            `notes.not.is.null,diagnosis.not.is.null,treatment.not.is.null,report_data.not.is.null`,
-          )
-          .order('consultation_date', { ascending: false });
-
-        if (consultationData && consultationData.length > 0) {
-          // RONDA 30: traer doctores Y prescriptions de cada consulta en bulk
-          const consultationIds = consultationData.map((c) => c.id);
-          const doctorIds = [...new Set(consultationData.map((c) => c.doctor_id))];
-
-          const [doctorsRes, prescriptionsRes] = await Promise.all([
-            supabase
-              .from('profiles')
-              .select('id, full_name, specialty, professional_title')
-              .in('id', doctorIds),
-            supabase
-              .from('prescriptions')
-              .select('consultation_id, medications')
-              .in('consultation_id', consultationIds),
-          ]);
-
-          const doctorMap = new Map((doctorsRes.data || []).map((d) => [d.id, d]));
-          // Una consulta puede tener varias recetas (receta principal + examenes etc.)
-          // Aqui solo nos interesan los medicamentos con nombre, no los examenes.
-          const prescriptionsByConsult = new Map<string, Medication[]>();
-          for (const p of prescriptionsRes.data || []) {
-            const meds = (Array.isArray(p.medications) ? p.medications : []) as Medication[];
-            // Filtrar solo los que tienen NAME y NO son examenes (los examenes guardan nombre del examen, no medicamento)
-            const realMeds = meds.filter((m) => m.name && m.name.trim().length > 0);
-            if (realMeds.length === 0) continue;
-            const existing = prescriptionsByConsult.get(p.consultation_id) || [];
-            prescriptionsByConsult.set(p.consultation_id, [...existing, ...realMeds]);
-          }
-
-          const enhanced: Report[] = consultationData.map((c) => {
-            const doctor = doctorMap.get(c.doctor_id);
-            return {
-              id: c.id,
-              consultation_code: c.consultation_code,
-              consultation_date: c.consultation_date,
-              chief_complaint: c.chief_complaint,
-              notes: c.notes,
-              diagnosis: c.diagnosis,
-              treatment: c.treatment,
-              // RONDA 36: parsear report_data (Supabase devuelve jsonb como objeto JS)
-              report_data: (c.report_data as ReportData | null) || null,
-              doctor_id: c.doctor_id,
-              doctor_name: doctor?.full_name || 'Doctor',
-              doctor_specialty: doctor?.specialty || null,
-              doctor_title: doctor?.professional_title || null,
-              medications: prescriptionsByConsult.get(c.id) || [],
-            };
-          });
-          setReports(enhanced);
-        }
-
+        setReports([]);
         setLoading(false);
       } catch (err) {
         console.error('Error loading reports:', err);
@@ -144,7 +83,7 @@ export default function ReportsPage() {
     };
 
     loadReports();
-  }, [router]);
+  }, []);
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id);

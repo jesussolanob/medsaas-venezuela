@@ -15,10 +15,25 @@
  *     "Todos / Dr. X / Dr. Y" para filtrar el feed
  *   - Permitir respuesta SOLO con comentario (sin archivo obligatorio)
  *   - Header dinamico segun el doctor seleccionado
+ *
+ * DATA LAYER (Fase 7):
+ *   MIGRATED:
+ *     supabase.auth.getUser() + patients table  → getPatientProfile() (backend)
+ *
+ *   DEFERRED — no backend endpoint yet:
+ *     shared_files table       → falta endpoint GET /api/patient/shared-files
+ *     profiles table (doctors) → falta endpoint GET /api/patient/doctors
+ *     prescriptions.medications (JSONB array) → GET /api/patient/prescriptions
+ *       returns flat rows (medication/dosage), incompatible with LegacyPrescription
+ *       shape (medications: Medication[]). Falta adaptar schema o nuevo endpoint.
+ *     consultation_block_catalog  → falta endpoint
+ *     doctor_consultation_blocks  → falta endpoint
+ *     Realtime (postgres_changes)  → falta websocket/SSE backend endpoint
+ *     uploadSharedFile / replyWithComment / etc. → lib/shared-files.ts usa
+ *       SupabaseClient internamente; falta equivalente en backend storage.
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   FolderHeart,
   FileText,
@@ -37,10 +52,12 @@ import {
   Save,
   ListChecks,
 } from 'lucide-react';
-// TODO Fase 5: migrar a backend. El "Shared Health Space" usa shared_files,
-// realtime channels, storage uploads (→GCS), consultation_block_catalog y
-// doctor_consultation_blocks — ninguno tiene endpoint todavia. Supabase temporal.
+// Supabase is retained ONLY for the features that have no backend endpoint yet:
+// shared_files CRUD, Realtime, consultation_block_catalog, doctor_consultation_blocks,
+// prescriptions.medications (JSONB array). See DEFERRED note above.
 import { createClient } from '@/lib/supabase/client';
+// Backend BFF — replaces supabase.auth.getUser() + patients table query.
+import { getPatientProfile } from '@/app/patient/actions';
 import UploadDropZone from '@/components/shared/UploadDropZone';
 import {
   uploadSharedFile,
@@ -87,7 +104,6 @@ type DoctorOption = {
 };
 
 export default function PatientSeguimientoPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   // RONDA 41: ahora trabajamos con N doctores
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
@@ -111,26 +127,24 @@ export default function PatientSeguimientoPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/patient/login');
-        return;
-      }
-
-      // RONDA 41: traer TODOS los patient rows del paciente (uno por doctor)
-      const { data: patientRows } = await supabase
-        .from('patients')
-        .select('id, doctor_id')
-        .eq('auth_user_id', user.id);
-      if (!patientRows || patientRows.length === 0) {
+      // MIGRATED (Fase 7): replaced supabase.auth.getUser() + patients table query
+      // with the backend profile endpoint. getPatientProfile() returns patient rows
+      // scoped to the authenticated user (auth_user_id via DevAuthGuard), one row
+      // per doctor the patient is registered with.
+      const profiles = await getPatientProfile();
+      if (!profiles || profiles.length === 0) {
         setLoading(false);
         return;
       }
 
-      // Enriquecer con info de cada doctor
+      // Build patientRows shape compatible with the rest of this component.
+      const patientRows = profiles.map((p) => ({ id: p.id, doctor_id: p.doctorId }));
+
+      // DEFERRED: doctor names/specialty not included in profile response.
+      // GET /api/patient/profile returns patient records (not doctor records).
+      // Falta endpoint GET /api/patient/doctors or enrich profile with doctor info.
+      // Temporary: fall back to Supabase profiles table for doctor display names.
+      const supabase = createClient();
       const doctorIds = [...new Set(patientRows.map((p) => p.doctor_id))];
       const { data: docsData } = await supabase
         .from('profiles')
@@ -192,7 +206,7 @@ export default function PatientSeguimientoPage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     loadData();

@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
-// TODO Fase 5: migrar a backend. Vista por patientId que expone appointments +
-// consultations clinicas; la exposicion de datos clinicos del paciente es una
-// decision de producto pendiente sin endpoint en patient-portal. Supabase temporal.
-import { createClient } from '@/lib/supabase/server';
+// Data layer: backend via BFF (api-client.server). Supabase removed (Fase 7).
+// DEFERRED: consultations clinical data (diagnosis/treatment) has no endpoint
+// in patient-portal today — GET /patient/reports is explicitly deferred pending
+// a product decision on clinical data exposure. Returns empty array for now.
+import { getPatientProfile, getPatientAppointments } from '@/app/patient/actions';
 import { Calendar, FileText, Download, ArrowRight, User, Clock } from 'lucide-react';
 
 type Patient = {
@@ -30,39 +31,41 @@ type Consultation = {
   treatment: string | null;
 };
 
-export default async function PatientPage({ params }: { params: { patientId: string } }) {
-  const supabase = await createClient();
-  const patientId = params.patientId;
+export default async function PatientPage({ params }: { params: Promise<{ patientId: string }> }) {
+  const { patientId } = await params;
 
-  // Get patient info
-  const { data: patient } = await supabase
-    .from('patients')
-    .select('id, full_name, email, phone')
-    .eq('id', patientId)
-    .single();
+  // Fetch profile from backend (scoped to auth_user_id, anti-IDOR).
+  // The patientId param is used only for routing; data comes from the session scope.
+  const profiles = await getPatientProfile();
+  const profile = profiles.length > 0 ? profiles[0] : null;
 
-  if (!patient) notFound();
+  if (!profile) notFound();
 
-  // Get future appointments
-  const { data: appointments } = await supabase
-    .from('appointments')
-    .select('id, patient_name, appointment_date, chief_complaint, plan_name, plan_price')
-    .eq('patient_id', patientId)
-    .gte('appointment_date', new Date().toISOString())
-    .order('appointment_date', { ascending: true })
-    .limit(10);
+  const patient: Patient = {
+    id: profile.id,
+    full_name: profile.fullName,
+    email: profile.email,
+    phone: profile.phone,
+  };
 
-  // Get past consultations
-  const { data: consultations } = await supabase
-    .from('consultations')
-    .select('id, consultation_code, consultation_date, chief_complaint, diagnosis, treatment')
-    .eq('patient_id', patientId)
-    .lte('consultation_date', new Date().toISOString())
-    .order('consultation_date', { ascending: false })
-    .limit(20);
+  // Fetch appointment history from backend; filter upcoming ones client-less.
+  const allAppointments = await getPatientAppointments({ page: 1, limit: 50 });
+  const now = new Date().toISOString();
+  const upcomingAppointments: Appointment[] = allAppointments
+    .filter((a) => a.scheduledAt >= now)
+    .slice(0, 10)
+    .map((a) => ({
+      id: a.id,
+      patient_name: patient.full_name,
+      appointment_date: a.scheduledAt,
+      chief_complaint: a.chiefComplaint,
+      plan_name: a.planName,
+      plan_price: a.planPrice,
+    }));
 
-  const upcomingAppointments = (appointments ?? []) as Appointment[];
-  const pastConsultations = (consultations ?? []) as Consultation[];
+  // DEFERRED: GET /patient/reports (clinical consultations exposure) not yet available.
+  // Product decision pending. Returns empty list until the endpoint exists.
+  const pastConsultations: Consultation[] = [];
 
   return (
     <>
