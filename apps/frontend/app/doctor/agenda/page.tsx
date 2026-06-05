@@ -25,7 +25,12 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
-import { listAgendaAppointments, listPendingAppointments } from './actions'; // MIGRATED: appointments → NestJS backend
+import {
+  listAgendaAppointments,
+  listPendingAppointments,
+  getAppointmentDetailStatus,
+  buildPackageTotalSessionsMap,
+} from './actions'; // MIGRATED: appointments → NestJS backend
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
@@ -343,16 +348,20 @@ export default function AgendaPage() {
     appt: CalendarAppointment;
   } | null>(null);
 
-  // FASE 5 placeholder: el backend no expone consultation_status ni payment_status
-  // en GET /api/appointments/:id en Etapa 1. Se dejará en null hasta que el
-  // endpoint enriquezca la respuesta con esos campos.
+  // Llama a GET /api/appointments/:id/detail cuando el doctor abre el modal de detalle.
+  // Popula detailStatus.consulta y detailStatus.pago a partir de la respuesta del backend.
+  // Degrada silenciosamente a null si el endpoint falla (el JSX ya muestra "Sin consulta").
   useEffect(() => {
     if (!detailAppt) {
       setDetailStatus({ consulta: null, pago: null });
-    } else {
-      // Placeholder: sin endpoint de join disponible en Etapa 1.
-      setDetailStatus({ consulta: null, pago: null });
+      return;
     }
+    const apptId = detailAppt.appointment_id || detailAppt.id;
+    let cancelled = false;
+    getAppointmentDetailStatus(apptId).then((status) => {
+      if (!cancelled) setDetailStatus(status);
+    });
+    return () => { cancelled = true; };
   }, [detailAppt]);
   const [statusReason, setStatusReason] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
@@ -593,10 +602,17 @@ export default function AgendaPage() {
       }));
     setAllAppointments(uniqueAppts);
 
-    // FASE 5 placeholder: package total_sessions — el backend de packages no expone
-    // GET /api/packages?ids=... en Etapa 1. total_sessions permanece null (el JSX
-    // lo muestra como "—" cuando es null).
-    const pendingList: PendingAppointment[] = backendPending.map((p) => ({ ...p }));
+    // Enriquecer total_sessions de citas pendientes usando GET /api/packages/doctor.
+    // Construye un mapa { packageId → totalSessions } y lo aplica a las citas pendientes.
+    // Degrada silenciosamente si el endpoint falla (total_sessions queda null → JSX muestra "—").
+    const pkgTotalMap = await buildPackageTotalSessionsMap(backendPending);
+    const pendingList: PendingAppointment[] = backendPending.map((p) => ({
+      ...p,
+      total_sessions:
+        p.package_id != null && pkgTotalMap.has(p.package_id)
+          ? (pkgTotalMap.get(p.package_id) ?? null)
+          : null,
+    }));
 
     setPendingAppointments(pendingList);
     setLoading(false);

@@ -320,3 +320,162 @@ export async function getAgendaAppointmentById(
 
   return toAgendaAppointment(result.value as unknown as BackendAppointment, slotDuration);
 }
+
+// ---------------------------------------------------------------------------
+// Detail status (consulta + pago) — GET /api/appointments/:id/detail
+// ---------------------------------------------------------------------------
+
+/**
+ * Shape del bloque "3 estados" del modal de detalle.
+ * Alineado exactamente con lo que el JSX de page.tsx consume:
+ *   detailStatus.consulta → badge de consulta
+ *   detailStatus.pago     → badge de pago
+ */
+export type AppointmentDetailStatus = {
+  consulta: string | null;
+  pago: string | null;
+};
+
+/**
+ * Raw envelope que devuelve GET /api/appointments/:id/detail.
+ * Solo extraemos los campos que necesitamos para el modal.
+ */
+interface BackendDetail360 {
+  appointment: {
+    status: string;
+    consultation_id: string | null;
+  };
+  consultation: {
+    payment_status: string | null;
+  } | null;
+  payment: {
+    status: string | null;
+  } | null;
+}
+
+/**
+ * Obtiene el estado de consulta y pago de una cita individual
+ * usando el endpoint de detalle completo.
+ *
+ * Mapeo backend → JSX:
+ *   consultation.payment_status ('approved'|'pending'|null) → pago
+ *   consultation presence + appointment.status              → consulta
+ *     - appointment.status in ('completed','no_show','cancelled') → ese mismo valor
+ *     - consultation exists and status='confirmed'                → 'pending' (en curso)
+ *     - no consultation                                           → null
+ *
+ * Degrada silenciosamente a { consulta: null, pago: null } si el endpoint falla
+ * (e.g. backend no disponible, cita no encontrada) — el JSX ya maneja null
+ * mostrando "Sin consulta" / "Sin pago".
+ */
+export async function getAppointmentDetailStatus(
+  appointmentId: string,
+): Promise<AppointmentDetailStatus> {
+  const fallback: AppointmentDetailStatus = { consulta: null, pago: null };
+
+  const result = await backendGet<BackendDetail360>(
+    `/api/appointments/${appointmentId}/detail`,
+  );
+
+  if (!result.ok) {
+    log.error('[getAppointmentDetailStatus] backend error', {
+      appointmentId,
+      code: result.error.code,
+      status: result.error.status,
+      message: appErrorMsg(result.error),
+    });
+    return fallback;
+  }
+
+  const detail = result.value as unknown as BackendDetail360;
+
+  // Derivar estado de consulta
+  let consulta: string | null = null;
+  const apptStatus = detail.appointment?.status ?? null;
+
+  if (detail.consultation !== null && detail.consultation !== undefined) {
+    // Hay consulta vinculada — el estado de la CITA refleja el estado clínico
+    if (apptStatus === 'completed' || apptStatus === 'no_show' || apptStatus === 'cancelled') {
+      consulta = apptStatus;
+    } else {
+      // confirmed / scheduled con consulta creada → "en curso" / pendiente
+      consulta = 'pending';
+    }
+  }
+  // Sin consulta → consulta permanece null (JSX muestra "Sin consulta")
+
+  // Estado de pago: viene directamente de consultation.payment_status
+  const pago = detail.consultation?.payment_status ?? null;
+
+  return { consulta, pago };
+}
+
+// ---------------------------------------------------------------------------
+// Packages enrichment — GET /api/packages/doctor?patient_id=
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw item que devuelve GET /api/packages/doctor.
+ */
+interface BackendPackageItem {
+  id: string;
+  patientId: string | null;
+  planName: string;
+  totalSessions: number;
+  usedSessions: number;
+  remainingSessions: number;
+  status: string;
+}
+
+/**
+ * Lookup de paquetes: mapea package_id → total_sessions.
+ * El JSX muestra total_sessions en las tarjetas de citas pendientes para que
+ * el doctor sepa cuántas sesiones tiene el paquete (e.g. "Sesión 2 de 5").
+ *
+ * Estrategia: agrupamos los patient_ids únicos de las citas pendientes que
+ * tienen un package_id y los consultamos en paralelo (un request por paciente)
+ * para construir un mapa { packageId → totalSessions }.
+ *
+ * Degrada silenciosamente → retorna mapa vacío si el endpoint falla.
+ *
+ * @param pendingItems - Citas pendientes ya cargadas (usamos package_id y patientId).
+ */
+export async function buildPackageTotalSessionsMap(
+  pendingItems: ReadonlyArray<{
+    package_id: string | null | undefined;
+    patient_cedula: string | null;
+  }>,
+): Promise<Map<string, number>> {
+  const totalMap = new Map<string, number>();
+
+  // Collect unique non-null patient IDs associated with a package.
+  // NOTE: pending items carry patient_cedula (masked) but not patient_id (UUID).
+  // The packages endpoint accepts `patient_id` (UUID). Since PendingAgendaAppointment
+  // does not expose the patient UUID (only masked PII), we must fall back to
+  // fetching all doctor packages without a patient filter and index by package id.
+  const hasAnyPackage = pendingItems.some((p) => p.package_id != null);
+  if (!hasAnyPackage) {
+    return totalMap;
+  }
+
+  const result = await backendGet<BackendPackageItem[]>('/api/packages/doctor?status=active');
+
+  if (!result.ok) {
+    log.error('[buildPackageTotalSessionsMap] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+      message: appErrorMsg(result.error),
+    });
+    return totalMap;
+  }
+
+  const packages = Array.isArray(result.value)
+    ? (result.value as unknown as BackendPackageItem[])
+    : [];
+
+  for (const pkg of packages) {
+    totalMap.set(pkg.id, pkg.totalSessions);
+  }
+
+  return totalMap;
+}
