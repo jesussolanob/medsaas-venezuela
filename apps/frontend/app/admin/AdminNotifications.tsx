@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { getRecentDoctors } from './notifications-actions'
 import { Bell, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 
@@ -12,21 +12,12 @@ import Link from 'next/link'
 export default function AdminNotifications() {
   const [recentDoctors, setRecentDoctors] = useState<any[]>([])
   const [isOpen, setIsOpen] = useState(false)
-  const supabase = createClient()
 
   useEffect(() => {
     async function loadRecentDoctors() {
       try {
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-        const { data } = await supabase
-          .from('profiles')
-          .select('id, full_name, email, created_at')
-          .eq('role', 'doctor')
-          .gte('created_at', sevenDaysAgo)
-          .order('created_at', { ascending: false })
-          .limit(10)
-
-        setRecentDoctors(data || [])
+        const data = await getRecentDoctors(7)
+        setRecentDoctors(data)
       } catch (err) {
         console.error('Error loading recent doctors:', err)
       }
