@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, RefreshCw } from 'lucide-react';
+import { AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { loginUser } from './actions';
 import { Suspense } from 'react';
 import { DeltaMark } from '@/components/dh';
+
+// Injected at build time by Next.js — safe to read in 'use client' components.
+const IS_AUTH0_MODE = process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0';
 
 // Wrapper local para mantener API existente con className opcional
 function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
@@ -64,8 +67,13 @@ function LoginInner() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [confirmingEmail] = useState(false);
 
-  async function handleGoogleLogin() {
-    // ETAPA 1: no hay OAuth en el dev-stub. Fase 4: Google vía Auth0.
+  function handleGoogleLogin() {
+    if (IS_AUTH0_MODE) {
+      // Auth0 Universal Login with Google connection.
+      window.location.href = '/auth/login?connection=google-oauth2';
+      return;
+    }
+    // dev-stub: OAuth not available.
     setError('El inicio de sesión con Google estará disponible próximamente.');
   }
 
@@ -374,8 +382,17 @@ function LoginInner() {
                 <div className="flex-1 h-px" style={{ background: 'var(--dh-gray-100)' }} />
               </div>
 
-              {/* Email/Password */}
-              {!showEmailForm ? (
+              {/* Email/Password — hidden in Auth0 mode (Universal Login handles it) */}
+              {IS_AUTH0_MODE ? (
+                <button
+                  onClick={() => { window.location.href = '/auth/login'; }}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-semibold transition-all"
+                  style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-gray-600)' }}
+                >
+                  <Mail className="w-4 h-4" />
+                  Continuar con correo electrónico
+                </button>
+              ) : !showEmailForm ? (
                 <button
                   onClick={() => setShowEmailForm(true)}
                   className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-semibold transition-all"

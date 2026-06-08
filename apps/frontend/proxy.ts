@@ -1,70 +1,148 @@
 /**
- * proxy.ts  (anteriormente middleware.ts — renombrado para Next.js 16)
+ * proxy.ts  (Next.js 16 middleware — renamed from middleware.ts)
  *
- * STUB Etapa 1 — reemplazar por Auth0 en Fase 4.
+ * ENV-GATED dual-mode middleware:
  *
- * Lee la identidad del usuario desde cookies de desarrollo (dev_user_id,
- * dev_user_role) en lugar de la sesión Supabase, y aplica el mismo gating de
- * rutas que antes:
- *   /admin   → solo super_admin
- *   /doctor  → doctor o super_admin
- *   /patient → patient o super_admin
+ *   AUTH_MODE=dev (default)
+ *     — Reads identity from dev_user_id / dev_user_role cookies (Etapa 1 stub).
+ *     — No Auth0 SDK involved at all.
  *
- * Si la cookie dev_user_id está ausente se considera "no autenticado" y se
- * redirige a /login (mismo comportamiento que antes). Para desarrollo local
- * setear las cookies manualmente o confiar en el DEFAULT_USER_ID del stub.
+ *   AUTH_MODE=auth0 (Etapa 2)
+ *     — Delegates to auth0.middleware(request) which:
+ *         • mounts /auth/login, /auth/logout, /auth/callback routes.
+ *         • silently refreshes the Auth0 session cookie on every request.
+ *     — After the Auth0 middleware runs, protects /admin, /doctor, /patient
+ *       by checking the session and the role claim from AUTH0_ROLE_NAMESPACE.
  *
- * En Etapa 2 (Auth0 + Fase 4): reemplazar getDevUserFromRequest() por la
- * verificación del JWT de Auth0 contenido en la httpOnly cookie de sesión.
- * El resto de la lógica de redirección queda igual.
+ * NOTE: The middleware runs in the Edge Runtime. Neither next/headers nor
+ * Node.js built-ins are available here. The Auth0 SDK is designed to run on
+ * Edge (it ships an edge-compatible bundle).
  *
- * NOTA: el middleware corre en Edge Runtime — no puede usar next/headers ni
- * ningún módulo Node.js. Solo acepta cookies del NextRequest.
+ * In both modes the RBAC redirect table is identical:
+ *   /admin   → only super_admin
+ *   /doctor  → doctor | super_admin
+ *   /patient → patient | super_admin
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-// Import from dev-auth.edge (no Node/server-only imports) — safe for Edge Runtime.
 import { getDevUserFromRequest } from '@/lib/dev-auth.edge';
 
-export function proxy(request: NextRequest): NextResponse {
+// Read at middleware init time (module scope = once per worker).
+const AUTH_MODE = process.env.AUTH_MODE ?? 'dev';
+const ROLE_NAMESPACE = process.env.AUTH0_ROLE_NAMESPACE ?? 'https://deltamedical.app';
+
+// ---------------------------------------------------------------------------
+// Shared RBAC check — same logic for both modes
+// ---------------------------------------------------------------------------
+
+function applyRbac(request: NextRequest, role: string): NextResponse | null {
   const path = request.nextUrl.pathname;
 
-  // Leer identidad desde cookies de dev (stub Etapa 1)
-  const devUserIdCookie = request.cookies.get('dev_user_id')?.value ?? null;
-  const isAuthenticated = devUserIdCookie !== null && devUserIdCookie.trim().length > 0;
-
-  // ── 1. Autenticación obligatoria para las 3 áreas ──────────────────────────
-  if (!isAuthenticated) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('next', path);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // ── 2. RBAC — verificar rol contra la ruta ──────────────────────────────────
-  const { role } = getDevUserFromRequest(request.cookies);
-
-  // /admin — solo super_admin
   if (path.startsWith('/admin') && role !== 'super_admin') {
     const target =
       role === 'patient' ? '/patient/dashboard' : role === 'doctor' ? '/doctor' : '/login';
     return NextResponse.redirect(new URL(target, request.url));
   }
 
-  // /doctor — doctor o super_admin
   if (path.startsWith('/doctor') && role !== 'doctor' && role !== 'super_admin') {
     const target = role === 'patient' ? '/patient/dashboard' : '/login';
     return NextResponse.redirect(new URL(target, request.url));
   }
 
-  // /patient — patient o super_admin
   if (path.startsWith('/patient') && role !== 'patient' && role !== 'super_admin') {
     const target = role === 'doctor' ? '/doctor' : '/login';
     return NextResponse.redirect(new URL(target, request.url));
   }
 
-  return NextResponse.next();
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Dev mode handler — identical to original proxy logic
+// ---------------------------------------------------------------------------
+
+function handleDevMode(request: NextRequest): NextResponse {
+  const path = request.nextUrl.pathname;
+  const devUserIdCookie = request.cookies.get('dev_user_id')?.value ?? null;
+  const isAuthenticated = devUserIdCookie !== null && devUserIdCookie.trim().length > 0;
+
+  if (!isAuthenticated) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('next', path);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const { role } = getDevUserFromRequest(request.cookies);
+  return applyRbac(request, role) ?? NextResponse.next();
+}
+
+// ---------------------------------------------------------------------------
+// Auth0 mode handler
+// ---------------------------------------------------------------------------
+
+async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
+  const path = request.nextUrl.pathname;
+
+  // Dynamically import the Auth0Client to keep it out of the dev bundle.
+  // The `@auth0/nextjs-auth0` package ships an edge-compatible entry point.
+  const { Auth0Client } = await import('@auth0/nextjs-auth0/server');
+
+  // Build a minimal Auth0Client for middleware use only (reads env automatically).
+  const domain = process.env.AUTH0_DOMAIN ?? '';
+  const clientId = process.env.AUTH0_CLIENT_ID ?? '';
+  const clientSecret = process.env.AUTH0_CLIENT_SECRET ?? '';
+  const secret = process.env.AUTH0_SECRET ?? '';
+  const appBaseUrl =
+    process.env.AUTH0_BASE_URL ?? process.env.APP_BASE_URL ?? 'http://localhost:3000';
+
+  const auth0 = new Auth0Client({
+    domain,
+    clientId,
+    clientSecret,
+    secret,
+    appBaseUrl,
+    authorizationParameters: { scope: 'openid profile email' },
+  });
+
+  // Let the Auth0 middleware handle /auth/* routes (login, logout, callback)
+  // and refresh the session cookie. It returns a Response for /auth/* paths,
+  // or a "pass-through" response for all other paths.
+  const auth0Response = await auth0.middleware(request);
+
+  // If the SDK produced a real response (redirect or /auth/* route handling),
+  // return it immediately — do not apply RBAC on /auth/* paths.
+  if (path.startsWith('/auth/')) {
+    return auth0Response as NextResponse;
+  }
+
+  // For protected routes: check that a valid session exists.
+  const session = await auth0.getSession();
+
+  if (!session?.user) {
+    // Not authenticated — redirect to Auth0 Universal Login.
+    return NextResponse.redirect(new URL('/auth/login', request.url));
+  }
+
+  // Extract role from the custom claim set by Auth0 Actions.
+  const role: string =
+    (session.user[`${ROLE_NAMESPACE}/role`] as string | undefined) ?? 'doctor';
+
+  return applyRbac(request, role) ?? (auth0Response as NextResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Main export
+// ---------------------------------------------------------------------------
+
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  if (AUTH_MODE === 'auth0') {
+    return handleAuth0Mode(request);
+  }
+
+  // Default: dev mode (AUTH_MODE=dev or anything else).
+  return handleDevMode(request);
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/doctor/:path*', '/patient/:path*'],
+  matcher: ['/admin/:path*', '/doctor/:path*', '/patient/:path*', '/auth/:path*'],
 };

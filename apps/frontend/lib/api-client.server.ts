@@ -22,7 +22,7 @@ import 'server-only';
 
 import type { Result } from '@delta/shared-types';
 import { ok, err } from '@delta/shared-types';
-import { getDevUser } from './dev-auth';
+import { resolveIdentity } from './identity.server';
 
 // ---------------------------------------------------------------------------
 // AppError — structured error type for the frontend layer
@@ -77,10 +77,12 @@ export async function backendFetch<T>(
     resolvedId = userId;
     resolvedRole = role;
   } else {
-    // No override, or only partial — always read the full identity from stub.
-    const devUser = await getDevUser();
-    resolvedId = devUser.id;
-    resolvedRole = devUser.role;
+    // No override, or only partial — resolve identity per AUTH_MODE.
+    // In dev mode: reads dev_user_id / dev_user_role cookies (same as before).
+    // In auth0 mode: exchanges Auth0 session for backend profile UUID.
+    const identity = await resolveIdentity();
+    resolvedId = identity.id;
+    resolvedRole = identity.role;
   }
 
   const url = `${BACKEND_URL}${path}`;
