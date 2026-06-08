@@ -51,6 +51,38 @@ describe('Invoice entity', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // markSent()
+  // ---------------------------------------------------------------------------
+
+  it('markSent() transitions issued → sent', () => {
+    const inv = makeInvoice();
+    const sent = inv.markSent();
+    expect(sent.status).toBe('sent');
+    expect(sent.sentAt).toBeInstanceOf(Date);
+  });
+
+  it('markSent() does not mutate the original entity', () => {
+    const inv = makeInvoice();
+    const sent = inv.markSent();
+    expect(inv.status).toBe('issued');
+    expect(sent.status).toBe('sent');
+  });
+
+  it('markSent() is idempotent — preserves original sentAt', () => {
+    const originalSentAt = new Date('2026-01-10');
+    const inv = makeInvoice({ status: 'sent', sentAt: originalSentAt });
+    const sent = inv.markSent();
+    expect(sent.status).toBe('sent');
+    expect(sent.sentAt).toEqual(originalSentAt);
+  });
+
+  it('markSent() does not downgrade a paid invoice', () => {
+    const inv = makeInvoice({ status: 'paid', paidAt: new Date('2026-01-15') });
+    const sent = inv.markSent();
+    expect(sent.status).toBe('paid');
+  });
+
+  // ---------------------------------------------------------------------------
   // markPaid()
   // ---------------------------------------------------------------------------
 

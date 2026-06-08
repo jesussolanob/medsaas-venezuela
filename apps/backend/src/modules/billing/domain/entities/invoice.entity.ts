@@ -92,6 +92,21 @@ export class Invoice {
   // ---------------------------------------------------------------------------
 
   /**
+   * Marks the invoice as sent, recording the sent timestamp.
+   * Calling this on an already-sent (or paid) invoice is idempotent —
+   * returns an updated copy with the same sentAt.
+   */
+  markSent(): Invoice {
+    const now = new Date();
+    return new Invoice({
+      ...this.props,
+      status: this.props.status === 'paid' ? 'paid' : 'sent',
+      sentAt: this.props.sentAt ?? now,
+      updatedAt: now,
+    });
+  }
+
+  /**
    * Marks the invoice as paid, recording the paid timestamp.
    * Calling this on an already-paid invoice returns an updated copy with the
    * same paidAt (idempotent by design — marking paid twice is not a domain error).

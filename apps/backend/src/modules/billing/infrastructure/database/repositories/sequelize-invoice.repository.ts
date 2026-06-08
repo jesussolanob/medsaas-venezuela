@@ -63,6 +63,22 @@ export class SequelizeInvoiceRepository implements IInvoiceRepository {
     return this.rowToDomain(row);
   }
 
+  async markSent(id: string): Promise<Invoice> {
+    const now = new Date();
+    await this.model.update(
+      {
+        status: 'sent',
+        sentAt: now,
+        updatedAt: now,
+      },
+      { where: { id } },
+    );
+
+    const updated = await this.model.findByPk(id);
+    // The caller validated existence before calling markSent, so this is safe.
+    return this.rowToDomain(updated!);
+  }
+
   async markPaid(id: string): Promise<Invoice> {
     const now = new Date();
     await this.model.update(

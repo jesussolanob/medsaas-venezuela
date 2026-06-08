@@ -110,6 +110,22 @@ describe('SequelizeInvoiceRepository', () => {
     });
   });
 
+  describe('markSent', () => {
+    it('updates status to sent and returns updated invoice', async () => {
+      const sentRow = makeRow({ status: 'sent', sentAt: new Date() });
+      mockModel.update.mockResolvedValue([1]);
+      mockModel.findByPk.mockResolvedValue(sentRow);
+
+      const result = await repo.markSent('inv-1');
+
+      expect(result.status).toBe('sent');
+      expect(mockModel.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'sent' }),
+        expect.objectContaining({ where: { id: 'inv-1' } }),
+      );
+    });
+  });
+
   describe('markPaid', () => {
     it('updates status to paid and returns updated invoice', async () => {
       const paidRow = makeRow({ status: 'paid', paidAt: new Date() });

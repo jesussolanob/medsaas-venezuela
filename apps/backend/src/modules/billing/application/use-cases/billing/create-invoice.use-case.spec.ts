@@ -30,6 +30,7 @@ describe('CreateInvoiceUseCase', () => {
       list: jest.fn(),
       findById: jest.fn(),
       save: jest.fn(),
+      markSent: jest.fn(),
       markPaid: jest.fn(),
     };
     useCase = new CreateInvoiceUseCase(mockRepo);

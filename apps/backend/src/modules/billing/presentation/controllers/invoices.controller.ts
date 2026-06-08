@@ -14,6 +14,7 @@ import {
 import { CreateInvoiceUseCase } from '../../application/use-cases/billing/create-invoice.use-case';
 import { ListInvoicesUseCase } from '../../application/use-cases/billing/list-invoices.use-case';
 import { MarkInvoicePaidUseCase } from '../../application/use-cases/billing/mark-invoice-paid.use-case';
+import { SendInvoiceEmailUseCase } from '../../application/use-cases/billing/send-invoice-email.use-case';
 import type { InvoiceProps } from '../../domain/entities/invoice.entity';
 
 interface SuccessResponse<T> {
@@ -42,6 +43,7 @@ export class InvoicesController {
     private readonly createInvoice: CreateInvoiceUseCase,
     private readonly listInvoices: ListInvoicesUseCase,
     private readonly markPaid: MarkInvoicePaidUseCase,
+    private readonly sendInvoiceEmail: SendInvoiceEmailUseCase,
   ) {}
 
   /**
@@ -84,6 +86,22 @@ export class InvoicesController {
   }
 
   /**
+   * POST /api/admin/invoices/:id/send
+   *
+   * Marks the invoice as 'sent' and dispatches an email to the doctor.
+   * Email failure is non-fatal — the invoice status change is committed
+   * regardless, and the response includes `emailSent` to indicate delivery.
+   */
+  @Post(':id/send')
+  async sendInvoice(@Param('id') id: string): Promise<SuccessResponse<unknown>> {
+    const { invoice, emailSent } = await this.sendInvoiceEmail.execute({ invoiceId: id });
+    return {
+      success: true,
+      data: { ...(this.toOutput(invoice.toPlain()) as Record<string, unknown>), emailSent },
+    };
+  }
+
+  /**
    * PUT /api/admin/invoices/:id/paid
    */
   @Put(':id/paid')
@@ -106,6 +124,7 @@ export class InvoicesController {
       description: props.description,
       status: props.status,
       issuedAt: props.issuedAt,
+      sentAt: props.sentAt,
       paidAt: props.paidAt,
       createdBy: props.createdBy,
       createdAt: props.createdAt,

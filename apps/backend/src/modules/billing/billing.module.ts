@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 
+// External modules
+import { EmailModule } from '../email/email.module';
+
 // Models (new)
 import { SubscriptionPaymentModel } from './infrastructure/database/models/subscription-payment.model';
 import { InvoiceModel } from './infrastructure/database/models/invoice.model';
@@ -15,9 +18,11 @@ import { AdminSubscriptionModel } from '../admin/infrastructure/database/models/
 import { SUBSCRIPTION_PAYMENT_REPOSITORY } from './domain/repositories/subscription-payment.repository';
 import { INVOICE_REPOSITORY } from './domain/repositories/invoice.repository';
 import { BILLING_DOCUMENT_REPOSITORY } from './domain/repositories/billing-document.repository';
+import { PROFILE_LOOKUP_REPOSITORY } from './domain/repositories/profile-lookup.repository';
 import { SequelizeSubscriptionPaymentRepository } from './infrastructure/database/repositories/sequelize-subscription-payment.repository';
 import { SequelizeInvoiceRepository } from './infrastructure/database/repositories/sequelize-invoice.repository';
 import { SequelizeBillingDocumentRepository } from './infrastructure/database/repositories/sequelize-billing-document.repository';
+import { SequelizeProfileLookupRepository } from './infrastructure/database/repositories/sequelize-profile-lookup.repository';
 
 // Use cases
 import { ListSubscriptionPaymentsUseCase } from './application/use-cases/billing/list-subscription-payments.use-case';
@@ -26,6 +31,7 @@ import { RejectSubscriptionPaymentUseCase } from './application/use-cases/billin
 import { CreateInvoiceUseCase } from './application/use-cases/billing/create-invoice.use-case';
 import { ListInvoicesUseCase } from './application/use-cases/billing/list-invoices.use-case';
 import { MarkInvoicePaidUseCase } from './application/use-cases/billing/mark-invoice-paid.use-case';
+import { SendInvoiceEmailUseCase } from './application/use-cases/billing/send-invoice-email.use-case';
 import { ListBillingDocumentsUseCase } from './application/use-cases/billing/list-billing-documents.use-case';
 import { CreateBillingDocumentUseCase } from './application/use-cases/billing/create-billing-document.use-case';
 import { GetFinanceStatsUseCase } from './application/use-cases/billing/get-finance-stats.use-case';
@@ -62,6 +68,8 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
       ProfileAdminModel,
       AdminSubscriptionModel,
     ]),
+    // Provides EMAIL_PORT token for SendInvoiceEmailUseCase
+    EmailModule,
   ],
   controllers: [SubscriptionPaymentsController, InvoicesController, BillingDocumentsController],
   providers: [
@@ -78,6 +86,10 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
       provide: BILLING_DOCUMENT_REPOSITORY,
       useClass: SequelizeBillingDocumentRepository,
     },
+    {
+      provide: PROFILE_LOOKUP_REPOSITORY,
+      useClass: SequelizeProfileLookupRepository,
+    },
 
     // Guards (stateless, required by DI in this module scope)
     RolesGuard,
@@ -91,6 +103,7 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
     CreateInvoiceUseCase,
     ListInvoicesUseCase,
     MarkInvoicePaidUseCase,
+    SendInvoiceEmailUseCase,
 
     // Use cases — billing documents
     ListBillingDocumentsUseCase,

@@ -47,6 +47,12 @@ export interface IInvoiceRepository {
   save(params: CreateInvoiceParams): Promise<Invoice>;
 
   /**
+   * Marks an invoice as sent (sets status='sent' and sent_at=now).
+   * Idempotent — calling on an already-sent invoice is a no-op.
+   */
+  markSent(id: string): Promise<Invoice>;
+
+  /**
    * Marks an invoice as paid (sets status='paid' and paid_at=now).
    */
   markPaid(id: string): Promise<Invoice>;
