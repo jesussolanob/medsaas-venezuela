@@ -55,6 +55,8 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/sequelize": "^11.0.1",
+    "@sentry/nestjs": "^10.56.0",
+    "@sentry/node": "^10.56.0",
     "axios": "^1.6.0",
     "file-type": "^22.0.1",
     "ioredis": "^5.11.0",

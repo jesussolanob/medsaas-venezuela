@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 import { DomainError } from '../../domain/errors/domain.error';
 
 interface ErrorBody {
@@ -47,6 +48,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         'Unhandled exception',
         exception instanceof Error ? exception.stack : String(exception),
       );
+      // Report unexpected (non-domain, non-HTTP) errors to Sentry.
+      // DomainError (4xx business rules) and HttpException are intentional
+      // and must never be sent — only true 5xx surprises land here.
+      Sentry.captureException(exception);
     }
 
     const body: ErrorBody = { success: false, code, message };

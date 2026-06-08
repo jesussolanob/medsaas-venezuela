@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { SentryModule } from '@sentry/nestjs/setup';
 import { databaseConfig } from './infrastructure/config/database.config';
 import { RedisModule } from './infrastructure/cache/redis.module';
 import { CryptoModule } from './infrastructure/crypto/crypto.module';
@@ -41,6 +42,10 @@ import { EmailModule } from './modules/email/email.module';
       isGlobal: true,
       envFilePath: ['apps/backend/.env', '.env'],
     }),
+    // SentryModule wires Sentry's NestJS request-lifecycle hooks.
+    // init() has already been called in instrument.ts; this merely registers
+    // the NestJS integration. Safe to include even when DSN is absent.
+    SentryModule.forRoot(),
     SequelizeModule.forRootAsync({ useFactory: databaseConfig }),
     RedisModule,
     // Global crypto — must come before any module that uses CryptoService.

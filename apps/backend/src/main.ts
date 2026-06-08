@@ -1,3 +1,6 @@
+// Sentry must be imported before any other NestJS/application code so that
+// its OpenTelemetry instrumentation patches are applied at startup.
+import './instrument';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
