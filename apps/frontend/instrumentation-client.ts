@@ -11,6 +11,7 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV ?? "development",
+    sendDefaultPii: false,
     tracesSampleRate: 0.1,
     // Replay is opt-in. Enable in production by uncommenting:
     // replaysSessionSampleRate: 0.1,

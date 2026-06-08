@@ -90,7 +90,7 @@ describe('ResolveIdentityUseCase', () => {
     const existing = makeIdentity({ role: 'doctor' });
     repo.findByEmail.mockResolvedValue(existing);
 
-    const dto: ResolveIdentityDto = { email: 'DOC@EXAMPLE.COM', role: 'super_admin' };
+    const dto= { email: 'DOC@EXAMPLE.COM', role: 'super_admin' } as unknown as ResolveIdentityDto;
     const result = await useCase.execute(dto, VALID_SECRET);
 
     expect(result.created).toBe(false);
@@ -160,7 +160,7 @@ describe('ResolveIdentityUseCase', () => {
     repo.findByEmail.mockResolvedValue(null);
     repo.create.mockResolvedValue(makeIdentity({ role: 'doctor' }));
 
-    const dto: ResolveIdentityDto = { email: 'hacker@example.com', role: 'super_admin' };
+    const dto= { email: 'hacker@example.com', role: 'super_admin' } as unknown as ResolveIdentityDto;
     await useCase.execute(dto, VALID_SECRET);
 
     expect(repo.create).toHaveBeenCalledWith(
@@ -172,7 +172,7 @@ describe('ResolveIdentityUseCase', () => {
     repo.findByEmail.mockResolvedValue(null);
     repo.create.mockResolvedValue(makeIdentity({ role: 'doctor' }));
 
-    const dto: ResolveIdentityDto = { email: 'admin2@example.com', role: 'admin' };
+    const dto= { email: 'admin2@example.com', role: 'admin' } as unknown as ResolveIdentityDto;
     await useCase.execute(dto, VALID_SECRET);
 
     expect(repo.create).toHaveBeenCalledWith(

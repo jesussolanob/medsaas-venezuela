@@ -9,7 +9,7 @@ import { z } from 'zod';
 export const ResolveIdentityDtoSchema = z.object({
   email: z.string().trim().email({ message: 'email must be a valid email address' }),
   sub: z.string().optional(),
-  role: z.string().optional(),
+  role: z.enum(['doctor', 'patient']).optional(),
   fullName: z.string().optional(),
 });
 

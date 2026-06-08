@@ -47,9 +47,7 @@ export class ResendEmailAdapter implements IEmailPort {
     const from = input.from ?? this.defaultFrom;
     const to = Array.isArray(input.to) ? input.to : [input.to];
 
-    this.logger.debug(
-      `[email:resend] sending to=${to.length} recipient(s) subject="${input.subject}"`,
-    );
+    this.logger.debug(`[email:resend] sending to=${to.length} recipient(s)`);
 
     const { data, error } = await this.resendClient.emails.send({
       from,

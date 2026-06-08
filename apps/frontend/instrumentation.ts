@@ -17,6 +17,7 @@ export async function register() {
     init({
       dsn,
       environment: process.env.NODE_ENV ?? "development",
+      sendDefaultPii: false,
       tracesSampleRate: 0.1,
       // Source maps are uploaded separately via SENTRY_AUTH_TOKEN in CI.
       // TODO: configure SENTRY_AUTH_TOKEN for production source maps.
@@ -28,6 +29,7 @@ export async function register() {
     init({
       dsn,
       environment: process.env.NODE_ENV ?? "development",
+      sendDefaultPii: false,
       tracesSampleRate: 0.1,
     });
   }

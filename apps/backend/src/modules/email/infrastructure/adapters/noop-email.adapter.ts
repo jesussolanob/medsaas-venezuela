@@ -19,7 +19,7 @@ export class NoopEmailAdapter implements IEmailPort {
 
   send(input: EmailSendInput): Promise<EmailSendResult> {
     const to = Array.isArray(input.to) ? input.to : [input.to];
-    this.logger.log(`[email:noop] to=${to.length} recipient(s) subject="${input.subject}"`);
+    this.logger.log(`[email:noop] to=${to.length} recipient(s)`);
     return Promise.resolve({ id: null });
   }
 }

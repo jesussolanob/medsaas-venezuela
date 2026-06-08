@@ -82,8 +82,8 @@ const resolveAuth0Identity = cache(async (): Promise<ResolvedIdentity> => {
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`[identity] resolve-identity failed (${res.status}): ${text}`);
+    // Do NOT include the response body — it may echo PII (e.g. the email in a 422).
+    throw new Error(`[identity] resolve-identity failed (${res.status})`);
   }
 
   const body = (await res.json()) as { data?: ResolveIdentityResponse } & ResolveIdentityResponse;
