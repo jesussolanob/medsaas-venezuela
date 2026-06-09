@@ -1077,3 +1077,36 @@ backend descifra y devuelve plano al dueño); se confía en TLS + VPC de GCP par
   lead verifica en navegador + BD). Requiere instalar los MCPs (Gmail + Sentry) al inicio.
 
 **Dato de prueba dejado en BD:** paciente "QA Test Paciente Cifrado" (dev doctor). Limpiar si se desea.
+
+## ✅ CICLO QA 2026-06-09 (cont.) — Sentry + Email verificados + 3 fixes (PII/booking/phone) COMMITEADOS
+
+Sesión con EQUIPO DE AGENTES (lead conduce; backend-agent implementa; security-agent + code-reviewer revisan).
+Patrón de verificación del lead: **instancia backend temporal en :3002** desde el dist (los dev servers del
+usuario en :3000/:3001 son procesos del usuario y NO se reinician) + curl + Postgres MCP. Sentry MCP conectado
+(org `delta-salud-crm`, auth lucas@deltasalud.app).
+
+1. **Sentry reporte de errores VERIFICADO end-to-end.** Gate real = `SENTRY_ENABLED==='true'` (NO NODE_ENV; corregí
+   esa nota vieja). Instancia temporal con flag + endpoint debug efímero (`GET /api/health/sentry-smoke`, revertido):
+   5xx → GlobalExceptionFilter → captureException → issue `DELTA-BACKEND-1` indexado en Sentry. Front usa path
+   simétrico gateado por `NEXT_PUBLIC_SENTRY_ENABLED` (no se disparó en vivo para no reiniciar el front del usuario).
+2. **Email Resend VERIFICADO (pipeline de la app).** `POST /api/email/test` (super_admin) → 200 + message id real;
+   `SandboxEmailPort` reescribe destinatario a SANDBOX_EMAIL=lucas@deltasalud.app antes del envío. ⚠️ La entrega final
+   NO se puede leer por API: la `RESEND_API_KEY` es **send-only** (GET /emails/{id} → 401 restricted_api_key).
+   Confirmar entrega en dashboard resend.com/emails o inbox.
+3. **DESENMASCARAR PII al doctor dueño — HECHO (commit `de40fbe`).** Mappers patients+messages en plano; audit movido
+   a `GET /api/patients/:id` (1 fila `field_revealed='full_record'`); endpoint/use-case `/reveal` ELIMINADOS; frontend
+   `revealPatient` (+mappers huérfanos) borrados. **BUG atrapado por el lead** (review estático no lo vio): el insert
+   `full_record` violaba el CHECK de access_audit_log → **migración `20260609000000`** lo añade al array. anti-IDOR
+   (cross-doctor 404/422 sin audit), admin solo-stats y no-log-PII intactos. security-agent + code-reviewer APROBADOS.
+4. **BOOKING HIGH — ARREGLADO por la tarea 3, sin código (verificado).** El 400 venía del email enmascarado
+   (`j***@test.com` inválido para Zod `.email()`); con la lista en plano `findOrCreatePatient` dedupea por email/cédula
+   hash y reusa al paciente existente. curl POST /api/booking con payload plano → 201, cita ligada al patient existente,
+   sin duplicar. (No hizo falta el patientId explícito.)
+5. **PHONE perfil MEDIUM — HECHO (commit `783ddbe`).** `phone` cableado end-to-end: shared-types DTO + DoctorProfile
+   entity/model/repo/controller + frontend settings actions/page. Sin migración (columna `profiles.phone` ya existía).
+   Verificado PUT/GET/BD + nullable. Suite backend **1622 tests**.
+
+**⚠️ Para ver los fixes en el navegador, el usuario debe REINICIAR su backend :3001** (corre el dist VIEJO desde
+`node dist/apps/backend/main.js`; ya está rebuildeado con los cambios). El front (Next dev) recarga solo.
+**Dato dev dejado en BD:** `profiles.phone` del dev doctor = '04141234567' (de la verificación). Specs nuevos en
+`migracion/specs/{desenmascarar-pii-doctor,fix-phone-perfil-doctor}.md`. Próxima migración usar timestamp > 20260609000000.
