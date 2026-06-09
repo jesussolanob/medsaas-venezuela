@@ -11,8 +11,8 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV ?? "development",
-    // Controlled via SENTRY_ENABLED env var (true|false).
-    enabled: process.env.SENTRY_ENABLED === "true",
+    // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
+    enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === "true",
     sendDefaultPii: false,
     tracesSampleRate: 0.1,
     // Replay is opt-in. Enable in production by uncommenting:
