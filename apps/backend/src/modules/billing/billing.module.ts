@@ -68,7 +68,7 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
       ProfileAdminModel,
       AdminSubscriptionModel,
     ]),
-    // Provides EMAIL_PORT token for SendInvoiceEmailUseCase
+    // Provides EMAIL_PORT token and MailerService for SendInvoiceEmailUseCase
     EmailModule,
   ],
   controllers: [SubscriptionPaymentsController, InvoicesController, BillingDocumentsController],

@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
+import { SequelizeModule } from '@nestjs/sequelize';
 import { ConfigService } from '@nestjs/config';
 import { EMAIL_PORT } from './application/ports/email.port';
+import { EMAIL_TEMPLATE_REPOSITORY } from './domain/repositories/email-template.repository';
 import { createEmailAdapter } from './infrastructure/adapters/email-adapter.factory';
+import { EmailTemplateModel } from './infrastructure/database/models/email-template.model';
+import { SequelizeEmailTemplateRepository } from './infrastructure/database/repositories/sequelize-email-template.repository';
+import { MailerService } from './application/services/mailer.service';
 import { EmailController } from './presentation/controllers/email.controller';
 
 /**
@@ -13,13 +18,18 @@ import { EmailController } from './presentation/controllers/email.controller';
  *
  * Default: 'noop' (fail-safe — server boots cleanly even if EMAIL_DRIVER is unset).
  *
- * NOTE: No Sequelize models — this module has no database dependency.
- * IMPORTANT: Never add Sequelize or database providers here.
+ * MailerService provides template-driven email sending backed by the
+ * `email_templates` table. It is exported so other modules (e.g. BillingModule)
+ * can inject it directly.
  *
- * Other modules that need to send email should import EmailModule and
- * inject the EMAIL_PORT token.
+ * IMPORTANT: Sequelize global instance is NOT added to providers — it is
+ * injected globally by SequelizeModule.forRootAsync in AppModule.
+ * Adding it again here causes a crash in the dist build.
  */
 @Module({
+  imports: [
+    SequelizeModule.forFeature([EmailTemplateModel]),
+  ],
   controllers: [EmailController],
   providers: [
     {
@@ -27,7 +37,12 @@ import { EmailController } from './presentation/controllers/email.controller';
       useFactory: (config: ConfigService) => createEmailAdapter(config),
       inject: [ConfigService],
     },
+    {
+      provide: EMAIL_TEMPLATE_REPOSITORY,
+      useClass: SequelizeEmailTemplateRepository,
+    },
+    MailerService,
   ],
-  exports: [EMAIL_PORT],
+  exports: [EMAIL_PORT, MailerService],
 })
 export class EmailModule {}
