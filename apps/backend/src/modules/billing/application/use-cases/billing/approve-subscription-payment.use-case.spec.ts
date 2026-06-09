@@ -3,6 +3,8 @@ import { SubscriptionPayment } from '../../../domain/entities/subscription-payme
 import { SubscriptionPaymentNotFoundError } from '../../../domain/errors/subscription-payment-not-found.error';
 import { SubscriptionPaymentAlreadyResolvedError } from '../../../domain/errors/subscription-payment-already-resolved.error';
 import type { ISubscriptionPaymentRepository } from '../../../domain/repositories/subscription-payment.repository';
+import type { IProfileLookupRepository } from '../../../domain/repositories/profile-lookup.repository';
+import type { MailerService } from '../../../../email/application/services/mailer.service';
 
 function makePendingPayment(durationMonths = 1): SubscriptionPayment {
   return SubscriptionPayment.create({
@@ -20,8 +22,14 @@ function makePendingPayment(durationMonths = 1): SubscriptionPayment {
   });
 }
 
+function makeProfile() {
+  return { id: 'doc-1', fullName: 'Dr. Pérez', email: 'doctor@example.com' };
+}
+
 describe('ApproveSubscriptionPaymentUseCase', () => {
   let mockRepo: jest.Mocked<ISubscriptionPaymentRepository>;
+  let mockProfileRepo: jest.Mocked<IProfileLookupRepository>;
+  let mockMailer: jest.Mocked<MailerService>;
   let useCase: ApproveSubscriptionPaymentUseCase;
 
   beforeEach(() => {
@@ -33,7 +41,16 @@ describe('ApproveSubscriptionPaymentUseCase', () => {
       reject: jest.fn(),
       getFinanceStats: jest.fn(),
     };
-    useCase = new ApproveSubscriptionPaymentUseCase(mockRepo);
+
+    mockProfileRepo = {
+      findById: jest.fn().mockResolvedValue(makeProfile()),
+    };
+
+    mockMailer = {
+      sendTemplate: jest.fn().mockResolvedValue({ id: null }),
+    } as unknown as jest.Mocked<MailerService>;
+
+    useCase = new ApproveSubscriptionPaymentUseCase(mockRepo, mockProfileRepo, mockMailer);
   });
 
   it('throws SubscriptionPaymentNotFoundError when payment does not exist', async () => {
@@ -169,5 +186,52 @@ describe('ApproveSubscriptionPaymentUseCase', () => {
 
     await expect(useCase.execute({ paymentId: 'pay-1', reviewerId: 'admin-1' })).rejects.toThrow();
     expect(mockRepo.approveAndExtend).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // payment_approved email — non-fatal behaviour
+  // ---------------------------------------------------------------------------
+
+  it('attempts to send payment_approved email after successful approval', async () => {
+    const payment = makePendingPayment(1);
+    mockRepo.findById.mockResolvedValue(payment);
+
+    await useCase.execute({ paymentId: 'pay-1', reviewerId: 'admin-1' });
+
+    // Give the fire-and-forget promise a tick to resolve
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockProfileRepo.findById).toHaveBeenCalledWith('doc-1');
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'payment_approved',
+      'doctor@example.com',
+      expect.objectContaining({ doctorName: 'Dr. Pérez', amount: 'USD 50.00' }),
+    );
+  });
+
+  it('does not fail when doctor profile is not found (email skipped)', async () => {
+    const payment = makePendingPayment(1);
+    mockRepo.findById.mockResolvedValue(payment);
+    mockProfileRepo.findById.mockResolvedValue(null);
+
+    await expect(
+      useCase.execute({ paymentId: 'pay-1', reviewerId: 'admin-1' }),
+    ).resolves.toBeDefined();
+
+    await new Promise((r) => setImmediate(r));
+    expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('does not fail when mailerService.sendTemplate throws', async () => {
+    const payment = makePendingPayment(1);
+    mockRepo.findById.mockResolvedValue(payment);
+    mockMailer.sendTemplate.mockRejectedValue(new Error('smtp error'));
+
+    const result = await useCase.execute({ paymentId: 'pay-1', reviewerId: 'admin-1' });
+    await new Promise((r) => setImmediate(r));
+
+    // Approval still succeeded
+    expect(result.newExpiresAt).toBeDefined();
+    expect(mockRepo.approveAndExtend).toHaveBeenCalledTimes(1);
   });
 });

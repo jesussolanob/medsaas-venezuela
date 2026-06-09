@@ -60,8 +60,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         `[${file}][${method}] ${readableMessage} ${safeStringify({ name: err.name, stack: err.stack?.split('\n')[1]?.trim() ?? '' })}`,
       );
 
-      // Send to Sentry only in production to avoid noise during local development.
-      if (process.env.NODE_ENV === 'production') {
+      // Send to Sentry only when explicitly enabled (SENTRY_ENABLED=true).
+      if (process.env.SENTRY_ENABLED === 'true') {
         Sentry.captureException(exception);
       }
     }
