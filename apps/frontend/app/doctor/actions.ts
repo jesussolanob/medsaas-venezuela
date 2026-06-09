@@ -15,7 +15,7 @@ import { appErrorToString } from '@/lib/app-error';
  * In Etapa 2 (Auth0 / Fase 4), these are replaced by the Auth0 session.
  */
 
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 import { backendGet, type AppError } from '@/lib/api-client.server';
 import { log } from '@/lib/logger';
 
@@ -23,15 +23,20 @@ import { log } from '@/lib/logger';
 // Identity (replaces supabase.auth.getUser across the doctor area)
 // ---------------------------------------------------------------------------
 
-/** Returns the current doctor's id from the dev-auth stub. */
+/** Returns the current doctor's id (resolves per AUTH_MODE: dev cookies or Auth0 session). */
 export async function getDoctorId(): Promise<string | null> {
-  const user = await getDevUser();
-  return user.id;
+  try {
+    const user = await resolveIdentity();
+    return user.id;
+  } catch {
+    // auth0 mode with no session — fail closed rather than propagating a 500.
+    return null;
+  }
 }
 
-/** Returns the current doctor's full identity from the dev-auth stub. */
+/** Returns the current doctor's full identity (resolves per AUTH_MODE). */
 export async function getDevUserInfo(): Promise<{ id: string; role: string }> {
-  const user = await getDevUser();
+  const user = await resolveIdentity();
   return { id: user.id, role: user.role };
 }
 

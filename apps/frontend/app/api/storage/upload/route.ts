@@ -15,11 +15,11 @@
  *   { success: true, data: { url: string, path: string } }
  *   { success: false, error: { message: string } }
  *
- * ETAPA 2: Replace getDevUser() with Auth0 JWT from httpOnly cookie.
+ * Identity is resolved via resolveIdentity() (dev cookies or Auth0 session).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
 
@@ -52,8 +52,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Resolve dev-auth identity (Etapa 1 stub).
-  const devUser = await getDevUser();
+  // Resolve identity per AUTH_MODE (dev cookies or Auth0 session).
+  const devUser = await resolveIdentity();
 
   // Reconstruct a FormData to forward — keeps file name intact when available.
   const outgoing = new FormData();

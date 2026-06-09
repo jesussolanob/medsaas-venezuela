@@ -7,8 +7,7 @@
  * Replaces all Supabase reads (profiles, appointments, payments, patients,
  * consultations) with calls to the NestJS backend via api-client.server.
  *
- * ETAPA 1: DevAuthGuard headers.
- * ETAPA 2 (Auth0): Replace getDevUser() in the auth helpers only.
+ * Identity is resolved via resolveIdentity() (dev cookies or Auth0 session).
  *
  * Endpoints consumed:
  *   GET /api/doctor/profile           → doctor name / specialty / title
@@ -32,7 +31,7 @@
 import 'server-only';
 
 import { backendGet } from '@/lib/api-client.server';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 import { log } from '@/lib/logger';
 import { getDoctorProfile } from '@/app/doctor/actions';
 
@@ -96,7 +95,7 @@ const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
  */
 async function countFromEndpoint(path: string): Promise<number> {
   try {
-    const devUser = await getDevUser();
+    const devUser = await resolveIdentity();
     const response = await fetch(`${BACKEND_URL}${path}`, {
       method: 'GET',
       headers: {

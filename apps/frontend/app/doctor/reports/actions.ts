@@ -7,8 +7,7 @@
  * Replaces all Supabase reads (consultations + join, patients) with calls to
  * the NestJS backend via api-client.server.
  *
- * ETAPA 1: DevAuthGuard headers.
- * ETAPA 2 (Auth0): Replace getDevUser() in countFromEndpoint only.
+ * Identity is resolved server-side via api-client.server (dev cookies or Auth0 session).
  *
  * Endpoints consumed:
  *   GET /api/consultations?limit=500   → consultation list (snake_case fields)

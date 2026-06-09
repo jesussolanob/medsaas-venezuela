@@ -3,7 +3,7 @@ import 'server-only';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { backendGet } from '@/lib/api-client.server';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 import { log } from '@/lib/logger';
 import Cita360Client, { type Cita360Data } from './Cita360Client';
 
@@ -144,7 +144,7 @@ export default async function Cita360Page({
   const { id: appointmentId } = await params;
 
   // MIGRATED: auth → dev-auth stub
-  const devUser = await getDevUser();
+  const devUser = await resolveIdentity();
   if (!devUser.id) redirect('/login');
 
   // Primary call: GET /api/appointments/:id/detail (owner-scoped, anti-IDOR 404)

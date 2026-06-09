@@ -20,7 +20,7 @@ import { appErrorToString } from '@/lib/app-error';
 
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 import { backendGet, backendPost, backendPut, type AppError } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ interface BackendPrescription {
 
 /** Returns the current doctor's id. Called by the UI for local state. */
 export async function getDoctorId(): Promise<string | null> {
-  const user = await getDevUser();
+  const user = await resolveIdentity();
   return user.id;
 }
 

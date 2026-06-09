@@ -21,7 +21,7 @@
 
 import { NextResponse } from 'next/server';
 import { backendGet, backendPost, backendPut } from '@/lib/api-client.server';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 
 type UiStatus = 'pending' | 'in_progress' | 'resolved';
 
@@ -69,7 +69,12 @@ function toUiSuggestion(s: SuggestionDto): SuggestionDto {
 
 // GET: list suggestions (admin → all; doctor → own)
 export async function GET() {
-  const user = await getDevUser();
+  let user: { id: string; role: string };
+  try {
+    user = await resolveIdentity();
+  } catch {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
   const isAdmin = user.role === 'super_admin';
   const path = isAdmin ? '/api/admin/suggestions' : '/api/doctor/suggestions';
 
@@ -112,6 +117,18 @@ export async function POST(request: Request) {
 
 // PATCH: admin updates status / responds
 export async function PATCH(request: Request) {
+  let user: { id: string; role: string };
+  try {
+    user = await resolveIdentity();
+  } catch {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
+  // Admin-only route — the backend also enforces @Roles('super_admin'); this is
+  // defense in depth so a non-admin gets a clean 403 from the BFF.
+  if (user.role !== 'super_admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const body = await request.json();
   const { id, status, admin_response } = body ?? {};
 

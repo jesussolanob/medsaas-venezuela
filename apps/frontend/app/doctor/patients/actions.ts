@@ -35,7 +35,7 @@ import { appErrorToString } from '@/lib/app-error';
 
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 import { backendGet, backendPost, backendPut, type AppError } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
@@ -178,8 +178,13 @@ function mapConsultation(c: BackendConsultation): Consultation {
  * In Etapa 2 this is replaced by the Auth0 session.
  */
 export async function getDoctorId(): Promise<string | null> {
-  const user = await getDevUser();
-  return user.id;
+  try {
+    const user = await resolveIdentity();
+    return user.id;
+  } catch {
+    // auth0 mode with no session — fail closed rather than propagating a 500.
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -237,8 +242,14 @@ export async function addPatient(
   _doctorId: string,
   input: AddPatientInput,
 ): Promise<AddPatientResult> {
-  // doctor_id is required by CreatePatientDtoSchema; read from dev-auth stub.
-  const { id: doctorId } = await getDevUser();
+  // doctor_id is required by CreatePatientDtoSchema; backend overrides it with the
+  // authenticated identity (anti-IDOR). Resolve per AUTH_MODE for consistency.
+  let doctorId: string;
+  try {
+    ({ id: doctorId } = await resolveIdentity());
+  } catch {
+    return { success: false, error: 'No autenticado' };
+  }
 
   const body = {
     doctor_id: doctorId,

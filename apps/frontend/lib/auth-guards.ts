@@ -1,12 +1,13 @@
 /**
  * lib/auth-guards.ts
  *
- * RBAC helpers for API route handlers. Replaces Supabase Auth with the
- * dev-stub identity (getDevUser) from lib/dev-auth.ts.
+ * RBAC helpers for API route handlers. Identity is resolved via
+ * resolveIdentity() (lib/identity.server.ts), which works in both auth modes.
  *
- * ETAPA 1: Auth resolved from dev cookies (x-dev-user-id / x-dev-user-role).
- * ETAPA 2 (Auth0): Replace getDevUser() with Auth0 JWT verification. The rest
- *   of this module stays the same — callers are not affected.
+ * AUTH_MODE=dev   → identity from dev cookies (x-dev-user-id / x-dev-user-role).
+ * AUTH_MODE=auth0 → identity from the Auth0 session (resolve-identity → profile UUID).
+ *   When there is no Auth0 session, resolveIdentity() throws and requireRole()
+ *   fails closed with a 401.
  *
  * Breaking change vs. previous version: the `admin` field (Supabase client)
  * is no longer returned. Route handlers that need to query data should use
@@ -27,7 +28,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 import type { DevUserRole } from '@/lib/dev-auth';
 
 // ---------------------------------------------------------------------------
@@ -63,19 +64,27 @@ type Guard = GuardOk | GuardFail;
  * the dev-stub does not store email. Auth0 (Etapa 2) will populate them.
  */
 export async function requireRole(allowed: UserRole[]): Promise<Guard> {
-  const devUser = await getDevUser();
-
-  // In the dev-stub, getDevUser() always returns a fallback identity — there
-  // is no "unauthenticated" state. This branch exists so the API surface is
-  // ready for Etapa 2 where getDevUser() can return null / throw.
-  if (!devUser) {
+  // resolveIdentity() resolves per AUTH_MODE: dev cookies (never throws) or the
+  // Auth0 session. In auth0 mode it THROWS when there is no session, so we fail
+  // closed with a 401 instead of leaking a fallback identity.
+  let identity: { id: string; role: string };
+  try {
+    identity = await resolveIdentity();
+  } catch {
     return {
       ok: false,
       response: NextResponse.json({ error: 'No autenticado' }, { status: 401 }),
     };
   }
 
-  if (!(allowed as string[]).includes(devUser.role)) {
+  if (!identity.id) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'No autenticado' }, { status: 401 }),
+    };
+  }
+
+  if (!(allowed as string[]).includes(identity.role)) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
@@ -83,14 +92,14 @@ export async function requireRole(allowed: UserRole[]): Promise<Guard> {
   }
 
   const profile: ProfileMin = {
-    id: devUser.id,
-    role: devUser.role,
+    id: identity.id,
+    role: identity.role as UserRole,
     email: null,
   };
 
   return {
     ok: true,
-    user: { id: devUser.id, email: null },
+    user: { id: identity.id, email: null },
     profile,
   };
 }

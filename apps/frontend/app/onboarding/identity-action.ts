@@ -11,7 +11,7 @@
  * (httpOnly cookie + JWT verification in api-client.server.ts).
  */
 
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 
 export interface DevIdentity {
   id: string;
@@ -19,6 +19,6 @@ export interface DevIdentity {
 }
 
 export async function getDevIdentityAction(): Promise<DevIdentity> {
-  const user = await getDevUser();
+  const user = await resolveIdentity();
   return { id: user.id, role: user.role };
 }

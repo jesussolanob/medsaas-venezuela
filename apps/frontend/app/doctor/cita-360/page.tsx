@@ -2,7 +2,7 @@ import 'server-only';
 
 import { redirect } from 'next/navigation';
 import { backendGet } from '@/lib/api-client.server';
-import { getDevUser } from '@/lib/dev-auth';
+import { resolveIdentity } from '@/lib/identity.server';
 import { log } from '@/lib/logger';
 import Cita360List from './Cita360List';
 import type { Cita360Row } from './Cita360List';
@@ -77,7 +77,7 @@ async function loadAppointmentList(): Promise<Cita360Row[]> {
 
 export default async function Cita360IndexPage() {
   // MIGRATED: auth → dev-auth stub (reemplaza supabase.auth.getUser + createAdminClient)
-  const devUser = await getDevUser();
+  const devUser = await resolveIdentity();
   if (!devUser.id) redirect('/login');
 
   // Solo doctor o super_admin pueden acceder
