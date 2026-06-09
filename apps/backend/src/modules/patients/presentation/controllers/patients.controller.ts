@@ -28,11 +28,10 @@ import {
 import { CreatePatientUseCase } from '../../application/use-cases/patients/create-patient.use-case';
 import { GetPatientUseCase } from '../../application/use-cases/patients/get-patient.use-case';
 import { ListPatientsUseCase } from '../../application/use-cases/patients/list-patients.use-case';
-import { RevealPatientDataUseCase } from '../../application/use-cases/patients/reveal-patient-data.use-case';
 import { SearchPatientsUseCase } from '../../application/use-cases/patients/search-patients.use-case';
 import { UpdatePatientUseCase } from '../../application/use-cases/patients/update-patient.use-case';
 import { DeletePatientUseCase } from '../../application/use-cases/patients/delete-patient.use-case';
-import { toPatientListItem, toPatientDetail, toPatientReveal } from '../mappers/patient.mapper';
+import { toPatientListItem, toPatientDetail } from '../mappers/patient.mapper';
 import { type PatientSource } from '../../domain/entities/patient.entity';
 
 const VALID_SOURCES: ReadonlyArray<PatientSource> = ['booking', 'manual', 'import', 'invitation'];
@@ -61,8 +60,10 @@ interface PaginatedResponse<T> {
  * All endpoints require DevAuthGuard (Etapa 1 only).
  * Global prefix 'api' is set in main.ts.
  *
- * PII masking is applied by the mapper in this layer — never in use cases or repos.
- * doctor_id is always taken from the authenticated user (anti-IDOR).
+ * PII POLICY: All endpoints are owner-scoped (doctorId from auth token, never from request
+ * body — anti-IDOR). PII is returned in plaintext to the owning doctor; masking has been removed.
+ * GET /:id inserts one access_audit_log row (fieldRevealed='full_record').
+ * List and search do NOT insert audit rows.
  */
 @Controller('patients')
 @UseGuards(DevAuthGuard)
@@ -71,13 +72,12 @@ export class PatientsController {
     private readonly createPatient: CreatePatientUseCase,
     private readonly getPatient: GetPatientUseCase,
     private readonly listPatients: ListPatientsUseCase,
-    private readonly revealPatientData: RevealPatientDataUseCase,
     private readonly searchPatients: SearchPatientsUseCase,
     private readonly updatePatient: UpdatePatientUseCase,
     private readonly deletePatient: DeletePatientUseCase,
   ) {}
 
-  /** GET /api/patients — paginated list with PII masking. */
+  /** GET /api/patients — paginated list with plaintext PII for the owning doctor. */
   @Get()
   async list(
     @CurrentUser() user: CurrentUserPayload,
@@ -123,26 +123,14 @@ export class PatientsController {
     };
   }
 
-  /** GET /api/patients/:id — single patient full detail (masked). */
+  /**
+   * GET /api/patients/:id — single patient full detail (plaintext PII).
+   *
+   * Inserts one access_audit_log row with fieldRevealed='full_record'.
+   * Actor IP is taken from x-forwarded-for (first value) with fallback to socket address.
+   */
   @Get(':id')
   async findOne(
-    @Param('id') id: string,
-    @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<unknown>> {
-    const patient = await this.getPatient.execute({
-      patientId: id,
-      doctorId: user.sub,
-    });
-    return { success: true, data: toPatientDetail(patient) };
-  }
-
-  /**
-   * GET /api/patients/:id/reveal — plaintext PII + audit log.
-   *
-   * Inserts one access_audit_log row per PII field (full_name, cedula, phone, email).
-   */
-  @Get(':id/reveal')
-  async reveal(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload,
     @Req() req: Request,
@@ -153,16 +141,15 @@ export class PatientsController {
       null;
     const userAgent = req.headers['user-agent'] ?? null;
 
-    const patient = await this.revealPatientData.execute({
+    const patient = await this.getPatient.execute({
       patientId: id,
       doctorId: user.sub,
       actorId: user.sub,
       actorRole: user.role,
       ipAddress: ip,
-      userAgent: userAgent ?? null,
+      userAgent,
     });
-
-    return { success: true, data: toPatientReveal(patient) };
+    return { success: true, data: toPatientDetail(patient) };
   }
 
   /**

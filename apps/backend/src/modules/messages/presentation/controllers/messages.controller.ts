@@ -35,7 +35,7 @@ interface SuccessResponse<T> {
  *   - doctorId is ALWAYS taken from the authenticated user (user.sub) — never from request body.
  *   - Patient ownership is verified before accessing or creating any message (anti-IDOR).
  *   - Message body is PHI: encrypted at rest, decrypted only for the owning doctor.
- *   - Patient name in thread list is masked ("Juan P.") — applied in mapper layer.
+ *   - Patient names are returned in plaintext to the owning doctor (owner-scoped, TLS/VPC).
  */
 @Controller('doctor/messages')
 @UseGuards(DevAuthGuard)
@@ -49,7 +49,7 @@ export class MessagesController {
   /**
    * GET /api/doctor/messages/threads
    * Returns all message threads for the authenticated doctor.
-   * Patient names are masked ("Juan P.").
+   * Patient names are returned in plaintext to the owning doctor.
    */
   @Get('threads')
   async threads(

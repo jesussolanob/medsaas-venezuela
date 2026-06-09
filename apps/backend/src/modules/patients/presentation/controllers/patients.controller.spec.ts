@@ -3,7 +3,6 @@ import { PatientsController } from './patients.controller';
 import { CreatePatientUseCase } from '../../application/use-cases/patients/create-patient.use-case';
 import { GetPatientUseCase } from '../../application/use-cases/patients/get-patient.use-case';
 import { ListPatientsUseCase } from '../../application/use-cases/patients/list-patients.use-case';
-import { RevealPatientDataUseCase } from '../../application/use-cases/patients/reveal-patient-data.use-case';
 import { SearchPatientsUseCase } from '../../application/use-cases/patients/search-patients.use-case';
 import { UpdatePatientUseCase } from '../../application/use-cases/patients/update-patient.use-case';
 import { DeletePatientUseCase } from '../../application/use-cases/patients/delete-patient.use-case';
@@ -46,7 +45,6 @@ describe('PatientsController', () => {
   const mockCreate = { execute: jest.fn() };
   const mockGet = { execute: jest.fn() };
   const mockList = { execute: jest.fn() };
-  const mockReveal = { execute: jest.fn() };
   const mockSearch = { execute: jest.fn() };
   const mockUpdate = { execute: jest.fn() };
   const mockDelete = { execute: jest.fn() };
@@ -60,7 +58,6 @@ describe('PatientsController', () => {
         { provide: CreatePatientUseCase, useValue: mockCreate },
         { provide: GetPatientUseCase, useValue: mockGet },
         { provide: ListPatientsUseCase, useValue: mockList },
-        { provide: RevealPatientDataUseCase, useValue: mockReveal },
         { provide: SearchPatientsUseCase, useValue: mockSearch },
         { provide: UpdatePatientUseCase, useValue: mockUpdate },
         { provide: DeletePatientUseCase, useValue: mockDelete },
@@ -71,7 +68,7 @@ describe('PatientsController', () => {
   });
 
   describe('GET /api/patients (list)', () => {
-    it('returns a paginated list with masked PII', async () => {
+    it('returns a paginated list with plaintext PII', async () => {
       const patient = makePatient();
       mockList.execute.mockResolvedValue({ items: [patient], total: 1, page: 1, limit: 20 });
 
@@ -82,11 +79,11 @@ describe('PatientsController', () => {
       expect(res.meta).toEqual({ total: 1, page: 1, limit: 20 });
 
       const item = res.data[0] as Record<string, unknown>;
-      // PII masking: first-name + last-initial
-      expect(item.fullName).toBe('Juan G.');
-      expect(String(item.cedula)).toContain('***');
-      expect(String(item.phone)).toContain('***');
-      expect(String(item.email)).toContain('***');
+      // PII in plain — no masking
+      expect(item.fullName).toBe('Juan Pérez García');
+      expect(String(item.cedula)).not.toContain('***');
+      expect(String(item.phone)).not.toContain('***');
+      expect(String(item.email)).not.toContain('***');
     });
 
     it('defaults to page=1 and limit=20', async () => {
@@ -105,20 +102,56 @@ describe('PatientsController', () => {
   });
 
   describe('GET /api/patients/:id (findOne)', () => {
-    it('returns masked patient detail', async () => {
+    it('returns plaintext patient detail', async () => {
       const patient = makePatient();
       mockGet.execute.mockResolvedValue(patient);
 
-      const res = await controller.findOne(PATIENT_ID, mockUser);
+      const res = await controller.findOne(PATIENT_ID, mockUser, makeRequest() as Request);
 
       expect(res.success).toBe(true);
       const data = res.data as Record<string, unknown>;
-      expect(data.fullName).toBe('Juan G.');
+      expect(data.fullName).toBe('Juan Pérez García');
+      expect(String(data.cedula)).not.toContain('***');
+      expect(String(data.phone)).not.toContain('***');
+      expect(String(data.email)).not.toContain('***');
+    });
+
+    it('passes actorId, actorRole, and IP to the use case', async () => {
+      const patient = makePatient();
+      mockGet.execute.mockResolvedValue(patient);
+
+      await controller.findOne(
+        PATIENT_ID,
+        mockUser,
+        makeRequest({ 'x-forwarded-for': '10.0.0.1' }) as Request,
+      );
+
+      expect(mockGet.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: DOCTOR_ID,
+          actorRole: 'doctor',
+          ipAddress: '10.0.0.1',
+          userAgent: 'Jest/1.0',
+        }),
+      );
+    });
+
+    it('falls back to socket address when x-forwarded-for is absent', async () => {
+      const patient = makePatient();
+      mockGet.execute.mockResolvedValue(patient);
+
+      await controller.findOne(PATIENT_ID, mockUser, makeRequest() as Request);
+
+      expect(mockGet.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ ipAddress: '127.0.0.1' }),
+      );
     });
 
     it('propagates PatientNotFoundError', async () => {
       mockGet.execute.mockRejectedValue(new PatientNotFoundError());
-      await expect(controller.findOne('x', mockUser)).rejects.toBeInstanceOf(PatientNotFoundError);
+      await expect(
+        controller.findOne('x', mockUser, makeRequest() as Request),
+      ).rejects.toBeInstanceOf(PatientNotFoundError);
     });
 
     it('list response excludes clinical fields', async () => {
@@ -143,40 +176,6 @@ describe('PatientsController', () => {
     });
   });
 
-  describe('GET /api/patients/:id/reveal', () => {
-    it('returns plaintext patient data', async () => {
-      const patient = makePatient();
-      mockReveal.execute.mockResolvedValue(patient);
-
-      const res = await controller.reveal(PATIENT_ID, mockUser, makeRequest() as Request);
-
-      expect(res.success).toBe(true);
-      const data = res.data as Record<string, unknown>;
-      // No masking on reveal
-      expect(data.fullName).toBe('Juan Pérez García');
-      expect(data.cedula).toBe('V-12345678');
-    });
-
-    it('passes actor and IP to the use case', async () => {
-      const patient = makePatient();
-      mockReveal.execute.mockResolvedValue(patient);
-
-      await controller.reveal(
-        PATIENT_ID,
-        mockUser,
-        makeRequest({ 'x-forwarded-for': '10.0.0.1' }) as Request,
-      );
-
-      expect(mockReveal.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          actorId: DOCTOR_ID,
-          actorRole: 'doctor',
-          ipAddress: '10.0.0.1',
-        }),
-      );
-    });
-  });
-
   describe('POST /api/patients (create)', () => {
     it('overrides doctor_id from body with the authenticated user (anti-IDOR)', async () => {
       const patient = makePatient();
@@ -197,17 +196,18 @@ describe('PatientsController', () => {
   });
 
   describe('PUT /api/patients/:id (update)', () => {
-    it('updates patient and returns masked data', async () => {
-      const updated = makePatient({ fullName: 'Juan García' });
+    it('updates patient and returns plaintext data', async () => {
+      const updated = makePatient({ fullName: 'Juan García López' });
       mockUpdate.execute.mockResolvedValue(updated);
 
-      const dto = { full_name: 'Juan García', phone: '+584120000000' };
+      const dto = { full_name: 'Juan García López', phone: '+584120000000' };
       const res = await controller.update(PATIENT_ID, dto as never, mockUser);
 
       expect(res.success).toBe(true);
-      // Masked in the response
       const data = res.data as Record<string, unknown>;
-      expect(data.fullName).toBe('Juan G.');
+      // Plain — no masking
+      expect(data.fullName).toBe('Juan García López');
+      expect(String(data.fullName)).not.toContain('***');
     });
 
     it('uses patientId from path and doctorId from auth token — anti-IDOR', async () => {

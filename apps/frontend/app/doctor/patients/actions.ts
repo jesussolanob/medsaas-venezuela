@@ -14,10 +14,9 @@ import { appErrorToString } from '@/lib/app-error';
  * function signatures / return shapes as before — the mapping happens here.
  *
  * Backend endpoints consumed:
- *   GET    /api/patients?page=&limit=           → list (paginated, PII masked)
+ *   GET    /api/patients?page=&limit=           → list (paginated, PII in plain to owner)
  *   POST   /api/patients                        → create
  *   PUT    /api/patients/:id                    → update
- *   GET    /api/patients/:id/reveal             → reveal PII + audit log
  *   GET    /api/consultations/patient/:id       → patient consultation history
  *   POST   /api/consultations                   → create consultation
  *   PUT    /api/consultations/:id               → update consultation fields
@@ -111,22 +110,6 @@ interface BackendPatientListItem {
   createdAt: string;
 }
 
-interface BackendPatientDetail extends BackendPatientListItem {
-  authUserId: string | null;
-  birthDate: string | null;
-  age: number | null;
-  sex: string | null;
-  bloodType: string | null;
-  allergies: string | null;
-  chronicConditions: string | null;
-  address: string | null;
-  city: string | null;
-  emergencyContactName: string | null;
-  emergencyContactPhone: string | null;
-  notes: string | null;
-  updatedAt: string;
-}
-
 // NestJS consultations mapper returns snake_case
 interface BackendConsultation {
   id: string;
@@ -160,32 +143,6 @@ function mapListItemToPatient(item: BackendPatientListItem): Patient {
     source: item.source,
     auth_user_id: null,
     created_at: item.createdAt,
-  };
-}
-
-function mapDetailToPatient(detail: BackendPatientDetail): Patient {
-  return {
-    id: detail.id,
-    doctor_id: detail.doctorId,
-    full_name: detail.fullName,
-    age: detail.age,
-    phone: detail.phone,
-    cedula: detail.cedula,
-    email: detail.email,
-    sex: detail.sex,
-    notes: detail.notes,
-    source: detail.source,
-    auth_user_id: detail.authUserId,
-    birth_date: detail.birthDate,
-    address: detail.address,
-    city: detail.city,
-    blood_type: detail.bloodType,
-    allergies: detail.allergies,
-    chronic_conditions: detail.chronicConditions,
-    emergency_contact_name: detail.emergencyContactName,
-    emergency_contact_phone: detail.emergencyContactPhone,
-    avatar_url: null,
-    created_at: detail.createdAt,
   };
 }
 
@@ -467,25 +424,6 @@ export async function updatePatient(
 
   revalidatePath('/doctor/patients');
   return { success: true };
-}
-
-// ---------------------------------------------------------------------------
-// Reveal PII
-// ---------------------------------------------------------------------------
-
-/** Fetch the full unmasked patient record. Inserts an audit log row server-side. */
-export async function revealPatient(patientId: string): Promise<Patient | null> {
-  const result = await backendGet<BackendPatientDetail>(`/api/patients/${patientId}/reveal`);
-
-  if (!result.ok) {
-    log.error('[revealPatient] backend error', {
-      code: result.error.code,
-      status: result.error.status,
-    });
-    return null;
-  }
-
-  return mapDetailToPatient(result.value);
 }
 
 // ---------------------------------------------------------------------------

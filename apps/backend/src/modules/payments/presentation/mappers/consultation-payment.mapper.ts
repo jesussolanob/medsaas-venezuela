@@ -4,8 +4,8 @@ import type { ConsultationPayment } from '../../domain/entities/consultation-pay
  * Maps a ConsultationPayment domain entity to the API response shape.
  *
  * SECURITY: Never expose patient PII (full_name, phone, email, cedula) in this
- * response — only patient_id is returned. The caller must use the patients
- * /reveal endpoint to get masked or decrypted PII separately.
+ * response — only patient_id is returned. Patient PII is available via
+ * GET /api/patients/:id (owner-scoped, audit-logged).
  *
  * Financial fields (amount, currency, payment_method, reference_number,
  * receipt_url, notes) are not PHI per CLAUDE.md policy and are returned in full.

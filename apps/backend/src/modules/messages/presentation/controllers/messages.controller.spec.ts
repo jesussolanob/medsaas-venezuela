@@ -60,7 +60,7 @@ describe('MessagesController', () => {
   });
 
   describe('threads', () => {
-    it('returns success envelope with masked thread list', async () => {
+    it('returns success envelope with plaintext thread list', async () => {
       const threads = [makeThread()];
       mockListThreads.execute.mockResolvedValue(threads);
 
@@ -68,8 +68,8 @@ describe('MessagesController', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(1);
-      // Masking applied in mapper — "Juan Pérez" → "Juan P."
-      expect(result.data[0]!.patientName).toBe('Juan P.');
+      // PII in plain — "Juan Pérez" returned as-is
+      expect(result.data[0]!.patientName).toBe('Juan Pérez');
       expect(mockListThreads.execute).toHaveBeenCalledWith(DOCTOR_ID);
     });
 

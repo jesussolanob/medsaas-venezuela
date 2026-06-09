@@ -19,7 +19,7 @@ export interface GetConsultationByIdInput {
  *
  * TODO (before production): log PHI access to access_audit_log.
  * Record: actor_id, patient_id, resource_type='consultation', action='read', consultation_id.
- * See patients/RevealPatientDataUseCase for the reference implementation.
+ * See GetPatientUseCase (patients module) for the reference audit pattern.
  */
 @Injectable()
 export class GetConsultationByIdUseCase {

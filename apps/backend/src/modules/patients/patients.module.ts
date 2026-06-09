@@ -10,7 +10,6 @@ import { PATIENT_REPOSITORY } from './domain/repositories/patient.repository';
 import { CreatePatientUseCase } from './application/use-cases/patients/create-patient.use-case';
 import { GetPatientUseCase } from './application/use-cases/patients/get-patient.use-case';
 import { ListPatientsUseCase } from './application/use-cases/patients/list-patients.use-case';
-import { RevealPatientDataUseCase } from './application/use-cases/patients/reveal-patient-data.use-case';
 import { SearchPatientsUseCase } from './application/use-cases/patients/search-patients.use-case';
 import { UpdatePatientUseCase } from './application/use-cases/patients/update-patient.use-case';
 import { DeletePatientUseCase } from './application/use-cases/patients/delete-patient.use-case';
@@ -33,7 +32,6 @@ import { PatientsController } from './presentation/controllers/patients.controll
     CreatePatientUseCase,
     GetPatientUseCase,
     ListPatientsUseCase,
-    RevealPatientDataUseCase,
     SearchPatientsUseCase,
     UpdatePatientUseCase,
     DeletePatientUseCase,

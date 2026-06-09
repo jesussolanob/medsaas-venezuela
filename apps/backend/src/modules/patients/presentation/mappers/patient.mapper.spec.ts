@@ -1,4 +1,4 @@
-import { toPatientListItem, toPatientDetail, toPatientReveal } from './patient.mapper';
+import { toPatientListItem, toPatientDetail } from './patient.mapper';
 import { Patient } from '../../domain/entities/patient.entity';
 
 const now = new Date('2026-06-01T00:00:00Z');
@@ -25,28 +25,29 @@ function makePatient(overrides: Partial<ConstructorParameters<typeof Patient>[0]
 }
 
 describe('patient.mapper', () => {
-  describe('toPatientListItem — minimal list shape', () => {
-    it('masks the full name to first-name + last-initial', () => {
+  describe('toPatientListItem — minimal list shape, PII in plain', () => {
+    it('returns full name without masking', () => {
       const item = toPatientListItem(makePatient());
-      expect(item.fullName).toBe('Juan G.');
+      expect(item.fullName).toBe('Juan Pérez García');
+      expect(item.fullName).not.toContain('***');
     });
 
-    it('masks cédula keeping prefix and last 2 digits', () => {
+    it('returns cédula in plain — no masking', () => {
       const item = toPatientListItem(makePatient());
-      expect(item.cedula).toMatch(/^V-/);
-      expect(item.cedula).toContain('***');
-      expect(item.cedula).not.toContain('12345678');
+      expect(item.cedula).toBe('V-12345678');
+      expect(String(item.cedula)).not.toContain('***');
     });
 
-    it('masks phone with *** in the middle', () => {
+    it('returns phone in plain — no masking', () => {
       const item = toPatientListItem(makePatient());
-      expect(item.phone).toContain('***');
-      expect(item.phone).not.toBe('+58412345678');
+      expect(item.phone).toBe('+58412345678');
+      expect(String(item.phone)).not.toContain('***');
     });
 
-    it('masks email keeping first char + domain', () => {
+    it('returns email in plain — no masking', () => {
       const item = toPatientListItem(makePatient());
-      expect(item.email).toMatch(/^j\*\*\*@gmail\.com$/);
+      expect(item.email).toBe('juan@gmail.com');
+      expect(String(item.email)).not.toContain('***');
     });
 
     it('returns null for absent PII fields', () => {
@@ -78,16 +79,20 @@ describe('patient.mapper', () => {
     });
   });
 
-  describe('toPatientDetail — full masked detail shape', () => {
-    it('masks PII fields', () => {
+  describe('toPatientDetail — full detail shape, PII in plain', () => {
+    it('returns PII fields without masking', () => {
       const detail = toPatientDetail(makePatient());
-      expect(detail.fullName).toBe('Juan G.');
-      expect(detail.cedula).toContain('***');
-      expect(detail.phone).toContain('***');
-      expect(detail.email).toContain('***');
+      expect(detail.fullName).toBe('Juan Pérez García');
+      expect(detail.cedula).toBe('V-12345678');
+      expect(detail.phone).toBe('+58412345678');
+      expect(detail.email).toBe('juan@gmail.com');
+      expect(String(detail.fullName)).not.toContain('***');
+      expect(String(detail.cedula)).not.toContain('***');
+      expect(String(detail.phone)).not.toContain('***');
+      expect(String(detail.email)).not.toContain('***');
     });
 
-    it('includes clinical fields', () => {
+    it('includes clinical fields in full', () => {
       const detail = toPatientDetail(makePatient());
       expect(detail.allergies).toBe('Penicilina');
       expect(detail.chronicConditions).toBe('Diabetes');
@@ -101,22 +106,19 @@ describe('patient.mapper', () => {
       expect(detail.source).toBe('booking');
       expect(detail.id).toBe(patient.id);
     });
-  });
 
-  describe('toPatientReveal — plaintext for /reveal endpoint', () => {
-    it('returns PII without masking', () => {
-      const patient = makePatient();
-      const revealed = toPatientReveal(patient);
-      expect(revealed.fullName).toBe('Juan Pérez García');
-      expect(revealed.cedula).toBe('V-12345678');
-      expect(revealed.phone).toBe('+58412345678');
-      expect(revealed.email).toBe('juan@gmail.com');
+    it('returns null for absent PII fields', () => {
+      const detail = toPatientDetail(makePatient({ cedula: null, phone: null, email: null }));
+      expect(detail.cedula).toBeNull();
+      expect(detail.phone).toBeNull();
+      expect(detail.email).toBeNull();
     });
 
-    it('includes clinical fields in plaintext', () => {
-      const revealed = toPatientReveal(makePatient());
-      expect(revealed.allergies).toBe('Penicilina');
-      expect(revealed.notes).toBe('Nota clínica');
+    it('includes timestamps', () => {
+      const patient = makePatient();
+      const detail = toPatientDetail(patient);
+      expect(detail.createdAt).toBe(patient.createdAt);
+      expect(detail.updatedAt).toBe(patient.updatedAt);
     });
   });
 });

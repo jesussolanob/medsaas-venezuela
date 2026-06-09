@@ -3,19 +3,17 @@ import type { Patient } from '../../domain/entities/patient.entity';
 /**
  * Presentation-layer mapper for patient data.
  *
- * MASKING RULE: PII masking happens here — never in the repository or use cases.
- * Reference: 00-estructura-modulo.md "El masking lo aplica el mapper en la capa
- * de presentación, nunca el repositorio."
+ * PII POLICY (2026-06-09): All endpoints are owner-scoped — doctorId is always
+ * taken from the authenticated token, never from the request body (anti-IDOR).
+ * Because the owner is authenticated and transport is TLS + VPC, PII is returned
+ * in plaintext to the owning doctor. Masking has been removed.
  *
  * TWO SHAPES:
  *   PatientListItem  — minimal fields for list responses; no clinical data.
- *   PatientDetail    — all fields for GET /:id (masked) and GET /:id/reveal (plaintext).
+ *   PatientDetail    — all fields for GET /:id (plaintext PII).
  *
- * Masked formats:
- *   full_name → "Juan P."
- *   cedula    → "V-123***78"
- *   phone     → "+584***567"
- *   email     → "j***@gmail.com"
+ * Audit log: GET /:id inserts one access_audit_log row (fieldRevealed='full_record').
+ * List and search endpoints do NOT insert audit rows.
  */
 
 // ---------------------------------------------------------------------------
@@ -33,22 +31,22 @@ export interface PatientListItem {
   createdAt: Date;
 }
 
-/** Returns a minimal masked object suitable for paginated list responses. */
+/** Returns a minimal plaintext object suitable for paginated list responses. */
 export function toPatientListItem(patient: Patient): PatientListItem {
   return {
     id: patient.id,
     doctorId: patient.doctorId,
-    fullName: maskName(patient.fullName),
-    cedula: patient.cedula ? maskCedula(patient.cedula) : null,
-    phone: patient.phone ? maskPhone(patient.phone) : null,
-    email: patient.email ? maskEmail(patient.email) : null,
+    fullName: patient.fullName,
+    cedula: patient.cedula,
+    phone: patient.phone,
+    email: patient.email,
     source: patient.source,
     createdAt: patient.createdAt,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Detail shape — all fields, used for GET /:id (masked) and GET /:id/reveal (plaintext)
+// Detail shape — all fields, plaintext PII for the owning doctor
 // ---------------------------------------------------------------------------
 
 export interface PatientDetail {
@@ -75,35 +73,8 @@ export interface PatientDetail {
   updatedAt: Date;
 }
 
-/** Returns a full masked detail object for GET /:id responses. */
+/** Returns a full plaintext detail object for GET /:id responses. */
 export function toPatientDetail(patient: Patient): PatientDetail {
-  return {
-    id: patient.id,
-    doctorId: patient.doctorId,
-    authUserId: patient.authUserId,
-    fullName: maskName(patient.fullName),
-    cedula: patient.cedula ? maskCedula(patient.cedula) : null,
-    phone: patient.phone ? maskPhone(patient.phone) : null,
-    email: patient.email ? maskEmail(patient.email) : null,
-    source: patient.source,
-    birthDate: patient.birthDate,
-    age: patient.age,
-    sex: patient.sex,
-    bloodType: patient.bloodType,
-    allergies: patient.allergies,
-    chronicConditions: patient.chronicConditions,
-    address: patient.address,
-    city: patient.city,
-    emergencyContactName: patient.emergencyContactName,
-    emergencyContactPhone: patient.emergencyContactPhone,
-    notes: patient.notes,
-    createdAt: patient.createdAt,
-    updatedAt: patient.updatedAt,
-  };
-}
-
-/** Returns a full plaintext detail object for GET /:id/reveal responses. */
-export function toPatientReveal(patient: Patient): PatientDetail {
   return {
     id: patient.id,
     doctorId: patient.doctorId,
@@ -127,36 +98,4 @@ export function toPatientReveal(patient: Patient): PatientDetail {
     createdAt: patient.createdAt,
     updatedAt: patient.updatedAt,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Masking helpers
-// ---------------------------------------------------------------------------
-
-function maskName(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  const first = parts[0] ?? name;
-  const lastPart = parts.length > 1 ? parts[parts.length - 1] : undefined;
-  const lastInitial = lastPart ? ` ${lastPart[0]}.` : '';
-  return `${first}${lastInitial}`;
-}
-
-function maskCedula(cedula: string): string {
-  const prefix = /^[VvEe]-?/.exec(cedula)?.[0] ?? '';
-  const digits = cedula.slice(prefix.length);
-  if (digits.length <= 4) return cedula;
-  return `${prefix}${digits.slice(0, 3)}***${digits.slice(-2)}`;
-}
-
-function maskPhone(phone: string): string {
-  if (phone.length <= 6) return phone;
-  return `${phone.slice(0, 4)}***${phone.slice(-3)}`;
-}
-
-function maskEmail(email: string): string {
-  const atIndex = email.indexOf('@');
-  if (atIndex <= 0) return email;
-  const local = email.slice(0, atIndex);
-  const domain = email.slice(atIndex + 1);
-  return `${local[0] ?? ''}***@${domain}`;
 }

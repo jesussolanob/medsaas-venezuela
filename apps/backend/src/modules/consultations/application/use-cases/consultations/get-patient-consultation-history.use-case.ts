@@ -23,7 +23,7 @@ export interface GetPatientConsultationHistoryInput {
  *
  * TODO (before production): log PHI access to access_audit_log.
  * Record one entry per bulk access: actor_id, patient_id, resource_type='consultation_history',
- * action='list'. See patients/RevealPatientDataUseCase for the reference implementation.
+ * action='list'. See GetPatientUseCase (patients module) for the reference audit pattern.
  */
 @Injectable()
 export class GetPatientConsultationHistoryUseCase {
