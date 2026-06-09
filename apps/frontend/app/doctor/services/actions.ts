@@ -24,20 +24,20 @@ import {
   backendDelete,
   type AppError,
 } from '@/lib/api-client.server';
-import type { DoctorService } from '@/app/doctor/actions';
-
 // NOTE: do NOT re-export types from a 'use server' module (e.g. `export type { DoctorService }`).
 // Next.js' server-action transform emits a runtime server-reference for every named export,
 // which for an erased type becomes `ReferenceError: <Type> is not defined` at module eval
-// (crashes any page importing from here). Consumers import DoctorService from '@/app/doctor/actions'.
+// (crashes any page importing from here). Types live in services-shared.ts instead.
+import type { BackendServiceRaw, DoctorService } from '@/app/doctor/services-shared';
+import { mapDoctorService } from '@/app/doctor/services-shared';
+
 export type ServiceActionResult =
   | { success: true; service?: DoctorService }
   | { success: false; error: string };
 
-
 /** Fetch all pricing plans for the authenticated doctor. */
 export async function getDoctorServices(): Promise<DoctorService[]> {
-  const result = await backendGet<DoctorService[]>('/api/doctor/services');
+  const result = await backendGet<BackendServiceRaw[]>('/api/doctor/services');
 
   if (!result.ok) {
     log.error('[getDoctorServices] backend error', {
@@ -47,7 +47,7 @@ export async function getDoctorServices(): Promise<DoctorService[]> {
     return [];
   }
 
-  return Array.isArray(result.value) ? result.value : [];
+  return Array.isArray(result.value) ? result.value.map(mapDoctorService) : [];
 }
 
 /** Create a new pricing plan. */

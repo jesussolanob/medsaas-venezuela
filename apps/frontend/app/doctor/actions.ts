@@ -130,20 +130,20 @@ export async function getDoctorSubscription(): Promise<BackendSubscription | nul
 // Doctor services / pricing plans (from NestJS backend)
 // ---------------------------------------------------------------------------
 
-interface BackendService {
-  id: string;
-  name: string;
-  price_usd: number;
-  duration_minutes: number;
-  sessions_count: number | null;
-  is_active: boolean;
-}
+// Types and mapper live in services-shared.ts (plain module, no 'use server')
+// so they can be imported by both server-action modules and client components
+// without hitting the "only async functions" constraint.
+import type { BackendServiceRaw, DoctorService } from './services-shared';
+import { mapDoctorService } from './services-shared';
 
-export type DoctorService = BackendService;
+// NOTE: do not re-export DoctorService from this 'use server' module. No consumer
+// imports the type from here (they import the async functions), and a type re-export
+// in a 'use server' file risks the Turbopack server-reference crash. Import the type
+// from '@/app/doctor/services-shared' instead.
 
 /** Fetch doctor's pricing plans / services. */
 export async function getDoctorServices(): Promise<DoctorService[]> {
-  const result = await backendGet<DoctorService[]>('/api/doctor/services');
+  const result = await backendGet<BackendServiceRaw[]>('/api/doctor/services');
 
   if (!result.ok) {
     log.error('[getDoctorServices] backend error', {
@@ -153,7 +153,7 @@ export async function getDoctorServices(): Promise<DoctorService[]> {
     return [];
   }
 
-  return Array.isArray(result.value) ? result.value : [];
+  return Array.isArray(result.value) ? result.value.map(mapDoctorService) : [];
 }
 
 // ---------------------------------------------------------------------------

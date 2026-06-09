@@ -13,8 +13,7 @@
  *   GET /api/doctor/services            → pricing_plans (servicios)
  *   GET /api/doctor/billing             → billing_documents (para stats)
  *
- * GAP backend (Fase 5/mejora): los servicios no tienen `description`. DEFERRED Fase 5:
- * PDF del recibo, email, storage de comprobantes.
+ * DEFERRED Fase 5: PDF del recibo, email, storage de comprobantes.
  */
 
 import { backendGet } from '@/lib/api-client.server';
@@ -86,7 +85,7 @@ export async function getBillingServices(): Promise<BillingService[]> {
       id: s.id,
       name: s.name,
       price_usd: s.price_usd,
-      description: '', // GAP: backend service has no description field
+      description: s.description,
       is_active: s.is_active,
     }));
 }

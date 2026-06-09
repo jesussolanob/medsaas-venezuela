@@ -77,11 +77,11 @@ export default function ServicesPage() {
         name: d.name,
         price_usd: d.price_usd,
         duration_minutes: d.duration_minutes,
-        sessions_count: d.sessions_count ?? 1,
+        sessions_count: d.sessions_count,
         is_active: d.is_active,
-        show_in_booking: d.is_active ?? true, // use is_active as proxy (backend field)
-        description: '',
-        type: 'plan' as const,
+        show_in_booking: d.show_in_booking,
+        description: d.description,
+        type: d.type,
       })),
     );
     setLoading(false);
