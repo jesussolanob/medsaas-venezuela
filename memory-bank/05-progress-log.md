@@ -1008,3 +1008,34 @@ vivo OK (DolarAPI: USD 567,68 / EUR 655,38).
 **Observaciones NO bug (deuda/data):** "999d" de actividad = sentinela de last_sign_in sin Auth0 (Fase 4);
 `/doctor/settings` imágenes rotas por seed basura (`http://x/logo.png`); 2 warnings eslint pre-existentes
 (`Plus`, `AppError` sin usar) NO introducidos por estos fixes. Cambios SIN commitear aún (working tree).
+
+## 2026-06-09 — Round CRUD + verificación en BD (Doctor) — 1 bug de contrato reparado
+
+Segundo round de QA: probar CREATE/UPDATE/DELETE reales contra navegador + confirmar persistencia en
+Postgres (MCP read-only). Foco: módulos de paciente y servicios del doctor.
+
+**✅ Crear paciente** (`/doctor/patients` → Nuevo paciente): persiste en `patients` con **PHI cifrado
+AES-256-GCM** verificado en BD (`full_name`/`cedula`/`phone`/`email` = ciphertext, no plaintext;
+`*_search_hash` de 64 chars presentes; `doctor_id` = owner; `source=manual`). UI enmascara cédula/teléfono.
+
+**✅ CRUD servicios** (`/doctor/services`): CREATE (pricing_plans, precio/duración/owner OK) · READ ·
+UPDATE (precio 25→35 + description null→"Consulta de prueba QA" persisten) · DELETE (hard delete, fila
+eliminada). Todo verificado en BD, 0 errores de consola.
+
+**🐛 HIGH — bug de contrato camelCase/snake_case en `/api/doctor/services`** (encontrado al renderizar el
+1er servicio). El backend serializa camelCase (`priceUsd`/`durationMinutes`/`isActive`/`showInBooking`/
+`description`/`type`) pero el tipo del front `BackendService` estaba declarado snake_case → los 3 consumidores
+de `getDoctorServices` leían `undefined`. Rompía: services/page.tsx (crash `toFixed`), consultations (planes a
+$0), billing (`filter(is_active)` eliminaba todos). **Fix (commit 969ac81):** módulo plano
+`app/doctor/services-shared.ts` (sin `'use server'`) con `BackendServiceRaw` (camelCase) + `DoctorService`
+(snake_case normalizado, con show_in_booking/description/type) + `mapDoctorService` (defaults defensivos).
+Ambos módulos `'use server'` importan el mapper (valor) + tipos (`import type`) del módulo plano y normalizan
+en `getDoctorServices`. **LECCIÓN reforzada:** un módulo `'use server'` NO puede exportar nada que no sea
+función async — ni helpers sync ni re-exports de tipos (la 1ª iteración del fix exportó `mapDoctorService`
+sync desde un `'use server'` → "Server Actions must be async functions"; corregido moviéndolo al módulo plano).
+tsc no detecta estas constraints → SIEMPRE verificar render real en navegador. code-reviewer APROBADO (0 CRIT/HIGH).
+
+**PENDIENTE del round CRUD (continuación):** consulta (cifrado clínico), cita/agenda, registrar pago (cobros),
+editar perfil; admin CRUD (crear médico, role-capabilities, suscripciones). Dato de prueba dejado en BD:
+1 paciente "QA Test Paciente Cifrado" (dev doctor) — limpiar cuando se desee. Gmail+Sentry MCP diferidos a
+otra sesión (Sentry MCP ya agregado a la config, falta OAuth + reiniciar; flags Sentry quedaron en false).
