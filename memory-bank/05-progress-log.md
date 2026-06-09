@@ -1039,3 +1039,41 @@ tsc no detecta estas constraints → SIEMPRE verificar render real en navegador.
 editar perfil; admin CRUD (crear médico, role-capabilities, suscripciones). Dato de prueba dejado en BD:
 1 paciente "QA Test Paciente Cifrado" (dev doctor) — limpiar cuando se desee. Gmail+Sentry MCP diferidos a
 otra sesión (Sentry MCP ya agregado a la config, falta OAuth + reiniciar; flags Sentry quedaron en false).
+
+## 2026-06-09 — Round CRUD Admin + decisión de política de PII (plan para próxima sesión)
+
+**ADMIN CRUD verificado:**
+- ✅ **Role-capabilities** (`/admin/roles`): toggle doctor/finances/view true→false→true persiste en
+  `role_capabilities` (módulo `module_key`+`action`+`allowed`), 0 errores. Cache se invalida.
+- ⏭️ **Crear médico** (`NewDoctorModal`): es **stub intencional** ("Alta disponible en Etapa 2/Auth0; usa seed").
+  No persiste — esperado, no bug.
+- ⚠️ **Extender/suspender suscripción** (`/admin/subscriptions`): el POST `/api/admin/subscriptions/extend`
+  da 400 "Validation failed" para los 3 doctores con suscripción, PERO **NO es bug**: sus `doctor_id` son
+  UUIDs de seed no-RFC (`bbbbbbbb-...`, `00000000-0000-0000-0000-...`, nibble de versión "0") y Zod v4
+  `.uuid()` los rechaza. Confirmado con curl: UUID v4 válido (dev doctor) → **201 OK**; UUID seed inválido → 400.
+  En producción los ids son `gen_random_uuid()` (v4) → funciona. **Deuda opcional:** arreglar el seed para
+  usar UUIDs v4 válidos. (Al confirmar se extendió +1 mes la suscripción del dev doctor vía curl — dato dev.)
+
+**🐛 BUGS del round CRUD (pendientes de fix la próxima sesión):**
+1. **HIGH — crear consulta/cita para paciente EXISTENTE falla (400 en `/api/book`)**: `NewAppointmentFlow`
+   (componente, líneas ~392-395) manda `selectedPatient.full_name/phone/email/cedula`, pero el resultado de
+   búsqueda trae esos valores **enmascarados/vacíos** → backend responde "Se requiere nombre y email". Fix
+   acordado: mandar `patientId` y que `/api/book` + booking resuelvan el paciente existente server-side.
+2. **MEDIUM — teléfono del perfil del doctor se pierde en silencio**: `/doctor/settings` muestra el campo
+   "Teléfono" editable pero `settings/actions.ts updateProfile` solo envía `specialty`+`professional_title`
+   (línea 22 lo documenta: "phone → not in profiles model for this module"). El usuario escribe, guarda, se
+   pierde (la columna `profiles.phone` existe). Fix: cablear phone end-to-end o deshabilitar el campo.
+
+**🔐 DECISIÓN DE POLÍTICA (usuario, 2026-06-09) — DESENMASCARAR PII PARA EL DOCTOR DUEÑO:**
+Revierte el "listas siempre enmascaradas + /reveal". El doctor debe ver a SUS pacientes en **PLANO** (el
+backend descifra y devuelve plano al dueño); se confía en TLS + VPC de GCP para el transporte.
+- **Backend** (patients list/detail/search/cita-360 + messages name): el mapper devuelve PII **descifrada al
+  doctor dueño** en vez de enmascarada.
+- **Mantener:** anti-IDOR (doctor solo ve SUS pacientes), **`access_audit_log` (seguir registrando el acceso
+  a PII)**, admin solo-stats (nunca PII), nunca loguear PII.
+- **Eliminar:** el endpoint/flujo **`/reveal`** (ya no hace falta).
+- **Booking** se beneficia: con la lista en plano + pasar `patientId`, el 400 desaparece.
+- **Ejecutar la PRÓXIMA SESIÓN** (cross-stack: backend-agent + **security-agent obligatorio** por tocar PII;
+  lead verifica en navegador + BD). Requiere instalar los MCPs (Gmail + Sentry) al inicio.
+
+**Dato de prueba dejado en BD:** paciente "QA Test Paciente Cifrado" (dev doctor). Limpiar si se desea.
