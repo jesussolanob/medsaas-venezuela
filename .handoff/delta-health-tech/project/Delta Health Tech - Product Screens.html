@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>Delta Health Tech · Product Screens</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand-tokens.css"/>
+<style>
+  body { margin: 0; background: var(--dh-bone); font-family: var(--dh-font-body); color: var(--dh-ink); }
+  .wrap { padding: 48px 40px 80px; max-width: 1680px; margin: 0 auto; }
+  .page-head { margin-bottom: 40px; }
+  .page-head .eyebrow { font-size: 12px; font-family: var(--dh-font-mono); color: var(--dh-turquoise-700);
+    letter-spacing: .12em; text-transform: uppercase; font-weight: 500; margin-bottom: 10px; }
+  .page-head h1 { margin: 0; font-family: var(--dh-font-display); font-size: 48px; font-weight: 700;
+    letter-spacing: -.025em; }
+  .page-head p { margin: 10px 0 0; font-size: 17px; color: var(--dh-gray-600); max-width: 720px; line-height: 1.5; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 28px; background: #fff;
+    padding: 6px; border-radius: 999px; border: 1px solid var(--dh-gray-100);
+    width: fit-content; }
+  .tabs button { background: transparent; border: none; font-family: inherit; cursor: pointer;
+    padding: 10px 20px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    color: var(--dh-gray-600); transition: all .15s; display: flex; align-items: center; gap: 8px; }
+  .tabs button:hover { color: var(--dh-ink); }
+  .tabs button.active { background: var(--dh-ink); color: #fff; }
+  .tabs button .dot { width: 8px; height: 8px; border-radius: 999px; }
+
+  .frame {
+    background: #fff; border: 1px solid var(--dh-gray-100);
+    border-radius: 20px; overflow: hidden;
+    box-shadow: 0 30px 60px -20px rgba(10,20,36,.12), 0 8px 20px -10px rgba(10,20,36,.08);
+    height: 920px;
+  }
+  .frame-label {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 20px; background: var(--dh-gray-50); border-bottom: 1px solid var(--dh-gray-100);
+    font-size: 12px; font-family: var(--dh-font-mono); color: var(--dh-gray-600); letter-spacing: .06em;
+  }
+  .frame-label .dots { display: flex; gap: 6px; }
+  .frame-label .dots span { width: 10px; height: 10px; border-radius: 999px; background: var(--dh-gray-200); }
+  .frame-label .dots span:nth-child(1) { background: #FF6157; }
+  .frame-label .dots span:nth-child(2) { background: #FFBD2E; }
+  .frame-label .dots span:nth-child(3) { background: #28C940; }
+  .frame-body { height: calc(100% - 41px); }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<template id="tpl">
+  <div class="wrap">
+    <div class="page-head">
+      <div class="eyebrow">Delta Health Tech · Product System</div>
+      <h1>Pantallas de producto</h1>
+      <p>Interfaces de Super Admin, Especialista y Paciente construidas sobre los tokens de marca. Cada pantalla muestra un flujo crítico del producto con la identidad completa aplicada.</p>
+    </div>
+  </div>
+</template>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="logo.jsx"></script>
+<script type="text/babel" src="ui-components.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+
+<script type="text/babel">
+  const { useState, useEffect } = React;
+
+  const SCREENS = [
+    { id: "admin",      label: "Super Admin",         dot: "var(--dh-turquoise)", Comp: () => <ScreenSuperAdmin/>,    path: "/admin/dashboard" },
+    { id: "esp-agenda", label: "Especialista · Agenda", dot: "var(--dh-coral)",   Comp: () => <ScreenEspecialista/>, path: "/esp/agenda" },
+    { id: "esp-hist",   label: "Especialista · Historia",dot: "var(--dh-ink)",    Comp: () => <ScreenHistoria/>,     path: "/esp/pacientes/laura-castro" },
+    { id: "paciente",   label: "Paciente · Inicio",   dot: "var(--dh-turquoise-700)", Comp: () => <ScreenPaciente/>, path: "/app/inicio" },
+  ];
+
+  const App = () => {
+    const [active, setActive] = useState(() => localStorage.getItem("dh-screen") || "admin");
+    useEffect(() => { localStorage.setItem("dh-screen", active); }, [active]);
+    const current = SCREENS.find(s => s.id === active) || SCREENS[0];
+    const Comp = current.Comp;
+    return (
+      <div className="wrap">
+        <div className="page-head">
+          <div className="eyebrow">Delta Health Tech · Product System</div>
+          <h1>Pantallas de producto</h1>
+          <p>Interfaces de Super Admin, Especialista y Paciente construidas sobre los tokens de marca. Cada pantalla muestra un flujo crítico del producto con la identidad completa aplicada.</p>
+        </div>
+
+        <div className="tabs" role="tablist">
+          {SCREENS.map(s => (
+            <button key={s.id} className={active === s.id ? "active" : ""} onClick={() => setActive(s.id)}>
+              <span className="dot" style={{ background: s.dot }}/>
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="frame">
+          <div className="frame-label">
+            <div className="dots"><span/><span/><span/></div>
+            <div>delta.health<span style={{opacity:.5}}>{current.path}</span></div>
+            <div style={{opacity:.5}}>1440 × 900</div>
+          </div>
+          <div className="frame-body"><Comp/></div>
+        </div>
+      </div>
+    );
+  };
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+
+</body>
+</html>

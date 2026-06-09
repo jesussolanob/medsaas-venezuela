@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Delta Health Tech · App Icons</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand-tokens.css" />
+<style>
+  body {
+    background: var(--dh-bone);
+    padding: 64px 80px;
+    font-family: var(--dh-font-body);
+    color: var(--dh-ink);
+    margin: 0;
+  }
+  h1 { font-size: 44px; font-weight: 800; letter-spacing: -.025em; margin: 0 0 8px; }
+  .sub { font-size: 18px; color: var(--dh-gray-600); max-width: 720px; line-height: 1.5; margin-bottom: 56px; }
+  .section { margin-bottom: 72px; }
+  .section-title {
+    font-size: 11px; font-family: var(--dh-font-mono);
+    letter-spacing: .14em; text-transform: uppercase;
+    color: var(--dh-gray-400); margin-bottom: 20px;
+  }
+  .section h2 { font-size: 28px; font-weight: 700; margin: 0 0 8px; letter-spacing: -.015em; }
+  .section p { font-size: 15px; color: var(--dh-gray-600); max-width: 640px; margin: 0 0 28px; line-height: 1.55; }
+  .grid { display: grid; gap: 24px; }
+  .card {
+    background: #fff; border: 1px solid var(--dh-gray-100);
+    border-radius: 22px; padding: 24px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .card .label { display: flex; justify-content: space-between; align-items: center; }
+  .card .label .name { font-weight: 700; font-size: 15px; }
+  .card .label .size {
+    font-family: var(--dh-font-mono); font-size: 11px;
+    color: var(--dh-gray-400); letter-spacing: .06em;
+  }
+  .card .hint { font-size: 12px; color: var(--dh-gray-600); }
+  .preview { display: flex; align-items: center; justify-content: center; padding: 20px 0; }
+  .ctx {
+    display: flex; gap: 24px; align-items: center;
+    padding: 24px; background: var(--dh-gray-50);
+    border-radius: 18px;
+  }
+</style>
+</head>
+<body>
+
+<h1>App Icons</h1>
+<p class="sub">
+  Íconos de Delta Health Tech para App Store y Play Store. El isotipo central
+  sobre fondo turquesa sólido — máxima presencia, reconocible incluso en 40×40 px.
+</p>
+
+<!-- ========== PRINCIPAL ========== -->
+<div class="section">
+  <div class="section-title">Ícono principal</div>
+  <h2>Isotipo sobre turquesa</h2>
+  <p>
+    Versión definitiva. El lazo en blanco + coral sobre fondo turquesa #06B6D4
+    ofrece el mejor contraste en home screens claros y oscuros, y mantiene
+    legibilidad en tamaños pequeños.
+  </p>
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card">
+      <div class="label"><span class="name">iOS · 1024 × 1024</span><span class="size">PNG · sin transparencia</span></div>
+      <div class="preview">
+        <!-- iOS icon: rounded square, NO transparent bg -->
+        <svg width="320" height="320" viewBox="0 0 1024 1024">
+          <rect width="1024" height="1024" rx="230" fill="#06B6D4"/>
+          <!-- Halo -->
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="rgba(255,255,255,0.15)" stroke-width="240" stroke-linecap="round" fill="none"/>
+          <!-- Curva guía (blanca) -->
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="#fff" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <!-- Curva receptiva (coral) -->
+          <path d="M495 785 C 666 785 785 666 751 512"
+            stroke="#FF8A65" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <!-- Punto de encuentro -->
+          <circle cx="666" cy="614" r="44" fill="#FF8A65"/>
+        </svg>
+      </div>
+      <div class="hint">iOS aplica sus propias esquinas redondeadas — entregar como cuadrado sólido 1024×1024 PNG.</div>
+    </div>
+
+    <div class="card">
+      <div class="label"><span class="name">Android · 512 × 512</span><span class="size">PNG · sin transparencia</span></div>
+      <div class="preview">
+        <!-- Android icon: circle safe zone -->
+        <svg width="320" height="320" viewBox="0 0 1024 1024">
+          <rect width="1024" height="1024" rx="230" fill="#06B6D4"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="rgba(255,255,255,0.15)" stroke-width="240" stroke-linecap="round" fill="none"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="#fff" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <path d="M495 785 C 666 785 785 666 751 512"
+            stroke="#FF8A65" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <circle cx="666" cy="614" r="44" fill="#FF8A65"/>
+        </svg>
+      </div>
+      <div class="hint">Google puede recortar en círculo, squircle o rect según launcher — el lazo debe caber dentro del 66% central.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PREVIEWS EN CONTEXTO ========== -->
+<div class="section">
+  <div class="section-title">Vista en el dispositivo</div>
+  <h2>Cómo se ve en el home screen</h2>
+  <p>El ícono al lado de apps conocidas — verifica legibilidad y presencia.</p>
+
+  <div class="ctx">
+    <!-- iOS row -->
+    <div style="flex: 1;">
+      <div style="font-size: 13px; font-family: var(--dh-font-mono); color: var(--dh-gray-600); margin-bottom: 14px; letter-spacing: .06em;">iOS</div>
+      <div style="display: flex; gap: 18px; align-items: center;">
+        <!-- Delta icon -->
+        <svg width="90" height="90" viewBox="0 0 1024 1024" style="border-radius: 22px;">
+          <rect width="1024" height="1024" fill="#06B6D4"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="rgba(255,255,255,0.15)" stroke-width="240" stroke-linecap="round" fill="none"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="#fff" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <path d="M495 785 C 666 785 785 666 751 512"
+            stroke="#FF8A65" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <circle cx="666" cy="614" r="44" fill="#FF8A65"/>
+        </svg>
+        <!-- Placeholders -->
+        <div style="width: 90px; height: 90px; border-radius: 22px; background: linear-gradient(135deg, #34C759, #30B050);"></div>
+        <div style="width: 90px; height: 90px; border-radius: 22px; background: #fff; display:flex;align-items:center;justify-content:center;color:#000;font-weight:700;font-size:38px;">A</div>
+        <div style="width: 90px; height: 90px; border-radius: 22px; background: linear-gradient(135deg, #5856D6, #AF52DE);"></div>
+      </div>
+    </div>
+
+    <!-- Android row -->
+    <div style="flex: 1;">
+      <div style="font-size: 13px; font-family: var(--dh-font-mono); color: var(--dh-gray-600); margin-bottom: 14px; letter-spacing: .06em;">Android (adaptative)</div>
+      <div style="display: flex; gap: 18px; align-items: center;">
+        <svg width="90" height="90" viewBox="0 0 1024 1024" style="border-radius: 50%;">
+          <rect width="1024" height="1024" fill="#06B6D4"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="rgba(255,255,255,0.15)" stroke-width="240" stroke-linecap="round" fill="none"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="#fff" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <path d="M495 785 C 666 785 785 666 751 512"
+            stroke="#FF8A65" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <circle cx="666" cy="614" r="44" fill="#FF8A65"/>
+        </svg>
+        <div style="width: 90px; height: 90px; border-radius: 50%; background: #1877F2; display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:50px;font-family:serif;">f</div>
+        <div style="width: 90px; height: 90px; border-radius: 50%; background: linear-gradient(135deg, #FF6B6B, #FF8E53);"></div>
+        <div style="width: 90px; height: 90px; border-radius: 50%; background: #25D366; display:flex;align-items:center;justify-content:center;"><div style="width:40px;height:40px;background:#fff;border-radius:50%;"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== VARIACIONES ========== -->
+<div class="section">
+  <div class="section-title">Variaciones de respaldo</div>
+  <h2>Alternativas a considerar</h2>
+  <p>En caso de querer explorar opciones, aquí hay tres direcciones adicionales.</p>
+
+  <div class="grid" style="grid-template-columns: repeat(3, 1fr);">
+    <!-- V2 — Inverso: turquesa sobre blanco -->
+    <div class="card">
+      <div class="label"><span class="name">V2 · Inverso</span><span class="size">Alt</span></div>
+      <div class="preview">
+        <svg width="200" height="200" viewBox="0 0 1024 1024" style="border-radius: 46px; border: 1px solid #E8ECF0;">
+          <rect width="1024" height="1024" fill="#fff"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="#06B6D4" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <path d="M495 785 C 666 785 785 666 751 512"
+            stroke="#FF8A65" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <circle cx="666" cy="614" r="44" fill="#FF8A65"/>
+        </svg>
+      </div>
+      <div class="hint">Blanco. Elegante pero se pierde contra fondos claros.</div>
+    </div>
+
+    <!-- V3 — Gradiente sutil -->
+    <div class="card">
+      <div class="label"><span class="name">V3 · Gradiente</span><span class="size">Alt</span></div>
+      <div class="preview">
+        <svg width="200" height="200" viewBox="0 0 1024 1024" style="border-radius: 46px;">
+          <defs>
+            <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#22D3EE"/>
+              <stop offset="100%" stop-color="#0891B2"/>
+            </linearGradient>
+          </defs>
+          <rect width="1024" height="1024" fill="url(#bg-grad)"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="#fff" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <path d="M495 785 C 666 785 785 666 751 512"
+            stroke="#FF8A65" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <circle cx="666" cy="614" r="44" fill="#FF8A65"/>
+        </svg>
+      </div>
+      <div class="hint">Gradiente turquesa. Más dinámico pero menos institucional.</div>
+    </div>
+
+    <!-- V4 — Dark mode -->
+    <div class="card">
+      <div class="label"><span class="name">V4 · Dark</span><span class="size">Alt</span></div>
+      <div class="preview">
+        <svg width="200" height="200" viewBox="0 0 1024 1024" style="border-radius: 46px;">
+          <rect width="1024" height="1024" fill="#0F1A2A"/>
+          <path d="M188 666 C 188 324, 478 153 666 324 C 820 461, 736 700 530 700 C 393 700 307 580 359 478"
+            stroke="#22D3EE" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <path d="M495 785 C 666 785 785 666 751 512"
+            stroke="#FF8A65" stroke-width="120" stroke-linecap="round" fill="none"/>
+          <circle cx="666" cy="614" r="44" fill="#FF8A65"/>
+        </svg>
+      </div>
+      <div class="hint">Fondo ink. Premium, serio — tal vez muy clínico para el tono cálido.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SIZES & REGLAS ========== -->
+<div class="section">
+  <div class="section-title">Tamaños requeridos</div>
+  <h2>Qué exportar</h2>
+
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card" style="gap: 0;">
+      <div style="font-weight: 700; font-size: 15px; margin-bottom: 14px;">🍎 App Store (iOS)</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">App Store listing</td><td style="text-align: right; font-family: var(--dh-font-mono);">1024×1024</td></tr>
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">iPhone @3x</td><td style="text-align: right; font-family: var(--dh-font-mono);">180×180</td></tr>
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">iPhone @2x</td><td style="text-align: right; font-family: var(--dh-font-mono);">120×120</td></tr>
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">iPad Pro @2x</td><td style="text-align: right; font-family: var(--dh-font-mono);">167×167</td></tr>
+        <tr><td style="padding: 10px 0; color: var(--dh-gray-600);">Settings / Spotlight</td><td style="text-align: right; font-family: var(--dh-font-mono);">87, 80, 58×</td></tr>
+      </table>
+    </div>
+
+    <div class="card" style="gap: 0;">
+      <div style="font-weight: 700; font-size: 15px; margin-bottom: 14px;">🤖 Play Store (Android)</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">Play Store listing</td><td style="text-align: right; font-family: var(--dh-font-mono);">512×512</td></tr>
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">Adaptive foreground</td><td style="text-align: right; font-family: var(--dh-font-mono);">432×432</td></tr>
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">Adaptive background</td><td style="text-align: right; font-family: var(--dh-font-mono);">108×108</td></tr>
+        <tr style="border-bottom: 1px solid var(--dh-gray-100);"><td style="padding: 10px 0; color: var(--dh-gray-600);">Feature graphic</td><td style="text-align: right; font-family: var(--dh-font-mono);">1024×500</td></tr>
+        <tr><td style="padding: 10px 0; color: var(--dh-gray-600);">Safe zone (central)</td><td style="text-align: right; font-family: var(--dh-font-mono);">66% del canvas</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ========== REGLAS ========== -->
+<div class="section">
+  <div class="section-title">Reglas</div>
+  <h2>Do's & Don'ts</h2>
+
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card" style="border-color: #D1FAE5; background: #F0FDF4;">
+      <div style="font-weight: 700; color: #047857; margin-bottom: 8px;">✓ Sí</div>
+      <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8; color: var(--dh-gray-800);">
+        <li>Fondo turquesa sólido (#06B6D4)</li>
+        <li>Lazo ocupa ~66% central</li>
+        <li>PNG sin transparencia</li>
+        <li>Exportar en el tamaño exacto requerido</li>
+        <li>Mantener el punto coral como ancla</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color: #FEE2E2; background: #FEF2F2;">
+      <div style="font-weight: 700; color: #B91C1C; margin-bottom: 8px;">✗ No</div>
+      <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8; color: var(--dh-gray-800);">
+        <li>Texto "Delta" dentro del ícono</li>
+        <li>Gradientes agresivos o brillos</li>
+        <li>Esquinas redondeadas propias (iOS las añade)</li>
+        <li>Sombras o efectos 3D</li>
+        <li>Transparencia en el fondo</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
