@@ -1110,3 +1110,37 @@ usuario en :3000/:3001 son procesos del usuario y NO se reinician) + curl + Post
 `node dist/apps/backend/main.js`; ya está rebuildeado con los cambios). El front (Next dev) recarga solo.
 **Dato dev dejado en BD:** `profiles.phone` del dev doctor = '04141234567' (de la verificación). Specs nuevos en
 `migracion/specs/{desenmascarar-pii-doctor,fix-phone-perfil-doctor}.md`. Próxima migración usar timestamp > 20260609000000.
+
+## ✅ AUTH0 VERIFICADO + FIX FUGA CROSS-TENANT Fase 4 (2026-06-09 cont., commit `a1e2a93`)
+
+Se levantó el stack en `AUTH_MODE=auth0` y se probó el login real con Playwright MCP (browser headed; el usuario
+metió las credenciales de Google). **Auth0 FUNCIONA end-to-end:** `/doctor` sin sesión → redirige a Auth0 →
+login Google → callback → sesión → dashboard autenticado. Onboarding correcto (resolve-identity creó perfil nuevo
+por email, rol `doctor`, auth0_sub seteado; super_admin/admin nunca se crean por esa vía). El "me dejó en el home"
+fue el `returnTo` apuntando a `/` (landing de marketing, siempre se ve deslogueado) — NO un bug.
+
+**🐛 BUG ENCONTRADO al correr auth0 de verdad (HIGH, cross-tenant):** el dashboard mostraba los pacientes del
+DOCTOR DEV (2) en vez del usuario Auth0 (0). Causa: `getDevUser()` (lee cookies dev_user_*; en auth0 no existen →
+cae al DEV_DOCTOR_UUID por defecto) se usaba directo en MUCHOS sitios, no solo en `api-client.server` (que sí
+estaba migrado a `resolveIdentity`). Afectaba dashboard KPIs (countFromEndpoint hace raw-fetch con headers
+manuales), cita-360, ehr, suggestions, storage/upload, onboarding, **y `lib/auth-guards.ts`** (→ todos los route
+handlers admin `/api/admin/*`, patient-packages, transcribe). En prod auth0 = fuga: cualquier doctor vería datos
+del doctor dev.
+
+**FIX (barrido Fase 4):** enrutar TODA la resolución de identidad por `resolveIdentity()` (lib/identity.server.ts) —
+fuente única que ya usaba api-client.server (dev→getDevUser; auth0→sesión+resolve-identity→profile UUID). 10 archivos
+de `app/` + `lib/auth-guards.ts`. `resolveIdentity` LANZA en auth0 sin sesión → manejado con try/catch (auth-guards/
+suggestions → 401 fail-closed; getDoctorId → null; addPatient → error). suggestions PATCH valida super_admin en BFF.
+`proxy.ts` intacto (rama dev del gate; auth0 usa auth0.middleware). **LECCIÓN: barrer también `lib/`, no solo `app/`**
+(el security-agent atrapó auth-guards.ts que el lead omitió; el primer veredicto fue BLOQUEADO).
+
+**Verificado en navegador AMBOS modos:** auth0 → dashboard 0 pacientes (identidad real); dev (login doctor@delta.test)
+→ 2 pacientes (doctor dev). tsc 0. security-agent + code-reviewer APROBADOS (0 CRIT/HIGH; deuda follow-up: raw-fetch
+con headers manuales en countFromEndpoint/storage = consolidar en cliente HTTP; onboarding client pasa x-dev-user-id =
+revisar en migración Auth0). **Stack revertido a AUTH_MODE=dev** al terminar.
+
+**Cómo probar Auth0:** poner `AUTH_MODE=auth0`+`NEXT_PUBLIC_AUTH_MODE=auth0` en apps/frontend/.env, reiniciar
+`nx dev frontend` (Next NO recarga .env en caliente), backend desde dist. Login completo = Google (Playwright no lo
+automatiza solo → usuario en el loop) o crear user Database en Auth0 para automatizar. Callbacks ya en localhost:3000.
+Perfil Auth0 de prueba creado en BD: `5f95b606-…` (email lucas, rol doctor). Decisiones de calendario pendientes:
+ver memoria [[calendar-integration-pending]].
