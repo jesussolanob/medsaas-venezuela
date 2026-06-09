@@ -9,6 +9,7 @@ import {
 import type { Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
 import { DomainError } from '../../domain/errors/domain.error';
+import { safeStringify, parseErrorLocation } from '@delta/shared-utils';
 
 interface ErrorBody {
   success: false;
@@ -21,7 +22,11 @@ interface ErrorBody {
  *
  * - HttpException  → its own status, code HTTP_ERROR
  * - DomainError    → 422 Unprocessable Entity, code = the domain error code
- * - anything else  → 500, logged with stack (message is never leaked to client)
+ * - anything else  → 500, logged via logger.warn with [file][method] nomenclature;
+ *                    reported to Sentry only in production.
+ *
+ * Policy: NEVER console.error — use logger.warn so Cloud Run structured logs
+ * capture it without triggering instance-level error counters.
  */
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -37,21 +42,28 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
-      message = typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
+      message =
+        typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
       code = 'HTTP_ERROR';
     } else if (exception instanceof DomainError) {
       status = exception.httpStatus ?? HttpStatus.UNPROCESSABLE_ENTITY;
       code = exception.code;
       message = exception.message;
     } else {
-      this.logger.error(
-        'Unhandled exception',
-        exception instanceof Error ? exception.stack : String(exception),
+      // Unexpected 5xx error — log with structured nomenclature and report to Sentry (prod only).
+      const err = exception instanceof Error ? exception : new Error(String(exception));
+      const { file, method } = parseErrorLocation(err);
+      const readableMessage = err.message || 'Unhandled exception';
+
+      // Always log so Cloud Run structured logs capture it locally and in prod.
+      this.logger.warn(
+        `[${file}][${method}] ${readableMessage} ${safeStringify({ name: err.name, stack: err.stack?.split('\n')[1]?.trim() ?? '' })}`,
       );
-      // Report unexpected (non-domain, non-HTTP) errors to Sentry.
-      // DomainError (4xx business rules) and HttpException are intentional
-      // and must never be sent — only true 5xx surprises land here.
-      Sentry.captureException(exception);
+
+      // Send to Sentry only in production to avoid noise during local development.
+      if (process.env.NODE_ENV === 'production') {
+        Sentry.captureException(exception);
+      }
     }
 
     const body: ErrorBody = { success: false, code, message };

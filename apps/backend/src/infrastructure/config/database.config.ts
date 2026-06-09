@@ -1,4 +1,7 @@
 import type { SequelizeModuleOptions } from '@nestjs/sequelize';
+import { Logger } from '@nestjs/common';
+
+const sqlLogger = new Logger('SQL');
 
 /**
  * Sequelize connection options for the NestJS SequelizeModule.
@@ -13,7 +16,7 @@ export const databaseConfig = (): SequelizeModuleOptions => ({
   synchronize: false,
   // SQL logging is off by default. Set DEBUG_SQL=true to enable during development.
   // Never enable in production — SQL logs can contain PII values from parameterized queries.
-  logging: process.env.DEBUG_SQL === 'true' ? console.log : false,
+  logging: process.env.DEBUG_SQL === 'true' ? (sql: string) => sqlLogger.debug(sql) : false,
   pool: { max: 10, min: 2, acquire: 30000, idle: 10000 },
   dialectOptions: {
     ssl:
