@@ -28,10 +28,44 @@ export async function GET(req: NextRequest) {
 
   params.set('limit', '200');
 
-  const result = await backendGet<unknown[]>(`/api/admin/subscriptions?${params.toString()}`);
+  const result = await backendGet<BackendSubscription[]>(
+    `/api/admin/subscriptions?${params.toString()}`,
+  );
   if (!result.ok) {
     return NextResponse.json({ error: result.error.message }, { status: result.error.status || 500 });
   }
 
-  return NextResponse.json({ doctors: result.value });
+  // El backend devuelve camelCase; la UI espera snake_case + campos derivados.
+  const now = Date.now();
+  const MS_PER_DAY = 86_400_000;
+  const doctors = result.value.map((s) => {
+    const end = s.currentPeriodEnd ? new Date(s.currentPeriodEnd).getTime() : null;
+    const daysRemaining = end !== null ? Math.ceil((end - now) / MS_PER_DAY) : 0;
+    const isExpired = end !== null ? end < now : false;
+    return {
+      doctor_id: s.doctorId,
+      doctor_name: s.doctorName,
+      doctor_email: s.doctorEmail,
+      specialty: null,
+      plan: s.plan ?? null,
+      status: s.status ?? null,
+      current_period_end: s.currentPeriodEnd ?? null,
+      days_remaining: daysRemaining,
+      is_expired: isExpired,
+      expiring_soon: !isExpired && daysRemaining <= 7,
+      is_in_trial: s.status === 'trial',
+    };
+  });
+
+  return NextResponse.json({ doctors });
+}
+
+interface BackendSubscription {
+  id: string;
+  doctorId: string;
+  doctorName: string;
+  doctorEmail: string;
+  plan: string | null;
+  status: string | null;
+  currentPeriodEnd: string | null;
 }
