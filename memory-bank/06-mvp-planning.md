@@ -35,18 +35,18 @@ Estado: Fase 0 ✅ · Fase 1 en-progreso.
 Sentry, GA4, Helicone (costos IA), Resend (email — ya en uso), Twilio (WhatsApp),
 recordatorios automáticos (Cloud Scheduler). Estado: pendiente.
 
-## GRUPO A — APIs nuevas para paridad con el proyecto original (en curso desde 2026-06-03)
+## GRUPO A — APIs nuevas para paridad con el proyecto original (✅ COMPLETO 6/6 — 2026-06-05)
 
-> Tras migrar doctor/patient/login fuera de Supabase, faltan endpoints backend que el
+> Tras migrar doctor/patient/login fuera de Supabase, faltaban endpoints backend que el
 > proyecto original tenía (63 route handlers en `app/api/*`). Grupo A = lógica de negocio
-> pura (solo Postgres), construible YA. Grupo B = Auth0 (Fase 4). Grupo C = servicios
-> externos IA/email/PDF/storage/calendar/cron/pasarela (Fase 5).
+> pura (solo Postgres). **Grupo B = Auth0 ✅ integrado** (env-gated). Grupo C = servicios
+> externos: **email/Resend ✅ y storage MinIO/GCS ✅**; pendientes IA/PDF/calendar/cron/pasarela.
 
-Orden grupo A — estado al 2026-06-04:
-**payments(cobros) ✅ → billing ✅ → leads/crm ✅ → suggestions ✅ →**
-PENDIENTE: subscriptions-ops · promotions · agenda-slots · consultation-blocks · exports CSV ·
-admin-config (roles/admins, plan-edit, app-settings). **reminders → DIFERIDO Fase 5** (el envío real
-es WhatsApp/email client-side; solo reminders_settings sería CRUD de bajo valor ahora).
+Grupo A — **✅ completo:**
+**payments(cobros) ✅ · billing ✅ · leads/crm ✅ · suggestions ✅ · subscriptions-ops ✅ ·
+promotions ✅ · agenda-slots ✅ · consultation-blocks ✅ · exports CSV ✅ · admin-config ✅
+(roles/admins, plan-edit, app-settings) · capabilities ✅ (RBAC DB-driven).**
+**reminders → DIFERIDO** (envío real WhatsApp/email + cron; solo `reminders_settings` CRUD ahora).
 **🎉 BLOQUE FRONTEND-WIRING COMPLETO (2026-06-04):** suggestions (doctor+admin) ✅ · leads/crm ✅ ·
 admin aprobaciones de pagos ✅ · admin/invoices ✅ · consultations register-payment ✅ · doctor/billing ✅.
 Commits a7ba116, 027f3ba, ee215ff, d225dff, a96fd12, db221fe. Todo cableado al backend, sin Supabase.
@@ -106,5 +106,5 @@ Dominio entrelazado con subscriptions — diseñar fronteras con cuidado. Tablas
 
 1. La migración de arquitectura (Fases 1-3) precede a cualquier feature MVP nueva.
 2. Cada feature nueva entra como controller/use-case en el backend NestJS, nunca
-   como query directa a Supabase en el frontend.
+   como query directa a la BD en el frontend (el frontend solo proxya vía BFF).
 3. Actualizar el estado de cada ítem al iniciarlo y completarlo, con fecha.

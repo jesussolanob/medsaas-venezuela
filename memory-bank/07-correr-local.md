@@ -1,7 +1,8 @@
 # 07 — Cómo correr el proyecto en local (Etapa 1, sin Supabase)
 
 > Stack local: Postgres + Redis + MinIO en Docker · backend NestJS :3001 · frontend Next.js :3000.
-> Auth = dev-stub por cookies (sin Auth0). El proyecto YA NO depende de Supabase.
+> Auth = dev-stub por cookies (default local). Auth0 ✅ disponible opcionalmente
+> (`AUTH_MODE=auth0`). El proyecto YA NO depende de Supabase.
 
 ## Requisitos
 - Docker corriendo. `pnpm` en el PATH: `export PATH="/opt/homebrew/bin:$HOME/.local/share/pnpm/bin:$PATH"`.

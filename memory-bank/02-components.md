@@ -37,11 +37,18 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
 `api/integrations/google/*`, `api/plans`, `api/public/pricing`, `api/promotions`,
 `api/onboarding`, `api/suggestions`, `api/seed-accounts`, `api/debug-booking`.
 
-> Lógica de negocio actualmente en route handlers (`app/api/**/route.ts`), no en
-> Server Actions. Cada handler hace queries directas a Supabase. La migración los
-> reescribe como controllers NestJS → use cases → repositorios Sequelize.
+> Originalmente la lógica vivía en route handlers (`app/api/**/route.ts`) con
+> queries directas a Supabase. La migración los reescribió como controllers
+> NestJS → use cases → repositorios Sequelize; el frontend ahora solo proxya
+> al backend vía BFF (`lib/api-client.server.ts`).
 
-### Migración del frontend (en curso — eliminar Supabase, conectar al backend)
+### Migración del frontend (✅ Supabase eliminado — cableado al backend)
+
+> **Estado 2026-06:** Supabase eliminado por completo (0 imports). Auth0
+> integrado env-gated (dev-stub sigue por defecto en local). Email/Resend y
+> storage MinIO/GCS operativos. Pendiente real: IA/Gemini (re-cableo), PDF de
+> recibos/informes, Google Calendar sync y cron de recordatorios. El historial
+> granular por fase de abajo se conserva como bitácora.
 
 - **Fundación ✅** (`lib/api-client.server.ts` BFF, `lib/dev-auth.ts` stub, `proxy.ts` middleware Next 16)
   - piloto **patients** (`app/doctor/patients/actions.ts` thin-proxy, cero @supabase). E2E verificado.
@@ -49,7 +56,8 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
   `app/doctor/actions.ts` + `app/doctor/services/actions.ts` nuevos; services con CRUD completo al backend;
   ehr/consultations cableados. tsc 0. Data residual → Fase 5 (ver progress-log).
 - **Patrón:** reescribir el cuerpo de cada `actions.ts`/route handler → llamar al backend vía BFF,
-  quitando `@supabase/*`; UI (.tsx) intacta. Auth = dev-stub (x-dev-\*) → Auth0 Fase 4.
+  quitando `@supabase/*`; UI (.tsx) intacta. Auth = dev-stub (x-dev-\*) por defecto;
+  Auth0 ✅ integrado (env-gated por `AUTH_MODE`).
 - **ÁREA PATIENT (portal) ✅** auth Supabase eliminada de layout/dashboard/appointments/profile
   (usan dev-stub + `app/patient/actions.ts` thin-proxy a /api/patient/\*); `DEV_PATIENT_UUID` añadido.
   Diferido Fase 5 (sin endpoint, con TODO en cada archivo): `reports`, `seguimiento` (shared_files/
@@ -59,14 +67,14 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
 - **ADMIN auth ✅ + LOGIN dev-stub ✅** admin logout y login sin Supabase (cookies dev por rol inferido
   del email; `DEV_ADMIN_UUID` …0003). Google OAuth → "próximamente" (Fase 4).
 - **Pendiente / bloqueado (frontend):**
-  - **admin DATA pages**: backend solo tiene lecturas + 3 PUT; faltan endpoints (finanzas, payments,
-    invoices, promotions, packages, reminders, roles, plan-edit, createDoctor=Auth0) + ~32 route handlers
-    `app/api/admin/*` que usan Supabase → sub-proyecto Fase 4/5.
-  - **booking público**: tiene backend (info/plans/packages/POST) pero el client embebe signup (Fase 4) +
-    storage receipts (Fase 5) + route handler `/api/book` → trabajo dedicado.
-  - **auth-recovery** (register, auth/callback, forgot/reset-password, onboarding) → Fase 4 (Auth0).
-  - Barrido final: borrar `lib/supabase/*` cuando nada de datos lo use.
-- **Diferido Fase 5** (sin endpoint backend aún): IA/Gemini, email/Resend, PDF, storage→GCS, calendar, cron.
+  - ~~**admin DATA pages**~~ → ✅ HECHO. Grupo A admin-config cableó finanzas, payments, invoices,
+    promotions, roles/capabilities, plan-edit, app-settings. `createDoctor` usa Auth0 (✅ integrado).
+  - **booking público**: backend OK (info/plans/packages/POST); el client aún embebe signup +
+    PDF/recibo. Storage de receipts ✅ disponible (MinIO/GCS).
+  - **auth-recovery** (register, auth/callback, forgot/reset-password, onboarding) → vía Auth0
+    (✅ integrado env-gated; falta cablear las pantallas de recovery al flujo Auth0).
+- **Diferido** (aún sin cablear): IA/Gemini, PDF, Google Calendar sync, cron de
+  recordatorios. (Email/Resend y storage MinIO/GCS ✅ ya integrados.)
 - UI a CONSERVAR: 104 `.tsx` (Next.js 16 + Tailwind teal/slate). 0 componentes cliente usan Supabase.
 
 ## Módulos backend NestJS (`apps/backend/src/modules/`)
@@ -115,9 +123,9 @@ Estado (orden `migracion/modulos/`):
   Storage de comprobante + realtime + PDF de recibo → Fase 5.
   **Frontend cableado ✅ (commit e0f30c4):** `app/doctor/finances/payments-actions.ts` (BFF) +
   `cobros/page.tsx` y `finances/page.tsx` migrados (lista, estado, items). `lib/finances.ts` ya NO
-  usa Supabase (solo tipos + formatters). Residual Supabase en esas pantallas (Fase 5): storage de
-  comprobantes, realtime, PDF de recibo, lectura de pricing_plans (add-item modal), export Excel,
-  y gastos `financial_transactions` (usar /api/finances/transactions más adelante). tsc 0.
+  usa Supabase (solo tipos + formatters). Pendiente en esas pantallas: PDF de recibo, realtime
+  (sin reemplazo aún — decisión de producto), export Excel, y gastos `financial_transactions`
+  (usar /api/finances/transactions más adelante). Storage de comprobantes ✅ disponible (MinIO/GCS). tsc 0.
 - 13 **billing** → ✅ DDD. Módulo `modules/billing/`. Mig. `20260603000002-billing.cjs`. 4 tablas nuevas:
   `subscription_payments` (pago de suscripción de la plataforma, workflow pending→approved/rejected),
   `invoices` (facturas admin→doctor, número FAC-YYYYMMDD-XXXX), `billing_documents` (documentos fiscales
