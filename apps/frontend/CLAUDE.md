@@ -6,11 +6,13 @@ CRM médico omnicanal con gestión clínica, agenda, finanzas y portal de pacien
 Nombre comercial: **Delta Medical CRM**.
 
 ## Stack técnico
-- Next.js 15 (App Router) + TypeScript + Tailwind CSS
-- Supabase (Auth + PostgreSQL + Storage + RLS)
+- Next.js 16 (App Router) + React 19 + TypeScript + Tailwind v4
+- **Monorepo NX + pnpm.** Esta app es `apps/frontend` (UI + BFF).
+- **Sin Supabase** (eliminado). Auth, BD y storage los provee `apps/backend`
+  (NestJS DDD) vía HTTP — el frontend NUNCA toca la BD directamente.
+- Auth: dev-stub (local, headers `x-dev-user-*`) / Auth0 BFF (prod), por `AUTH_MODE`.
 - Lucide React (iconos)
-- Desplegado en Vercel
-- Repo: github.com/jesussolanob/medsaas-venezuela
+- Deploy objetivo: GCP (Cloud Run). Doc raíz: `../../CLAUDE.md` y `../../README.md`.
 
 ## Diseño y estilo
 - Colores: blanco, turquesa (teal-500), gris slate
@@ -93,7 +95,11 @@ Nombre comercial: **Delta Medical CRM**.
 - /api/doctor/consultations → CRUD de consultas
 - /api/admin/* → Acciones admin
 
-## Base de datos (Supabase)
+## Base de datos (PostgreSQL vía backend NestJS/Sequelize)
+
+> Ya **no es Supabase**. La BD la gestiona `apps/backend` (Sequelize, migraciones
+> `.cjs`); el frontend accede solo por HTTP (BFF). El esquema de dominio de abajo
+> sigue siendo válido; las FKs/constraints/índices viven en las migraciones.
 
 ### Tablas principales
 - profiles → id, full_name, email, role, specialty, professional_title, clinic_id, clinic_role, payment_methods, payment_details, avatar_url, allows_online, office_address, city, state
@@ -181,11 +187,13 @@ dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm
 - super_admin / admin → /admin
 - patient → /patient/dashboard
 - doctor (incluye clinic admin) → /doctor
-- Si no hay perfil en profiles, se usa user_metadata.role del auth
-- Pacientes registrados via /patient/register usan signUp client-side con metadata role:'patient'
+- **Resolución de identidad por backend:** en Auth0, el claim de rol +
+  `POST /api/auth/resolve-identity` (match/onboarding por email) devuelve
+  `{profileId, role}`. En local, dev-stub (cookies/headers `dev_user_*`).
+- Si no hay perfil, el backend hace onboarding (super_admin/admin se degradan a
+  doctor al crear; nunca sobrescribe un rol existente).
 
 ## Credenciales y servicios
-- Supabase URL: https://azsismbgfanszkygzwaz.supabase.co
 - Super Admin: jesussolano4@gmail.com
 - Doctor de prueba: ing.jesussolanob@gmail.com
 - GitHub: jesussolanob
@@ -195,7 +203,7 @@ dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm
 Cardiología, Dermatología, Endocrinología, Gastroenterología, Ginecología y Obstetricia, Medicina General, Medicina Interna, Nefrología, Neurología, Oftalmología, Ortopedia y Traumatología, Otorrinolaringología, Pediatría, Psicología, Psiquiatría, Reumatología, Fisioterapia, Urología, Centro de Salud, Clínica General, Otra
 
 ## Lo que está hecho
-- [x] Schema SQL completo en Supabase con RLS
+- [x] Schema de dominio completo (migrado a PostgreSQL/Sequelize en el backend)
 - [x] Login unificado con redirección por rol
 - [x] Registro de médicos con 4 planes + verificación email
 - [x] Super Admin completo (dashboard, médicos, suscripciones, planes, features, recordatorios, settings)
