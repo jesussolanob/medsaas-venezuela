@@ -11,6 +11,8 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV ?? "development",
+    // Do not send events in local dev — only send from production.
+    enabled: process.env.NODE_ENV === "production",
     sendDefaultPii: false,
     tracesSampleRate: 0.1,
     // Replay is opt-in. Enable in production by uncommenting:

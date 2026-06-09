@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { Search, MoreHorizontal, Download, Plus, Clock, Users, UserCheck, AlertTriangle, ChevronDown } from 'lucide-react'
+import { reportError } from '@/lib/report-error'
 import NewDoctorModal from './NewDoctorModal'
 import DoctorDetailDrawer from './DoctorDetailDrawer'
 import { PageHead, Btn, StatCard, Card, StatusPill } from '@/components/dh'
@@ -61,7 +62,7 @@ export default function UsersPanel() {
       const data = await res.json()
       setDoctors(data || [])
     } catch (err) {
-      console.error('Error loading doctors:', err)
+      reportError('UsersPanel', 'loadDoctors', err)
     }
   }
 

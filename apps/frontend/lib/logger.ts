@@ -7,6 +7,12 @@
 //   log.info('saveRecipe insertando', { consultationId, patientId })
 //
 // En producción los valores se redactan; en desarrollo se muestran completos.
+//
+// log.error() delegates to reportError() so errors are:
+//   - Always visible as console.warn in local dev.
+//   - Forwarded to Sentry only in production.
+
+import { reportError } from '@/lib/report-error';
 
 const SENSITIVE_KEYS = new Set([
   'patient_id',
@@ -61,7 +67,17 @@ function emit(level: 'log' | 'warn' | 'error' | 'info', label: string, payload?:
 export const log = {
   info: (label: string, payload?: unknown) => emit('info', label, payload),
   warn: (label: string, payload?: unknown) => emit('warn', label, payload),
-  error: (label: string, payload?: unknown) => emit('error', label, payload),
+  /**
+   * Routes through reportError: always console.warn, Sentry only in prod.
+   * The `label` becomes the file+method tag; `payload` is attached as extra context.
+   * Never pass raw PII as payload.
+   */
+  error: (label: string, payload?: unknown) => {
+    // Scrub sensitive fields for production before forwarding, matching the
+    // existing scrub behaviour used by the other log levels.
+    const safePayload = isProd && payload !== undefined ? scrub(payload) : payload;
+    reportError('logger', label, label, safePayload);
+  },
   debug: (label: string, payload?: unknown) => {
     if (!isProd) emit('log', label, payload)
   },

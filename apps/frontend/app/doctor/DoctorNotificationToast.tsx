@@ -19,6 +19,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Bell, X, Calendar, User } from 'lucide-react';
 import { getRecentAppointmentsForNotification } from './notification-actions';
+import { reportError } from '@/lib/report-error';
 
 type NewBooking = {
   id: string;
@@ -125,7 +126,7 @@ export default function DoctorNotificationToast() {
         }
       } catch (err) {
         // Non-blocking — polling errors do not surface to the user.
-        console.error('[DoctorNotificationToast] poll error:', err);
+        reportError('DoctorNotificationToast', 'checkNewBookings', err);
       }
     }
 

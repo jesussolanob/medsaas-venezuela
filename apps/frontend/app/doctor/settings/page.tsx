@@ -45,6 +45,7 @@ import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SubscriptionPanel from '@/components/doctor/SubscriptionPanel';
+import { reportError } from '@/lib/report-error';
 
 type PricingPlan = {
   id: string;
@@ -364,7 +365,7 @@ function SettingsPageInner() {
 
     if (!result.ok) {
       // Errors are surfaced via the saved / error state below.
-      console.error('[saveProfile] error:', result.error);
+      reportError('doctor/settings', 'saveProfile', new Error(String(result.error)));
       return;
     }
 
@@ -452,7 +453,7 @@ function SettingsPageInner() {
   async function saveLicense() {
     const result = await saveLicenseNumber(licenseNumber || null);
     if (!result.ok) {
-      console.error('[saveLicense] error:', result.error);
+      reportError('doctor/settings', 'saveLicense', new Error(String(result.error)));
       return;
     }
     setSaved(true);

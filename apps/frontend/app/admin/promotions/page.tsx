@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Tag, Plus, Trash2, ToggleLeft, ToggleRight, Percent, Calendar, DollarSign } from 'lucide-react'
+import { reportError } from '@/lib/report-error'
 
 interface PlanConfig {
   plan_key: string
@@ -64,7 +65,7 @@ export default function PromotionsPage() {
         setPlans(plansData.filter((p: PlanConfig) => p.plan_key !== 'trial'))
       }
     } catch (err) {
-      console.error('Error loading data:', err)
+      reportError('admin/promotions', 'loadData', err)
     }
     setLoading(false)
   }
@@ -113,7 +114,7 @@ export default function PromotionsPage() {
         loadData()
       }
     } catch (err) {
-      console.error(err)
+      reportError('admin/promotions', 'handleCreate', err)
     }
     setSaving(false)
   }
@@ -127,7 +128,7 @@ export default function PromotionsPage() {
       })
       loadData()
     } catch (err) {
-      console.error(err)
+      reportError('admin/promotions', 'togglePromo', err)
     }
   }
 
@@ -137,7 +138,7 @@ export default function PromotionsPage() {
       await fetch(`/api/admin/promotions?id=${id}`, { method: 'DELETE' })
       loadData()
     } catch (err) {
-      console.error(err)
+      reportError('admin/promotions', 'deletePromo', err)
     }
   }
 

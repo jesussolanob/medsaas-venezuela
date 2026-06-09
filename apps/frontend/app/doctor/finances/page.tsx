@@ -49,6 +49,7 @@ import {
   Tooltip as RTooltip,
   Legend,
 } from 'recharts';
+import { reportError } from '@/lib/report-error';
 
 type Income = {
   id: string;
@@ -167,7 +168,7 @@ export default function FinancesPage() {
 
       setConsultationsRows(cons);
     } catch (err) {
-      console.error('Error loading finances:', err);
+      reportError('doctor/finances', 'loadData', err);
     }
     setLoading(false);
   };
@@ -574,7 +575,7 @@ export default function FinancesPage() {
       });
 
       if (!result.success) {
-        console.error('[handleAddExpense] backend error:', result.error);
+        reportError('doctor/finances', 'handleAddExpense:backend', new Error(String(result.error)));
       }
 
       setExpenseForm({
@@ -587,7 +588,7 @@ export default function FinancesPage() {
       setShowExpenseForm(false);
       loadData();
     } catch (err) {
-      console.error('[handleAddExpense] unexpected error:', err);
+      reportError('doctor/finances', 'handleAddExpense', err);
     }
     setSavingExpense(false);
   };

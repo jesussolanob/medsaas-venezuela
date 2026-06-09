@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
+import { reportError } from '@/lib/report-error';
 import {
   getPayments,
   updatePaymentStatus as updatePaymentStatusAction,
@@ -131,7 +132,7 @@ export default function CobrosPage() {
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
-      console.error('[handleReceiptUpload]', msg);
+      reportError('doctor/cobros', 'handleReceiptUpload', err);
       alert('Error al subir el comprobante. ' + msg);
     } finally {
       setUploadingReceipt(false);
@@ -320,7 +321,7 @@ export default function CobrosPage() {
       const data = await getPaymentItems(paymentId);
       setExtraItems(data.map((d) => ({ id: d.id, name: d.name, amount: Number(d.amount_usd) })));
     } catch (err) {
-      console.error('[loadExtraItems]', err);
+      reportError('doctor/cobros', 'loadExtraItems', err);
       setExtraItems([]);
     } finally {
       setLoadingExtras(false);
@@ -425,9 +426,9 @@ export default function CobrosPage() {
       setTimeout(() => setActionToast(null), 3000);
       setSelectedPayment(null);
       await fetchPayments();
-    } catch (err: any) {
-      console.error('[updatePaymentStatus]', err);
-      setActionToast({ type: 'error', msg: err?.message || 'Error al actualizar el pago' });
+    } catch (err: unknown) {
+      reportError('doctor/cobros', 'updatePaymentStatus', err);
+      setActionToast({ type: 'error', msg: err instanceof Error ? err.message : 'Error al actualizar el pago' });
       setTimeout(() => setActionToast(null), 3500);
     } finally {
       setUpdatingStatus(false);

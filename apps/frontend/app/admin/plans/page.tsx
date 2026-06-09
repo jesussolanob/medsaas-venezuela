@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Shield, Users, Settings } from 'lucide-react';
+import { reportError } from '@/lib/report-error';
 
 type PlanConfig = {
   id: string;
@@ -39,7 +40,7 @@ export default function PlansPage() {
       if (!res.ok) throw new Error(json?.error || 'Error cargando planes');
       setPlans((json.data ?? []) as PlanConfig[]);
     } catch (e) {
-      console.error(e);
+      reportError('admin/plans', 'loadPlans', e);
       setToast({ type: 'error', msg: 'Error cargando planes' });
     } finally {
       setLoading(false);

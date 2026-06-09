@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
+import { reportError } from '@/lib/report-error';
 import {
   Users,
   Calendar,
@@ -186,8 +187,7 @@ export default function DoctorDashboard() {
         });
       } catch (error: unknown) {
         // Non-fatal — dashboard shows zeros on error; user can refresh.
-        const message = error instanceof Error ? error.message : String(error);
-        console.error('[DoctorDashboard] fetchData error:', message);
+        reportError('doctor/page', 'fetchData', error);
       } finally {
         setLoading(false);
       }

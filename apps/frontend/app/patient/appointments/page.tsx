@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Clock, User, Filter, Video, MapPin } from 'lucide-react';
 import { getPatientAppointments } from '../actions';
+import { reportError } from '@/lib/report-error';
 
 interface Appointment {
   id: string;
@@ -52,7 +53,7 @@ export default function AppointmentsPage() {
 
         setLoading(false);
       } catch (err) {
-        console.error('Error loading appointments:', err);
+        reportError('patient/appointments', 'loadAppointments', err);
         setLoading(false);
       }
     };

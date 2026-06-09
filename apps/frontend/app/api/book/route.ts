@@ -35,6 +35,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { reportError } from '@/lib/report-error'
 
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001'
 
@@ -162,7 +163,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error interno'
-    console.error('[POST /api/book] unexpected error:', message)
+    reportError('api/book', 'POST', err)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

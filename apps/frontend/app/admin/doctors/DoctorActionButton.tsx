@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { reportError } from '@/lib/report-error'
 
 interface DoctorActionButtonProps {
   doctorId: string
@@ -38,9 +39,9 @@ export default function DoctorActionButton({ doctorId, isActive, onSuccess }: Do
       // Refresh the page to show updated data
       window.location.reload()
       onSuccess?.()
-    } catch (err: any) {
-      console.error('Error toggling doctor status:', err)
-      setError(err.message || 'Error al actualizar el estado')
+    } catch (err: unknown) {
+      reportError('DoctorActionButton', 'handleToggle', err)
+      setError(err instanceof Error ? err.message : 'Error al actualizar el estado')
     } finally {
       setLoading(false)
     }

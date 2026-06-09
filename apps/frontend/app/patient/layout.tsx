@@ -21,6 +21,7 @@ import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
 import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
+import { reportError } from '@/lib/report-error';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 
@@ -97,7 +98,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
 
         setLoading(false);
       } catch (err) {
-        console.error('Auth check error:', err);
+        reportError('patient/layout', 'checkAuth', err);
         router.push('/login');
       }
     };

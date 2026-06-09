@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { reportError } from '@/lib/report-error'
 
 type BcvRateData = {
   rate: number | null
@@ -52,7 +53,7 @@ export function useBcvRate(): BcvRateData {
         }
       }
     } catch (err) {
-      console.error('Error fetching exchange rate:', err)
+      reportError('useBcvRate', 'fetchRate', err)
     } finally {
       setLoading(false)
     }

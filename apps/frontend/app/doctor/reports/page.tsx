@@ -17,6 +17,7 @@ import {
 // MIGRATED (Etapa 1): Supabase client removed. Data now fetched from NestJS backend.
 import { getReportConsultations, type ReportConsultationRecord } from './actions';
 import Link from 'next/link';
+import { reportError } from '@/lib/report-error';
 
 type ConsultationRecord = ReportConsultationRecord;
 
@@ -47,8 +48,7 @@ export default function ReportsPage() {
         setLoading(false);
       })
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error('[ReportsPage] fetch error:', message);
+        reportError('doctor/reports', 'fetchConsultations', error);
         setLoading(false);
       });
   }, []);
@@ -70,7 +70,7 @@ export default function ReportsPage() {
         setHoursPerWeek(avgHoursPerWeek.toFixed(1));
       }
     } catch (err) {
-      console.error('Error calculating hours:', err);
+      reportError('doctor/reports', 'calculateStats:hours', err);
     }
 
     // 2. Tasa de no-show
@@ -84,7 +84,7 @@ export default function ReportsPage() {
       const rate = total > 0 ? ((noShow / total) * 100).toFixed(1) : '0.0';
       setNoShowRate(rate);
     } catch (err) {
-      console.error('Error calculating no-show rate:', err);
+      reportError('doctor/reports', 'calculateStats:noshow', err);
     }
 
     // 3. Retención de pacientes
@@ -103,7 +103,7 @@ export default function ReportsPage() {
         setRetention({ patients: returning, percentage: pct });
       }
     } catch (err) {
-      console.error('Error calculating retention:', err);
+      reportError('doctor/reports', 'calculateStats:retention', err);
     }
   };
 

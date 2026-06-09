@@ -22,6 +22,7 @@
 
 import { NextResponse } from 'next/server'
 import { backendPut, backendGet } from '@/lib/api-client.server'
+import { reportError } from '@/lib/report-error'
 
 export async function POST(req: Request) {
   try {
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
         )
         if (!updateResult.ok) {
           // Log but don't block — phone/name are the critical fields for the UX.
-          console.error('[onboarding] PUT /api/doctor/profile failed:', updateResult.error.message)
+          reportError('api/onboarding', 'PUT /api/doctor/profile', new Error(updateResult.error.message))
         }
       }
     }
@@ -79,8 +80,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, role: profileRole })
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Error interno del servidor'
-    console.error('Onboarding error:', message)
+    reportError('api/onboarding', 'POST', err)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
   }
 }

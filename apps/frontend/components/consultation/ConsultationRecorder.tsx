@@ -23,6 +23,7 @@ import {
   Mic, Square, Pause, Play, Loader2, Trash2, Sparkles,
   CheckCircle2, AlertCircle, X, FileText, Copy,
 } from 'lucide-react'
+import { reportError } from '@/lib/report-error'
 
 type AvailableBlock = {
   key: string
@@ -124,9 +125,9 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
       setState('recording')
       setShowPanel(true)
       startTicker()
-    } catch (err: any) {
-      console.error('[recorder] getUserMedia error:', err)
-      const isPermissionErr = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError'
+    } catch (err: unknown) {
+      reportError('ConsultationRecorder', 'startRecording', err)
+      const isPermissionErr = err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
       setError(
         isPermissionErr
           ? 'Permite el acceso al micrófono para poder grabar.'
@@ -213,9 +214,9 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
       setTranscript(data.transcript || '')
       setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
       setState('review')
-    } catch (err: any) {
-      console.error('[recorder] transcribe error:', err)
-      setError(err?.message || 'No se pudo transcribir el audio')
+    } catch (err: unknown) {
+      reportError('ConsultationRecorder', 'sendForTranscription', err)
+      setError(err instanceof Error ? err.message : 'No se pudo transcribir el audio')
       setState('error')
     }
   }

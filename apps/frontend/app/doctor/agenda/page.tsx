@@ -34,6 +34,7 @@ import {
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
+import { reportError } from '@/lib/report-error';
 
 // AUDIT FIX 2026-04-28 (FASE 5C): toast real con Toaster propio (sin alert nativo).
 const toast = {
@@ -661,7 +662,7 @@ export default function AgendaPage() {
       if (!res.ok) throw new Error('Error guardando');
       toast.success('Disponibilidad guardada');
     } catch (e) {
-      console.error(e);
+      reportError('doctor/agenda', 'handleSaveAvailability', e);
       toast.error('Error al guardar');
     }
     setSaving(false);
@@ -862,9 +863,9 @@ export default function AgendaPage() {
       setRescheduleDate(null);
       setRescheduleTime(null);
       setRescheduleWeekOffset(0);
-    } catch (e: any) {
-      console.error(e);
-      toast.error(e?.message || 'Error al reagendar');
+    } catch (e: unknown) {
+      reportError('doctor/agenda', 'handleReschedule', e);
+      toast.error(e instanceof Error ? e.message : 'Error al reagendar');
     }
   }
 
@@ -917,9 +918,9 @@ export default function AgendaPage() {
       setDetailAppt(null);
       setConfirmDelete(null);
       toast.success('Cita eliminada correctamente');
-    } catch (err: any) {
-      console.error('Delete error:', err);
-      toast.error(err?.message || 'Error al eliminar la cita');
+    } catch (err: unknown) {
+      reportError('doctor/agenda', 'handleDeleteAppointment', err);
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar la cita');
     }
     setDeletingAppt(null);
   }
@@ -1087,9 +1088,9 @@ export default function AgendaPage() {
         payment_reference: '',
       });
       await loadData();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Error al crear consulta');
+    } catch (err: unknown) {
+      reportError('doctor/agenda', 'handleCreateConsulta', err);
+      toast.error(err instanceof Error ? err.message : 'Error al crear consulta');
     } finally {
       setCreatingConsulta(false);
     }

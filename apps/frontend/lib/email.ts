@@ -1,3 +1,5 @@
+import { reportError } from '@/lib/report-error';
+
 /**
  * lib/email.ts
  *
@@ -60,14 +62,15 @@ export async function sendEmail(params: EmailParams): Promise<SendResult> {
 
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      console.error('[email] Resend API error:', { status: res.status, data })
+      reportError('email', 'sendEmail', new Error(`Resend respondió ${res.status}`), { status: res.status })
       return { ok: false, error: data?.message || `Resend respondió ${res.status}` }
     }
 
     return { ok: true, id: data.id }
-  } catch (err: any) {
-    console.error('[email] network error:', err?.message)
-    return { ok: false, error: err?.message || 'Error de red' }
+  } catch (err: unknown) {
+    reportError('email', 'sendEmail:network', err)
+    const msg = err instanceof Error ? err.message : 'Error de red'
+    return { ok: false, error: msg }
   }
 }
 

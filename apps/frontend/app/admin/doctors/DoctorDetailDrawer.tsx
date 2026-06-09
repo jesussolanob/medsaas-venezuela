@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { X, Phone, Mail, FileText, Calendar, Users, TrendingUp, MapPin, Building2 } from 'lucide-react'
+import { reportError } from '@/lib/report-error'
 
 interface DoctorDetailDrawerProps {
   doctor: any
@@ -33,9 +34,9 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
         if (!res.ok) throw new Error(data.error || 'Error al cargar detalles')
 
         setDetails(data)
-      } catch (err: any) {
-        console.error('Error loading doctor details:', err)
-        setError(err.message || 'Error al cargar detalles')
+      } catch (err: unknown) {
+        reportError('DoctorDetailDrawer', 'loadDetails', err)
+        setError(err instanceof Error ? err.message : 'Error al cargar detalles')
       } finally {
         setLoading(false)
       }
@@ -81,9 +82,9 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
       setSuccessMessage(`Médico ${action === 'activate' ? 'activado' : 'suspendido'} exitosamente`)
       setTimeout(() => setSuccessMessage(''), 3000)
       onDoctorUpdated?.()
-    } catch (err: any) {
-      console.error('Error updating doctor status:', err)
-      setError(err.message || 'Error al actualizar el estado')
+    } catch (err: unknown) {
+      reportError('DoctorDetailDrawer', 'handleToggleStatus', err)
+      setError(err instanceof Error ? err.message : 'Error al actualizar el estado')
     } finally {
       setSuspending(false)
     }

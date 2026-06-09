@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 // L6 (2026-04-29): normaliza telefonos para wa.me / tel:
 import { normalizePhoneVE } from '@/lib/phone-utils';
+import { reportError } from '@/lib/report-error';
 
 type LeadStage = 'new' | 'contacted' | 'qualified' | 'appointment' | 'converted' | 'lost';
 type LeadChannel = 'whatsapp' | 'instagram' | 'facebook' | 'web' | 'llamada' | 'referido';
@@ -179,7 +180,7 @@ export default function CRMPage() {
           setLeads(created.filter((l): l is NonNullable<typeof l> => l !== null) as Lead[]);
         }
       } catch (e) {
-        console.error('Error loading leads:', e);
+        reportError('doctor/crm', 'loadLeads', e);
       }
 
       // lead_messages (chat) has no backend yet → Fase 5; messages stay client-local.
@@ -235,7 +236,7 @@ export default function CRMPage() {
       await updateLeadStage(draggedLead.id, stage);
       setLeads((prev) => prev.map((l) => (l.id === draggedLead.id ? { ...l, stage } : l)));
     } catch (e) {
-      console.error('Error updating lead stage:', e);
+      reportError('doctor/crm', 'handleDropOnStage', e);
     }
     setDraggedLead(null);
   };
@@ -257,7 +258,7 @@ export default function CRMPage() {
         setLeads((prev) => [data as Lead, ...prev]);
       }
     } catch (e) {
-      console.error('Error creating lead:', e);
+      reportError('doctor/crm', 'handleAddLead', e);
     }
 
     setNewLeadData({ name: '', phone: '', channel: 'whatsapp', message: '' });

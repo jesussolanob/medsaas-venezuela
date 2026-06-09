@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { getProfessionalTitle } from '@/lib/professional-title'
 import { useBcvRate } from '@/lib/useBcvRate'
+import { reportError } from '@/lib/report-error'
 // L6 (2026-04-29): inputs canonicos para cedula y telefono venezolano
 import CedulaInput from '@/components/shared/CedulaInput'
 import PhoneInput from '@/components/shared/PhoneInput'
@@ -306,7 +307,7 @@ export default function BookingClient({
         }
       }
     } catch (err) {
-      console.error('Error fetching packages:', err)
+      reportError('BookingClient', 'fetchPackages', err)
     }
   }
 

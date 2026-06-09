@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth-guards';
+import { reportError } from '@/lib/report-error';
 
 // 2026-05-02: el modelo flash con audio es 2.5-flash. lite no soporta audio aún.
 const GEMINI_MODEL = process.env.GEMINI_AUDIO_MODEL || 'gemini-2.5-flash';
@@ -145,7 +146,7 @@ Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error('[transcribe] Gemini error:', res.status, errText.slice(0, 500));
+      reportError('api/transcribe', 'POST:gemini', new Error(`Gemini ${res.status}`), { status: res.status, excerpt: errText.slice(0, 200) });
       return NextResponse.json(
         { ok: false, error: `Error del servicio de transcripción (${res.status})` },
         { status: 502 },
@@ -199,7 +200,7 @@ Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error de red al transcribir';
-    console.error('[transcribe] error inesperado:', message);
+    reportError('api/transcribe', 'POST', err)
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

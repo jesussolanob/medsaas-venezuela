@@ -76,6 +76,7 @@ import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow
 import { log } from '@/lib/logger';
 // L6 (2026-04-29): normaliza telefonos para wa.me (acepta legacy free-text)
 import { normalizePhoneVE } from '@/lib/phone-utils';
+import { reportError } from '@/lib/report-error';
 
 type Consultation = {
   id: string;
@@ -661,7 +662,7 @@ function ConsultationsPage() {
           }
         }
       } catch (err) {
-        console.error('Error loading data:', err);
+        reportError('doctor/consultations', 'loadData', err);
       }
       setLoading(false);
     });
@@ -680,9 +681,9 @@ function ConsultationsPage() {
       setView('list');
       setConfirmDeleteConsulta(null);
       alert('Consulta eliminada correctamente');
-    } catch (err: any) {
-      console.error('Delete error:', err);
-      alert(err?.message || 'Error al eliminar la consulta');
+    } catch (err: unknown) {
+      reportError('doctor/consultations', 'handleDeleteConsulta', err);
+      alert(err instanceof Error ? err.message : 'Error al eliminar la consulta');
     }
     setDeletingConsulta(false);
   }
@@ -735,7 +736,7 @@ function ConsultationsPage() {
       setPagoToast('Estado de pago actualizado correctamente');
       setTimeout(() => setPagoToast(null), 3000);
     } catch (err: unknown) {
-      console.error('Error updating pago status:', err);
+      reportError('doctor/consultations', 'updateConsultaStatus', err);
       setPagoToast('Error al actualizar el pago');
       setTimeout(() => setPagoToast(null), 3500);
     } finally {
@@ -938,7 +939,7 @@ function ConsultationsPage() {
               }),
             });
           } catch (emailErr) {
-            console.error('Error sending email:', emailErr);
+            reportError('doctor/consultations', 'createConsultation:sendEmail', emailErr);
             // Don't block consultation creation if email fails
           }
         }
@@ -980,7 +981,7 @@ function ConsultationsPage() {
         sendEmail: true,
       });
     } catch (err) {
-      console.error('Error creating consultation:', err);
+      reportError('doctor/consultations', 'createConsultation', err);
       alert('Error al crear consulta');
     } finally {
       setIsCreatingConsultation(false);
@@ -1038,7 +1039,7 @@ function ConsultationsPage() {
       setShowRecipe(false);
       alert('Receta guardada correctamente');
     } catch (err: unknown) {
-      console.error('[saveRecipe] error:', err);
+      reportError('doctor/consultations', 'saveRecipe', err);
       alert(`Error al guardar receta: ${err instanceof Error ? err.message : 'desconocido'}`);
     } finally {
       setIsSavingRecipe(false);
@@ -1763,8 +1764,8 @@ function ConsultationsPage() {
                         setShowGenerateReport(true);
                         console.log('[generar-informe] setState called → showGenerateReport=true');
                       } catch (err) {
-                        console.error('[generar-informe] HANDLER THREW:', err);
-                        alert('Error abriendo el modal: ' + (err as any)?.message);
+                        reportError('doctor/consultations', 'openGenerateReportModal', err);
+                        alert('Error abriendo el modal: ' + (err instanceof Error ? err.message : 'desconocido'));
                       }
                     }}
                     title="Generar informe"
@@ -1879,7 +1880,7 @@ function ConsultationsPage() {
                                       const data = await res.json();
                                       if (data.url) return data.url;
                                     } catch (err) {
-                                      console.error('Upload error:', err);
+                                      reportError('doctor/consultations', 'uploadSharedFile', err);
                                     }
                                     return null;
                                   };
@@ -2216,7 +2217,7 @@ function ConsultationsPage() {
                                       setShowAddBlockMenu(false);
                                       setConsultationTab(`block:${c.key}`);
                                     } catch (err) {
-                                      console.error('[add-block] error:', err);
+                                      reportError('doctor/consultations', 'addBlock', err);
                                       alert('Error agregando el bloque');
                                     } finally {
                                       setAddingBlock(false);
@@ -2658,7 +2659,7 @@ function ConsultationsPage() {
                                   notes: exam.notes ? `Examen: ${exam.exam_name} - ${exam.notes}` : `Examen: ${exam.exam_name}`,
                                 });
                                 if (!result.success) {
-                                  console.error('[savePrescripciones] error en exam', exam.exam_name, result.error);
+                                  reportError('doctor/consultations', 'savePrescripciones:exam', new Error(String(result.error)));
                                   failed.push(exam.exam_name);
                                 }
                               }
@@ -2677,7 +2678,7 @@ function ConsultationsPage() {
                                 alert(`Prescripciones guardadas (${exams.length})`);
                               }
                             } catch (err: unknown) {
-                              console.error('[savePrescripciones] error:', err);
+                              reportError('doctor/consultations', 'savePrescripciones', err);
                               alert(`Error al guardar prescripciones: ${err instanceof Error ? err.message : 'desconocido'}`);
                             } finally {
                               setIsSavingPrescripciones(false);
@@ -3751,17 +3752,14 @@ function ConsultationsPage() {
                           });
                           const data = await res.json().catch(() => ({}));
                           if (!res.ok || !data.url) {
-                            console.error('[generate-report] response error:', {
-                              status: res.status,
-                              data,
-                            });
+                            reportError('doctor/consultations', 'generateReport:response', new Error(`HTTP ${res.status}`), { status: res.status });
                             alert(data.error || `Error generando el PDF (status ${res.status})`);
                             return;
                           }
                           setGeneratedReportUrl(data.url);
-                        } catch (err: any) {
-                          console.error('[generate-report] error:', err);
-                          alert(`Error generando el informe: ${err?.message || 'desconocido'}`);
+                        } catch (err: unknown) {
+                          reportError('doctor/consultations', 'generateReport', err);
+                          alert(`Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`);
                         } finally {
                           setGeneratingReport(false);
                         }
@@ -4640,19 +4638,16 @@ function ConsultationsPage() {
                           });
                           const data = await res.json().catch(() => ({}));
                           if (!res.ok || !data.url) {
-                            console.error('[generate-report] response error:', {
-                              status: res.status,
-                              data,
-                            });
+                            reportError('doctor/consultations', 'generateReport2:response', new Error(`HTTP ${res.status}`), { status: res.status });
                             alert(data.error || `Error generando el PDF (status ${res.status})`);
                             return;
                           }
                           // FIX 2026-04-29: en lugar de window.open (bloqueado por Safari
                           // post-await), mostramos un link clickeable dentro del modal.
                           setGeneratedReportUrl(data.url);
-                        } catch (err: any) {
-                          console.error('[generate-report] error:', err);
-                          alert(`Error generando el informe: ${err?.message || 'desconocido'}`);
+                        } catch (err: unknown) {
+                          reportError('doctor/consultations', 'generateReport2', err);
+                          alert(`Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`);
                         } finally {
                           setGeneratingReport(false);
                         }

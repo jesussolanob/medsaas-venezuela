@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Calendar, FileText, ArrowRight, Zap } from 'lucide-react';
 import { getPatientDashboard, getPatientProfile } from './actions';
+import { reportError } from '@/lib/report-error';
 
 const styles = `
   .card-hover {
@@ -101,7 +102,7 @@ export default function PatientHome() {
 
         setLoading(false);
       } catch (err) {
-        console.error('Error loading data:', err);
+        reportError('patient/page', 'loadData', err);
         setLoading(false);
       }
     };

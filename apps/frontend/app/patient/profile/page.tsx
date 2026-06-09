@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, Save, AlertCircle } from 'lucide-react';
 import { getPatientProfile, updatePatientProfile } from '../actions';
+import { reportError } from '@/lib/report-error';
 // L6 (2026-04-29): inputs canonicos (cedula prefijo dropdown + telefono +58)
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
@@ -99,7 +100,7 @@ export default function ProfilePage() {
 
         setLoading(false);
       } catch (err) {
-        console.error('Error loading profile:', err);
+        reportError('patient/profile', 'loadProfile', err);
         setLoading(false);
       }
     };
@@ -148,7 +149,7 @@ export default function ProfilePage() {
         setTimeout(() => setMessage(null), 3000);
       }
     } catch (err) {
-      console.error('Error saving profile:', err);
+      reportError('patient/profile', 'handleSave', err);
       setMessage({ type: 'error', text: 'Error al guardar el perfil' });
     }
     setSaving(false);

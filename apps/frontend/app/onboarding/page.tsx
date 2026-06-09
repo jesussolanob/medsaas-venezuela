@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User, Clock, LayoutGrid } from 'lucide-react'
 import { getDevIdentityAction } from './identity-action'
+import { reportError } from '@/lib/report-error'
 // ETAPA 1: onboarding identity comes from the dev-stub cookie (set at login).
 // ETAPA 2 (Auth0): remove getDevIdentityAction import and use Auth0 session.
 
@@ -230,7 +231,7 @@ export default function OnboardingPage() {
       setSelectedBlocks(final)
     } catch (err) {
       // Fallback: show empty catalog; doctor can continue with core blocks only.
-      console.error('Error cargando catálogo de bloques:', err)
+      reportError('onboarding', 'loadBlockCatalog', err)
     } finally {
       setBlocksLoading(false)
     }

@@ -25,6 +25,7 @@ import {
 } from '@/app/doctor/billing/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { getProfessionalTitle } from '@/lib/professional-title';
+import { reportError } from '@/lib/report-error';
 
 type LineItem = { id: string; description: string; qty: number; unit_price: number };
 type Consultation = {
@@ -192,7 +193,7 @@ export default function BillingPage() {
       }));
       return data.docNumber;
     } catch (err) {
-      console.error('Error saving document:', err);
+      reportError('doctor/billing', 'saveDocumentToDB', err);
       return null;
     }
   }

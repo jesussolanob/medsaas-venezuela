@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { getRecentDoctors } from './notifications-actions'
 import { Bell, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
+import { reportError } from '@/lib/report-error'
 
 /**
  * Notificaciones del admin — beta privada.
@@ -19,7 +20,7 @@ export default function AdminNotifications() {
         const data = await getRecentDoctors(7)
         setRecentDoctors(data)
       } catch (err) {
-        console.error('Error loading recent doctors:', err)
+        reportError('AdminNotifications', 'loadRecentDoctors', err)
       }
     }
 

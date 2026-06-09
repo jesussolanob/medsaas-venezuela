@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { reportError } from '@/lib/report-error'
 
 interface ChartDataPoint {
   month: string
@@ -37,7 +38,7 @@ export default function AdminSubscriptionChart({ onStatsLoaded }: AdminSubscript
           onStatsLoaded(data)
         }
       } catch (err) {
-        console.error('Error fetching stats:', err)
+        reportError('AdminSubscriptionChart', 'fetchStats', err)
         setError(err instanceof Error ? err.message : 'An error occurred')
       } finally {
         setLoading(false)

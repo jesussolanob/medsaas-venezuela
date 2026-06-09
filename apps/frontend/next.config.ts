@@ -31,13 +31,14 @@ const nextConfig: NextConfig = {
 // withSentryConfig wraps the webpack config (source maps, bundle analysis).
 // With Turbopack the webpack key is ignored, so this is safe.
 //
-// source maps upload is disabled: no SENTRY_AUTH_TOKEN required in local dev.
-// TODO (source maps): set SENTRY_AUTH_TOKEN in CI + remove sourcemaps.disable.
+// Source maps upload: enabled when SENTRY_AUTH_TOKEN is present (local dev + CI).
+// If the build ever breaks because of this (Turbopack incompatibility), set
+// SENTRY_SOURCEMAPS_DISABLE=true in the environment and it falls back to disabled.
+const sourcemapsDisabled = process.env.SENTRY_SOURCEMAPS_DISABLE === 'true';
+
 export default withSentryConfig(nextConfig, {
   silent: true,
   sourcemaps: {
-    // Disable source map upload — avoids needing SENTRY_AUTH_TOKEN at build time.
-    // Re-enable in production CI by removing this line and setting SENTRY_AUTH_TOKEN.
-    disable: true,
+    disable: sourcemapsDisabled,
   },
 });

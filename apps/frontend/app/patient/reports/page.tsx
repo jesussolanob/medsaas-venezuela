@@ -16,6 +16,7 @@ import { FileText, ChevronDown, ChevronUp } from 'lucide-react';
 // NOT available yet (returns empty):
 //   clinical consultation list with notes/diagnosis/treatment/report_data
 import { getPatientProfile, getPatientPrescriptions } from '@/app/patient/actions';
+import { reportError } from '@/lib/report-error';
 // RONDA 36: render dinámico desde report_data (snapshot inmutable)
 import ReportBlocksViewer from '@/components/consultation/ReportBlocksViewer';
 import type { ReportData } from '@/lib/report-data';
@@ -77,7 +78,7 @@ export default function ReportsPage() {
         setReports([]);
         setLoading(false);
       } catch (err) {
-        console.error('Error loading reports:', err);
+        reportError('patient/reports', 'loadReports', err);
         setLoading(false);
       }
     };

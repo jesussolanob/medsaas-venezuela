@@ -23,6 +23,7 @@ import {
   Type,
   Image as ImageIcon,
 } from 'lucide-react';
+import { reportError } from '@/lib/report-error';
 
 // ── TIPOS DINÁMICOS ─────────────────────────────────────────────────────
 // Ahora TemplateType es cualquier block_key que el doctor tenga activo.
@@ -271,8 +272,7 @@ export default function TemplatesPage() {
         updateConfig('signature_url', json.data.url);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`Error uploading ${type}:`, msg);
+      reportError('doctor/templates', `uploadFile:${type}`, err);
       alert(`Error al subir ${type === 'logo' ? 'logo' : 'firma'}`);
     } finally {
       if (type === 'logo') setUploadingLogo(false);

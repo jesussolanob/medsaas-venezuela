@@ -17,6 +17,8 @@ export async function register() {
     init({
       dsn,
       environment: process.env.NODE_ENV ?? "development",
+      // Do not send events in local dev — only send from production.
+      enabled: process.env.NODE_ENV === "production",
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
       // Source maps are uploaded separately via SENTRY_AUTH_TOKEN in CI.
@@ -29,6 +31,8 @@ export async function register() {
     init({
       dsn,
       environment: process.env.NODE_ENV ?? "development",
+      // Do not send events in local dev — only send from production.
+      enabled: process.env.NODE_ENV === "production",
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
     });

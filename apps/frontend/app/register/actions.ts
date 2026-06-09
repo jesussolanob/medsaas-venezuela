@@ -19,6 +19,7 @@ import 'server-only';
 import { revalidatePath } from 'next/cache';
 import { DEV_DOCTOR_UUID, DEV_PATIENT_UUID } from '@/lib/dev-auth.edge';
 import { backendGet } from '@/lib/api-client.server';
+import { reportError } from '@/lib/report-error';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,7 +193,7 @@ export async function getActivePlans(): Promise<PlanConfigPublic[]> {
   );
 
   if (!result.ok) {
-    console.error('[register/getActivePlans] backend error:', result.error.message);
+    reportError('register/actions', 'getActivePlans', new Error(result.error.message));
     return [];
   }
 
