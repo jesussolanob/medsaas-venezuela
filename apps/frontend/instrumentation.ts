@@ -17,8 +17,8 @@ export async function register() {
     init({
       dsn,
       environment: process.env.NODE_ENV ?? "development",
-      // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
-      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === "true",
+      // Controlled via SENTRY_ENABLED env var (true|false).
+      enabled: process.env.SENTRY_ENABLED === "true",
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
       // Source maps are uploaded separately via SENTRY_AUTH_TOKEN in CI.
@@ -31,8 +31,8 @@ export async function register() {
     init({
       dsn,
       environment: process.env.NODE_ENV ?? "development",
-      // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
-      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === "true",
+      // Controlled via SENTRY_ENABLED env var (true|false).
+      enabled: process.env.SENTRY_ENABLED === "true",
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
     });

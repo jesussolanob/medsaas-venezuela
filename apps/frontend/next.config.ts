@@ -8,6 +8,14 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
 
+  // Expose SENTRY_ENABLED to client-side code under the SAME name used by the
+  // backend. Next.js normally requires the NEXT_PUBLIC_ prefix for browser vars;
+  // this `env` mapping inlines the non-prefixed name at build time so the whole
+  // stack uses a single env var: SENTRY_ENABLED.
+  env: {
+    SENTRY_ENABLED: process.env.SENTRY_ENABLED ?? "false",
+  },
+
   // Required by @sentry/nextjs for App Router pageload tracing (Next 15+).
   experimental: {
     clientTraceMetadata: ["sentry-trace", "baggage"],

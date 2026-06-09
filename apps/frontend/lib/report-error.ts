@@ -34,8 +34,8 @@ export function reportError(
   // Always warn — visible in local dev console and Node.js server output.
   console.warn(`[${file}][${method}] ${msg}${extraStr}`);
 
-  // Send to Sentry only when explicitly enabled via NEXT_PUBLIC_SENTRY_ENABLED=true.
-  if (process.env.NEXT_PUBLIC_SENTRY_ENABLED === 'true') {
+  // Send to Sentry only when explicitly enabled via SENTRY_ENABLED=true.
+  if (process.env.SENTRY_ENABLED === 'true') {
     // Dynamic import keeps @sentry/nextjs out of the critical path when the SDK
     // has not been initialised (e.g. missing DSN in staging).
     import('@sentry/nextjs')
