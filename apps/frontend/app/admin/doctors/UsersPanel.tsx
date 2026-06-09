@@ -49,6 +49,21 @@ function initialsOf(name?: string): string {
   return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]?.toUpperCase() || '').join('')
 }
 
+// The "Plan / Estado" pill reflects SUBSCRIPTION status (the source of truth shown in
+// /admin/subscriptions), not session activity. Activity is shown separately in the
+// "Actividad" column. Note: is_active here means "recently active" (derived from
+// activityStatus, always inactive until Auth0 tracks last_sign_in) — it must NOT gate
+// the subscription pill, otherwise every doctor renders as "Suspendido".
+// Default 'active': a doctor without a subscription row is treated as active (beta privada).
+function subscriptionPillStatus(subscriptionStatus?: string): 'past_due' | 'suspended' | 'trial' | 'active' {
+  switch (subscriptionStatus) {
+    case 'past_due': return 'past_due'
+    case 'suspended': return 'suspended'
+    case 'trial': return 'trial'
+    default: return 'active'
+  }
+}
+
 export default function UsersPanel() {
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [loading, setLoading] = useState(true)
@@ -225,12 +240,7 @@ export default function UsersPanel() {
               ) : (
                 filteredDoctors.map((d, i) => {
                   const days = daysSince(d.last_sign_in_at || d.created_at)
-                  const status = d.is_active
-                    ? (d.subscription_status === 'past_due' ? 'past_due'
-                      : d.subscription_status === 'suspended' ? 'suspended'
-                      : d.subscription_status === 'trial' ? 'trial'
-                      : 'active')
-                    : 'suspended'
+                  const status = subscriptionPillStatus(d.subscription_status)
                   const vence = d.subscription_expires_at
                     ? new Date(d.subscription_expires_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
                     : '—'
@@ -341,12 +351,7 @@ export default function UsersPanel() {
             </div>
           ) : (
             filteredDoctors.map(d => {
-              const status = d.is_active
-                ? (d.subscription_status === 'past_due' ? 'past_due'
-                  : d.subscription_status === 'suspended' ? 'suspended'
-                  : d.subscription_status === 'trial' ? 'trial'
-                  : 'active')
-                : 'suspended'
+              const status = subscriptionPillStatus(d.subscription_status)
               return (
                 <button
                   key={d.id}

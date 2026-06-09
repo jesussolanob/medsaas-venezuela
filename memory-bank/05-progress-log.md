@@ -978,3 +978,33 @@ monitor; envío=BLOQUEANTE F6, NO implementa envío). Mig **20260605000002**. Ad
 - **Diseño:** NO se hornea el mapa en el token — aplicación SIN re-login de cambios en BD.
   Coexiste con RolesGuard (RolesGuard=quién eres; CapabilitiesGuard=qué puedes hacer).
 - **PARADA EN QA:** el usuario hace el QA visual él mismo. NO ejecutar qa-agent.
+
+## 2026-06-09 — Ciclo de QA contra navegador (ADMIN + DOCTOR) — 2 bugs reparados
+
+Primer ciclo de QA automático contra navegador real (Playwright MCP, lead-supervisado). Recorridas
+**22 páginas** (9 admin + 13 doctor) verificando carga, datos reales, 0 errores de consola, anti-PII.
+
+**Resultado: 20/22 OK; 2 bugs reales encontrados y reparados (verificados en navegador + tsc 0 + code-reviewer APROBADO 0 CRIT/HIGH):**
+
+- **HIGH — `/doctor/patients` y `/doctor/services` tiraban HTTP 500** (`ReferenceError: DoctorService is not
+  defined` en module eval del server chunk). Causa raíz: `app/doctor/services/actions.ts` es `'use server'`
+  y re-exportaba un TIPO con `export type { DoctorService };`. El transform de server-actions de Next/Turbopack
+  emite una server-reference runtime por cada named export; para un tipo borrado queda indefinido → crashea
+  todo módulo que importe de ahí. **Fix:** eliminado el re-export muerto (nadie importaba el tipo de ahí; se
+  importa de `@/app/doctor/actions`). **LECCIÓN:** NUNCA `export type { X }` en un módulo `'use server'`
+  (la forma declaración `export type X = ...` sí funciona — el problema es el re-export de binding).
+
+- **MEDIUM — `/admin/doctors` mostraba "Suspendido" en TODOS** los médicos, contradiciendo `/admin/subscriptions`
+  (Activo/Trial) y la BD (`profiles.is_active=true` en los 11). Causa: el route handler `/api/admin/doctors`
+  mapea `is_active: activityStatus !== 'inactive'` (actividad de sesión, siempre 'inactive' hasta Auth0) y el
+  StatusPill de "Plan/Estado" estaba gateado por `is_active ? <sub_status> : 'suspended'`. **Fix:** helper
+  `subscriptionPillStatus()` deriva el badge de `subscription_status` directo (la actividad ya se muestra en la
+  columna "Actividad"). Verificado: Ana=Activo, Test Smoke=Activo, Carlos=Prueba (consistente con subscriptions).
+
+**Anti-PII verificado:** `/admin/patients` solo stats agregadas (sin PII); `/doctor/patients` lista con cédula/
+teléfono enmascarados (`V-123***78`, `0414***567`). RBAC verificado (doctor→/admin redirige a /doctor). BCV en
+vivo OK (DolarAPI: USD 567,68 / EUR 655,38).
+
+**Observaciones NO bug (deuda/data):** "999d" de actividad = sentinela de last_sign_in sin Auth0 (Fase 4);
+`/doctor/settings` imágenes rotas por seed basura (`http://x/logo.png`); 2 warnings eslint pre-existentes
+(`Plus`, `AppError` sin usar) NO introducidos por estos fixes. Cambios SIN commitear aún (working tree).

@@ -26,8 +26,10 @@ import {
 } from '@/lib/api-client.server';
 import type { DoctorService } from '@/app/doctor/actions';
 
-export type { DoctorService };
-
+// NOTE: do NOT re-export types from a 'use server' module (e.g. `export type { DoctorService }`).
+// Next.js' server-action transform emits a runtime server-reference for every named export,
+// which for an erased type becomes `ReferenceError: <Type> is not defined` at module eval
+// (crashes any page importing from here). Consumers import DoctorService from '@/app/doctor/actions'.
 export type ServiceActionResult =
   | { success: true; service?: DoctorService }
   | { success: false; error: string };
