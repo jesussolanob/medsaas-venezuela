@@ -24,6 +24,7 @@ export interface DoctorProfileCreateParams {
   logoUrl: string | null;
   signatureUrl: string | null;
   licenseNumber: string | null;
+  phone: string | null;
   currencyMode: string | null;
   customRate: number | null;
   customRateLabel: string | null;
@@ -41,6 +42,7 @@ export interface DoctorProfileUpdateParams {
   logoUrl?: string | null;
   signatureUrl?: string | null;
   licenseNumber?: string | null;
+  phone?: string | null;
 }
 
 export class DoctorProfile {
@@ -62,6 +64,7 @@ export class DoctorProfile {
   readonly logoUrl: string | null;
   readonly signatureUrl: string | null;
   readonly licenseNumber: string | null;
+  readonly phone: string | null;
   readonly currencyMode: string | null;
   readonly customRate: number | null;
   readonly customRateLabel: string | null;
@@ -85,6 +88,7 @@ export class DoctorProfile {
     this.logoUrl = params.logoUrl;
     this.signatureUrl = params.signatureUrl;
     this.licenseNumber = params.licenseNumber;
+    this.phone = params.phone;
     this.currencyMode = params.currencyMode;
     this.customRate = params.customRate;
     this.customRateLabel = params.customRateLabel;

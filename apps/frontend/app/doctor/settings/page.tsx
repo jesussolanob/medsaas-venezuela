@@ -355,12 +355,13 @@ function SettingsPageInner() {
 
   async function saveProfile() {
     // Persist fields supported by PUT /api/doctor/profile.
-    // full_name, phone, share_message_template are NOT in UpdateDoctorProfileDto
+    // full_name, share_message_template are NOT in UpdateDoctorProfileDto
     // (backend schema is strict — they are silently omitted here).
     const result = await saveSettingsProfile({
       specialty: profile.specialty,
       professional_title: profile.professional_title,
       allows_online: profile.allows_online,
+      phone: profile.phone,
     });
 
     if (!result.ok) {

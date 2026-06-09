@@ -25,6 +25,7 @@ function makeProfile(): DoctorProfile {
     logoUrl: null,
     signatureUrl: null,
     licenseNumber: null,
+    phone: null,
     currencyMode: 'usd_bcv',
     customRate: null,
     customRateLabel: null,

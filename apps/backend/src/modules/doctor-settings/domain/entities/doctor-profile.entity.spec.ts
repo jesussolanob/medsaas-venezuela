@@ -19,6 +19,7 @@ const BASE_PARAMS = {
   logoUrl: null,
   signatureUrl: null,
   licenseNumber: null,
+  phone: null,
   currencyMode: 'usd_bcv',
   customRate: null,
   customRateLabel: null,
@@ -90,6 +91,16 @@ describe('DoctorProfile entity', () => {
     expect(profile.logoUrl).toBe('https://cdn.example.com/logo.png');
     expect(profile.signatureUrl).toBe('https://cdn.example.com/sig.png');
     expect(profile.licenseNumber).toBe('MED-123456');
+  });
+
+  it('stores phone when provided', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, phone: '04141234567' });
+    expect(profile.phone).toBe('04141234567');
+  });
+
+  it('stores null phone when not provided', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, phone: null });
+    expect(profile.phone).toBeNull();
   });
 
   it('stores exchange-rate settings', () => {

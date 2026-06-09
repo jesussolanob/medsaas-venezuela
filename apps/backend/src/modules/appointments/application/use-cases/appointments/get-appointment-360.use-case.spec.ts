@@ -121,6 +121,7 @@ function makeDoctorProfile(): DoctorProfile {
     logoUrl: null,
     signatureUrl: null,
     licenseNumber: null,
+    phone: null,
     currencyMode: null,
     customRate: null,
     customRateLabel: null,

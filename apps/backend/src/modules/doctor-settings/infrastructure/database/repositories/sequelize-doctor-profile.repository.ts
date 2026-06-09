@@ -42,6 +42,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       ...(params.logoUrl !== undefined && { logoUrl: params.logoUrl }),
       ...(params.signatureUrl !== undefined && { signatureUrl: params.signatureUrl }),
       ...(params.licenseNumber !== undefined && { licenseNumber: params.licenseNumber }),
+      ...(params.phone !== undefined && { phone: params.phone }),
     });
 
     return this.toDomain(row);
@@ -83,6 +84,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       logoUrl: row.logoUrl,
       signatureUrl: row.signatureUrl,
       licenseNumber: row.licenseNumber,
+      phone: row.phone,
       currencyMode: row.currencyMode,
       customRate: row.customRate != null ? Number(row.customRate) : null,
       customRateLabel: row.customRateLabel,

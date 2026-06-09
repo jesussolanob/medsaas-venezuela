@@ -16,6 +16,8 @@ export const UpdateDoctorProfileDtoSchema = z
     signature_url: z.string().url().nullable().optional(),
     /** Professional medical license number. */
     license_number: z.string().nullable().optional(),
+    /** Doctor contact phone number. */
+    phone: z.string().max(30).nullable().optional(),
   })
   .strict();
 

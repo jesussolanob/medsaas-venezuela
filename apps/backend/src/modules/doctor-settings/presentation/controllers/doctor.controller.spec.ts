@@ -39,6 +39,7 @@ function makeProfile(): DoctorProfile {
     logoUrl: null,
     signatureUrl: null,
     licenseNumber: null,
+    phone: null,
     currencyMode: 'usd_bcv',
     customRate: null,
     customRateLabel: null,
@@ -144,7 +145,20 @@ describe('DoctorController', () => {
         logoUrl: 'https://cdn.example.com/logo.png',
         signatureUrl: 'https://cdn.example.com/sig.png',
         licenseNumber: 'MED-001',
+        phone: undefined,
       });
+    });
+
+    it('passes phone through to the use case', async () => {
+      const updated = makeProfile();
+      mockUpdateProfile.execute.mockResolvedValue(updated);
+
+      await controller.updateProfileHandler({ phone: '04141234567' }, USER);
+
+      expect(mockUpdateProfile.execute).toHaveBeenCalledWith(
+        DOCTOR_ID,
+        expect.objectContaining({ phone: '04141234567' }),
+      );
     });
   });
 

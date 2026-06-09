@@ -118,6 +118,7 @@ export class DoctorController {
       logoUrl: dto.logo_url,
       signatureUrl: dto.signature_url,
       licenseNumber: dto.license_number,
+      phone: dto.phone,
     });
     return { success: true, data: result };
   }

@@ -83,6 +83,9 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'license_number' })
   declare licenseNumber: string | null;
 
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'phone' })
+  declare phone: string | null;
+
   @Default('usd_bcv')
   @Column({ type: DataType.TEXT, allowNull: true, field: 'currency_mode' })
   declare currencyMode: string | null;

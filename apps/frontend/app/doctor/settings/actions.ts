@@ -14,12 +14,11 @@
  *   GET  /api/doctor/profile          → load profile data
  *   PUT  /api/doctor/profile          → update specialty, professional_title,
  *                                        payment_methods, payment_details,
- *                                        allows_online, office_address, city
+ *                                        allows_online, office_address, city, phone
  *   GET  /api/doctor/schedule         → load schedule config (for integrations tab)
  *   PUT  /api/doctor/schedule         → update schedule config
  *
  * Fields NOT updatable via backend (no endpoint yet — kept read-only or local):
- *   - phone            → not in profiles model for this module
  *   - full_name        → read-only; not in UpdateDoctorProfileDto
  *   - share_message_template → Supabase-only column (PENDING_STORAGE / future)
  *   - whatsapp_token / whatsapp_phone_id → Supabase-only (PENDING_STORAGE)
@@ -65,6 +64,7 @@ interface BackendDoctorProfile {
   logoUrl: string | null;
   signatureUrl: string | null;
   licenseNumber: string | null;
+  phone: string | null;
   plan: string | null;
   subscriptionStatus: string | null;
 }
@@ -99,8 +99,6 @@ export interface SettingsProfileView {
   license_number: string | null;
   payment_methods: string[];
   payment_details: Record<string, Record<string, string>>;
-  // Phone is part of the UI but not yet in the backend profile model.
-  // Displayed read-only when available; write is a no-op for now.
   phone: string;
 }
 
@@ -134,7 +132,7 @@ function profileToView(b: BackendDoctorProfile): SettingsProfileView {
     license_number: b.licenseNumber ?? null,
     payment_methods: b.paymentMethods ?? ['pago_movil', 'transferencia'],
     payment_details: (b.paymentDetails as Record<string, Record<string, string>>) ?? {},
-    phone: '',
+    phone: b.phone ?? '',
   };
 }
 
@@ -184,12 +182,17 @@ export async function saveSettingsProfile(input: {
   allows_online: boolean;
   office_address?: string;
   city?: string;
+  phone?: string;
 }): Promise<ActionResult> {
   const body: Record<string, unknown> = {
     specialty: input.specialty || null,
     professional_title: input.professional_title || null,
     allows_online: input.allows_online,
   };
+
+  if (input.phone !== undefined) {
+    body.phone = input.phone || null;
+  }
 
   if (input.office_address !== undefined) {
     body.office_address = input.office_address || null;
