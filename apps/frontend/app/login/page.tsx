@@ -70,7 +70,8 @@ function LoginInner() {
   function handleGoogleLogin() {
     if (IS_AUTH0_MODE) {
       // Auth0 Universal Login with Google connection.
-      window.location.href = '/auth/login?connection=google-oauth2';
+      // returnTo dispatches to the role-based portal after callback (not the public landing).
+      window.location.href = '/auth/login?connection=google-oauth2&returnTo=/post-login';
       return;
     }
     // dev-stub: OAuth not available.
@@ -385,7 +386,7 @@ function LoginInner() {
               {/* Email/Password — hidden in Auth0 mode (Universal Login handles it) */}
               {IS_AUTH0_MODE ? (
                 <button
-                  onClick={() => { window.location.href = '/auth/login'; }}
+                  onClick={() => { window.location.href = '/auth/login?returnTo=/post-login'; }}
                   className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-semibold transition-all"
                   style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-gray-600)' }}
                 >
