@@ -77,6 +77,55 @@ function handleDevMode(request: NextRequest): NextResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Authoritative role resolution (auth0 mode)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves the caller's role from the backend (profile.role in the DB) via
+ * POST /api/auth/resolve-identity — the SAME source of truth the BFF uses
+ * (lib/identity.server.ts). The Auth0 ID-token claim is only a mirror that
+ * depends on the post-login Action being configured perfectly; the DB role is
+ * authoritative and always correct, so RBAC trusts it.
+ *
+ * Returns the role string, or null if the backend is unreachable / misconfigured
+ * (caller then falls back to the claim role, then 'doctor').
+ *
+ * NOTE: runs on every protected navigation. Cheap (indexed email lookup) and
+ * fine for Etapa 1; a future optimization could cache the role in a signed cookie.
+ */
+async function resolveRoleFromBackend(
+  user: Record<string, unknown>,
+  claimRole: string | null,
+): Promise<string | null> {
+  const backendUrl = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
+  const secret = process.env.AUTH_RESOLVE_SECRET;
+  const email = typeof user.email === 'string' ? user.email : null;
+  if (!secret || !email) return null;
+
+  try {
+    const res = await fetch(`${backendUrl}/api/auth/resolve-identity`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-auth-secret': secret,
+      },
+      body: JSON.stringify({
+        email,
+        sub: typeof user.sub === 'string' ? user.sub : undefined,
+        role: claimRole ?? 'doctor',
+        fullName: typeof user.name === 'string' ? user.name : email,
+      }),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: { role?: string }; role?: string };
+    return json.data?.role ?? json.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Auth0 mode handler
 // ---------------------------------------------------------------------------
 
@@ -123,9 +172,11 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(new URL('/auth/login', request.url));
   }
 
-  // Extract role from the custom claim set by Auth0 Actions.
+  // Role for RBAC: the DB (resolve-identity) is the source of truth. The Auth0
+  // claim is only a fallback (it depends on the post-login Action being correct).
+  const claimRole = (session.user[`${ROLE_NAMESPACE}/role`] as string | undefined) ?? null;
   const role: string =
-    (session.user[`${ROLE_NAMESPACE}/role`] as string | undefined) ?? 'doctor';
+    (await resolveRoleFromBackend(session.user, claimRole)) ?? claimRole ?? 'doctor';
 
   return applyRbac(request, role) ?? (auth0Response as NextResponse);
 }
