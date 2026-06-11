@@ -12,6 +12,11 @@ export const DayScheduleSchema = z.object({
 });
 export type DayScheduleDto = z.infer<typeof DayScheduleSchema>;
 
+export const OfficeMODALITY_VALUES = ['in_person', 'online', 'both'] as const;
+export type OfficeModalityValue = (typeof OfficeMODALITY_VALUES)[number];
+
+export const OfficeModalitySchema = z.enum(OfficeMODALITY_VALUES);
+
 export const CreateOfficeDtoSchema = z.object({
   name: z.string().min(1, 'name is required').max(200),
   address: z.string().max(500).optional().default(''),
@@ -32,6 +37,8 @@ export const CreateOfficeDtoSchema = z.object({
     .max(120, 'buffer_minutes must be at most 120 minutes')
     .optional()
     .default(10),
+  /** Modality of appointments accepted by this office. Default: 'in_person'. */
+  modality: OfficeModalitySchema.optional().default('in_person'),
 });
 export type CreateOfficeDto = z.infer<typeof CreateOfficeDtoSchema>;
 
@@ -43,5 +50,6 @@ export const UpdateOfficeDtoSchema = z.object({
   schedule: z.array(DayScheduleSchema).optional(),
   slot_duration: z.number().int().min(5).max(240).optional(),
   buffer_minutes: z.number().int().min(0).max(120).optional(),
+  modality: OfficeModalitySchema.optional(),
 });
 export type UpdateOfficeDto = z.infer<typeof UpdateOfficeDtoSchema>;

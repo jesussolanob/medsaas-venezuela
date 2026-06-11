@@ -21,6 +21,7 @@ function makeOffice(overrides: Partial<OfficeCreateParams> = {}): Office {
     slotDuration: 30,
     bufferMinutes: 10,
     isActive: true,
+    modality: 'in_person',
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -143,11 +144,32 @@ describe('Office entity', () => {
         slotDuration: 30,
         bufferMinutes: 0,
         isActive: true,
+        modality: 'in_person',
         createdAt: now,
         updatedAt: now,
       });
 
       expect(office.schedule).toHaveLength(0);
+    });
+  });
+
+  describe('supportsModality', () => {
+    it('in_person office only supports in_person', () => {
+      const office = makeOffice({ modality: 'in_person' });
+      expect(office.supportsModality('in_person')).toBe(true);
+      expect(office.supportsModality('online')).toBe(false);
+    });
+
+    it('online office only supports online', () => {
+      const office = makeOffice({ modality: 'online' });
+      expect(office.supportsModality('online')).toBe(true);
+      expect(office.supportsModality('in_person')).toBe(false);
+    });
+
+    it('both office supports any modality', () => {
+      const office = makeOffice({ modality: 'both' });
+      expect(office.supportsModality('in_person')).toBe(true);
+      expect(office.supportsModality('online')).toBe(true);
     });
   });
 });

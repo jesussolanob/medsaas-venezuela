@@ -40,6 +40,7 @@ export class CreateOfficeUseCase {
       slotDuration: dto.slot_duration,
       bufferMinutes: dto.buffer_minutes,
       isActive: true,
+      modality: dto.modality ?? 'in_person',
       createdAt: now,
       updatedAt: now,
     });

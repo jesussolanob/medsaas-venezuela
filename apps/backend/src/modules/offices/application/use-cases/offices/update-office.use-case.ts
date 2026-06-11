@@ -47,6 +47,7 @@ export class UpdateOfficeUseCase {
       slotDuration: dto.slot_duration ?? existing.slotDuration,
       bufferMinutes: dto.buffer_minutes ?? existing.bufferMinutes,
       isActive: existing.isActive,
+      modality: dto.modality ?? existing.modality,
       createdAt: existing.createdAt,
       updatedAt: new Date(),
     });

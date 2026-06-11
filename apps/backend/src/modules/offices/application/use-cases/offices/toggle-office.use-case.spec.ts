@@ -19,6 +19,7 @@ function makeOffice(isActive = true): Office {
     slotDuration: 30,
     bufferMinutes: 10,
     isActive,
+    modality: 'in_person',
     createdAt: now,
     updatedAt: now,
   });
@@ -33,6 +34,7 @@ describe('ToggleOfficeUseCase', () => {
       listByDoctor: jest.fn(),
       findByIdForDoctor: jest.fn(),
       findActiveByDoctor: jest.fn(),
+      findById: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),
@@ -79,7 +81,6 @@ describe('ToggleOfficeUseCase', () => {
 
     await useCase.execute(OFFICE_ID, DOCTOR_ID);
 
-     
     const savedArg = mockRepo.save.mock.calls[0]![0] as Office;
     expect(savedArg.isActive).toBe(false);
   });

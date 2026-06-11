@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { CreateBookingDto } from '@delta/shared-types';
 import { Sequelize } from 'sequelize-typescript';
@@ -25,11 +25,22 @@ import {
   type IPaymentRepository,
 } from '../../../../finances/domain/repositories/payment.repository';
 import { ResolvePatientIdentityUseCase } from '../../../../patient-identities/application/use-cases/resolve-patient-identity.use-case';
+import {
+  OFFICE_REPOSITORY,
+  type IOfficeRepository,
+} from '../../../../offices/domain/repositories/office.repository';
+import { OfficeModalityMismatchError } from '../../../../integrations/domain/errors/office-modality-mismatch.error';
+import {
+  AppointmentNotificationService,
+  APPOINTMENT_NOTIFICATION_SERVICE,
+} from '../../../../integrations/application/services/appointment-notification.service';
 
 export interface CreateBookingResult {
   appointment: Appointment;
   patient: Patient;
   appointmentCode: string;
+  /** Meet link for online appointments (Google Meet or Jitsi). Null for in-person. */
+  meetLink: string | null;
 }
 
 /**
@@ -51,6 +62,8 @@ export interface CreateBookingResult {
  */
 @Injectable()
 export class CreateBookingUseCase {
+  private readonly logger = new Logger(CreateBookingUseCase.name);
+
   constructor(
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointmentRepo: IAppointmentRepository,
@@ -79,6 +92,22 @@ export class CreateBookingUseCase {
      */
     @Optional()
     private readonly resolveIdentity: ResolvePatientIdentityUseCase | null = null,
+    /**
+     * Office repository — optional for backward compatibility.
+     * When present, validates modality compatibility before booking.
+     */
+    @Optional()
+    @Inject(OFFICE_REPOSITORY)
+    private readonly officeRepo: IOfficeRepository | null = null,
+    /**
+     * Notification service — optional for backward compatibility.
+     * When present, sends calendar invites / .ics + email after booking.
+     * Uses explicit string token so NestJS resolves it correctly cross-module
+     * (TypeScript emits Object as design:paramtype for union types).
+     */
+    @Optional()
+    @Inject(APPOINTMENT_NOTIFICATION_SERVICE)
+    private readonly notificationService: AppointmentNotificationService | null = null,
   ) {}
 
   async execute(dto: CreateBookingDto): Promise<CreateBookingResult> {
@@ -91,6 +120,23 @@ export class CreateBookingUseCase {
     const doctor = await this.doctorLoader.findById(dto.doctor_id);
     if (!doctor || !doctor.isActive) {
       throw new DoctorNotFoundError();
+    }
+
+    // --- Step 2b: Validate office modality (if office_id provided) ---
+    let officeAddress: string | undefined;
+    let officeName: string | undefined;
+    let officeDuration = 30;
+
+    if (dto.office_id && this.officeRepo) {
+      const office = await this.officeRepo.findById(dto.office_id);
+      if (office) {
+        if (!office.supportsModality(dto.appointment_mode)) {
+          throw new OfficeModalityMismatchError(dto.appointment_mode, office.modality);
+        }
+        officeAddress = office.address || undefined;
+        officeName = office.name;
+        officeDuration = office.slotDuration;
+      }
     }
 
     // --- Step 3: Verify slot availability ---
@@ -186,7 +232,36 @@ export class CreateBookingUseCase {
       return saved;
     });
 
-    return { appointment: savedAppointment, patient, appointmentCode };
+    // --- Step 7: Send notifications (best-effort — must not break booking) ---
+    let meetLink: string | null = null;
+    if (this.notificationService) {
+      try {
+        const notifResult = await this.notificationService.notify({
+          appointmentId: savedAppointment.id,
+          doctorId: dto.doctor_id,
+          doctorName: doctor.fullName ?? 'Doctor',
+          doctorEmail: undefined,
+          patientEmail: dto.patient_email,
+          patientName: dto.patient_name,
+          scheduledAtISO: savedAppointment.scheduledAt.toISOString(),
+          durationMinutes: officeDuration,
+          appointmentMode: dto.appointment_mode,
+          officeAddress,
+          officeName,
+        });
+        meetLink = notifResult.meetLink;
+
+        // Persist the meet link back to the appointment
+        if (meetLink) {
+          await this.appointmentRepo.updateMeetLink(savedAppointment.id, meetLink);
+        }
+      } catch {
+        // Non-fatal — appointment is already saved
+        this.logger.warn('[booking] notification failed (non-fatal)');
+      }
+    }
+
+    return { appointment: savedAppointment, patient, appointmentCode, meetLink };
   }
 
   // ---------------------------------------------------------------------------

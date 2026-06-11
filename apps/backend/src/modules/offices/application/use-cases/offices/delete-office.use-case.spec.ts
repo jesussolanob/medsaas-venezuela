@@ -14,6 +14,7 @@ describe('DeleteOfficeUseCase', () => {
       listByDoctor: jest.fn(),
       findByIdForDoctor: jest.fn(),
       findActiveByDoctor: jest.fn(),
+      findById: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),

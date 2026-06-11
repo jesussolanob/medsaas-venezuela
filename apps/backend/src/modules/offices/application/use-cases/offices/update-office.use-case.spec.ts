@@ -22,6 +22,7 @@ function makeExistingOffice(overrides: Partial<Parameters<typeof Office.create>[
     slotDuration: 30,
     bufferMinutes: 10,
     isActive: true,
+    modality: 'in_person',
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -37,6 +38,7 @@ describe('UpdateOfficeUseCase', () => {
       listByDoctor: jest.fn(),
       findByIdForDoctor: jest.fn(),
       findActiveByDoctor: jest.fn(),
+      findById: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),
@@ -61,18 +63,18 @@ describe('UpdateOfficeUseCase', () => {
   it('throws OfficeNotFoundError when office does not exist', async () => {
     mockRepo.findByIdForDoctor.mockResolvedValue(null);
 
-    await expect(
-      useCase.execute(OFFICE_ID, { name: 'X' }, DOCTOR_ID),
-    ).rejects.toBeInstanceOf(OfficeNotFoundError);
+    await expect(useCase.execute(OFFICE_ID, { name: 'X' }, DOCTOR_ID)).rejects.toBeInstanceOf(
+      OfficeNotFoundError,
+    );
     expect(mockRepo.save).not.toHaveBeenCalled();
   });
 
   it('throws OfficeNotFoundError for cross-doctor access (anti-IDOR)', async () => {
     mockRepo.findByIdForDoctor.mockResolvedValue(null);
 
-    await expect(
-      useCase.execute(OFFICE_ID, { name: 'X' }, OTHER_DOCTOR_ID),
-    ).rejects.toBeInstanceOf(OfficeNotFoundError);
+    await expect(useCase.execute(OFFICE_ID, { name: 'X' }, OTHER_DOCTOR_ID)).rejects.toBeInstanceOf(
+      OfficeNotFoundError,
+    );
   });
 
   it('throws OfficeInvalidScheduleError for invalid schedule', async () => {
@@ -82,9 +84,9 @@ describe('UpdateOfficeUseCase', () => {
       schedule: [{ day: 0, enabled: true, start: '17:00', end: '08:00' }],
     };
 
-    await expect(
-      useCase.execute(OFFICE_ID, dto, DOCTOR_ID),
-    ).rejects.toBeInstanceOf(OfficeInvalidScheduleError);
+    await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).rejects.toBeInstanceOf(
+      OfficeInvalidScheduleError,
+    );
     expect(mockRepo.save).not.toHaveBeenCalled();
   });
 
@@ -96,7 +98,6 @@ describe('UpdateOfficeUseCase', () => {
 
     await useCase.execute(OFFICE_ID, { name: 'Changed' }, DOCTOR_ID);
 
-     
     const savedOffice = mockRepo.save.mock.calls[0]![0] as Office;
     expect(savedOffice.schedule).toEqual(existing.schedule);
   });
@@ -109,7 +110,6 @@ describe('UpdateOfficeUseCase', () => {
 
     await useCase.execute(OFFICE_ID, { name: 'Updated' }, DOCTOR_ID);
 
-     
     const savedOffice = mockRepo.save.mock.calls[0]![0] as Office;
     expect(savedOffice.doctorId).toBe(DOCTOR_ID);
   });
@@ -122,7 +122,6 @@ describe('UpdateOfficeUseCase', () => {
 
     await useCase.execute(OFFICE_ID, { name: 'New' }, DOCTOR_ID);
 
-     
     const savedOffice = mockRepo.save.mock.calls[0]![0] as Office;
     expect(savedOffice.isActive).toBe(false);
   });
@@ -137,7 +136,7 @@ describe('UpdateOfficeUseCase', () => {
     const result = await useCase.execute(OFFICE_ID, dto, DOCTOR_ID);
 
     expect(result.city).toBe('Maracaibo');
-     
+
     const savedOffice = mockRepo.save.mock.calls[0]![0] as Office;
     expect(savedOffice.name).toBe(existing.name); // unchanged
   });

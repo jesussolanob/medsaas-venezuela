@@ -1,5 +1,8 @@
 import type { DayScheduleParams } from '../value-objects/day-schedule.vo';
 
+/** Modality options for a doctor office. */
+export type OfficeModality = 'in_person' | 'online' | 'both';
+
 export interface OfficeCreateParams {
   id: string;
   doctorId: string;
@@ -11,6 +14,8 @@ export interface OfficeCreateParams {
   slotDuration: number; // minutes
   bufferMinutes: number;
   isActive: boolean;
+  /** Modality of appointments allowed for this office. Default: 'in_person'. */
+  modality: OfficeModality;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +44,7 @@ export class Office {
   readonly slotDuration: number;
   readonly bufferMinutes: number;
   readonly isActive: boolean;
+  readonly modality: OfficeModality;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -53,8 +59,22 @@ export class Office {
     this.slotDuration = params.slotDuration;
     this.bufferMinutes = params.bufferMinutes;
     this.isActive = params.isActive;
+    this.modality = params.modality ?? 'in_person';
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
+  }
+
+  /**
+   * Returns true when the requested appointment modality is compatible with
+   * this office's configured modality.
+   *
+   *   in_person office → only 'in_person' allowed
+   *   online office    → only 'online' allowed
+   *   both office      → any modality allowed
+   */
+  supportsModality(requested: string): boolean {
+    if (this.modality === 'both') return true;
+    return this.modality === requested;
   }
 
   /** Returns true when the given doctorId owns this office. Anti-IDOR guard. */
@@ -95,6 +115,7 @@ export class Office {
       slotDuration: this.slotDuration,
       bufferMinutes: this.bufferMinutes,
       isActive: this.isActive,
+      modality: this.modality,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

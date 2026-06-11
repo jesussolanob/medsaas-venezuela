@@ -115,6 +115,14 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.UUID, allowNull: true, field: 'payment_id' })
   declare paymentId: string | null;
 
+  /**
+   * Meet link for online appointments — Google Meet URL or Jitsi fallback.
+   * Null for in-person appointments.
+   * Added by migration 20260611000004-calendar-integration.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'meet_link' })
+  declare meetLink: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

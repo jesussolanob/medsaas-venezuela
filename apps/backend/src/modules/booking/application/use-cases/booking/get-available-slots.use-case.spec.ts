@@ -31,6 +31,7 @@ function makeOffice(overrides: Partial<Parameters<typeof Office.create>[0]> = {}
     slotDuration: 30,
     bufferMinutes: 0,
     isActive: true,
+    modality: 'in_person',
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -82,6 +83,7 @@ function makeOfficeRepo(offices: Office[] = []): jest.Mocked<IOfficeRepository> 
     listByDoctor: jest.fn(),
     findByIdForDoctor: jest.fn(),
     findActiveByDoctor: jest.fn().mockResolvedValue(offices),
+    findById: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
     delete: jest.fn(),
@@ -104,6 +106,7 @@ function makeAppointmentRepo(occupied: Appointment[] = []): jest.Mocked<IAppoint
     findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue(occupied),
     findRescheduleChain: jest.fn().mockResolvedValue([]),
     findChangeLogs: jest.fn().mockResolvedValue([]),
+    updateMeetLink: jest.fn().mockResolvedValue(undefined),
   } as jest.Mocked<IAppointmentRepository>;
 }
 
@@ -202,8 +205,14 @@ describe('GetAvailableSlotsUseCase (offices-based)', () => {
     });
 
     it('deduplicates slots from multiple offices with overlapping times', async () => {
-      const office1 = makeOffice({ id: 'off-1', schedule: [{ day: 0, enabled: true, start: '08:00', end: '10:00' }] });
-      const office2 = makeOffice({ id: 'off-2', schedule: [{ day: 0, enabled: true, start: '08:00', end: '10:00' }] });
+      const office1 = makeOffice({
+        id: 'off-1',
+        schedule: [{ day: 0, enabled: true, start: '08:00', end: '10:00' }],
+      });
+      const office2 = makeOffice({
+        id: 'off-2',
+        schedule: [{ day: 0, enabled: true, start: '08:00', end: '10:00' }],
+      });
       officeRepo = makeOfficeRepo([office1, office2]);
       useCase = new GetAvailableSlotsUseCase(
         doctorLoader as unknown as IBookingDoctorLoader,

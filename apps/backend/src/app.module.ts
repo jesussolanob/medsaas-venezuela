@@ -37,6 +37,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { EmailModule } from './modules/email/email.module';
 import { DoctorRegistrationModule } from './modules/doctor-registration/doctor-registration.module';
 import { PatientIdentitiesModule } from './modules/patient-identities/patient-identities.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { PatientIdentitiesModule } from './modules/patient-identities/patient-id
     EmailModule,
     DoctorRegistrationModule,
     PatientIdentitiesModule,
+    IntegrationsModule,
   ],
   controllers: [HealthController],
   providers: [

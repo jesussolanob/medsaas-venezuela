@@ -28,6 +28,7 @@ function makeOffice(overrides: Partial<Parameters<typeof Office.create>[0]> = {}
     slotDuration: 30,
     bufferMinutes: 10,
     isActive: true,
+    modality: 'in_person',
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -99,6 +100,7 @@ describe('OfficesController', () => {
       schedule: [],
       slot_duration: 30,
       buffer_minutes: 10,
+      modality: 'in_person',
     };
 
     it('returns the created office in a success envelope', async () => {

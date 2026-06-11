@@ -106,7 +106,11 @@ export interface IAppointmentRepository {
    * Used to build the reschedule chain for cita-360 detail view.
    * Excludes the source appointment itself. Scoped to doctorId for anti-IDOR.
    */
-  findRescheduleChain(consultationId: string, excludeId: string, doctorId: string): Promise<Appointment[]>;
+  findRescheduleChain(
+    consultationId: string,
+    excludeId: string,
+    doctorId: string,
+  ): Promise<Appointment[]>;
 
   /**
    * Returns all audit log entries for the given appointment, ordered by created_at ASC.
@@ -119,6 +123,12 @@ export interface IAppointmentRepository {
    * Returns null when the appointment does not exist or belongs to another doctor.
    */
   findByIdForDoctor(id: string, doctorId: string): Promise<Appointment | null>;
+
+  /**
+   * Persists the meet_link for an existing appointment (online booking flow).
+   * Used after calendar event creation to store Google Meet or Jitsi URL.
+   */
+  updateMeetLink(id: string, meetLink: string): Promise<void>;
 }
 
 /** Audit log entry returned by findChangeLogs. */

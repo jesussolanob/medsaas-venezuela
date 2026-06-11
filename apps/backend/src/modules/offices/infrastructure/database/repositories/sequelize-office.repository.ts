@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import type { WhereOptions } from 'sequelize';
-import { Office } from '../../../domain/entities/office.entity';
+import { Office, type OfficeModality } from '../../../domain/entities/office.entity';
 import { OfficeNotFoundError } from '../../../domain/errors/office-not-found.error';
 import type { IOfficeRepository } from '../../../domain/repositories/office.repository';
 import { OfficeModel } from '../models/office.model';
@@ -35,6 +35,12 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
     return this.toDomain(row);
   }
 
+  async findById(id: string): Promise<Office | null> {
+    const row = await this.officeModel.findByPk(id);
+    if (!row) return null;
+    return this.toDomain(row);
+  }
+
   async findActiveByDoctor(doctorId: string): Promise<Office[]> {
     const rows = await this.officeModel.findAll({
       where: { doctorId, isActive: true } as WhereOptions,
@@ -55,6 +61,7 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
       slotDuration: office.slotDuration,
       bufferMinutes: office.bufferMinutes,
       isActive: office.isActive,
+      modality: office.modality,
     });
     return this.toDomain(row);
   }
@@ -70,6 +77,7 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
         slotDuration: office.slotDuration,
         bufferMinutes: office.bufferMinutes,
         isActive: office.isActive,
+        modality: office.modality,
       },
       {
         where: { id: office.id, doctorId: office.doctorId } as WhereOptions,
@@ -99,6 +107,11 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
   // ---------------------------------------------------------------------------
 
   private toDomain(row: OfficeModel): Office {
+    const validModalities: OfficeModality[] = ['in_person', 'online', 'both'];
+    const modality: OfficeModality = validModalities.includes(row.modality as OfficeModality)
+      ? (row.modality as OfficeModality)
+      : 'in_person';
+
     return Office.create({
       id: row.id,
       doctorId: row.doctorId,
@@ -110,6 +123,7 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
       slotDuration: row.slotDuration,
       bufferMinutes: row.bufferMinutes,
       isActive: row.isActive,
+      modality,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

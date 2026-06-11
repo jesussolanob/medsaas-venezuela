@@ -17,6 +17,7 @@ function makeOffice(id: string = 'oooo-001'): Office {
     slotDuration: 30,
     bufferMinutes: 10,
     isActive: true,
+    modality: 'in_person',
     createdAt: now,
     updatedAt: now,
   });
@@ -28,6 +29,7 @@ describe('ListOfficesUseCase', () => {
 
   beforeEach(() => {
     mockRepo = {
+      findById: jest.fn(),
       listByDoctor: jest.fn(),
       findByIdForDoctor: jest.fn(),
       findActiveByDoctor: jest.fn(),

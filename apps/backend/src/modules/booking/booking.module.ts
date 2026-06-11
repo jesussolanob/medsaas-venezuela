@@ -26,6 +26,8 @@ import { PatientsModule } from '../patients/patients.module';
 import { FinancesModule } from '../finances/finances.module';
 // PatientIdentitiesModule exports ResolvePatientIdentityUseCase (internal analytics only).
 import { PatientIdentitiesModule } from '../patient-identities/patient-identities.module';
+// IntegrationsModule exports AppointmentNotificationService and CreateCalendarEventUseCase.
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 // APPOINTMENT_REPOSITORY binding for CreateBookingUseCase + GetAvailableSlotsUseCase.
 import { APPOINTMENT_REPOSITORY } from '../appointments/domain/repositories/appointment.repository';
@@ -56,6 +58,9 @@ import { OfficesModule } from '../offices/offices.module';
     // PatientIdentitiesModule provides ResolvePatientIdentityUseCase for
     // populating identity_id on new patients created during booking.
     PatientIdentitiesModule,
+    // IntegrationsModule provides AppointmentNotificationService (calendar invites
+    // + .ics + email) and CreateCalendarEventUseCase for Google Meet / Jitsi fallback.
+    IntegrationsModule,
   ],
   controllers: [BookingController],
   providers: [

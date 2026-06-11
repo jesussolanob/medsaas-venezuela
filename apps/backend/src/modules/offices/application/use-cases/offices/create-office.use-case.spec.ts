@@ -16,6 +16,7 @@ function makeDto(overrides: Partial<CreateOfficeDto> = {}): CreateOfficeDto {
     schedule: [{ day: 0, enabled: true, start: '08:00', end: '17:00' }],
     slot_duration: 30,
     buffer_minutes: 10,
+    modality: 'in_person',
     ...overrides,
   };
 }
@@ -32,6 +33,7 @@ function savedOffice(input: CreateOfficeDto): Office {
     slotDuration: input.slot_duration,
     bufferMinutes: input.buffer_minutes,
     isActive: true,
+    modality: input.modality ?? 'in_person',
     createdAt: now,
     updatedAt: now,
   });
@@ -46,6 +48,7 @@ describe('CreateOfficeUseCase', () => {
       listByDoctor: jest.fn(),
       findByIdForDoctor: jest.fn(),
       findActiveByDoctor: jest.fn(),
+      findById: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),
@@ -61,7 +64,7 @@ describe('CreateOfficeUseCase', () => {
     const result = await useCase.execute(dto, DOCTOR_ID);
 
     expect(mockRepo.create).toHaveBeenCalledTimes(1);
-     
+
     const createdOffice = mockRepo.create.mock.calls[0]![0] as Office;
     expect(createdOffice.doctorId).toBe(DOCTOR_ID);
     expect(createdOffice.name).toBe(dto.name);
@@ -75,7 +78,6 @@ describe('CreateOfficeUseCase', () => {
 
     await useCase.execute(dto, DOCTOR_ID);
 
-     
     const createdOffice = mockRepo.create.mock.calls[0]![0] as Office;
     expect(createdOffice.doctorId).toBe(DOCTOR_ID);
   });
@@ -86,7 +88,6 @@ describe('CreateOfficeUseCase', () => {
 
     await useCase.execute(dto, DOCTOR_ID);
 
-     
     const createdOffice = mockRepo.create.mock.calls[0]![0] as Office;
     expect(createdOffice.isActive).toBe(true);
   });
@@ -140,9 +141,8 @@ describe('CreateOfficeUseCase', () => {
     await useCase.execute(dto, DOCTOR_ID);
     await useCase.execute(dto, DOCTOR_ID);
 
-     
     const id1 = (mockRepo.create.mock.calls[0]![0] as Office).id;
-     
+
     const id2 = (mockRepo.create.mock.calls[1]![0] as Office).id;
     expect(id1).not.toBe(id2);
   });

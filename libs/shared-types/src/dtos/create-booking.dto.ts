@@ -9,6 +9,14 @@ export const CreateBookingDtoSchema = z
 
     doctor_id: z.string().uuid(),
 
+    /**
+     * ID of the specific office where the appointment is requested.
+     * Used to validate that the requested modality is supported by the office
+     * (e.g. an in_person-only office rejects online bookings).
+     * Optional for backward compatibility — if omitted, modality is accepted as-is.
+     */
+    office_id: z.string().uuid().nullable().optional(),
+
     // Patient identification
     patient_name: z.string().min(1).max(200),
     patient_email: z.string().email(),

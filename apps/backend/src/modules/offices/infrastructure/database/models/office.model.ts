@@ -67,6 +67,15 @@ export class OfficeModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'is_active' })
   declare isActive: boolean;
 
+  /**
+   * Modality of appointments allowed for this office.
+   * Possible values: 'in_person' | 'online' | 'both'
+   * Added by migration 20260611000004-calendar-integration.
+   */
+  @Default('in_person')
+  @Column({ type: DataType.TEXT, allowNull: false })
+  declare modality: string;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

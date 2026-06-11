@@ -27,6 +27,13 @@ export interface IOfficeRepository {
    */
   findActiveByDoctor(doctorId: string): Promise<Office[]>;
 
+  /**
+   * Finds a single office by ID (any doctor).
+   * Used by the booking flow to validate modality before creating a booking.
+   * Returns null if not found.
+   */
+  findById(id: string): Promise<Office | null>;
+
   /** Persists a new office. Returns the saved entity. */
   create(office: Office): Promise<Office>;
 

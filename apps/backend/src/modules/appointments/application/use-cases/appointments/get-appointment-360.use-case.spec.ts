@@ -152,6 +152,7 @@ describe('GetAppointment360UseCase', () => {
       updateScheduledAt: jest.fn(),
       findRescheduleChain: jest.fn(),
       findChangeLogs: jest.fn(),
+      updateMeetLink: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IAppointmentRepository>;
 
     mockConsultRepo = {
@@ -213,11 +214,38 @@ describe('GetAppointment360UseCase', () => {
       const consultation = makeConsultation();
       const patient = makePatient();
       const profile = makeDoctorProfile();
-      const paymentItem = { id: 'item-1', paymentId: PAYMENT_ID, doctorId: DOCTOR_ID, name: 'Consulta', amountUsd: 30, sourceType: null, sourceId: null, createdAt: NOW, updatedAt: NOW };
+      const paymentItem = {
+        id: 'item-1',
+        paymentId: PAYMENT_ID,
+        doctorId: DOCTOR_ID,
+        name: 'Consulta',
+        amountUsd: 30,
+        sourceType: null,
+        sourceId: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
 
       mockApptRepo.findByIdForDoctor.mockResolvedValue(appt);
       mockConsultRepo.findByAppointmentId.mockResolvedValue(consultation);
-      mockPaymentRepo.findByIdForDoctor.mockResolvedValue({ id: PAYMENT_ID, doctorId: DOCTOR_ID, patientId: PATIENT_ID, amountUsd: 30, amountBs: null, bcvRate: null, currency: 'USD', methodSnapshot: null, paymentReference: null, paymentReceiptUrl: null, paymentCode: null, status: 'approved', paidAt: NOW, packageId: null, createdAt: NOW, updatedAt: NOW } as never);
+      mockPaymentRepo.findByIdForDoctor.mockResolvedValue({
+        id: PAYMENT_ID,
+        doctorId: DOCTOR_ID,
+        patientId: PATIENT_ID,
+        amountUsd: 30,
+        amountBs: null,
+        bcvRate: null,
+        currency: 'USD',
+        methodSnapshot: null,
+        paymentReference: null,
+        paymentReceiptUrl: null,
+        paymentCode: null,
+        status: 'approved',
+        paidAt: NOW,
+        packageId: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      } as never);
       mockPaymentRepo.listItems.mockResolvedValue([paymentItem as never]);
       mockPatientRepo.findById.mockResolvedValue(patient);
       mockProfileRepo.findByDoctorId.mockResolvedValue(profile);
@@ -265,7 +293,10 @@ describe('GetAppointment360UseCase', () => {
     it('returns reschedule chain when consultation links multiple appointments', async () => {
       const appt = makeAppointment();
       const consultation = makeConsultation();
-      const chainAppt = makeAppointment({ id: 'appt-uuid-prev', scheduledAt: new Date('2026-05-01') });
+      const chainAppt = makeAppointment({
+        id: 'appt-uuid-prev',
+        scheduledAt: new Date('2026-05-01'),
+      });
 
       mockApptRepo.findByIdForDoctor.mockResolvedValue(appt);
       mockConsultRepo.findByAppointmentId.mockResolvedValue(consultation);
@@ -280,17 +311,20 @@ describe('GetAppointment360UseCase', () => {
 
       expect(result.rescheduleChain).toHaveLength(1);
       expect(result.rescheduleChain[0]?.id).toBe('appt-uuid-prev');
-      expect(mockApptRepo.findRescheduleChain).toHaveBeenCalledWith(
-        CONSULT_ID,
-        APPT_ID,
-        DOCTOR_ID,
-      );
+      expect(mockApptRepo.findRescheduleChain).toHaveBeenCalledWith(CONSULT_ID, APPT_ID, DOCTOR_ID);
     });
 
     it('returns change log entries', async () => {
       const appt = makeAppointment({ patientId: null, paymentId: null });
       const changeLog = [
-        { id: 'log-1', appointmentId: APPT_ID, actorId: DOCTOR_ID, oldStatus: 'scheduled', newStatus: 'confirmed', createdAt: NOW },
+        {
+          id: 'log-1',
+          appointmentId: APPT_ID,
+          actorId: DOCTOR_ID,
+          oldStatus: 'scheduled',
+          newStatus: 'confirmed',
+          createdAt: NOW,
+        },
       ];
 
       mockApptRepo.findByIdForDoctor.mockResolvedValue(appt);

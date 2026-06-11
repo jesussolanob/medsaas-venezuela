@@ -110,10 +110,19 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         chiefComplaint: appointment.chiefComplaint,
         appointmentCode: appointment.appointmentCode,
         paymentId: appointment.paymentId ?? null,
+        meetLink: appointment.meetLink ?? null,
       },
       { transaction },
     );
     return this.toDomain(row);
+  }
+
+  /**
+   * Persists the meet_link for an existing appointment.
+   * Used by the booking flow after calendar event creation.
+   */
+  async updateMeetLink(id: string, meetLink: string): Promise<void> {
+    await this.appointmentModel.update({ meetLink }, { where: { id } });
   }
 
   async updateStatus(id: string, status: AppointmentStatus): Promise<Appointment> {
@@ -304,6 +313,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       chiefComplaint: row.chiefComplaint,
       appointmentCode: row.appointmentCode,
       paymentId: row.paymentId ?? null,
+      meetLink: row.meetLink ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

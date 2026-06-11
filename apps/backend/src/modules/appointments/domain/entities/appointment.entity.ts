@@ -45,6 +45,8 @@ export class Appointment {
     public readonly chiefComplaint: string | null,
     public readonly appointmentCode: string | null,
     public readonly paymentId: string | null,
+    /** Google Meet URL or Jitsi fallback for online appointments. Null for in-person. */
+    public readonly meetLink: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
@@ -98,6 +100,7 @@ export class Appointment {
       params.chiefComplaint ?? null,
       params.appointmentCode ?? null,
       params.paymentId ?? null,
+      params.meetLink ?? null,
       params.createdAt,
       params.updatedAt,
     );
@@ -135,6 +138,11 @@ export interface AppointmentCreateParams {
    * a payment record. Null for legacy rows and package-only bookings.
    */
   paymentId?: string | null;
+  /**
+   * Google Meet URL or Jitsi fallback link for online appointments.
+   * Set after calendar event creation in the booking flow. Null for in-person.
+   */
+  meetLink?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
