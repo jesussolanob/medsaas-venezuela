@@ -66,11 +66,15 @@ function LoginInner() {
   const [showPassword, setShowPassword] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [confirmingEmail] = useState(false);
+  // True while a full-page redirect to Auth0 is in flight — disables the card and
+  // shows a loader so the user gets feedback (the browser tab spinner is not enough).
+  const [redirecting, setRedirecting] = useState(false);
 
   function handleGoogleLogin() {
     if (IS_AUTH0_MODE) {
       // Auth0 Universal Login with Google connection.
       // returnTo dispatches to the role-based portal after callback (not the public landing).
+      setRedirecting(true);
       window.location.href = '/auth/login?connection=google-oauth2&returnTo=/post-login';
       return;
     }
@@ -347,10 +351,28 @@ function LoginInner() {
                 </div>
               )}
 
+              {/* Full-page redirect loader — disables the whole card while Auth0 loads */}
+              {redirecting && (
+                <div
+                  className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4"
+                  style={{ background: 'rgba(250, 251, 252, 0.85)', backdropFilter: 'blur(2px)' }}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Loader2
+                    className="w-9 h-9 animate-spin"
+                    style={{ color: 'var(--dh-teal, #14b8a6)' }}
+                  />
+                  <p className="text-sm font-medium" style={{ color: 'var(--dh-gray-600)' }}>
+                    Redirigiendo…
+                  </p>
+                </div>
+              )}
+
               {/* Google Button */}
               <button
                 onClick={handleGoogleLogin}
-                disabled={loading}
+                disabled={loading || redirecting}
                 className="btn-google-dh w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl border-2 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{
                   borderColor: 'var(--dh-gray-100)',
@@ -358,7 +380,7 @@ function LoginInner() {
                   background: '#fff',
                 }}
               >
-                {loading ? (
+                {loading || redirecting ? (
                   <>
                     <Loader2
                       className="w-5 h-5 animate-spin"
@@ -386,8 +408,12 @@ function LoginInner() {
               {/* Email/Password — hidden in Auth0 mode (Universal Login handles it) */}
               {IS_AUTH0_MODE ? (
                 <button
-                  onClick={() => { window.location.href = '/auth/login?returnTo=/post-login'; }}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-semibold transition-all"
+                  onClick={() => {
+                    setRedirecting(true);
+                    window.location.href = '/auth/login?returnTo=/post-login';
+                  }}
+                  disabled={redirecting}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-sm font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ borderColor: 'var(--dh-gray-100)', color: 'var(--dh-gray-600)' }}
                 >
                   <Mail className="w-4 h-4" />
