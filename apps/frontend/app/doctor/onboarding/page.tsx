@@ -1,29 +1,55 @@
 /**
- * /doctor/onboarding — Registro profesional del médico (Fase 2).
+ * /doctor/onboarding — Registro profesional obligatorio del médico.
  *
- * Server Component: carga el perfil actual para pre-rellenar nombre y cédula.
- * Si el doctor ya completó el registro, redirige al dashboard.
+ * Server Component: carga el perfil actual (pre-rellena nombre, cédula y
+ * especialidad) y la lista de especialidades disponibles para el combobox.
+ *
+ * Esta página se muestra a pantalla completa (sin sidebar) gracias al
+ * layout.tsx propio de esta carpeta.
  */
 
 import { getDoctorProfile } from '@/app/doctor/actions';
+import { backendGet } from '@/lib/api-client.server';
 import OnboardingForm from './OnboardingForm';
 import { Activity } from 'lucide-react';
 
 export const metadata = {
-  title: 'Completa tu registro — Delta Medical CRM',
+  title: 'Activa tu cuenta — Delta Medical CRM',
 };
 
-export default async function DoctorOnboardingPage() {
-  const profile = await getDoctorProfile();
+interface Specialty {
+  id: string;
+  name: string;
+}
 
-  const initialFullName = profile?.full_name ?? '';
-  const initialCedula = profile?.cedula ?? '';
+async function fetchSpecialties(): Promise<Specialty[]> {
+  // GET /api/specialties is public — still uses backendGet for consistency.
+  const result = await backendGet<Specialty[]>('/api/specialties');
+  if (!result.ok) return [];
+  return Array.isArray(result.value) ? result.value : [];
+}
+
+export default async function DoctorOnboardingPage() {
+  const [profile, specialties] = await Promise.all([getDoctorProfile(), fetchSpecialties()]);
+
+  // Parse cedula prefix/number from stored value (e.g. "V-12345678")
+  let initialCedulaPrefix: 'V' | 'E' = 'V';
+  let initialCedulaNumber = '';
+
+  const rawCedula = profile?.cedula ?? '';
+  if (rawCedula) {
+    const match = rawCedula.match(/^([VEve])-?(\d+)$/);
+    if (match) {
+      initialCedulaPrefix = (match[1].toUpperCase() as 'V' | 'E') ?? 'V';
+      initialCedulaNumber = match[2];
+    } else {
+      // Fallback: store raw in the number field
+      initialCedulaNumber = rawCedula;
+    }
+  }
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
-      style={{ background: 'var(--dh-bone, #F5F4F0)' }}
-    >
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg space-y-6">
         {/* Logo header */}
         <div className="flex items-center gap-3 justify-center">
@@ -50,7 +76,13 @@ export default async function DoctorOnboardingPage() {
         </div>
 
         {/* Form */}
-        <OnboardingForm initialFullName={initialFullName} initialCedula={initialCedula} />
+        <OnboardingForm
+          initialFullName={profile?.full_name ?? ''}
+          initialCedulaPrefix={initialCedulaPrefix}
+          initialCedulaNumber={initialCedulaNumber}
+          initialSpecialty={profile?.specialty ?? ''}
+          specialties={specialties}
+        />
 
         <p className="text-center text-xs" style={{ color: 'var(--dh-gray-400)' }}>
           ¿Tienes alguna duda?{' '}

@@ -21,7 +21,6 @@ import {
   ChevronRight as ChevronRightIcon,
   UserPlus,
   X,
-  ClipboardCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -383,43 +382,9 @@ export default function DoctorDashboard() {
           </div>
         </div>
 
-        {/* Onboarding banner: shown when cedula is not yet registered */}
-        {profile && !profile.cedula && (
-          <Link
-            href="/doctor/onboarding"
-            className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all group"
-            style={{
-              background: 'var(--dh-turquoise-50)',
-              border: '1px solid var(--dh-turquoise-100)',
-            }}
-          >
-            <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-              style={{ background: 'var(--dh-turquoise)' }}
-            >
-              <ClipboardCheck className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p
-                className="text-sm font-semibold leading-tight"
-                style={{ color: 'var(--dh-turquoise-700)' }}
-              >
-                Completa tu registro profesional
-              </p>
-              <p
-                className="text-xs mt-0.5"
-                style={{ color: 'var(--dh-turquoise-700)', opacity: 0.75 }}
-              >
-                Envía tus datos de identidad para la verificación administrativa — no bloquea tu
-                acceso.
-              </p>
-            </div>
-            <ArrowRight
-              className="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-1"
-              style={{ color: 'var(--dh-turquoise)' }}
-            />
-          </Link>
-        )}
+        {/* Onboarding banner removed — access gate now lives in the layout.
+            Doctors without a cedula are redirected to /doctor/onboarding before
+            they ever reach this page. */}
 
         {/* Hero welcome card */}
         <div

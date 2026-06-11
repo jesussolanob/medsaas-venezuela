@@ -46,6 +46,7 @@ import { getMyCapabilities } from '@/app/capabilities-actions';
 import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
+import { checkOnboardingComplete } from './actions';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 type NavSection = { key: string; label: string; icon: React.ElementType; items: NavItem[] };
@@ -124,6 +125,12 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
 
+  // Onboarding gate: 'checking' → 'ok' | 'redirect'
+  // While 'checking', render nothing to avoid flash of portal content.
+  const [onboardingState, setOnboardingState] = useState<'checking' | 'ok' | 'redirect'>(
+    'checking',
+  );
+
   const [pinned, setPinned] = useState(true);
   const [hovered, setHovered] = useState(false);
 
@@ -133,6 +140,41 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       if (saved !== null) setPinned(saved === 'true');
     } catch {}
   }, []);
+
+  // Onboarding gate: on every navigation within /doctor, check if the doctor
+  // has completed their profile. If not (no cedula) and they are NOT already
+  // on /doctor/onboarding, force-redirect there.
+  useEffect(() => {
+    // Skip the check when already on the onboarding route — avoids an
+    // infinite redirect loop when the gate fires on the onboarding page itself.
+    // (The onboarding page has its own standalone layout and will render fine.)
+    if (pathname === '/doctor/onboarding' || pathname.startsWith('/doctor/onboarding/')) {
+      setOnboardingState('ok');
+      return;
+    }
+
+    let cancelled = false;
+    setOnboardingState('checking');
+
+    checkOnboardingComplete()
+      .then((complete) => {
+        if (cancelled) return;
+        if (!complete) {
+          router.replace('/doctor/onboarding');
+          setOnboardingState('redirect');
+        } else {
+          setOnboardingState('ok');
+        }
+      })
+      .catch(() => {
+        // On error, allow access rather than blocking indefinitely.
+        if (!cancelled) setOnboardingState('ok');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, router]);
 
   useEffect(() => {
     getMyCapabilities()
@@ -189,6 +231,12 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       : pathname.includes('/suggestions')
         ? 'Sugerencias'
         : 'Portal Médico');
+
+  // Block render until we know whether to show the portal or redirect.
+  // This prevents a flash of the full portal UI before the gate fires.
+  if (onboardingState === 'checking' || onboardingState === 'redirect') {
+    return null;
+  }
 
   return (
     <>

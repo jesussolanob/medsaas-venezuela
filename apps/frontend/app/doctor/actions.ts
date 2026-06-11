@@ -66,7 +66,6 @@ interface BackendProfile {
 
 export type DoctorProfile = BackendProfile;
 
-
 /** Fetch the doctor's profile from the NestJS backend. */
 export async function getDoctorProfile(): Promise<DoctorProfile | null> {
   const result = await backendGet<DoctorProfile>('/api/doctor/profile');
@@ -190,3 +189,18 @@ export async function getFinanceSummary(month?: string): Promise<BackendFinanceS
 }
 
 export { appErrorToString };
+
+// ---------------------------------------------------------------------------
+// Onboarding gate
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the doctor has completed onboarding (cedula is present).
+ * Used by the doctor layout to gate access to the portal.
+ */
+export async function checkOnboardingComplete(): Promise<boolean> {
+  const profile = await getDoctorProfile();
+  // A newly SSO-created doctor won't have a cedula until they submit the
+  // onboarding form. That's the canonical "incomplete" signal.
+  return Boolean(profile?.cedula && profile.cedula.trim().length > 0);
+}
