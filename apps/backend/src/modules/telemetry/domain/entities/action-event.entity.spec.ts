@@ -1,5 +1,6 @@
 import { ActionEvent, PiiGuard } from './action-event.entity';
 import { PiiInEventError } from '../errors/pii-in-event.error';
+import { InvalidEventError } from '../errors/invalid-event.error';
 
 const baseParams = {
   id: 'b1e2f3a4-5b6c-7d8e-9f0a-1b2c3d4e5f60',
@@ -50,12 +51,12 @@ describe('ActionEvent.create', () => {
     expect(event.action).toBe('button.click');
   });
 
-  it('throws PiiInEventError when action is empty', () => {
-    expect(() => ActionEvent.create({ ...baseParams, action: '' })).toThrow(PiiInEventError);
+  it('throws InvalidEventError when action is empty', () => {
+    expect(() => ActionEvent.create({ ...baseParams, action: '' })).toThrow(InvalidEventError);
   });
 
-  it('throws PiiInEventError when action is whitespace only', () => {
-    expect(() => ActionEvent.create({ ...baseParams, action: '   ' })).toThrow(PiiInEventError);
+  it('throws InvalidEventError when action is whitespace only', () => {
+    expect(() => ActionEvent.create({ ...baseParams, action: '   ' })).toThrow(InvalidEventError);
   });
 
   it('accepts sentry_event_id in metadata (Sentry correlation, non-PII)', () => {

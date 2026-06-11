@@ -9,6 +9,7 @@ import type { CurrentUserPayload } from '../../../../presentation/decorators/cur
 import type { IngestTelemetryBatchDto } from '@delta/shared-types';
 import type { ActionEvent } from '../../domain/entities/action-event.entity';
 import type { ActionEventListResult } from '../../domain/repositories/action-event.repository';
+import type { AdminActionEventDto } from '../../application/dtos/action-event-admin.dto';
 
 const DOCTOR_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const ADMIN_ID = 'f0f0f0f0-0000-0000-0000-000000000001';
@@ -98,6 +99,45 @@ describe('TelemetryController', () => {
         events: dto.events,
       });
     });
+
+    it('RolesGuard blocks non-doctor users from POST /batch', () => {
+      const reflector = new Reflector();
+      const guard = new RolesGuard(reflector);
+
+      // Simulate a super_admin trying to ingest events
+      const mockContext = {
+        switchToHttp: () => ({
+          getRequest: () => ({ user: adminUser }),
+        }),
+        getHandler: () => ({}),
+        getClass: () => ({}),
+      };
+
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValue(['doctor'] as CurrentUserPayload['role'][]);
+
+      expect(() => guard.canActivate(mockContext as never)).toThrow(ForbiddenException);
+    });
+
+    it('RolesGuard allows doctor users for POST /batch', () => {
+      const reflector = new Reflector();
+      const guard = new RolesGuard(reflector);
+
+      const mockContext = {
+        switchToHttp: () => ({
+          getRequest: () => ({ user: doctorUser }),
+        }),
+        getHandler: () => ({}),
+        getClass: () => ({}),
+      };
+
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValue(['doctor'] as CurrentUserPayload['role'][]);
+
+      expect(guard.canActivate(mockContext as never)).toBe(true);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -180,10 +220,23 @@ describe('TelemetryController', () => {
       expect(guard.canActivate(mockContext as never)).toBe(true);
     });
 
-    it('wraps items in data array', async () => {
-      const fakeItems = [{ id: 'some-id' }] as unknown as ActionEvent[];
+    it('projects items to AdminActionEventDto (excludes metadata)', async () => {
+      const occurredAt = new Date('2026-06-11T10:00:00Z');
+      const createdAt = new Date('2026-06-11T10:00:01Z');
+      const fakeEvent = {
+        id: 'some-id',
+        doctorId: DOCTOR_ID,
+        sessionId: 'sess-abc',
+        action: 'page.view',
+        resourceType: 'appointment',
+        resourceId: 'res-id',
+        metadata: { secret: 'should-be-excluded' },
+        occurredAt,
+        createdAt,
+      } as unknown as ActionEvent;
+
       mockQueryUseCase.execute.mockResolvedValue({
-        items: fakeItems,
+        items: [fakeEvent],
         total: 1,
         limit: 50,
         offset: 0,
@@ -195,7 +248,13 @@ describe('TelemetryController', () => {
         offset: 0,
       });
 
-      expect(result.data).toBe(fakeItems);
+      expect(result.data).toHaveLength(1);
+      const dto = result.data[0] as AdminActionEventDto;
+      expect(dto.id).toBe('some-id');
+      expect(dto.action).toBe('page.view');
+      expect(dto.occurredAt).toBe(occurredAt);
+      // metadata must NOT be present in the output DTO
+      expect('metadata' in dto).toBe(false);
     });
   });
 });

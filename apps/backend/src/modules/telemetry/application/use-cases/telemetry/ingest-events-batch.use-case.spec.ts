@@ -1,5 +1,6 @@
 import { IngestEventsBatchUseCase } from './ingest-events-batch.use-case';
 import { ActionEvent } from '../../../domain/entities/action-event.entity';
+import { InvalidEventError } from '../../../domain/errors/invalid-event.error';
 import type { IActionEventRepository } from '../../../domain/repositories/action-event.repository';
 import type { TelemetryEventInput } from '@delta/shared-types';
 
@@ -103,6 +104,18 @@ describe('IngestEventsBatchUseCase', () => {
     expect(result.rejected).toBe(1);
   });
 
+  it('counts InvalidEventError as rejected (format rejection, not PII)', async () => {
+    // Force domain creation to throw InvalidEventError (format rejection)
+    jest.spyOn(ActionEvent, 'create').mockImplementationOnce(() => {
+      throw new InvalidEventError('simulated format error');
+    });
+    const result = await useCase.execute({ doctorId: DOCTOR_ID, events: [makeEvent()] });
+
+    expect(result.inserted).toBe(0);
+    expect(result.rejected).toBe(1);
+    expect(repo.bulkInsert).not.toHaveBeenCalled();
+  });
+
   it('skips bulkInsert when all events are rejected', async () => {
     const events = [
       makeEvent({ metadata: { cedula: 'V-99999999' } }),
@@ -188,8 +201,8 @@ describe('IngestEventsBatchUseCase', () => {
     expect(new Set(ids).size).toBe(2);
   });
 
-  it('rethrows non-PII errors from domain creation', async () => {
-    // Simulate an unexpected domain error (not PiiInEventError)
+  it('rethrows non-PII non-format errors from domain creation', async () => {
+    // Simulate an unexpected error (not PiiInEventError nor InvalidEventError)
     jest.spyOn(ActionEvent, 'create').mockImplementationOnce(() => {
       throw new TypeError('unexpected domain error');
     });

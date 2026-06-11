@@ -15,6 +15,10 @@ import {
 } from '@delta/shared-types';
 import { IngestEventsBatchUseCase } from '../../application/use-cases/telemetry/ingest-events-batch.use-case';
 import { QueryDoctorEventsUseCase } from '../../application/use-cases/telemetry/query-doctor-events.use-case';
+import {
+  type AdminActionEventDto,
+  toAdminActionEventDto,
+} from '../../application/dtos/action-event-admin.dto';
 
 interface SuccessResponse<T> {
   success: true;
@@ -53,12 +57,16 @@ export class TelemetryController {
    *
    * Accepts a batch of UI action events from the authenticated doctor.
    * doctorId is extracted from the auth token — never from the body (anti-IDOR).
+   * Restricted to `doctor` role — admins and patients must not inject events.
    *
    * Returns:
    *   { inserted: number, rejected: number }
-   *   where `rejected` counts events silently discarded due to PII detection.
+   *   where `rejected` counts events silently discarded due to PII detection
+   *   or format validation failures.
    */
   @Post('batch')
+  @UseGuards(RolesGuard)
+  @Roles('doctor')
   async ingestEventsBatch(
     @Body(new ZodValidationPipe(IngestTelemetryBatchDtoSchema))
     dto: IngestTelemetryBatchDto,
@@ -83,11 +91,11 @@ export class TelemetryController {
   async getDoctorEvents(
     @Query(new ZodValidationPipe(QueryDoctorEventsDtoSchema))
     query: QueryDoctorEventsDto,
-  ): Promise<PaginatedResponse<unknown>> {
+  ): Promise<PaginatedResponse<AdminActionEventDto>> {
     const result = await this.queryEvents.execute(query);
     return {
       success: true,
-      data: result.items,
+      data: result.items.map(toAdminActionEventDto),
       meta: {
         total: result.total,
         limit: result.limit,

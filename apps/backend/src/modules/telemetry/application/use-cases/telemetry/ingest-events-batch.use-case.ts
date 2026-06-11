@@ -6,6 +6,7 @@ import {
 } from '../../../domain/repositories/action-event.repository';
 import { ActionEvent } from '../../../domain/entities/action-event.entity';
 import { PiiInEventError } from '../../../domain/errors/pii-in-event.error';
+import { InvalidEventError } from '../../../domain/errors/invalid-event.error';
 import type { TelemetryEventInput } from '@delta/shared-types';
 
 export interface IngestEventsInput {
@@ -62,7 +63,10 @@ export class IngestEventsBatchUseCase {
         });
         valid.push(event);
       } catch (err) {
-        if (err instanceof PiiInEventError) {
+        if (err instanceof PiiInEventError || err instanceof InvalidEventError) {
+          // PiiInEventError: security rejection (PII detected)
+          // InvalidEventError: format rejection (e.g. empty action)
+          // Both count as rejected — they do NOT inflate PII counters separately.
           rejected++;
         } else {
           throw err;

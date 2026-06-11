@@ -17,7 +17,10 @@ export const DoctorRegistrationDtoSchema = z
       .max(200, 'full_name must be at most 200 characters'),
     cedula: z
       .string()
-      .min(3, 'cedula must be at least 3 characters')
+      .regex(
+        /^[VEP]-[A-Za-z0-9]{3,20}$/,
+        'cedula must follow format V/E/P-<value> (e.g. V-12345678)',
+      )
       .max(30, 'cedula must be at most 30 characters'),
     mpps_number: z.string().min(1).max(50).nullable().optional(),
     colegiado_number: z.string().min(1).max(50).nullable().optional(),

@@ -35,6 +35,10 @@ export class SequelizeActionEventRepository implements IActionEventRepository {
       createdAt: e.createdAt,
     }));
 
+    // validate:false is intentional: every ActionEvent was already validated
+    // by ActionEvent.create() (PiiGuard + InvalidEventError checks) before
+    // reaching this repository. Re-running Sequelize model-level validation
+    // on each row would add latency with no correctness benefit.
     await this.model.bulkCreate(rows, { validate: false });
     return events;
   }

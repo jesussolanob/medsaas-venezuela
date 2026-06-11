@@ -1,4 +1,5 @@
 import { PiiInEventError } from '../errors/pii-in-event.error';
+import { InvalidEventError } from '../errors/invalid-event.error';
 
 /**
  * ActionEvent domain entity.
@@ -26,7 +27,7 @@ export class ActionEvent {
 
   static create(params: ActionEventCreateParams): ActionEvent {
     if (!params.action || params.action.trim().length === 0) {
-      throw new PiiInEventError('action field must not be empty');
+      throw new InvalidEventError('action field must not be empty');
     }
 
     // Validate metadata for PII

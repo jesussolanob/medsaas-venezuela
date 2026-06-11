@@ -1,4 +1,13 @@
-import { Column, DataType, Default, Model, PrimaryKey, Table } from 'sequelize-typescript';
+import {
+  Column,
+  CreatedAt,
+  DataType,
+  Default,
+  Model,
+  PrimaryKey,
+  Table,
+  UpdatedAt,
+} from 'sequelize-typescript';
 
 /**
  * Sequelize model for the `profiles` table — scoped to the doctor-registration module.
@@ -51,9 +60,11 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.UUID, allowNull: true, field: 'verified_by' })
   declare verifiedBy: string | null;
 
-  @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
+  @CreatedAt
+  @Column({ field: 'created_at' })
   declare createdAt: Date;
 
-  @Column({ type: DataType.DATE, allowNull: true, field: 'updated_at' })
+  @UpdatedAt
+  @Column({ field: 'updated_at' })
   declare updatedAt: Date;
 }

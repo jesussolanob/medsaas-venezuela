@@ -41,6 +41,9 @@ const NOT_SPECIFIED = 'No especificado';
  * registration never fails due to a transient email delivery problem.
  *
  * SECURITY: Never log mppsNumber, colegiadoNumber, cedula, fullName, or email.
+ * These fields ARE intentionally included in the email body sent to super_admins
+ * (admins need them to perform identity verification), but they must NEVER appear
+ * in application logs, error traces, or any other observability sink.
  */
 @Injectable()
 export class CompleteRegistrationUseCase {
