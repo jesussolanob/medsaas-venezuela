@@ -56,3 +56,12 @@ yarn-error.log*
 # Test coverage artifacts
 apps/backend/coverage-report/
 coverage-report/
+
+# Playwright MCP + Cursor agents (local tooling)
+.playwright-mcp/
+.cursor/
+
+# Local verification/diagnostic screenshots
+/deploy-*.png
+/local-*.png
+/verify-*.png
