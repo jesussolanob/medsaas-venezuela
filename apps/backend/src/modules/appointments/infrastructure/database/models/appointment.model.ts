@@ -123,6 +123,14 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'meet_link' })
   declare meetLink: string | null;
 
+  /**
+   * FK → doctor_offices(id). Records which office the appointment is booked at.
+   * Null for legacy rows or when no office context is provided.
+   * Added by migration 20260611000009-office-id-on-pricing-plans-and-appointments.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'office_id' })
+  declare officeId: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

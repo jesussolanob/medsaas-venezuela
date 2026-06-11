@@ -5,16 +5,23 @@ import { Appointment } from '../../../domain/entities/appointment.entity';
 import { AppointmentConflictError } from '../../../domain/errors/appointment-conflict.error';
 import { AppointmentDuplicateError } from '../../../domain/errors/appointment-duplicate.error';
 import { InsufficientSessionsError } from '../../../domain/errors/insufficient-sessions.error';
+import { AppointmentOfficeInvalidError } from '../../../domain/errors/appointment-office-invalid.error';
 import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
 } from '../../../domain/repositories/appointment.repository';
+import {
+  OFFICE_REPOSITORY,
+  type IOfficeRepository,
+} from '../../../../offices/domain/repositories/office.repository';
 
 @Injectable()
 export class CreateAppointmentUseCase {
   constructor(
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointmentRepo: IAppointmentRepository,
+    @Inject(OFFICE_REPOSITORY)
+    private readonly officeRepo: IOfficeRepository,
   ) {}
 
   async execute(dto: CreateAppointmentDto): Promise<Appointment> {
@@ -40,7 +47,18 @@ export class CreateAppointmentUseCase {
       throw new AppointmentConflictError(scheduledAt);
     }
 
-    // 3. If a package is involved, validate ownership, status and sessions
+    // 3. If an office is specified, validate ownership and modality compatibility
+    if (dto.office_id) {
+      const office = await this.officeRepo.findById(dto.office_id);
+      if (!office || !office.isOwnedBy(dto.doctor_id)) {
+        throw new AppointmentOfficeInvalidError('not_owned');
+      }
+      if (!office.supportsModality(dto.appointment_mode)) {
+        throw new AppointmentOfficeInvalidError('modality_mismatch');
+      }
+    }
+
+    // 4. If a package is involved, validate ownership, status and sessions
     if (dto.package_id) {
       const pkg = await this.appointmentRepo.findPackageById(dto.package_id);
 
@@ -53,7 +71,7 @@ export class CreateAppointmentUseCase {
         throw new InsufficientSessionsError(dto.package_id);
       }
 
-      // 4. Optimistic lock: increment used_sessions only if unchanged since we read it
+      // 5. Optimistic lock: increment used_sessions only if unchanged since we read it
       const lockAcquired = await this.appointmentRepo.incrementPackageSessions(
         pkg.id,
         pkg.usedSessions,
@@ -66,7 +84,7 @@ export class CreateAppointmentUseCase {
       }
     }
 
-    // 5. Build and persist the appointment domain entity
+    // 6. Build and persist the appointment domain entity
     const now = new Date();
     const appointment = Appointment.create({
       id: randomUUID(),
@@ -94,6 +112,7 @@ export class CreateAppointmentUseCase {
       sessionNumber: null,
       chiefComplaint: dto.chief_complaint ?? null,
       appointmentCode: null,
+      officeId: dto.office_id ?? null,
       createdAt: now,
       updatedAt: now,
     });

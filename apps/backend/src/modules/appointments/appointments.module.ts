@@ -21,6 +21,8 @@ import { ConsultationsModule } from '../consultations/consultations.module';
 import { FinancesModule } from '../finances/finances.module';
 import { PatientsModule } from '../patients/patients.module';
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
+// Required by CreateAppointmentUseCase for office ownership + modality validation.
+import { OfficesModule } from '../offices/offices.module';
 
 @Module({
   imports: [
@@ -31,6 +33,8 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     FinancesModule,
     PatientsModule,
     DoctorSettingsModule,
+    // Required by CreateAppointmentUseCase to validate office ownership/modality.
+    OfficesModule,
   ],
   controllers: [AppointmentsController],
   providers: [

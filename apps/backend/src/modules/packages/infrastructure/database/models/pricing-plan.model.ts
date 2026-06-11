@@ -15,6 +15,11 @@ import type { PricingPlanType } from '../../../domain/entities/pricing-plan.enti
  *
  * These are the doctor's service offerings (consultation plans/services), not to be
  * confused with plan_configs which are SaaS subscription plans.
+ *
+ * office_id (nullable FK → doctor_offices):
+ *   null  = general plan, usable at all offices.
+ *   non-null = plan is specific to the referenced office.
+ *   Added by migration 20260611000009-office-id-on-pricing-plans-and-appointments.
  */
 @Table({
   tableName: 'pricing_plans',
@@ -29,6 +34,13 @@ export class PricingPlanModel extends Model {
 
   @Column({ type: DataType.UUID, allowNull: false, field: 'doctor_id' })
   declare doctorId: string;
+
+  /**
+   * FK → doctor_offices(id). Null = general plan (all offices).
+   * ON DELETE SET NULL ensures plans survive office deletion.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'office_id' })
+  declare officeId: string | null;
 
   @Column({ type: DataType.TEXT, allowNull: false })
   declare name: string;

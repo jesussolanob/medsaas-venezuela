@@ -3,12 +3,17 @@
  *
  * Represents a doctor's service/plan offering shown to patients during booking.
  * Distinct from plan_configs (SaaS subscription plans).
+ *
+ * officeId — optional association to a specific doctor_office.
+ *   null = "general" plan applicable to all offices (backward compatible).
  */
 export type PricingPlanType = 'plan' | 'service';
 
 export interface PricingPlanCreateParams {
   id: string;
   doctorId: string;
+  /** FK → doctor_offices(id). Optional. null = general plan (all offices). */
+  officeId?: string | null;
   name: string;
   priceUsd: number;
   durationMinutes: number;
@@ -24,6 +29,8 @@ export interface PricingPlanCreateParams {
 export class PricingPlan {
   readonly id: string;
   readonly doctorId: string;
+  /** FK → doctor_offices(id). Null = general plan (all offices). */
+  readonly officeId: string | null;
   readonly name: string;
   readonly priceUsd: number;
   readonly durationMinutes: number;
@@ -38,6 +45,7 @@ export class PricingPlan {
   constructor(params: PricingPlanCreateParams) {
     this.id = params.id;
     this.doctorId = params.doctorId;
+    this.officeId = params.officeId ?? null;
     this.name = params.name;
     this.priceUsd = params.priceUsd;
     this.durationMinutes = params.durationMinutes;
@@ -53,6 +61,17 @@ export class PricingPlan {
   /** Returns true when this plan can be shown in the public booking widget. */
   isPubliclyVisible(): boolean {
     return this.isActive && this.showInBooking;
+  }
+
+  /**
+   * Returns true when this plan is applicable for the given office.
+   *
+   * A plan is applicable when:
+   *   - it is a general plan (officeId === null), OR
+   *   - it is explicitly assigned to the requested office.
+   */
+  isApplicableForOffice(officeId: string): boolean {
+    return this.officeId === null || this.officeId === officeId;
   }
 
   /** Factory — creates a PricingPlan from raw data without persisting. */

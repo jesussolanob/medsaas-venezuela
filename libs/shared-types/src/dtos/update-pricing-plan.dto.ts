@@ -10,6 +10,12 @@ export const UpdatePricingPlanDtoSchema = z
     type: z.enum(['plan', 'service']).optional(),
     show_in_booking: z.boolean().optional(),
     is_active: z.boolean().optional(),
+    /**
+     * FK → doctor_offices(id). Optional.
+     * Pass null explicitly to convert the plan to a "general" plan.
+     * When a UUID is supplied, the use case validates doctor ownership (anti-IDOR).
+     */
+    office_id: z.string().uuid().nullable().optional(),
   })
   .strict();
 

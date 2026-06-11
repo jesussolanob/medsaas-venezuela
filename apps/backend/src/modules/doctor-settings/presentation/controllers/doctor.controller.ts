@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
@@ -220,10 +221,34 @@ export class DoctorController {
     return { success: true, data: result };
   }
 
-  /** GET /api/doctor/services */
+  /**
+   * GET /api/doctor/services
+   *
+   * Returns all pricing plans for the authenticated doctor.
+   *
+   * Query params:
+   *   officeId?: UUID — when provided, returns only plans tied to that office
+   *                     PLUS general plans (officeId=null). Validates UUID format.
+   *
+   * SECURITY: officeId ownership is NOT validated here (read-only; the doctor
+   * can query plans by any office UUID). Ownership is only enforced on writes.
+   */
   @Get('services')
-  async services(@CurrentUser() user: CurrentUserPayload): Promise<SuccessResponse<PricingPlan[]>> {
-    const result = await this.getServices.execute(user.sub);
+  async services(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('officeId') officeId?: string,
+  ): Promise<SuccessResponse<PricingPlan[]>> {
+    // Validate UUID format when officeId query param is provided
+    if (officeId !== undefined && officeId !== '') {
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidPattern.test(officeId)) {
+        throw new BadRequestException('officeId must be a valid UUID');
+      }
+    }
+
+    const result = await this.getServices.execute(user.sub, {
+      officeId: officeId !== undefined && officeId !== '' ? officeId : undefined,
+    });
     return { success: true, data: result };
   }
 
@@ -242,6 +267,7 @@ export class DoctorController {
       description: dto.description ?? null,
       type: dto.type,
       showInBooking: dto.show_in_booking,
+      officeId: dto.office_id ?? null,
     });
     return { success: true, data: result };
   }
@@ -263,6 +289,9 @@ export class DoctorController {
       type: dto.type,
       showInBooking: dto.show_in_booking,
       isActive: dto.is_active,
+      // Pass office_id only when the caller explicitly includes it in the body.
+      // This allows setting to null (general plan) or a specific UUID.
+      ...('office_id' in dto && { officeId: dto.office_id ?? null }),
     });
     return { success: true, data: result };
   }
@@ -279,5 +308,5 @@ export class DoctorController {
 
   // TODO: GET /doctor/templates — deferred until doctor_templates table is created
   //       and PDF generation logic is implemented (see migracion/modulos/09-doctor-settings.md).
-  // TODO: PUT /doctor/templates — same prerequisite.
+  // TODO: PUT /doctor/templates — same reason.
 }

@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { Op } from 'sequelize';
 import type { WhereOptions } from 'sequelize';
 import { PricingPlan } from '../../../domain/entities/pricing-plan.entity';
 import type {
   IPricingPlanRepository,
   PricingPlanUpdateParams,
+  FindPlansByDoctorOptions,
 } from '../../../domain/repositories/pricing-plan.repository';
 import { PricingPlanNotFoundError } from '../../../domain/errors/pricing-plan-not-found.error';
 import { PricingPlanModel } from '../models/pricing-plan.model';
@@ -24,9 +26,24 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
     return rows.map((r) => this.toDomain(r));
   }
 
-  async findAllByDoctorId(doctorId: string): Promise<PricingPlan[]> {
+  async findAllByDoctorId(
+    doctorId: string,
+    options?: FindPlansByDoctorOptions,
+  ): Promise<PricingPlan[]> {
+    let where: WhereOptions;
+
+    if (options?.officeId !== undefined) {
+      // Return plans for the specific office + general plans (officeId=null).
+      where = {
+        doctorId,
+        [Op.or]: [{ officeId: options.officeId }, { officeId: null }],
+      } as WhereOptions;
+    } else {
+      where = { doctorId } as WhereOptions;
+    }
+
     const rows = await this.planModel.findAll({
-      where: { doctorId } as WhereOptions,
+      where,
       order: [['name', 'ASC']],
     });
     return rows.map((r) => this.toDomain(r));
@@ -42,6 +59,7 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
     const row = await this.planModel.create({
       id: plan.id,
       doctorId: plan.doctorId,
+      officeId: plan.officeId ?? null,
       name: plan.name,
       priceUsd: plan.priceUsd,
       durationMinutes: plan.durationMinutes,
@@ -67,6 +85,8 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
       ...(params.type !== undefined && { type: params.type }),
       ...(params.showInBooking !== undefined && { showInBooking: params.showInBooking }),
       ...(params.isActive !== undefined && { isActive: params.isActive }),
+      // officeId explicitly included (supports setting to null to make it general)
+      ...('officeId' in params && { officeId: params.officeId ?? null }),
     });
 
     return this.toDomain(row);
@@ -80,6 +100,7 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
     return PricingPlan.create({
       id: row.id,
       doctorId: row.doctorId,
+      officeId: row.officeId ?? null,
       name: row.name,
       priceUsd: Number(row.priceUsd),
       durationMinutes: row.durationMinutes,

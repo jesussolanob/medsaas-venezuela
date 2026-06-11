@@ -3,6 +3,7 @@ import type { IPricingPlanRepository } from '../../../../packages/domain/reposit
 import { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
 
 const DOCTOR_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+const OFFICE_ID = 'c3d4e5f6-a7b8-9012-cdef-012345678901';
 
 function makePlan(
   overrides: Partial<ConstructorParameters<typeof PricingPlan>[0]> = {},
@@ -10,6 +11,7 @@ function makePlan(
   return PricingPlan.create({
     id: 'plan-uuid-1',
     doctorId: DOCTOR_ID,
+    officeId: null,
     name: 'Consulta General',
     priceUsd: 50,
     durationMinutes: 30,
@@ -40,14 +42,25 @@ describe('GetServicesUseCase', () => {
     useCase = new GetServicesUseCase(mockRepo);
   });
 
-  it('returns all services (including hidden) for the doctor', async () => {
+  it('returns all services for the doctor when no officeId is given', async () => {
     const plans = [makePlan(), makePlan({ id: 'plan-uuid-2', showInBooking: false })];
     mockRepo.findAllByDoctorId.mockResolvedValue(plans);
 
     const result = await useCase.execute(DOCTOR_ID);
 
     expect(result).toHaveLength(2);
-    expect(mockRepo.findAllByDoctorId).toHaveBeenCalledWith(DOCTOR_ID);
+    expect(mockRepo.findAllByDoctorId).toHaveBeenCalledWith(DOCTOR_ID, { officeId: undefined });
+  });
+
+  it('passes officeId filter to the repository when provided', async () => {
+    const officePlan = makePlan({ id: 'p1', officeId: OFFICE_ID });
+    const generalPlan = makePlan({ id: 'p2', officeId: null });
+    mockRepo.findAllByDoctorId.mockResolvedValue([officePlan, generalPlan]);
+
+    const result = await useCase.execute(DOCTOR_ID, { officeId: OFFICE_ID });
+
+    expect(result).toHaveLength(2);
+    expect(mockRepo.findAllByDoctorId).toHaveBeenCalledWith(DOCTOR_ID, { officeId: OFFICE_ID });
   });
 
   it('returns empty array when doctor has no services', async () => {
@@ -64,8 +77,9 @@ describe('GetServicesUseCase', () => {
 
     await useCase.execute(OTHER_DOCTOR_ID);
 
-    // Must query with the provided doctorId, never with a hardcoded or default value
-    expect(mockRepo.findAllByDoctorId).toHaveBeenCalledWith(OTHER_DOCTOR_ID);
-    expect(mockRepo.findAllByDoctorId).not.toHaveBeenCalledWith(DOCTOR_ID);
+    expect(mockRepo.findAllByDoctorId).toHaveBeenCalledWith(OTHER_DOCTOR_ID, {
+      officeId: undefined,
+    });
+    expect(mockRepo.findAllByDoctorId).not.toHaveBeenCalledWith(DOCTOR_ID, expect.anything());
   });
 });

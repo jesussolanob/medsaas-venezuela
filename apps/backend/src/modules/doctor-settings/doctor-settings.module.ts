@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { FinancesModule } from '../finances/finances.module';
+import { OfficesModule } from '../offices/offices.module';
 
 // Models
 import { DoctorProfileModel } from './infrastructure/database/models/doctor-profile.model';
@@ -56,6 +57,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
  * This avoids the "Sequelize in providers causes crash in dist" footgun.
  *
  * Redis (REDIS_CLIENT) is global via RedisModule — no re-import needed.
+ *
+ * OfficesModule is imported to allow CreateServiceUseCase and UpdateServiceUseCase
+ * to validate that the supplied office_id belongs to the authenticated doctor.
  */
 @Module({
   imports: [
@@ -69,6 +73,8 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     ]),
     // Import FinancesModule to access USDT_RATE_STORE for exchange-rate resolution.
     FinancesModule,
+    // Import OfficesModule to resolve OFFICE_REPOSITORY for office ownership checks.
+    OfficesModule,
   ],
   controllers: [DoctorController],
   providers: [

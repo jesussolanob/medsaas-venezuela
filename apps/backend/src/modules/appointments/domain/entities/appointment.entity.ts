@@ -47,6 +47,12 @@ export class Appointment {
     public readonly paymentId: string | null,
     /** Google Meet URL or Jitsi fallback for online appointments. Null for in-person. */
     public readonly meetLink: string | null,
+    /**
+     * FK → doctor_offices(id). Records which office the appointment is booked at.
+     * Null for legacy rows or when no office context is provided.
+     * Added by migration 20260611000009-office-id-on-pricing-plans-and-appointments.
+     */
+    public readonly officeId: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
@@ -101,6 +107,7 @@ export class Appointment {
       params.appointmentCode ?? null,
       params.paymentId ?? null,
       params.meetLink ?? null,
+      params.officeId ?? null,
       params.createdAt,
       params.updatedAt,
     );
@@ -143,6 +150,11 @@ export interface AppointmentCreateParams {
    * Set after calendar event creation in the booking flow. Null for in-person.
    */
   meetLink?: string | null;
+  /**
+   * FK → doctor_offices(id). Records which office the appointment is booked at.
+   * Optional — null for legacy rows.
+   */
+  officeId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

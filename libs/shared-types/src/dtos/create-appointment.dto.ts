@@ -21,6 +21,13 @@ export const CreateAppointmentDtoSchema = z
     package_id: z.string().uuid().nullable().optional(),
     chief_complaint: z.string().max(1000).nullable().optional(),
     bcv_rate: z.number().positive().nullable().optional(),
+    /**
+     * FK → doctor_offices(id). Optional.
+     * When provided, the use case validates:
+     *   1. The office belongs to the authenticated doctor (anti-IDOR).
+     *   2. The office's modality supports the requested appointment_mode.
+     */
+    office_id: z.string().uuid().nullable().optional(),
   })
   .strict();
 

@@ -111,6 +111,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         appointmentCode: appointment.appointmentCode,
         paymentId: appointment.paymentId ?? null,
         meetLink: appointment.meetLink ?? null,
+        officeId: appointment.officeId ?? null,
       },
       { transaction },
     );
@@ -314,6 +315,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       appointmentCode: row.appointmentCode,
       paymentId: row.paymentId ?? null,
       meetLink: row.meetLink ?? null,
+      officeId: row.officeId ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

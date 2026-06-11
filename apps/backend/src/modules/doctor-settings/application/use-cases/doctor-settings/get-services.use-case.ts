@@ -5,6 +5,14 @@ import {
   type IPricingPlanRepository,
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
 
+export interface GetServicesOptions {
+  /**
+   * When provided, returns only plans tied to this office PLUS general plans.
+   * When absent, returns all plans for the doctor.
+   */
+  officeId?: string;
+}
+
 @Injectable()
 export class GetServicesUseCase {
   constructor(
@@ -12,7 +20,9 @@ export class GetServicesUseCase {
     private readonly pricingPlanRepo: IPricingPlanRepository,
   ) {}
 
-  async execute(doctorId: string): Promise<PricingPlan[]> {
-    return this.pricingPlanRepo.findAllByDoctorId(doctorId);
+  async execute(doctorId: string, options?: GetServicesOptions): Promise<PricingPlan[]> {
+    return this.pricingPlanRepo.findAllByDoctorId(doctorId, {
+      officeId: options?.officeId,
+    });
   }
 }

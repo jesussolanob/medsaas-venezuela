@@ -143,5 +143,15 @@ describe('Appointment entity', () => {
       const appt = makeAppointment({ patientId: null });
       expect(appt.patientId).toBeNull();
     });
+
+    it('defaults officeId to null when not provided', () => {
+      const appt = makeAppointment();
+      expect(appt.officeId).toBeNull();
+    });
+
+    it('stores officeId when provided', () => {
+      const appt = makeAppointment({ officeId: 'office-uuid-1' });
+      expect(appt.officeId).toBe('office-uuid-1');
+    });
   });
 });
