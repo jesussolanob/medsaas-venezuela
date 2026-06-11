@@ -40,6 +40,9 @@ import {
   saveLogoUrl,
   saveSignatureUrl,
   saveLicenseNumber,
+  loadGoogleStatus,
+  disconnectGoogle,
+  type GoogleStatusView,
 } from './actions';
 import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
@@ -229,6 +232,10 @@ function SettingsPageInner() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabId) || 'profile';
 
+  // OAuth callback feedback — shown when redirected back from Google
+  const googleCallbackResult = searchParams.get('google'); // 'connected'
+  const googleCallbackError = searchParams.get('google_error'); // error message
+
   // Profile
   const [profile, setProfile] = useState({
     full_name: '',
@@ -300,8 +307,15 @@ function SettingsPageInner() {
   // Integrations
   const [whatsappToken, setWhatsappToken] = useState('');
   const [whatsappPhoneId, setWhatsappPhoneId] = useState('');
-  const [googleToken, setGoogleToken] = useState('');
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
+
+  // Google Calendar integration
+  const [googleStatus, setGoogleStatus] = useState<GoogleStatusView>({
+    connected: false,
+    googleEmail: null,
+  });
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState('');
 
   // Services
   const [services, setServices] = useState<Service[]>([]);
@@ -320,7 +334,11 @@ function SettingsPageInner() {
     async function load() {
       // Profile — fetched from NestJS backend. doctorId is resolved from dev-auth
       // in the server action; we still keep it in state for the booking link.
-      const profileData = await loadSettingsProfile();
+      const [profileData, googleStatusData] = await Promise.all([
+        loadSettingsProfile(),
+        loadGoogleStatus(),
+      ]);
+
       if (profileData) {
         setDoctorId(profileData.id);
         setProfile({
@@ -340,6 +358,7 @@ function SettingsPageInner() {
         setPaymentDetails(profileData.payment_details);
       }
 
+      setGoogleStatus(googleStatusData);
       setLoading(false);
     }
     load();
@@ -614,6 +633,20 @@ function SettingsPageInner() {
   async function deleteService(id: string) {
     // PENDING: use DELETE /api/doctor/services/:id
     void id;
+  }
+
+  /* ---------------- GOOGLE CALENDAR ---------------- */
+
+  async function handleDisconnectGoogle() {
+    setGoogleLoading(true);
+    setGoogleError('');
+    const result = await disconnectGoogle();
+    if (!result.ok) {
+      setGoogleError(result.error ?? 'Error al desconectar Google');
+    } else {
+      setGoogleStatus({ connected: false, googleEmail: null });
+    }
+    setGoogleLoading(false);
   }
 
   /* ---------------- INTEGRATIONS ---------------- */
@@ -1733,6 +1766,26 @@ function SettingsPageInner() {
         {/* ---------------- INTEGRATIONS ---------------- */}
         {tab === 'integrations' && (
           <div className="space-y-4">
+            {/* OAuth callback feedback */}
+            {googleCallbackResult === 'connected' && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                <p className="text-sm text-emerald-700 font-semibold">
+                  Google Calendar conectado exitosamente.
+                </p>
+              </div>
+            )}
+            {googleCallbackError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                <span className="text-red-500 shrink-0 mt-0.5">⚠️</span>
+                <div>
+                  <p className="text-sm text-red-700 font-semibold">Error al conectar Google</p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    {decodeURIComponent(googleCallbackError)}
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-start gap-3">
               <Shield className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
               <p className="text-sm text-teal-700">
@@ -1744,34 +1797,114 @@ function SettingsPageInner() {
             <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
               <div className="flex items-start justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
                     <span className="text-blue-600 text-sm font-bold">GC</span>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900">Google Calendar</p>
                     <p className="text-xs text-slate-500">
-                      Sincroniza tus citas con Google Calendar
+                      Genera meet links y sincroniza citas automáticamente
                     </p>
                   </div>
                 </div>
-                {googleToken ? (
-                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+                {googleStatus.connected ? (
+                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 shrink-0">
                     Conectado
                   </span>
                 ) : (
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full shrink-0">
                     No conectado
                   </span>
                 )}
               </div>
-              <button
-                onClick={() => {
-                  window.location.href = '/api/integrations/google/auth';
-                }}
-                className="w-full px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-colors"
-              >
-                {googleToken ? 'Reconectar Google Calendar' : 'Conectar Google Calendar'}
-              </button>
+
+              {googleError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {googleError}
+                </p>
+              )}
+
+              {/* Detect if Google credentials are configured (via public env var) */}
+              {(() => {
+                // NEXT_PUBLIC_GOOGLE_CLIENT_ID is safe to expose — it's a public OAuth client ID.
+                // If undefined, the button is disabled with a friendly message (no broken auth flow).
+                const googleConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+
+                if (!googleConfigured && !googleStatus.connected) {
+                  return (
+                    <button
+                      disabled
+                      className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50 text-slate-400 rounded-xl text-sm font-semibold cursor-not-allowed flex items-center justify-center gap-2"
+                      title="Las credenciales de Google aún no están configuradas en el servidor."
+                    >
+                      Configuración de Google pendiente
+                    </button>
+                  );
+                }
+
+                return googleStatus.connected ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-emerald-700">Cuenta conectada</p>
+                        {googleStatus.googleEmail && (
+                          <p className="text-xs text-emerald-600 truncate">
+                            {googleStatus.googleEmail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          window.location.href = '/api/integrations/google/auth';
+                        }}
+                        className="flex-1 px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-colors"
+                      >
+                        Reconectar
+                      </button>
+                      <button
+                        onClick={handleDisconnectGoogle}
+                        disabled={googleLoading}
+                        className="flex-1 px-4 py-2.5 border border-red-200 bg-red-50 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {googleLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          'Desconectar'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                      <p className="text-xs text-blue-700">
+                        Al conectar Google, las citas online generarán un link de Google Meet
+                        automáticamente y se agregarán a tu Google Calendar.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        window.location.href = '/api/integrations/google/auth';
+                      }}
+                      disabled={googleLoading}
+                      className="w-full px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                      title="Conectar Google Calendar y Meet"
+                    >
+                      {googleLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Conectando…
+                        </>
+                      ) : (
+                        'Conectar Google Calendar'
+                      )}
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">

@@ -7,6 +7,7 @@ import {
   updateOffice,
   deleteOffice,
   toggleOffice,
+  type OfficeModality,
 } from './actions';
 import {
   Building2,
@@ -22,6 +23,8 @@ import {
   CheckCircle,
   ToggleLeft,
   ToggleRight,
+  Video,
+  Users,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
@@ -35,6 +38,19 @@ type Office = {
   schedule: DaySchedule[];
   slot_duration: number; // minutes per appointment
   buffer_minutes: number; // minutes between appointments
+  modality: OfficeModality;
+};
+
+const MODALITY_LABELS: Record<OfficeModality, string> = {
+  in_person: 'Presencial',
+  online: 'Online',
+  both: 'Presencial y Online',
+};
+
+const MODALITY_BADGE: Record<OfficeModality, string> = {
+  in_person: 'bg-slate-100 text-slate-600 border-slate-200',
+  online: 'bg-blue-50 text-blue-600 border-blue-200',
+  both: 'bg-teal-50 text-teal-700 border-teal-200',
 };
 
 type DaySchedule = {
@@ -75,6 +91,7 @@ export default function OfficesPage() {
   const [schedule, setSchedule] = useState<DaySchedule[]>(DEFAULT_SCHEDULE);
   const [slotDuration, setSlotDuration] = useState(30);
   const [bufferMinutes, setBufferMinutes] = useState(10);
+  const [modality, setModality] = useState<OfficeModality>('in_person');
 
   const fetchOffices = useCallback(async () => {
     const data = await listOffices();
@@ -84,6 +101,7 @@ export default function OfficesPage() {
         schedule: o.schedule?.length ? o.schedule : DEFAULT_SCHEDULE,
         slot_duration: o.slot_duration || 30,
         buffer_minutes: o.buffer_minutes || 10,
+        modality: o.modality ?? 'in_person',
       })),
     );
     setLoading(false);
@@ -102,6 +120,7 @@ export default function OfficesPage() {
     setSchedule(DEFAULT_SCHEDULE.map((d) => ({ ...d })));
     setSlotDuration(30);
     setBufferMinutes(10);
+    setModality('in_person');
     setShowForm(true);
   }
 
@@ -114,6 +133,7 @@ export default function OfficesPage() {
     setSchedule(office.schedule.map((d) => ({ ...d })));
     setSlotDuration(office.slot_duration);
     setBufferMinutes(office.buffer_minutes);
+    setModality(office.modality);
     setShowForm(true);
   }
 
@@ -141,6 +161,7 @@ export default function OfficesPage() {
       schedule,
       slot_duration: slotDuration,
       buffer_minutes: bufferMinutes,
+      modality,
     };
 
     if (editing) {
@@ -230,7 +251,7 @@ export default function OfficesPage() {
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-sm font-bold text-slate-900">{office.name}</h3>
                     {office.is_active ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
@@ -241,6 +262,28 @@ export default function OfficesPage() {
                         Inactivo
                       </span>
                     )}
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${MODALITY_BADGE[office.modality]}`}
+                    >
+                      {office.modality === 'in_person' && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-2.5 h-2.5 inline" />
+                          {MODALITY_LABELS[office.modality]}
+                        </span>
+                      )}
+                      {office.modality === 'online' && (
+                        <span className="flex items-center gap-1">
+                          <Video className="w-2.5 h-2.5 inline" />
+                          {MODALITY_LABELS[office.modality]}
+                        </span>
+                      )}
+                      {office.modality === 'both' && (
+                        <span className="flex items-center gap-1">
+                          <Users className="w-2.5 h-2.5 inline" />
+                          {MODALITY_LABELS[office.modality]}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500">
                     <MapPin className="w-3 h-3" />
@@ -430,6 +473,48 @@ export default function OfficesPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Modality */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Modalidad de atención
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      {
+                        value: 'in_person',
+                        label: 'Presencial',
+                        Icon: MapPin,
+                        desc: 'Solo en consultorio',
+                      },
+                      { value: 'online', label: 'Online', Icon: Video, desc: 'Solo videollamada' },
+                      { value: 'both', label: 'Ambas', Icon: Users, desc: 'Presencial y online' },
+                    ] as const
+                  ).map(({ value, label, Icon, desc }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setModality(value)}
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-center transition-all ${
+                        modality === value
+                          ? 'border-teal-500 bg-teal-50'
+                          : 'border-slate-200 bg-white hover:border-teal-300'
+                      }`}
+                    >
+                      <Icon
+                        className={`w-4 h-4 ${modality === value ? 'text-teal-600' : 'text-slate-400'}`}
+                      />
+                      <span
+                        className={`text-xs font-semibold ${modality === value ? 'text-teal-700' : 'text-slate-600'}`}
+                      >
+                        {label}
+                      </span>
+                      <span className="text-[10px] text-slate-400 leading-tight">{desc}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 

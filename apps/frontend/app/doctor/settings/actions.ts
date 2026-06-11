@@ -29,7 +29,7 @@
  *   - google_refresh_token → Supabase OAuth (PENDING_STORAGE / integrations)
  */
 
-import { backendGet, backendPut } from '@/lib/api-client.server';
+import { backendGet, backendPut, backendPost, backendDelete } from '@/lib/api-client.server';
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
 
@@ -450,6 +450,80 @@ export async function saveExchangeRate(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Google Calendar integration actions
+// ---------------------------------------------------------------------------
+
+/** Shape returned by GET /api/integrations/google/status */
+interface BackendGoogleStatus {
+  connected: boolean;
+  googleEmail?: string | null;
+}
+
+export interface GoogleStatusView {
+  connected: boolean;
+  googleEmail: string | null;
+}
+
+/**
+ * Fetch the Google Calendar connection status for the current doctor.
+ * Backend: GET /api/integrations/google/status
+ */
+export async function loadGoogleStatus(): Promise<GoogleStatusView> {
+  const result = await backendGet<BackendGoogleStatus>('/api/integrations/google/status');
+
+  if (!result.ok) {
+    log.error('[loadGoogleStatus] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { connected: false, googleEmail: null };
+  }
+
+  return {
+    connected: result.value.connected,
+    googleEmail: result.value.googleEmail ?? null,
+  };
+}
+
+/**
+ * Exchange an OAuth2 code for tokens and persist them in the backend.
+ * Backend: POST /api/integrations/google/connect { code }
+ */
+export async function connectGoogle(code: string): Promise<ActionResult> {
+  const result = await backendPost<unknown>('/api/integrations/google/connect', { code });
+
+  if (!result.ok) {
+    log.error('[connectGoogle] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  revalidatePath('/doctor/settings');
+  return { ok: true };
+}
+
+/**
+ * Disconnect Google Calendar for the current doctor.
+ * Backend: DELETE /api/integrations/google
+ */
+export async function disconnectGoogle(): Promise<ActionResult> {
+  const result = await backendDelete<unknown>('/api/integrations/google');
+
+  if (!result.ok) {
+    log.error('[disconnectGoogle] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  revalidatePath('/doctor/settings');
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // PENDING — operations with no backend endpoint yet
 // ---------------------------------------------------------------------------
 // The following have no backend endpoint as of Etapa 1 and are NOT migrated:
@@ -457,7 +531,6 @@ export async function saveExchangeRate(input: {
 //   saveIntegrations()    → whatsapp_token / whatsapp_phone_id → FASE 6 (no endpoint)
 //   toggleSound()         → sound_notifications → local preference (localStorage only)
 //   share_message_template → no backend column yet
-//   google_refresh_token  → OAuth integration (FASE 6)
 //
 // These are annotated in the page component. No Supabase writes remain for
 // media/license fields — those are now handled by saveLogoUrl / saveSignatureUrl /

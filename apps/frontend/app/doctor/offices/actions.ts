@@ -24,6 +24,8 @@ export interface OfficeDay {
   end: string;
 }
 
+export type OfficeModality = 'in_person' | 'online' | 'both';
+
 /** Forma que consume la UI (snake_case, igual que el tipo Office del page). */
 export interface OfficeView {
   id: string;
@@ -35,6 +37,7 @@ export interface OfficeView {
   schedule: OfficeDay[];
   slot_duration: number;
   buffer_minutes: number;
+  modality: OfficeModality;
 }
 
 /** Respuesta camelCase del backend. */
@@ -48,6 +51,7 @@ interface BackendOffice {
   schedule: OfficeDay[];
   slotDuration: number;
   bufferMinutes: number;
+  modality?: OfficeModality;
 }
 
 export interface OfficeInput {
@@ -58,6 +62,7 @@ export interface OfficeInput {
   schedule: OfficeDay[];
   slot_duration: number;
   buffer_minutes: number;
+  modality: OfficeModality;
 }
 
 export interface MutationResult {
@@ -76,6 +81,7 @@ function toView(o: BackendOffice): OfficeView {
     schedule: o.schedule ?? [],
     slot_duration: o.slotDuration,
     buffer_minutes: o.bufferMinutes,
+    modality: o.modality ?? 'in_person',
   };
 }
 
