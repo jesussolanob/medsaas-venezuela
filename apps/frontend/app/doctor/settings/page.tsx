@@ -45,6 +45,7 @@ import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SubscriptionPanel from '@/components/doctor/SubscriptionPanel';
+import BookingQrCode from '@/components/doctor/BookingQrCode';
 import { reportError } from '@/lib/report-error';
 
 type PricingPlan = {
@@ -1053,6 +1054,73 @@ function SettingsPageInner() {
                   <p className="text-xs text-slate-400">Enviar a cualquier contacto</p>
                 </div>
               </button>
+            </div>
+
+            {/* QR Code */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center shrink-0">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                    aria-hidden="true"
+                  >
+                    <rect width="5" height="5" x="3" y="3" rx="1" />
+                    <rect width="5" height="5" x="16" y="3" rx="1" />
+                    <rect width="5" height="5" x="3" y="16" rx="1" />
+                    <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
+                    <path d="M21 21v.01" />
+                    <path d="M12 7v3a2 2 0 0 1-2 2H7" />
+                    <path d="M3 12h.01" />
+                    <path d="M12 3h.01" />
+                    <path d="M12 16v.01" />
+                    <path d="M16 12h1" />
+                    <path d="M21 12v.01" />
+                    <path d="M12 21v-1" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900">Código QR de tu link</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Imprímelo en tu tarjeta de presentación, consultorio o receta para que los
+                    pacientes agenden con solo escanearlo.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+                <BookingQrCode url={publicLink} />
+                <div className="flex flex-col gap-3 text-sm text-slate-600 max-w-xs">
+                  <p className="font-semibold text-slate-800">¿Cómo usarlo?</p>
+                  <ul className="space-y-2 text-xs text-slate-500 list-none">
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 w-5 h-5 rounded-full bg-teal-100 text-teal-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                        1
+                      </span>
+                      Descarga el QR como PNG con el botón de abajo del código.
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 w-5 h-5 rounded-full bg-teal-100 text-teal-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                        2
+                      </span>
+                      Insértalo en tu tarjeta de presentación, material impreso o consultorio.
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 w-5 h-5 rounded-full bg-teal-100 text-teal-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                        3
+                      </span>
+                      El paciente lo escanea con su cámara y llega directo a tu página de booking.
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
 
             {/* Share Message Template */}
