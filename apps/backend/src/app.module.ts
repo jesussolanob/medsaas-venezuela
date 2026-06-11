@@ -35,6 +35,7 @@ import { MessagesModule } from './modules/messages/messages.module';
 import { QuickItemsModule } from './modules/quick-items/quick-items.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { EmailModule } from './modules/email/email.module';
+import { DoctorRegistrationModule } from './modules/doctor-registration/doctor-registration.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { EmailModule } from './modules/email/email.module';
     QuickItemsModule,
     AuthModule,
     EmailModule,
+    DoctorRegistrationModule,
   ],
   controllers: [HealthController],
   providers: [
