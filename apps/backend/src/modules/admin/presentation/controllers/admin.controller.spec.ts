@@ -44,6 +44,8 @@ import {
   UpsertSettingBodySchema,
   UpdatePlanBodySchema,
   SetUserRoleBodySchema,
+  SetPlanFeaturesBodySchema,
+  SetPlanPricesBodySchema,
 } from '../../application/dtos/admin.dtos';
 
 const dashboardData = {
@@ -608,6 +610,151 @@ describe('AdminController', () => {
 
     it('rejects missing role', () => {
       expect(() => pipe.transform({})).toThrow(BadRequestException);
+    });
+  });
+
+  describe('Route param format validation — planKey / featureKey', () => {
+    it('PUT plans/:planKey rejects planKey with uppercase letters', async () => {
+      await expect(controller.updatePlanHandler('INVALID', { is_active: true })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('PUT plans/:planKey accepts valid planKey', async () => {
+      const result = await controller.updatePlanHandler('delta_base', { is_active: true });
+      expect(result.success).toBe(true);
+    });
+
+    it('PUT plans/:planKey rejects planKey with hyphen', async () => {
+      await expect(controller.updatePlanHandler('delta-base', { is_active: true })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('PUT plans/:planKey/features rejects planKey with spaces', async () => {
+      await expect(
+        controller.setPlanFeaturesHandler('delta base', {
+          features: [{ feature_key: 'agenda', feature_label: 'Agenda', enabled: true }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('PUT plans/:planKey/prices rejects planKey with special characters', async () => {
+      await expect(
+        controller.setPlanPricesHandler('delta@base', {
+          prices: [{ period: 'monthly', price_usd: 10, is_active: true }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('PUT plan-features/:planKey/:featureKey rejects invalid featureKey', async () => {
+      await expect(
+        controller.togglePlanFeatureHandler('delta_base', 'FEATURE-KEY', {
+          feature_label: 'Agenda',
+          enabled: true,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('PUT plan-features/:planKey/:featureKey accepts valid keys', async () => {
+      const result = await controller.togglePlanFeatureHandler('delta_base', 'agenda', {
+        feature_label: 'Agenda',
+        enabled: true,
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Input validation — SetPlanFeaturesBodySchema', () => {
+    const pipe = new ZodValidationPipe(SetPlanFeaturesBodySchema);
+
+    it('accepts a valid features array', () => {
+      expect(() =>
+        pipe.transform({
+          features: [{ feature_key: 'agenda', feature_label: 'Agenda', enabled: true }],
+        }),
+      ).not.toThrow();
+    });
+
+    it('rejects empty features array', () => {
+      expect(() => pipe.transform({ features: [] })).toThrow(BadRequestException);
+    });
+
+    it('rejects features array exceeding 50 entries', () => {
+      const features = Array.from({ length: 51 }, (_, i) => ({
+        feature_key: `feat_${i}`,
+        feature_label: `Feature ${i}`,
+        enabled: true,
+      }));
+      expect(() => pipe.transform({ features })).toThrow(BadRequestException);
+    });
+
+    it('accepts features array with exactly 50 entries', () => {
+      const features = Array.from({ length: 50 }, (_, i) => ({
+        feature_key: `feat_${i}`,
+        feature_label: `Feature ${i}`,
+        enabled: true,
+      }));
+      expect(() => pipe.transform({ features })).not.toThrow();
+    });
+  });
+
+  describe('Input validation — SetPlanPricesBodySchema', () => {
+    const pipe = new ZodValidationPipe(SetPlanPricesBodySchema);
+
+    it('accepts a valid prices array', () => {
+      expect(() =>
+        pipe.transform({ prices: [{ period: 'monthly', price_usd: 10, is_active: true }] }),
+      ).not.toThrow();
+    });
+
+    it('rejects empty prices array', () => {
+      expect(() => pipe.transform({ prices: [] })).toThrow(BadRequestException);
+    });
+
+    it('rejects prices array with more than 4 entries', () => {
+      const prices = [
+        { period: 'monthly', price_usd: 10, is_active: true },
+        { period: 'quarterly', price_usd: 27, is_active: true },
+        { period: 'semiannual', price_usd: 51, is_active: true },
+        { period: 'annual', price_usd: 96, is_active: true },
+        { period: 'monthly', price_usd: 5, is_active: false },
+      ];
+      expect(() => pipe.transform({ prices })).toThrow(BadRequestException);
+    });
+
+    it('accepts prices array with exactly 4 entries', () => {
+      const prices = [
+        { period: 'monthly', price_usd: 10, is_active: true },
+        { period: 'quarterly', price_usd: 27, is_active: true },
+        { period: 'semiannual', price_usd: 51, is_active: true },
+        { period: 'annual', price_usd: 96, is_active: true },
+      ];
+      expect(() => pipe.transform({ prices })).not.toThrow();
+    });
+
+    it('rejects price_usd above 99999.99', () => {
+      expect(() =>
+        pipe.transform({ prices: [{ period: 'monthly', price_usd: 100000, is_active: true }] }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('accepts price_usd of exactly 99999.99', () => {
+      expect(() =>
+        pipe.transform({ prices: [{ period: 'monthly', price_usd: 99999.99, is_active: true }] }),
+      ).not.toThrow();
+    });
+
+    it('rejects negative price_usd', () => {
+      expect(() =>
+        pipe.transform({ prices: [{ period: 'annual', price_usd: -1, is_active: true }] }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rejects invalid period value', () => {
+      expect(() =>
+        pipe.transform({ prices: [{ period: 'weekly', price_usd: 5, is_active: true }] }),
+      ).toThrow(BadRequestException);
     });
   });
 

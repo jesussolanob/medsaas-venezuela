@@ -216,7 +216,8 @@ export const SetPlanFeaturesBodySchema = z
           enabled: z.boolean(),
         }),
       )
-      .min(1, 'features array must not be empty'),
+      .min(1, 'features array must not be empty')
+      .max(50, 'features array must not exceed 50 entries'),
   })
   .strict();
 
@@ -234,11 +235,12 @@ export const SetPlanPricesBodySchema = z
       .array(
         z.object({
           period: z.enum(VALID_PERIODS),
-          price_usd: z.number().min(0),
+          price_usd: z.number().min(0).max(99999.99),
           is_active: z.boolean().default(true),
         }),
       )
-      .min(1, 'prices array must not be empty'),
+      .min(1, 'prices array must not be empty')
+      .max(4, 'prices array must not exceed 4 entries'),
   })
   .strict();
 

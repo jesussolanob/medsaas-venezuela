@@ -22,7 +22,7 @@ export class SequelizePlanConfigRepository implements IPlanConfigRepository {
   async findPermanentPlanForRole(roleKey: string): Promise<PlanConfigSummary | null> {
     const row = await this.model.findOne({
       where: { roleKey, isPermanent: true, isActive: true },
-      order: [['sort_order', 'ASC']],
+      order: [['sortOrder', 'ASC']],
     });
     if (!row) return null;
     return this.toSummary(row);

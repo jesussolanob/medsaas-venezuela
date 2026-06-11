@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { QueryTypes } from 'sequelize';
+import { QueryTypes, type Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
+import { PlanPriceUpsertError } from '../../../domain/errors/plan-price-upsert.error';
 import type {
   IAdminRepository,
   AdminDashboardData,
@@ -621,6 +622,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
     featureKey: string,
     featureLabel: string,
     enabled: boolean,
+    transaction?: Transaction,
   ): Promise<PlanFeatureRow> {
     // Raw SQL upsert using the named unique constraint from the spec (T-03):
     //   CONSTRAINT plan_features_plan_feature_key_key UNIQUE (plan, feature_key)
@@ -644,6 +646,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
       {
         type: QueryTypes.SELECT,
         replacements: { plan: planKey, featureKey, featureLabel, enabled },
+        transaction,
       },
     );
 
@@ -667,12 +670,13 @@ export class SequelizeAdminRepository implements IAdminRepository {
     planKey: string,
     features: Array<{ featureKey: string; featureLabel: string; enabled: boolean }>,
   ): Promise<PlanFeatureRow[]> {
-    const result: PlanFeatureRow[] = [];
-    for (const f of features) {
-      const row = await this.upsertPlanFeature(planKey, f.featureKey, f.featureLabel, f.enabled);
-      result.push(row);
-    }
-    return result;
+    return this.sequelize.transaction(async (t) => {
+      return Promise.all(
+        features.map((f) =>
+          this.upsertPlanFeature(planKey, f.featureKey, f.featureLabel, f.enabled, t),
+        ),
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -694,7 +698,10 @@ export class SequelizeAdminRepository implements IAdminRepository {
     return rows.map((r) => this.priceRowToDto(r));
   }
 
-  async upsertPlanPrice(params: SetPlanPriceParams): Promise<PlanPriceRow> {
+  async upsertPlanPrice(
+    params: SetPlanPriceParams,
+    transaction?: Transaction,
+  ): Promise<PlanPriceRow> {
     const rows = await this.sequelize.query<{
       id: string;
       plan_key: string;
@@ -718,14 +725,13 @@ export class SequelizeAdminRepository implements IAdminRepository {
           priceUsd: params.priceUsd,
           isActive: params.isActive,
         },
+        transaction,
       },
     );
 
     const row = rows[0];
     if (!row) {
-      throw new Error(
-        `upsertPlanPrice returned no row for plan=${params.planKey} period=${params.period}`,
-      );
+      throw new PlanPriceUpsertError(params.planKey, params.period);
     }
 
     return {
@@ -738,12 +744,9 @@ export class SequelizeAdminRepository implements IAdminRepository {
   }
 
   async setPlanPrices(planKey: string, prices: SetPlanPriceParams[]): Promise<PlanPriceRow[]> {
-    const result: PlanPriceRow[] = [];
-    for (const p of prices) {
-      const row = await this.upsertPlanPrice({ ...p, planKey });
-      result.push(row);
-    }
-    return result;
+    return this.sequelize.transaction(async (t) => {
+      return Promise.all(prices.map((p) => this.upsertPlanPrice({ ...p, planKey }, t)));
+    });
   }
 
   async findPermanentPlanForRole(roleKey: string): Promise<PlanConfig | null> {

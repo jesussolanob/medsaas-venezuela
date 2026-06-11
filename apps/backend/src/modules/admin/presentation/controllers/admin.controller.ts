@@ -129,6 +129,19 @@ export class AdminController {
     private readonly setPlanPricesOp: SetPlanPricesUseCase,
   ) {}
 
+  /**
+   * Validates that a route param (planKey / featureKey) matches the expected
+   * format: lowercase alphanumeric and underscores only.
+   * Throws BadRequestException (400) if the format is invalid.
+   */
+  private static assertKeyFormat(value: string, paramName: string): void {
+    if (!/^[a-z0-9_]+$/.test(value)) {
+      throw new BadRequestException(
+        `Invalid ${paramName} '${value}'. Must match /^[a-z0-9_]+$/ (lowercase alphanumeric and underscores only).`,
+      );
+    }
+  }
+
   /** GET /api/admin/dashboard — KPIs: doctor counts by activity, appointments, patients, expiring subscriptions */
   @Get('dashboard')
   async dashboard(): Promise<SuccessResponse<unknown>> {
@@ -472,6 +485,7 @@ export class AdminController {
     @Param('planKey') planKey: string,
     @Body(new ZodValidationPipe(UpdatePlanFullBodySchema)) body: UpdatePlanFullBody,
   ): Promise<SuccessResponse<unknown>> {
+    AdminController.assertKeyFormat(planKey, 'planKey');
     const updated = await this.updatePlanOp.execute({
       planKey,
       name: body.name,
@@ -508,6 +522,7 @@ export class AdminController {
     @Param('planKey') planKey: string,
     @Body(new ZodValidationPipe(SetPlanFeaturesBodySchema)) body: SetPlanFeaturesBody,
   ): Promise<SuccessResponse<unknown[]>> {
+    AdminController.assertKeyFormat(planKey, 'planKey');
     const features = await this.setPlanFeaturesOp.execute({
       planKey,
       features: body.features.map((f) => ({
@@ -531,6 +546,7 @@ export class AdminController {
     @Param('planKey') planKey: string,
     @Body(new ZodValidationPipe(SetPlanPricesBodySchema)) body: SetPlanPricesBody,
   ): Promise<SuccessResponse<unknown[]>> {
+    AdminController.assertKeyFormat(planKey, 'planKey');
     const prices = await this.setPlanPricesOp.execute({
       planKey,
       prices: body.prices.map((p) => ({
@@ -562,6 +578,8 @@ export class AdminController {
     @Param('featureKey') featureKey: string,
     @Body(new ZodValidationPipe(TogglePlanFeatureBodySchema)) body: TogglePlanFeatureBody,
   ): Promise<SuccessResponse<unknown>> {
+    AdminController.assertKeyFormat(planKey, 'planKey');
+    AdminController.assertKeyFormat(featureKey, 'featureKey');
     const result = await this.togglePlanFeature.execute({
       planKey,
       featureKey,
@@ -616,6 +634,7 @@ export class AdminController {
     @Param('planKey') planKey: string,
     @Body(new ZodValidationPipe(UpdatePlanBodySchema)) body: UpdatePlanBody,
   ): Promise<SuccessResponse<unknown>> {
+    AdminController.assertKeyFormat(planKey, 'planKey');
     const updated = await this.updatePlanOp.execute({
       planKey,
       name: body.name,

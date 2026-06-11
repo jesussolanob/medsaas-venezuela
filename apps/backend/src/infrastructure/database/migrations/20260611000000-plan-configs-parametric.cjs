@@ -133,38 +133,52 @@ module.exports = {
     `);
 
     // -----------------------------------------------------------------------
-    // 4. SEED plan_features (idempotent — ON CONFLICT (plan, feature_key))
+    // 4. SEED plan_features (idempotent — ignoreDuplicates maps to ON CONFLICT DO NOTHING)
+    //
+    // Uses queryInterface.bulkInsert with parameterised object rows instead of
+    // string interpolation to avoid SQL injection risk in migration files.
+    // The 'id' column is intentionally omitted — the DB DEFAULT gen_random_uuid()
+    // generates it automatically.
     // -----------------------------------------------------------------------
     const featureRows = [];
 
     for (const featureKey of FEATURE_KEYS) {
       const label = FEATURE_LABELS[featureKey];
       const isAiFeature = AI_ONLY_FEATURES.includes(featureKey);
+      const now = new Date();
 
-      // delta_free: no AI, no advanced features (ai keys = false, all others = true)
-      featureRows.push(
-        `(gen_random_uuid(), 'delta_free', '${featureKey}', '${label}', ${!isAiFeature}, NOW(), NOW())`
-      );
+      // delta_free: no AI features
+      featureRows.push({
+        plan: 'delta_free',
+        feature_key: featureKey,
+        feature_label: label,
+        enabled: !isAiFeature,
+        created_at: now,
+        updated_at: now,
+      });
 
       // delta_base: all features EXCEPT AI
-      featureRows.push(
-        `(gen_random_uuid(), 'delta_base', '${featureKey}', '${label}', ${!isAiFeature}, NOW(), NOW())`
-      );
+      featureRows.push({
+        plan: 'delta_base',
+        feature_key: featureKey,
+        feature_label: label,
+        enabled: !isAiFeature,
+        created_at: now,
+        updated_at: now,
+      });
 
       // delta_plus: ALL features including AI
-      featureRows.push(
-        `(gen_random_uuid(), 'delta_plus', '${featureKey}', '${label}', true, NOW(), NOW())`
-      );
+      featureRows.push({
+        plan: 'delta_plus',
+        feature_key: featureKey,
+        feature_label: label,
+        enabled: true,
+        created_at: now,
+        updated_at: now,
+      });
     }
 
-    await queryInterface.sequelize.query(`
-      INSERT INTO plan_features
-        (id, plan, feature_key, feature_label, enabled, created_at, updated_at)
-      VALUES
-        ${featureRows.join(',\n        ')}
-      ON CONFLICT ON CONSTRAINT plan_features_plan_feature_key_key
-      DO NOTHING
-    `);
+    await queryInterface.bulkInsert('plan_features', featureRows, { ignoreDuplicates: true });
 
     // -----------------------------------------------------------------------
     // 5. SEED plan_prices for delta_base and delta_plus (idempotent)
