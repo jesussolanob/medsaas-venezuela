@@ -6,6 +6,7 @@ import { ProfileAdminModel } from './infrastructure/database/models/profile.mode
 import { AdminSubscriptionModel } from './infrastructure/database/models/subscription.model';
 import { PlanConfigModel } from './infrastructure/database/models/plan-config.model';
 import { PlanFeatureModel } from './infrastructure/database/models/plan-feature.model';
+import { PlanPriceModel } from './infrastructure/database/models/plan-price.model';
 
 // Repository
 import { SequelizeAdminRepository } from './infrastructure/database/repositories/sequelize-admin.repository';
@@ -33,6 +34,10 @@ import { SetUserRoleUseCase } from './application/use-cases/admin/set-user-role.
 import { GetDoctorGrowthUseCase } from './application/use-cases/admin/get-doctor-growth.use-case';
 import { GetDashboardOverviewUseCase } from './application/use-cases/admin/get-dashboard-overview.use-case';
 import { GetRecentDoctorsUseCase } from './application/use-cases/admin/get-recent-doctors.use-case';
+import { CreatePlanUseCase } from './application/use-cases/admin/create-plan.use-case';
+import { ListPlansWithDetailsUseCase } from './application/use-cases/admin/list-plans-with-details.use-case';
+import { SetPlanFeaturesUseCase } from './application/use-cases/admin/set-plan-features.use-case';
+import { SetPlanPricesUseCase } from './application/use-cases/admin/set-plan-prices.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -59,6 +64,7 @@ import { AdminController } from './presentation/controllers/admin.controller';
       AdminSubscriptionModel,
       PlanConfigModel,
       PlanFeatureModel,
+      PlanPriceModel,
     ]),
   ],
   controllers: [AdminController],
@@ -94,6 +100,10 @@ import { AdminController } from './presentation/controllers/admin.controller';
     GetDoctorGrowthUseCase,
     GetDashboardOverviewUseCase,
     GetRecentDoctorsUseCase,
+    CreatePlanUseCase,
+    ListPlansWithDetailsUseCase,
+    SetPlanFeaturesUseCase,
+    SetPlanPricesUseCase,
   ],
 })
 export class AdminModule {}

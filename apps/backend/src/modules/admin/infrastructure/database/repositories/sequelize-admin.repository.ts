@@ -21,6 +21,10 @@ import type {
   PatientStats,
   AdminUserRow,
   UpdatePlanParams,
+  CreatePlanParams,
+  PlanPriceRow,
+  SetPlanPriceParams,
+  PlanDetail,
   DashboardOverview,
   RecentDoctorRow,
 } from '../../../domain/repositories/admin.repository';
@@ -31,6 +35,7 @@ import { ProfileAdminModel } from '../models/profile.model';
 import { AdminSubscriptionModel } from '../models/subscription.model';
 import { PlanConfigModel } from '../models/plan-config.model';
 import { PlanFeatureModel } from '../models/plan-feature.model';
+import { PlanPriceModel } from '../models/plan-price.model';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 
 // Sensitive keys that must never be returned from the settings endpoint
@@ -78,6 +83,8 @@ export class SequelizeAdminRepository implements IAdminRepository {
     private readonly planConfigModel: typeof PlanConfigModel,
     @InjectModel(PlanFeatureModel)
     private readonly planFeatureModel: typeof PlanFeatureModel,
+    @InjectModel(PlanPriceModel)
+    private readonly planPriceModel: typeof PlanPriceModel,
     private readonly sequelize: Sequelize,
   ) {}
 
@@ -479,10 +486,88 @@ export class SequelizeAdminRepository implements IAdminRepository {
     return rows.map((r) => this.planRowToVo(r));
   }
 
+  async listPlansWithDetails(): Promise<PlanDetail[]> {
+    const planRows = await this.planConfigModel.findAll({
+      order: [['sortOrder', 'ASC']],
+    });
+
+    if (planRows.length === 0) return [];
+
+    const planKeys = planRows.map((r) => r.planKey);
+
+    // Load features and prices for all plans in two queries (not N+1)
+    const featureRows = await this.planFeatureModel.findAll({
+      where: { plan: planKeys },
+      order: [
+        ['plan', 'ASC'],
+        ['featureKey', 'ASC'],
+      ],
+    });
+
+    const priceRows = await this.planPriceModel.findAll({
+      where: { planKey: planKeys },
+      order: [
+        ['planKey', 'ASC'],
+        ['period', 'ASC'],
+      ],
+    });
+
+    // Group by planKey
+    const featuresByPlan = new Map<string, PlanFeatureRow[]>();
+    for (const fr of featureRows) {
+      const list = featuresByPlan.get(fr.plan) ?? [];
+      list.push({
+        id: fr.id,
+        plan: fr.plan,
+        featureKey: fr.featureKey,
+        featureLabel: fr.featureLabel,
+        enabled: fr.enabled,
+      });
+      featuresByPlan.set(fr.plan, list);
+    }
+
+    const pricesByPlan = new Map<string, PlanPriceRow[]>();
+    for (const pr of priceRows) {
+      const list = pricesByPlan.get(pr.planKey) ?? [];
+      list.push(this.priceRowToDto(pr));
+      pricesByPlan.set(pr.planKey, list);
+    }
+
+    return planRows.map((r) => ({
+      planKey: r.planKey,
+      name: r.name,
+      priceUsd: Number(r.price),
+      trialDays: r.trialDays ?? 0,
+      isActive: r.isActive ?? true,
+      description: r.description ?? null,
+      sortOrder: r.sortOrder ?? 0,
+      roleKey: r.roleKey ?? 'doctor',
+      isPermanent: r.isPermanent ?? false,
+      prices: pricesByPlan.get(r.planKey) ?? [],
+      features: featuresByPlan.get(r.planKey) ?? [],
+    }));
+  }
+
   async findPlanByKey(planKey: string): Promise<PlanConfig | null> {
     const row = await this.planConfigModel.findOne({ where: { planKey } });
     if (!row) return null;
     return this.planRowToVo(row);
+  }
+
+  async createPlan(params: CreatePlanParams): Promise<PlanConfig> {
+    const row = await this.planConfigModel.create({
+      planKey: params.planKey,
+      name: params.name,
+      price: 0,
+      currency: 'USD',
+      trialDays: 0,
+      description: params.description ?? null,
+      isActive: params.isActive,
+      sortOrder: params.sortOrder,
+      roleKey: params.roleKey,
+      isPermanent: params.isPermanent,
+    } as Parameters<typeof PlanConfigModel.create>[0]);
+    return this.planRowToVo(row as PlanConfigModel);
   }
 
   async togglePlan(planKey: string, isActive: boolean): Promise<PlanConfig> {
@@ -576,6 +661,98 @@ export class SequelizeAdminRepository implements IAdminRepository {
       featureLabel: row.feature_label,
       enabled: row.enabled,
     };
+  }
+
+  async setPlanFeatures(
+    planKey: string,
+    features: Array<{ featureKey: string; featureLabel: string; enabled: boolean }>,
+  ): Promise<PlanFeatureRow[]> {
+    const result: PlanFeatureRow[] = [];
+    for (const f of features) {
+      const row = await this.upsertPlanFeature(planKey, f.featureKey, f.featureLabel, f.enabled);
+      result.push(row);
+    }
+    return result;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plan prices
+  // ---------------------------------------------------------------------------
+
+  async listPlanPrices(planKey?: string): Promise<PlanPriceRow[]> {
+    const where: Record<string, unknown> = {};
+    if (planKey) where.planKey = planKey;
+
+    const rows = await this.planPriceModel.findAll({
+      where,
+      order: [
+        ['planKey', 'ASC'],
+        ['period', 'ASC'],
+      ],
+    });
+
+    return rows.map((r) => this.priceRowToDto(r));
+  }
+
+  async upsertPlanPrice(params: SetPlanPriceParams): Promise<PlanPriceRow> {
+    const rows = await this.sequelize.query<{
+      id: string;
+      plan_key: string;
+      period: string;
+      price_usd: string;
+      is_active: boolean;
+    }>(
+      `INSERT INTO plan_prices (id, plan_key, period, price_usd, is_active, created_at, updated_at)
+       VALUES (gen_random_uuid(), :planKey, :period, :priceUsd, :isActive, NOW(), NOW())
+       ON CONFLICT (plan_key, period)
+       DO UPDATE SET
+         price_usd  = EXCLUDED.price_usd,
+         is_active  = EXCLUDED.is_active,
+         updated_at = NOW()
+       RETURNING id, plan_key, period, price_usd, is_active`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: {
+          planKey: params.planKey,
+          period: params.period,
+          priceUsd: params.priceUsd,
+          isActive: params.isActive,
+        },
+      },
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error(
+        `upsertPlanPrice returned no row for plan=${params.planKey} period=${params.period}`,
+      );
+    }
+
+    return {
+      id: row.id,
+      planKey: row.plan_key,
+      period: row.period as import('../../../domain/value-objects/plan-price.vo').BillingPeriod,
+      priceUsd: Number(row.price_usd),
+      isActive: row.is_active,
+    };
+  }
+
+  async setPlanPrices(planKey: string, prices: SetPlanPriceParams[]): Promise<PlanPriceRow[]> {
+    const result: PlanPriceRow[] = [];
+    for (const p of prices) {
+      const row = await this.upsertPlanPrice({ ...p, planKey });
+      result.push(row);
+    }
+    return result;
+  }
+
+  async findPermanentPlanForRole(roleKey: string): Promise<PlanConfig | null> {
+    const row = await this.planConfigModel.findOne({
+      where: { roleKey, isPermanent: true, isActive: true },
+      order: [['sortOrder', 'ASC']],
+    });
+    if (!row) return null;
+    return this.planRowToVo(row);
   }
 
   // ---------------------------------------------------------------------------
@@ -702,6 +879,8 @@ export class SequelizeAdminRepository implements IAdminRepository {
     if (params.price !== undefined) updates.price = params.price;
     if (params.trialDays !== undefined) updates.trialDays = params.trialDays;
     if (params.sortOrder !== undefined) updates.sortOrder = params.sortOrder;
+    if (params.isActive !== undefined) updates.isActive = params.isActive;
+    if (params.isPermanent !== undefined) updates.isPermanent = params.isPermanent;
     // description: undefined = no-op; null = clear; string = set
     if (params.description !== undefined) updates.description = params.description;
 
@@ -918,6 +1097,18 @@ export class SequelizeAdminRepository implements IAdminRepository {
       row.isActive ?? true,
       row.description ?? null,
       row.sortOrder ?? 0,
+      row.roleKey ?? 'doctor',
+      row.isPermanent ?? false,
     );
+  }
+
+  private priceRowToDto(row: PlanPriceModel): PlanPriceRow {
+    return {
+      id: row.id,
+      planKey: row.planKey,
+      period: row.period,
+      priceUsd: Number(row.priceUsd),
+      isActive: row.isActive,
+    };
   }
 }

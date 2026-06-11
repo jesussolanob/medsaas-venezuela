@@ -48,6 +48,13 @@ const makeRepo = (
     setUserRole: jest.fn().mockResolvedValue(undefined),
     getDashboardOverview: jest.fn(),
     getRecentDoctors: jest.fn(),
+    listPlansWithDetails: jest.fn(),
+    createPlan: jest.fn(),
+    setPlanFeatures: jest.fn(),
+    listPlanPrices: jest.fn(),
+    upsertPlanPrice: jest.fn(),
+    setPlanPrices: jest.fn(),
+    findPermanentPlanForRole: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('SetUserRoleUseCase', () => {

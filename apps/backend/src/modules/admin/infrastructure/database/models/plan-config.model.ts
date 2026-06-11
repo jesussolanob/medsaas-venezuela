@@ -47,6 +47,19 @@ export class PlanConfigModel extends Model {
   @Column({ type: DataType.INTEGER, allowNull: true, field: 'sort_order' })
   declare sortOrder: number;
 
+  /** Role this plan belongs to. Added by 20260611000000-plan-configs-parametric. */
+  @Default('doctor')
+  @Column({ type: DataType.TEXT, allowNull: false, field: 'role_key' })
+  declare roleKey: string;
+
+  /**
+   * When true the plan never expires — subscriptions on this plan remain active
+   * regardless of current_period_end. Added by 20260611000000-plan-configs-parametric.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'is_permanent' })
+  declare isPermanent: boolean;
+
   @Column({ type: DataType.DATE, field: 'created_at' })
   declare createdAt: Date;
 

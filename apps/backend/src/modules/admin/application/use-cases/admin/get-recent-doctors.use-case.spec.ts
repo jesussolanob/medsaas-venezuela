@@ -37,6 +37,13 @@ const makeRepo = (rows: RecentDoctorRow[] = []): jest.Mocked<IAdminRepository> =
     findProfileById: jest.fn(),
     countSuperAdmins: jest.fn(),
     setUserRole: jest.fn(),
+    listPlansWithDetails: jest.fn(),
+    createPlan: jest.fn(),
+    setPlanFeatures: jest.fn(),
+    listPlanPrices: jest.fn(),
+    upsertPlanPrice: jest.fn(),
+    setPlanPrices: jest.fn(),
+    findPermanentPlanForRole: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('GetRecentDoctorsUseCase', () => {

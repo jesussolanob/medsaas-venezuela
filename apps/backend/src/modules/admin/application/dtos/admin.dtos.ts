@@ -99,6 +99,9 @@ export const VALID_SUBSCRIPTION_PLANS = [
   'professional',
   'clinic',
   'enterprise',
+  'delta_free',
+  'delta_base',
+  'delta_plus',
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -151,6 +154,95 @@ export const UpdatePlanBodySchema = z
   );
 
 export type UpdatePlanBody = z.infer<typeof UpdatePlanBodySchema>;
+
+// ---------------------------------------------------------------------------
+// POST /admin/plans — create a new plan
+// ---------------------------------------------------------------------------
+
+export const CreatePlanBodySchema = z
+  .object({
+    plan_key: z
+      .string()
+      .min(1, 'plan_key is required')
+      .max(100)
+      .regex(/^[a-z0-9_]+$/, 'plan_key must be lowercase alphanumeric with underscores'),
+    name: z.string().min(1, 'name is required').max(200),
+    role_key: z.string().min(1).max(100).default('doctor'),
+    is_permanent: z.boolean().default(false),
+    is_active: z.boolean().default(true),
+    sort_order: z.number().int().min(0).default(0),
+    description: z.string().max(1000).nullable().optional(),
+  })
+  .strict();
+
+export type CreatePlanBody = z.infer<typeof CreatePlanBodySchema>;
+
+// ---------------------------------------------------------------------------
+// PUT /admin/plans/:planKey — full edit (replaces TogglePlanBodySchema scope)
+// ---------------------------------------------------------------------------
+
+export const UpdatePlanFullBodySchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    is_active: z.boolean().optional(),
+    sort_order: z.number().int().min(0).optional(),
+    is_permanent: z.boolean().optional(),
+    description: z.string().max(1000).nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (b) =>
+      b.name !== undefined ||
+      b.is_active !== undefined ||
+      b.sort_order !== undefined ||
+      b.is_permanent !== undefined ||
+      b.description !== undefined,
+    { message: 'At least one field must be provided' },
+  );
+
+export type UpdatePlanFullBody = z.infer<typeof UpdatePlanFullBodySchema>;
+
+// ---------------------------------------------------------------------------
+// PUT /admin/plans/:planKey/features — bulk-set feature matrix
+// ---------------------------------------------------------------------------
+
+export const SetPlanFeaturesBodySchema = z
+  .object({
+    features: z
+      .array(
+        z.object({
+          feature_key: z.string().min(1).max(100),
+          feature_label: z.string().min(1).max(200),
+          enabled: z.boolean(),
+        }),
+      )
+      .min(1, 'features array must not be empty'),
+  })
+  .strict();
+
+export type SetPlanFeaturesBody = z.infer<typeof SetPlanFeaturesBodySchema>;
+
+// ---------------------------------------------------------------------------
+// PUT /admin/plans/:planKey/prices — bulk-set prices by period
+// ---------------------------------------------------------------------------
+
+const VALID_PERIODS = ['monthly', 'quarterly', 'semiannual', 'annual'] as const;
+
+export const SetPlanPricesBodySchema = z
+  .object({
+    prices: z
+      .array(
+        z.object({
+          period: z.enum(VALID_PERIODS),
+          price_usd: z.number().min(0),
+          is_active: z.boolean().default(true),
+        }),
+      )
+      .min(1, 'prices array must not be empty'),
+  })
+  .strict();
+
+export type SetPlanPricesBody = z.infer<typeof SetPlanPricesBodySchema>;
 
 // ---------------------------------------------------------------------------
 // PUT /admin/admins/:id/role — set a user's role (grant/revoke super_admin)

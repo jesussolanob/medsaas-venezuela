@@ -3,8 +3,8 @@ import { ForbiddenException, BadRequestException } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import {
   UpdateSubscriptionBodySchema,
-  TogglePlanBodySchema,
   TogglePlanFeatureBodySchema,
+  UpdatePlanFullBodySchema,
 } from '../../application/dtos/admin.dtos';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
@@ -31,6 +31,10 @@ import { UpsertSettingUseCase } from '../../application/use-cases/admin/upsert-s
 import { UpdatePlanUseCase } from '../../application/use-cases/admin/update-plan.use-case';
 import { ListAdminUsersUseCase } from '../../application/use-cases/admin/list-admin-users.use-case';
 import { SetUserRoleUseCase } from '../../application/use-cases/admin/set-user-role.use-case';
+import { CreatePlanUseCase } from '../../application/use-cases/admin/create-plan.use-case';
+import { ListPlansWithDetailsUseCase } from '../../application/use-cases/admin/list-plans-with-details.use-case';
+import { SetPlanFeaturesUseCase } from '../../application/use-cases/admin/set-plan-features.use-case';
+import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan-prices.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
 import type { DoctorDetail, DoctorGrowthData } from '../../domain/repositories/admin.repository';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
@@ -163,6 +167,26 @@ const buildModule = async (): Promise<TestingModule> => {
     }),
   };
   const mockRecentDoctors = { execute: jest.fn().mockResolvedValue([]) };
+  const mockCreatePlan = { execute: jest.fn().mockResolvedValue(samplePlan) };
+  const mockListPlansWithDetails = {
+    execute: jest.fn().mockResolvedValue([
+      {
+        planKey: 'basic',
+        name: 'Basic',
+        priceUsd: 10,
+        trialDays: 0,
+        isActive: true,
+        description: null,
+        sortOrder: 1,
+        roleKey: 'doctor',
+        isPermanent: false,
+        prices: [],
+        features: [],
+      },
+    ]),
+  };
+  const mockSetPlanFeatures = { execute: jest.fn().mockResolvedValue([]) };
+  const mockSetPlanPrices = { execute: jest.fn().mockResolvedValue([]) };
 
   return Test.createTestingModule({
     controllers: [AdminController],
@@ -189,6 +213,10 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: GetDoctorGrowthUseCase, useValue: mockDoctorGrowth },
       { provide: GetDashboardOverviewUseCase, useValue: mockDashboardOverview },
       { provide: GetRecentDoctorsUseCase, useValue: mockRecentDoctors },
+      { provide: CreatePlanUseCase, useValue: mockCreatePlan },
+      { provide: ListPlansWithDetailsUseCase, useValue: mockListPlansWithDetails },
+      { provide: SetPlanFeaturesUseCase, useValue: mockSetPlanFeatures },
+      { provide: SetPlanPricesUseCase, useValue: mockSetPlanPrices },
     ],
   })
     .overrideGuard(DevAuthGuard)
@@ -302,7 +330,7 @@ describe('AdminController', () => {
 
   describe('PUT /admin/plans/:planKey', () => {
     it('returns updated plan', async () => {
-      const result = await controller.togglePlanHandler('basic', { is_active: false });
+      const result = await controller.updatePlanHandler('basic', { is_active: false });
       expect(result.success).toBe(true);
     });
   });
@@ -406,8 +434,8 @@ describe('AdminController', () => {
     });
   });
 
-  describe('Input validation — TogglePlanBodySchema', () => {
-    const pipe = new ZodValidationPipe(TogglePlanBodySchema);
+  describe('Input validation — UpdatePlanFullBodySchema', () => {
+    const pipe = new ZodValidationPipe(UpdatePlanFullBodySchema);
 
     it('accepts { is_active: false }', () => {
       expect(() => pipe.transform({ is_active: false })).not.toThrow();

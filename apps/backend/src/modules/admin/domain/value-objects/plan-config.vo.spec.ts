@@ -13,6 +13,22 @@ describe('PlanConfig', () => {
     expect(config.sortOrder).toBe(1);
   });
 
+  it('defaults roleKey to "doctor" when not provided', () => {
+    const config = new PlanConfig('basic', 'Basic', 10, 0, true, null, 1);
+    expect(config.roleKey).toBe('doctor');
+  });
+
+  it('defaults isPermanent to false when not provided', () => {
+    const config = new PlanConfig('basic', 'Basic', 10, 0, true, null, 1);
+    expect(config.isPermanent).toBe(false);
+  });
+
+  it('stores roleKey and isPermanent when provided', () => {
+    const config = new PlanConfig('delta_free', 'Delta Free', 0, 0, true, null, 1, 'doctor', true);
+    expect(config.roleKey).toBe('doctor');
+    expect(config.isPermanent).toBe(true);
+  });
+
   it('isAvailable returns true when isActive is true', () => {
     const config = new PlanConfig('basic', 'Basic', 10, 0, true, null, 1);
     expect(config.isAvailable()).toBe(true);
@@ -26,5 +42,11 @@ describe('PlanConfig', () => {
   it('allows null description', () => {
     const config = new PlanConfig('trial', 'Trial', 0, 14, true, null, 0);
     expect(config.description).toBeNull();
+  });
+
+  it('permanent plan has isPermanent = true', () => {
+    const config = new PlanConfig('delta_free', 'Delta Free', 0, 0, true, null, 1, 'doctor', true);
+    expect(config.isPermanent).toBe(true);
+    expect(config.isAvailable()).toBe(true);
   });
 });

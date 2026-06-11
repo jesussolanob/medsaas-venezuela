@@ -35,10 +35,11 @@ import { GetDoctorProfileUseCase } from '../../application/use-cases/doctor-sett
 import { UpdateDoctorProfileUseCase } from '../../application/use-cases/doctor-settings/update-doctor-profile.use-case';
 import { GetDoctorScheduleUseCase } from '../../application/use-cases/doctor-settings/get-doctor-schedule.use-case';
 import { UpdateDoctorScheduleUseCase } from '../../application/use-cases/doctor-settings/update-doctor-schedule.use-case';
+import { GetDoctorFeaturesUseCase } from '../../application/use-cases/doctor-settings/get-doctor-features.use-case';
 import {
-  GetDoctorFeaturesUseCase,
-  type DoctorFeaturesOutput,
-} from '../../application/use-cases/doctor-settings/get-doctor-features.use-case';
+  GetDoctorFeaturesV2UseCase,
+  type DoctorFeaturesV2Output,
+} from '../../application/use-cases/doctor-settings/get-doctor-features-v2.use-case';
 import {
   GetSubscriptionInfoUseCase,
   type SubscriptionInfoOutput,
@@ -83,6 +84,7 @@ export class DoctorController {
     private readonly getSchedule: GetDoctorScheduleUseCase,
     private readonly updateSchedule: UpdateDoctorScheduleUseCase,
     private readonly getFeatures: GetDoctorFeaturesUseCase,
+    private readonly getFeaturesV2: GetDoctorFeaturesV2UseCase,
     private readonly getSubscription: GetSubscriptionInfoUseCase,
     private readonly getServices: GetServicesUseCase,
     private readonly createService: CreateServiceUseCase,
@@ -150,12 +152,26 @@ export class DoctorController {
     return { success: true, data: result };
   }
 
-  /** GET /api/doctor/features */
+  /**
+   * GET /api/doctor/features
+   *
+   * Returns the effective feature map for the authenticated doctor.
+   * Implements lazy-downgrade: if the subscription has expired and the plan
+   * is not permanent, the response reflects the permanent fallback plan.
+   *
+   * Response shape:
+   *   {
+   *     plan_key: string,         // plan stored on the doctor's subscription
+   *     effective_plan_key: string, // plan whose features are served (may differ if downgraded)
+   *     is_downgraded: boolean,   // true when the effective plan ≠ stored plan
+   *     features: { [featureKey]: boolean }  // feature gate map
+   *   }
+   */
   @Get('features')
   async features(
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<DoctorFeaturesOutput>> {
-    const result = await this.getFeatures.execute(user.sub);
+  ): Promise<SuccessResponse<DoctorFeaturesV2Output>> {
+    const result = await this.getFeaturesV2.execute(user.sub);
     return { success: true, data: result };
   }
 

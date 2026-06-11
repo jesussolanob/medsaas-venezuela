@@ -5,6 +5,7 @@ import { UpdateDoctorProfileUseCase } from '../../application/use-cases/doctor-s
 import { GetDoctorScheduleUseCase } from '../../application/use-cases/doctor-settings/get-doctor-schedule.use-case';
 import { UpdateDoctorScheduleUseCase } from '../../application/use-cases/doctor-settings/update-doctor-schedule.use-case';
 import { GetDoctorFeaturesUseCase } from '../../application/use-cases/doctor-settings/get-doctor-features.use-case';
+import { GetDoctorFeaturesV2UseCase } from '../../application/use-cases/doctor-settings/get-doctor-features-v2.use-case';
 import { GetSubscriptionInfoUseCase } from '../../application/use-cases/doctor-settings/get-subscription-info.use-case';
 import { GetServicesUseCase } from '../../application/use-cases/doctor-settings/get-services.use-case';
 import { CreateServiceUseCase } from '../../application/use-cases/doctor-settings/create-service.use-case';
@@ -71,6 +72,7 @@ describe('DoctorController', () => {
   const mockGetSchedule = { execute: jest.fn() };
   const mockUpdateSchedule = { execute: jest.fn() };
   const mockGetFeatures = { execute: jest.fn() };
+  const mockGetFeaturesV2 = { execute: jest.fn() };
   const mockGetSubscription = { execute: jest.fn() };
   const mockGetServices = { execute: jest.fn() };
   const mockCreateService = { execute: jest.fn() };
@@ -88,6 +90,7 @@ describe('DoctorController', () => {
         { provide: GetDoctorScheduleUseCase, useValue: mockGetSchedule },
         { provide: UpdateDoctorScheduleUseCase, useValue: mockUpdateSchedule },
         { provide: GetDoctorFeaturesUseCase, useValue: mockGetFeatures },
+        { provide: GetDoctorFeaturesV2UseCase, useValue: mockGetFeaturesV2 },
         { provide: GetSubscriptionInfoUseCase, useValue: mockGetSubscription },
         { provide: GetServicesUseCase, useValue: mockGetServices },
         { provide: CreateServiceUseCase, useValue: mockCreateService },
@@ -260,17 +263,37 @@ describe('DoctorController', () => {
   });
 
   describe('GET /doctor/features', () => {
-    it('returns features for the doctor plan', async () => {
-      const features = {
-        plan: 'professional',
-        features: [{ featureKey: 'crm', featureLabel: 'CRM', enabled: true }],
+    it('returns features for the doctor plan with v2 shape', async () => {
+      const featuresV2 = {
+        plan_key: 'delta_base',
+        effective_plan_key: 'delta_base',
+        is_downgraded: false,
+        features: { dashboard: true, ai_assistant: false },
       };
-      mockGetFeatures.execute.mockResolvedValue(features);
+      mockGetFeaturesV2.execute.mockResolvedValue(featuresV2);
 
       const result = await controller.features(USER);
 
       expect(result.success).toBe(true);
-      expect(result.data.plan).toBe('professional');
+      expect(result.data.plan_key).toBe('delta_base');
+      expect(result.data.is_downgraded).toBe(false);
+      expect(result.data.features['dashboard']).toBe(true);
+    });
+
+    it('returns downgraded features when subscription expired', async () => {
+      const featuresV2 = {
+        plan_key: 'delta_base',
+        effective_plan_key: 'delta_free',
+        is_downgraded: true,
+        features: { dashboard: true, ai_assistant: false },
+      };
+      mockGetFeaturesV2.execute.mockResolvedValue(featuresV2);
+
+      const result = await controller.features(USER);
+
+      expect(result.success).toBe(true);
+      expect(result.data.is_downgraded).toBe(true);
+      expect(result.data.effective_plan_key).toBe('delta_free');
     });
   });
 

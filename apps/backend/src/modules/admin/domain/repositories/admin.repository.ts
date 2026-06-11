@@ -1,6 +1,7 @@
 import type { SubscriptionStatus, SubscriptionPlan } from '@delta/shared-types';
 import type { DoctorWithActivity } from '../entities/doctor-with-activity.entity';
 import type { PlanConfig } from '../value-objects/plan-config.vo';
+import type { BillingPeriod } from '../value-objects/plan-price.vo';
 
 export const ADMIN_REPOSITORY = Symbol('IAdminRepository');
 
@@ -139,6 +140,51 @@ export interface UpdatePlanParams {
   sortOrder?: number;
   /** undefined = do not touch; null = clear the description; string = new value. */
   description?: string | null;
+  isActive?: boolean;
+  isPermanent?: boolean;
+}
+
+/** Parameters for creating a new plan_config row. */
+export interface CreatePlanParams {
+  planKey: string;
+  name: string;
+  roleKey: string;
+  isPermanent: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  description?: string | null;
+}
+
+/** One row in plan_prices. */
+export interface PlanPriceRow {
+  id: string;
+  planKey: string;
+  period: BillingPeriod;
+  priceUsd: number;
+  isActive: boolean;
+}
+
+/** Input for setting a single period price entry. */
+export interface SetPlanPriceParams {
+  planKey: string;
+  period: BillingPeriod;
+  priceUsd: number;
+  isActive: boolean;
+}
+
+/** Enriched plan returned by admin list — includes prices and features. */
+export interface PlanDetail {
+  planKey: string;
+  name: string;
+  priceUsd: number;
+  trialDays: number;
+  isActive: boolean;
+  description: string | null;
+  sortOrder: number;
+  roleKey: string;
+  isPermanent: boolean;
+  prices: PlanPriceRow[];
+  features: PlanFeatureRow[];
 }
 
 export interface PatientStats {
@@ -278,8 +324,11 @@ export interface IAdminRepository {
 
   // Plans
   listPlans(): Promise<PlanConfig[]>;
+  /** Returns enriched plan detail including prices[] and features[]. */
+  listPlansWithDetails(): Promise<PlanDetail[]>;
   findPlanByKey(planKey: string): Promise<PlanConfig | null>;
   togglePlan(planKey: string, isActive: boolean): Promise<PlanConfig>;
+  createPlan(params: CreatePlanParams): Promise<PlanConfig>;
 
   // Plan features
   listPlanFeatures(planKey?: string): Promise<PlanFeatureRow[]>;
@@ -289,6 +338,18 @@ export interface IAdminRepository {
     featureLabel: string,
     enabled: boolean,
   ): Promise<PlanFeatureRow>;
+  /** Bulk-set the feature matrix for a plan. Overwrites all existing entries. */
+  setPlanFeatures(
+    planKey: string,
+    features: Array<{ featureKey: string; featureLabel: string; enabled: boolean }>,
+  ): Promise<PlanFeatureRow[]>;
+
+  // Plan prices
+  listPlanPrices(planKey?: string): Promise<PlanPriceRow[]>;
+  /** Upsert a single price entry for (planKey, period). */
+  upsertPlanPrice(params: SetPlanPriceParams): Promise<PlanPriceRow>;
+  /** Bulk-set prices for a plan. Overwrites all existing entries for that plan. */
+  setPlanPrices(planKey: string, prices: SetPlanPriceParams[]): Promise<PlanPriceRow[]>;
 
   // Patients stats (no PII)
   getPatientStats(): Promise<PatientStats>;
@@ -299,6 +360,12 @@ export interface IAdminRepository {
 
   // Plans — extended edit
   updatePlan(params: UpdatePlanParams): Promise<PlanConfig>;
+
+  /**
+   * Returns the first permanent plan for the given role key.
+   * Used by the lazy-downgrade logic in GetDoctorFeaturesV2UseCase.
+   */
+  findPermanentPlanForRole(roleKey: string): Promise<PlanConfig | null>;
 
   // Admin user management (via profiles.role)
   listAdminUsers(): Promise<AdminUserRow[]>;

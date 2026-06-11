@@ -12,6 +12,8 @@ export interface UpdatePlanInput {
   price?: number;
   trialDays?: number;
   sortOrder?: number;
+  isActive?: boolean;
+  isPermanent?: boolean;
   /** undefined = do not touch; null = clear the description; string = new value. */
   description?: string | null;
 }
@@ -21,9 +23,6 @@ export interface UpdatePlanInput {
  *
  * Only the explicitly provided fields are written; missing fields are left unchanged.
  * Throws PlanNotFoundError when the planKey does not match any existing plan.
- *
- * NOTE: is_active (toggle) is intentionally not part of this use case — it is
- * handled by TogglePlanUseCase to keep a clear separation of concerns.
  */
 @Injectable()
 export class UpdatePlanUseCase {
@@ -42,6 +41,8 @@ export class UpdatePlanUseCase {
       price: input.price,
       trialDays: input.trialDays,
       sortOrder: input.sortOrder,
+      isActive: input.isActive,
+      isPermanent: input.isPermanent,
       description: input.description,
     });
   }

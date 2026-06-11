@@ -8,6 +8,8 @@ import { SubscriptionStatusSchema } from './enums';
 // trial_ends_at, cancelled_at, notes, created_at, updated_at
 
 // Subscription plan key (matches plan_configs.plan_key)
+// Legacy values: trial, basic, professional, clinic, enterprise
+// New parametric values (20260611 migration): delta_free, delta_base, delta_plus
 export const SubscriptionPlanSchema = z.enum([
   'trial',
   'basic',
@@ -15,6 +17,10 @@ export const SubscriptionPlanSchema = z.enum([
   'clinic',
   // 'enterprise' is a legacy value migrated to 'clinic' (fixes_remediation.sql, Section C)
   'enterprise',
+  // Parametric plans introduced in migration 20260611000000-plan-configs-parametric
+  'delta_free',
+  'delta_base',
+  'delta_plus',
 ]);
 export type SubscriptionPlan = z.infer<typeof SubscriptionPlanSchema>;
 

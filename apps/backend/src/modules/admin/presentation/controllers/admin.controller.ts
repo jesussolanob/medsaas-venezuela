@@ -19,7 +19,6 @@ import {
 } from '../../../../presentation/decorators/current-user.decorator';
 import {
   UpdateSubscriptionBodySchema,
-  TogglePlanBodySchema,
   TogglePlanFeatureBodySchema,
   ExtendSubscriptionBodySchema,
   SuspendSubscriptionBodySchema,
@@ -27,11 +26,14 @@ import {
   UpsertSettingBodySchema,
   UpdatePlanBodySchema,
   SetUserRoleBodySchema,
+  CreatePlanBodySchema,
+  UpdatePlanFullBodySchema,
+  SetPlanFeaturesBodySchema,
+  SetPlanPricesBodySchema,
   VALID_ACTIVITY_STATUSES,
   VALID_SUBSCRIPTION_STATUSES,
   VALID_SUBSCRIPTION_PLANS,
   type UpdateSubscriptionBody,
-  type TogglePlanBody,
   type TogglePlanFeatureBody,
   type ExtendSubscriptionBody,
   type SuspendSubscriptionBody,
@@ -39,6 +41,10 @@ import {
   type UpsertSettingBody,
   type UpdatePlanBody,
   type SetUserRoleBody,
+  type CreatePlanBody,
+  type UpdatePlanFullBody,
+  type SetPlanFeaturesBody,
+  type SetPlanPricesBody,
 } from '../../application/dtos/admin.dtos';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDashboardOverviewUseCase } from '../../application/use-cases/admin/get-dashboard-overview.use-case';
@@ -61,6 +67,10 @@ import { UpsertSettingUseCase } from '../../application/use-cases/admin/upsert-s
 import { UpdatePlanUseCase } from '../../application/use-cases/admin/update-plan.use-case';
 import { ListAdminUsersUseCase } from '../../application/use-cases/admin/list-admin-users.use-case';
 import { SetUserRoleUseCase } from '../../application/use-cases/admin/set-user-role.use-case';
+import { CreatePlanUseCase } from '../../application/use-cases/admin/create-plan.use-case';
+import { ListPlansWithDetailsUseCase } from '../../application/use-cases/admin/list-plans-with-details.use-case';
+import { SetPlanFeaturesUseCase } from '../../application/use-cases/admin/set-plan-features.use-case';
+import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan-prices.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -113,6 +123,10 @@ export class AdminController {
     private readonly listAdminUsersOp: ListAdminUsersUseCase,
     private readonly setUserRoleOp: SetUserRoleUseCase,
     private readonly getDoctorGrowthOp: GetDoctorGrowthUseCase,
+    private readonly createPlanOp: CreatePlanUseCase,
+    private readonly listPlansWithDetailsOp: ListPlansWithDetailsUseCase,
+    private readonly setPlanFeaturesOp: SetPlanFeaturesUseCase,
+    private readonly setPlanPricesOp: SetPlanPricesUseCase,
   ) {}
 
   /** GET /api/admin/dashboard — KPIs: doctor counts by activity, appointments, patients, expiring subscriptions */
@@ -156,9 +170,7 @@ export class AdminController {
    * NestJS treating 'recent' as a doctor id.
    */
   @Get('doctors/recent')
-  async recentDoctors(
-    @Query('days') daysRaw = '7',
-  ): Promise<SuccessResponse<unknown[]>> {
+  async recentDoctors(@Query('days') daysRaw = '7'): Promise<SuccessResponse<unknown[]>> {
     const days = Math.min(30, Math.max(1, parseInt(daysRaw, 10) || 7));
     const doctors = await this.getRecentDoctors.execute({ days });
     return {
@@ -400,45 +412,134 @@ export class AdminController {
     };
   }
 
-  /** GET /api/admin/plans — all plan_configs ordered by sort_order */
+  /**
+   * GET /api/admin/plans — all plan_configs with their prices[] and features[].
+   *
+   * Returns the enriched matrix (prices per period, enabled/disabled features)
+   * that the frontend admin panel uses to display and edit the plan catalog.
+   */
   @Get('plans')
   async listPlans(): Promise<SuccessResponse<unknown[]>> {
-    const plans = await this.getPlans.execute();
+    const plans = await this.listPlansWithDetailsOp.execute();
+    return { success: true, data: plans };
+  }
+
+  /**
+   * POST /api/admin/plans — create a new plan.
+   *
+   * Body: { plan_key, name, role_key?, is_permanent?, is_active?, sort_order?, description? }
+   *
+   * Throws 409 if a plan with the same plan_key already exists.
+   */
+  @Post('plans')
+  async createPlan(
+    @Body(new ZodValidationPipe(CreatePlanBodySchema)) body: CreatePlanBody,
+  ): Promise<SuccessResponse<unknown>> {
+    const created = await this.createPlanOp.execute({
+      planKey: body.plan_key,
+      name: body.name,
+      roleKey: body.role_key,
+      isPermanent: body.is_permanent,
+      isActive: body.is_active,
+      sortOrder: body.sort_order,
+      description: body.description ?? null,
+    });
     return {
       success: true,
-      data: plans.map((p) => ({
-        planKey: p.planKey,
-        name: p.name,
-        priceUsd: p.priceUsd,
-        trialDays: p.trialDays,
-        isActive: p.isActive,
-        description: p.description,
-        sortOrder: p.sortOrder,
-      })),
+      data: {
+        planKey: created.planKey,
+        name: created.name,
+        roleKey: created.roleKey,
+        isPermanent: created.isPermanent,
+        isActive: created.isActive,
+        sortOrder: created.sortOrder,
+        description: created.description,
+      },
     };
   }
 
   /**
-   * PUT /api/admin/plans/:planKey — toggle a plan active/inactive.
+   * PUT /api/admin/plans/:planKey — edit plan metadata (name, is_active, sort_order, etc.).
    *
-   * Body is validated by TogglePlanBodySchema:
-   *   - is_active: boolean (required; rejects string "true" etc.)
+   * Accepts any subset of editable fields. At least one must be provided.
+   * Replaces the old TogglePlan endpoint — is_active is now part of this body.
+   *
+   * The legacy PUT /admin/plans/:planKey/config endpoint for price edits is
+   * preserved below for backward compatibility.
    */
   @Put('plans/:planKey')
-  async togglePlanHandler(
+  async updatePlanHandler(
     @Param('planKey') planKey: string,
-    @Body(new ZodValidationPipe(TogglePlanBodySchema)) body: TogglePlanBody,
+    @Body(new ZodValidationPipe(UpdatePlanFullBodySchema)) body: UpdatePlanFullBody,
   ): Promise<SuccessResponse<unknown>> {
-    const updated = await this.togglePlan.execute({ planKey, isActive: body.is_active });
+    const updated = await this.updatePlanOp.execute({
+      planKey,
+      name: body.name,
+      isActive: body.is_active,
+      sortOrder: body.sort_order,
+      isPermanent: body.is_permanent,
+      description: body.description,
+    });
     return {
       success: true,
       data: {
         planKey: updated.planKey,
         name: updated.name,
         priceUsd: updated.priceUsd,
+        trialDays: updated.trialDays,
         isActive: updated.isActive,
+        sortOrder: updated.sortOrder,
+        description: updated.description,
+        roleKey: updated.roleKey,
+        isPermanent: updated.isPermanent,
       },
     };
+  }
+
+  /**
+   * PUT /api/admin/plans/:planKey/features — bulk-set the feature matrix for a plan.
+   *
+   * Body: { features: [{ feature_key, feature_label, enabled }] }
+   * At least one feature must be provided.
+   * Uses upsert semantics — existing entries are overwritten.
+   */
+  @Put('plans/:planKey/features')
+  async setPlanFeaturesHandler(
+    @Param('planKey') planKey: string,
+    @Body(new ZodValidationPipe(SetPlanFeaturesBodySchema)) body: SetPlanFeaturesBody,
+  ): Promise<SuccessResponse<unknown[]>> {
+    const features = await this.setPlanFeaturesOp.execute({
+      planKey,
+      features: body.features.map((f) => ({
+        featureKey: f.feature_key,
+        featureLabel: f.feature_label,
+        enabled: f.enabled,
+      })),
+    });
+    return { success: true, data: features };
+  }
+
+  /**
+   * PUT /api/admin/plans/:planKey/prices — bulk-set prices per billing period.
+   *
+   * Body: { prices: [{ period, price_usd, is_active? }] }
+   * At least one price entry must be provided.
+   * Uses upsert semantics — existing (plan_key, period) rows are overwritten.
+   */
+  @Put('plans/:planKey/prices')
+  async setPlanPricesHandler(
+    @Param('planKey') planKey: string,
+    @Body(new ZodValidationPipe(SetPlanPricesBodySchema)) body: SetPlanPricesBody,
+  ): Promise<SuccessResponse<unknown[]>> {
+    const prices = await this.setPlanPricesOp.execute({
+      planKey,
+      prices: body.prices.map((p) => ({
+        period: p.period,
+        priceUsd: p.price_usd,
+        isActive: p.is_active,
+      })),
+    });
+    return { success: true, data: prices };
   }
 
   /** GET /api/admin/plan-features — all features, optionally filtered by ?plan_key=X */

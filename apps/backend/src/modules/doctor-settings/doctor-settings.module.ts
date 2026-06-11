@@ -7,16 +7,19 @@ import { DoctorProfileModel } from './infrastructure/database/models/doctor-prof
 import { DoctorScheduleModel } from './infrastructure/database/models/doctor-schedule.model';
 import { SubscriptionModel } from './infrastructure/database/models/subscription.model';
 import { PlanFeaturesModel } from './infrastructure/database/models/plan-features.model';
+import { PlanConfigDoctorModel } from './infrastructure/database/models/plan-config-doctor.model';
 
 // Repository bindings: domain symbols → concrete implementations
 import { DOCTOR_PROFILE_REPOSITORY } from './domain/repositories/doctor-profile.repository';
 import { DOCTOR_SCHEDULE_REPOSITORY } from './domain/repositories/doctor-schedule.repository';
 import { SUBSCRIPTION_REPOSITORY } from './domain/repositories/subscription.repository';
 import { PLAN_FEATURES_REPOSITORY } from './domain/repositories/plan-features.repository';
+import { PLAN_CONFIG_REPOSITORY } from './domain/repositories/plan-config.repository';
 import { SequelizeDoctorProfileRepository } from './infrastructure/database/repositories/sequelize-doctor-profile.repository';
 import { SequelizeDoctorScheduleRepository } from './infrastructure/database/repositories/sequelize-doctor-schedule.repository';
 import { SequelizeSubscriptionRepository } from './infrastructure/database/repositories/sequelize-subscription.repository';
 import { SequelizePlanFeaturesRepository } from './infrastructure/database/repositories/sequelize-plan-features.repository';
+import { SequelizePlanConfigRepository } from './infrastructure/database/repositories/sequelize-plan-config.repository';
 
 // Reuse the pricing-plan repo from PackagesModule (add CRUD methods there)
 import { PRICING_PLAN_REPOSITORY } from '../packages/domain/repositories/pricing-plan.repository';
@@ -36,6 +39,7 @@ import { UpdateServiceUseCase } from './application/use-cases/doctor-settings/up
 import { DeleteServiceUseCase } from './application/use-cases/doctor-settings/delete-service.use-case';
 import { GetDoctorExchangeRateUseCase } from './application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
 import { SetDoctorExchangeRateUseCase } from './application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
+import { GetDoctorFeaturesV2UseCase } from './application/use-cases/doctor-settings/get-doctor-features-v2.use-case';
 
 // Controller
 import { DoctorController } from './presentation/controllers/doctor.controller';
@@ -60,6 +64,7 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
       DoctorScheduleModel,
       SubscriptionModel,
       PlanFeaturesModel,
+      PlanConfigDoctorModel,
       PricingPlanModel,
     ]),
     // Import FinancesModule to access USDT_RATE_STORE for exchange-rate resolution.
@@ -85,6 +90,10 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
       useClass: SequelizePlanFeaturesRepository,
     },
     {
+      provide: PLAN_CONFIG_REPOSITORY,
+      useClass: SequelizePlanConfigRepository,
+    },
+    {
       // Pricing plan repo registered locally — CRUD methods not exported by PackagesModule.
       // The PackagesModule's exported PRICING_PLAN_REPOSITORY is read-only from the booking
       // surface perspective; here we need the full write-capable instance.
@@ -106,6 +115,7 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     DeleteServiceUseCase,
     GetDoctorExchangeRateUseCase,
     SetDoctorExchangeRateUseCase,
+    GetDoctorFeaturesV2UseCase,
   ],
   // Export DOCTOR_PROFILE_REPOSITORY so other modules (e.g. AppointmentsModule for cita-360)
   // can inject the doctor profile without duplicating model registrations.
