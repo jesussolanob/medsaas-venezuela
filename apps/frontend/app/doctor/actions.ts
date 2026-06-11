@@ -195,12 +195,13 @@ export { appErrorToString };
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true when the doctor has completed onboarding (cedula is present).
+ * Returns true when the doctor has completed onboarding.
  * Used by the doctor layout to gate access to the portal.
  */
 export async function checkOnboardingComplete(): Promise<boolean> {
   const profile = await getDoctorProfile();
-  // A newly SSO-created doctor won't have a cedula until they submit the
-  // onboarding form. That's the canonical "incomplete" signal.
-  return Boolean(profile?.cedula && profile.cedula.trim().length > 0);
+  // The profile endpoint exposes `specialty` (required at onboarding) but NOT
+  // `cedula`, so specialty is the canonical "complete" signal: a freshly
+  // SSO-created doctor has no specialty until they submit the onboarding form.
+  return Boolean(profile?.specialty && profile.specialty.trim().length > 0);
 }

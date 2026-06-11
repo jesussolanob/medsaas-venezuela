@@ -469,8 +469,7 @@ export default function OnboardingForm({
             Cuenta activada
           </h2>
           <p className="text-sm leading-relaxed" style={{ color: 'var(--dh-gray-600)' }}>
-            Tus datos fueron recibidos. Un administrador revisará tu perfil para la verificación
-            profesional. Mientras tanto, ya tienes acceso completo al portal.
+            Tus datos fueron recibidos correctamente. Ya puedes continuar al portal.
           </p>
         </div>
 
@@ -485,10 +484,11 @@ export default function OnboardingForm({
             className="text-xs font-bold uppercase tracking-wide"
             style={{ color: 'var(--dh-turquoise-700)', fontFamily: 'var(--dh-font-mono)' }}
           >
-            Acceso inmediato disponible
+            Verificación de credenciales
           </p>
           <p className="text-sm" style={{ color: 'var(--dh-turquoise-700)' }}>
-            La verificación es un proceso administrativo y no bloquea ninguna función del portal.
+            Verificaremos tus credenciales profesionales. Si no logramos verificarte, nos
+            contactaremos a tu correo.
           </p>
         </div>
 
