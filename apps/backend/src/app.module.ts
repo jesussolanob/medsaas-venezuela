@@ -39,6 +39,7 @@ import { DoctorRegistrationModule } from './modules/doctor-registration/doctor-r
 import { PatientIdentitiesModule } from './modules/patient-identities/patient-identities.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AvailabilityBlocksModule } from './modules/availability-blocks/availability-blocks.module';
+import { TelemetryModule } from './modules/telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { AvailabilityBlocksModule } from './modules/availability-blocks/availabi
     PatientIdentitiesModule,
     IntegrationsModule,
     AvailabilityBlocksModule,
+    TelemetryModule,
   ],
   controllers: [HealthController],
   providers: [
