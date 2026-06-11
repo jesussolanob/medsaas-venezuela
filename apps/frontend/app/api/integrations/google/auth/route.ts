@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    path: '/api/integrations/google',
+    path: '/', // broad path so the cookie is reliably sent on the callback redirect
     maxAge: 600, // 10 min — the OAuth round-trip should complete well within this
   });
   return res;
