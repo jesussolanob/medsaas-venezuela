@@ -23,7 +23,10 @@ import {
   Loader2,
   Package,
   RefreshCw,
+  ChevronDown,
+  CalendarX,
 } from 'lucide-react';
+import AvailabilityBlocks from '@/components/agenda/AvailabilityBlocks';
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
 import {
   listAgendaAppointments,
@@ -309,6 +312,9 @@ export default function AgendaPage() {
   // Schedule config
   const [config, setConfig] = useState<ScheduleConfig>(DEFAULT_CONFIG);
   const [availSlots, setAvailSlots] = useState<AvailabilitySlot[]>(DEFAULT_SLOTS);
+  const [bookingHorizonWeeks, setBookingHorizonWeeks] = useState<number>(8);
+  const [savingHorizon, setSavingHorizon] = useState(false);
+  const [showAvailabilityPanel, setShowAvailabilityPanel] = useState(false);
 
   // Calendar data (real from DB)
   const [allAppointments, setAllAppointments] = useState<CalendarAppointment[]>([]);
@@ -362,7 +368,9 @@ export default function AgendaPage() {
     getAppointmentDetailStatus(apptId).then((status) => {
       if (!cancelled) setDetailStatus(status);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [detailAppt]);
   const [statusReason, setStatusReason] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
@@ -406,7 +414,15 @@ export default function AgendaPage() {
       const schedRes = await fetch('/api/doctor/schedule');
       if (schedRes.ok) {
         const sched = await schedRes.json();
-        if (sched.config) setConfig(sched.config);
+        if (sched.config) {
+          setConfig(sched.config);
+          // Leer booking_horizon_weeks del schedule (puede venir en config o a nivel raíz)
+          const hw: number | null | undefined =
+            sched.config.booking_horizon_weeks ?? sched.booking_horizon_weeks;
+          if (hw != null && typeof hw === 'number' && hw >= 1) {
+            setBookingHorizonWeeks(hw);
+          }
+        }
         if (sched.slots && sched.slots.length > 0) {
           setAvailSlots(
             sched.slots.map((s: any) => ({
@@ -568,11 +584,7 @@ export default function AgendaPage() {
 
     const [backendAppts, backendPending] = await Promise.all([
       // Citas confirmadas/completadas/canceladas/no_show en rango ±30/+60 días
-      listAgendaAppointments(
-        pastCutoff.toISOString(),
-        futureCutoff.toISOString(),
-        slotDuration,
-      ),
+      listAgendaAppointments(pastCutoff.toISOString(), futureCutoff.toISOString(), slotDuration),
       // Citas pendientes (status=scheduled) sin límite de fecha
       listPendingAppointments(slotDuration),
     ]);
@@ -668,6 +680,36 @@ export default function AgendaPage() {
     setSaving(false);
   }
 
+  // ── Save booking horizon ─────────────────────────────────────────────────
+
+  async function saveBookingHorizon() {
+    const clamped = Math.max(1, Math.min(52, Math.round(bookingHorizonWeeks)));
+    setSavingHorizon(true);
+    try {
+      const res = await fetch('/api/doctor/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: { ...config, booking_horizon_weeks: clamped },
+          slots: availSlots.map((s) => ({
+            day_of_week: s.day_of_week,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            is_enabled: s.is_enabled,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error('Error guardando horizonte');
+      setBookingHorizonWeeks(clamped);
+      toast.success('Horizonte de booking actualizado');
+    } catch (e) {
+      reportError('doctor/agenda', 'saveBookingHorizon', e);
+      toast.error('Error al guardar horizonte');
+    } finally {
+      setSavingHorizon(false);
+    }
+  }
+
   // ── Accept / Reject appointments ────────────────────────────────────────
 
   async function acceptAppointment(appt: PendingAppointment) {
@@ -732,13 +774,12 @@ export default function AgendaPage() {
       // en un campo existingId. Intentamos extraer el id de cualquier forma.
       const patientData = patientJson?.data ?? patientJson;
       const patientId: string | null =
-        patientData?.id ??
-        patientJson?.existingId ??
-        patientJson?.error?.existingId ??
-        null;
+        patientData?.id ?? patientJson?.existingId ?? patientJson?.error?.existingId ?? null;
 
       if (!patientId) {
-        throw new Error(patientJson?.message ?? patientJson?.error?.message ?? 'Error al registrar paciente');
+        throw new Error(
+          patientJson?.message ?? patientJson?.error?.message ?? 'Error al registrar paciente',
+        );
       }
 
       // Create consultation via route handler (thin-proxy → NestJS).
@@ -1724,7 +1765,80 @@ export default function AgendaPage() {
           </div>
         )}
 
-        {/* Approval panel and availability tab removed — see Cobros and Consultorios */}
+        {/* ═══ DISPONIBILIDAD — bloqueos + horizonte de booking ═══ */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          {/* Collapsible header */}
+          <button
+            onClick={() => setShowAvailabilityPanel((v) => !v)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+                <CalendarX className="w-4 h-4 text-teal-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Disponibilidad</p>
+                <p className="text-xs text-slate-500 mt-0.5">Bloqueos · Horizonte de booking</p>
+              </div>
+            </div>
+            <ChevronDown
+              className={`w-4 h-4 text-slate-400 transition-transform ${showAvailabilityPanel ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          {showAvailabilityPanel && (
+            <div className="px-5 pb-5 space-y-6 border-t border-slate-100">
+              {/* Horizonte de semanas */}
+              <div className="pt-4 space-y-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">
+                    Semanas visibles en el booking
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Los pacientes podrán agendar citas hasta este número de semanas en el futuro.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={52}
+                      value={bookingHorizonWeeks}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!isNaN(v)) setBookingHorizonWeeks(v);
+                      }}
+                      className="w-16 text-center text-sm font-semibold text-slate-800 bg-transparent outline-none border-none"
+                    />
+                    <span className="text-xs text-slate-500 whitespace-nowrap">semanas</span>
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    ({bookingHorizonWeeks * 7} días · mín. 1, máx. 52)
+                  </span>
+                  <button
+                    onClick={saveBookingHorizon}
+                    disabled={savingHorizon}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 text-white text-xs font-semibold rounded-lg hover:bg-teal-600 disabled:opacity-60 transition-colors ml-auto"
+                  >
+                    {savingHorizon ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    {savingHorizon ? 'Guardando…' : 'Guardar'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Divisor */}
+              <div className="border-t border-slate-100" />
+
+              {/* Bloqueos */}
+              <AvailabilityBlocks />
+            </div>
+          )}
+        </div>
 
         {/* ═══ APPOINTMENT DETAIL MODAL ═══ */}
         {detailAppt && (

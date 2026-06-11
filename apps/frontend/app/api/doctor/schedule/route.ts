@@ -55,6 +55,7 @@ interface BackendSchedule {
   slotDurationMinutes: number;
   breakStart: string | null;
   breakEnd: string | null;
+  bookingHorizonWeeks?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,7 @@ interface LegacyConfig {
   buffer_minutes: number;
   advance_booking_days: number;
   auto_approve: boolean;
+  booking_horizon_weeks?: number | null;
 }
 
 interface LegacySlot {
@@ -79,6 +81,7 @@ interface LegacyGetResponse {
   config: LegacyConfig;
   slots: LegacySlot[];
   blocked: never[];
+  booking_horizon_weeks: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +101,7 @@ function backendToLegacy(schedule: BackendSchedule): LegacyGetResponse {
     buffer_minutes: 0,
     advance_booking_days: 30,
     auto_approve: false,
+    booking_horizon_weeks: schedule.bookingHorizonWeeks ?? 8,
   };
 
   const slots: LegacySlot[] = schedule.workDays.map((day) => ({
@@ -107,7 +111,12 @@ function backendToLegacy(schedule: BackendSchedule): LegacyGetResponse {
     is_enabled: true,
   }));
 
-  return { config, slots, blocked: [] };
+  return {
+    config,
+    slots,
+    blocked: [],
+    booking_horizon_weeks: schedule.bookingHorizonWeeks ?? 8,
+  };
 }
 
 /**
@@ -121,11 +130,13 @@ function backendToLegacy(schedule: BackendSchedule): LegacyGetResponse {
  *
  * If no enabled slots, uses the backend default (Mon-Fri, 08:00-17:00, 30 min).
  */
-function legacyToBackend(
-  config: LegacyConfig,
-  slots: LegacySlot[],
-): Record<string, unknown> {
+function legacyToBackend(config: LegacyConfig, slots: LegacySlot[]): Record<string, unknown> {
   const enabled = slots.filter((s) => s.is_enabled !== false);
+
+  const horizonWeeks =
+    config.booking_horizon_weeks != null
+      ? Math.max(1, Math.min(52, Math.round(config.booking_horizon_weeks)))
+      : undefined;
 
   if (enabled.length === 0) {
     return {
@@ -133,14 +144,21 @@ function legacyToBackend(
       start_time: '08:00',
       end_time: '17:00',
       slot_duration_minutes: config.slot_duration ?? 30,
+      ...(horizonWeeks !== undefined ? { booking_horizon_weeks: horizonWeeks } : {}),
     };
   }
 
   const workDays = [...new Set(enabled.map((s) => s.day_of_week))].sort((a, b) => a - b);
 
   // Earliest start and latest end across all enabled slots
-  const startTime = enabled.reduce((min, s) => (s.start_time < min ? s.start_time : min), enabled[0]!.start_time);
-  const endTime = enabled.reduce((max, s) => (s.end_time > max ? s.end_time : max), enabled[0]!.end_time);
+  const startTime = enabled.reduce(
+    (min, s) => (s.start_time < min ? s.start_time : min),
+    enabled[0]!.start_time,
+  );
+  const endTime = enabled.reduce(
+    (max, s) => (s.end_time > max ? s.end_time : max),
+    enabled[0]!.end_time,
+  );
 
   const slotDuration = Math.max(10, Math.min(480, config.slot_duration ?? 30));
 
@@ -149,6 +167,7 @@ function legacyToBackend(
     start_time: startTime,
     end_time: endTime,
     slot_duration_minutes: slotDuration,
+    ...(horizonWeeks !== undefined ? { booking_horizon_weeks: horizonWeeks } : {}),
   };
 }
 

@@ -144,12 +144,18 @@ function timesBetween(start: string, end: string, slotMin: number, bufferMin: nu
   return out;
 }
 
-function generateSlots(offices: DoctorOffice[] = []): Slot[] {
+/**
+ * Genera los slots de fechas disponibles para el booking.
+ *
+ * Fase 5: `horizonDays` reemplaza el hardcode de 21 días.
+ * El horizonte viene de `bookingHorizonWeeks * 7` (default 56 días = 8 semanas).
+ */
+function generateSlots(offices: DoctorOffice[] = [], horizonDays = 56): Slot[] {
   const slots: Slot[] = [];
   const today = new Date();
   const hasOffices = offices.length > 0;
 
-  for (let d = 1; d <= 21; d++) {
+  for (let d = 1; d <= horizonDays; d++) {
     const date = new Date(today);
     date.setDate(today.getDate() + d);
     const jsDay = date.getDay(); // 0=dom, 1=lun..6=sab
@@ -299,12 +305,15 @@ export default function BookingClient({
   paymentMethods = [],
   paymentDetails = {},
   bookedSlots = [],
+  bookingHorizonWeeks = 8,
 }: {
   doctor: DoctorProfile;
   plans: PricingPlan[];
   paymentMethods?: string[];
-  paymentDetails?: Record<string, any>;
+  paymentDetails?: Record<string, Record<string, string>>;
   bookedSlots?: string[];
+  /** Número de semanas a mostrar en el selector de fechas (viene del schedule del doctor). */
+  bookingHorizonWeeks?: number;
 }) {
   // BCV rate for dual currency
   const { rate: bcvRate, toBs } = useBcvRate();
@@ -389,14 +398,23 @@ export default function BookingClient({
   // Slot navigation
   const [weekOffset, setWeekOffset] = useState(0);
 
+  // Fase 5: slots bloqueados por availability-blocks del doctor, indexados por fecha.
+  // Map: YYYY-MM-DD → Set<HH:MM> (horas bloqueadas en esa fecha).
+  const [blockedTimes, setBlockedTimes] = useState<Map<string, Set<string>>>(new Map());
+
   // RONDA 27: pasamos los offices del doctor para que generateSlots respete
   // sus dias habilitados, horarios y duracion entre citas. Sin offices → generic.
-  const allSlots = generateSlots(doctorOffices);
+  // Fase 5: horizonDays = bookingHorizonWeeks * 7
+  const horizonDays = Math.max(1, Math.min(52, bookingHorizonWeeks)) * 7;
+  const allSlots = generateSlots(doctorOffices, horizonDays);
   const grouped = groupByDate(allSlots);
   const dates = Object.keys(grouped).sort();
   const weekDates = dates.slice(weekOffset * 5, weekOffset * 5 + 5);
 
   const isSlotBooked = (date: string, time: string): boolean => {
+    // Primero verificar bloqueado por availability-blocks
+    if (blockedTimes.get(date)?.has(time)) return true;
+
     // RONDA 28: forzar Caracas para comparar correctamente con bookedSlots de BD
     const slotISO = new Date(`${date}T${time}:00-04:00`).toISOString();
     const slotTime = new Date(slotISO).getTime();
@@ -452,6 +470,49 @@ export default function BookingClient({
     };
     fetchOffices();
   }, [doctor.id]);
+
+  /**
+   * Fase 5: cuando el paciente selecciona una fecha, consultar el endpoint
+   * GET /api/booking/:doctorId/slots?date=YYYY-MM-DD para obtener los slots
+   * con `available=false` (bloqueados por availability-blocks o pasados).
+   * Los slots bloqueados se indexan en `blockedTimes` y se muestran deshabilitados.
+   *
+   * Degrada silenciosamente: si el endpoint falla, `blockedTimes` queda vacío
+   * y se muestra todo disponible (experiencia degradada pero no rota).
+   */
+  useEffect(() => {
+    if (!selectedDate) return;
+
+    // Evitar re-fetch si ya tenemos datos para esta fecha
+    if (blockedTimes.has(selectedDate)) return;
+
+    const fetchDateSlots = async () => {
+      try {
+        const res = await fetch(`/api/booking/${doctor.id}/slots?date=${selectedDate}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as { slots?: { time: string; available: boolean }[] };
+        const rawSlots = json?.slots;
+        if (!Array.isArray(rawSlots)) return;
+
+        // Construir set de horas bloqueadas (available=false)
+        const blocked = new Set<string>();
+        for (const s of rawSlots) {
+          if (s.available === false && s.time) {
+            // El backend devuelve time en formato HH:MM o HH:MM:SS — normalizar a HH:MM
+            blocked.add(s.time.slice(0, 5));
+          }
+        }
+
+        if (blocked.size > 0) {
+          setBlockedTimes((prev) => new Map(prev).set(selectedDate, blocked));
+        }
+      } catch {
+        // Degrade silently
+      }
+    };
+
+    void fetchDateSlots();
+  }, [selectedDate, doctor.id, blockedTimes]);
 
   // When date is selected, find the matching office for that day
   useEffect(() => {
@@ -1119,7 +1180,10 @@ export default function BookingClient({
                   const monthName = d.toLocaleDateString('es-VE', { month: 'short' });
                   const isSel = selectedDate === date;
                   const availCount =
-                    grouped[date]?.filter((s) => !isSlotBooked(s.date, s.time)).length || 0;
+                    grouped[date]?.filter(
+                      (s) =>
+                        !isSlotBooked(s.date, s.time) && !blockedTimes.get(s.date)?.has(s.time),
+                    ).length || 0;
 
                   return (
                     <button
@@ -1166,24 +1230,35 @@ export default function BookingClient({
                   <div className="flex flex-wrap gap-2">
                     {grouped[selectedDate]?.map((slot) => {
                       const booked = isSlotBooked(slot.date, slot.time);
+                      const isBlocked = blockedTimes.get(slot.date)?.has(slot.time) ?? false;
                       const isSel =
                         selectedSlot?.date === slot.date && selectedSlot?.time === slot.time;
+                      const isUnavailable = booked || isBlocked;
                       return (
                         <button
                           key={slot.time}
                           onClick={() => {
-                            if (!booked) {
+                            if (!isUnavailable) {
                               setSelectedSlot(slot);
                               setActiveStep(3);
                             }
                           }}
-                          disabled={booked}
+                          disabled={isUnavailable}
+                          title={
+                            isBlocked
+                              ? 'Horario bloqueado por el médico'
+                              : booked
+                                ? 'Horario ocupado'
+                                : undefined
+                          }
                           className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                            booked
-                              ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through'
-                              : isSel
-                                ? 'text-white shadow-md shadow-cyan-500/20'
-                                : 'bg-white border border-slate-200 text-slate-700 hover:border-cyan-400'
+                            isBlocked
+                              ? 'bg-red-50 text-red-300 cursor-not-allowed line-through border border-red-100'
+                              : booked
+                                ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through'
+                                : isSel
+                                  ? 'text-white shadow-md shadow-cyan-500/20'
+                                  : 'bg-white border border-slate-200 text-slate-700 hover:border-cyan-400'
                           }`}
                           style={isSel ? { background: BRAND.turquoise } : undefined}
                         >
