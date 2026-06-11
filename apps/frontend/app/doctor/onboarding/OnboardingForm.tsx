@@ -42,7 +42,7 @@ interface Specialty {
 
 interface Props {
   initialFullName?: string;
-  initialCedulaPrefix?: 'V' | 'E';
+  initialCedulaPrefix?: 'V' | 'E' | 'P';
   initialCedulaNumber?: string;
   initialSpecialty?: string;
   specialties: Specialty[];
@@ -356,7 +356,7 @@ export default function OnboardingForm({
   const [isPending, startTransition] = useTransition();
 
   const [fullName, setFullName] = useState(initialFullName);
-  const [cedulaPrefix, setCedulaPrefix] = useState<'V' | 'E'>(initialCedulaPrefix);
+  const [cedulaPrefix, setCedulaPrefix] = useState<'V' | 'E' | 'P'>(initialCedulaPrefix);
   const [cedulaNumber, setCedulaNumber] = useState(initialCedulaNumber);
   const [specialty, setSpecialty] = useState<string>(() => {
     if (!initialSpecialty) return '';
@@ -387,7 +387,11 @@ export default function OnboardingForm({
     }
 
     if (!cedulaNumber.trim()) {
-      errors.cedula = 'El número de cédula es obligatorio';
+      errors.cedula = 'El número de documento es obligatorio';
+    } else if (cedulaPrefix === 'P') {
+      if (!/^[A-Za-z0-9]{5,20}$/.test(cedulaNumber.trim())) {
+        errors.cedula = 'Pasaporte: entre 5 y 20 caracteres alfanuméricos';
+      }
     } else if (!/^\d{6,9}$/.test(cedulaNumber.trim())) {
       errors.cedula = 'Solo dígitos, entre 6 y 9 caracteres';
     }
@@ -441,11 +445,13 @@ export default function OnboardingForm({
   // ---------------------------------------------------------------------------
 
   const resolvedSpecialty = specialty === OTRO_VALUE ? customSpecialty.trim() : specialty;
-  const isFormValid =
-    fullName.trim().length > 0 &&
-    cedulaNumber.trim().length >= 6 &&
-    /^\d+$/.test(cedulaNumber.trim()) &&
-    resolvedSpecialty.length > 0;
+  const cedulaNumberTrimmed = cedulaNumber.trim();
+  const isCedulaValid =
+    cedulaPrefix === 'P'
+      ? /^[A-Za-z0-9]{5,20}$/.test(cedulaNumberTrimmed)
+      : /^\d{6,9}$/.test(cedulaNumberTrimmed);
+
+  const isFormValid = fullName.trim().length > 0 && isCedulaValid && resolvedSpecialty.length > 0;
 
   // ---------------------------------------------------------------------------
   // Success screen
@@ -613,7 +619,8 @@ export default function OnboardingForm({
             className="block text-xs font-semibold mb-1.5"
             style={{ color: 'var(--dh-gray-700)' }}
           >
-            Cédula de identidad <span className="text-red-400">*</span>
+            {cedulaPrefix === 'P' ? 'Pasaporte' : 'Cédula de identidad'}{' '}
+            <span className="text-red-400">*</span>
           </label>
           <div className="flex gap-2">
             {/* Prefix selector */}
@@ -621,16 +628,22 @@ export default function OnboardingForm({
               <select
                 value={cedulaPrefix}
                 onChange={(e) => {
-                  setCedulaPrefix(e.target.value as 'V' | 'E');
+                  const next = e.target.value as 'V' | 'E' | 'P';
+                  // Clear number when switching between numeric (V/E) and alphanumeric (P)
+                  const wasPassport = cedulaPrefix === 'P';
+                  const willBePassport = next === 'P';
+                  if (wasPassport !== willBePassport) setCedulaNumber('');
+                  setCedulaPrefix(next);
                   if (fieldErrors.cedula)
                     setFieldErrors((prev) => ({ ...prev, cedula: undefined }));
                 }}
-                aria-label="Tipo de cédula"
+                aria-label="Tipo de documento"
                 className="h-full appearance-none pl-3.5 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none transition-all border-2 border-slate-200 bg-white focus:border-teal-400 cursor-pointer"
                 style={{ color: 'var(--dh-ink)', minWidth: 72 }}
               >
                 <option value="V">V</option>
                 <option value="E">E</option>
+                <option value="P">P</option>
               </select>
               <ChevronDown
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
@@ -650,17 +663,26 @@ export default function OnboardingForm({
               <input
                 id="field-cedula-number"
                 type="text"
-                inputMode="numeric"
+                inputMode={cedulaPrefix === 'P' ? 'text' : 'numeric'}
                 value={cedulaNumber}
                 onChange={(e) => {
-                  // Only allow digits
-                  const digits = e.target.value.replace(/\D/g, '');
-                  setCedulaNumber(digits);
+                  let clean: string;
+                  if (cedulaPrefix === 'P') {
+                    // Passport: alphanumeric uppercase, max 20 chars
+                    clean = e.target.value
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9]/g, '')
+                      .slice(0, 20);
+                  } else {
+                    // Cédula: digits only, max 9 chars
+                    clean = e.target.value.replace(/\D/g, '').slice(0, 9);
+                  }
+                  setCedulaNumber(clean);
                   if (fieldErrors.cedula)
                     setFieldErrors((prev) => ({ ...prev, cedula: undefined }));
                 }}
-                placeholder="12345678"
-                maxLength={9}
+                placeholder={cedulaPrefix === 'P' ? 'AB1234567' : '12345678'}
+                maxLength={cedulaPrefix === 'P' ? 20 : 9}
                 className={`${fieldErrors.cedula ? inputError : inputNormal} pl-7`}
                 autoComplete="off"
                 aria-invalid={!!fieldErrors.cedula}
@@ -680,6 +702,9 @@ export default function OnboardingForm({
               <strong>
                 {cedulaPrefix}-{cedulaNumber}
               </strong>
+              {cedulaPrefix === 'P' && (
+                <span style={{ color: 'var(--dh-gray-400)', fontWeight: 400 }}> (Pasaporte)</span>
+              )}
             </p>
           )}
           {fieldErrors.cedula && (

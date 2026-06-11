@@ -32,7 +32,6 @@ import {
   Stethoscope,
   DollarSign,
   Megaphone,
-  Search,
   CheckCircle,
   Lock,
 } from 'lucide-react';
@@ -70,7 +69,6 @@ const navSections: NavSection[] = [
         icon: ClipboardList,
         moduleKey: 'consultations',
       },
-      { name: 'Cita 360°', href: '/doctor/cita-360', icon: Search, moduleKey: 'consultations' },
       { name: 'Consultorios', href: '/doctor/offices', icon: Building2 },
       { name: 'Plantillas', href: '/doctor/templates', icon: FileEdit },
     ],

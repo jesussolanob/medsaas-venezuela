@@ -32,16 +32,21 @@ async function fetchSpecialties(): Promise<Specialty[]> {
 export default async function DoctorOnboardingPage() {
   const [profile, specialties] = await Promise.all([getDoctorProfile(), fetchSpecialties()]);
 
-  // Parse cedula prefix/number from stored value (e.g. "V-12345678")
-  let initialCedulaPrefix: 'V' | 'E' = 'V';
+  // Parse cedula prefix/number from stored value (e.g. "V-12345678", "P-AB123456")
+  let initialCedulaPrefix: 'V' | 'E' | 'P' = 'V';
   let initialCedulaNumber = '';
 
   const rawCedula = profile?.cedula ?? '';
   if (rawCedula) {
-    const match = rawCedula.match(/^([VEve])-?(\d+)$/);
-    if (match) {
-      initialCedulaPrefix = (match[1].toUpperCase() as 'V' | 'E') ?? 'V';
-      initialCedulaNumber = match[2];
+    // Match V/E (digits only) or P (alphanumeric)
+    const matchVE = rawCedula.match(/^([VEve])-?(\d+)$/);
+    const matchP = rawCedula.match(/^[Pp]-?([A-Za-z0-9]+)$/);
+    if (matchVE) {
+      initialCedulaPrefix = (matchVE[1].toUpperCase() as 'V' | 'E') ?? 'V';
+      initialCedulaNumber = matchVE[2];
+    } else if (matchP) {
+      initialCedulaPrefix = 'P';
+      initialCedulaNumber = matchP[1].toUpperCase();
     } else {
       // Fallback: store raw in the number field
       initialCedulaNumber = rawCedula;

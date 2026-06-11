@@ -163,7 +163,6 @@ function mapConsultation(c: BackendConsultation): Consultation {
   };
 }
 
-
 // ---------------------------------------------------------------------------
 // Doctor identity
 // ---------------------------------------------------------------------------
@@ -251,17 +250,40 @@ export async function addPatient(
     return { success: false, error: 'No autenticado' };
   }
 
+  // Normalize: empty strings must become null so Zod .email() / .enum() don't fail.
+  // sex must be null or a valid enum value — never ''.
+  const normalizeStr = (v: string | null | undefined): string | null =>
+    v === '' || v == null ? null : v;
+  const normalizeEmail = (v: string | null | undefined): string | null => {
+    const s = normalizeStr(v);
+    // Drop strings that are not valid email format to avoid Zod .email() rejection.
+    if (s === null) return null;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? s : null;
+  };
+  const normalizeSex = (v: string | null | undefined): 'male' | 'female' | 'other' | null => {
+    if (v === 'male' || v === 'female' || v === 'other') return v;
+    return null;
+  };
+
   const body = {
     doctor_id: doctorId,
     full_name: input.full_name,
-    cedula: input.cedula ?? null,
-    phone: input.phone ?? null,
-    email: input.email ?? null,
-    source: input.source ?? 'manual',
-    birth_date: input.birth_date ?? null,
+    cedula: normalizeStr(input.cedula),
+    phone: normalizeStr(input.phone),
+    email: normalizeEmail(input.email),
+    source: normalizeStr(input.source) ?? 'manual',
+    birth_date: normalizeStr(input.birth_date),
     age: input.age ?? null,
-    sex: input.sex ?? null,
+    sex: normalizeSex(input.sex),
     auth_user_id: null,
+    blood_type: normalizeStr(input.blood_type),
+    allergies: normalizeStr(input.allergies),
+    chronic_conditions: normalizeStr(input.chronic_conditions),
+    address: normalizeStr(input.address),
+    city: normalizeStr(input.city),
+    emergency_contact_name: normalizeStr(input.emergency_contact_name),
+    emergency_contact_phone: normalizeStr(input.emergency_contact_phone),
+    notes: normalizeStr(input.notes),
   };
 
   const result = await backendPost<BackendPatientListItem>('/api/patients', body);
@@ -493,9 +515,7 @@ export async function getPatientPackages(patientId: string): Promise<PatientPack
  * Returns a map keyed by patient_id for O(1) lookup in the patients list.
  */
 export async function getAllActivePackages(): Promise<Record<string, PatientPackageInfo>> {
-  const result = await backendGet<BackendPatientPackage[]>(
-    '/api/packages/doctor?status=active',
-  );
+  const result = await backendGet<BackendPatientPackage[]>('/api/packages/doctor?status=active');
 
   if (!result.ok) {
     log.error('[getAllActivePackages] backend error', {
