@@ -15,10 +15,14 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { backendFetch } from '@/lib/api-client.server';
+import { requireRole } from '@/lib/auth-guards';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  const guard = await requireRole(['doctor']);
+  if (!guard.ok) return guard.response;
+
   const { searchParams } = new URL(req.url);
   const officeId = searchParams.get('officeId');
   const path = officeId
@@ -36,6 +40,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const guard = await requireRole(['doctor']);
+  if (!guard.ok) return guard.response;
+
   let body: unknown;
   try {
     body = await req.json();

@@ -12,6 +12,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { backendDelete } from '@/lib/api-client.server';
+import { requireRole } from '@/lib/auth-guards';
 import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const guard = await requireRole(['doctor']);
+  if (!guard.ok) return guard.response;
+
   const { id } = await params;
 
   const result = await backendDelete<void>(`/api/doctor/availability-blocks/${id}`);

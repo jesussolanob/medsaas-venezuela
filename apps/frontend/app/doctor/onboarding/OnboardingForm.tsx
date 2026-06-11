@@ -168,14 +168,21 @@ function SpecialtyCombobox({
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Trigger button */}
-      <button
-        type="button"
+      {/* Trigger — a div (not a button) so the inner "clear" button is valid HTML */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => (open ? setOpen(false) : openDropdown())}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open ? setOpen(false) : openDropdown();
+          }
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Seleccionar especialidad"
-        className={error ? triggerError : triggerNormal}
+        className={`cursor-pointer ${error ? triggerError : triggerNormal}`}
       >
         <Stethoscope
           className="w-4 h-4 shrink-0"
@@ -209,7 +216,7 @@ function SpecialtyCombobox({
             }}
           />
         )}
-      </button>
+      </div>
 
       {/* Dropdown */}
       {open && (

@@ -17,6 +17,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { backendGet, backendPost } from '@/lib/api-client.server';
+import { requireRole } from '@/lib/auth-guards';
 import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,9 @@ interface AvailabilityBlock {
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  const guard = await requireRole(['doctor']);
+  if (!guard.ok) return guard.response;
+
   const { searchParams } = new URL(req.url);
   const from = searchParams.get('from');
   const to = searchParams.get('to');
@@ -64,6 +68,9 @@ interface CreateBlockBody {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const guard = await requireRole(['doctor']);
+  if (!guard.ok) return guard.response;
+
   let body: CreateBlockBody;
   try {
     body = await req.json();
