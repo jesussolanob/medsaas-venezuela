@@ -533,7 +533,9 @@ export default function OfficesPage() {
                       <button
                         type="button"
                         onClick={() => updateDay(i, 'enabled', !day.enabled)}
-                        className="shrink-0"
+                        aria-label={`${day.enabled ? 'Desactivar' : 'Activar'} ${DAYS[i]}`}
+                        aria-pressed={day.enabled}
+                        className="shrink-0 p-0.5 rounded-md hover:bg-slate-100 transition-colors"
                       >
                         {day.enabled ? (
                           <ToggleRight className="w-5 h-5 text-teal-500" />
@@ -546,24 +548,34 @@ export default function OfficesPage() {
                       >
                         {DAYS_SHORT[i]}
                       </span>
-                      {day.enabled && (
-                        <div className="flex items-center gap-1.5 flex-1">
-                          {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (input time necesita >=16px) */}
-                          <input
-                            type="time"
-                            value={day.start}
-                            onChange={(e) => updateDay(i, 'start', e.target.value)}
-                            className="text-base sm:text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-24"
-                          />
-                          <span className="text-xs text-slate-400">a</span>
-                          <input
-                            type="time"
-                            value={day.end}
-                            onChange={(e) => updateDay(i, 'end', e.target.value)}
-                            className="text-base sm:text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-24"
-                          />
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2 flex-1">
+                        {/* text-base evita zoom-in en iOS Safari (input time necesita >=16px de font-size) */}
+                        <input
+                          type="time"
+                          value={day.start}
+                          disabled={!day.enabled}
+                          onChange={(e) => updateDay(i, 'start', e.target.value)}
+                          aria-label={`Hora de inicio — ${DAYS[i]}`}
+                          className={`flex-1 min-w-0 text-base sm:text-sm px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+                            day.enabled
+                              ? 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200'
+                              : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                          }`}
+                        />
+                        <span className="text-xs text-slate-400 shrink-0">–</span>
+                        <input
+                          type="time"
+                          value={day.end}
+                          disabled={!day.enabled}
+                          onChange={(e) => updateDay(i, 'end', e.target.value)}
+                          aria-label={`Hora de fin — ${DAYS[i]}`}
+                          className={`flex-1 min-w-0 text-base sm:text-sm px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+                            day.enabled
+                              ? 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200'
+                              : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                          }`}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
