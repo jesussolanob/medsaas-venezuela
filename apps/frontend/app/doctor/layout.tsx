@@ -238,6 +238,12 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     return null;
   }
 
+  // The mandatory onboarding renders full-screen (no portal sidebar). Layouts
+  // nest in the App Router, so we skip the portal chrome for that route here.
+  if (pathname === '/doctor/onboarding' || pathname.startsWith('/doctor/onboarding/')) {
+    return <>{children}</>;
+  }
+
   return (
     <>
       <Toaster />
