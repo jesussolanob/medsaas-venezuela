@@ -3,6 +3,7 @@ import {
   DOCTOR_REGISTRATION_REPOSITORY,
   type IDoctorRegistrationRepository,
 } from '../../domain/repositories/doctor-registration.repository';
+import type { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
 import { DoctorRegistrationNotFoundError } from '../../domain/errors/doctor-not-found.error';
 import { MailerService } from '../../../email/application/services/mailer.service';
 
@@ -20,6 +21,9 @@ export interface CompleteRegistrationOutput {
   verificationStatus: string;
 }
 
+/** Sentinel used in template variables when an optional field is absent. */
+const NOT_SPECIFIED = 'No especificado';
+
 /**
  * CompleteRegistrationUseCase
  *
@@ -28,13 +32,15 @@ export interface CompleteRegistrationOutput {
  *
  *   1. Persists the identity fields + resets verification_status to 'pending'.
  *   2. Fetches all super_admin emails.
- *   3. Dispatches a notification email to every super_admin.
+ *   3. Dispatches a notification email to every super_admin containing the
+ *      doctor's full name, cedula, email, specialty, MPPS number, and
+ *      colegiado number.
  *
  * IMPORTANT: Does NOT restrict doctor access — this is preparatory metadata.
  * Email dispatch is fire-and-forget (errors are logged, not re-thrown) so the
  * registration never fails due to a transient email delivery problem.
  *
- * SECURITY: Never log mppsNumber, colegiadoNumber, cedula, or fullName.
+ * SECURITY: Never log mppsNumber, colegiadoNumber, cedula, fullName, or email.
  */
 @Injectable()
 export class CompleteRegistrationUseCase {
@@ -63,7 +69,7 @@ export class CompleteRegistrationUseCase {
     this.logger.log(`[registration] profile updated doctorId=${input.doctorId}`);
 
     // 2. Notify all super_admins — fire-and-forget
-    this.notifySuperAdmins(input.doctorId).catch((err: unknown) => {
+    this.notifySuperAdmins(updated).catch((err: unknown) => {
       this.logger.error(
         `[registration] failed to notify super_admins for doctorId=${input.doctorId}`,
         err instanceof Error ? err.message : String(err),
@@ -76,7 +82,7 @@ export class CompleteRegistrationUseCase {
     };
   }
 
-  private async notifySuperAdmins(doctorId: string): Promise<void> {
+  private async notifySuperAdmins(registration: DoctorRegistration): Promise<void> {
     const admins = await this.repo.findAllSuperAdmins();
 
     if (admins.length === 0) {
@@ -87,7 +93,13 @@ export class CompleteRegistrationUseCase {
     const emails = admins.map((a) => a.email);
 
     await this.mailer.sendTemplate('doctor_pending_verification', emails, {
-      doctorId,
+      doctorId: registration.id,
+      fullName: registration.fullName || NOT_SPECIFIED,
+      doctorEmail: registration.email || NOT_SPECIFIED,
+      cedula: registration.cedula || NOT_SPECIFIED,
+      specialty: registration.specialty || NOT_SPECIFIED,
+      mppsNumber: registration.mppsNumber || NOT_SPECIFIED,
+      colegiadoNumber: registration.colegiadoNumber || NOT_SPECIFIED,
     });
 
     this.logger.log(

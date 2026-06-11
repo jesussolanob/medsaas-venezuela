@@ -88,8 +88,12 @@ describe('CompleteRegistrationUseCase', () => {
     });
   });
 
-  it('sends template email to all super admins', async () => {
-    const registration = makeRegistration();
+  it('sends template email to all super admins with full doctor details', async () => {
+    const registration = makeRegistration({
+      mppsNumber: 'MP-001',
+      colegiadoNumber: 'COL-002',
+      specialty: 'Cardiología',
+    });
     mockRepo.updateRegistration.mockResolvedValue(registration);
     mockRepo.findAllSuperAdmins.mockResolvedValue([
       { id: 'a1', email: 'a1@x.com', fullName: 'Admin 1' },
@@ -97,7 +101,7 @@ describe('CompleteRegistrationUseCase', () => {
     ]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-3' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' });
+    await useCase.execute({ doctorId: 'doc-1', fullName: 'Carlos M.', cedula: 'V-12345678' });
 
     // Allow fire-and-forget to settle
     await Promise.resolve();
@@ -105,7 +109,37 @@ describe('CompleteRegistrationUseCase', () => {
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
       'doctor_pending_verification',
       ['a1@x.com', 'a2@x.com'],
-      { doctorId: 'doc-1' },
+      {
+        doctorId: 'doc-1',
+        fullName: 'Carlos M.',
+        doctorEmail: 'carlos@example.com',
+        cedula: 'V-12345678',
+        specialty: 'Cardiología',
+        mppsNumber: 'MP-001',
+        colegiadoNumber: 'COL-002',
+      },
+    );
+  });
+
+  it('uses "No especificado" for absent optional fields in template variables', async () => {
+    const registration = makeRegistration(); // mppsNumber, colegiadoNumber, specialty all null
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([
+      { id: 'a1', email: 'a1@x.com', fullName: 'Admin' },
+    ]);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-fallback' });
+
+    await useCase.execute({ doctorId: 'doc-1', fullName: 'Carlos M.', cedula: 'V-12345678' });
+    await Promise.resolve();
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'doctor_pending_verification',
+      ['a1@x.com'],
+      expect.objectContaining({
+        specialty: 'No especificado',
+        mppsNumber: 'No especificado',
+        colegiadoNumber: 'No especificado',
+      }),
     );
   });
 
