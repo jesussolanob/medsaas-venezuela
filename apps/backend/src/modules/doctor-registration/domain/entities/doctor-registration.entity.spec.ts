@@ -7,6 +7,7 @@ const baseProps: DoctorRegistrationProps = {
   cedula: 'V-12345678',
   mppsNumber: 'MP-001',
   colegiadoNumber: 'COL-002',
+  specialty: 'Cardiología',
   verificationStatus: 'pending',
   verifiedAt: null,
   verifiedBy: null,
@@ -23,6 +24,7 @@ describe('DoctorRegistration entity', () => {
       expect(entity.cedula).toBe('V-12345678');
       expect(entity.mppsNumber).toBe('MP-001');
       expect(entity.colegiadoNumber).toBe('COL-002');
+      expect(entity.specialty).toBe('Cardiología');
       expect(entity.verificationStatus).toBe('pending');
       expect(entity.verifiedAt).toBeNull();
       expect(entity.verifiedBy).toBeNull();
@@ -34,10 +36,12 @@ describe('DoctorRegistration entity', () => {
         mppsNumber: null,
         colegiadoNumber: null,
         cedula: null,
+        specialty: null,
       });
       expect(entity.mppsNumber).toBeNull();
       expect(entity.colegiadoNumber).toBeNull();
       expect(entity.cedula).toBeNull();
+      expect(entity.specialty).toBeNull();
     });
   });
 
@@ -102,6 +106,7 @@ describe('DoctorRegistration entity', () => {
       expect(updated.id).toBe(original.id);
       expect(updated.email).toBe(original.email);
       expect(updated.mppsNumber).toBe(original.mppsNumber);
+      expect(updated.specialty).toBe(original.specialty);
     });
   });
 
@@ -119,12 +124,14 @@ describe('DoctorRegistration entity', () => {
         cedula: 'V-99999999',
         mppsNumber: 'MP-999',
         colegiadoNumber: null,
+        specialty: 'Neurología',
       });
 
       expect(updated.fullName).toBe('Carlos R. Martínez');
       expect(updated.cedula).toBe('V-99999999');
       expect(updated.mppsNumber).toBe('MP-999');
       expect(updated.colegiadoNumber).toBeNull();
+      expect(updated.specialty).toBe('Neurología');
       expect(updated.verificationStatus).toBe('pending');
       expect(updated.verifiedAt).toBeNull();
       expect(updated.verifiedBy).toBeNull();
@@ -139,6 +146,7 @@ describe('DoctorRegistration entity', () => {
         cedula: 'E-111',
         mppsNumber: null,
         colegiadoNumber: null,
+        specialty: null,
       });
       expect(updated.id).toBe(original.id);
       expect(updated.email).toBe(original.email);

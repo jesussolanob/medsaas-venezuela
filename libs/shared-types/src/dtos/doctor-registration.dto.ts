@@ -21,6 +21,11 @@ export const DoctorRegistrationDtoSchema = z
       .max(30, 'cedula must be at most 30 characters'),
     mpps_number: z.string().min(1).max(50).nullable().optional(),
     colegiado_number: z.string().min(1).max(50).nullable().optional(),
+    /**
+     * The doctor's medical specialty (free text, matched to the specialties
+     * catalogue on the frontend). Optional — can be updated later from settings.
+     */
+    specialty: z.string().min(1).max(200).nullable().optional(),
   })
   .strict();
 

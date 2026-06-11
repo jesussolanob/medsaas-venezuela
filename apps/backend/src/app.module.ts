@@ -40,6 +40,7 @@ import { PatientIdentitiesModule } from './modules/patient-identities/patient-id
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AvailabilityBlocksModule } from './modules/availability-blocks/availability-blocks.module';
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
+import { SpecialtiesModule } from './modules/specialties/specialties.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { TelemetryModule } from './modules/telemetry/telemetry.module';
     IntegrationsModule,
     AvailabilityBlocksModule,
     TelemetryModule,
+    SpecialtiesModule,
   ],
   controllers: [HealthController],
   providers: [

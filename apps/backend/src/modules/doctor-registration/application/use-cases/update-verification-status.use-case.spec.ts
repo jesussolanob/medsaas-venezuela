@@ -11,6 +11,7 @@ const makePendingRegistration = (): DoctorRegistration =>
     cedula: 'V-12345678',
     mppsNumber: 'MP-001',
     colegiadoNumber: null,
+    specialty: null,
     verificationStatus: 'pending',
     verifiedAt: null,
     verifiedBy: null,

@@ -11,6 +11,7 @@ const makeRegistration = (overrides = {}): DoctorRegistration =>
     cedula: 'V-12345678',
     mppsNumber: null,
     colegiadoNumber: null,
+    specialty: null,
     verificationStatus: 'pending',
     verifiedAt: null,
     verifiedBy: null,
@@ -58,6 +59,7 @@ describe('CompleteRegistrationUseCase', () => {
       cedula: 'V-12345678',
       mppsNumber: null,
       colegiadoNumber: null,
+      specialty: null,
     });
     expect(result.doctorId).toBe('doc-1');
     expect(result.verificationStatus).toBe('pending');
@@ -82,6 +84,7 @@ describe('CompleteRegistrationUseCase', () => {
       cedula: 'V-999',
       mppsNumber: 'MP-1',
       colegiadoNumber: 'COL-2',
+      specialty: null,
     });
   });
 
@@ -128,5 +131,43 @@ describe('CompleteRegistrationUseCase', () => {
     await expect(
       useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' }),
     ).resolves.toBeDefined();
+  });
+
+  it('persists specialty when provided', async () => {
+    const registration = makeRegistration({ specialty: 'Cardiología' });
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Dr. Card',
+      cedula: 'V-123',
+      specialty: 'Cardiología',
+    });
+
+    expect(mockRepo.updateRegistration).toHaveBeenCalledWith('doc-1', {
+      fullName: 'Dr. Card',
+      cedula: 'V-123',
+      mppsNumber: null,
+      colegiadoNumber: null,
+      specialty: 'Cardiología',
+    });
+  });
+
+  it('persists null specialty when not provided', async () => {
+    const registration = makeRegistration();
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Dr. Gen',
+      cedula: 'V-456',
+    });
+
+    expect(mockRepo.updateRegistration).toHaveBeenCalledWith(
+      'doc-1',
+      expect.objectContaining({ specialty: null }),
+    );
   });
 });

@@ -26,6 +26,7 @@ describe('ListPendingVerificationsUseCase', () => {
       cedula: 'V-1',
       mppsNumber: null,
       colegiadoNumber: null,
+      specialty: null,
       verificationStatus: 'pending',
       verifiedAt: null,
       verifiedBy: null,

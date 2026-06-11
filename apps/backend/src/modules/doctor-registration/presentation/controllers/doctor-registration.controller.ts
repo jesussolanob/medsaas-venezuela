@@ -115,6 +115,7 @@ export class DoctorRegistrationController {
       cedula: body.cedula,
       mppsNumber: body.mpps_number ?? null,
       colegiadoNumber: body.colegiado_number ?? null,
+      specialty: body.specialty ?? null,
     });
 
     return { success: true, data: result };

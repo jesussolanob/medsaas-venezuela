@@ -13,6 +13,7 @@ export interface DoctorRegistrationProps {
   cedula: string | null;
   mppsNumber: string | null;
   colegiadoNumber: string | null;
+  specialty: string | null;
   verificationStatus: VerificationStatus;
   verifiedAt: Date | null;
   verifiedBy: string | null;
@@ -26,6 +27,7 @@ export class DoctorRegistration {
   readonly cedula: string | null;
   readonly mppsNumber: string | null;
   readonly colegiadoNumber: string | null;
+  readonly specialty: string | null;
   readonly verificationStatus: VerificationStatus;
   readonly verifiedAt: Date | null;
   readonly verifiedBy: string | null;
@@ -38,6 +40,7 @@ export class DoctorRegistration {
     this.cedula = props.cedula;
     this.mppsNumber = props.mppsNumber;
     this.colegiadoNumber = props.colegiadoNumber;
+    this.specialty = props.specialty;
     this.verificationStatus = props.verificationStatus;
     this.verifiedAt = props.verifiedAt;
     this.verifiedBy = props.verifiedBy;
@@ -76,6 +79,7 @@ export class DoctorRegistration {
       cedula: this.cedula,
       mppsNumber: this.mppsNumber,
       colegiadoNumber: this.colegiadoNumber,
+      specialty: this.specialty,
       verificationStatus: status,
       verifiedAt,
       verifiedBy,
@@ -92,6 +96,7 @@ export class DoctorRegistration {
     cedula: string;
     mppsNumber: string | null;
     colegiadoNumber: string | null;
+    specialty: string | null;
   }): DoctorRegistration {
     return DoctorRegistration.create({
       id: this.id,
@@ -100,6 +105,7 @@ export class DoctorRegistration {
       cedula: params.cedula,
       mppsNumber: params.mppsNumber,
       colegiadoNumber: params.colegiadoNumber,
+      specialty: params.specialty,
       verificationStatus: 'pending',
       verifiedAt: null,
       verifiedBy: null,

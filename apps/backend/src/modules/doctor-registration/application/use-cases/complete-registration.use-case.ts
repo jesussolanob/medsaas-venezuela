@@ -12,6 +12,7 @@ export interface CompleteRegistrationInput {
   cedula: string;
   mppsNumber?: string | null;
   colegiadoNumber?: string | null;
+  specialty?: string | null;
 }
 
 export interface CompleteRegistrationOutput {
@@ -52,6 +53,7 @@ export class CompleteRegistrationUseCase {
       cedula: input.cedula,
       mppsNumber: input.mppsNumber ?? null,
       colegiadoNumber: input.colegiadoNumber ?? null,
+      specialty: input.specialty ?? null,
     });
 
     if (!updated) {

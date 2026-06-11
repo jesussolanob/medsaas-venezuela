@@ -10,6 +10,7 @@ export interface RegistrationUpdateParams {
   cedula: string;
   mppsNumber: string | null;
   colegiadoNumber: string | null;
+  specialty: string | null;
 }
 
 export interface VerificationUpdateParams {

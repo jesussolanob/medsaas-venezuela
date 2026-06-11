@@ -38,6 +38,9 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'colegiado_number' })
   declare colegiadoNumber: string | null;
 
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare specialty: string | null;
+
   @Default('pending')
   @Column({ type: DataType.TEXT, allowNull: false, field: 'verification_status' })
   declare verificationStatus: string;

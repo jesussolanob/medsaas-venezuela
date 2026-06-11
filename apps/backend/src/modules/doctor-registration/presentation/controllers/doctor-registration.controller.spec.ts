@@ -23,6 +23,7 @@ const makeEntity = (overrides = {}): DoctorRegistration =>
     cedula: 'V-1',
     mppsNumber: null,
     colegiadoNumber: null,
+    specialty: null,
     verificationStatus: 'pending',
     verifiedAt: null,
     verifiedBy: null,
@@ -100,6 +101,39 @@ describe('DoctorRegistrationController', () => {
           mppsNumber: 'MP-1',
           colegiadoNumber: 'COL-2',
         }),
+      );
+    });
+
+    it('passes specialty to use case when provided', async () => {
+      completeRegistrationUseCase.execute.mockResolvedValue({
+        doctorId: 'doc-1',
+        verificationStatus: 'pending',
+      });
+
+      await controller.register(doctorUser, {
+        full_name: 'Dr. Test',
+        cedula: 'V-12345',
+        specialty: 'Cardiología',
+      });
+
+      expect(completeRegistrationUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ specialty: 'Cardiología' }),
+      );
+    });
+
+    it('passes null specialty when not provided', async () => {
+      completeRegistrationUseCase.execute.mockResolvedValue({
+        doctorId: 'doc-1',
+        verificationStatus: 'pending',
+      });
+
+      await controller.register(doctorUser, {
+        full_name: 'Dr. Test',
+        cedula: 'V-12345',
+      });
+
+      expect(completeRegistrationUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ specialty: null }),
       );
     });
   });
