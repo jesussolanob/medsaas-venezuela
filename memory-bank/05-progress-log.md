@@ -836,6 +836,7 @@ corrige → re-review) hasta veredicto bueno. NO cerrar sin esto.
 > offices-builder declaró "lint 0" pero tenía 10 warnings de directivas eslint-disable sin usar (--max-warnings 0).
 
 **Commits en `feature/migracion-backend` (sin push):**
+
 - `08066aa` chore(admin): elimina 6 handlers huérfanos Supabase (change-plan, toggle-subscription, settings-data,
   fix-role, reset-database, seed + pág /seed) + stub 501 sin Supabase para invoice-pdf (PDF=F5) y send-invoice (email=F6).
 - `47ea6f5` forgot/reset-password → dev-stub sin Supabase (recovery = bloqueante email/Auth0).
@@ -856,6 +857,7 @@ monitor; envío=BLOQUEANTE F6, NO implementa envío). Mig **20260605000002**. Ad
 **Progreso Supabase frontend:** ~76 → ~58 archivos. **Próxima migración usar timestamp > 20260605000002.**
 
 **PENDIENTE (orden sugerido para retomar):**
+
 1. Verificar+commit reminders (en curso) → cablear admin/reminders (monitor) + doctor/reminders (settings).
 2. Backends restantes (uno a la vez, secuencial): **exchange-rate** doctor (reusar finances usdt-rate) ·
    **doctor-messages** (patient_messages CIFRADO body, +security-agent; doctor/messages usa lib/supabase-client realtime→polling) ·
@@ -874,8 +876,8 @@ monitor; envío=BLOQUEANTE F6, NO implementa envío). Mig **20260605000002**. Ad
 7. **Fase 5 storage** (API backend local→GCS): avatar-uploader, receipts (book/agenda/patients), share-pdf, view-doc,
    invoice-pdf, lib/shared-files.ts, doctor/templates uploads.
 8. **Fase 6 integraciones stub** (migrar data, stub envío): api/doctor/ai (Gemini), send-consultation-email + send-invoice
-   (Resend), calendar-sync + integrations/google/*, cron/subscription-expiry, doctor/appointments|consultations|schedule|exchange-rate.
-9. **Fase 7 patient** + **Fase 8 limpieza** (quitar @supabase/* de package.json + borrar lib/supabase/* + grep 0).
+   (Resend), calendar-sync + integrations/google/\*, cron/subscription-expiry, doctor/appointments|consultations|schedule|exchange-rate.
+9. **Fase 7 patient** + **Fase 8 limpieza** (quitar @supabase/_ de package.json + borrar lib/supabase/_ + grep 0).
 
 **Bloqueantes (NO tocar):** Auth0 (F4), proveedor email (F6), IA/Gemini (F6).
 
@@ -987,7 +989,7 @@ Primer ciclo de QA automático contra navegador real (Playwright MCP, lead-super
 **Resultado: 20/22 OK; 2 bugs reales encontrados y reparados (verificados en navegador + tsc 0 + code-reviewer APROBADO 0 CRIT/HIGH):**
 
 - **HIGH — `/doctor/patients` y `/doctor/services` tiraban HTTP 500** (`ReferenceError: DoctorService is not
-  defined` en module eval del server chunk). Causa raíz: `app/doctor/services/actions.ts` es `'use server'`
+defined` en module eval del server chunk). Causa raíz: `app/doctor/services/actions.ts` es `'use server'`
   y re-exportaba un TIPO con `export type { DoctorService };`. El transform de server-actions de Next/Turbopack
   emite una server-reference runtime por cada named export; para un tipo borrado queda indefinido → crashea
   todo módulo que importe de ahí. **Fix:** eliminado el re-export muerto (nadie importaba el tipo de ahí; se
@@ -1043,6 +1045,7 @@ otra sesión (Sentry MCP ya agregado a la config, falta OAuth + reiniciar; flags
 ## 2026-06-09 — Round CRUD Admin + decisión de política de PII (plan para próxima sesión)
 
 **ADMIN CRUD verificado:**
+
 - ✅ **Role-capabilities** (`/admin/roles`): toggle doctor/finances/view true→false→true persiste en
   `role_capabilities` (módulo `module_key`+`action`+`allowed`), 0 errores. Cache se invalida.
 - ⏭️ **Crear médico** (`NewDoctorModal`): es **stub intencional** ("Alta disponible en Etapa 2/Auth0; usa seed").
@@ -1055,6 +1058,7 @@ otra sesión (Sentry MCP ya agregado a la config, falta OAuth + reiniciar; flags
   usar UUIDs v4 válidos. (Al confirmar se extendió +1 mes la suscripción del dev doctor vía curl — dato dev.)
 
 **🐛 BUGS del round CRUD (pendientes de fix la próxima sesión):**
+
 1. **HIGH — crear consulta/cita para paciente EXISTENTE falla (400 en `/api/book`)**: `NewAppointmentFlow`
    (componente, líneas ~392-395) manda `selectedPatient.full_name/phone/email/cedula`, pero el resultado de
    búsqueda trae esos valores **enmascarados/vacíos** → backend responde "Se requiere nombre y email". Fix
@@ -1067,6 +1071,7 @@ otra sesión (Sentry MCP ya agregado a la config, falta OAuth + reiniciar; flags
 **🔐 DECISIÓN DE POLÍTICA (usuario, 2026-06-09) — DESENMASCARAR PII PARA EL DOCTOR DUEÑO:**
 Revierte el "listas siempre enmascaradas + /reveal". El doctor debe ver a SUS pacientes en **PLANO** (el
 backend descifra y devuelve plano al dueño); se confía en TLS + VPC de GCP para el transporte.
+
 - **Backend** (patients list/detail/search/cita-360 + messages name): el mapper devuelve PII **descifrada al
   doctor dueño** en vez de enmascarada.
 - **Mantener:** anti-IDOR (doctor solo ve SUS pacientes), **`access_audit_log` (seguir registrando el acceso
@@ -1120,11 +1125,11 @@ por email, rol `doctor`, auth0_sub seteado; super_admin/admin nunca se crean por
 fue el `returnTo` apuntando a `/` (landing de marketing, siempre se ve deslogueado) — NO un bug.
 
 **🐛 BUG ENCONTRADO al correr auth0 de verdad (HIGH, cross-tenant):** el dashboard mostraba los pacientes del
-DOCTOR DEV (2) en vez del usuario Auth0 (0). Causa: `getDevUser()` (lee cookies dev_user_*; en auth0 no existen →
+DOCTOR DEV (2) en vez del usuario Auth0 (0). Causa: `getDevUser()` (lee cookies dev*user*_; en auth0 no existen →
 cae al DEV_DOCTOR_UUID por defecto) se usaba directo en MUCHOS sitios, no solo en `api-client.server` (que sí
 estaba migrado a `resolveIdentity`). Afectaba dashboard KPIs (countFromEndpoint hace raw-fetch con headers
 manuales), cita-360, ehr, suggestions, storage/upload, onboarding, **y `lib/auth-guards.ts`** (→ todos los route
-handlers admin `/api/admin/*`, patient-packages, transcribe). En prod auth0 = fuga: cualquier doctor vería datos
+handlers admin `/api/admin/_`, patient-packages, transcribe). En prod auth0 = fuga: cualquier doctor vería datos
 del doctor dev.
 
 **FIX (barrido Fase 4):** enrutar TODA la resolución de identidad por `resolveIdentity()` (lib/identity.server.ts) —
@@ -1142,5 +1147,49 @@ revisar en migración Auth0). **Stack revertido a AUTH_MODE=dev** al terminar.
 **Cómo probar Auth0:** poner `AUTH_MODE=auth0`+`NEXT_PUBLIC_AUTH_MODE=auth0` en apps/frontend/.env, reiniciar
 `nx dev frontend` (Next NO recarga .env en caliente), backend desde dist. Login completo = Google (Playwright no lo
 automatiza solo → usuario en el loop) o crear user Database en Auth0 para automatizar. Callbacks ya en localhost:3000.
-Perfil Auth0 de prueba creado en BD: `5f95b606-…` (email lucas, rol doctor). Decisiones de calendario pendientes:
+Perfil Auth0 de prueba creado en BD: `5f95b606-…` (email lucas). Decisiones de calendario pendientes:
 ver memoria [[calendar-integration-pending]].
+
+## 2026-06-11 — Diagnóstico "módulos faltantes" del doctor (resuelto: era gating)
+
+Usuario reportó que faltaban Agenda/Finanzas/Consultas en el área doctor migrada vs deploy
+(deltasalud.app). NO faltaban: navegaba `/doctor` como **super_admin**, cuyo set de
+`role_capabilities` no incluye agenda/consultations/finances/services → el sidebar los oculta.
+Verificado cambiando `profiles.role` de lucas a doctor (BD): aparecen y renderizan idénticos al
+deploy; luego restaurado a super_admin. Las páginas existen y están cableadas al backend. La
+fuente de verdad del rol/permisos es la BD (`profiles.role` → `role_capabilities`), Auth0 solo da
+acceso. Detalle en memoria [[sidebar-capabilities-gating]]. (Perfil lucas = super_admin actualmente.)
+
+## 2026-06-11 — Módulo Doctor "vendible": Fases 1, 2, 3, 6 (Olas A–C con equipo de agentes)
+
+Plan: culminar el módulo doctor (8 frentes). Trabajado con equipo de agentes en paralelo (lead
+delega + verifica en disco; code-reviewer + security-agent por fase). Commits en `feature/migracion-backend`:
+
+- **Fase 1 — Planes parametrizables + gating por plan + upsell** (`4909c91`, frontend `7ae70e9`,
+  fix camelCase `5591d0c`, review fixes `148eeb7`). `plan_configs` + `role_key`/`is_permanent`;
+  nueva `plan_prices` (periodos monthly/quarterly/semiannual/annual); seed Delta Free(permanente)/
+  Base/Plus + matriz `plan_features` (keys `ai_*` solo en Plus). CRUD admin de planes/precios/features
+  (super_admin). `GET /api/doctor/features` v2 con downgrade perezoso a Free al expirar. Frontend:
+  editor `/admin/plans`, gating en sidebar doctor (rol AND plan; candado→`/doctor/upgrade`), página
+  upgrade + guard server-side `requirePlanFeature`. Catálogo vendible = Free/Base/Plus (legacy
+  desactivados). Review: 0 CRITICAL/HIGH tras fixes (transacciones en setPlanFeatures/Prices,
+  validación de route params, cotas Zod, errores de dominio, seed bulkInsert).
+- **Fase 2 — Registro doctor + verificación admin** (`cd434da`). `profiles` + `mpps_number`,
+  `colegiado_number`, `verification_status`(pending|verified|rejected), `verified_at`, `verified_by`.
+  `POST /api/doctor/registration` (4 campos) → pending + email a super_admins (Resend). Panel
+  `GET/PUT /api/admin/doctor-verifications` (módulo nuevo `doctor-registration`). Verificación NO
+  restringe acceso aún (preparatorio). Verificado por curl + RBAC (doctor→403).
+- **Fase 3 — Maestra de identidad de paciente** (`993093b`). `patient_identities` (cedula_hash global
+  UNIQUE = `patients.cedula_search_hash`) + `patients.identity_id` + backfill. Resolución idempotente
+  inyectada en create-patient y booking. INTERNA/transparente: ningún endpoint expone la maestra ni
+  existencia cross-doctor. Verificado: cédulas iguales entre doctores comparten `identity_id`.
+- **Fase 6 — QR del link público** (`c58b249`). Componente `BookingQrCode` (canvas→PNG) en `/doctor/settings`.
+
+Backend tests al día: 1728 pass. Decisiones del usuario: pagos manuales+aprobación admin; Google/Meet
+opt-in (si el dr conecta Google, si no `.ics`+email); IA = chat único con Gemini (specs de funciones IA
+PENDIENTES del usuario); planes 100% parametrizables desde admin, Free permanente.
+
+**PENDIENTE/EN CURSO:** endpoint público `GET /api/plans` (catálogo para `/doctor/upgrade` + `/register`)
+en curso. **Siguiente:** Fase 4 (consultorios modalidad + Google/Meet), Fase 5 (agenda bloqueos +
+horizonte de semanas), Fase 7 (IA — espera specs del usuario), Fase 8 (telemetría). Plan completo en
+`~/.claude/plans/jazzy-sprouting-hamster.md`.
