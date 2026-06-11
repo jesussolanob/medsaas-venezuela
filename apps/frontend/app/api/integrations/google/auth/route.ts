@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
+
+// CSRF protection: a random state is set as an httpOnly cookie when the OAuth
+// flow starts, and validated against the `state` query param in the callback.
+const STATE_COOKIE = 'g_oauth_state';
 
 export async function GET(req: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -17,6 +22,7 @@ export async function GET(req: NextRequest) {
   }
 
   const redirectUri = `${baseUrl}/api/integrations/google/callback`;
+  const state = randomUUID();
 
   const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   googleAuthUrl.searchParams.append('client_id', clientId);
@@ -30,6 +36,15 @@ export async function GET(req: NextRequest) {
   );
   googleAuthUrl.searchParams.append('access_type', 'offline');
   googleAuthUrl.searchParams.append('prompt', 'consent');
+  googleAuthUrl.searchParams.append('state', state);
 
-  return NextResponse.redirect(googleAuthUrl.toString());
+  const res = NextResponse.redirect(googleAuthUrl.toString());
+  res.cookies.set(STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/api/integrations/google',
+    maxAge: 600, // 10 min — the OAuth round-trip should complete well within this
+  });
+  return res;
 }
