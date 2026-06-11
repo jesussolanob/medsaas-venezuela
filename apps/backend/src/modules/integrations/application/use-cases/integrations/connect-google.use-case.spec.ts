@@ -64,4 +64,34 @@ describe('ConnectGoogleUseCase', () => {
     googleService.exchangeCode.mockRejectedValue(new Error('Invalid code'));
     await expect(useCase.execute('doc-1', 'bad-code')).rejects.toThrow('Invalid code');
   });
+
+  it('second connection call updates existing integration (upsert by doctorId)', async () => {
+    const firstIntegration = makeIntegration();
+    const updatedIntegration = GoogleIntegration.create({
+      ...firstIntegration,
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      googleEmail: 'updated@gmail.com',
+      connectedAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    googleService.exchangeCode.mockResolvedValue({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+      tokenExpiry: new Date(),
+      scope: 'calendar',
+      googleEmail: 'updated@gmail.com',
+    });
+    // repo.upsert returns the updated integration (implementation handles find-or-create)
+    repo.upsert.mockResolvedValue(updatedIntegration);
+
+    const result = await useCase.execute('doc-1', 'new-auth-code');
+
+    expect(repo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ doctorId: 'doc-1', googleEmail: 'updated@gmail.com' }),
+    );
+    expect(result.connected).toBe(true);
+    expect(result.googleEmail).toBe('updated@gmail.com');
+  });
 });

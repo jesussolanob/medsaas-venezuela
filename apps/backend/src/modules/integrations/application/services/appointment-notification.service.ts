@@ -99,7 +99,8 @@ export class AppointmentNotificationService {
       const result = await this.createCalendarEvent.execute({
         doctorId: input.doctorId,
         summary: `Cita médica — ${input.doctorName}`,
-        description: `Paciente: ${input.patientName}`,
+        // Do not include patient name or any PII in the description.
+        description: `Cita registrada en Delta Medical — ID: ${input.appointmentId}`,
         startISO: input.scheduledAtISO,
         endISO,
         attendeeEmail: input.patientEmail,
@@ -195,8 +196,7 @@ export class AppointmentNotificationService {
   // ---------------------------------------------------------------------------
 
   private computeEndISO(startISO: string, durationMinutes: number): string {
-    const start = new Date(startISO);
-    start.setMinutes(start.getMinutes() + durationMinutes);
-    return start.toISOString();
+    const startMs = new Date(startISO).getTime();
+    return new Date(startMs + durationMinutes * 60 * 1000).toISOString();
   }
 }

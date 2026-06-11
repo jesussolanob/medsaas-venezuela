@@ -1,3 +1,5 @@
+import { PatientIdentityInvariantError } from '../errors/patient-identity.errors';
+
 /**
  * PatientIdentity — global identity master record for a unique cedula.
  *
@@ -33,10 +35,10 @@ export class PatientIdentity {
 
   constructor(params: PatientIdentityCreateParams) {
     if (!params.cedulaHash) {
-      throw new Error('PatientIdentity: cedulaHash is required');
+      throw new PatientIdentityInvariantError('cedulaHash');
     }
     if (!params.cedulaEncrypted) {
-      throw new Error('PatientIdentity: cedulaEncrypted is required');
+      throw new PatientIdentityInvariantError('cedulaEncrypted');
     }
 
     this.id = params.id;

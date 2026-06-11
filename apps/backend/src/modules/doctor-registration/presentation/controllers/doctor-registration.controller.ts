@@ -20,16 +20,16 @@ import {
 import {
   DoctorRegistrationDtoSchema,
   UpdateVerificationStatusDtoSchema,
+  ListVerificationsDtoSchema,
   type DoctorRegistrationDto,
   type UpdateVerificationStatusDto,
+  type ListVerificationsDto,
 } from '@delta/shared-types';
 import { CompleteRegistrationUseCase } from '../../application/use-cases/complete-registration.use-case';
 import { ListPendingVerificationsUseCase } from '../../application/use-cases/list-pending-verifications.use-case';
 import { UpdateVerificationStatusUseCase } from '../../application/use-cases/update-verification-status.use-case';
-import type {
-  DoctorRegistration,
-  VerificationStatus,
-} from '../../domain/entities/doctor-registration.entity';
+import type { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
+import type { UpdateVerificationStatusOutput } from '../../application/use-cases/update-verification-status.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -70,12 +70,12 @@ function toVerificationListItem(entity: DoctorRegistration): VerificationListIte
 }
 
 /**
- * DoctorRegistrationController — two surfaces:
+ * DoctorRegistrationController — three surfaces:
  *
  *   1. POST /api/doctor/registration
- *      Doctor completes their profile. Auth: DevAuthGuard (any role=doctor).
+ *      Doctor completes their profile. Auth: role=doctor only.
  *
- *   2. GET  /api/admin/doctor-verifications?status=pending
+ *   2. GET  /api/admin/doctor-verifications?status=pending&limit=50&offset=0
  *      Admin lists doctors by verification status. Auth: super_admin.
  *
  *   3. PUT  /api/admin/doctor-verifications/:doctorId
@@ -103,6 +103,8 @@ export class DoctorRegistrationController {
   // ---------------------------------------------------------------------------
 
   @Post('doctor/registration')
+  @UseGuards(RolesGuard)
+  @Roles('doctor')
   async register(
     @CurrentUser() user: CurrentUserPayload,
     @Body(new ZodValidationPipe(DoctorRegistrationDtoSchema)) body: DoctorRegistrationDto,
@@ -119,23 +121,20 @@ export class DoctorRegistrationController {
   }
 
   // ---------------------------------------------------------------------------
-  // GET /api/admin/doctor-verifications?status=pending
+  // GET /api/admin/doctor-verifications?status=pending&limit=50&offset=0
   // ---------------------------------------------------------------------------
 
   @Get('admin/doctor-verifications')
   @UseGuards(RolesGuard)
   @Roles('super_admin')
   async listVerificationsByStatus(
-    @Query('status') status: string = 'pending',
+    @Query(new ZodValidationPipe(ListVerificationsDtoSchema)) query: ListVerificationsDto,
   ): Promise<SuccessResponse<VerificationListItemDto[]>> {
-    const allowedStatuses: VerificationStatus[] = ['pending', 'verified', 'rejected'];
-    const resolvedStatus: VerificationStatus = allowedStatuses.includes(
-      status as VerificationStatus,
-    )
-      ? (status as VerificationStatus)
-      : 'pending';
-
-    const items = await this.listVerifications.execute({ status: resolvedStatus });
+    const items = await this.listVerifications.execute({
+      status: query.status,
+      limit: query.limit,
+      offset: query.offset,
+    });
 
     return {
       success: true,
@@ -155,7 +154,7 @@ export class DoctorRegistrationController {
     @CurrentUser() user: CurrentUserPayload,
     @Body(new ZodValidationPipe(UpdateVerificationStatusDtoSchema))
     body: UpdateVerificationStatusDto,
-  ): Promise<SuccessResponse<unknown>> {
+  ): Promise<SuccessResponse<UpdateVerificationStatusOutput>> {
     const result = await this.updateVerification.execute({
       doctorId,
       status: body.status,

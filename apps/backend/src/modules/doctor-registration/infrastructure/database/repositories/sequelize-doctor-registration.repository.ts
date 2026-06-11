@@ -62,13 +62,18 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
     return this.toDomain(row);
   }
 
-  async listByVerificationStatus(status: VerificationStatus): Promise<DoctorRegistration[]> {
+  async listByVerificationStatus(
+    status: VerificationStatus,
+    pagination: { limit: number; offset: number },
+  ): Promise<DoctorRegistration[]> {
     const rows = await this.model.findAll({
       where: {
         role: 'doctor',
         verificationStatus: status,
       },
       order: [['createdAt', 'ASC']],
+      limit: pagination.limit,
+      offset: pagination.offset,
     });
 
     return rows.map((r) => this.toDomain(r));

@@ -10,6 +10,8 @@ import type {
 
 export interface ListVerificationsInput {
   status: VerificationStatus;
+  limit: number;
+  offset: number;
 }
 
 /**
@@ -31,6 +33,9 @@ export class ListPendingVerificationsUseCase {
   ) {}
 
   async execute(input: ListVerificationsInput): Promise<DoctorRegistration[]> {
-    return this.repo.listByVerificationStatus(input.status);
+    return this.repo.listByVerificationStatus(input.status, {
+      limit: input.limit,
+      offset: input.offset,
+    });
   }
 }

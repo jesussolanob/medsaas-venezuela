@@ -2,7 +2,6 @@ import { UpdateVerificationStatusUseCase } from './update-verification-status.us
 import type { IDoctorRegistrationRepository } from '../../domain/repositories/doctor-registration.repository';
 import { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
 import { DoctorRegistrationNotFoundError } from '../../domain/errors/doctor-not-found.error';
-import { InvalidVerificationStatusError } from '../../domain/errors/invalid-verification-status.error';
 
 const makePendingRegistration = (): DoctorRegistration =>
   DoctorRegistration.create({
@@ -80,20 +79,6 @@ describe('UpdateVerificationStatusUseCase', () => {
     await expect(
       useCase.execute({ doctorId: 'nonexistent', status: 'verified', actorId: 'admin-1' }),
     ).rejects.toThrow(DoctorRegistrationNotFoundError);
-  });
-
-  it('throws InvalidVerificationStatusError for invalid status', async () => {
-    // Cast to bypass TypeScript for this edge case test
-    await expect(
-      useCase.execute({
-        doctorId: 'doc-1',
-        status: 'unknown' as 'verified',
-        actorId: 'admin-1',
-      }),
-    ).rejects.toThrow(InvalidVerificationStatusError);
-
-    // findById should NOT be called when status is invalid upfront
-    expect(mockRepo.findById).not.toHaveBeenCalled();
   });
 
   it('propagates repo errors during updateVerification', async () => {

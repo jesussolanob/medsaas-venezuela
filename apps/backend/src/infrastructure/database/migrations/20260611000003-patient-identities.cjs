@@ -96,7 +96,10 @@ module.exports = {
     // operation is idempotent. Finally UPDATE patients.identity_id.
     await queryInterface.sequelize.query(`
       WITH representatives AS (
-        -- One representative patient per cedula_hash (latest created wins)
+        -- One representative patient per cedula_hash (latest created wins).
+        -- NOTE: patients.cedula stores AES-256-GCM ciphertext, not plaintext.
+        -- Include soft-deleted patients so they also receive an identity_id —
+        -- deleted_at IS NULL is intentionally omitted here.
         SELECT DISTINCT ON (cedula_search_hash)
           id            AS patient_id,
           cedula_search_hash,
@@ -104,7 +107,6 @@ module.exports = {
         FROM patients
         WHERE cedula_search_hash IS NOT NULL
           AND cedula IS NOT NULL
-          AND deleted_at IS NULL
         ORDER BY cedula_search_hash, created_at DESC
       ),
       inserted AS (

@@ -68,13 +68,19 @@ export class Office {
    * Returns true when the requested appointment modality is compatible with
    * this office's configured modality.
    *
-   *   in_person office → only 'in_person' allowed
+   *   in_person office → accepts 'in_person' or 'presencial' (API alias)
    *   online office    → only 'online' allowed
    *   both office      → any modality allowed
+   *
+   * NOTE: AppointmentModeSchema uses 'presencial' | 'online' while Office
+   * persists 'in_person' | 'online' | 'both'. We normalise here so both
+   * vocabularies compare correctly.
    */
   supportsModality(requested: string): boolean {
     if (this.modality === 'both') return true;
-    return this.modality === requested;
+    // Normalise Spanish alias to internal value
+    const normalised = requested === 'presencial' ? 'in_person' : requested;
+    return this.modality === normalised;
   }
 
   /** Returns true when the given doctorId owns this office. Anti-IDOR guard. */

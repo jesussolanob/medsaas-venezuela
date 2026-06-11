@@ -75,9 +75,14 @@ export function generateIcsEvent(params: IcsEventParams): string {
   if (params.meetLink) descriptionParts.push(`Enlace de videollamada: ${params.meetLink}`);
   const description = descriptionParts.join('\\n');
 
-  const organizerLine = params.organizerEmail
-    ? `ORGANIZER;CN=${escapeIcsText(params.organizerName)}:mailto:${params.organizerEmail}`
-    : `ORGANIZER;CN=${escapeIcsText(params.organizerName)}:mailto:noreply@delta.medical`;
+  // Escape email addresses to prevent iCal header injection via ORGANIZER/ATTENDEE.
+  // Truncate at first CR or LF to ensure no injected lines follow the email value.
+  const safeOrganizerEmail = params.organizerEmail
+    ? (params.organizerEmail.split(/[\r\n]/)[0] ?? 'noreply@delta.medical')
+    : 'noreply@delta.medical';
+  const safeAttendeeEmail = params.attendeeEmail.split(/[\r\n]/)[0] ?? '';
+
+  const organizerLine = `ORGANIZER;CN=${escapeIcsText(params.organizerName)}:mailto:${safeOrganizerEmail}`;
 
   const lines = [
     'BEGIN:VCALENDAR',
@@ -94,7 +99,7 @@ export function generateIcsEvent(params: IcsEventParams): string {
     location ? `LOCATION:${location}` : null,
     description ? `DESCRIPTION:${description}` : null,
     organizerLine,
-    `ATTENDEE;CN=${escapeIcsText(params.attendeeEmail)};RSVP=TRUE:mailto:${params.attendeeEmail}`,
+    `ATTENDEE;CN=${escapeIcsText(safeAttendeeEmail)};RSVP=TRUE:mailto:${safeAttendeeEmail}`,
     'STATUS:CONFIRMED',
     'SEQUENCE:0',
     'END:VEVENT',
@@ -103,5 +108,6 @@ export function generateIcsEvent(params: IcsEventParams): string {
     .filter(Boolean)
     .join('\r\n');
 
-  return lines;
+  // RFC 5545 §3.1: lines are delimited with CRLF; the file ends with a CRLF.
+  return lines + '\r\n';
 }

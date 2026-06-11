@@ -39,3 +39,15 @@ export const UpdateVerificationStatusDtoSchema = z
   .strict();
 
 export type UpdateVerificationStatusDto = z.infer<typeof UpdateVerificationStatusDtoSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/doctor-verifications (query params)
+// ---------------------------------------------------------------------------
+
+export const ListVerificationsDtoSchema = z.object({
+  status: z.enum(['pending', 'verified', 'rejected']).optional().default('pending'),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  offset: z.coerce.number().int().min(0).optional().default(0),
+});
+
+export type ListVerificationsDto = z.infer<typeof ListVerificationsDtoSchema>;

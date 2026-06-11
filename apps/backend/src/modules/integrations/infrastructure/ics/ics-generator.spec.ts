@@ -78,4 +78,25 @@ describe('generateIcsEvent', () => {
     const ics = generateIcsEvent(baseParams);
     expect(ics).toContain('mailto:noreply@delta.medical');
   });
+
+  it('ends with a CRLF as required by RFC 5545', () => {
+    const ics = generateIcsEvent(baseParams);
+    expect(ics.endsWith('\r\n')).toBe(true);
+  });
+
+  it('strips CR/LF injection attempts from attendee email', () => {
+    const ics = generateIcsEvent({
+      ...baseParams,
+      attendeeEmail: 'patient@example.com\r\nINJECTED:header',
+    });
+    expect(ics).not.toContain('INJECTED:header');
+  });
+
+  it('strips CR/LF injection attempts from organizer email', () => {
+    const ics = generateIcsEvent({
+      ...baseParams,
+      organizerEmail: 'doc@gmail.com\r\nX-INJECT:evil',
+    });
+    expect(ics).not.toContain('X-INJECT:evil');
+  });
 });

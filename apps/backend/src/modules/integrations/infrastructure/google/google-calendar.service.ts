@@ -46,7 +46,8 @@ export class GoogleCalendarService implements OnModuleInit {
   private readonly logger = new Logger(GoogleCalendarService.name);
   private clientId: string | null = null;
   private clientSecret: string | null = null;
-  private redirectUri: string = 'http://localhost:3000/api/integrations/google/callback';
+  // Assigned in onModuleInit from GOOGLE_REDIRECT_URI env var.
+  private redirectUri!: string;
 
   constructor(private readonly config: ConfigService) {}
 

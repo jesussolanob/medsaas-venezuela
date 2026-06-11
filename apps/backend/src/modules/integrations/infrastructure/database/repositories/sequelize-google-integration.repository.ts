@@ -35,7 +35,24 @@ export class SequelizeGoogleIntegrationRepository implements IGoogleIntegrationR
     const refreshTokenEncrypted = this.crypto.encrypt(params.refreshToken);
     const now = new Date();
 
-    const [row] = await this.model.upsert({
+    // Resolve existing row by doctorId to avoid UNIQUE(doctor_id) violation.
+    // model.upsert with a freshly generated id would always conflict on the
+    // doctor_id unique constraint instead of matching the existing row.
+    const existing = await this.model.findOne({ where: { doctorId: params.doctorId } });
+
+    if (existing) {
+      await existing.update({
+        accessTokenEncrypted,
+        refreshTokenEncrypted,
+        tokenExpiry: params.tokenExpiry,
+        scope: params.scope,
+        googleEmail: params.googleEmail,
+        updatedAt: now,
+      });
+      return this.toDomain(existing);
+    }
+
+    const created = await this.model.create({
       id: randomUUID(),
       doctorId: params.doctorId,
       accessTokenEncrypted,
@@ -47,7 +64,7 @@ export class SequelizeGoogleIntegrationRepository implements IGoogleIntegrationR
       updatedAt: now,
     });
 
-    return this.toDomain(row);
+    return this.toDomain(created);
   }
 
   async updateTokens(params: UpdateTokensParams): Promise<void> {

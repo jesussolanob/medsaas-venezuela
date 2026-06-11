@@ -4,7 +4,6 @@ import {
   type IDoctorRegistrationRepository,
 } from '../../domain/repositories/doctor-registration.repository';
 import { DoctorRegistrationNotFoundError } from '../../domain/errors/doctor-not-found.error';
-import { InvalidVerificationStatusError } from '../../domain/errors/invalid-verification-status.error';
 
 export interface UpdateVerificationStatusInput {
   doctorId: string;
@@ -40,10 +39,7 @@ export class UpdateVerificationStatusUseCase {
   ) {}
 
   async execute(input: UpdateVerificationStatusInput): Promise<UpdateVerificationStatusOutput> {
-    if (input.status !== 'verified' && input.status !== 'rejected') {
-      throw new InvalidVerificationStatusError(input.status);
-    }
-
+    // status is validated by UpdateVerificationStatusDtoSchema at the controller layer
     const existing = await this.repo.findById(input.doctorId);
     if (!existing) {
       throw new DoctorRegistrationNotFoundError(input.doctorId);

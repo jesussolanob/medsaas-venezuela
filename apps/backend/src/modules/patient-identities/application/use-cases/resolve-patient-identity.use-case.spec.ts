@@ -2,6 +2,7 @@ import { ResolvePatientIdentityUseCase } from './resolve-patient-identity.use-ca
 import { PatientIdentityConflictError } from '../../domain/errors/patient-identity.errors';
 import type { IPatientIdentityRepository } from '../../domain/repositories/patient-identity.repository';
 import { PatientIdentity } from '../../domain/entities/patient-identity.entity';
+import type { CryptoService } from '../../../../infrastructure/crypto/crypto.service';
 
 const HASH = 'a'.repeat(64);
 const IDENTITY_ID = 'bbbbbbbb-0000-0000-0000-000000000001';
@@ -24,7 +25,9 @@ function makeMockRepo(): jest.Mocked<IPatientIdentityRepository> {
   };
 }
 
-function makeMockCrypto() {
+function makeMockCrypto(): jest.Mocked<
+  Pick<CryptoService, 'hashForSearch' | 'encrypt' | 'decrypt'>
+> {
   return {
     hashForSearch: jest.fn().mockReturnValue(HASH),
     encrypt: jest.fn().mockReturnValue('enc:payload=='),
@@ -40,7 +43,7 @@ describe('ResolvePatientIdentityUseCase', () => {
   beforeEach(() => {
     repo = makeMockRepo();
     crypto = makeMockCrypto();
-    useCase = new ResolvePatientIdentityUseCase(repo, crypto as never);
+    useCase = new ResolvePatientIdentityUseCase(repo, crypto as unknown as CryptoService);
   });
 
   describe('null / empty cedula', () => {

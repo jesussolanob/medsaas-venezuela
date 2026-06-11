@@ -55,7 +55,10 @@ export interface IDoctorRegistrationRepository {
    * Returns lightweight rows for admin display.
    * This is an admin-only operation — the caller must enforce @Roles('super_admin').
    */
-  listByVerificationStatus(status: VerificationStatus): Promise<DoctorRegistration[]>;
+  listByVerificationStatus(
+    status: VerificationStatus,
+    pagination: { limit: number; offset: number },
+  ): Promise<DoctorRegistration[]>;
 
   /**
    * Returns all super_admin profiles (id + email) for notification dispatch.

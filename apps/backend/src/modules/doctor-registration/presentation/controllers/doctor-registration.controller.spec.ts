@@ -109,11 +109,15 @@ describe('DoctorRegistrationController', () => {
   // ---------------------------------------------------------------------------
 
   describe('listVerificationsByStatus()', () => {
-    it('returns mapped verification items', async () => {
+    it('returns mapped verification items for pending status', async () => {
       const entity = makeEntity();
       listVerificationsUseCase.execute.mockResolvedValue([entity]);
 
-      const result = await controller.listVerificationsByStatus('pending');
+      const result = await controller.listVerificationsByStatus({
+        status: 'pending',
+        limit: 50,
+        offset: 0,
+      });
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(1);
@@ -122,28 +126,36 @@ describe('DoctorRegistrationController', () => {
       expect(item?.verificationStatus).toBe('pending');
     });
 
-    it('defaults to pending when status is omitted', async () => {
+    it('passes verified status and pagination to use case', async () => {
       listVerificationsUseCase.execute.mockResolvedValue([]);
 
-      await controller.listVerificationsByStatus(undefined as unknown as string);
+      await controller.listVerificationsByStatus({
+        status: 'verified',
+        limit: 10,
+        offset: 5,
+      });
 
-      expect(listVerificationsUseCase.execute).toHaveBeenCalledWith({ status: 'pending' });
+      expect(listVerificationsUseCase.execute).toHaveBeenCalledWith({
+        status: 'verified',
+        limit: 10,
+        offset: 5,
+      });
     });
 
-    it('defaults to pending when status is invalid', async () => {
+    it('passes rejected status to use case', async () => {
       listVerificationsUseCase.execute.mockResolvedValue([]);
 
-      await controller.listVerificationsByStatus('unknown_status');
+      await controller.listVerificationsByStatus({
+        status: 'rejected',
+        limit: 50,
+        offset: 0,
+      });
 
-      expect(listVerificationsUseCase.execute).toHaveBeenCalledWith({ status: 'pending' });
-    });
-
-    it('passes verified status to use case', async () => {
-      listVerificationsUseCase.execute.mockResolvedValue([]);
-
-      await controller.listVerificationsByStatus('verified');
-
-      expect(listVerificationsUseCase.execute).toHaveBeenCalledWith({ status: 'verified' });
+      expect(listVerificationsUseCase.execute).toHaveBeenCalledWith({
+        status: 'rejected',
+        limit: 50,
+        offset: 0,
+      });
     });
   });
 

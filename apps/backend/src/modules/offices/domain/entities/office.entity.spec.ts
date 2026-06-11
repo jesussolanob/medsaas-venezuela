@@ -160,16 +160,37 @@ describe('Office entity', () => {
       expect(office.supportsModality('online')).toBe(false);
     });
 
+    it('in_person office supports presencial alias (AppointmentModeSchema vocab)', () => {
+      const office = makeOffice({ modality: 'in_person' });
+      expect(office.supportsModality('presencial')).toBe(true);
+    });
+
+    it('presencial booking in in_person office does NOT throw mismatch', () => {
+      const office = makeOffice({ modality: 'in_person' });
+      // Verify no mismatch: presencial maps to in_person
+      expect(office.supportsModality('presencial')).toBe(true);
+    });
+
     it('online office only supports online', () => {
       const office = makeOffice({ modality: 'online' });
       expect(office.supportsModality('online')).toBe(true);
       expect(office.supportsModality('in_person')).toBe(false);
     });
 
+    it('online office does not accept presencial alias', () => {
+      const office = makeOffice({ modality: 'online' });
+      expect(office.supportsModality('presencial')).toBe(false);
+    });
+
     it('both office supports any modality', () => {
       const office = makeOffice({ modality: 'both' });
       expect(office.supportsModality('in_person')).toBe(true);
       expect(office.supportsModality('online')).toBe(true);
+    });
+
+    it('both office supports presencial alias', () => {
+      const office = makeOffice({ modality: 'both' });
+      expect(office.supportsModality('presencial')).toBe(true);
     });
   });
 });

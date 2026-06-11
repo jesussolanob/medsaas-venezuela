@@ -13,3 +13,16 @@ export class PatientIdentityConflictError extends DomainError {
     super('Patient identity already exists for this cedula hash');
   }
 }
+
+/**
+ * Raised when a required domain invariant is violated during PatientIdentity
+ * construction (e.g. empty cedulaHash or cedulaEncrypted).
+ */
+export class PatientIdentityInvariantError extends DomainError {
+  readonly code = 'PATIENT_IDENTITY_INVARIANT';
+  override readonly httpStatus = 422;
+
+  constructor(field: string) {
+    super(`PatientIdentity invariant violated: ${field} is required`);
+  }
+}

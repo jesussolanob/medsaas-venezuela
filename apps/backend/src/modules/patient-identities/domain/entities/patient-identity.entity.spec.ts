@@ -1,4 +1,5 @@
 import { PatientIdentity } from './patient-identity.entity';
+import { PatientIdentityInvariantError } from '../errors/patient-identity.errors';
 
 const now = new Date('2026-06-11T00:00:00Z');
 
@@ -23,15 +24,25 @@ describe('PatientIdentity entity', () => {
     expect(identity.updatedAt).toBe(now);
   });
 
-  it('throws when cedulaHash is empty', () => {
+  it('throws PatientIdentityInvariantError when cedulaHash is empty', () => {
     expect(() => PatientIdentity.create({ ...makeParams(), cedulaHash: '' })).toThrow(
-      'cedulaHash is required',
+      PatientIdentityInvariantError,
     );
   });
 
-  it('throws when cedulaEncrypted is empty', () => {
+  it('throws with code PATIENT_IDENTITY_INVARIANT when cedulaHash is empty', () => {
+    try {
+      PatientIdentity.create({ ...makeParams(), cedulaHash: '' });
+      fail('expected error');
+    } catch (err) {
+      expect(err).toBeInstanceOf(PatientIdentityInvariantError);
+      expect((err as PatientIdentityInvariantError).code).toBe('PATIENT_IDENTITY_INVARIANT');
+    }
+  });
+
+  it('throws PatientIdentityInvariantError when cedulaEncrypted is empty', () => {
     expect(() => PatientIdentity.create({ ...makeParams(), cedulaEncrypted: '' })).toThrow(
-      'cedulaEncrypted is required',
+      PatientIdentityInvariantError,
     );
   });
 
