@@ -65,3 +65,4 @@ coverage-report/
 /deploy-*.png
 /local-*.png
 /verify-*.png
+/qa-*.png
