@@ -59,6 +59,7 @@ export async function createDoctorService(input: {
   description?: string | null;
   type?: 'plan' | 'service';
   show_in_booking?: boolean;
+  office_id?: string | null;
 }): Promise<ServiceActionResult> {
   const result = await backendPost<DoctorService>('/api/doctor/services', input);
 
@@ -82,6 +83,7 @@ export async function updateDoctorService(
     type: 'plan' | 'service';
     show_in_booking: boolean;
     is_active: boolean;
+    office_id: string | null;
   }>,
 ): Promise<ServiceActionResult> {
   const result = await backendPut<DoctorService>(`/api/doctor/services/${id}`, fields);

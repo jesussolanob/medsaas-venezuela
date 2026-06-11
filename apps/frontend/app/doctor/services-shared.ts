@@ -11,6 +11,7 @@
 export interface BackendServiceRaw {
   id: string;
   doctorId: string;
+  officeId: string | null;
   name: string;
   priceUsd: number;
   durationMinutes: number;
@@ -27,6 +28,8 @@ export interface BackendServiceRaw {
 export interface DoctorService {
   id: string;
   name: string;
+  /** UUID of the linked office, or null for general (all offices). */
+  office_id: string | null;
   price_usd: number;
   duration_minutes: number;
   sessions_count: number;
@@ -41,6 +44,7 @@ export function mapDoctorService(raw: BackendServiceRaw): DoctorService {
   return {
     id: raw.id,
     name: raw.name,
+    office_id: raw.officeId ?? null,
     price_usd: raw.priceUsd ?? 0,
     duration_minutes: raw.durationMinutes ?? 30,
     sessions_count: raw.sessionsCount ?? 1,

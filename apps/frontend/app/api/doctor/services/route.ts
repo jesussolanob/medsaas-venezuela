@@ -18,8 +18,14 @@ import { backendFetch } from '@/lib/api-client.server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest): Promise<NextResponse> {
-  const result = await backendFetch('/api/doctor/services', { method: 'GET' });
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const { searchParams } = new URL(req.url);
+  const officeId = searchParams.get('officeId');
+  const path = officeId
+    ? `/api/doctor/services?officeId=${encodeURIComponent(officeId)}`
+    : '/api/doctor/services';
+
+  const result = await backendFetch(path, { method: 'GET' });
   if (!result.ok) {
     return NextResponse.json(
       { success: false, error: result.error },

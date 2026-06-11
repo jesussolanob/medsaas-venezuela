@@ -25,33 +25,44 @@ import {
   Eye,
   EyeOff,
   Tag,
-  FileText,
+  Building2,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import type { DoctorService } from '@/app/doctor/services-shared';
 
-type ServiceItem = {
+type DoctorOffice = {
   id: string;
   name: string;
-  price_usd: number;
-  duration_minutes: number;
-  sessions_count: number;
-  is_active: boolean;
-  show_in_booking: boolean;
-  description: string;
-  type: 'plan' | 'service';
+  modality: 'in_person' | 'online' | 'both';
+  address?: string | null;
 };
 
 const inp =
   'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white';
 
+// ─── Fetches the list of offices from the BFF thin-proxy ─────────────────────
+async function fetchOffices(): Promise<DoctorOffice[]> {
+  try {
+    const res = await fetch('/api/doctor/offices', { cache: 'no-store' });
+    if (!res.ok) return [];
+    const json = await res.json();
+    // BFF returns { success: true, data: [...] }
+    return Array.isArray(json.data) ? (json.data as DoctorOffice[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function ServicesPage() {
   const { rate: bcvRate, toBs } = useBcvRate();
-  const [items, setItems] = useState<ServiceItem[]>([]);
+  const [items, setItems] = useState<DoctorService[]>([]);
+  const [offices, setOffices] = useState<DoctorOffice[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<ServiceItem | null>(null);
+  const [editing, setEditing] = useState<DoctorService | null>(null);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<'all' | 'plan' | 'service'>('all');
+  const [officeFilter, setOfficeFilter] = useState<string>('all');
   // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: 'service' } | null>(null);
 
@@ -63,37 +74,19 @@ export default function ServicesPage() {
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'plan' | 'service'>('plan');
   const [showInBooking, setShowInBooking] = useState(true);
-
-  // Quick items (Prescripciones = exams, Recetas = medications)
-  // RONDA 31: states de quick items (prescripciones / recetas) removidos.
-  // La logica se reestructurara en otra ronda.
+  /** null = general (todos los consultorios); uuid = consultorio específico */
+  const [selectedOfficeId, setSelectedOfficeId] = useState<string | null>(null);
 
   const fetchServices = useCallback(async () => {
-    // MIGRATED (Etapa 1): GET /api/doctor/services → NestJS backend
     const data = await getDoctorServices();
-    setItems(
-      data.map((d) => ({
-        id: d.id,
-        name: d.name,
-        price_usd: d.price_usd,
-        duration_minutes: d.duration_minutes,
-        sessions_count: d.sessions_count,
-        is_active: d.is_active,
-        show_in_booking: d.show_in_booking,
-        description: d.description,
-        type: d.type,
-      })),
-    );
+    setItems(data);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchServices();
+    // Cargar servicios y consultorios en paralelo
+    Promise.all([fetchServices(), fetchOffices().then(setOffices)]);
   }, [fetchServices]);
-
-  // RONDA 31: addQuickItem/deleteQuickItem removidos en main; el catálogo
-  // doctor_quick_items se reestructurará. ConfirmDialog conserva el kind
-  // 'quick' por si se reactiva más adelante.
 
   function openNew(itemType: 'plan' | 'service' = 'plan') {
     setEditing(null);
@@ -104,10 +97,11 @@ export default function ServicesPage() {
     setDescription('');
     setType(itemType);
     setShowInBooking(true);
+    setSelectedOfficeId(null);
     setShowForm(true);
   }
 
-  function openEdit(item: ServiceItem) {
+  function openEdit(item: DoctorService) {
     setEditing(item);
     setName(item.name);
     setPriceUsd(item.price_usd.toString());
@@ -116,6 +110,7 @@ export default function ServicesPage() {
     setDescription(item.description);
     setType(item.type);
     setShowInBooking(item.show_in_booking);
+    setSelectedOfficeId(item.office_id ?? null);
     setShowForm(true);
   }
 
@@ -130,7 +125,6 @@ export default function ServicesPage() {
       return;
     }
     setSaving(true);
-    // MIGRATED (Etapa 1): POST/PUT /api/doctor/services → NestJS backend
     const payload = {
       name: name.trim(),
       price_usd: parseFloat(priceUsd) || 0,
@@ -139,6 +133,7 @@ export default function ServicesPage() {
       description: description.trim() || null,
       type,
       show_in_booking: showInBooking,
+      office_id: selectedOfficeId ?? null,
     };
 
     let result;
@@ -160,26 +155,36 @@ export default function ServicesPage() {
   function handleDelete(id: string) {
     setConfirmDelete({ id, kind: 'service' });
   }
+
   async function performDeleteService(id: string) {
-    // MIGRATED (Etapa 1): DELETE /api/doctor/services/:id → NestJS backend
     await deleteDoctorService(id);
     setConfirmDelete(null);
     fetchServices();
   }
 
-  async function toggleBooking(item: ServiceItem) {
-    // MIGRATED (Etapa 1): PUT /api/doctor/services/:id → NestJS backend
+  async function toggleBooking(item: DoctorService) {
     await toggleDoctorService(item.id, 'show_in_booking', !item.show_in_booking);
     fetchServices();
   }
 
-  async function toggleActive(item: ServiceItem) {
-    // MIGRATED (Etapa 1): PUT /api/doctor/services/:id → NestJS backend
+  async function toggleActive(item: DoctorService) {
     await toggleDoctorService(item.id, 'is_active', !item.is_active);
     fetchServices();
   }
 
-  const filtered = items.filter((i) => filter === 'all' || i.type === filter);
+  // Helper: resolve office name for a given office_id
+  function officeName(officeId: string | null): string {
+    if (!officeId) return 'General';
+    return offices.find((o) => o.id === officeId)?.name ?? 'General';
+  }
+
+  const filtered = items.filter((i) => {
+    const matchType = filter === 'all' || i.type === filter;
+    const matchOffice =
+      officeFilter === 'all' ||
+      (officeFilter === 'general' ? !i.office_id : i.office_id === officeFilter);
+    return matchType && matchOffice;
+  });
 
   if (loading) {
     return (
@@ -255,25 +260,49 @@ export default function ServicesPage() {
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5 w-fit">
-        {[
-          { key: 'all', label: 'Todos' },
-          { key: 'plan', label: 'Planes' },
-          { key: 'service', label: 'Servicios' },
-        ].map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key as any)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              filter === f.key
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      {/* Filters row */}
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-wrap">
+        {/* Type filter */}
+        <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5 w-fit">
+          {[
+            { key: 'all', label: 'Todos' },
+            { key: 'plan', label: 'Planes' },
+            { key: 'service', label: 'Servicios' },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key as 'all' | 'plan' | 'service')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                filter === f.key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Office filter — solo si hay consultorios */}
+        {offices.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+            <select
+              value={officeFilter}
+              onChange={(e) => setOfficeFilter(e.target.value)}
+              className="border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-teal-400 bg-white text-slate-700"
+              aria-label="Filtrar por consultorio"
+            >
+              <option value="all">Todos los consultorios</option>
+              <option value="general">General</option>
+              {offices.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Items list */}
@@ -287,125 +316,144 @@ export default function ServicesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((item) => (
-            <div
-              key={item.id}
-              className={`bg-white border rounded-xl p-5 transition-all ${item.is_active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                        item.type === 'plan'
-                          ? 'bg-teal-50 text-teal-600 border border-teal-200'
-                          : 'bg-purple-50 text-purple-600 border border-purple-200'
-                      }`}
-                    >
-                      {item.type === 'plan' ? 'Plan' : 'Servicio'}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-900 mt-2">{item.name}</h3>
-                  {item.description && (
-                    <p className="text-xs text-slate-400 mt-1 line-clamp-2">{item.description}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* L4 (2026-04-29): cuando es paquete (sessions_count > 1) mostramos
-                  desglose precio unitario × sesiones = total para que quede claro
-                  que el paciente paga el total, no solo el precio unitario. */}
-              <div className="mb-3">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-xl font-bold text-teal-600">
-                    ${item.price_usd.toFixed(2)}
-                  </span>
-                  <span className="text-xs text-slate-400">USD</span>
-                  {item.sessions_count > 1 && (
-                    <span className="text-xs text-slate-500 ml-1">
-                      × {item.sessions_count} ={' '}
-                      <span className="font-semibold text-slate-700">
-                        ${(item.price_usd * item.sessions_count).toFixed(2)}
+          {filtered.map((item) => {
+            const officeLabel = officeName(item.office_id);
+            const isGeneral = !item.office_id;
+            return (
+              <div
+                key={item.id}
+                className={`bg-white border rounded-xl p-5 transition-all ${item.is_active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Tipo badge */}
+                      <span
+                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                          item.type === 'plan'
+                            ? 'bg-teal-50 text-teal-600 border border-teal-200'
+                            : 'bg-purple-50 text-purple-600 border border-purple-200'
+                        }`}
+                      >
+                        {item.type === 'plan' ? 'Plan' : 'Servicio'}
                       </span>
-                    </span>
-                  )}
-                </div>
-                {bcvRate && (
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {item.sessions_count > 1
-                      ? `Total: ${toBs(item.price_usd * item.sessions_count)}`
-                      : toBs(item.price_usd)}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {item.duration_minutes} min
-                </div>
-                {item.sessions_count > 1 && (
-                  <div className="flex items-center gap-1">
-                    <Tag className="w-3 h-3" />
-                    {item.sessions_count} sesiones — $
-                    {(item.price_usd * item.sessions_count).toFixed(2)} total
+                      {/* Consultorio badge */}
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          isGeneral
+                            ? 'bg-slate-100 text-slate-500 border border-slate-200'
+                            : 'bg-blue-50 text-blue-600 border border-blue-200'
+                        }`}
+                        title={
+                          isGeneral
+                            ? 'Disponible en todos los consultorios'
+                            : `Asignado a: ${officeLabel}`
+                        }
+                      >
+                        <Building2 className="w-2.5 h-2.5" />
+                        {officeLabel}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900 mt-2">{item.name}</h3>
+                    {item.description && (
+                      <p className="text-xs text-slate-400 mt-1 line-clamp-2">{item.description}</p>
+                    )}
                   </div>
-                )}
-              </div>
-
-              {/* Booking toggle */}
-              <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-slate-50 border border-slate-100 mb-3">
-                <div className="flex items-center gap-2">
-                  {item.show_in_booking ? (
-                    <Eye className="w-3.5 h-3.5 text-teal-500" />
-                  ) : (
-                    <EyeOff className="w-3.5 h-3.5 text-slate-400" />
-                  )}
-                  <span className="text-xs font-medium text-slate-600">Visible en booking</span>
                 </div>
-                <button onClick={() => toggleBooking(item)}>
-                  {item.show_in_booking ? (
-                    <ToggleRight className="w-5 h-5 text-teal-500" />
-                  ) : (
-                    <ToggleLeft className="w-5 h-5 text-slate-300" />
-                  )}
-                </button>
-              </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                <button
-                  onClick={() => toggleActive(item)}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                    item.is_active
-                      ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
-                      : 'text-slate-400 bg-slate-50 hover:bg-slate-100'
-                  }`}
-                >
-                  {item.is_active ? 'Activo' : 'Inactivo'}
-                </button>
-                <div className="flex-1" />
-                <button
-                  onClick={() => openEdit(item)}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="mb-3">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-bold text-teal-600">
+                      ${item.price_usd.toFixed(2)}
+                    </span>
+                    <span className="text-xs text-slate-400">USD</span>
+                    {item.sessions_count > 1 && (
+                      <span className="text-xs text-slate-500 ml-1">
+                        × {item.sessions_count} ={' '}
+                        <span className="font-semibold text-slate-700">
+                          ${(item.price_usd * item.sessions_count).toFixed(2)}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  {bcvRate && (
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {item.sessions_count > 1
+                        ? `Total: ${toBs(item.price_usd * item.sessions_count)}`
+                        : toBs(item.price_usd)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {item.duration_minutes} min
+                  </div>
+                  {item.sessions_count > 1 && (
+                    <div className="flex items-center gap-1">
+                      <Tag className="w-3 h-3" />
+                      {item.sessions_count} sesiones — $
+                      {(item.price_usd * item.sessions_count).toFixed(2)} total
+                    </div>
+                  )}
+                </div>
+
+                {/* Booking toggle */}
+                <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-slate-50 border border-slate-100 mb-3">
+                  <div className="flex items-center gap-2">
+                    {item.show_in_booking ? (
+                      <Eye className="w-3.5 h-3.5 text-teal-500" />
+                    ) : (
+                      <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                    <span className="text-xs font-medium text-slate-600">Visible en booking</span>
+                  </div>
+                  <button
+                    onClick={() => toggleBooking(item)}
+                    aria-label="Alternar visibilidad en booking"
+                  >
+                    {item.show_in_booking ? (
+                      <ToggleRight className="w-5 h-5 text-teal-500" />
+                    ) : (
+                      <ToggleLeft className="w-5 h-5 text-slate-300" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => toggleActive(item)}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                      item.is_active
+                        ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                        : 'text-slate-400 bg-slate-50 hover:bg-slate-100'
+                    }`}
+                  >
+                    {item.is_active ? 'Activo' : 'Inactivo'}
+                  </button>
+                  <div className="flex-1" />
+                  <button
+                    onClick={() => openEdit(item)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label="Editar servicio"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                    aria-label="Eliminar servicio"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-
-      {/* RONDA 31: secciones de Prescripciones (examenes frecuentes) y Recetas (medicamentos
-          frecuentes) removidas. Esa logica se va a reestructurar. La data en BD
-          (tabla doctor_quick_items) se mantiene intacta por si se reactiva en el futuro. */}
 
       {/* Form modal */}
       {showForm && (
@@ -421,7 +469,11 @@ export default function ServicesPage() {
               <h3 className="text-base font-bold text-slate-900">
                 {editing ? 'Editar' : 'Nuevo'} {type === 'plan' ? 'plan de consulta' : 'servicio'}
               </h3>
-              <button onClick={closeForm} className="p-1.5 rounded-lg hover:bg-slate-100">
+              <button
+                onClick={closeForm}
+                className="p-1.5 rounded-lg hover:bg-slate-100"
+                aria-label="Cerrar"
+              >
                 <X className="w-4 h-4 text-slate-400" />
               </button>
             </div>
@@ -438,7 +490,7 @@ export default function ServicesPage() {
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => setType(opt.value as any)}
+                      onClick={() => setType(opt.value as 'plan' | 'service')}
                       className={`p-3 rounded-xl border-2 text-left transition-all ${
                         type === opt.value
                           ? 'border-teal-400 bg-teal-50/50'
@@ -454,6 +506,42 @@ export default function ServicesPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Office selector */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5" />
+                    Consultorio
+                  </span>
+                </label>
+                {offices.length === 0 ? (
+                  <div className="px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-400">
+                    No tienes consultorios configurados —{' '}
+                    <a href="/doctor/offices" className="text-teal-600 font-semibold underline">
+                      Agregar consultorio
+                    </a>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedOfficeId ?? ''}
+                    onChange={(e) => setSelectedOfficeId(e.target.value || null)}
+                    className={inp}
+                    aria-label="Seleccionar consultorio"
+                  >
+                    <option value="">General (todos los consultorios)</option>
+                    {offices.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <p className="text-[10px] text-slate-400 mt-1">
+                  &quot;General&quot; aparece en todos los consultorios. Elige uno para restringirlo
+                  a ese espacio.
+                </p>
               </div>
 
               <div>
@@ -519,8 +607,6 @@ export default function ServicesPage() {
                   <p className="text-[10px] text-slate-400 mt-1">
                     Si es un paquete, pon el número de sesiones que incluye
                   </p>
-                  {/* L4 (2026-04-29): preview del total del paquete en tiempo real
-                      cuando hay >1 sesion. Asi el doctor ve cuanto cobrara en total. */}
                   {(() => {
                     const p = parseFloat(priceUsd) || 0;
                     const s = parseInt(sessionsCount) || 1;
@@ -563,7 +649,11 @@ export default function ServicesPage() {
                     Los pacientes podrán seleccionarlo al agendar
                   </p>
                 </div>
-                <button type="button" onClick={() => setShowInBooking(!showInBooking)}>
+                <button
+                  type="button"
+                  onClick={() => setShowInBooking(!showInBooking)}
+                  aria-label="Alternar visibilidad en booking"
+                >
                   {showInBooking ? (
                     <ToggleRight className="w-6 h-6 text-teal-500" />
                   ) : (
