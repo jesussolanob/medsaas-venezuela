@@ -7,36 +7,48 @@
 import { backendGet } from '@/lib/api-client.server';
 import UpgradeClient from './UpgradeClient';
 
-interface BackendPlanFeature {
+// Public plan catalog (GET /api/plans) — doctor-accessible, snake_case, only
+// active plans, no internal fields. Active prices only.
+interface CatalogPlanFeature {
   feature_key: string;
   feature_label: string;
   enabled: boolean;
 }
 
-interface BackendPlanPrice {
+interface CatalogPlanPrice {
   period: string;
   price_usd: number;
-  is_active: boolean;
 }
 
-interface BackendPlan {
+interface CatalogPlan {
   plan_key: string;
   name: string;
-  is_active: boolean;
   is_permanent: boolean;
   sort_order: number;
-  features: BackendPlanFeature[];
-  prices: BackendPlanPrice[];
+  features: CatalogPlanFeature[];
+  prices: CatalogPlanPrice[];
 }
 
 export default async function UpgradePage() {
-  const result = await backendGet<BackendPlan[]>('/api/admin/plans');
+  const result = await backendGet<CatalogPlan[]>('/api/plans?role=doctor');
   const allPlans = result.ok && Array.isArray(result.value) ? result.value : [];
 
-  // Only show active, non-permanent plans (i.e. paid plans the doctor can upgrade to)
-  const upgradePlans = allPlans
-    .filter((p) => p.is_active)
-    .sort((a, b) => a.sort_order - b.sort_order);
+  // The catalog already returns only active plans; map to the client shape.
+  const upgradePlans = [...allPlans]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((p) => ({
+      plan_key: p.plan_key,
+      name: p.name,
+      is_active: true,
+      is_permanent: p.is_permanent,
+      sort_order: p.sort_order,
+      features: p.features ?? [],
+      prices: (p.prices ?? []).map((pr) => ({
+        period: pr.period as 'monthly' | 'quarterly' | 'semiannual' | 'annual',
+        price_usd: pr.price_usd,
+        is_active: true,
+      })),
+    }));
 
   return <UpgradeClient plans={upgradePlans} />;
 }
