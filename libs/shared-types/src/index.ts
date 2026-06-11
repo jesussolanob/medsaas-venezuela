@@ -44,5 +44,5 @@ export * from './dtos/attach-payment-receipt.dto';
 export * from './dtos/create-quick-item.dto';
 export * from './dtos/doctor-registration.dto';
 export * from './dtos/create-availability-block.dto';
-export * from './dtos/telemetry-batch.dto';
+export * from './dtos/telemetry-session.dto';
 export * from './dtos/specialties.dto';

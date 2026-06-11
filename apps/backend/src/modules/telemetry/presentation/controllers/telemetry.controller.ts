@@ -8,17 +8,17 @@ import {
 } from '../../../../presentation/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import {
-  IngestTelemetryBatchDtoSchema,
-  QueryDoctorEventsDtoSchema,
-  type IngestTelemetryBatchDto,
-  type QueryDoctorEventsDto,
+  UpsertTelemetrySessionDtoSchema,
+  QueryTelemetrySessionsDtoSchema,
+  type UpsertTelemetrySessionDto,
+  type QueryTelemetrySessionsDto,
 } from '@delta/shared-types';
-import { IngestEventsBatchUseCase } from '../../application/use-cases/telemetry/ingest-events-batch.use-case';
-import { QueryDoctorEventsUseCase } from '../../application/use-cases/telemetry/query-doctor-events.use-case';
+import { UpsertTelemetrySessionUseCase } from '../../application/use-cases/telemetry/upsert-telemetry-session.use-case';
+import { QueryTelemetrySessionsUseCase } from '../../application/use-cases/telemetry/query-telemetry-sessions.use-case';
 import {
-  type AdminActionEventDto,
-  toAdminActionEventDto,
-} from '../../application/dtos/action-event-admin.dto';
+  type AdminTelemetrySessionDto,
+  toAdminTelemetrySessionDto,
+} from '../../application/dtos/telemetry-session-admin.dto';
 
 interface SuccessResponse<T> {
   success: true;
@@ -36,66 +36,75 @@ interface PaginatedResponse<T> {
  *
  * Global prefix 'api' is set in main.ts — do NOT repeat it here.
  *
- * POST /api/telemetry/batch
- *   Doctor-authenticated. Ingests a batch of UI events (max 200).
- *   Returns { inserted, rejected } — partial insertion on PII violations.
+ * POST /api/telemetry/session
+ *   Doctor-authenticated. Upserts a session by session_id:
+ *     - creates on first call;
+ *     - appends journey steps on subsequent calls.
+ *   Returns { session_id, appended, rejected, event_count }.
  *
- * GET /api/telemetry/doctor
- *   Requires super_admin role. Returns paginated events for a given doctor.
- *   Used by support/analytics — no PII by design.
+ * GET /api/telemetry/sessions
+ *   Requires super_admin role. Returns paginated sessions including
+ *   full journey JSONB for audit purposes.
  */
 @Controller('telemetry')
 @UseGuards(DevAuthGuard)
 export class TelemetryController {
   constructor(
-    private readonly ingestBatch: IngestEventsBatchUseCase,
-    private readonly queryEvents: QueryDoctorEventsUseCase,
+    private readonly upsertSession: UpsertTelemetrySessionUseCase,
+    private readonly querySessions: QueryTelemetrySessionsUseCase,
   ) {}
 
   /**
-   * POST /api/telemetry/batch
+   * POST /api/telemetry/session
    *
-   * Accepts a batch of UI action events from the authenticated doctor.
+   * Accepts a partial journey from the authenticated doctor.
    * doctorId is extracted from the auth token — never from the body (anti-IDOR).
-   * Restricted to `doctor` role — admins and patients must not inject events.
+   * Restricted to `doctor` role.
    *
    * Returns:
-   *   { inserted: number, rejected: number }
-   *   where `rejected` counts events silently discarded due to PII detection
-   *   or format validation failures.
+   *   { session_id, appended, rejected, event_count }
+   *   where `rejected` counts events discarded due to PII detection
+   *   or format validation failures, or because the journey is full.
    */
-  @Post('batch')
+  @Post('session')
   @UseGuards(RolesGuard)
   @Roles('doctor')
-  async ingestEventsBatch(
-    @Body(new ZodValidationPipe(IngestTelemetryBatchDtoSchema))
-    dto: IngestTelemetryBatchDto,
+  async upsertTelemetrySession(
+    @Body(new ZodValidationPipe(UpsertTelemetrySessionDtoSchema))
+    dto: UpsertTelemetrySessionDto,
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<{ inserted: number; rejected: number }>> {
-    const result = await this.ingestBatch.execute({
+  ): Promise<
+    SuccessResponse<{
+      session_id: string;
+      appended: number;
+      rejected: number;
+      event_count: number;
+    }>
+  > {
+    const result = await this.upsertSession.execute({
       doctorId: user.sub,
-      events: dto.events,
+      dto,
     });
     return { success: true, data: result };
   }
 
   /**
-   * GET /api/telemetry/doctor?doctorId=&from=&to=&limit=&offset=
+   * GET /api/telemetry/sessions?doctorId=&from=&to=&limit=&offset=
    *
-   * Returns paginated action events for the specified doctor.
-   * Restricted to super_admin — intended for support and analytics.
+   * Returns paginated telemetry sessions with full journey JSONB.
+   * Restricted to super_admin — intended for audit and support.
    */
-  @Get('doctor')
+  @Get('sessions')
   @UseGuards(RolesGuard)
   @Roles('super_admin')
-  async getDoctorEvents(
-    @Query(new ZodValidationPipe(QueryDoctorEventsDtoSchema))
-    query: QueryDoctorEventsDto,
-  ): Promise<PaginatedResponse<AdminActionEventDto>> {
-    const result = await this.queryEvents.execute(query);
+  async getTelemetrySessions(
+    @Query(new ZodValidationPipe(QueryTelemetrySessionsDtoSchema))
+    query: QueryTelemetrySessionsDto,
+  ): Promise<PaginatedResponse<AdminTelemetrySessionDto>> {
+    const result = await this.querySessions.execute(query);
     return {
       success: true,
-      data: result.items.map(toAdminActionEventDto),
+      data: result.items.map(toAdminTelemetrySessionDto),
       meta: {
         total: result.total,
         limit: result.limit,
