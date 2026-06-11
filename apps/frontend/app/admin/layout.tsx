@@ -24,6 +24,7 @@ import {
   Pin,
   X,
   Shield,
+  Package,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
@@ -54,6 +55,7 @@ const navItems: AdminNavItem[] = [
     icon: CreditCard,
     moduleKey: 'subscriptions',
   },
+  { name: 'Planes', href: '/admin/plans', icon: Package },
   { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
   {
     name: 'Sugerencias',

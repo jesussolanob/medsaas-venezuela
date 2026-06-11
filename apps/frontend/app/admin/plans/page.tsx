@@ -1,234 +1,59 @@
-'use client';
+/**
+ * /admin/plans — Editor completo de planes de suscripción (super_admin).
+ *
+ * ETAPA 1 — server component que precarga la lista de planes desde el backend NestJS
+ * (GET /api/admin/plans) y los pasa al client component PlansAdminClient.
+ */
+import { backendGet } from '@/lib/api-client.server';
+import PlansAdminClient from './PlansAdminClient';
 
-import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, Shield, Users, Settings } from 'lucide-react';
-import { reportError } from '@/lib/report-error';
+interface BackendPlanFeature {
+  feature_key: string;
+  feature_label: string;
+  enabled: boolean;
+}
 
-type PlanConfig = {
-  id: string;
+interface BackendPlanPrice {
+  period: string;
+  price_usd: number;
+  is_active: boolean;
+}
+
+interface BackendPlan {
   plan_key: string;
   name: string;
-  price: number;
-  currency: string;
-  trial_days: number;
-  description: string | null;
+  role_key: string;
   is_active: boolean;
+  is_permanent: boolean;
   sort_order: number;
-};
+  description: string | null;
+  price_usd: number;
+  trial_days: number;
+  features: BackendPlanFeature[];
+  prices: BackendPlanPrice[];
+}
 
-export default function PlansPage() {
-  const [plans, setPlans] = useState<PlanConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+export default async function PlansPage() {
+  // Fetch using super_admin identity override for the server component context.
+  const result = await backendGet<BackendPlan[]>('/api/admin/plans', {
+    role: 'super_admin',
+  });
 
-  useEffect(() => {
-    loadPlans();
-  }, []);
+  const plans = result.ok && Array.isArray(result.value) ? result.value : [];
 
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
-
-  async function loadPlans() {
-    try {
-      const res = await fetch('/api/admin/plans', { cache: 'no-store' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Error cargando planes');
-      setPlans((json.data ?? []) as PlanConfig[]);
-    } catch (e) {
-      reportError('admin/plans', 'loadPlans', e);
-      setToast({ type: 'error', msg: 'Error cargando planes' });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Find the trial/beta plan
-  const betaPlan = plans.find((p) => p.plan_key === 'trial') || plans[0];
-
-  async function updateBetaPlan(field: string, value: string | number | null) {
-    if (!betaPlan) return;
-    setSaving(true);
-    try {
-      const res = await fetch('/api/admin/plans', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: betaPlan.plan_key, [field]: value }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Error actualizando configuración');
-      setPlans((prev) => prev.map((p) => (p.id === betaPlan.id ? { ...p, [field]: value } : p)));
-      setToast({ type: 'success', msg: 'Configuración guardada' });
-    } catch {
-      setToast({ type: 'error', msg: 'Error actualizando configuración' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-      </div>
-    );
-  }
-
-  const totalPlans = plans.length;
-  const activePlans = plans.filter((p) => p.is_active).length;
-
-  return (
-    <div className="max-w-2xl space-y-6">
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
-        >
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4" />
-          ) : (
-            <AlertCircle className="w-4 h-4" />
-          )}
-          {toast.msg}
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 p-5 text-white">
-        <div className="flex items-center gap-3 mb-2">
-          <Shield className="w-6 h-6" />
-          <h2 className="text-lg font-bold">Plan profesional</h2>
-        </div>
-        <p className="text-sm text-white/70">
-          Configurá los parámetros del período de prueba que reciben los médicos al registrarse.
-        </p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Settings className="w-4 h-4 text-slate-400" />
-            <span className="text-xs text-slate-500 font-medium">Plan actual</span>
-          </div>
-          <p className="text-lg font-bold text-slate-900">Período de prueba (Gratis)</p>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Users className="w-4 h-4 text-teal-500" />
-            <span className="text-xs text-slate-500 font-medium">Planes en sistema</span>
-          </div>
-          <p className="text-lg font-bold text-slate-900">
-            {activePlans} activo{activePlans !== 1 ? 's' : ''} / {totalPlans} total
-          </p>
-        </div>
-      </div>
-
-      {/* Beta Plan Config */}
-      {betaPlan && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Configuración del Beta</h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Ajusta los parámetros del periodo de prueba
-              </p>
-            </div>
-            <span
-              className={`text-xs font-bold px-2.5 py-1 rounded-full ${betaPlan.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
-            >
-              {betaPlan.is_active ? 'Activo' : 'Inactivo'}
-            </span>
-          </div>
-
-          <div className="px-5 py-5 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Días de trial para nuevos registros
-              </label>
-              <input
-                type="number"
-                value={betaPlan.trial_days}
-                onChange={(e) =>
-                  setPlans((prev) =>
-                    prev.map((p) =>
-                      p.id === betaPlan.id
-                        ? { ...p, trial_days: parseInt(e.target.value) || 0 }
-                        : p,
-                    ),
-                  )
-                }
-                onBlur={(e) => updateBetaPlan('trial_days', parseInt(e.target.value) || 0)}
-                className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">
-                Los médicos tienen este número de días de prueba antes de que su cuenta sea
-                suspendida o aprobada manualmente.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Descripción del plan
-              </label>
-              <textarea
-                value={betaPlan.description || ''}
-                onChange={(e) =>
-                  setPlans((prev) =>
-                    prev.map((p) =>
-                      p.id === betaPlan.id ? { ...p, description: e.target.value } : p,
-                    ),
-                  )
-                }
-                onBlur={(e) => updateBetaPlan('description', e.target.value || null)}
-                rows={2}
-                className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 resize-none"
-                placeholder="Acceso completo a todas las funciones durante el período de prueba..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Precio (USD)
-              </label>
-              <input
-                type="number"
-                value={betaPlan.price}
-                onChange={(e) =>
-                  setPlans((prev) =>
-                    prev.map((p) =>
-                      p.id === betaPlan.id ? { ...p, price: parseFloat(e.target.value) || 0 } : p,
-                    ),
-                  )
-                }
-                onBlur={(e) => updateBetaPlan('price', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">
-                Durante el período de prueba el precio es $0. Cámbialo cuando lances los planes de
-                pago.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Info card */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <p className="text-sm text-blue-800 font-medium mb-1">
-          ¿Cómo funciona el período de prueba?
-        </p>
-        <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-          <li>El médico se registra en /register y recibe un periodo trial</li>
-          <li>Aparece en Aprobaciones con estado "Trial"</li>
-          <li>El admin aprueba y activa su cuenta por 1 año</li>
-          <li>El médico accede a todas las funciones sin costo</li>
-        </ol>
-      </div>
-    </div>
+  // Sort by sort_order then name.
+  const sorted = [...plans].sort(
+    (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
   );
+
+  // Cast periods to the union type the client expects
+  const typedPlans = sorted.map((p) => ({
+    ...p,
+    prices: p.prices.map((pr) => ({
+      ...pr,
+      period: pr.period as 'monthly' | 'quarterly' | 'semiannual' | 'annual',
+    })),
+  }));
+
+  return <PlansAdminClient initialPlans={typedPlans} />;
 }

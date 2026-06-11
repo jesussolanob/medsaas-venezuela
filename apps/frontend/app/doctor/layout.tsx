@@ -8,7 +8,7 @@
  */
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard,
@@ -34,6 +34,7 @@ import {
   Megaphone,
   Search,
   CheckCircle,
+  Lock,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
@@ -43,6 +44,8 @@ import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
 import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
+import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
+import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 type NavSection = { key: string; label: string; icon: React.ElementType; items: NavItem[] };
@@ -98,17 +101,28 @@ function isPathActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + '/');
 }
 
-/** Returns true if the item should be visible given current capabilities. */
+/** Returns true if the item should be visible given current capabilities (RBAC). */
 function isItemVisible(item: NavItem, caps: Capabilities | null): boolean {
   if (caps === null) return true; // still loading — show all to avoid flash-of-empty
   if (!item.moduleKey) return true; // ungated items always visible
   return can(caps, item.moduleKey, 'view');
 }
 
+/**
+ * Returns true if the item's feature is unlocked by the current plan.
+ * Items without moduleKey are always accessible.
+ * While plan features are loading (null), treat as accessible to avoid flash-of-locked.
+ */
+function isPlanUnlocked(item: NavItem, planFeatures: PlanFeatures | null): boolean {
+  return planUnlocks(planFeatures, item.moduleKey);
+}
+
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
 
   const [pinned, setPinned] = useState(true);
   const [hovered, setHovered] = useState(false);
@@ -124,6 +138,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     getMyCapabilities()
       .then(setCaps)
       .catch(() => setCaps(EMPTY_CAPABILITIES));
+    getDoctorPlanFeatures()
+      .then(setPlanFeatures)
+      .catch(() => setPlanFeatures(EMPTY_PLAN_FEATURES));
   }, []);
 
   const togglePin = useCallback(() => {
@@ -267,6 +284,30 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                 .filter((item) => isItemVisible(item, caps))
                 .map((item) => {
                   const active = isPathActive(pathname, item.href);
+                  const locked = !isPlanUnlocked(item, planFeatures);
+                  if (locked) {
+                    return (
+                      <button
+                        key={item.href}
+                        type="button"
+                        onClick={() => {
+                          setMobileOpen(false);
+                          router.push('/doctor/upgrade');
+                        }}
+                        title="Mejora tu plan para acceder"
+                        className="w-full flex items-center gap-3 px-3.5 py-2.5 text-sm transition-all"
+                        style={{
+                          borderRadius: 'var(--dh-r-md)',
+                          color: 'var(--dh-gray-300)',
+                          fontWeight: 500,
+                        }}
+                      >
+                        <item.icon className="w-[18px] h-[18px] shrink-0 opacity-40" />
+                        <span className="flex-1 text-left opacity-60">{item.name}</span>
+                        <Lock className="w-3 h-3 opacity-40 shrink-0" />
+                      </button>
+                    );
+                  }
                   return (
                     <Link
                       key={item.href}
@@ -335,6 +376,33 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                     <div className="pl-3 mt-0.5 space-y-0.5">
                       {visibleItems.map((item) => {
                         const active = isPathActive(pathname, item.href);
+                        const locked = !isPlanUnlocked(item, planFeatures);
+                        if (locked) {
+                          return (
+                            <button
+                              key={item.href}
+                              type="button"
+                              onClick={() => {
+                                setMobileOpen(false);
+                                router.push('/doctor/upgrade');
+                              }}
+                              title="Mejora tu plan para acceder"
+                              className="w-full flex items-center gap-3 px-3.5 py-2 text-[13px] transition-all"
+                              style={{
+                                borderRadius: 'var(--dh-r-md)',
+                                color: 'var(--dh-gray-200)',
+                                fontWeight: 500,
+                              }}
+                            >
+                              <item.icon
+                                className="w-3.5 h-3.5 shrink-0 opacity-30"
+                                style={{ color: 'var(--dh-gray-200)' }}
+                              />
+                              <span className="flex-1 text-left opacity-50">{item.name}</span>
+                              <Lock className="w-3 h-3 opacity-30 shrink-0" />
+                            </button>
+                          );
+                        }
                         return (
                           <Link
                             key={item.href}
@@ -378,14 +446,29 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                 borderRadius: 'var(--dh-r-md)',
               }}
             >
-              <div className="flex items-center gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5" style={{ color: 'var(--dh-turquoise-700)' }} />
-                <p className="text-xs font-bold" style={{ color: 'var(--dh-turquoise-700)' }}>
-                  Plan activo
-                </p>
+              <div className="flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle
+                    className="w-3.5 h-3.5 shrink-0"
+                    style={{ color: 'var(--dh-turquoise-700)' }}
+                  />
+                  <p className="text-xs font-bold" style={{ color: 'var(--dh-turquoise-700)' }}>
+                    {planFeatures?.effective_plan_key ?? 'Plan activo'}
+                  </p>
+                </div>
+                {planFeatures && planFeatures.effective_plan_key !== 'delta_plus' && (
+                  <Link
+                    href="/doctor/upgrade"
+                    onClick={() => setMobileOpen(false)}
+                    className="text-[10px] font-semibold underline"
+                    style={{ color: 'var(--dh-turquoise-700)' }}
+                  >
+                    Mejorar
+                  </Link>
+                )}
               </div>
               <p className="mt-0.5" style={{ fontSize: 10, color: 'var(--dh-gray-400)' }}>
-                Acceso completo
+                {planFeatures?.is_downgraded ? 'Plan degradado temporalmente' : 'Acceso completo'}
               </p>
             </div>
 
