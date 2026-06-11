@@ -11,6 +11,11 @@ export interface DoctorPublicInfo {
   city: string | null;
   avatarUrl: string | null;
   isActive: boolean | null;
+  /**
+   * How many weeks ahead the booking widget can show available slots.
+   * Sourced from doctor_schedules.booking_horizon_weeks (default 8).
+   */
+  bookingHorizonWeeks?: number;
 }
 
 export interface IBookingDoctorLoader {

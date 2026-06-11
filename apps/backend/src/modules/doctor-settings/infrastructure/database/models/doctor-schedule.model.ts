@@ -48,6 +48,10 @@ export class DoctorScheduleModel extends Model {
   @Column({ type: DataType.STRING(5), allowNull: true, field: 'break_end' })
   declare breakEnd: string | null;
 
+  @Default(8)
+  @Column({ type: DataType.INTEGER, allowNull: false, field: 'booking_horizon_weeks' })
+  declare bookingHorizonWeeks: number;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

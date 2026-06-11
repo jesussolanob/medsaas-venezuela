@@ -258,6 +258,7 @@ describe('DoctorController', () => {
         slotDurationMinutes: 45,
         breakStart: null,
         breakEnd: null,
+        bookingHorizonWeeks: 8,
       });
     });
   });

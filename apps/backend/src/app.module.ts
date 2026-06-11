@@ -38,6 +38,7 @@ import { EmailModule } from './modules/email/email.module';
 import { DoctorRegistrationModule } from './modules/doctor-registration/doctor-registration.module';
 import { PatientIdentitiesModule } from './modules/patient-identities/patient-identities.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { AvailabilityBlocksModule } from './modules/availability-blocks/availability-blocks.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
     DoctorRegistrationModule,
     PatientIdentitiesModule,
     IntegrationsModule,
+    AvailabilityBlocksModule,
   ],
   controllers: [HealthController],
   providers: [

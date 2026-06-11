@@ -148,6 +148,7 @@ export class DoctorController {
       slotDurationMinutes: dto.slot_duration_minutes ?? 30,
       breakStart: dto.break_start ?? null,
       breakEnd: dto.break_end ?? null,
+      bookingHorizonWeeks: dto.booking_horizon_weeks ?? 8,
     });
     return { success: true, data: result };
   }

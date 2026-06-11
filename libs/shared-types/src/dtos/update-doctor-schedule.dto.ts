@@ -13,6 +13,8 @@ export const UpdateDoctorScheduleDtoSchema = z
     slot_duration_minutes: z.number().int().min(10).max(480).default(30),
     break_start: TimeStringSchema.nullable().optional(),
     break_end: TimeStringSchema.nullable().optional(),
+    /** How many weeks ahead booking should show slots. Range 1–52, default 8. */
+    booking_horizon_weeks: z.number().int().min(1).max(52).default(8).optional(),
   })
   .strict();
 

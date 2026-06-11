@@ -26,6 +26,7 @@ export class SequelizeDoctorScheduleRepository implements IDoctorScheduleReposit
       slotDurationMinutes: params.slotDurationMinutes,
       breakStart: params.breakStart,
       breakEnd: params.breakEnd,
+      bookingHorizonWeeks: params.bookingHorizonWeeks ?? 8,
     });
     return this.toDomain(row);
   }
@@ -38,6 +39,7 @@ export class SequelizeDoctorScheduleRepository implements IDoctorScheduleReposit
       slotDurationMinutes: row.slotDurationMinutes,
       breakStart: row.breakStart,
       breakEnd: row.breakEnd,
+      bookingHorizonWeeks: row.bookingHorizonWeeks ?? 8,
     };
   }
 }

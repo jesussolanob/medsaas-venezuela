@@ -11,6 +11,14 @@ import {
   BOOKING_DOCTOR_LOADER,
   type IBookingDoctorLoader,
 } from '../../../domain/repositories/booking-doctor.repository';
+import {
+  AVAILABILITY_BLOCK_REPOSITORY,
+  type IAvailabilityBlockRepository,
+} from '../../../../availability-blocks/domain/repositories/availability-block.repository';
+import {
+  DOCTOR_SCHEDULE_REPOSITORY,
+  type IDoctorScheduleRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
 
 export interface AvailableSlot {
   time: string; // HH:MM
@@ -42,6 +50,12 @@ export interface DoctorSlotsResult {
  *
  * Anti-enumeration: throws DoctorNotFoundError (→ 404) when the doctor does not
  * exist or is inactive, identical to GetBookingDoctorInfoUseCase behaviour.
+ *
+ * Horizon check: dates beyond now + booking_horizon_weeks return empty slots.
+ * Dates before today (UTC) return empty slots.
+ *
+ * Block filtering: slots that fall within any doctor_availability_blocks range
+ * are marked unavailable.
  */
 @Injectable()
 export class GetAvailableSlotsUseCase {
@@ -52,6 +66,10 @@ export class GetAvailableSlotsUseCase {
     private readonly officeRepo: IOfficeRepository,
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointmentRepo: IAppointmentRepository,
+    @Inject(AVAILABILITY_BLOCK_REPOSITORY)
+    private readonly blockRepo: IAvailabilityBlockRepository,
+    @Inject(DOCTOR_SCHEDULE_REPOSITORY)
+    private readonly scheduleRepo: IDoctorScheduleRepository,
   ) {}
 
   async execute(doctorId: string, dateStr: string): Promise<DoctorSlotsResult> {
@@ -61,17 +79,32 @@ export class GetAvailableSlotsUseCase {
       throw new DoctorNotFoundError();
     }
 
-    // 2. Convert the requested date to the offices weekday scheme.
+    // 2. Load booking horizon for this doctor (default 8 weeks)
+    const schedule = await this.scheduleRepo.findByDoctorId(doctorId);
+    const horizonWeeks = schedule?.bookingHorizonWeeks ?? 8;
+
+    // 3. Horizon check — date must be today or later, and within the horizon window
+    const requestedDate = new Date(`${dateStr}T00:00:00.000Z`);
+    const todayUtc = new Date();
+    todayUtc.setUTCHours(0, 0, 0, 0);
+
+    const horizonEnd = new Date(todayUtc);
+    horizonEnd.setUTCDate(horizonEnd.getUTCDate() + horizonWeeks * 7);
+
+    if (requestedDate < todayUtc || requestedDate >= horizonEnd) {
+      return { date: dateStr, slots: [] };
+    }
+
+    // 4. Convert the requested date to the offices weekday scheme.
     //    new Date('YYYY-MMT00:00:00Z').getUTCDay() → 0=Sunday
     //    (getUTCDay() + 6) % 7 → 0=Monday … 6=Sunday
-    const date = new Date(`${dateStr}T00:00:00.000Z`);
-    const jsDay = date.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
+    const jsDay = requestedDate.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
     const officeDay = (jsDay + 6) % 7; // 0=Mon … 6=Sun
 
-    // 3. Load active offices for the doctor
+    // 5. Load active offices for the doctor
     const activeOffices = await this.officeRepo.findActiveByDoctor(doctorId);
 
-    // 4. Generate theoretical time strings from all active offices that have this day enabled
+    // 6. Generate theoretical time strings from all active offices that have this day enabled
     const timeSet = new Set<string>();
 
     for (const office of activeOffices) {
@@ -95,7 +128,7 @@ export class GetAvailableSlotsUseCase {
       return { date: dateStr, slots: [] };
     }
 
-    // 5. Fetch active appointments for the doctor on this day
+    // 7. Fetch active appointments for the doctor on this day
     const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
     const dayEnd = new Date(`${dateStr}T23:59:59.999Z`);
     const occupied = await this.appointmentRepo.findActiveByDoctorAndDateRange(
@@ -109,12 +142,21 @@ export class GetAvailableSlotsUseCase {
       occupied.map((appt: { scheduledAt: Date }) => this.toHHMM(appt.scheduledAt)),
     );
 
-    // 6. Sort times and map to AvailableSlot[]
+    // 8. Load availability blocks overlapping this day
+    const blocks = await this.blockRepo.findOverlapping(doctorId, dayStart, dayEnd);
+
+    // 9. Sort times and map to AvailableSlot[]
     const sortedTimes = Array.from(timeSet).sort();
-    const slots: AvailableSlot[] = sortedTimes.map((time) => ({
-      time,
-      available: !occupiedTimes.has(time),
-    }));
+    const slots: AvailableSlot[] = sortedTimes.map((time) => {
+      // Convert slot time string to a Date in UTC for block overlap check
+      const slotDate = new Date(`${dateStr}T${time}:00.000Z`);
+      const blockedByAvailabilityBlock = blocks.some((b) => b.overlapsSlot(slotDate));
+
+      return {
+        time,
+        available: !occupiedTimes.has(time) && !blockedByAvailabilityBlock,
+      };
+    });
 
     return { date: dateStr, slots };
   }

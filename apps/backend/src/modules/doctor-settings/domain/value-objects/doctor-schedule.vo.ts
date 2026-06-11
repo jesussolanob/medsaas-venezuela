@@ -19,6 +19,8 @@ export interface DoctorScheduleParams {
   slotDurationMinutes: number; // default 30
   breakStart: string | null; // HH:MM or null
   breakEnd: string | null; // HH:MM or null
+  /** How many weeks ahead to show available slots in the booking widget. Range 1–52. */
+  bookingHorizonWeeks?: number; // default 8
 }
 
 /** Default schedule returned when no schedule is configured: Mon–Fri, 08:00–17:00, 30 min. */
@@ -29,6 +31,7 @@ export const DEFAULT_SCHEDULE: DoctorScheduleParams = {
   slotDurationMinutes: 30,
   breakStart: null,
   breakEnd: null,
+  bookingHorizonWeeks: 8,
 };
 
 /** Parse "HH:MM" into total minutes from midnight. */
@@ -53,6 +56,7 @@ export class DoctorSchedule {
   readonly slotDurationMinutes: number;
   readonly breakStart: string | null;
   readonly breakEnd: string | null;
+  readonly bookingHorizonWeeks: number;
 
   constructor(params: DoctorScheduleParams) {
     this.workDays = params.workDays;
@@ -61,6 +65,7 @@ export class DoctorSchedule {
     this.slotDurationMinutes = params.slotDurationMinutes;
     this.breakStart = params.breakStart ?? null;
     this.breakEnd = params.breakEnd ?? null;
+    this.bookingHorizonWeeks = params.bookingHorizonWeeks ?? 8;
   }
 
   /**

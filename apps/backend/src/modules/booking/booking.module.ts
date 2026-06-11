@@ -40,12 +40,21 @@ import { AppointmentChangesLogModel } from '../appointments/infrastructure/datab
 // replacing the legacy doctor_schedules approach.
 import { OfficesModule } from '../offices/offices.module';
 
+// AvailabilityBlocksModule exports AVAILABILITY_BLOCK_REPOSITORY for slot filtering.
+import { AvailabilityBlocksModule } from '../availability-blocks/availability-blocks.module';
+
+// DOCTOR_SCHEDULE_REPOSITORY for horizon check in GetAvailableSlotsUseCase.
+import { DOCTOR_SCHEDULE_REPOSITORY } from '../doctor-settings/domain/repositories/doctor-schedule.repository';
+import { SequelizeDoctorScheduleRepository } from '../doctor-settings/infrastructure/database/repositories/sequelize-doctor-schedule.repository';
+import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/models/doctor-schedule.model';
+
 @Module({
   imports: [
     SequelizeModule.forFeature([
       ProfileModel,
       AppointmentModel,
       AppointmentChangesLogModel,
+      DoctorScheduleModel,
       // Note: OfficeModel is registered inside OfficesModule — do NOT re-register it here.
     ]),
     PackagesModule,
@@ -61,6 +70,8 @@ import { OfficesModule } from '../offices/offices.module';
     // IntegrationsModule provides AppointmentNotificationService (calendar invites
     // + .ics + email) and CreateCalendarEventUseCase for Google Meet / Jitsi fallback.
     IntegrationsModule,
+    // AvailabilityBlocksModule exports AVAILABILITY_BLOCK_REPOSITORY for slot filtering.
+    AvailabilityBlocksModule,
   ],
   controllers: [BookingController],
   providers: [
@@ -74,6 +85,12 @@ import { OfficesModule } from '../offices/offices.module';
     {
       provide: APPOINTMENT_REPOSITORY,
       useClass: SequelizeAppointmentRepository,
+    },
+
+    // Doctor schedule repository binding — used only for horizon check in GetAvailableSlotsUseCase
+    {
+      provide: DOCTOR_SCHEDULE_REPOSITORY,
+      useClass: SequelizeDoctorScheduleRepository,
     },
 
     // Use cases

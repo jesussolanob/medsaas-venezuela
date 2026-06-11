@@ -133,7 +133,7 @@ describe('DoctorSchedule value object', () => {
   });
 
   describe('DoctorSchedule.default()', () => {
-    it('returns Mon–Fri, 08:00–17:00, 30 min default', () => {
+    it('returns Mon–Fri, 08:00–17:00, 30 min, 8 weeks horizon default', () => {
       const schedule = DoctorSchedule.default();
 
       expect(schedule.workDays).toEqual([1, 2, 3, 4, 5]);
@@ -142,6 +142,38 @@ describe('DoctorSchedule value object', () => {
       expect(schedule.slotDurationMinutes).toBe(30);
       expect(schedule.breakStart).toBeNull();
       expect(schedule.breakEnd).toBeNull();
+      expect(schedule.bookingHorizonWeeks).toBe(8);
+    });
+  });
+
+  describe('bookingHorizonWeeks', () => {
+    it('stores configured horizon weeks', () => {
+      const schedule = DoctorSchedule.create({
+        workDays: [1],
+        startTime: '08:00',
+        endTime: '17:00',
+        slotDurationMinutes: 30,
+        breakStart: null,
+        breakEnd: null,
+        bookingHorizonWeeks: 4,
+      });
+
+      expect(schedule.bookingHorizonWeeks).toBe(4);
+    });
+
+    it('defaults to 8 when bookingHorizonWeeks is not provided', () => {
+      // Cast to test backward compat
+      const schedule = DoctorSchedule.create({
+        workDays: [1],
+        startTime: '08:00',
+        endTime: '17:00',
+        slotDurationMinutes: 30,
+        breakStart: null,
+        breakEnd: null,
+        bookingHorizonWeeks: undefined as unknown as number,
+      });
+
+      expect(schedule.bookingHorizonWeeks).toBe(8);
     });
   });
 });
