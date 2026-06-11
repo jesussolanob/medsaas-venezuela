@@ -46,6 +46,7 @@ import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
 import { checkOnboardingComplete } from './actions';
+import TelemetryProvider from '@/components/telemetry/TelemetryProvider';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 type NavSection = { key: string; label: string; icon: React.ElementType; items: NavItem[] };
@@ -217,6 +218,15 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   };
 
   async function handleLogout() {
+    // Flush telemetry and mark the session as ended before clearing auth.
+    // A microtask gap gives sendBeacon a chance to queue the request before
+    // the page navigates away.
+    try {
+      window.dispatchEvent(new Event('delta:telemetry-end'));
+      await Promise.resolve(); // yield to microtask queue
+    } catch {
+      // Intentionally swallowed: telemetry flush must not block logout.
+    }
     // ETAPA 1 dev-stub: logoutAction clears dev-auth cookies server-side.
     // ETAPA 2: will call Auth0 /v2/logout instead.
     await logoutAction();
@@ -244,6 +254,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
   return (
     <>
+      <TelemetryProvider />
       <Toaster />
       <style>{`
         .doctor-shell { font-family: var(--dh-font-body); color: var(--dh-ink); }
