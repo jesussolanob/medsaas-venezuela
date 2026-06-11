@@ -7,6 +7,7 @@ import {
   type IPatientRepository,
 } from '../../../domain/repositories/patient.repository';
 import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
+import { ResolvePatientIdentityUseCase } from '../../../../patient-identities/application/use-cases/resolve-patient-identity.use-case';
 
 export interface CreatePatientInput {
   doctorId: string;
@@ -35,6 +36,7 @@ export class CreatePatientUseCase {
     @Inject(PATIENT_REPOSITORY)
     private readonly patientRepo: IPatientRepository,
     private readonly crypto: CryptoService,
+    private readonly resolveIdentity: ResolvePatientIdentityUseCase,
   ) {}
 
   async execute(input: CreatePatientInput): Promise<Patient> {
@@ -47,6 +49,9 @@ export class CreatePatientUseCase {
       }
     }
 
+    // Resolve global identity (transparent — only sets identity_id internally)
+    const identityId = await this.resolveIdentity.execute(input.cedula);
+
     const now = new Date();
     const patient = Patient.create({
       id: randomUUID(),
@@ -56,6 +61,7 @@ export class CreatePatientUseCase {
       cedula: input.cedula ?? null,
       phone: input.phone ?? null,
       email: input.email ?? null,
+      identityId,
       source: input.source ?? null,
       birthDate: input.birthDate ?? null,
       age: input.age ?? null,

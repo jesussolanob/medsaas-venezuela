@@ -24,6 +24,8 @@ import { PackagesModule } from '../packages/packages.module';
 import { PatientsModule } from '../patients/patients.module';
 // FinancesModule exports PAYMENT_REPOSITORY for CreateBookingUseCase.
 import { FinancesModule } from '../finances/finances.module';
+// PatientIdentitiesModule exports ResolvePatientIdentityUseCase (internal analytics only).
+import { PatientIdentitiesModule } from '../patient-identities/patient-identities.module';
 
 // APPOINTMENT_REPOSITORY binding for CreateBookingUseCase + GetAvailableSlotsUseCase.
 import { APPOINTMENT_REPOSITORY } from '../appointments/domain/repositories/appointment.repository';
@@ -51,6 +53,9 @@ import { OfficesModule } from '../offices/offices.module';
     FinancesModule,
     // OfficesModule exports OFFICE_REPOSITORY used by GetAvailableSlotsUseCase.
     OfficesModule,
+    // PatientIdentitiesModule provides ResolvePatientIdentityUseCase for
+    // populating identity_id on new patients created during booking.
+    PatientIdentitiesModule,
   ],
   controllers: [BookingController],
   providers: [

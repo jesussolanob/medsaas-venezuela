@@ -11,6 +11,7 @@ import type { IAppointmentRepository } from '../../../../appointments/domain/rep
 import type { IPatientRepository } from '../../../../patients/domain/repositories/patient.repository';
 import { AppointmentConflictError } from '../../../../appointments/domain/errors/appointment-conflict.error';
 import { PackageExhaustedError } from '../../../../packages/domain/errors/package-exhausted.error';
+import type { ResolvePatientIdentityUseCase } from '../../../../patient-identities/application/use-cases/resolve-patient-identity.use-case';
 
 const DOCTOR: DoctorPublicInfo = {
   id: 'doc-001',
@@ -93,6 +94,7 @@ describe('CreateBookingUseCase', () => {
   let mockDoctorLoader: jest.Mocked<IBookingDoctorLoader>;
   let mockConsumeUseCase: jest.Mocked<ConsumePackageSessionUseCase>;
   let mockCrypto: { hashForSearch: jest.Mock; encrypt: jest.Mock; decrypt: jest.Mock };
+  let mockResolveIdentity: jest.Mocked<ResolvePatientIdentityUseCase>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -138,6 +140,10 @@ describe('CreateBookingUseCase', () => {
       decrypt: jest.fn().mockReturnValue('decrypted'),
     };
 
+    mockResolveIdentity = {
+      execute: jest.fn().mockResolvedValue('identity-uuid-booking'),
+    } as never;
+
     useCase = new CreateBookingUseCase(
       mockAppointmentRepo,
       mockPatientRepo,
@@ -145,6 +151,8 @@ describe('CreateBookingUseCase', () => {
       mockConsumeUseCase,
       mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
       mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+      null, // paymentRepo — optional
+      mockResolveIdentity,
     );
   });
 
@@ -262,6 +270,48 @@ describe('CreateBookingUseCase', () => {
       await expect(
         useCase.execute(makeDto({ cf_turnstile_token: 'any-token' })),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe('identity resolution on new patient creation', () => {
+    it('calls resolveIdentity with the cedula when creating a new patient', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+
+      await useCase.execute(makeDto());
+
+      expect(mockResolveIdentity.execute).toHaveBeenCalledWith('V-12345678');
+    });
+
+    it('sets identityId on the new patient entity', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+
+      await useCase.execute(makeDto());
+
+      const savedPatient = mockPatientRepo.save.mock.calls[0]?.[0];
+      expect(savedPatient?.identityId).toBe('identity-uuid-booking');
+    });
+
+    it('does not call resolveIdentity when patient is found by email (no new patient)', async () => {
+      const existingPatient = makePatient();
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(existingPatient);
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+
+      await useCase.execute(makeDto());
+
+      expect(mockResolveIdentity.execute).not.toHaveBeenCalled();
+      expect(mockPatientRepo.save).not.toHaveBeenCalled();
     });
   });
 });

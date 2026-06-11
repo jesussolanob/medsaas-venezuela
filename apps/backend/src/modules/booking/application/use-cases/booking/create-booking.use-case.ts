@@ -24,6 +24,7 @@ import {
   PAYMENT_REPOSITORY,
   type IPaymentRepository,
 } from '../../../../finances/domain/repositories/payment.repository';
+import { ResolvePatientIdentityUseCase } from '../../../../patient-identities/application/use-cases/resolve-patient-identity.use-case';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -70,6 +71,14 @@ export class CreateBookingUseCase {
     @Optional()
     @Inject(PAYMENT_REPOSITORY)
     private readonly paymentRepo: IPaymentRepository | null = null,
+    /**
+     * Identity resolver — optional for backward compatibility with existing
+     * tests that do not inject it. When absent, identity_id is left null.
+     *
+     * TODO(cleanup): make required once all test suites are updated.
+     */
+    @Optional()
+    private readonly resolveIdentity: ResolvePatientIdentityUseCase | null = null,
   ) {}
 
   async execute(dto: CreateBookingDto): Promise<CreateBookingResult> {
@@ -217,6 +226,11 @@ export class CreateBookingUseCase {
       if (byCedula) return byCedula;
     }
 
+    // Resolve global identity for the new patient (transparent — stored internally)
+    const identityId = this.resolveIdentity
+      ? await this.resolveIdentity.execute(dto.patient_cedula ?? null)
+      : null;
+
     const now = new Date();
     const newPatient = Patient.create({
       id: randomUUID(),
@@ -225,6 +239,7 @@ export class CreateBookingUseCase {
       email: dto.patient_email,
       cedula: dto.patient_cedula ?? null,
       phone: dto.patient_phone ?? null,
+      identityId,
       source: 'booking',
       createdAt: now,
       updatedAt: now,

@@ -15,9 +15,13 @@ import { UpdatePatientUseCase } from './application/use-cases/patients/update-pa
 import { DeletePatientUseCase } from './application/use-cases/patients/delete-patient.use-case';
 
 import { PatientsController } from './presentation/controllers/patients.controller';
+import { PatientIdentitiesModule } from '../patient-identities/patient-identities.module';
 
 @Module({
-  imports: [SequelizeModule.forFeature([PatientModel, AccessAuditLogModel])],
+  imports: [
+    SequelizeModule.forFeature([PatientModel, AccessAuditLogModel]),
+    PatientIdentitiesModule,
+  ],
   controllers: [PatientsController],
   providers: [
     // CryptoService is global — injected from CryptoModule, not listed here.

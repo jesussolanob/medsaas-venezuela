@@ -109,6 +109,17 @@ export class PatientModel extends Model {
   @Column({ field: 'updated_at' })
   declare updatedAt: Date;
 
+  /**
+   * Global identity reference — links this doctor-scoped patient to the
+   * platform-wide patient_identities master record for the same cedula.
+   * Null when the patient has no cedula.
+   *
+   * PRIVACY: This column is internal only; it is never included in API
+   * responses and does not enable cross-doctor data lookup.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'identity_id' })
+  declare identityId: string | null;
+
   /** Soft-delete timestamp. Set by Sequelize paranoid mode on destroy(). */
   @DeletedAt
   @Column({ type: DataType.DATE, field: 'deleted_at' })

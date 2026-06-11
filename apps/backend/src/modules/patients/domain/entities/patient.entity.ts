@@ -20,6 +20,12 @@ export interface PatientCreateParams {
   cedula?: string | null;
   phone?: string | null;
   email?: string | null;
+  /**
+   * Global identity reference — UUID from patient_identities master table.
+   * Set when the patient has a cedula; null otherwise.
+   * Internal only: never exposed in API responses.
+   */
+  identityId?: string | null;
   source?: PatientSource | null;
   birthDate?: string | null;
   age?: number | null;
@@ -45,6 +51,8 @@ export class Patient {
   readonly cedula: string | null;
   readonly phone: string | null;
   readonly email: string | null;
+  /** Internal only — global identity UUID; never returned in API responses. */
+  readonly identityId: string | null;
   readonly source: PatientSource | null;
   readonly birthDate: string | null;
   readonly age: number | null;
@@ -69,6 +77,7 @@ export class Patient {
     this.cedula = params.cedula ?? null;
     this.phone = params.phone ?? null;
     this.email = params.email ?? null;
+    this.identityId = params.identityId ?? null;
     this.source = params.source ?? null;
     this.birthDate = params.birthDate ?? null;
     this.age = params.age ?? null;
