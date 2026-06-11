@@ -7,28 +7,30 @@
 import { backendGet } from '@/lib/api-client.server';
 import PlansAdminClient from './PlansAdminClient';
 
+// The backend `GET /api/admin/plans` returns camelCase. The client component
+// consumes snake_case, so we normalize here (same mapping as the BFF route handler).
 interface BackendPlanFeature {
-  feature_key: string;
-  feature_label: string;
+  featureKey: string;
+  featureLabel: string;
   enabled: boolean;
 }
 
 interface BackendPlanPrice {
   period: string;
-  price_usd: number;
-  is_active: boolean;
+  priceUsd: number;
+  isActive: boolean;
 }
 
 interface BackendPlan {
-  plan_key: string;
+  planKey: string;
   name: string;
-  role_key: string;
-  is_active: boolean;
-  is_permanent: boolean;
-  sort_order: number;
+  roleKey: string;
+  isActive: boolean;
+  isPermanent: boolean;
+  sortOrder: number;
   description: string | null;
-  price_usd: number;
-  trial_days: number;
+  priceUsd: number;
+  trialDays: number;
   features: BackendPlanFeature[];
   prices: BackendPlanPrice[];
 }
@@ -41,19 +43,30 @@ export default async function PlansPage() {
 
   const plans = result.ok && Array.isArray(result.value) ? result.value : [];
 
-  // Sort by sort_order then name.
-  const sorted = [...plans].sort(
-    (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
-  );
-
-  // Cast periods to the union type the client expects
-  const typedPlans = sorted.map((p) => ({
-    ...p,
-    prices: p.prices.map((pr) => ({
-      ...pr,
-      period: pr.period as 'monthly' | 'quarterly' | 'semiannual' | 'annual',
-    })),
-  }));
+  // Sort by sortOrder then name, then normalize camelCase -> snake_case.
+  const typedPlans = [...plans]
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+    .map((p) => ({
+      plan_key: p.planKey,
+      name: p.name,
+      role_key: p.roleKey,
+      is_active: p.isActive,
+      is_permanent: p.isPermanent,
+      sort_order: p.sortOrder,
+      description: p.description,
+      price_usd: p.priceUsd,
+      trial_days: p.trialDays,
+      features: (p.features ?? []).map((f) => ({
+        feature_key: f.featureKey,
+        feature_label: f.featureLabel,
+        enabled: f.enabled,
+      })),
+      prices: (p.prices ?? []).map((pr) => ({
+        period: pr.period as 'monthly' | 'quarterly' | 'semiannual' | 'annual',
+        price_usd: pr.priceUsd,
+        is_active: pr.isActive,
+      })),
+    }));
 
   return <PlansAdminClient initialPlans={typedPlans} />;
 }
