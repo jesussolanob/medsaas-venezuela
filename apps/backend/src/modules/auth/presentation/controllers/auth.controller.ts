@@ -4,7 +4,9 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Logger,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import {
@@ -13,7 +15,14 @@ import {
   type ResolveIdentityOutputDto,
 } from '../../application/dtos/resolve-identity.dto';
 import { ResolveIdentityUseCase } from '../../application/use-cases/resolve-identity.use-case';
+import { ProcessLoginTouchUseCase } from '../../application/use-cases/process-login-touch.use-case';
+import type { ProcessLoginTouchOutput } from '../../application/use-cases/process-login-touch.use-case';
 import { INTERNAL_AUTH_SECRET_HEADER } from '../../infrastructure/guards/internal-secret.guard';
+import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '../../../../presentation/decorators/current-user.decorator';
 
 interface SuccessResponse<T> {
   success: true;
@@ -23,17 +32,23 @@ interface SuccessResponse<T> {
 /**
  * AuthController
  *
- * Exposes POST /api/auth/resolve-identity — a machine-to-machine endpoint called
- * by the Next.js BFF after a successful Auth0 login. Intentionally has NO
- * DevAuthGuard: the caller authenticates via x-internal-auth-secret instead.
+ * Exposes:
+ *   POST /api/auth/resolve-identity — machine-to-machine endpoint called by the
+ *     Next.js BFF after a successful Auth0 login. Authenticates via
+ *     x-internal-auth-secret. Also fires a best-effort login touch.
  *
- * Security contract enforced inside ResolveIdentityUseCase:
- *   - 503 when AUTH_RESOLVE_SECRET env is not configured (fail-closed)
- *   - 401 when the header is missing or wrong
+ *   POST /api/auth/login-touch — dev-stub endpoint for local development.
+ *     Authenticated via DevAuthGuard (x-dev-user-id / x-dev-user-role headers).
+ *     The profileId is always taken from user.sub (anti-IDOR — never from body).
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly resolveIdentityUseCase: ResolveIdentityUseCase) {}
+  private readonly logger = new Logger(AuthController.name);
+
+  constructor(
+    private readonly resolveIdentityUseCase: ResolveIdentityUseCase,
+    private readonly processLoginTouchUseCase: ProcessLoginTouchUseCase,
+  ) {}
 
   @Post('resolve-identity')
   @HttpCode(HttpStatus.OK)
@@ -42,6 +57,37 @@ export class AuthController {
     @Body(new ZodValidationPipe(ResolveIdentityDtoSchema)) dto: ResolveIdentityDto,
   ): Promise<SuccessResponse<ResolveIdentityOutputDto>> {
     const data = await this.resolveIdentityUseCase.execute(dto, callerSecret);
+
+    // Best-effort login touch — must never break the login response.
+    try {
+      await this.processLoginTouchUseCase.execute({
+        profileId: data.id,
+        role: data.role,
+      });
+    } catch (err) {
+      this.logger.warn('Login touch failed (best-effort — ignored)', err);
+    }
+
+    return { success: true, data };
+  }
+
+  /**
+   * POST /api/auth/login-touch
+   *
+   * Dev-stub endpoint for local development. Fires a login touch for the
+   * authenticated user. The profileId is ALWAYS taken from the guard-provided
+   * user.sub — body is intentionally ignored for anti-IDOR.
+   */
+  @Post('login-touch')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(DevAuthGuard)
+  async loginTouch(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<ProcessLoginTouchOutput>> {
+    const data = await this.processLoginTouchUseCase.execute({
+      profileId: user.sub,
+      role: user.role,
+    });
     return { success: true, data };
   }
 }

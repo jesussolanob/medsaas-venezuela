@@ -20,6 +20,32 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { DEV_DOCTOR_UUID, DEV_PATIENT_UUID, DEV_ADMIN_UUID } from '@/lib/dev-auth.edge';
+import { log } from '@/lib/logger';
+
+const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
+
+/**
+ * Best-effort login touch: records last_sign_in_at and applies any pending
+ * subscription downgrade (active → past_due when expired). Mirrors the Auth0
+ * path, where resolve-identity invokes the same backend use case. Never blocks
+ * login — failures are logged and swallowed so the user always proceeds.
+ */
+async function postLoginTouch(identity: DevLoginIdentity): Promise<void> {
+  try {
+    await fetch(`${BACKEND_URL}/api/auth/login-touch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-dev-user-id': identity.id,
+        'x-dev-user-role': identity.role,
+      },
+    });
+  } catch (error: unknown) {
+    log.error('[loginUser] login-touch failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export type LoginResult =
   | { success: true; role: string; destination: string }
@@ -48,6 +74,9 @@ export async function loginUser(email: string, _password: string): Promise<Login
   const common = { path: '/', sameSite: 'lax' as const, httpOnly: false };
   cookieStore.set('dev_user_id', identity.id, common);
   cookieStore.set('dev_user_role', identity.role, common);
+
+  // Record last sign-in + apply lazy subscription downgrade on login (no cron).
+  await postLoginTouch(identity);
 
   return { success: true, role: identity.role, destination: identity.destination };
 }

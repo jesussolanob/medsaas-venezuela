@@ -4,12 +4,18 @@ import { SequelizeModule } from '@nestjs/sequelize';
 // Model
 import { AuthProfileModel } from './infrastructure/database/models/auth-profile.model';
 
-// Repository binding
+// Repository bindings
 import { IDENTITY_REPOSITORY } from './domain/repositories/identity.repository';
 import { SequelizeIdentityRepository } from './infrastructure/database/repositories/sequelize-identity.repository';
+import { LOGIN_TOUCH_REPOSITORY } from './domain/repositories/login-touch.repository';
+import { SequelizeLoginTouchRepository } from './infrastructure/database/repositories/sequelize-login-touch.repository';
 
-// Use case
+// Use cases
 import { ResolveIdentityUseCase } from './application/use-cases/resolve-identity.use-case';
+import { ProcessLoginTouchUseCase } from './application/use-cases/process-login-touch.use-case';
+
+// Guards
+import { DevAuthGuard } from '../../infrastructure/auth/dev-auth.guard';
 
 // Controller
 import { AuthController } from './presentation/controllers/auth.controller';
@@ -17,14 +23,20 @@ import { AuthController } from './presentation/controllers/auth.controller';
 /**
  * AuthModule
  *
- * Owns the identity resolution endpoint used by the BFF after an Auth0 login.
- * Does NOT use DevAuthGuard — callers authenticate via x-internal-auth-secret.
+ * Owns two endpoints:
+ *   POST /api/auth/resolve-identity — machine-to-machine (Auth0 BFF), authenticated
+ *     via x-internal-auth-secret. Also performs a login touch on successful resolution.
+ *   POST /api/auth/login-touch — dev-stub login endpoint, authenticated via DevAuthGuard.
+ *     The lead wires the local frontend login action to this endpoint.
  *
  * ConfigModule is global (registered in AppModule) — no re-import needed.
  *
  * Sequelize providers are NOT injected directly into providers[]:
- * AuthProfileModel is registered via SequelizeModule.forFeature and injected
- * into SequelizeIdentityRepository via @InjectModel.
+ *   AuthProfileModel is registered via SequelizeModule.forFeature and injected
+ *   into SequelizeIdentityRepository via @InjectModel.
+ *
+ * SequelizeLoginTouchRepository uses raw SQL via the global Sequelize instance —
+ * no additional forFeature() registration needed for its queries.
  */
 @Module({
   imports: [SequelizeModule.forFeature([AuthProfileModel])],
@@ -34,7 +46,13 @@ import { AuthController } from './presentation/controllers/auth.controller';
       provide: IDENTITY_REPOSITORY,
       useClass: SequelizeIdentityRepository,
     },
+    {
+      provide: LOGIN_TOUCH_REPOSITORY,
+      useClass: SequelizeLoginTouchRepository,
+    },
     ResolveIdentityUseCase,
+    ProcessLoginTouchUseCase,
+    DevAuthGuard,
   ],
 })
 export class AuthModule {}

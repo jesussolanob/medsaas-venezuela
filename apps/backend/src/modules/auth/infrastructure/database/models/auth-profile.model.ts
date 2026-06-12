@@ -38,6 +38,10 @@ export class AuthProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'auth0_sub' })
   declare auth0Sub: string | null;
 
+  /** Timestamp of the most recent login touch — added by migration 20260612000002. */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'last_sign_in_at' })
+  declare lastSignInAt: Date | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 
