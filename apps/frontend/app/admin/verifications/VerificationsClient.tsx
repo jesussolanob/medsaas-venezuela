@@ -5,10 +5,12 @@
  *
  * Panel admin de verificaciones de médicos.
  * Lista doctores por status (pending / verified / rejected).
- * Permite marcar como verificado o rechazar con feedback optimista + toast.
+ * Permite:
+ *  - Verificar/Rechazar manualmente (verificación MANUAL).
+ *  - Disparar y consultar el estado de verificación automática de MPPS vía SACS.
  */
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
   ShieldX,
@@ -22,6 +24,10 @@ import {
   Hash,
   Mail,
   Building,
+  Zap,
+  AlertCircle,
+  HelpCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 
@@ -41,6 +47,28 @@ export interface VerificationItem {
   verificationStatus: string;
   createdAt: string;
 }
+
+type MppsStatus = 'pending' | 'verified' | 'not_found' | 'mismatch' | 'error';
+
+interface CredentialRecord {
+  credentialType: string;
+  status: MppsStatus;
+  declaredValue: string | null;
+  evidence: unknown | null;
+  checkedAt: string | null;
+  attempts: number;
+  lastError: string | null;
+}
+
+interface MppsState {
+  status: MppsStatus;
+  checkedAt: string | null;
+  attempts: number;
+  lastError: string | null;
+}
+
+// Map doctorId → MppsState (loaded on demand)
+type MppsMap = Record<string, MppsState | 'loading' | 'idle'>;
 
 interface Props {
   initialItems: VerificationItem[];
@@ -74,6 +102,50 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   },
 };
 
+/**
+ * Badge visual for each MPPS auto-verification result.
+ */
+const MPPS_BADGE: Record<
+  MppsStatus,
+  { label: string; bg: string; text: string; borderColor: string; icon: React.ReactNode }
+> = {
+  verified: {
+    label: 'MPPS verificado',
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    borderColor: 'border-emerald-200',
+    icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" />,
+  },
+  mismatch: {
+    label: 'MPPS no coincide',
+    bg: 'bg-amber-50',
+    text: 'text-amber-700',
+    borderColor: 'border-amber-200',
+    icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />,
+  },
+  not_found: {
+    label: 'No encontrado en SACS',
+    bg: 'bg-slate-50',
+    text: 'text-slate-500',
+    borderColor: 'border-slate-200',
+    icon: <HelpCircle className="w-3 h-3" aria-hidden="true" />,
+  },
+  pending: {
+    label: 'Sin verificar',
+    bg: 'bg-slate-50',
+    text: 'text-slate-500',
+    borderColor: 'border-slate-200',
+    icon: <Clock className="w-3 h-3" aria-hidden="true" />,
+  },
+  error: {
+    label: 'Error de portal',
+    bg: 'bg-red-50',
+    text: 'text-red-600',
+    borderColor: 'border-red-200',
+    icon: <XCircle className="w-3 h-3" aria-hidden="true" />,
+  },
+};
+
 function formatDate(dateStr: string): string {
   return new Intl.DateTimeFormat('es-VE', {
     day: '2-digit',
@@ -82,8 +154,122 @@ function formatDate(dateStr: string): string {
   }).format(new Date(dateStr));
 }
 
+function formatDateTime(dateStr: string): string {
+  return new Intl.DateTimeFormat('es-VE', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(dateStr));
+}
+
+function extractMppsFromCredentials(records: CredentialRecord[]): MppsState | null {
+  const mppsRecord = records.find((r) => r.credentialType === 'mpps');
+  if (!mppsRecord) return null;
+  return {
+    status: mppsRecord.status,
+    checkedAt: mppsRecord.checkedAt,
+    attempts: mppsRecord.attempts,
+    lastError: mppsRecord.lastError,
+  };
+}
+
 // ---------------------------------------------------------------------------
-// Component
+// Sub-component: MppsBadge
+// ---------------------------------------------------------------------------
+
+interface MppsBadgeProps {
+  mppsNumber: string | null;
+  mppsState: MppsState | 'loading' | 'idle' | undefined;
+  onVerify: (force?: boolean) => void;
+  verifying: boolean;
+}
+
+function MppsBadge({ mppsNumber, mppsState, onVerify, verifying }: MppsBadgeProps) {
+  if (!mppsNumber) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 italic">
+        Sin MPPS
+      </span>
+    );
+  }
+
+  const isLoading = mppsState === 'loading' || verifying;
+  const hasResult = mppsState !== undefined && mppsState !== 'idle' && mppsState !== 'loading';
+  const state = hasResult ? (mppsState as MppsState) : null;
+  const badge = state ? MPPS_BADGE[state.status] : MPPS_BADGE['pending'];
+  const isVerified = state?.status === 'verified';
+  const hasChecked = state !== null;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* MPPS number row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-mono" style={{ color: 'var(--dh-gray-600)' }}>
+          MPPS: {mppsNumber}
+        </span>
+
+        {/* Auto-verification badge */}
+        {(hasChecked || mppsState === 'idle') && (
+          <span
+            className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${badge.bg} ${badge.text} ${badge.borderColor}`}
+            title={
+              state?.checkedAt
+                ? `Verificado el ${formatDateTime(state.checkedAt)}`
+                : 'Sin verificación previa'
+            }
+          >
+            {badge.icon}
+            {badge.label}
+          </span>
+        )}
+
+        {/* Loading spinner when fetching credentials */}
+        {mppsState === 'loading' && !verifying && (
+          <Loader2
+            className="w-3.5 h-3.5 animate-spin text-slate-400"
+            aria-label="Cargando estado de verificación"
+          />
+        )}
+      </div>
+
+      {/* Error detail */}
+      {state?.lastError && (state.status === 'mismatch' || state.status === 'error') && (
+        <p className="text-[11px] text-red-500 leading-snug pl-0.5">{state.lastError}</p>
+      )}
+
+      {/* Verify / Re-verify button */}
+      <button
+        onClick={() => onVerify(hasChecked && !isVerified)}
+        disabled={isLoading}
+        className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-slate-200 bg-white hover:bg-slate-50 hover:border-teal-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{ color: 'var(--dh-gray-600)' }}
+        aria-label={
+          hasChecked && !isVerified
+            ? `Re-verificar MPPS de este médico`
+            : `Verificar MPPS de este médico contra SACS`
+        }
+      >
+        {isLoading ? (
+          <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+        ) : hasChecked && !isVerified ? (
+          <RotateCcw className="w-3 h-3" aria-hidden="true" />
+        ) : (
+          <Zap className="w-3 h-3" aria-hidden="true" />
+        )}
+        {isLoading
+          ? 'Verificando…'
+          : hasChecked && !isVerified
+            ? 'Re-verificar MPPS'
+            : 'Verificar MPPS'}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
 // ---------------------------------------------------------------------------
 
 export default function VerificationsClient({ initialItems }: Props) {
@@ -93,12 +279,131 @@ export default function VerificationsClient({ initialItems }: Props) {
   const [pendingDoctorId, setPendingDoctorId] = useState<string | null>(null);
   const [loadingRefresh, startRefresh] = useTransition();
 
-  const filteredItems = items.filter((item) => item.verificationStatus === activeTab);
+  // Map doctorId → mpps state
+  const [mppsMap, setMppsMap] = useState<MppsMap>({});
+  // Track which doctorId is currently running the verify-mpps POST
+  const [verifyingMppsId, setVerifyingMppsId] = useState<string | null>(null);
 
+  const filteredItems = items.filter((item) => item.verificationStatus === activeTab);
   const pendingCount = items.filter((i) => i.verificationStatus === 'pending').length;
 
+  // Track which doctorIds have had their credentials fetched, to avoid re-fetch on re-render
+  const fetchedRef = useRef<Set<string>>(new Set());
+
   // ---------------------------------------------------------------------------
-  // Update verification status
+  // Load credential state for all visible doctors on mount / tab change
+  // ---------------------------------------------------------------------------
+
+  const loadCredentials = useCallback(async (doctorId: string) => {
+    if (fetchedRef.current.has(doctorId)) return;
+    fetchedRef.current.add(doctorId);
+
+    setMppsMap((prev) => ({ ...prev, [doctorId]: 'loading' }));
+
+    try {
+      const res = await fetch(`/api/admin/doctor-verifications/${doctorId}/credentials`);
+      const json = (await res.json()) as { success?: boolean; data?: CredentialRecord[] };
+
+      if (res.ok && json.success && Array.isArray(json.data)) {
+        const mppsState = extractMppsFromCredentials(json.data);
+        setMppsMap((prev) => ({
+          ...prev,
+          [doctorId]: mppsState ?? 'idle',
+        }));
+      } else {
+        setMppsMap((prev) => ({ ...prev, [doctorId]: 'idle' }));
+      }
+    } catch {
+      setMppsMap((prev) => ({ ...prev, [doctorId]: 'idle' }));
+    }
+  }, []);
+
+  useEffect(() => {
+    // Load credentials for all currently visible doctors that have an MPPS number
+    const visibleWithMpps = filteredItems.filter((item) => item.mppsNumber);
+    visibleWithMpps.forEach((item) => {
+      void loadCredentials(item.doctorId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, items]);
+
+  // ---------------------------------------------------------------------------
+  // Verify MPPS automatically
+  // ---------------------------------------------------------------------------
+
+  const handleVerifyMpps = useCallback(async (doctorId: string, force = false) => {
+    setVerifyingMppsId(doctorId);
+
+    try {
+      const url = `/api/admin/doctor-verifications/${doctorId}/verify-mpps${force ? '?force=true' : ''}`;
+      const res = await fetch(url, { method: 'POST' });
+      const json = (await res.json()) as {
+        success?: boolean;
+        data?: {
+          doctorId: string;
+          credentialType: string;
+          status: MppsStatus;
+          attempts: number;
+          checkedAt: string | null;
+        };
+        error?: string;
+      };
+
+      if (!res.ok || !json.success || !json.data) {
+        showToast({
+          type: 'error',
+          message: json.error ?? 'No se pudo completar la verificación de MPPS.',
+        });
+        return;
+      }
+
+      const { status, attempts, checkedAt } = json.data;
+
+      // Re-fetch the full credentials record to get lastError detail
+      let lastError: string | null = null;
+      try {
+        const credRes = await fetch(`/api/admin/doctor-verifications/${doctorId}/credentials`);
+        const credJson = (await credRes.json()) as {
+          success?: boolean;
+          data?: CredentialRecord[];
+        };
+        if (credRes.ok && credJson.success && Array.isArray(credJson.data)) {
+          const mppsRec = credJson.data.find((r) => r.credentialType === 'mpps');
+          lastError = mppsRec?.lastError ?? null;
+        }
+      } catch {
+        // lastError stays null — not critical
+      }
+
+      setMppsMap((prev) => ({
+        ...prev,
+        [doctorId]: { status, attempts, checkedAt, lastError },
+      }));
+
+      const statusMessages: Record<MppsStatus, string> = {
+        verified: 'MPPS verificado correctamente en el portal SACS.',
+        not_found: 'El número MPPS no fue encontrado en el portal SACS.',
+        mismatch: `El número MPPS no coincide con los registros de SACS.${lastError ? ` Detalle: ${lastError}` : ''}`,
+        error: `Error al consultar el portal SACS.${lastError ? ` Detalle: ${lastError}` : ''}`,
+        pending: 'La verificación quedó en estado pendiente.',
+      };
+
+      showToast({
+        type: status === 'verified' ? 'success' : status === 'error' ? 'error' : 'info',
+        message: statusMessages[status],
+      });
+    } catch {
+      showToast({
+        type: 'error',
+        message: 'Error de conexión al intentar verificar el MPPS. Intenta nuevamente.',
+      });
+    } finally {
+      setVerifyingMppsId(null);
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Update manual verification status
   // ---------------------------------------------------------------------------
 
   function handleUpdateStatus(doctorId: string, status: 'verified' | 'rejected') {
@@ -154,7 +459,7 @@ export default function VerificationsClient({ initialItems }: Props) {
   }
 
   // ---------------------------------------------------------------------------
-  // Refresh
+  // Refresh full list
   // ---------------------------------------------------------------------------
 
   function handleRefresh() {
@@ -164,6 +469,9 @@ export default function VerificationsClient({ initialItems }: Props) {
         const json = (await res.json()) as { success?: boolean; data?: VerificationItem[] };
         if (res.ok && json.success && Array.isArray(json.data)) {
           setItems(json.data);
+          // Reset credential cache so they reload for new items
+          fetchedRef.current.clear();
+          setMppsMap({});
           showToast({ type: 'info', message: 'Lista actualizada.' });
         }
       } catch {
@@ -309,6 +617,8 @@ export default function VerificationsClient({ initialItems }: Props) {
           {filteredItems.map((item) => {
             const style = STATUS_STYLES[item.verificationStatus] ?? STATUS_STYLES['pending'];
             const isBusy = updating && pendingDoctorId === item.doctorId;
+            const mppsState = mppsMap[item.doctorId];
+            const isVerifyingThisDoctor = verifyingMppsId === item.doctorId;
 
             return (
               <article
@@ -347,7 +657,8 @@ export default function VerificationsClient({ initialItems }: Props) {
                     </div>
 
                     {/* Fields grid */}
-                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                      {/* Email */}
                       <div className="flex items-center gap-1.5">
                         <Mail
                           className="w-3.5 h-3.5 shrink-0"
@@ -359,6 +670,7 @@ export default function VerificationsClient({ initialItems }: Props) {
                         </dd>
                       </div>
 
+                      {/* Cédula */}
                       {item.cedula && (
                         <div className="flex items-center gap-1.5">
                           <Hash
@@ -372,19 +684,24 @@ export default function VerificationsClient({ initialItems }: Props) {
                         </div>
                       )}
 
-                      {item.mppsNumber && (
-                        <div className="flex items-center gap-1.5">
-                          <Building
-                            className="w-3.5 h-3.5 shrink-0"
-                            style={{ color: 'var(--dh-gray-400)' }}
+                      {/* MPPS — with auto-verification badge and button */}
+                      <div className="flex items-start gap-1.5 sm:col-span-2">
+                        <Building
+                          className="w-3.5 h-3.5 shrink-0 mt-0.5"
+                          style={{ color: 'var(--dh-gray-400)' }}
+                        />
+                        <dt className="sr-only">MPPS</dt>
+                        <dd className="flex-1 min-w-0">
+                          <MppsBadge
+                            mppsNumber={item.mppsNumber}
+                            mppsState={mppsState}
+                            onVerify={(force) => void handleVerifyMpps(item.doctorId, force)}
+                            verifying={isVerifyingThisDoctor}
                           />
-                          <dt className="sr-only">MPPS</dt>
-                          <dd className="text-xs font-mono" style={{ color: 'var(--dh-gray-600)' }}>
-                            MPPS: {item.mppsNumber}
-                          </dd>
-                        </div>
-                      )}
+                        </dd>
+                      </div>
 
+                      {/* Colegiado */}
                       {item.colegiadoNumber && (
                         <div className="flex items-center gap-1.5">
                           <ShieldCheck
@@ -408,7 +725,7 @@ export default function VerificationsClient({ initialItems }: Props) {
                     </dl>
                   </div>
 
-                  {/* Right: action buttons (only for pending) */}
+                  {/* Right: manual action buttons (only for pending) */}
                   {item.verificationStatus === 'pending' && (
                     <div className="flex sm:flex-col gap-2 shrink-0">
                       <button
