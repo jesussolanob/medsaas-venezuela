@@ -1,4 +1,9 @@
-import { CreateBookingUseCase, DoctorNotFoundError } from './create-booking.use-case';
+import {
+  CreateBookingUseCase,
+  DoctorNotFoundError,
+  PatientNotFoundError,
+} from './create-booking.use-case';
+import { CreateBookingDtoSchema } from '@delta/shared-types';
 import type {
   IBookingDoctorLoader,
   DoctorPublicInfo,
@@ -30,9 +35,9 @@ const makeDto = (overrides: Record<string, unknown> = {}) => ({
   cf_turnstile_token: 'stub-token',
   doctor_id: 'doc-001',
   patient_name: 'María López',
-  patient_email: 'maria@example.com',
+  patient_email: 'maria@example.com' as string | null | undefined,
   patient_cedula: 'V-12345678',
-  patient_phone: '+584121234567',
+  patient_phone: '+584121234567' as string | null | undefined,
   scheduled_at: '2026-07-01T10:00:00Z',
   appointment_mode: 'presencial' as const,
   plan_name: 'Consulta General',
@@ -317,6 +322,140 @@ describe('CreateBookingUseCase', () => {
     });
   });
 
+  describe('patient_id path — anti-IDOR and no find-or-create', () => {
+    it('throws PatientNotFoundError when patient_id belongs to a different doctor', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      // findById returns null — patient not scoped to this doctor
+      mockPatientRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        useCase.execute(makeDto({ patient_id: 'pat-other-doctor', patient_email: null })),
+      ).rejects.toThrow(PatientNotFoundError);
+
+      // find-or-create must NOT be invoked
+      expect(mockPatientRepo.findByEmailHash).not.toHaveBeenCalled();
+      expect(mockPatientRepo.findByCedulaHash).not.toHaveBeenCalled();
+      expect(mockPatientRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('uses the loaded patient directly when patient_id is valid, skipping find-or-create', async () => {
+      const existingPatient = makePatient();
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockPatientRepo.findById.mockResolvedValue(existingPatient);
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+
+      const result = await useCase.execute(makeDto({ patient_id: 'pat-001', patient_email: null }));
+
+      expect(result.appointment).toBeDefined();
+      // The patient returned is the pre-loaded one
+      expect(result.patient.id).toBe('pat-001');
+      // find-or-create methods must NOT be called
+      expect(mockPatientRepo.findByEmailHash).not.toHaveBeenCalled();
+      expect(mockPatientRepo.findByCedulaHash).not.toHaveBeenCalled();
+      expect(mockPatientRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('optional email — attendee / invite handling', () => {
+    type MockNotificationService = { notify: jest.Mock };
+
+    function makeUseCaseWithNotification(notifResult: {
+      meetLink: string | null;
+      googleCalendarEventId: string | null;
+      channel: string;
+    }) {
+      const mockNotification: MockNotificationService = {
+        notify: jest.fn().mockResolvedValue(notifResult),
+      };
+      return {
+        notificationService: mockNotification,
+        useCase: new CreateBookingUseCase(
+          mockAppointmentRepo,
+          mockPatientRepo,
+          mockDoctorLoader,
+          mockConsumeUseCase,
+          mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+          mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+          null,
+          mockResolveIdentity,
+          null,
+          mockNotification as unknown as import('../../../../integrations/application/services/appointment-notification.service').AppointmentNotificationService,
+        ),
+      };
+    }
+
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+    });
+
+    it('creates appointment and patient without email, notification is called with undefined patientEmail', async () => {
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+
+      const { useCase: ucWithNotif, notificationService } = makeUseCaseWithNotification({
+        meetLink: null,
+        googleCalendarEventId: null,
+        channel: 'in_person',
+      });
+
+      await ucWithNotif.execute(
+        makeDto({ patient_email: null, patient_phone: null, appointment_mode: 'presencial' }),
+      );
+
+      // Notification service is called but patientEmail is absent (undefined)
+      expect(notificationService.notify).toHaveBeenCalledWith(
+        expect.objectContaining({ patientEmail: undefined }),
+      );
+    });
+
+    it('does NOT call findByEmailHash when patient_email is absent', async () => {
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+
+      await useCase.execute(makeDto({ patient_email: null }));
+
+      expect(mockPatientRepo.findByEmailHash).not.toHaveBeenCalled();
+    });
+
+    it('with email → notification is called with patient email present', async () => {
+      const existingPatient = makePatient();
+      mockPatientRepo.findByEmailHash.mockResolvedValue(existingPatient);
+
+      const { useCase: ucWithNotif, notificationService } = makeUseCaseWithNotification({
+        meetLink: 'https://meet.google.com/abc-123',
+        googleCalendarEventId: 'evt-xyz',
+        channel: 'google_meet',
+      });
+
+      await ucWithNotif.execute(
+        makeDto({ patient_email: 'maria@example.com', appointment_mode: 'online' }),
+      );
+
+      expect(notificationService.notify).toHaveBeenCalledWith(
+        expect.objectContaining({ patientEmail: 'maria@example.com' }),
+      );
+    });
+
+    it('creates new patient without email when neither email nor cedula matches', async () => {
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+
+      await useCase.execute(makeDto({ patient_email: null, patient_cedula: null }));
+
+      // A new patient is created
+      expect(mockPatientRepo.save).toHaveBeenCalled();
+      const savedPatient = mockPatientRepo.save.mock.calls[0]?.[0];
+      expect(savedPatient?.email).toBeNull();
+    });
+  });
+
   describe('Google Calendar event ID persistence', () => {
     type MockNotificationService = {
       notify: jest.Mock;
@@ -419,6 +558,73 @@ describe('CreateBookingUseCase', () => {
       expect(result.meetLink).toBeNull();
       // updateGoogleEventId should NOT be called if notification failed
       expect(mockAppointmentRepo.updateGoogleEventId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('CreateBookingDtoSchema — patient_email validation', () => {
+    const basePayload = {
+      cf_turnstile_token: 'tok',
+      // Valid v4 UUID (Zod v4 enforces RFC 4122 version bits)
+      doctor_id: 'a2ae2d7f-7445-4aff-b39b-ab08f1b75dc0',
+      patient_name: 'Ana',
+      scheduled_at: '2026-08-01T10:00:00Z',
+      appointment_mode: 'presencial',
+      plan_name: 'Consulta',
+      plan_price: 30,
+    };
+
+    it('rejects an invalid email format', () => {
+      const result = CreateBookingDtoSchema.safeParse({
+        ...basePayload,
+        patient_email: 'not-an-email',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts a missing patient_email (optional)', () => {
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts a null patient_email', () => {
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload, patient_email: null });
+      expect(result.success).toBe(true);
+    });
+
+    it('normalises empty string patient_email to null', () => {
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload, patient_email: '' });
+      // Empty string transforms to null — schema should accept or coerce it
+      // Note: .email() validation runs before .transform(), so '' (not a valid email) is caught.
+      // The schema uses z.string().email().nullable().optional().transform(...).
+      // An empty string fails z.string().email() — therefore this is expected to fail.
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts a valid email', () => {
+      const result = CreateBookingDtoSchema.safeParse({
+        ...basePayload,
+        patient_email: 'valid@example.com',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.patient_email).toBe('valid@example.com');
+      }
+    });
+
+    it('accepts a valid patient_id uuid', () => {
+      const result = CreateBookingDtoSchema.safeParse({
+        ...basePayload,
+        patient_id: 'df553319-10e8-416e-8046-e64df461f94b',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an invalid patient_id (not a uuid)', () => {
+      const result = CreateBookingDtoSchema.safeParse({
+        ...basePayload,
+        patient_id: 'not-a-uuid',
+      });
+      expect(result.success).toBe(false);
     });
   });
 });

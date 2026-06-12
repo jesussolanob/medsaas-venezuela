@@ -19,7 +19,12 @@ export interface CreateCalendarEventInput {
   description: string;
   startISO: string;
   endISO: string;
-  attendeeEmail: string;
+  /**
+   * Patient email — optional.
+   * When present, the patient is added as an attendee on the Google Calendar event.
+   * When absent, the event is created without attendees (no empty attendee injected).
+   */
+  attendeeEmail?: string;
 }
 
 export interface CalendarEventResult {

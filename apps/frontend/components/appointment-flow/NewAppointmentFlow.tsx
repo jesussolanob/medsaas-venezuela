@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
+import { isValidEmail } from '@/lib/validation';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -508,6 +509,11 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   // ── Crear paciente inline ──────────────────────────────────────────────────
   async function createPatientInline(e: React.FormEvent) {
     e.preventDefault();
+    // Email opcional, pero si viene debe ser válido.
+    if (newPatient.email && !isValidEmail(newPatient.email)) {
+      setGlobalError('El email no tiene un formato válido.');
+      return;
+    }
     setCreatingPatient(true);
     setGlobalError(null);
     try {
@@ -570,13 +576,15 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
         );
       }
 
-      // Crear la cita via /api/book (guest mode: envía patientName + patientEmail)
+      // Crear la cita via /api/book. Opción B: el doctor agenda un paciente que YA
+      // existe → mandamos su patient_id; el backend lo usa directo (sin re-crear ni
+      // exigir email). Igual enviamos nombre/email/phone por compatibilidad.
       const r = await fetch('/api/book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           doctorId,
-          // No enviamos accessToken — usamos guest mode con nombre+email
+          patientId: selectedPatient.id,
           patientName: selectedPatient.full_name,
           patientPhone: selectedPatient.phone,
           patientEmail: selectedPatient.email,

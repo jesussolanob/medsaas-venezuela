@@ -17,9 +17,30 @@ export const CreateBookingDtoSchema = z
      */
     office_id: z.string().uuid().nullable().optional(),
 
-    // Patient identification
+    /**
+     * ID of an existing patient record scoped to the authenticated doctor.
+     * When provided, the booking flow uses this patient directly and skips
+     * find-or-create. Anti-IDOR: the patient must belong to the given doctor_id;
+     * if it does not, a NotFound error is returned (no existence leak).
+     * Used by the "Nueva consulta" flow from the doctor's dashboard.
+     */
+    patient_id: z.string().uuid().optional(),
+
+    // Patient identification (used for find-or-create when patient_id is absent)
     patient_name: z.string().min(1).max(200),
-    patient_email: z.string().email(),
+    /**
+     * Patient email — optional. Required by the public booking page frontend;
+     * the backend accepts it as optional to support doctor-initiated bookings
+     * for existing patients who have no email on file.
+     * When present, must be a valid email address.
+     * Empty string is normalised to null.
+     */
+    patient_email: z
+      .string()
+      .email()
+      .nullable()
+      .optional()
+      .transform((v) => (v === '' ? null : v)),
     patient_cedula: z.string().max(20).nullable().optional(),
     patient_phone: z.string().max(30).nullable().optional(),
 

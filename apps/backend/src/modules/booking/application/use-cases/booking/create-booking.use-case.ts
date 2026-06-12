@@ -149,8 +149,12 @@ export class CreateBookingUseCase {
       throw new AppointmentConflictError(scheduledAt);
     }
 
-    // --- Step 4: Find-or-create patient by email ---
-    const patient = await this.findOrCreatePatient(dto);
+    // --- Step 4: Resolve patient ---
+    // Path A: patient_id provided → load directly (doctor-scoped anti-IDOR).
+    // Path B: no patient_id → find-or-create by available identifiers.
+    const patient = dto.patient_id
+      ? await this.loadPatientById(dto.patient_id, dto.doctor_id)
+      : await this.findOrCreatePatient(dto);
 
     // --- Steps 5+6: Persist appointment and consume package session atomically ---
     // Both writes are wrapped in a single Sequelize transaction so that a failure
@@ -236,12 +240,17 @@ export class CreateBookingUseCase {
     let meetLink: string | null = null;
     if (this.notificationService) {
       try {
+        // Resolve the patient email: prefer the email on the resolved patient record;
+        // fall back to the email supplied in the DTO (public booking flow).
+        // If neither is present, omit the field — no attendee invite is sent.
+        const resolvedPatientEmail = patient.email ?? dto.patient_email ?? undefined;
+
         const notifResult = await this.notificationService.notify({
           appointmentId: savedAppointment.id,
           doctorId: dto.doctor_id,
           doctorName: doctor.fullName ?? 'Doctor',
           doctorEmail: undefined,
-          patientEmail: dto.patient_email,
+          patientEmail: resolvedPatientEmail,
           patientName: dto.patient_name,
           scheduledAtISO: savedAppointment.scheduledAt.toISOString(),
           durationMinutes: officeDuration,
@@ -294,22 +303,47 @@ export class CreateBookingUseCase {
   }
 
   /**
-   * Find patient by email hash. Falls back to cedula hash.
-   * Creates a new patient record if neither matches.
+   * Load an existing patient by ID scoped to the authenticated doctor.
+   *
+   * Anti-IDOR: if the patient does not exist or belongs to a different doctor,
+   * a PatientNotFoundError is thrown — identical error in both cases so callers
+   * cannot enumerate patients across doctors.
+   */
+  private async loadPatientById(patientId: string, doctorId: string): Promise<Patient> {
+    const patient = await this.patientRepo.findById(patientId, doctorId);
+    if (!patient) {
+      throw new PatientNotFoundError(patientId);
+    }
+    return patient;
+  }
+
+  /**
+   * Find-or-create patient using available identifiers.
+   *
+   * Match priority (scoped to doctorId):
+   *   1. Email hash — when patient_email is present.
+   *   2. Cedula hash — when patient_cedula is present.
+   *   3. Create new patient — when neither matches (or neither was supplied).
+   *
+   * Deliberately does NOT match on name alone to prevent false duplicates.
    * PII encryption is handled by the patient repository layer.
    */
   private async findOrCreatePatient(dto: CreateBookingDto): Promise<Patient> {
-    const emailHash = this.crypto.hashForSearch(dto.patient_email);
-    const existing = await this.patientRepo.findByEmailHash(emailHash, dto.doctor_id);
-    if (existing) return existing;
+    // 1. Try email hash lookup when email is present
+    if (dto.patient_email) {
+      const emailHash = this.crypto.hashForSearch(dto.patient_email);
+      const byEmail = await this.patientRepo.findByEmailHash(emailHash, dto.doctor_id);
+      if (byEmail) return byEmail;
+    }
 
+    // 2. Try cedula hash lookup when cedula is present
     if (dto.patient_cedula) {
       const cedulaHash = this.crypto.hashForSearch(dto.patient_cedula);
       const byCedula = await this.patientRepo.findByCedulaHash(cedulaHash, dto.doctor_id);
       if (byCedula) return byCedula;
     }
 
-    // Resolve global identity for the new patient (transparent — stored internally)
+    // 3. Create new patient
     const identityId = this.resolveIdentity
       ? await this.resolveIdentity.execute(dto.patient_cedula ?? null)
       : null;
@@ -319,7 +353,7 @@ export class CreateBookingUseCase {
       id: randomUUID(),
       doctorId: dto.doctor_id,
       fullName: dto.patient_name,
-      email: dto.patient_email,
+      email: dto.patient_email ?? null,
       cedula: dto.patient_cedula ?? null,
       phone: dto.patient_phone ?? null,
       identityId,
@@ -351,5 +385,21 @@ export class DoctorNotFoundError extends DomainError {
   constructor() {
     // Generic message — no UUIDs exposed to the public surface.
     super('Doctor not found or not available for booking');
+  }
+}
+
+/**
+ * Thrown when the requested patient_id does not exist or belongs to a different
+ * doctor than the one performing the booking.
+ *
+ * Anti-IDOR: identical error for "not found" and "belongs to another doctor" so
+ * callers cannot enumerate patients across doctor accounts.
+ */
+export class PatientNotFoundError extends DomainError {
+  readonly code = 'PATIENT_NOT_FOUND';
+  override readonly httpStatus = 404;
+  constructor(_id: string) {
+    // Generic message — no patient UUID exposed to the API surface.
+    super('Patient not found');
   }
 }

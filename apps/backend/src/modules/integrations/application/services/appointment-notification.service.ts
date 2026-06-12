@@ -19,7 +19,14 @@ export interface AppointmentNotificationInput {
   doctorName: string;
   /** Doctor email (optional — for organizer field). */
   doctorEmail?: string;
-  patientEmail: string;
+  /**
+   * Patient email — optional.
+   * When present: patient is added as an attendee on the Google Calendar event
+   * and receives an .ics invitation by email.
+   * When absent: the doctor's event and Meet link are created as usual, but no
+   * attendee is added to the Google event and no email is sent to the patient.
+   */
+  patientEmail?: string;
   patientName: string;
   scheduledAtISO: string;
   /** Duration in minutes. Used to compute end time. */
@@ -110,6 +117,8 @@ export class AppointmentNotificationService {
         description: `Cita registrada en Delta Medical — ID: ${input.appointmentId}`,
         startISO: input.scheduledAtISO,
         endISO,
+        // Only add the patient as an attendee when their email is known.
+        // Omitting the field prevents Google from rejecting an empty attendee.
         attendeeEmail: input.patientEmail,
       });
       meetLink = result.meetLink;
@@ -159,6 +168,16 @@ export class AppointmentNotificationService {
       channel: AppointmentNotificationResult['channel'];
     },
   ): Promise<void> {
+    // When the patient has no email on file, skip the ICS generation and email
+    // delivery entirely. The doctor's calendar event / Meet link is already
+    // created by this point — no action needed on the patient side.
+    if (!input.patientEmail) {
+      this.logger.debug(
+        `[notify] no patient email for appointment ${input.appointmentId} — skipping patient invite`,
+      );
+      return;
+    }
+
     try {
       const icsContent = generateIcsEvent({
         appointmentId: input.appointmentId,

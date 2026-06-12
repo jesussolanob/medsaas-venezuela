@@ -27,6 +27,7 @@ import {
 import { getProfessionalTitle } from '@/lib/professional-title';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { reportError } from '@/lib/report-error';
+import { isValidEmail } from '@/lib/validation';
 // L6 (2026-04-29): inputs canonicos para cedula y telefono venezolano
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
@@ -541,9 +542,14 @@ export default function BookingClient({
 
   const handleAuthRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Validate required fields before switching to guest mode
-    if (!form.full_name.trim() || !form.email.trim()) {
-      setError('Nombre y email son obligatorios');
+    // Validate required fields before switching to guest mode.
+    // En el booking PÚBLICO, nombre + email + teléfono son obligatorios (front).
+    if (!form.full_name.trim() || !form.email.trim() || !form.phone.trim()) {
+      setError('Nombre, email y teléfono son obligatorios');
+      return;
+    }
+    if (!isValidEmail(form.email)) {
+      setError('El email no tiene un formato válido');
       return;
     }
     // Degrade: treat as guest booking (no account creation in Etapa 1)
@@ -588,11 +594,18 @@ export default function BookingClient({
       return;
     }
 
-    // Guest validation
-    if (!authUser && (!form.full_name.trim() || !form.email.trim())) {
-      setError('Nombre y email son requeridos');
-      submittingRef.current = false;
-      return;
+    // Guest validation — público: nombre + email + teléfono obligatorios + email válido.
+    if (!authUser) {
+      if (!form.full_name.trim() || !form.email.trim() || !form.phone.trim()) {
+        setError('Nombre, email y teléfono son requeridos');
+        submittingRef.current = false;
+        return;
+      }
+      if (!isValidEmail(form.email)) {
+        setError('El email no tiene un formato válido');
+        submittingRef.current = false;
+        return;
+      }
     }
 
     setSubmitting(true);

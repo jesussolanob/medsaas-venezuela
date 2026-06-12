@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       doctorId,
+      patientId,
       patientName,
       patientEmail,
       patientCedula,
@@ -66,10 +67,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Faltan campos requeridos' }, { status: 400 });
     }
 
-    // Guest mode: require patientName and patientEmail
-    if (!patientName || !patientEmail) {
+    // Se necesita un paciente: o uno existente (patientId, flujo del doctor) o un
+    // nombre para crearlo (booking público / paciente inline). El email es OPCIONAL.
+    if (!patientId && !patientName) {
       return NextResponse.json(
-        { error: 'Se requiere nombre y email del paciente para agendar la cita' },
+        { error: 'Selecciona un paciente o ingresa su nombre para agendar la cita' },
+        { status: 400 },
+      );
+    }
+
+    // El email es opcional, pero si se especifica debe tener formato válido.
+    const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (patientEmail && !EMAIL_REGEX.test(String(patientEmail))) {
+      return NextResponse.json(
+        { error: 'El email del paciente no tiene un formato válido' },
         { status: 400 },
       );
     }
@@ -90,8 +101,11 @@ export async function POST(req: NextRequest) {
     const bookingPayload: Record<string, unknown> = {
       cf_turnstile_token: ETAPA1_TURNSTILE_TOKEN,
       doctor_id: doctorId,
-      patient_name: patientName,
-      patient_email: patientEmail,
+      // Opción B: si viene patient_id, el backend usa ese paciente existente
+      // (sin re-crear). Si no, crea/matchea con name/cedula/email.
+      patient_id: patientId ?? null,
+      patient_name: patientName ?? null,
+      patient_email: patientEmail || null,
       patient_cedula: patientCedula ?? null,
       patient_phone: patientPhone ?? null,
       scheduled_at: scheduledAt,
