@@ -10,6 +10,9 @@
  * No NestJS or Sequelize imports — pure utility module.
  */
 
+/** Minutes before the appointment start at which the VALARM reminder fires. */
+const REMINDER_MINUTES_BEFORE = 30;
+
 export interface IcsEventParams {
   /** Unique appointment ID — used as UID. */
   appointmentId: string;
@@ -102,6 +105,11 @@ export function generateIcsEvent(params: IcsEventParams): string {
     `ATTENDEE;CN=${escapeIcsText(safeAttendeeEmail)};RSVP=TRUE:mailto:${safeAttendeeEmail}`,
     'STATUS:CONFIRMED',
     'SEQUENCE:0',
+    'BEGIN:VALARM',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:Recordatorio de cita',
+    `TRIGGER:-PT${REMINDER_MINUTES_BEFORE}M`,
+    'END:VALARM',
     'END:VEVENT',
     'END:VCALENDAR',
   ]

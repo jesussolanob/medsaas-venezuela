@@ -99,4 +99,37 @@ describe('generateIcsEvent', () => {
     });
     expect(ics).not.toContain('X-INJECT:evil');
   });
+
+  describe('VALARM reminder', () => {
+    it('includes a VALARM block inside the VEVENT', () => {
+      const ics = generateIcsEvent(baseParams);
+      expect(ics).toContain('BEGIN:VALARM');
+      expect(ics).toContain('END:VALARM');
+    });
+
+    it('sets ACTION:DISPLAY on the alarm', () => {
+      const ics = generateIcsEvent(baseParams);
+      expect(ics).toContain('ACTION:DISPLAY');
+    });
+
+    it('fires 30 minutes before the event start', () => {
+      const ics = generateIcsEvent(baseParams);
+      expect(ics).toContain('TRIGGER:-PT30M');
+    });
+
+    it('places the VALARM block between STATUS:CONFIRMED and END:VEVENT', () => {
+      const ics = generateIcsEvent(baseParams);
+      const valarmStart = ics.indexOf('BEGIN:VALARM');
+      const valarmEnd = ics.indexOf('END:VALARM');
+      const veventEnd = ics.indexOf('END:VEVENT');
+
+      expect(valarmStart).toBeGreaterThan(ics.indexOf('STATUS:CONFIRMED'));
+      expect(valarmEnd).toBeLessThan(veventEnd);
+    });
+
+    it('includes the VALARM description text', () => {
+      const ics = generateIcsEvent(baseParams);
+      expect(ics).toContain('DESCRIPTION:Recordatorio de cita');
+    });
+  });
 });

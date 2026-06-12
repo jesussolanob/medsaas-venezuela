@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { google } from 'googleapis';
 import type { CalendarEventResult } from '../../application/dtos/integration.dtos';
 
+/** Minutes before appointment start at which Google Calendar sends reminders. */
+const REMINDER_MINUTES_BEFORE = 30;
+
 export interface ExchangeCodeResult {
   accessToken: string;
   refreshToken: string;
@@ -159,6 +162,13 @@ export class GoogleCalendarService implements OnModuleInit {
             requestId,
             conferenceSolutionKey: { type: 'hangoutsMeet' },
           },
+        },
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: 'popup', minutes: REMINDER_MINUTES_BEFORE },
+            { method: 'email', minutes: REMINDER_MINUTES_BEFORE },
+          ],
         },
       },
     });
