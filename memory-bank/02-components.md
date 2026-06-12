@@ -225,4 +225,23 @@ Pendiente (crecen por módulo): finance, packages, plans, notifications.
 
 dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm,
 reminders, messages, invitations, settings. El sidebar del doctor los lee para
-mostrar/ocultar módulos (status válidos: active, trial, trialing).
+mostrar/ocultar módulos (status válidos: active, trial, trialing). Keys IA (plan Plus):
+`ai_assistant`, `ai_transcription`, `ai_reports`.
+
+## Lote Fase 5 + MVP (2026-06-12) — componentes/módulos añadidos
+
+- **`auth`** → `ProcessLoginTouchUseCase` + `SequelizeLoginTouchRepository` + `POST /api/auth/login-touch`
+  (last_sign_in_at + downgrade al login, sin cron). Cableado en `resolve-identity` (Auth0) y en la action de login dev-stub.
+- **`finances`** → tasa **dual**: ports `IBinanceRateFetcher`/`IBcvRateFetcher` + impls (fetch nativo), resolución
+  perezosa en `RedisUsdtRateStore.getRate()`, use cases `SetRateSource`/`GetRatesSummary`, endpoints
+  `/api/admin/settings/rate-source|rates`. Selector en `/admin/settings`.
+- **`admin`** → estados de actividad reales (`last_sign_in_at`), `ExportDoctorsUseCase` (`GET /admin/doctors/export`, CSV),
+  `GetPublicStatsUseCase` + `PublicStatsController` (`GET /api/public/stats`). Dashboard frontend cablea estados/CxC/pacientes.
+- **`appointments`/`booking`** → `appointments.google_calendar_event_id` (cancelable); `get-available-slots` en timezone
+  **America/Caracas**. **`integrations`** → recordatorios 30min (Google event reminders + `VALARM` en `.ics`).
+- **`consultations`** → `blocks_snapshot` (JSONB) editable: `PUT` lo acepta, GET lo expone; el BFF mapea `blocks_data→blocks_snapshot`.
+- **Frontend** → dashboard doctor (cita actual + registrar pago/gasto), KPIs de agenda, "Por ingresar", `description` en
+  booking, contador real en landing, route handler `GET /api/doctor/patients/[id]`.
+
+> **Convención (lección QA 2026-06-12):** el BFF/api-client devuelve `envelope.data` en **camelCase**; los componentes
+> frontend deben leer camelCase (varios bugs por asumir snake_case: NewAppointmentFlow, consultation-blocks config).

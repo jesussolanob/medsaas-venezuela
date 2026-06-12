@@ -9,24 +9,48 @@ CRM clínico omnicanal para médicos especialistas: gestión de agenda, paciente
 consultas, historia clínica (EHR), recetas, finanzas, cobros, paquetes prepagados,
 portal del paciente y booking público. Nombre comercial: **Delta Medical CRM**.
 
-Modelo de negocio: suscripción por médico (beta privada → 1 año gratis). Planes
-configurables: Trial, Basic ($10), Professional ($30), Clinic ($100).
+Modelo de negocio: **suscripción por médico**, con planes **100% parametrizables
+desde admin** (`plan_configs` + `plan_prices` por período + `plan_features`):
+
+- **Delta Free** — permanente (nunca expira), gratis, features básicas.
+- **Delta Base** — $10/mes ($27 trim · $51 sem · $96 anual).
+- **Delta Plus** — $30/mes ($81 trim · $153 sem · $288 anual), incluye features de IA.
+
+**Gating del doctor** = capacidades del ROL (`role_capabilities`) **∩** features del
+PLAN (`plan_features`). Módulo no habilitado → candado → `/doctor/upgrade`. Al expirar:
+**downgrade perezoso** a Delta Free SIN perder datos (se persiste al **login**, sin cron).
+**Pagos = MANUALES** (transferencia/Pago Móvil/etc.) + **aprobación de super_admin**
+(módulo `billing`). Verificación de credenciales del doctor: **MPPS automática** vía SACS,
+colegiado manual.
 
 ## Estado de la migración
 
 Migrado de **Next.js monolítico + Supabase** → **monorepo NX**. **Supabase
 eliminado por completo** (auth, BD y storage propios). Estructura:
+
 - `apps/frontend` — Next.js 16 (App Router) — UI existente migrada + BFF
 - `apps/backend` — NestJS con DDD (4 capas) — lógica de negocio
 - `libs/shared-types` — Zod schemas + tipos compartidos
 - `libs/shared-utils` — utilidades puras (safeStringify, parseErrorLocation, …)
 - `libs/shared-crypto` — AES-256-GCM + HMAC (PHI)
 
-Avances clave (2026-06): módulos backend del Grupo A migrados (DDD + Sequelize),
-**Auth0** integrado env-gated (dev-stub sigue por defecto), **Resend** con
-plantillas en BD, **Sentry** + observabilidad sin `console.error`, storage
-**MinIO/GCS** por driver. Pendiente: re-cableo de IA (Gemini), cron de
-recordatorios, deploy GCP. Portal del paciente diferido (sale sin él).
+Avances clave (2026-06): backend 10/10 módulos de negocio + Grupo A (DDD +
+Sequelize), **Auth0** env-gated (dev-stub por defecto), **Resend** con plantillas
+en BD, **Sentry**, storage **MinIO/GCS** por driver, **Google Calendar/Meet**
+opt-in (con recordatorios 30min nativos + `.ics`/Jitsi fallback), **telemetría**
+por sesión, **MPPS** automática (SACS).
+
+**Foco de producto actual: módulo Doctor "vendible"** (Fases 1-8) — HECHO, revisado
+(0 CRITICAL/HIGH) y **QA con Playwright (2026-06-12)**: planes paramétricos + gating,
+registro/onboarding/verificación, consultorios, agenda + bloqueos, consultorio con
+bloques dinámicos, finanzas/cobros/gastos, plantillas PDF, servicios, booking público.
+
+**Avance MVP (`06-mvp-planning`):** 7.4 tasa USDT/Binance, 7.5 dashboard especialista,
+7.6 KPIs agenda, 7.11 servicios — completos; 7.1/7.2/7.3/7.7/7.9 avanzados. Restan
+landing (resto), export PDF, plantillas PDF de informe, cobro WhatsApp, limpieza BD.
+
+Pendiente grande: **IA (Fase 7, Gemini)** — espera specs del usuario. También: cron de
+recordatorios (envío real WhatsApp/email), deploy GCP. Portal del paciente diferido.
 
 Etapa 1 (actual): construir todo en local — `DevAuthGuard`, Postgres/Redis/MinIO
 Docker, clave de cifrado fija en `.env`. Sin GCP/Cloudflare.
@@ -39,18 +63,18 @@ Decisión de arranque (2026-06-01): monorepo **in-place** en el repo actual
 
 > Histórico: de aquí venimos. Lo de Supabase ya **no aplica** (eliminado).
 
-| Capa | Tecnología (origen) |
-|------|-----------|
-| Frontend | Next.js **16.2.3** (App Router), React **19.2.4**, TypeScript 5 |
-| UI | Tailwind CSS **v4**, shadcn 4, radix-ui, lucide-react, recharts |
-| Auth | ~~Supabase Auth (`@supabase/ssr`)~~ → dev-stub / Auth0 |
-| BD | ~~PostgreSQL vía Supabase (RLS), queries directas~~ → NestJS + Sequelize |
-| Storage | ~~Supabase Storage~~ → MinIO (local) / GCS (prod) |
-| IA | **Google Gemini** (texto + transcripción) — pendiente de re-cableo |
-| Email | **Resend** |
-| Integraciones | Google OAuth (Calendar sync) |
-| Testing | Jest (unit) · Playwright (E2E) |
-| Deploy | ~~Vercel + Supabase Cloud~~ → GCP (Cloud Run/SQL/GCS) |
+| Capa          | Tecnología (origen)                                                      |
+| ------------- | ------------------------------------------------------------------------ |
+| Frontend      | Next.js **16.2.3** (App Router), React **19.2.4**, TypeScript 5          |
+| UI            | Tailwind CSS **v4**, shadcn 4, radix-ui, lucide-react, recharts          |
+| Auth          | ~~Supabase Auth (`@supabase/ssr`)~~ → dev-stub / Auth0                   |
+| BD            | ~~PostgreSQL vía Supabase (RLS), queries directas~~ → NestJS + Sequelize |
+| Storage       | ~~Supabase Storage~~ → MinIO (local) / GCS (prod)                        |
+| IA            | **Google Gemini** (texto + transcripción) — pendiente de re-cableo       |
+| Email         | **Resend**                                                               |
+| Integraciones | Google OAuth (Calendar sync)                                             |
+| Testing       | Jest (unit) · Playwright (E2E)                                           |
+| Deploy        | ~~Vercel + Supabase Cloud~~ → GCP (Cloud Run/SQL/GCS)                    |
 
 ## Stack actual / objetivo (post-migración)
 
@@ -61,19 +85,20 @@ NX monorepo · pnpm · GitHub Actions CI/CD.
 
 ## Entornos
 
-| Entorno | Frontend | Backend | BD |
-|---------|----------|---------|-----|
-| Local | localhost:3000 | localhost:3001 | Docker Postgres :5432 (+ Redis :6379, MinIO :9000/:9001) |
-| Producción (futuro) | Cloud Run + Cloudflare | Cloud Run `--ingress=internal` | Cloud SQL |
+| Entorno             | Frontend               | Backend                        | BD                                                       |
+| ------------------- | ---------------------- | ------------------------------ | -------------------------------------------------------- |
+| Local               | localhost:3000         | localhost:3001                 | Docker Postgres :5432 (+ Redis :6379, MinIO :9000/:9001) |
+| Producción (futuro) | Cloud Run + Cloudflare | Cloud Run `--ingress=internal` | Cloud SQL                                                |
 
 BD local: `postgres://delta:delta_dev_password@localhost:5432/deltamedical`
 
-## Contactos
+## Contactos / cuentas
 
-- Super Admin: jesussolano4@gmail.com
-- Doctor de prueba: ing.jesussolanob@gmail.com
-- GitHub: jesussolanob
-- Repo: github.com/jesussolanob/medsaas-venezuela
+- Super Admin (Auth0, en uso): **lucas@deltasalud.app**
+- Super Admin (legacy Supabase): jesussolano4@gmail.com
+- Doctor de prueba (legacy): ing.jesussolanob@gmail.com
+- GitHub: jesussolanob · Repo: github.com/jesussolanob/medsaas-venezuela
+- Rama de trabajo actual: `feature/migracion-backend` (local, sin push)
 
 ## Idioma
 
