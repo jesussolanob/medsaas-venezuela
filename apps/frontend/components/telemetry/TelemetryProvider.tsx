@@ -154,11 +154,25 @@ export default function TelemetryProvider(): null {
       metadata: Record<string, unknown> | null = null,
     ): void => {
       try {
+        const now = Date.now();
+        // Dedup: skip an event identical to the immediately preceding one within
+        // 1s — collapses React StrictMode double-effects (dev) and accidental
+        // double-fires so the journey stays clean.
+        const last = bufferRef.current[bufferRef.current.length - 1];
+        if (
+          last &&
+          last.action === action &&
+          last.resource_type === resourceType &&
+          last.resource_id === resourceId &&
+          now - new Date(last.occurred_at).getTime() < 1000
+        ) {
+          return;
+        }
         const event: TelemetryEvent = {
           action,
           resource_type: resourceType,
           resource_id: resourceId,
-          occurred_at: new Date().toISOString(),
+          occurred_at: new Date(now).toISOString(),
           metadata,
         };
         bufferRef.current = [...bufferRef.current, event];
