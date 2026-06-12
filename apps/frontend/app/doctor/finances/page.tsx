@@ -19,6 +19,7 @@ import {
   DollarSign,
   TrendingUp,
   TrendingDown,
+  Clock,
   BarChart3,
   Plus,
   Trash2,
@@ -92,6 +93,8 @@ type ViewMode = 'month' | 'week' | 'day';
 export default function FinancesPage() {
   const { rate: bcvRate, toBs } = useBcvRate();
   const [incomes, setIncomes] = useState<Income[]>([]);
+  // Cuentas por cobrar: pagos aún 'pending' (no aprobados). Se muestran como "Por ingresar".
+  const [pendingIncomes, setPendingIncomes] = useState<Income[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   // L7 (2026-04-29): consultas para el cuadro descargable + KPIs.
   const [consultationsRows, setConsultationsRows] = useState<ConsultationRow[]>([]);
@@ -131,27 +134,29 @@ export default function FinancesPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // FUENTE UNICA: pagos APROBADOS vía backend (BFF).
-      const [paid, exp, cons] = await Promise.all([
+      // Pagos APROBADOS (ingresos reales) + PENDIENTES (cuentas por cobrar) vía backend (BFF).
+      const [paid, pending, exp, cons] = await Promise.all([
         getPayments({ status: 'approved' }),
+        getPayments({ status: 'pending' }),
         getExpenses(),
         getConsultationsForReports(200),
       ]);
 
-      setIncomes(
-        paid.map((p) => ({
-          id: p.id,
-          patient_name: p.appointment?.patient_name || 'Paciente',
-          amount_usd: Number(p.amount_usd || 0),
-          payment_method: p.method_snapshot || '',
-          date: p.appointment?.scheduled_at || p.paid_at || p.created_at,
-          consultation_code:
-            p.consultation?.consultation_code ||
-            p.appointment?.appointment_code ||
-            p.payment_code ||
-            '',
-        })),
-      );
+      const toIncome = (p: Awaited<ReturnType<typeof getPayments>>[number]): Income => ({
+        id: p.id,
+        patient_name: p.appointment?.patient_name || 'Paciente',
+        amount_usd: Number(p.amount_usd || 0),
+        payment_method: p.method_snapshot || '',
+        date: p.appointment?.scheduled_at || p.paid_at || p.created_at,
+        consultation_code:
+          p.consultation?.consultation_code ||
+          p.appointment?.appointment_code ||
+          p.payment_code ||
+          '',
+      });
+
+      setIncomes(paid.map(toIncome));
+      setPendingIncomes(pending.map(toIncome));
 
       // Map backend expenses to the Expense shape consumed by the UI
       setExpenses(
@@ -201,13 +206,23 @@ export default function FinancesPage() {
 
     const filteredIncomes = incomes.filter((i) => filterByDate(i.date));
     const filteredExpenses = expenses.filter((e) => filterByDate(e.due_date));
+    const filteredPending = pendingIncomes.filter((i) => filterByDate(i.date));
 
     const totalIncome = filteredIncomes.reduce((sum, i) => sum + (i.amount_usd || 0), 0);
     const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const pendingTotal = filteredPending.reduce((sum, i) => sum + (i.amount_usd || 0), 0);
     const balance = totalIncome - totalExpenses;
 
-    return { filteredIncomes, filteredExpenses, totalIncome, totalExpenses, balance };
-  }, [incomes, expenses, viewMode, currentDate]);
+    return {
+      filteredIncomes,
+      filteredExpenses,
+      filteredPending,
+      totalIncome,
+      totalExpenses,
+      pendingTotal,
+      balance,
+    };
+  }, [incomes, pendingIncomes, expenses, viewMode, currentDate]);
 
   // Chart data — last 6 periods
   const chartData = useMemo(() => {
@@ -694,7 +709,7 @@ export default function FinancesPage() {
 
       {/* KPI Cards — visibles en overview/income/expenses (no en reports) */}
       {tab !== 'reports' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-2xl border border-slate-200 p-5">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
@@ -714,6 +729,28 @@ export default function FinancesPage() {
             )}
             <p className="text-xs text-slate-400 mt-1">
               {filteredData.filteredIncomes.length} pagos aprobados
+            </p>
+          </div>
+          {/* Por ingresar = cuentas por cobrar (pagos pendientes del período). */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-amber-600" />
+              </div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                Por ingresar
+              </p>
+            </div>
+            <p className="text-2xl font-bold text-amber-600">
+              {formatUsd(filteredData.pendingTotal)}
+            </p>
+            {bcvRate && (
+              <p className="text-sm text-amber-400 font-semibold">
+                {toBs(filteredData.pendingTotal)}
+              </p>
+            )}
+            <p className="text-xs text-slate-400 mt-1">
+              {filteredData.filteredPending.length} pagos pendientes
             </p>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200 p-5">

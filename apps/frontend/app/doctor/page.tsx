@@ -62,6 +62,8 @@ type Appointment = {
 type FinancialData = {
   total_revenue: number;
   appointment_count: number;
+  // Cuentas por cobrar: consultas del mes con pago aún 'pending' (no aprobado).
+  pending_amount: number;
 };
 
 type AllTimeStats = {
@@ -78,6 +80,7 @@ export default function DoctorDashboard() {
   const [financialData, setFinancialData] = useState<FinancialData>({
     total_revenue: 0,
     appointment_count: 0,
+    pending_amount: 0,
   });
   const [allTimeStats, setAllTimeStats] = useState<AllTimeStats>({
     total_revenue_lifetime: 0,
@@ -176,6 +179,7 @@ export default function DoctorDashboard() {
         setFinancialData({
           total_revenue: financeSummary?.totalIncome ?? 0,
           appointment_count: financeSummary?.consultationCount ?? 0,
+          pending_amount: financeSummary?.pendingAmount ?? 0,
         });
 
         // Map all-time stats.
@@ -635,6 +639,33 @@ export default function DoctorDashboard() {
                 <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
                   USD
                 </p>
+              </div>
+
+              {/* Por ingresar = cuentas por cobrar (consultas con pago pendiente). */}
+              <div
+                className="flex items-center justify-between p-3"
+                style={{
+                  background: 'var(--dh-amber-50, #fffbeb)',
+                  border: '1px solid var(--dh-amber-100, #fde68a)',
+                  borderRadius: 'var(--dh-r-md)',
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" style={{ color: '#b45309' }} />
+                  <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                    Por ingresar
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold" style={{ color: '#92400e' }}>
+                    {formatUsd(financialData.pending_amount)}
+                  </p>
+                  {bcvRate && financialData.pending_amount > 0 && (
+                    <p className="text-[11px]" style={{ color: '#b45309' }}>
+                      {toBs(financialData.pending_amount)}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

@@ -66,6 +66,7 @@ type PricingPlan = {
   price_usd: number;
   duration_minutes: number;
   sessions_count?: number;
+  description?: string | null;
 };
 type Slot = { date: string; time: string; label: string };
 type PaymentMethod =
@@ -1118,6 +1119,11 @@ export default function BookingClient({
                             </span>
                           )}
                         </div>
+                        {plan.description && (
+                          <p className="text-xs text-slate-500 mt-1.5 leading-snug max-w-[15rem]">
+                            {plan.description}
+                          </p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-extrabold" style={{ color: BRAND.turquoise }}>

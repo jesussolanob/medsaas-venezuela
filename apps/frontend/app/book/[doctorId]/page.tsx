@@ -50,6 +50,7 @@ interface PricingPlan {
   priceUsd: number;
   durationMinutes: number;
   sessionsCount?: number;
+  description?: string | null;
 }
 
 interface BookedSlotRow {
@@ -96,6 +97,7 @@ export default async function PublicBookingPage({
           price_usd: p.priceUsd,
           duration_minutes: p.durationMinutes,
           sessions_count: p.sessionsCount ?? 1,
+          description: p.description ?? null,
         }))
       : [
           {

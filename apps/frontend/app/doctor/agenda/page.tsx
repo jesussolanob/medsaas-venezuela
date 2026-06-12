@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Calendar,
   Clock,
+  Activity,
   Plus,
   ChevronLeft,
   ChevronRight,
@@ -1157,6 +1158,48 @@ export default function AgendaPage() {
       month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 },
     );
 
+  // ── Agenda KPIs (computed from the loaded appointment window) ───────────────
+  // Horas de consulta, promedio de citas por día activo, y mejor día de la semana.
+  // Excluye canceladas / no-asistió. Duración por cita = endTime - time (fallback slot).
+  const agendaKpis = useMemo(() => {
+    const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const toMin = (hhmm: string): number => {
+      const [h, m] = hhmm.split(':').map((n) => parseInt(n, 10));
+      return (h || 0) * 60 + (m || 0);
+    };
+    const relevant = allAppointments.filter(
+      (a) => a.status !== 'cancelled' && a.status !== 'no_show',
+    );
+    const fallback = config.slot_duration || 30;
+    let totalMinutes = 0;
+    const byDate = new Map<string, number>();
+    const byWeekday = new Array<number>(7).fill(0);
+    for (const a of relevant) {
+      const dur = Math.max(0, toMin(a.endTime) - toMin(a.time)) || fallback;
+      totalMinutes += dur;
+      byDate.set(a.date, (byDate.get(a.date) ?? 0) + 1);
+      // Weekday from the local date string (noon avoids timezone edge cases).
+      const wd = new Date(`${a.date}T12:00:00`).getDay();
+      if (wd >= 0 && wd <= 6) byWeekday[wd] += 1;
+    }
+    const distinctDays = byDate.size;
+    let bestIdx = -1;
+    let bestCount = 0;
+    byWeekday.forEach((c, i) => {
+      if (c > bestCount) {
+        bestCount = c;
+        bestIdx = i;
+      }
+    });
+    return {
+      count: relevant.length,
+      totalHours: totalMinutes / 60,
+      avgPerDay: distinctDays > 0 ? relevant.length / distinctDays : 0,
+      bestDay: bestIdx >= 0 ? WEEKDAYS[bestIdx] : '—',
+      bestDayCount: bestCount,
+    };
+  }, [allAppointments, config.slot_duration]);
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -1207,6 +1250,57 @@ export default function AgendaPage() {
               <Plus className="w-4 h-4" />
               Nueva consulta
             </button>
+          </div>
+        </div>
+
+        {/* Agenda KPIs */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-3.5">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" style={{ color: 'var(--dh-turquoise)' }} />
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Horas de consulta
+              </p>
+            </div>
+            <p
+              className="font-bold mt-1.5"
+              style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 22 }}
+            >
+              {agendaKpis.totalHours.toLocaleString('es-VE', { maximumFractionDigits: 1 })} h
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{agendaKpis.count} citas</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-3.5">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4" style={{ color: 'var(--dh-turquoise)' }} />
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Promedio por día
+              </p>
+            </div>
+            <p
+              className="font-bold mt-1.5"
+              style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 22 }}
+            >
+              {agendaKpis.avgPerDay.toLocaleString('es-VE', { maximumFractionDigits: 1 })}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">citas / día activo</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-3.5">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" style={{ color: 'var(--dh-turquoise)' }} />
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Mejor día
+              </p>
+            </div>
+            <p
+              className="font-bold mt-1.5"
+              style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)', fontSize: 22 }}
+            >
+              {agendaKpis.bestDay}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {agendaKpis.bestDayCount > 0 ? `${agendaKpis.bestDayCount} citas` : 'sin datos'}
+            </p>
           </div>
         </div>
 
