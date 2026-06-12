@@ -348,3 +348,22 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 | `/api/telemetry/sessions` | GET    | super_admin | Lista de sesiones de telemetría.                                                                               |
 
 > Reemplaza el modelo `action_events` (eliminado). Captura low-touch en el cliente (`TelemetryProvider`).
+
+### Lote Fase 5 + MVP (2026-06-12) — endpoints nuevos
+
+| Endpoint                          | Método | Roles       | Notas                                                                                                                                                                                                                                         |
+| --------------------------------- | ------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/auth/login-touch`           | POST   | doctor/any  | "Login touch": setea `profiles.last_sign_in_at` y, si la suscripción venció (active/trial), degrada a `past_due` (subs+profiles+`subscription_changes_log`). Respeta planes permanentes. Anti-IDOR. Auth0 lo invoca desde `resolve-identity`. |
+| `/api/admin/settings/rate-source` | POST   | super_admin | Fuente activa de tasa USD→Bs: `{ source: 'binance'\|'bcv'\|'manual', value? }`. Refresca y persiste.                                                                                                                                          |
+| `/api/admin/settings/rates`       | GET    | super_admin | Resumen `{ source, manual, binance, bcv, effective }`. Binance P2P + BCV (dolarapi) + manual.                                                                                                                                                 |
+| `/api/settings/usdt-rate`         | GET    | público     | Tasa efectiva `{ rate, source }`. Refresco PEREZOSO en `getRate()` (sin cron, TTL Redis 600s).                                                                                                                                                |
+| `/api/admin/doctors/export`       | GET    | super_admin | CSV de especialistas (`text/csv`, attachment). Estado Activo/Frío/Inactivo según `last_sign_in_at`.                                                                                                                                           |
+| `/api/public/stats`               | GET    | público     | Conteos agregados `{ specialists, patients }` para el contador de la landing. NUNCA PII.                                                                                                                                                      |
+
+> **Consultorio:** `PUT /api/consultations/:id` ahora acepta `blocks_snapshot` (JSONB) y el GET lo expone
+> (bloques dinámicos editables persisten). **Cita:** `appointments.google_calendar_event_id` persiste el evento
+> gcal (cancelable). **Recordatorio 30min:** Google event reminders + `VALARM` en el `.ics` (sin polling/WS).
+>
+> **⚠️ Convención de serialización (lección de QA 2026-06-12):** backend NestJS y BFF devuelven `envelope.data`
+> en **camelCase** (`fullName`, `defaultLabel`, `blockKey`…). Los consumers frontend deben leer camelCase, no
+> snake_case (causó 4 bugs del lote). Frontend route handler nuevo: `GET /api/doctor/patients/[id]`.
