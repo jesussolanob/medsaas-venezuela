@@ -20,18 +20,34 @@ export interface AppointmentListResult {
   limit: number;
 }
 
-/** Conflict detection input for a slot. */
-export interface SlotConflictParams {
+/**
+ * Overlap detection input.
+ * Two appointments overlap when their intervals intersect:
+ *   existing.scheduled_at < newEnd AND existing_end > newStart
+ * where newEnd = scheduledAt + durationMinutes and existing_end = existing.scheduled_at + COALESCE(existing.duration_minutes, 30).
+ */
+export interface OverlapParams {
   doctorId: string;
   scheduledAt: Date;
+  /** Duration of the new appointment in minutes. Used to compute [scheduledAt, scheduledAt + durationMinutes). */
+  durationMinutes: number;
+  /** When rescheduling, exclude this appointment ID from the conflict check so the appointment does not conflict with itself. */
   excludeId?: string;
 }
 
-/** Duplicate detection: same patient within ±15 minutes. */
-export interface DuplicateCheckParams {
+/**
+ * Patient overlap detection input.
+ * Checks whether the patient already has an active appointment (with ANY doctor)
+ * whose interval intersects with [scheduledAt, scheduledAt + durationMinutes).
+ * Cross-doctor: does NOT filter by doctorId.
+ */
+export interface PatientOverlapParams {
   patientId: string;
   scheduledAt: Date;
-  windowMinutes?: number;
+  /** Duration of the new appointment in minutes. */
+  durationMinutes: number;
+  /** When rescheduling, exclude this appointment ID from the check so the patient does not conflict with themselves. */
+  excludeId?: string;
 }
 
 export interface PackageInfo {
@@ -65,14 +81,20 @@ export interface IAppointmentRepository {
   /** Update the status of an existing appointment. Returns the updated entity. */
   updateStatus(id: string, status: AppointmentStatus): Promise<Appointment>;
 
-  /** Returns true when the doctor slot is already occupied by an active appointment. */
-  hasSlotConflict(params: SlotConflictParams): Promise<boolean>;
+  /**
+   * Returns true when the new appointment interval overlaps with any active appointment for the doctor.
+   * Two intervals [A, A+Da) and [B, B+Db) overlap when A < B+Db AND B < A+Da.
+   * Legacy rows with null duration_minutes are treated as 30 minutes via COALESCE.
+   */
+  hasOverlap(params: OverlapParams): Promise<boolean>;
 
   /**
-   * Returns true when the patient already has an appointment within the given
-   * time window around scheduledAt. Defaults to ±15 minutes.
+   * Returns true when the patient already has an active appointment (with ANY doctor)
+   * whose interval overlaps with [scheduledAt, scheduledAt + durationMinutes).
+   * Cross-doctor check — does NOT filter by doctorId.
+   * Legacy rows with null duration_minutes are treated as 30 minutes via COALESCE.
    */
-  hasDuplicate(params: DuplicateCheckParams): Promise<boolean>;
+  hasPatientOverlap(params: PatientOverlapParams): Promise<boolean>;
 
   /** Fetch package info for optimistic lock validation. */
   findPackageById(packageId: string): Promise<PackageInfo | null>;

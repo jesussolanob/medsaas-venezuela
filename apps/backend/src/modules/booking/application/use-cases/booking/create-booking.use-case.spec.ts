@@ -110,8 +110,8 @@ describe('CreateBookingUseCase', () => {
       save: jest.fn(),
       updateStatus: jest.fn(),
       updateScheduledAt: jest.fn(),
-      hasSlotConflict: jest.fn(),
-      hasDuplicate: jest.fn(),
+      hasOverlap: jest.fn(),
+      hasPatientOverlap: jest.fn(),
       findPackageById: jest.fn(),
       incrementPackageSessions: jest.fn(),
       logStatusChange: jest.fn(),
@@ -166,7 +166,8 @@ describe('CreateBookingUseCase', () => {
   describe('creates appointment for available slot', () => {
     it('creates appointment and new patient with manual payment', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(null);
       mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
       mockPatientRepo.save.mockImplementation(async (p) => p);
@@ -185,7 +186,8 @@ describe('CreateBookingUseCase', () => {
     it('reuses existing patient found by email hash', async () => {
       const existingPatient = makePatient();
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(existingPatient);
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
 
@@ -198,7 +200,8 @@ describe('CreateBookingUseCase', () => {
   describe('creates appointment using package session', () => {
     it('calls consumePackageSession with the transaction handle when packageId is provided', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
       mockConsumeUseCase.execute.mockResolvedValue(makePkg({ usedSessions: 6 }));
@@ -214,7 +217,8 @@ describe('CreateBookingUseCase', () => {
 
     it('sets payment_method to "package" when using a package', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
       mockAppointmentRepo.save.mockImplementation(async (a) => a);
       mockConsumeUseCase.execute.mockResolvedValue(makePkg());
@@ -231,7 +235,7 @@ describe('CreateBookingUseCase', () => {
   describe('rejects occupied slot', () => {
     it('throws AppointmentConflictError when slot is already taken', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(true);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(true);
 
       await expect(useCase.execute(makeDto())).rejects.toThrow(AppointmentConflictError);
       expect(mockPatientRepo.save).not.toHaveBeenCalled();
@@ -255,7 +259,8 @@ describe('CreateBookingUseCase', () => {
   describe('transaction rollback if package consumption fails', () => {
     it('propagates error from consumePackageSession so the transaction rolls back', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
       mockConsumeUseCase.execute.mockRejectedValue(new PackageExhaustedError('pkg-001'));
@@ -270,7 +275,8 @@ describe('CreateBookingUseCase', () => {
   describe('Turnstile stub', () => {
     it('accepts any token in Etapa 1 without throwing', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
 
@@ -283,7 +289,8 @@ describe('CreateBookingUseCase', () => {
   describe('identity resolution on new patient creation', () => {
     it('calls resolveIdentity with the cedula when creating a new patient', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(null);
       mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
       mockPatientRepo.save.mockImplementation(async (p) => p);
@@ -296,7 +303,8 @@ describe('CreateBookingUseCase', () => {
 
     it('sets identityId on the new patient entity', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(null);
       mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
       mockPatientRepo.save.mockImplementation(async (p) => p);
@@ -311,7 +319,8 @@ describe('CreateBookingUseCase', () => {
     it('does not call resolveIdentity when patient is found by email (no new patient)', async () => {
       const existingPatient = makePatient();
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(existingPatient);
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
 
@@ -325,7 +334,8 @@ describe('CreateBookingUseCase', () => {
   describe('patient_id path — anti-IDOR and no find-or-create', () => {
     it('throws PatientNotFoundError when patient_id belongs to a different doctor', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       // findById returns null — patient not scoped to this doctor
       mockPatientRepo.findById.mockResolvedValue(null);
 
@@ -342,7 +352,8 @@ describe('CreateBookingUseCase', () => {
     it('uses the loaded patient directly when patient_id is valid, skipping find-or-create', async () => {
       const existingPatient = makePatient();
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findById.mockResolvedValue(existingPatient);
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
 
@@ -388,7 +399,8 @@ describe('CreateBookingUseCase', () => {
 
     beforeEach(() => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
     });
 
@@ -489,7 +501,8 @@ describe('CreateBookingUseCase', () => {
 
     beforeEach(() => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
-      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
       mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
       mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
     });

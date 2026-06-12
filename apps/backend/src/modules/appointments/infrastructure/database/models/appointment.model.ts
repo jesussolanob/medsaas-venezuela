@@ -141,6 +141,16 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'google_calendar_event_id' })
   declare googleCalendarEventId: string | null;
 
+  /**
+   * Duration of the appointment slot in minutes.
+   * Used for overlap detection: the appointment occupies [scheduled_at, scheduled_at + duration_minutes).
+   * Derived from the office slotDuration at booking time; defaults to 30 when not set.
+   * Null for legacy rows created before migration 20260612000003.
+   * Added by migration 20260612000003-appointment-duration-minutes.
+   */
+  @Column({ type: DataType.INTEGER, allowNull: true, field: 'duration_minutes' })
+  declare durationMinutes: number | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

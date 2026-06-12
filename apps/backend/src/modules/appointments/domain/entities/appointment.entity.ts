@@ -60,6 +60,13 @@ export class Appointment {
      * or legacy rows. Added by migration 20260612000001.
      */
     public readonly googleCalendarEventId: string | null,
+    /**
+     * Duration of the appointment slot in minutes.
+     * The appointment occupies the interval [scheduledAt, scheduledAt + durationMinutes).
+     * Used for overlap detection. Null for legacy rows (treated as 30 min by the repo layer).
+     * Added by migration 20260612000003.
+     */
+    public readonly durationMinutes: number | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
@@ -116,6 +123,7 @@ export class Appointment {
       params.meetLink ?? null,
       params.officeId ?? null,
       params.googleCalendarEventId ?? null,
+      params.durationMinutes ?? null,
       params.createdAt,
       params.updatedAt,
     );
@@ -168,6 +176,12 @@ export interface AppointmentCreateParams {
    * Optional — null for in-person, Jitsi-fallback, or legacy rows.
    */
   googleCalendarEventId?: string | null;
+  /**
+   * Duration of the appointment slot in minutes.
+   * Derived from the office slotDuration at booking/creation time.
+   * Optional — null for legacy rows; treated as 30 min by the overlap detection logic.
+   */
+  durationMinutes?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

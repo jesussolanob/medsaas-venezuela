@@ -27,27 +27,9 @@ export class CreateAppointmentUseCase {
   async execute(dto: CreateAppointmentDto): Promise<Appointment> {
     const scheduledAt = new Date(dto.scheduled_at);
 
-    // 1. Guard: same patient within ±15 min (duplicate check)
-    if (dto.patient_id) {
-      const isDuplicate = await this.appointmentRepo.hasDuplicate({
-        patientId: dto.patient_id,
-        scheduledAt,
-      });
-      if (isDuplicate) {
-        throw new AppointmentDuplicateError(dto.patient_id, scheduledAt);
-      }
-    }
-
-    // 2. Guard: slot occupied by any other patient for this doctor
-    const hasConflict = await this.appointmentRepo.hasSlotConflict({
-      doctorId: dto.doctor_id,
-      scheduledAt,
-    });
-    if (hasConflict) {
-      throw new AppointmentConflictError(scheduledAt);
-    }
-
-    // 3. If an office is specified, validate ownership and modality compatibility
+    // 1. If an office is specified, validate ownership and modality compatibility.
+    //    Also capture slotDuration so we can (a) check overlap correctly and (b) persist it.
+    let slotDuration = 30;
     if (dto.office_id) {
       const office = await this.officeRepo.findById(dto.office_id);
       if (!office || !office.isOwnedBy(dto.doctor_id)) {
@@ -56,6 +38,31 @@ export class CreateAppointmentUseCase {
       if (!office.supportsModality(dto.appointment_mode)) {
         throw new AppointmentOfficeInvalidError('modality_mismatch');
       }
+      slotDuration = office.slotDuration;
+    }
+
+    // 2. Guard: same patient already has an overlapping appointment (cross-doctor).
+    //    Replaces the old ±15 min hasDuplicate check with interval-based overlap detection.
+    if (dto.patient_id) {
+      const patientOverlaps = await this.appointmentRepo.hasPatientOverlap({
+        patientId: dto.patient_id,
+        scheduledAt,
+        durationMinutes: slotDuration,
+      });
+      if (patientOverlaps) {
+        throw new AppointmentDuplicateError(dto.patient_id, scheduledAt);
+      }
+    }
+
+    // 3. Guard: slot overlaps with any other active appointment for this doctor.
+    //    Uses the half-open interval [scheduledAt, scheduledAt + slotDuration).
+    const hasConflict = await this.appointmentRepo.hasOverlap({
+      doctorId: dto.doctor_id,
+      scheduledAt,
+      durationMinutes: slotDuration,
+    });
+    if (hasConflict) {
+      throw new AppointmentConflictError(scheduledAt);
     }
 
     // 4. If a package is involved, validate ownership, status and sessions
@@ -113,6 +120,7 @@ export class CreateAppointmentUseCase {
       chiefComplaint: dto.chief_complaint ?? null,
       appointmentCode: null,
       officeId: dto.office_id ?? null,
+      durationMinutes: slotDuration,
       createdAt: now,
       updatedAt: now,
     });

@@ -81,6 +81,7 @@ describe('SequelizeAppointmentRepository (integration)', () => {
       sessionNumber: null,
       chiefComplaint: null,
       appointmentCode: null,
+      durationMinutes: 30,
       createdAt: now,
       updatedAt: now,
     });
@@ -117,18 +118,20 @@ describe('SequelizeAppointmentRepository (integration)', () => {
     expect(result).toBeNull();
   });
 
-  it('hasDuplicate returns false when no appointments exist for patient', async () => {
-    const result = await repo.hasDuplicate({
+  it('hasPatientOverlap returns false when no appointments exist for patient', async () => {
+    const result = await repo.hasPatientOverlap({
       patientId: randomUUID(),
       scheduledAt: new Date('2026-12-15T10:00:00Z'),
+      durationMinutes: 30,
     });
     expect(result).toBe(false);
   });
 
-  it('hasSlotConflict returns false when no active appointments exist for the slot', async () => {
-    const result = await repo.hasSlotConflict({
+  it('hasOverlap returns false when no active appointments exist for the doctor', async () => {
+    const result = await repo.hasOverlap({
       doctorId: randomUUID(),
       scheduledAt: new Date('2026-12-20T14:00:00Z'),
+      durationMinutes: 30,
     });
     expect(result).toBe(false);
   });

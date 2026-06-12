@@ -3,12 +3,14 @@ import type { IAppointmentRepository } from '../../../domain/repositories/appoin
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentNotReschedulableError } from '../../../domain/errors/appointment-not-reschedulable.error';
 import { AppointmentConflictError } from '../../../domain/errors/appointment-conflict.error';
+import { AppointmentDuplicateError } from '../../../domain/errors/appointment-duplicate.error';
 import {
   Appointment,
   type AppointmentCreateParams,
 } from '../../../domain/entities/appointment.entity';
 
 const DOCTOR_ID = 'doctor-uuid-1';
+const PATIENT_ID = 'patient-uuid-1';
 const APPT_ID = 'appt-uuid-1';
 const now = new Date('2026-06-10T10:00:00Z');
 const newDate = new Date('2026-06-11T14:00:00Z');
@@ -17,7 +19,7 @@ function makeAppointment(overrides: Partial<AppointmentCreateParams> = {}): Appo
   return Appointment.create({
     id: APPT_ID,
     doctorId: DOCTOR_ID,
-    patientId: 'patient-1',
+    patientId: PATIENT_ID,
     authUserId: null,
     consultationId: null,
     patientName: 'Juan P.',
@@ -40,6 +42,7 @@ function makeAppointment(overrides: Partial<AppointmentCreateParams> = {}): Appo
     sessionNumber: null,
     chiefComplaint: null,
     appointmentCode: null,
+    durationMinutes: 30,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -58,8 +61,8 @@ function makeRepo(
     updateScheduledAt: jest
       .fn()
       .mockImplementation((_id, scheduledAt) => Promise.resolve(makeAppointment({ scheduledAt }))),
-    hasSlotConflict: jest.fn().mockResolvedValue(false),
-    hasDuplicate: jest.fn(),
+    hasOverlap: jest.fn().mockResolvedValue(false),
+    hasPatientOverlap: jest.fn().mockResolvedValue(false),
     findPackageById: jest.fn(),
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn().mockResolvedValue(undefined),
@@ -84,9 +87,16 @@ describe('RescheduleAppointmentUseCase', () => {
         newScheduledAt: newDate,
       });
 
-      expect(repo.hasSlotConflict).toHaveBeenCalledWith({
+      expect(repo.hasOverlap).toHaveBeenCalledWith({
         doctorId: DOCTOR_ID,
         scheduledAt: newDate,
+        durationMinutes: 30,
+        excludeId: APPT_ID,
+      });
+      expect(repo.hasPatientOverlap).toHaveBeenCalledWith({
+        patientId: PATIENT_ID,
+        scheduledAt: newDate,
+        durationMinutes: 30,
         excludeId: APPT_ID,
       });
       expect(repo.updateScheduledAt).toHaveBeenCalledWith(APPT_ID, newDate);
@@ -108,6 +118,58 @@ describe('RescheduleAppointmentUseCase', () => {
       });
 
       expect(repo.updateScheduledAt).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses default 30-min duration when appointment has no stored durationMinutes', async () => {
+      const appt = makeAppointment({ durationMinutes: null });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: newDate,
+      });
+
+      expect(repo.hasOverlap).toHaveBeenCalledWith(
+        expect.objectContaining({ durationMinutes: 30 }),
+      );
+    });
+
+    it('excludeId prevents self-conflict on doctor overlap check', async () => {
+      const appt = makeAppointment({ status: 'scheduled' });
+      repo = makeRepo(appt, { hasOverlap: jest.fn().mockResolvedValue(false) });
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({ appointmentId: APPT_ID, actorId: DOCTOR_ID, newScheduledAt: now });
+
+      expect(repo.hasOverlap).toHaveBeenCalledWith(expect.objectContaining({ excludeId: APPT_ID }));
+    });
+
+    it('excludeId prevents self-conflict on patient overlap check', async () => {
+      const appt = makeAppointment({ status: 'scheduled' });
+      repo = makeRepo(appt, { hasPatientOverlap: jest.fn().mockResolvedValue(false) });
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({ appointmentId: APPT_ID, actorId: DOCTOR_ID, newScheduledAt: now });
+
+      expect(repo.hasPatientOverlap).toHaveBeenCalledWith(
+        expect.objectContaining({ excludeId: APPT_ID }),
+      );
+    });
+
+    it('skips patient overlap check when appointment has no patientId', async () => {
+      const appt = makeAppointment({ patientId: null });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: newDate,
+      });
+
+      expect(repo.hasPatientOverlap).not.toHaveBeenCalled();
     });
   });
 
@@ -171,9 +233,9 @@ describe('RescheduleAppointmentUseCase', () => {
       ).rejects.toBeInstanceOf(AppointmentNotReschedulableError);
     });
 
-    it('throws AppointmentConflictError when new slot is already occupied', async () => {
+    it('throws AppointmentConflictError when new slot overlaps another doctor appointment', async () => {
       const appt = makeAppointment({ status: 'scheduled' });
-      repo = makeRepo(appt, { hasSlotConflict: jest.fn().mockResolvedValue(true) });
+      repo = makeRepo(appt, { hasOverlap: jest.fn().mockResolvedValue(true) });
       useCase = new RescheduleAppointmentUseCase(repo);
 
       await expect(
@@ -183,16 +245,16 @@ describe('RescheduleAppointmentUseCase', () => {
       expect(repo.updateScheduledAt).not.toHaveBeenCalled();
     });
 
-    it('passes excludeId so self-conflict is not raised when rescheduling to same slot', async () => {
+    it('throws AppointmentDuplicateError when patient has overlapping appointment with another doctor', async () => {
       const appt = makeAppointment({ status: 'scheduled' });
-      repo = makeRepo(appt, { hasSlotConflict: jest.fn().mockResolvedValue(false) });
+      repo = makeRepo(appt, { hasPatientOverlap: jest.fn().mockResolvedValue(true) });
       useCase = new RescheduleAppointmentUseCase(repo);
 
-      await useCase.execute({ appointmentId: APPT_ID, actorId: DOCTOR_ID, newScheduledAt: now });
+      await expect(
+        useCase.execute({ appointmentId: APPT_ID, actorId: DOCTOR_ID, newScheduledAt: newDate }),
+      ).rejects.toBeInstanceOf(AppointmentDuplicateError);
 
-      expect(repo.hasSlotConflict).toHaveBeenCalledWith(
-        expect.objectContaining({ excludeId: APPT_ID }),
-      );
+      expect(repo.updateScheduledAt).not.toHaveBeenCalled();
     });
   });
 });

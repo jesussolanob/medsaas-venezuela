@@ -10,11 +10,12 @@ import type { Appointment } from '../../../domain/entities/appointment.entity';
 import { Office } from '../../../../offices/domain/entities/office.entity';
 
 const DOCTOR_ID = 'doctor-uuid-1';
+const PATIENT_ID = 'patient-uuid-1';
 const OFFICE_ID = 'office-uuid-1111-2222-3333-444444444444';
 
 const baseDto: CreateAppointmentDto = {
   doctor_id: DOCTOR_ID,
-  patient_id: 'patient-uuid-1',
+  patient_id: PATIENT_ID,
   patient_name: 'Juan P.',
   patient_phone: null,
   patient_email: null,
@@ -25,7 +26,10 @@ const baseDto: CreateAppointmentDto = {
   plan_price: 30,
 };
 
-function makeOffice(modality: 'in_person' | 'online' | 'both' = 'in_person'): Office {
+function makeOffice(
+  modality: 'in_person' | 'online' | 'both' = 'in_person',
+  slotDuration = 30,
+): Office {
   return Office.create({
     id: OFFICE_ID,
     doctorId: DOCTOR_ID,
@@ -34,7 +38,7 @@ function makeOffice(modality: 'in_person' | 'online' | 'both' = 'in_person'): Of
     city: 'Caracas',
     phone: '',
     schedule: [],
-    slotDuration: 30,
+    slotDuration,
     bufferMinutes: 10,
     isActive: true,
     modality,
@@ -52,8 +56,8 @@ function makeAppointmentRepo(
     save: jest.fn().mockImplementation((appt: Appointment) => Promise.resolve(appt)),
     updateStatus: jest.fn(),
     updateScheduledAt: jest.fn(),
-    hasSlotConflict: jest.fn().mockResolvedValue(false),
-    hasDuplicate: jest.fn().mockResolvedValue(false),
+    hasOverlap: jest.fn().mockResolvedValue(false),
+    hasPatientOverlap: jest.fn().mockResolvedValue(false),
     findPackageById: jest.fn(),
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn(),
@@ -100,44 +104,100 @@ describe('CreateAppointmentUseCase', () => {
   it('creates appointment for an available slot (no office)', async () => {
     const result = await useCase.execute(baseDto);
 
-    expect(appointmentRepo.hasSlotConflict).toHaveBeenCalledWith({
+    expect(appointmentRepo.hasOverlap).toHaveBeenCalledWith({
       doctorId: DOCTOR_ID,
       scheduledAt: new Date('2026-06-10T10:00:00.000Z'),
+      durationMinutes: 30,
     });
-    expect(appointmentRepo.hasDuplicate).toHaveBeenCalledWith({
-      patientId: 'patient-uuid-1',
+    expect(appointmentRepo.hasPatientOverlap).toHaveBeenCalledWith({
+      patientId: PATIENT_ID,
       scheduledAt: new Date('2026-06-10T10:00:00.000Z'),
+      durationMinutes: 30,
     });
     expect(appointmentRepo.save).toHaveBeenCalledTimes(1);
     expect(result.status).toBe('scheduled');
     expect(result.doctorId).toBe(DOCTOR_ID);
     expect(result.officeId).toBeNull();
+    expect(result.durationMinutes).toBe(30);
     expect(officeRepo.findById).not.toHaveBeenCalled();
   });
 
-  it('throws AppointmentConflictError when the slot is already occupied', async () => {
-    appointmentRepo = makeAppointmentRepo({ hasSlotConflict: jest.fn().mockResolvedValue(true) });
+  it('persists the computed durationMinutes on the saved appointment', async () => {
+    const office = makeOffice('in_person', 45);
+    officeRepo = makeOfficeRepo({ findById: jest.fn().mockResolvedValue(office) });
+    useCase = new CreateAppointmentUseCase(appointmentRepo, officeRepo);
+
+    const dto: CreateAppointmentDto = {
+      ...baseDto,
+      office_id: OFFICE_ID,
+      appointment_mode: 'presencial',
+    };
+    const result = await useCase.execute(dto);
+
+    expect(result.durationMinutes).toBe(45);
+    expect(appointmentRepo.hasOverlap).toHaveBeenCalledWith(
+      expect.objectContaining({ durationMinutes: 45 }),
+    );
+    expect(appointmentRepo.hasPatientOverlap).toHaveBeenCalledWith(
+      expect.objectContaining({ durationMinutes: 45 }),
+    );
+  });
+
+  it('throws AppointmentConflictError when the slot overlaps an existing appointment', async () => {
+    appointmentRepo = makeAppointmentRepo({ hasOverlap: jest.fn().mockResolvedValue(true) });
     useCase = new CreateAppointmentUseCase(appointmentRepo, officeRepo);
 
     await expect(useCase.execute(baseDto)).rejects.toBeInstanceOf(AppointmentConflictError);
     expect(appointmentRepo.save).not.toHaveBeenCalled();
   });
 
-  it('throws AppointmentDuplicateError when same patient has appointment ±15 min', async () => {
-    appointmentRepo = makeAppointmentRepo({ hasDuplicate: jest.fn().mockResolvedValue(true) });
+  it('throws AppointmentDuplicateError when same patient has overlapping appointment', async () => {
+    appointmentRepo = makeAppointmentRepo({
+      hasPatientOverlap: jest.fn().mockResolvedValue(true),
+    });
     useCase = new CreateAppointmentUseCase(appointmentRepo, officeRepo);
 
     await expect(useCase.execute(baseDto)).rejects.toBeInstanceOf(AppointmentDuplicateError);
-    expect(appointmentRepo.hasSlotConflict).not.toHaveBeenCalled();
+    expect(appointmentRepo.hasOverlap).not.toHaveBeenCalled();
     expect(appointmentRepo.save).not.toHaveBeenCalled();
   });
 
-  it('skips duplicate check when patient_id is absent (anonymous booking)', async () => {
+  it('skips patient overlap check when patient_id is absent (anonymous booking)', async () => {
     const dto = { ...baseDto, patient_id: undefined };
     await useCase.execute(dto);
 
-    expect(appointmentRepo.hasDuplicate).not.toHaveBeenCalled();
+    expect(appointmentRepo.hasPatientOverlap).not.toHaveBeenCalled();
     expect(appointmentRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  // -----------------------------------------------------------------
+  // Adjacent slots — no overlap
+  // -----------------------------------------------------------------
+
+  it('does NOT conflict for adjacent slots (15:00-15:30 and 15:30-16:00)', async () => {
+    // hasOverlap returns false for adjacent slots (correct overlap detection)
+    appointmentRepo = makeAppointmentRepo({ hasOverlap: jest.fn().mockResolvedValue(false) });
+    useCase = new CreateAppointmentUseCase(appointmentRepo, officeRepo);
+
+    const dto = {
+      ...baseDto,
+      scheduled_at: '2026-06-10T15:30:00.000Z',
+    };
+    const result = await useCase.execute(dto);
+
+    expect(result.status).toBe('scheduled');
+    expect(appointmentRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('conflicts for partial overlap (15:00-15:30 vs 15:10+)', async () => {
+    appointmentRepo = makeAppointmentRepo({ hasOverlap: jest.fn().mockResolvedValue(true) });
+    useCase = new CreateAppointmentUseCase(appointmentRepo, officeRepo);
+
+    const dto = {
+      ...baseDto,
+      scheduled_at: '2026-06-10T15:10:00.000Z',
+    };
+    await expect(useCase.execute(dto)).rejects.toBeInstanceOf(AppointmentConflictError);
   });
 
   // -----------------------------------------------------------------

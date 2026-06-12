@@ -59,8 +59,8 @@ function makeRepo(
       .fn()
       .mockImplementation((_id, status) => Promise.resolve(makeAppointment({ status }))),
     updateScheduledAt: jest.fn(),
-    hasSlotConflict: jest.fn(),
-    hasDuplicate: jest.fn(),
+    hasOverlap: jest.fn(),
+    hasPatientOverlap: jest.fn(),
     findPackageById: jest.fn(),
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn().mockResolvedValue(undefined),

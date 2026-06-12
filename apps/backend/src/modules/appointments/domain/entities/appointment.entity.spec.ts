@@ -163,5 +163,20 @@ describe('Appointment entity', () => {
       const appt = makeAppointment({ googleCalendarEventId: 'google-evt-xyz-123' });
       expect(appt.googleCalendarEventId).toBe('google-evt-xyz-123');
     });
+
+    it('defaults durationMinutes to null when not provided', () => {
+      const appt = makeAppointment();
+      expect(appt.durationMinutes).toBeNull();
+    });
+
+    it('stores durationMinutes when provided', () => {
+      const appt = makeAppointment({ durationMinutes: 45 });
+      expect(appt.durationMinutes).toBe(45);
+    });
+
+    it('stores durationMinutes of 30 for the default slot', () => {
+      const appt = makeAppointment({ durationMinutes: 30 });
+      expect(appt.durationMinutes).toBe(30);
+    });
   });
 });

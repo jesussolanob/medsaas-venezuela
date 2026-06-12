@@ -8,8 +8,8 @@ import type {
   IAppointmentRepository,
   AppointmentListFilters,
   AppointmentListResult,
-  SlotConflictParams,
-  DuplicateCheckParams,
+  OverlapParams,
+  PatientOverlapParams,
   PackageInfo,
   AuditLogEntry,
   ChangeLogEntry,
@@ -22,7 +22,6 @@ import { AppointmentChangesLogModel } from '../models/appointment-changes-log.mo
 import { Sequelize } from 'sequelize-typescript';
 
 const ACTIVE_STATUSES = ['scheduled', 'confirmed', 'pending', 'accepted'];
-const DUPLICATE_WINDOW_DEFAULT_MINUTES = 15;
 
 interface PackageRow {
   id: string;
@@ -113,6 +112,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         meetLink: appointment.meetLink ?? null,
         officeId: appointment.officeId ?? null,
         googleCalendarEventId: appointment.googleCalendarEventId ?? null,
+        durationMinutes: appointment.durationMinutes ?? null,
       },
       { transaction },
     );
@@ -142,35 +142,87 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     return this.toDomain(updated as AppointmentModel);
   }
 
-  async hasSlotConflict(params: SlotConflictParams): Promise<boolean> {
-    const where: WhereOptions<AppointmentModel['_attributes']> = {
-      doctorId: params.doctorId,
-      scheduledAt: params.scheduledAt,
-      status: { [Op.in]: ACTIVE_STATUSES },
-    };
+  /**
+   * Returns true when the new appointment interval [scheduledAt, scheduledAt + durationMinutes)
+   * overlaps with any active appointment for the given doctor.
+   *
+   * Overlap condition (half-open intervals):
+   *   existing.scheduled_at < :newEnd
+   *   AND (existing.scheduled_at + COALESCE(existing.duration_minutes, 30) * INTERVAL '1 minute') > :newStart
+   *
+   * Legacy rows with NULL duration_minutes are treated as 30-minute slots via COALESCE.
+   */
+  async hasOverlap(params: OverlapParams): Promise<boolean> {
+    const newStart = params.scheduledAt;
+    const newEnd = new Date(params.scheduledAt.getTime() + params.durationMinutes * 60 * 1000);
 
-    if (params.excludeId) {
-      where.id = { [Op.ne]: params.excludeId };
+    const excludeClause = params.excludeId ? `AND id <> :excludeId` : '';
+
+    interface CountRow {
+      cnt: string | number;
     }
 
-    const count = await this.appointmentModel.count({ where });
-    return count > 0;
+    const rows = await this.sequelize.query<CountRow>(
+      `SELECT COUNT(*) AS cnt
+       FROM appointments
+       WHERE doctor_id = :doctorId
+         AND status = ANY(:activeStatuses)
+         AND scheduled_at < :newEnd
+         AND (scheduled_at + COALESCE(duration_minutes, 30) * INTERVAL '1 minute') > :newStart
+         ${excludeClause}`,
+      {
+        replacements: {
+          doctorId: params.doctorId,
+          activeStatuses: ACTIVE_STATUSES,
+          newStart,
+          newEnd,
+          ...(params.excludeId ? { excludeId: params.excludeId } : {}),
+        },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return Number(rows[0]?.cnt ?? 0) > 0;
   }
 
-  async hasDuplicate(params: DuplicateCheckParams): Promise<boolean> {
-    const windowMs = (params.windowMinutes ?? DUPLICATE_WINDOW_DEFAULT_MINUTES) * 60 * 1000;
-    const from = new Date(params.scheduledAt.getTime() - windowMs);
-    const to = new Date(params.scheduledAt.getTime() + windowMs);
+  /**
+   * Returns true when the patient already has an active appointment (with ANY doctor)
+   * whose interval overlaps with [scheduledAt, scheduledAt + durationMinutes).
+   *
+   * Cross-doctor: does NOT filter by doctor_id — a patient cannot be in two places at once.
+   * Legacy rows with NULL duration_minutes are treated as 30-minute slots via COALESCE.
+   */
+  async hasPatientOverlap(params: PatientOverlapParams): Promise<boolean> {
+    const newStart = params.scheduledAt;
+    const newEnd = new Date(params.scheduledAt.getTime() + params.durationMinutes * 60 * 1000);
 
-    const count = await this.appointmentModel.count({
-      where: {
-        patientId: params.patientId,
-        scheduledAt: { [Op.between]: [from, to] },
-        status: { [Op.in]: ACTIVE_STATUSES },
+    const excludeClause = params.excludeId ? `AND id <> :excludeId` : '';
+
+    interface CountRow {
+      cnt: string | number;
+    }
+
+    const rows = await this.sequelize.query<CountRow>(
+      `SELECT COUNT(*) AS cnt
+       FROM appointments
+       WHERE patient_id = :patientId
+         AND status = ANY(:activeStatuses)
+         AND scheduled_at < :newEnd
+         AND (scheduled_at + COALESCE(duration_minutes, 30) * INTERVAL '1 minute') > :newStart
+         ${excludeClause}`,
+      {
+        replacements: {
+          patientId: params.patientId,
+          activeStatuses: ACTIVE_STATUSES,
+          newStart,
+          newEnd,
+          ...(params.excludeId ? { excludeId: params.excludeId } : {}),
+        },
+        type: QueryTypes.SELECT,
       },
-    });
+    );
 
-    return count > 0;
+    return Number(rows[0]?.cnt ?? 0) > 0;
   }
 
   async findPackageById(packageId: string): Promise<PackageInfo | null> {
@@ -326,6 +378,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       meetLink: row.meetLink ?? null,
       officeId: row.officeId ?? null,
       googleCalendarEventId: row.googleCalendarEventId ?? null,
+      durationMinutes: row.durationMinutes ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

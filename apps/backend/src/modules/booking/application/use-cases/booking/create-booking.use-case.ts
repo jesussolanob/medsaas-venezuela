@@ -139,11 +139,12 @@ export class CreateBookingUseCase {
       }
     }
 
-    // --- Step 3: Verify slot availability ---
+    // --- Step 3: Verify slot availability (overlap detection) ---
     const scheduledAt = new Date(dto.scheduled_at);
-    const hasConflict = await this.appointmentRepo.hasSlotConflict({
+    const hasConflict = await this.appointmentRepo.hasOverlap({
       doctorId: dto.doctor_id,
       scheduledAt,
+      durationMinutes: officeDuration,
     });
     if (hasConflict) {
       throw new AppointmentConflictError(scheduledAt);
@@ -155,6 +156,17 @@ export class CreateBookingUseCase {
     const patient = dto.patient_id
       ? await this.loadPatientById(dto.patient_id, dto.doctor_id)
       : await this.findOrCreatePatient(dto);
+
+    // --- Step 4b: Verify the patient does not have an overlapping appointment (cross-doctor) ---
+    // A newly created patient has no prior appointments, so this returns false naturally.
+    const patientOverlaps = await this.appointmentRepo.hasPatientOverlap({
+      patientId: patient.id,
+      scheduledAt,
+      durationMinutes: officeDuration,
+    });
+    if (patientOverlaps) {
+      throw new AppointmentConflictError(scheduledAt);
+    }
 
     // --- Steps 5+6: Persist appointment and consume package session atomically ---
     // Both writes are wrapped in a single Sequelize transaction so that a failure
@@ -189,6 +201,7 @@ export class CreateBookingUseCase {
       sessionNumber: null,
       chiefComplaint: dto.chief_complaint ?? null,
       appointmentCode,
+      durationMinutes: officeDuration,
       createdAt: now,
       updatedAt: now,
     });
