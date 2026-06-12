@@ -33,6 +33,7 @@ import 'server-only';
 import { backendGet } from '@/lib/api-client.server';
 import { resolveIdentity } from '@/lib/identity.server';
 import { log } from '@/lib/logger';
+import { toLocalYMD, caracasToISO } from '@/lib/timezone';
 import { getDoctorProfile } from '@/app/doctor/actions';
 
 // ---------------------------------------------------------------------------
@@ -137,14 +138,12 @@ interface BackendAppointmentItem {
 
 /** Fetch appointments for today scoped to the authenticated doctor. */
 export async function getTodayAppointments(): Promise<DashboardAppointment[]> {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  const d = today.getDate();
-
-  // Use local midnight boundaries so the doctor's timezone is respected.
-  const dateFrom = new Date(y, m, d, 0, 0, 0, 0).toISOString();
-  const dateTo = new Date(y, m, d, 23, 59, 59, 999).toISOString();
+  // Boundaries of "today" in America/Caracas (UTC-04:00, no DST), not the server's
+  // UTC midnight — otherwise a 20:00 Caracas appointment (00:00 UTC next day) would
+  // fall outside today's window. toLocalYMD gives the Caracas calendar date.
+  const todayYmd = toLocalYMD(new Date());
+  const dateFrom = caracasToISO(todayYmd, '00:00'); // YYYY-MM-DDT00:00:00-04:00
+  const dateTo = `${todayYmd}T23:59:59.999-04:00`;
 
   const result = await backendGet<BackendAppointmentItem[]>(
     `/api/appointments?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}&limit=50`,

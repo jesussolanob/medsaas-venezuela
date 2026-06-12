@@ -31,6 +31,24 @@ export interface DoctorSlotsResult {
 }
 
 /**
+ * Venezuela uses America/Caracas (UTC-04:00 fixed, no DST since 2016).
+ * All "wall-clock day" boundaries and HH:MM derivations from stored TIMESTAMPTZ
+ * must use this offset so that a 20:00 Caracas slot is never misattributed to
+ * the following UTC day.
+ */
+const CARACAS_OFFSET = '-04:00';
+
+/** Formats a Date as "HH:MM" in America/Caracas local time (wall clock). */
+function toHHMMCaracas(d: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Caracas',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
+/**
  * GetAvailableSlotsUseCase
  *
  * Generates time slots for a doctor on a given date from the doctor's ACTIVE
@@ -52,7 +70,7 @@ export interface DoctorSlotsResult {
  * exist or is inactive, identical to GetBookingDoctorInfoUseCase behaviour.
  *
  * Horizon check: dates beyond now + booking_horizon_weeks return empty slots.
- * Dates before today (UTC) return empty slots.
+ * Dates before today (America/Caracas) return empty slots.
  *
  * Block filtering: slots that fall within any doctor_availability_blocks range
  * are marked unavailable.
@@ -83,22 +101,34 @@ export class GetAvailableSlotsUseCase {
     const schedule = await this.scheduleRepo.findByDoctorId(doctorId);
     const horizonWeeks = schedule?.bookingHorizonWeeks ?? 8;
 
-    // 3. Horizon check — date must be today or later, and within the horizon window
-    const requestedDate = new Date(`${dateStr}T00:00:00.000Z`);
-    const todayUtc = new Date();
-    todayUtc.setUTCHours(0, 0, 0, 0);
+    // 3. Horizon check — date must be today or later, and within the horizon window.
+    //    Boundaries are expressed as Caracas midnight (offset -04:00) so that the
+    //    "current Caracas day" is used for comparison, not the UTC calendar day.
+    const requestedDate = new Date(`${dateStr}T00:00:00.000${CARACAS_OFFSET}`);
 
-    const horizonEnd = new Date(todayUtc);
-    horizonEnd.setUTCDate(horizonEnd.getUTCDate() + horizonWeeks * 7);
+    // "today" in Caracas: derive the local date string from the current instant,
+    // then build a Caracas-midnight instant for apples-to-apples comparison.
+    const nowCaracasDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Caracas',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const todayCaracas = new Date(`${nowCaracasDateStr}T00:00:00.000${CARACAS_OFFSET}`);
 
-    if (requestedDate < todayUtc || requestedDate >= horizonEnd) {
+    const horizonEnd = new Date(todayCaracas);
+    horizonEnd.setDate(horizonEnd.getDate() + horizonWeeks * 7);
+
+    if (requestedDate < todayCaracas || requestedDate >= horizonEnd) {
       return { date: dateStr, slots: [] };
     }
 
     // 4. Convert the requested date to the offices weekday scheme.
-    //    new Date('YYYY-MMT00:00:00Z').getUTCDay() → 0=Sunday
+    //    We use getUTCDay() on the Caracas-midnight instant.  Because the instant is
+    //    defined as T00:00:00-04:00 = T04:00:00Z, getUTCDay() always reflects the
+    //    correct Caracas calendar day (the UTC day does not roll over until UTC midnight).
     //    (getUTCDay() + 6) % 7 → 0=Monday … 6=Sunday
-    const jsDay = requestedDate.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
+    const jsDay = requestedDate.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat (Caracas local day)
     const officeDay = (jsDay + 6) % 7; // 0=Mon … 6=Sun
 
     // 5. Load active offices for the doctor
@@ -128,18 +158,23 @@ export class GetAvailableSlotsUseCase {
       return { date: dateStr, slots: [] };
     }
 
-    // 7. Fetch active appointments for the doctor on this day
-    const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
-    const dayEnd = new Date(`${dateStr}T23:59:59.999Z`);
+    // 7. Fetch active appointments for the doctor on this day.
+    //    dayStart/dayEnd are expressed as Caracas-local midnight and end-of-day so
+    //    that a 20:00 Caracas appointment (stored as 00:00 UTC next day) is correctly
+    //    captured.  The repo receives proper UTC instants (Date objects).
+    const dayStart = new Date(`${dateStr}T00:00:00.000${CARACAS_OFFSET}`);
+    const dayEnd = new Date(`${dateStr}T23:59:59.999${CARACAS_OFFSET}`);
     const occupied = await this.appointmentRepo.findActiveByDoctorAndDateRange(
       doctorId,
       dayStart,
       dayEnd,
     );
 
-    // Build a set of occupied HH:MM strings for O(1) lookup
+    // Build a set of occupied HH:MM strings for O(1) lookup.
+    // Appointments are stored as UTC TIMESTAMPTZ; convert to Caracas wall-clock
+    // time to match the slot HH:MM strings (which are also Caracas wall-clock).
     const occupiedTimes = new Set<string>(
-      occupied.map((appt: { scheduledAt: Date }) => this.toHHMM(appt.scheduledAt)),
+      occupied.map((appt: { scheduledAt: Date }) => toHHMMCaracas(appt.scheduledAt)),
     );
 
     // 8. Load availability blocks overlapping this day
@@ -148,8 +183,10 @@ export class GetAvailableSlotsUseCase {
     // 9. Sort times and map to AvailableSlot[]
     const sortedTimes = Array.from(timeSet).sort();
     const slots: AvailableSlot[] = sortedTimes.map((time) => {
-      // Convert slot time string to a Date in UTC for block overlap check
-      const slotDate = new Date(`${dateStr}T${time}:00.000Z`);
+      // Materialize the slot HH:MM as a Caracas-local instant for block overlap check.
+      // Block boundaries are also stored as UTC TIMESTAMPTZ, so comparing UTC instants
+      // is correct here — we just need the slot instant to reflect Caracas wall clock.
+      const slotDate = new Date(`${dateStr}T${time}:00.000${CARACAS_OFFSET}`);
       const blockedByAvailabilityBlock = blocks.some((b) => b.overlapsSlot(slotDate));
 
       return {
@@ -167,12 +204,5 @@ export class GetAvailableSlotsUseCase {
     const hStr = parts[0] ?? '0';
     const mStr = parts[1] ?? '0';
     return parseInt(hStr, 10) * 60 + parseInt(mStr, 10);
-  }
-
-  /** Formats a Date as "HH:MM" in UTC (canonical representation). */
-  private toHHMM(d: Date): string {
-    const h = String(d.getUTCHours()).padStart(2, '0');
-    const m = String(d.getUTCMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
   }
 }

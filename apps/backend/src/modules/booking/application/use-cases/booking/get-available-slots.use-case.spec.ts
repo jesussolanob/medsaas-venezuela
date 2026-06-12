@@ -14,13 +14,18 @@ import { AvailabilityBlock } from '../../../../availability-blocks/domain/entiti
 import type { DoctorScheduleParams } from '../../../../doctor-settings/domain/value-objects/doctor-schedule.vo';
 
 const DOCTOR_ID = 'doctor-uuid-1';
-// 2026-06-08 is a Monday (getUTCDay()=1 → officeDay=(1+6)%7=0)
+// 2026-06-08 is a Monday.
+// FIXED_TODAY is set to noon UTC (08:00 Caracas) so that both UTC and
+// America/Caracas calendar dates agree on "2026-06-08".
 const DATE_STR = '2026-06-08';
+
+// Caracas offset constant — mirrors the one used in the use case.
+const CARACAS = '-04:00';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
 function makeOffice(overrides: Partial<Parameters<typeof Office.create>[0]> = {}): Office {
-  const now = new Date('2026-06-08T00:00:00.000Z');
+  const now = new Date('2026-06-08T12:00:00.000Z');
   return Office.create({
     id: 'office-001',
     doctorId: DOCTOR_ID,
@@ -43,7 +48,8 @@ function makeOffice(overrides: Partial<Parameters<typeof Office.create>[0]> = {}
 }
 
 function makeAppointment(overrides: Partial<AppointmentCreateParams> = {}): Appointment {
-  const base = new Date('2026-06-08T08:00:00.000Z');
+  // Default: 08:00 Caracas = 12:00 UTC on 2026-06-08
+  const base = new Date('2026-06-08T12:00:00.000Z');
   return Appointment.create({
     id: 'appt-1',
     doctorId: DOCTOR_ID,
@@ -76,6 +82,10 @@ function makeAppointment(overrides: Partial<AppointmentCreateParams> = {}): Appo
   });
 }
 
+/**
+ * Creates an AvailabilityBlock using Caracas wall-clock times expressed with the
+ * -04:00 offset, matching how the use case materialises dayStart/dayEnd.
+ */
 function makeBlock(startsAt: Date, endsAt: Date): AvailabilityBlock {
   return AvailabilityBlock.create({
     id: 'block-001',
@@ -123,6 +133,7 @@ function makeAppointmentRepo(occupied: Appointment[] = []): jest.Mocked<IAppoint
     findRescheduleChain: jest.fn().mockResolvedValue([]),
     findChangeLogs: jest.fn().mockResolvedValue([]),
     updateMeetLink: jest.fn().mockResolvedValue(undefined),
+    updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
   } as jest.Mocked<IAppointmentRepository>;
 }
 
@@ -154,10 +165,16 @@ function makeScheduleRepo(horizonWeeks = 8): jest.Mocked<IDoctorScheduleReposito
   } as jest.Mocked<IDoctorScheduleRepository>;
 }
 
-// Fixed "today" reference for deterministic horizon tests: 2026-06-08
-const FIXED_TODAY = new Date('2026-06-08T00:00:00.000Z');
+// Fixed "today" reference for deterministic horizon tests: 2026-06-08 noon UTC
+// (= 08:00 Caracas), so Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas' })
+// returns '2026-06-08' and both UTC and Caracas calendars agree on the date.
+const FIXED_TODAY = new Date('2026-06-08T12:00:00.000Z');
 
-// Helper that creates a use case with a controlled Date.now for horizon tests
+// Caracas midnight on DATE_STR expressed as a UTC instant (dayStart in use case)
+const DAY_START_CARACAS = new Date(`${DATE_STR}T00:00:00.000${CARACAS}`);
+// Caracas end-of-day on DATE_STR expressed as a UTC instant (dayEnd in use case)
+const DAY_END_CARACAS = new Date(`${DATE_STR}T23:59:59.999${CARACAS}`);
+
 function makeUseCase(
   doctorLoader: IBookingDoctorLoader,
   officeRepo: IOfficeRepository,
@@ -184,7 +201,9 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
   let blockRepo: jest.Mocked<IAvailabilityBlockRepository>;
   let scheduleRepo: jest.Mocked<IDoctorScheduleRepository>;
 
-  // We freeze "today" to 2026-06-08 so horizon tests are deterministic
+  // Freeze system time at noon UTC on 2026-06-08 (= 08:00 Caracas).
+  // This ensures Intl.DateTimeFormat in the use case returns '2026-06-08' as
+  // "today in Caracas", making horizon checks deterministic.
   beforeAll(() => {
     jest.useFakeTimers();
     jest.setSystemTime(FIXED_TODAY);
@@ -319,7 +338,7 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
   // ─── Weekday mapping ──────────────────────────────────────────────────────
 
   describe('weekday mapping (JS 0=Sun → offices 0=Mon)', () => {
-    it('maps Sunday correctly: JS getUTCDay()=0 → officeDay=6', async () => {
+    it('maps Sunday correctly: getUTCDay()=0 on Caracas-midnight → officeDay=6', async () => {
       // 2026-06-14 is a Sunday (within 8-week horizon from 2026-06-08)
       const sundayOffice = makeOffice({
         schedule: [{ day: 6, enabled: true, start: '09:00', end: '11:00' }],
@@ -343,7 +362,7 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
       expect(result.slots).toHaveLength(0);
     });
 
-    it('maps Saturday correctly: JS getUTCDay()=6 → officeDay=5', async () => {
+    it('maps Saturday correctly: getUTCDay()=6 on Caracas-midnight → officeDay=5', async () => {
       // 2026-06-13 is a Saturday (within 8-week horizon)
       const saturdayOffice = makeOffice({
         schedule: [{ day: 5, enabled: true, start: '08:00', end: '10:00' }],
@@ -361,8 +380,9 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
 
   describe('occupied slot detection', () => {
     it('marks an occupied slot as available=false', async () => {
+      // 08:00 Caracas = 12:00 UTC (UTC day is still 2026-06-08)
       const occupiedAppt = makeAppointment({
-        scheduledAt: new Date('2026-06-08T08:00:00.000Z'),
+        scheduledAt: new Date(`2026-06-08T08:00:00.000${CARACAS}`),
       });
       appointmentRepo = makeAppointmentRepo([occupiedAppt]);
       useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
@@ -376,7 +396,7 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
 
     it('leaves other slots available when only one slot is occupied', async () => {
       const occupiedAppt = makeAppointment({
-        scheduledAt: new Date('2026-06-08T08:00:00.000Z'),
+        scheduledAt: new Date(`2026-06-08T08:00:00.000${CARACAS}`),
       });
       appointmentRepo = makeAppointmentRepo([occupiedAppt]);
       useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
@@ -395,23 +415,90 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
 
       result.slots.forEach((s) => expect(s.available).toBe(true));
     });
+
+    // ─── Near-midnight Caracas correctness ──────────────────────────────────
+
+    it('marks 20:00 Caracas slot occupied when appointment is at 20:00 Caracas (00:00 UTC next day)', async () => {
+      // An office with evening slots: 20:00–22:00 Caracas
+      const eveningOffice = makeOffice({
+        schedule: [{ day: 0, enabled: true, start: '20:00', end: '22:00' }],
+      });
+      officeRepo = makeOfficeRepo([eveningOffice]);
+
+      // 20:00 Caracas = 00:00 UTC on 2026-06-09 (next UTC day)
+      const appt = makeAppointment({
+        scheduledAt: new Date(`2026-06-08T20:00:00.000${CARACAS}`),
+      });
+      appointmentRepo = makeAppointmentRepo([appt]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      const slot = result.slots.find((s) => s.time === '20:00');
+      expect(slot).toBeDefined();
+      expect(slot?.available).toBe(false);
+    });
+
+    it('a 20:00 Caracas slot appears in the DATE_STR day (not lost to UTC day change)', async () => {
+      const eveningOffice = makeOffice({
+        schedule: [{ day: 0, enabled: true, start: '20:00', end: '22:00' }],
+      });
+      officeRepo = makeOfficeRepo([eveningOffice]);
+      appointmentRepo = makeAppointmentRepo([]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      expect(result.date).toBe(DATE_STR);
+      const times = result.slots.map((s) => s.time);
+      expect(times).toContain('20:00');
+      expect(times).toContain('20:30');
+      expect(times).toContain('21:00');
+      expect(times).toContain('21:30');
+    });
+
+    it('a 00:30 Caracas appointment occupies the 00:30 slot on the same Caracas day', async () => {
+      // DATE_STR_NEXT for the second day in sequence: 2026-06-09 (Tuesday)
+      const nextDate = '2026-06-09';
+      const midnightOffice = makeOffice({
+        // day=1 = Tuesday in offices scheme
+        schedule: [{ day: 1, enabled: true, start: '00:00', end: '02:00' }],
+      });
+      officeRepo = makeOfficeRepo([midnightOffice]);
+
+      // 00:30 Caracas on 2026-06-09 = 04:30 UTC on 2026-06-09
+      const appt = makeAppointment({
+        scheduledAt: new Date(`2026-06-09T00:30:00.000${CARACAS}`),
+      });
+      appointmentRepo = makeAppointmentRepo([appt]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, nextDate);
+
+      const slot = result.slots.find((s) => s.time === '00:30');
+      expect(slot).toBeDefined();
+      expect(slot?.available).toBe(false);
+      // 00:00 slot on the same day should remain available
+      const zeroSlot = result.slots.find((s) => s.time === '00:00');
+      expect(zeroSlot?.available).toBe(true);
+    });
   });
 
   // ─── Availability block filtering ─────────────────────────────────────────
 
   describe('availability block filtering', () => {
     it('marks slots within a partial-day block as unavailable', async () => {
-      // Block from 09:00 to 11:00 UTC on 2026-06-08
+      // Block from 09:00 to 11:00 Caracas on 2026-06-08
       const block = makeBlock(
-        new Date('2026-06-08T09:00:00.000Z'),
-        new Date('2026-06-08T11:00:00.000Z'),
+        new Date(`2026-06-08T09:00:00.000${CARACAS}`),
+        new Date(`2026-06-08T11:00:00.000${CARACAS}`),
       );
       blockRepo = makeBlockRepo([block]);
       useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
 
       const result = await useCase.execute(DOCTOR_ID, DATE_STR);
 
-      // 09:00 and 09:30 and 10:00 and 10:30 are inside [09:00, 11:00)
+      // 09:00, 09:30, 10:00, 10:30 are inside [09:00, 11:00) Caracas
       const blocked = result.slots.filter((s) => !s.available);
       const blockedTimes = blocked.map((s) => s.time);
       expect(blockedTimes).toContain('09:00');
@@ -424,10 +511,10 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
     });
 
     it('marks all slots unavailable for a full-day block', async () => {
-      // Full day block: 00:00 to 23:59:59 UTC on 2026-06-08
+      // Full day block: 00:00 to 23:59:59 Caracas on 2026-06-08
       const block = makeBlock(
-        new Date('2026-06-08T00:00:00.000Z'),
-        new Date('2026-06-08T23:59:59.000Z'),
+        new Date(`2026-06-08T00:00:00.000${CARACAS}`),
+        new Date(`2026-06-08T23:59:59.000${CARACAS}`),
       );
       blockRepo = makeBlockRepo([block]);
       useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
@@ -438,10 +525,10 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
     });
 
     it('does not affect slots outside the block range', async () => {
-      // Block only from 10:00 to 12:00
+      // Block only from 10:00 to 12:00 Caracas
       const block = makeBlock(
-        new Date('2026-06-08T10:00:00.000Z'),
-        new Date('2026-06-08T12:00:00.000Z'),
+        new Date(`2026-06-08T10:00:00.000${CARACAS}`),
+        new Date(`2026-06-08T12:00:00.000${CARACAS}`),
       );
       blockRepo = makeBlockRepo([block]);
       useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
@@ -462,20 +549,42 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
 
       result.slots.forEach((s) => expect(s.available).toBe(true));
     });
+
+    it('evening slot at 20:00 Caracas is blocked by a 19:00–21:00 Caracas block', async () => {
+      const eveningOffice = makeOffice({
+        schedule: [{ day: 0, enabled: true, start: '19:00', end: '22:00' }],
+      });
+      officeRepo = makeOfficeRepo([eveningOffice]);
+
+      const block = makeBlock(
+        new Date(`2026-06-08T19:00:00.000${CARACAS}`),
+        new Date(`2026-06-08T21:00:00.000${CARACAS}`),
+      );
+      blockRepo = makeBlockRepo([block]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      const slot20 = result.slots.find((s) => s.time === '20:00');
+      expect(slot20?.available).toBe(false);
+      // 21:00 is the exclusive end — not blocked
+      const slot21 = result.slots.find((s) => s.time === '21:00');
+      expect(slot21?.available).toBe(true);
+    });
   });
 
   // ─── Booking horizon ──────────────────────────────────────────────────────
 
   describe('booking horizon enforcement', () => {
-    it('returns empty slots for a date before today', async () => {
-      // 2026-06-07 is yesterday relative to FIXED_TODAY (2026-06-08)
+    it('returns empty slots for a date before today (Caracas)', async () => {
+      // 2026-06-07 is yesterday relative to FIXED_TODAY (which is 08:00 Caracas on 2026-06-08)
       const result = await useCase.execute(DOCTOR_ID, '2026-06-07');
 
       expect(result.slots).toHaveLength(0);
     });
 
-    it('returns slots for today (inclusive)', async () => {
-      // DATE_STR = 2026-06-08 = today
+    it('returns slots for today in Caracas (inclusive)', async () => {
+      // DATE_STR = 2026-06-08 = today in Caracas
       const result = await useCase.execute(DOCTOR_ID, DATE_STR);
 
       expect(result.slots.length).toBeGreaterThan(0);
@@ -486,9 +595,8 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
       await useCase.execute(DOCTOR_ID, '2026-07-20');
 
       // We have a Monday office (day=0); 2026-07-20 is a Monday
-      // Result might be empty due to no slots on that day in office,
-      // but the horizon check should pass (not return early).
-      // The key: it should NOT throw and blockRepo.findOverlapping is called.
+      // The horizon check should pass (not return early).
+      // Key: it should NOT throw and blockRepo.findOverlapping is called.
       expect(blockRepo.findOverlapping).toHaveBeenCalled();
     });
 
@@ -528,13 +636,15 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
   // ─── Query behaviour ──────────────────────────────────────────────────────
 
   describe('query behaviour', () => {
-    it('queries appointments for the correct doctor and full day range', async () => {
+    it('queries appointments for the correct doctor using Caracas day boundaries', async () => {
       await useCase.execute(DOCTOR_ID, DATE_STR);
 
+      // dayStart = 2026-06-08T00:00:00-04:00 = 2026-06-08T04:00:00Z
+      // dayEnd   = 2026-06-08T23:59:59.999-04:00 = 2026-06-09T03:59:59.999Z
       expect(appointmentRepo.findActiveByDoctorAndDateRange).toHaveBeenCalledWith(
         DOCTOR_ID,
-        new Date('2026-06-08T00:00:00.000Z'),
-        new Date('2026-06-08T23:59:59.999Z'),
+        DAY_START_CARACAS,
+        DAY_END_CARACAS,
       );
     });
 
@@ -553,13 +663,13 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
       expect(officeRepo.findActiveByDoctor).toHaveBeenCalledWith(DOCTOR_ID);
     });
 
-    it('queries blocks with the correct day range', async () => {
+    it('queries blocks using Caracas day boundaries', async () => {
       await useCase.execute(DOCTOR_ID, DATE_STR);
 
       expect(blockRepo.findOverlapping).toHaveBeenCalledWith(
         DOCTOR_ID,
-        new Date('2026-06-08T00:00:00.000Z'),
-        new Date('2026-06-08T23:59:59.999Z'),
+        DAY_START_CARACAS,
+        DAY_END_CARACAS,
       );
     });
   });
