@@ -20,6 +20,8 @@ import {
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   UserPlus,
+  Receipt,
+  Wallet,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -30,6 +32,7 @@ import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
 import { addPatient } from '@/app/doctor/patients/actions';
+import { addExpense } from '@/app/doctor/finances/actions';
 import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
@@ -72,6 +75,19 @@ type AllTimeStats = {
   patients_attended: number;
 };
 
+const EXPENSE_CATEGORIES = [
+  { value: 'rent', label: 'Alquiler' },
+  { value: 'staff', label: 'Personal' },
+  { value: 'supplies', label: 'Insumos' },
+  { value: 'services', label: 'Servicios' },
+  { value: 'taxes', label: 'Impuestos' },
+  { value: 'other', label: 'Otros' },
+];
+
+// Una cita se considera "en curso" hasta esta ventana tras su hora de inicio
+// (no tenemos duración en el dashboard; usamos un default razonable).
+const ACTIVE_WINDOW_MS = 60 * 60 * 1000;
+
 export default function DoctorDashboard() {
   const router = useRouter();
   const { rate: bcvRate, toBs, toBsNum } = useBcvRate();
@@ -95,6 +111,17 @@ export default function DoctorDashboard() {
   const [showPatientForm, setShowPatientForm] = useState(false);
   const [patientFormSaving, setPatientFormSaving] = useState(false);
   const [newAppointmentPatientId, setNewAppointmentPatientId] = useState<string | null>(null);
+
+  // Quick "Registrar gasto" modal (reuses the finances addExpense action).
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [expenseSaving, setExpenseSaving] = useState(false);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [expenseForm, setExpenseForm] = useState({
+    concept: '',
+    amount: '',
+    category: 'other',
+    dueDate: todayStr,
+  });
 
   // Month filter state (year-month)
   const now = new Date();
@@ -292,6 +319,36 @@ export default function DoctorDashboard() {
     }
   }
 
+  async function handleSaveExpense(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(expenseForm.amount);
+    if (!expenseForm.concept.trim() || !isFinite(amount) || amount <= 0) {
+      showToast({ type: 'error', message: 'Completa concepto y monto válido' });
+      return;
+    }
+    setExpenseSaving(true);
+    try {
+      const res = await addExpense({
+        concept: expenseForm.concept.trim(),
+        vendorName: expenseForm.concept.trim(),
+        amount,
+        dueDate: expenseForm.dueDate,
+        category: expenseForm.category,
+      });
+      if (!res.success) throw new Error(res.error);
+      showToast({ type: 'success', message: 'Gasto registrado' });
+      setShowExpenseModal(false);
+      setExpenseForm({ concept: '', amount: '', category: 'other', dueDate: todayStr });
+    } catch (err: unknown) {
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al registrar',
+      });
+    } finally {
+      setExpenseSaving(false);
+    }
+  }
+
   // L2 (2026-04-29): si la cita ya tiene consulta linkeada → abrir esa consulta;
   // si no, mandar a la agenda (no a /doctor/consultations con un appointment.id
   // que no matchea ningun consultation.id, que era el bug previo).
@@ -327,6 +384,16 @@ export default function DoctorDashboard() {
       </div>
     );
   }
+
+  // Cita destacada: la que está en curso ahora o la próxima del día.
+  const nowMs = Date.now();
+  const sortedToday = [...todayAppointments]
+    .filter((a) => a.status === 'scheduled' || a.status === 'confirmed' || a.status === 'completed')
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  const featuredAppt =
+    sortedToday.find((a) => nowMs < new Date(a.scheduled_at).getTime() + ACTIVE_WINDOW_MS) ?? null;
+  const featuredIsNow =
+    featuredAppt !== null && new Date(featuredAppt.scheduled_at).getTime() <= nowMs;
 
   return (
     <>
@@ -466,6 +533,55 @@ export default function DoctorDashboard() {
             </div>
           </div>
         </div>
+
+        {/* ── Cita actual / próxima destacada ── */}
+        {featuredAppt && (
+          <button
+            onClick={() => handleAppointmentClick(featuredAppt)}
+            className="w-full flex items-center justify-between gap-3 p-4 sm:p-5 text-left transition-all card-hover"
+            style={{
+              background: featuredIsNow ? 'var(--dh-turquoise-50)' : '#fff',
+              border: `1px solid ${featuredIsNow ? 'var(--dh-turquoise)' : 'var(--dh-gray-200)'}`,
+              borderRadius: 'var(--dh-r-xl)',
+            }}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: featuredIsNow ? 'var(--dh-turquoise)' : 'var(--dh-turquoise-50)',
+                  color: featuredIsNow ? '#fff' : 'var(--dh-turquoise-700)',
+                }}
+              >
+                <Clock className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p
+                  className="text-[11px] font-semibold uppercase tracking-[0.12em]"
+                  style={{
+                    color: featuredIsNow ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-400)',
+                    fontFamily: 'var(--dh-font-mono)',
+                  }}
+                >
+                  {featuredIsNow ? 'Cita en curso' : 'Próxima cita'}
+                </p>
+                <p className="text-sm font-bold truncate" style={{ color: 'var(--dh-ink)' }}>
+                  {featuredAppt.patient_name || 'Paciente sin nombre'}
+                </p>
+                <p className="text-xs text-slate-500">{formatTime(featuredAppt.scheduled_at)}</p>
+              </div>
+            </div>
+            <div
+              className="flex items-center gap-1.5 text-sm font-semibold shrink-0"
+              style={{ color: 'var(--dh-turquoise-700)' }}
+            >
+              <span className="hidden sm:inline">
+                {featuredAppt.consultation_id ? 'Abrir consulta' : 'Ver agenda'}
+              </span>
+              <ArrowRight className="w-4 h-4" />
+            </div>
+          </button>
+        )}
 
         {/* ── 3 KPI Cards: ingresos, pacientes, atendidos ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
@@ -724,6 +840,30 @@ export default function DoctorDashboard() {
                 </div>
               </div>
 
+              {/* Acciones rápidas de finanzas */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Link
+                  href="/doctor/cobros"
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--dh-turquoise)' }}
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  Registrar pago
+                </Link>
+                <button
+                  onClick={() => setShowExpenseModal(true)}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-colors"
+                  style={{
+                    background: 'var(--dh-gray-50)',
+                    border: '1px solid var(--dh-gray-200)',
+                    color: 'var(--dh-gray-800)',
+                  }}
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  Registrar gasto
+                </button>
+              </div>
+
               <Link
                 href="/doctor/finances"
                 className="text-xs font-semibold flex items-center gap-1 pt-2"
@@ -818,6 +958,98 @@ export default function DoctorDashboard() {
                 Crear cita ahora
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Registrar gasto rápido (reusa la action addExpense de finanzas) */}
+      {showExpenseModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: 'var(--dh-gray-50)', color: 'var(--dh-gray-800)' }}
+                >
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Registrar gasto</h2>
+                  <p className="text-xs text-slate-400">Se suma a tus finanzas del mes</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowExpenseModal(false)}
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveExpense} className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Concepto</label>
+                <input
+                  value={expenseForm.concept}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, concept: e.target.value }))}
+                  placeholder="Ej. Insumos médicos"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Monto (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={expenseForm.amount}
+                    onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Fecha</label>
+                  <input
+                    type="date"
+                    value={expenseForm.dueDate}
+                    onChange={(e) => setExpenseForm((f) => ({ ...f, dueDate: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Categoría</label>
+                <select
+                  value={expenseForm.category}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, category: e.target.value }))}
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-200"
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseModal(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={expenseSaving}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-teal-500 text-white text-sm font-bold hover:bg-teal-600 disabled:opacity-50"
+                >
+                  {expenseSaving ? 'Guardando...' : 'Registrar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
