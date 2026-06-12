@@ -81,6 +81,21 @@ type PatientLookup = {
   cedula: string | null;
 };
 
+/**
+ * El backend NestJS serializa los pacientes en camelCase (`fullName`). Este flujo
+ * (y `/api/book`) trabajan en snake_case (`full_name`). Normalizamos para evitar
+ * que el nombre llegue vacío al booking (causa de un 400 "nombre y email").
+ */
+function normalizePatient(p: Record<string, unknown>): PatientLookup {
+  return {
+    id: String(p.id ?? ''),
+    full_name: String(p.full_name ?? p.fullName ?? ''),
+    email: (p.email as string | null) ?? null,
+    phone: (p.phone as string | null) ?? null,
+    cedula: (p.cedula as string | null) ?? null,
+  };
+}
+
 type PricingPlan = {
   id: string;
   name: string;
@@ -407,10 +422,22 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
     setCurrentStep(1);
     setGlobalError(null);
 
-    // Resolver doctorId: usar el del contexto, o el fallback dev UUID.
-    // En Etapa 1, el servidor aplica el doctor real vía x-dev-user-id header.
+    // Resolver el doctorId del médico AUTENTICADO (Auth0 o dev-stub). El booking
+    // (/api/book) es público y confía en el doctorId del payload, así que debe ser
+    // el id real del doctor logueado — no un fallback fijo, o la cita se crearía
+    // bajo el doctor equivocado.
     if (!doctorId) {
-      setDoctorId(initialContext.doctorId || FALLBACK_DEV_DOCTOR_UUID);
+      if (initialContext.doctorId) {
+        setDoctorId(initialContext.doctorId);
+      } else {
+        fetch('/api/doctor/profile')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((json) => {
+            const pid = json?.data?.id;
+            setDoctorId(typeof pid === 'string' && pid ? pid : FALLBACK_DEV_DOCTOR_UUID);
+          })
+          .catch(() => setDoctorId(FALLBACK_DEV_DOCTOR_UUID));
+      }
     }
 
     if (initialContext.patientId) {
@@ -419,7 +446,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
         .then((r) => (r.ok ? r.json() : null))
         .then((json) => {
           if (json?.data) {
-            setSelectedPatient(json.data as PatientLookup);
+            setSelectedPatient(normalizePatient(json.data));
             setCurrentStep(2);
           }
         })
@@ -464,9 +491,9 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
         const res = await fetch(`/api/patients?search=${encodeURIComponent(patientQuery)}&limit=8`);
         const json = res.ok ? await res.json() : {};
         // Backend devuelve { data: { patients: [...], meta: { total } } } o similar
-        const patients: PatientLookup[] =
+        const rawPatients: Record<string, unknown>[] =
           json?.data?.patients || json?.data || json?.patients || [];
-        setPatientResults(patients);
+        setPatientResults(rawPatients.map(normalizePatient));
       } catch {
         setPatientResults([]);
       } finally {
@@ -501,7 +528,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
       if (!res.ok) {
         // Si el backend retorna un paciente existente (409 duplicate / 200 upsert)
         if (json?.data) {
-          const p = json.data as PatientLookup;
+          const p = normalizePatient(json.data);
           setSelectedPatient(p);
           setShowInlineCreator(false);
           setCurrentStep(2);
@@ -510,8 +537,8 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
         }
         throw new Error(json?.error?.message || json?.message || 'Error al crear paciente');
       }
-      const created = json?.data as PatientLookup;
-      if (!created) throw new Error('Respuesta inesperada del servidor');
+      if (!json?.data) throw new Error('Respuesta inesperada del servidor');
+      const created = normalizePatient(json.data);
       setSelectedPatient(created);
       setShowInlineCreator(false);
       setCurrentStep(2);
