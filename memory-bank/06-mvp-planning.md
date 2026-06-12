@@ -38,6 +38,9 @@ Estado: Fase 0 ✅ · Fase 1 en-progreso.
   expiring cableados. → casi completo.
 - **7.3** Especialistas: estados reales + **export CSV** ✅ (Excel-compatible). Falta export PDF + vencimiento UI.
 - **7.4** Tasa USDT/Binance ✅ **completado** (dual Binance P2P + BCV + manual, admin elige, refresco perezoso).
+- **7.5** Dashboard especialista ✅: botones **Registrar pago** (atajo a /doctor/cobros) y **Registrar gasto**
+  (modal → addExpense); **"Cita actual/próxima"** destacada; recordatorio "30 min antes" **por calendario**
+  (Google event reminders popup+email + `VALARM` en el .ics — sin polling/WS). Decisión del usuario: calendario, no polling.
 - **7.6** Agenda KPIs ✅ **completado** (horas de consulta, promedio/día, mejor día).
 - **7.7** Consultorio: historial **editable** con bloques dinámicos que persisten (`blocks_snapshot`). Falta
   seguimientos/adjuntos. → en-progreso.
