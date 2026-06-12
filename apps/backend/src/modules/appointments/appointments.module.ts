@@ -23,6 +23,9 @@ import { PatientsModule } from '../patients/patients.module';
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 // Required by CreateAppointmentUseCase for office ownership + modality validation.
 import { OfficesModule } from '../offices/offices.module';
+// Required by UpdateAppointmentStatusUseCase to cancel Google Calendar events on cancellation.
+// No circular dependency: IntegrationsModule does NOT import AppointmentsModule.
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
   imports: [
@@ -35,6 +38,9 @@ import { OfficesModule } from '../offices/offices.module';
     DoctorSettingsModule,
     // Required by CreateAppointmentUseCase to validate office ownership/modality.
     OfficesModule,
+    // Exports CancelCalendarEventUseCase for cancelling Google Calendar events
+    // when an appointment is cancelled via UpdateAppointmentStatusUseCase.
+    IntegrationsModule,
   ],
   controllers: [AppointmentsController],
   providers: [

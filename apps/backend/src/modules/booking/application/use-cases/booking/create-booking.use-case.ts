@@ -255,6 +255,14 @@ export class CreateBookingUseCase {
         if (meetLink) {
           await this.appointmentRepo.updateMeetLink(savedAppointment.id, meetLink);
         }
+
+        // Persist the Google Calendar event ID (best-effort — only when non-empty)
+        if (notifResult.googleCalendarEventId) {
+          await this.appointmentRepo.updateGoogleEventId(
+            savedAppointment.id,
+            notifResult.googleCalendarEventId,
+          );
+        }
       } catch {
         // Non-fatal — appointment is already saved
         this.logger.warn('[booking] notification failed (non-fatal)');

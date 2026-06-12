@@ -53,6 +53,13 @@ export class Appointment {
      * Added by migration 20260611000009-office-id-on-pricing-plans-and-appointments.
      */
     public readonly officeId: string | null,
+    /**
+     * Google Calendar event ID for the appointment's calendar event.
+     * Used to cancel the event when the appointment is cancelled.
+     * Null for in-person appointments, Jitsi-fallback online appointments,
+     * or legacy rows. Added by migration 20260612000001.
+     */
+    public readonly googleCalendarEventId: string | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}
@@ -108,6 +115,7 @@ export class Appointment {
       params.paymentId ?? null,
       params.meetLink ?? null,
       params.officeId ?? null,
+      params.googleCalendarEventId ?? null,
       params.createdAt,
       params.updatedAt,
     );
@@ -155,6 +163,11 @@ export interface AppointmentCreateParams {
    * Optional — null for legacy rows.
    */
   officeId?: string | null;
+  /**
+   * Google Calendar event ID. Set after a successful Google Meet event creation.
+   * Optional — null for in-person, Jitsi-fallback, or legacy rows.
+   */
+  googleCalendarEventId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

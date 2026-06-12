@@ -153,5 +153,15 @@ describe('Appointment entity', () => {
       const appt = makeAppointment({ officeId: 'office-uuid-1' });
       expect(appt.officeId).toBe('office-uuid-1');
     });
+
+    it('defaults googleCalendarEventId to null when not provided', () => {
+      const appt = makeAppointment();
+      expect(appt.googleCalendarEventId).toBeNull();
+    });
+
+    it('stores googleCalendarEventId when provided', () => {
+      const appt = makeAppointment({ googleCalendarEventId: 'google-evt-xyz-123' });
+      expect(appt.googleCalendarEventId).toBe('google-evt-xyz-123');
+    });
   });
 });

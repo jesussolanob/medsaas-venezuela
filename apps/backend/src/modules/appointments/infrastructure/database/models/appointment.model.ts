@@ -131,6 +131,16 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.UUID, allowNull: true, field: 'office_id' })
   declare officeId: string | null;
 
+  /**
+   * Google Calendar event ID for the appointment's calendar event.
+   * Used to cancel the event when the appointment is cancelled.
+   * Null for in-person appointments, Jitsi-fallback online appointments,
+   * or legacy rows created before migration 20260612000001.
+   * Added by migration 20260612000001-appointment-google-event-id.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'google_calendar_event_id' })
+  declare googleCalendarEventId: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

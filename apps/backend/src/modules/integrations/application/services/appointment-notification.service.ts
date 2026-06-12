@@ -35,6 +35,12 @@ export interface AppointmentNotificationInput {
 export interface AppointmentNotificationResult {
   /** Meet link (Google Meet or Jitsi) for online appointments; null for in-person. */
   meetLink: string | null;
+  /**
+   * Google Calendar event ID when the meet link was created via Google Calendar API.
+   * Null when the appointment is in-person, when Google is not connected, or when
+   * the Jitsi fallback was used.
+   */
+  googleCalendarEventId: string | null;
   /** How the notification was delivered. */
   channel: 'google_meet' | 'jitsi_fallback' | 'in_person';
 }
@@ -93,6 +99,7 @@ export class AppointmentNotificationService {
     endISO: string,
   ): Promise<AppointmentNotificationResult> {
     let meetLink: string;
+    let googleCalendarEventId: string | null = null;
     let channel: AppointmentNotificationResult['channel'];
 
     try {
@@ -106,6 +113,8 @@ export class AppointmentNotificationService {
         attendeeEmail: input.patientEmail,
       });
       meetLink = result.meetLink;
+      // Capture the event ID only when it is a non-empty string
+      googleCalendarEventId = result.eventId || null;
       channel = 'google_meet';
     } catch (err) {
       if (err instanceof GoogleNotConnectedError) {
@@ -127,7 +136,7 @@ export class AppointmentNotificationService {
       channel,
     });
 
-    return { meetLink, channel };
+    return { meetLink, googleCalendarEventId, channel };
   }
 
   private async handleInPerson(
@@ -139,7 +148,7 @@ export class AppointmentNotificationService {
       meetLink: null,
       channel: 'in_person',
     });
-    return { meetLink: null, channel: 'in_person' };
+    return { meetLink: null, googleCalendarEventId: null, channel: 'in_person' };
   }
 
   private async sendNotification(

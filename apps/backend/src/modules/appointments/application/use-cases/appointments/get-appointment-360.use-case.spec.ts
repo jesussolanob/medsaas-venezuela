@@ -153,6 +153,7 @@ describe('GetAppointment360UseCase', () => {
       findRescheduleChain: jest.fn(),
       findChangeLogs: jest.fn(),
       updateMeetLink: jest.fn().mockResolvedValue(undefined),
+      updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IAppointmentRepository>;
 
     mockConsultRepo = {

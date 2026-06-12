@@ -112,6 +112,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         paymentId: appointment.paymentId ?? null,
         meetLink: appointment.meetLink ?? null,
         officeId: appointment.officeId ?? null,
+        googleCalendarEventId: appointment.googleCalendarEventId ?? null,
       },
       { transaction },
     );
@@ -124,6 +125,14 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
    */
   async updateMeetLink(id: string, meetLink: string): Promise<void> {
     await this.appointmentModel.update({ meetLink }, { where: { id } });
+  }
+
+  /**
+   * Persists the Google Calendar event ID for an existing appointment.
+   * Used by the booking flow after a successful Google Meet event creation.
+   */
+  async updateGoogleEventId(id: string, eventId: string): Promise<void> {
+    await this.appointmentModel.update({ googleCalendarEventId: eventId }, { where: { id } });
   }
 
   async updateStatus(id: string, status: AppointmentStatus): Promise<Appointment> {
@@ -316,6 +325,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       paymentId: row.paymentId ?? null,
       meetLink: row.meetLink ?? null,
       officeId: row.officeId ?? null,
+      googleCalendarEventId: row.googleCalendarEventId ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

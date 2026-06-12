@@ -62,6 +62,7 @@ function makeAppointmentRepo(
     findChangeLogs: jest.fn(),
     findByIdForDoctor: jest.fn(),
     updateMeetLink: jest.fn(),
+    updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }

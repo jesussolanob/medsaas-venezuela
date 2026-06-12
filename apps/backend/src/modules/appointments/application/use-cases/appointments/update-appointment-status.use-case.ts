@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { UpdateAppointmentStatusDto } from '@delta/shared-types';
 import type { Appointment } from '../../../domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
@@ -8,12 +8,25 @@ import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
 } from '../../../domain/repositories/appointment.repository';
+import { CancelCalendarEventUseCase } from '../../../../integrations/application/use-cases/integrations/cancel-calendar-event.use-case';
 
 @Injectable()
 export class UpdateAppointmentStatusUseCase {
+  private readonly logger = new Logger(UpdateAppointmentStatusUseCase.name);
+
   constructor(
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointmentRepo: IAppointmentRepository,
+    /**
+     * CancelCalendarEventUseCase — optional for backward compatibility with
+     * existing tests that do not inject it. When present, cancels the Google
+     * Calendar event (best-effort) when the appointment is cancelled.
+     *
+     * No circular dependency risk: IntegrationsModule does NOT import AppointmentsModule.
+     * AppointmentsModule imports IntegrationsModule to access this use case.
+     */
+    @Optional()
+    private readonly cancelCalendarEvent: CancelCalendarEventUseCase | null = null,
   ) {}
 
   async execute(dto: UpdateAppointmentStatusDto): Promise<Appointment> {
@@ -43,6 +56,25 @@ export class UpdateAppointmentStatusUseCase {
       oldStatus: appointment.status,
       newStatus: dto.status,
     });
+
+    // 6. Cancel Google Calendar event (best-effort — must not break appointment cancellation)
+    if (
+      dto.status === 'cancelled' &&
+      appointment.googleCalendarEventId &&
+      this.cancelCalendarEvent
+    ) {
+      try {
+        await this.cancelCalendarEvent.execute(
+          appointment.doctorId,
+          appointment.googleCalendarEventId,
+        );
+      } catch (err) {
+        // Non-fatal: Google Calendar cancellation failure does not roll back the appointment
+        this.logger.warn(
+          `[cancel-event] Google Calendar event cancellation failed for appointment ${dto.id} (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
 
     return updated;
   }

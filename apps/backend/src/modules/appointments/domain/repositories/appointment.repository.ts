@@ -129,6 +129,14 @@ export interface IAppointmentRepository {
    * Used after calendar event creation to store Google Meet or Jitsi URL.
    */
   updateMeetLink(id: string, meetLink: string): Promise<void>;
+
+  /**
+   * Persists the Google Calendar event ID for an existing appointment.
+   * Used after a successful Google Meet event creation so the event can be
+   * cancelled later when the appointment is cancelled.
+   * Only called when eventId is a non-empty string.
+   */
+  updateGoogleEventId(id: string, eventId: string): Promise<void>;
 }
 
 /** Audit log entry returned by findChangeLogs. */

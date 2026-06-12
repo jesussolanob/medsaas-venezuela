@@ -115,6 +115,7 @@ describe('CreateBookingUseCase', () => {
       findRescheduleChain: jest.fn().mockResolvedValue([]),
       findChangeLogs: jest.fn().mockResolvedValue([]),
       updateMeetLink: jest.fn().mockResolvedValue(undefined),
+      updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
     };
 
     mockPatientRepo = {
@@ -313,6 +314,111 @@ describe('CreateBookingUseCase', () => {
 
       expect(mockResolveIdentity.execute).not.toHaveBeenCalled();
       expect(mockPatientRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Google Calendar event ID persistence', () => {
+    type MockNotificationService = {
+      notify: jest.Mock;
+    };
+
+    function makeUseCaseWithNotification(notifResult: {
+      meetLink: string | null;
+      googleCalendarEventId: string | null;
+      channel: string;
+    }) {
+      const mockNotification: MockNotificationService = {
+        notify: jest.fn().mockResolvedValue(notifResult),
+      };
+
+      return {
+        notificationService: mockNotification,
+        useCase: new CreateBookingUseCase(
+          mockAppointmentRepo,
+          mockPatientRepo,
+          mockDoctorLoader,
+          mockConsumeUseCase,
+          mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+          mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+          null,
+          mockResolveIdentity,
+          null,
+          mockNotification as unknown as import('../../../../integrations/application/services/appointment-notification.service').AppointmentNotificationService,
+        ),
+      };
+    }
+
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasSlotConflict.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+    });
+
+    it('persists the googleCalendarEventId when notification returns a non-empty eventId', async () => {
+      const { useCase: ucWithNotif } = makeUseCaseWithNotification({
+        meetLink: 'https://meet.google.com/abc-123',
+        googleCalendarEventId: 'google-evt-xyz',
+        channel: 'google_meet',
+      });
+
+      await ucWithNotif.execute(makeDto({ appointment_mode: 'online' }));
+
+      expect(mockAppointmentRepo.updateMeetLink).toHaveBeenCalled();
+      expect(mockAppointmentRepo.updateGoogleEventId).toHaveBeenCalledWith(
+        expect.any(String),
+        'google-evt-xyz',
+      );
+    });
+
+    it('does NOT call updateGoogleEventId when notification returns null eventId (Jitsi fallback)', async () => {
+      const { useCase: ucWithNotif } = makeUseCaseWithNotification({
+        meetLink: 'https://meet.jit.si/delta-appt-001',
+        googleCalendarEventId: null,
+        channel: 'jitsi_fallback',
+      });
+
+      await ucWithNotif.execute(makeDto({ appointment_mode: 'online' }));
+
+      expect(mockAppointmentRepo.updateGoogleEventId).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call updateGoogleEventId when notification returns empty string eventId', async () => {
+      const { useCase: ucWithNotif } = makeUseCaseWithNotification({
+        meetLink: 'https://meet.google.com/abc',
+        googleCalendarEventId: '',
+        channel: 'google_meet',
+      });
+
+      await ucWithNotif.execute(makeDto({ appointment_mode: 'online' }));
+
+      expect(mockAppointmentRepo.updateGoogleEventId).not.toHaveBeenCalled();
+    });
+
+    it('does NOT break booking when notification service throws (best-effort)', async () => {
+      const mockNotification = {
+        notify: jest.fn().mockRejectedValue(new Error('Google Calendar unavailable')),
+      };
+
+      const ucWithFailingNotif = new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null,
+        mockResolveIdentity,
+        null,
+        mockNotification as unknown as import('../../../../integrations/application/services/appointment-notification.service').AppointmentNotificationService,
+      );
+
+      const result = await ucWithFailingNotif.execute(makeDto({ appointment_mode: 'online' }));
+
+      expect(result.appointment).toBeDefined();
+      expect(result.meetLink).toBeNull();
+      // updateGoogleEventId should NOT be called if notification failed
+      expect(mockAppointmentRepo.updateGoogleEventId).not.toHaveBeenCalled();
     });
   });
 });

@@ -43,6 +43,28 @@ describe('AppointmentNotificationService', () => {
       expect(result.channel).toBe('google_meet');
     });
 
+    it('returns the googleCalendarEventId from the created event', async () => {
+      createCalendarEvent.execute.mockResolvedValue({
+        meetLink: 'https://meet.google.com/abc-defg-hij',
+        eventId: 'google-evt-abc-123',
+      });
+
+      const result = await service.notify(makeInput());
+
+      expect(result.googleCalendarEventId).toBe('google-evt-abc-123');
+    });
+
+    it('returns null googleCalendarEventId when eventId is empty string', async () => {
+      createCalendarEvent.execute.mockResolvedValue({
+        meetLink: 'https://meet.google.com/abc',
+        eventId: '',
+      });
+
+      const result = await service.notify(makeInput());
+
+      expect(result.googleCalendarEventId).toBeNull();
+    });
+
     it('falls back to Jitsi when GoogleNotConnectedError is thrown', async () => {
       createCalendarEvent.execute.mockRejectedValue(new GoogleNotConnectedError('doc-1'));
 
@@ -52,6 +74,14 @@ describe('AppointmentNotificationService', () => {
       expect(result.meetLink).toBe('https://meet.jit.si/delta-appt-abc');
     });
 
+    it('returns null googleCalendarEventId on Jitsi fallback (GoogleNotConnectedError)', async () => {
+      createCalendarEvent.execute.mockRejectedValue(new GoogleNotConnectedError('doc-1'));
+
+      const result = await service.notify(makeInput());
+
+      expect(result.googleCalendarEventId).toBeNull();
+    });
+
     it('falls back to Jitsi on unexpected Google errors', async () => {
       createCalendarEvent.execute.mockRejectedValue(new Error('Network error'));
 
@@ -59,6 +89,14 @@ describe('AppointmentNotificationService', () => {
 
       expect(result.channel).toBe('jitsi_fallback');
       expect(result.meetLink).toContain('jit.si');
+    });
+
+    it('returns null googleCalendarEventId on unexpected Google error fallback', async () => {
+      createCalendarEvent.execute.mockRejectedValue(new Error('Network error'));
+
+      const result = await service.notify(makeInput());
+
+      expect(result.googleCalendarEventId).toBeNull();
     });
 
     it('generates Jitsi link using appointmentId', async () => {
@@ -76,6 +114,12 @@ describe('AppointmentNotificationService', () => {
       expect(result.meetLink).toBeNull();
       expect(result.channel).toBe('in_person');
       expect(createCalendarEvent.execute).not.toHaveBeenCalled();
+    });
+
+    it('returns null googleCalendarEventId for in_person appointments', async () => {
+      const result = await service.notify(makeInput({ appointmentMode: 'in_person' }));
+
+      expect(result.googleCalendarEventId).toBeNull();
     });
   });
 });
