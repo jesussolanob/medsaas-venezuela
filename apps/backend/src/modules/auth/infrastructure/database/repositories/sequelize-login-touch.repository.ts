@@ -96,7 +96,7 @@ export class SequelizeLoginTouchRepository implements ILoginTouchRepository {
         `UPDATE subscriptions
             SET status = 'past_due', updated_at = NOW()
           WHERE doctor_id = :doctorId
-            AND status IN ('active', 'trial', 'trialing')`,
+            AND status IN ('active', 'trial')`,
         { replacements: { doctorId }, type: QueryTypes.UPDATE, transaction: t },
       );
 

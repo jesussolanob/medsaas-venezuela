@@ -1077,8 +1077,8 @@ export class SequelizeAdminRepository implements IAdminRepository {
          p.email,
          p.cedula,
          p.specialty,
-         COALESCE(s.plan, p.plan)                   AS plan,
-         COALESCE(s.status, p.subscription_status)  AS subscription_status,
+         COALESCE(s.plan::text, p.plan)                   AS plan,
+         COALESCE(s.status::text, p.subscription_status)  AS subscription_status,
          COALESCE(s.current_period_end, p.subscription_expires_at) AS subscription_expires_at,
          p.last_sign_in_at
        FROM profiles p
