@@ -3,11 +3,20 @@ import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
-import { UpdateUsdtRateDtoSchema, type UpdateUsdtRateDto } from '@delta/shared-types';
+import {
+  UpdateUsdtRateDtoSchema,
+  type UpdateUsdtRateDto,
+  SetRateSourceDtoSchema,
+  type SetRateSourceDto,
+} from '@delta/shared-types';
 import { GetUsdtRateUseCase } from '../../application/use-cases/finances/get-usdt-rate.use-case';
 import { UpdateUsdtRateUseCase } from '../../application/use-cases/finances/update-usdt-rate.use-case';
+import { SetRateSourceUseCase } from '../../application/use-cases/finances/set-rate-source.use-case';
+import { GetRatesSummaryUseCase } from '../../application/use-cases/finances/get-rates-summary.use-case';
 import type { GetUsdtRateOutput } from '../../application/use-cases/finances/get-usdt-rate.use-case';
 import type { UpdateUsdtRateOutput } from '../../application/use-cases/finances/update-usdt-rate.use-case';
+import type { SetRateSourceOutput } from '../../application/use-cases/finances/set-rate-source.use-case';
+import type { RatesSummary } from '../../domain/repositories/usdt-rate.store';
 
 interface SuccessResponse<T> {
   success: true;
@@ -22,7 +31,12 @@ interface SuccessResponse<T> {
 export class SettingsController {
   constructor(private readonly getRate: GetUsdtRateUseCase) {}
 
-  /** GET /api/settings/usdt-rate — returns the current USDT/BS rate. Public endpoint. */
+  /**
+   * GET /api/settings/usdt-rate — returns the current USDT/BS rate. Public endpoint.
+   *
+   * Response is additive: the `source` field indicates the active rate source.
+   * Existing callers reading only `rate` are unaffected.
+   */
   @Get('usdt-rate')
   async getUsdtRate(): Promise<SuccessResponse<GetUsdtRateOutput>> {
     const result = await this.getRate.execute();
@@ -32,23 +46,56 @@ export class SettingsController {
 
 /**
  * Admin settings controller — requires super_admin role.
- * POST /api/admin/settings/usdt-rate
  *
- * Authorization: DevAuthGuard authenticates the request; RolesGuard enforces
- * the super_admin restriction. The use case itself only validates the rate value.
+ * POST /api/admin/settings/usdt-rate   — set manual rate (backward-compatible)
+ * POST /api/admin/settings/rate-source — choose active source
+ * GET  /api/admin/settings/rates       — summary of all known rates
  */
 @Controller('admin/settings')
 @UseGuards(DevAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class AdminSettingsController {
-  constructor(private readonly updateRate: UpdateUsdtRateUseCase) {}
+  constructor(
+    private readonly updateRate: UpdateUsdtRateUseCase,
+    private readonly setSource: SetRateSourceUseCase,
+    private readonly getRatesSummary: GetRatesSummaryUseCase,
+  ) {}
 
-  /** POST /api/admin/settings/usdt-rate — updates USDT/BS rate. Requires super_admin. */
+  /**
+   * POST /api/admin/settings/usdt-rate — updates USDT/BS rate manually.
+   * Also sets rate_source='manual'. Backward-compatible with existing callers.
+   */
   @Post('usdt-rate')
   async updateUsdtRate(
     @Body(new ZodValidationPipe(UpdateUsdtRateDtoSchema)) dto: UpdateUsdtRateDto,
   ): Promise<SuccessResponse<UpdateUsdtRateOutput>> {
     const result = await this.updateRate.execute({ rate: dto.rate });
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/admin/settings/rate-source — sets the active rate source.
+   * When switching to 'binance' or 'bcv', immediately triggers a fetch.
+   * When switching to 'manual', `value` is required.
+   */
+  @Post('rate-source')
+  async setRateSource(
+    @Body(new ZodValidationPipe(SetRateSourceDtoSchema)) dto: SetRateSourceDto,
+  ): Promise<SuccessResponse<SetRateSourceOutput>> {
+    const result = await this.setSource.execute({
+      source: dto.source,
+      value: dto.value,
+    });
+    return { success: true, data: result };
+  }
+
+  /**
+   * GET /api/admin/settings/rates — returns all rate values for the admin panel.
+   * { source, manual, binance, bcv, effective }
+   */
+  @Get('rates')
+  async getRates(): Promise<SuccessResponse<RatesSummary>> {
+    const result = await this.getRatesSummary.execute();
     return { success: true, data: result };
   }
 }

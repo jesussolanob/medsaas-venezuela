@@ -30,7 +30,9 @@ describe('GetFinancialSummaryUseCase', () => {
     mockRateStore = {
       getRate: jest.fn().mockResolvedValue(36),
       setRate: jest.fn(),
-    };
+      setSource: jest.fn(),
+      getRatesSummary: jest.fn(),
+    } as unknown as jest.Mocked<IUsdtRateStore>;
     useCase = new GetFinancialSummaryUseCase(mockRepo, mockRateStore);
   });
 

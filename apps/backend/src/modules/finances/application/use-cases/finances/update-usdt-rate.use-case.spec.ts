@@ -10,7 +10,9 @@ describe('UpdateUsdtRateUseCase', () => {
     mockStore = {
       getRate: jest.fn(),
       setRate: jest.fn().mockResolvedValue(undefined),
-    };
+      setSource: jest.fn(),
+      getRatesSummary: jest.fn(),
+    } as unknown as jest.Mocked<IUsdtRateStore>;
     useCase = new UpdateUsdtRateUseCase(mockStore);
   });
 

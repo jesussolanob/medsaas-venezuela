@@ -50,7 +50,9 @@ describe('SetDoctorExchangeRateUseCase', () => {
     mockRateStore = {
       getRate: jest.fn(),
       setRate: jest.fn(),
-    };
+      setSource: jest.fn(),
+      getRatesSummary: jest.fn(),
+    } as unknown as jest.Mocked<IUsdtRateStore>;
     useCase = new SetDoctorExchangeRateUseCase(mockProfileRepo, mockRateStore);
   });
 
@@ -64,7 +66,11 @@ describe('SetDoctorExchangeRateUseCase', () => {
 
   it('saves custom rate and returns it immediately without querying rate store', async () => {
     const profile = makeProfile();
-    const updatedProfile = makeProfile({ currencyMode: 'custom', customRate: 50.25, customRateLabel: 'Mi tasa' });
+    const updatedProfile = makeProfile({
+      currencyMode: 'custom',
+      customRate: 50.25,
+      customRateLabel: 'Mi tasa',
+    });
     mockProfileRepo.findByDoctorId.mockResolvedValue(profile);
     mockProfileRepo.updateExchangeRate.mockResolvedValue(updatedProfile);
 

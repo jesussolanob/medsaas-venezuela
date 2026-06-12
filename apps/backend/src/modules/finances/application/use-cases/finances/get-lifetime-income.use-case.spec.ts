@@ -23,7 +23,9 @@ describe('GetLifetimeIncomeUseCase', () => {
     mockRateStore = {
       getRate: jest.fn(),
       setRate: jest.fn(),
-    };
+      setSource: jest.fn(),
+      getRatesSummary: jest.fn(),
+    } as unknown as jest.Mocked<IUsdtRateStore>;
     useCase = new GetLifetimeIncomeUseCase(mockRepo, mockRateStore);
   });
 

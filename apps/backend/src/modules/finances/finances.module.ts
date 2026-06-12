@@ -8,9 +8,12 @@ import { PaymentItemModel } from './infrastructure/database/models/payment-item.
 import { SequelizeFinanceRepository } from './infrastructure/database/repositories/sequelize-finance.repository';
 import { RedisUsdtRateStore } from './infrastructure/database/repositories/redis-usdt-rate.store';
 import { SequelizePaymentRepository } from './infrastructure/database/repositories/sequelize-payment.repository';
+import { BinanceRateFetcher } from './infrastructure/rate-fetchers/binance-rate.fetcher';
+import { BcvRateFetcher } from './infrastructure/rate-fetchers/bcv-rate.fetcher';
 import { FINANCE_REPOSITORY } from './domain/repositories/finance.repository';
 import { USDT_RATE_STORE } from './domain/repositories/usdt-rate.store';
 import { PAYMENT_REPOSITORY } from './domain/repositories/payment.repository';
+import { BINANCE_RATE_FETCHER, BCV_RATE_FETCHER } from './domain/repositories/rate-fetcher.ports';
 
 // Use cases — finances
 import { GetFinancialSummaryUseCase } from './application/use-cases/finances/get-financial-summary.use-case';
@@ -19,6 +22,8 @@ import { RecordExpenseUseCase } from './application/use-cases/finances/record-ex
 import { ListTransactionsUseCase } from './application/use-cases/finances/list-transactions.use-case';
 import { GetUsdtRateUseCase } from './application/use-cases/finances/get-usdt-rate.use-case';
 import { UpdateUsdtRateUseCase } from './application/use-cases/finances/update-usdt-rate.use-case';
+import { SetRateSourceUseCase } from './application/use-cases/finances/set-rate-source.use-case';
+import { GetRatesSummaryUseCase } from './application/use-cases/finances/get-rates-summary.use-case';
 import { DeleteTransactionUseCase } from './application/use-cases/finances/delete-transaction.use-case';
 import { GetLifetimeIncomeUseCase } from './application/use-cases/finances/get-lifetime-income.use-case';
 
@@ -67,6 +72,16 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
     // Sequelize is global — no re-import needed.
     // Redis (REDIS_CLIENT) is global via RedisModule.
 
+    // Rate fetchers: domain interfaces → infrastructure implementations
+    {
+      provide: BINANCE_RATE_FETCHER,
+      useClass: BinanceRateFetcher,
+    },
+    {
+      provide: BCV_RATE_FETCHER,
+      useClass: BcvRateFetcher,
+    },
+
     // Repository bindings: domain interfaces → implementations
     {
       provide: FINANCE_REPOSITORY,
@@ -91,6 +106,8 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
     ListTransactionsUseCase,
     GetUsdtRateUseCase,
     UpdateUsdtRateUseCase,
+    SetRateSourceUseCase,
+    GetRatesSummaryUseCase,
     DeleteTransactionUseCase,
     GetLifetimeIncomeUseCase,
 
