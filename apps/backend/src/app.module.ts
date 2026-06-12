@@ -41,6 +41,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AvailabilityBlocksModule } from './modules/availability-blocks/availability-blocks.module';
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
+import { CredentialVerificationModule } from './modules/credential-verification/credential-verification.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { SpecialtiesModule } from './modules/specialties/specialties.module';
     AvailabilityBlocksModule,
     TelemetryModule,
     SpecialtiesModule,
+    CredentialVerificationModule,
   ],
   controllers: [HealthController],
   providers: [

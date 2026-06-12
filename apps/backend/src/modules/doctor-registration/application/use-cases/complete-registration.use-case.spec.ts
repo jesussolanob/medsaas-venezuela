@@ -1,6 +1,7 @@
 import { CompleteRegistrationUseCase } from './complete-registration.use-case';
 import type { IDoctorRegistrationRepository } from '../../domain/repositories/doctor-registration.repository';
 import type { MailerService } from '../../../email/application/services/mailer.service';
+import type { VerifyMppsUseCase } from '../../../credential-verification/application/use-cases/verify-mpps.use-case';
 import { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
 
 const makeRegistration = (overrides = {}): DoctorRegistration =>
@@ -23,6 +24,7 @@ describe('CompleteRegistrationUseCase', () => {
   let useCase: CompleteRegistrationUseCase;
   let mockRepo: jest.Mocked<IDoctorRegistrationRepository>;
   let mockMailer: jest.Mocked<MailerService>;
+  let mockVerifyMpps: jest.Mocked<Pick<VerifyMppsUseCase, 'execute'>>;
 
   beforeEach(() => {
     mockRepo = {
@@ -37,7 +39,15 @@ describe('CompleteRegistrationUseCase', () => {
       sendTemplate: jest.fn(),
     } as unknown as jest.Mocked<MailerService>;
 
-    useCase = new CompleteRegistrationUseCase(mockRepo, mockMailer);
+    mockVerifyMpps = {
+      execute: jest.fn().mockResolvedValue({ status: 'pending', attempts: 0, checkedAt: null }),
+    };
+
+    useCase = new CompleteRegistrationUseCase(
+      mockRepo,
+      mockMailer,
+      mockVerifyMpps as unknown as VerifyMppsUseCase,
+    );
   });
 
   it('updates registration fields and returns pending status', async () => {
@@ -203,5 +213,29 @@ describe('CompleteRegistrationUseCase', () => {
       'doc-1',
       expect.objectContaining({ specialty: null }),
     );
+  });
+
+  it('dispatches mpps verification fire-and-forget (does not block registration)', async () => {
+    const registration = makeRegistration();
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    // verifyMpps rejects but registration should still succeed
+    mockVerifyMpps.execute.mockRejectedValueOnce(new Error('SACS down'));
+
+    await expect(
+      useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' }),
+    ).resolves.toMatchObject({ doctorId: 'doc-1', verificationStatus: 'pending' });
+  });
+
+  it('triggers mpps verification with the doctor id', async () => {
+    const registration = makeRegistration();
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' });
+    // Allow fire-and-forget to settle
+    await Promise.resolve();
+
+    expect(mockVerifyMpps.execute).toHaveBeenCalledWith('doc-1');
   });
 });

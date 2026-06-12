@@ -6,6 +6,7 @@ import {
 import type { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
 import { DoctorRegistrationNotFoundError } from '../../domain/errors/doctor-not-found.error';
 import { MailerService } from '../../../email/application/services/mailer.service';
+import { VerifyMppsUseCase } from '../../../credential-verification/application/use-cases/verify-mpps.use-case';
 
 export interface CompleteRegistrationInput {
   doctorId: string;
@@ -53,6 +54,7 @@ export class CompleteRegistrationUseCase {
     @Inject(DOCTOR_REGISTRATION_REPOSITORY)
     private readonly repo: IDoctorRegistrationRepository,
     private readonly mailer: MailerService,
+    private readonly verifyMpps: VerifyMppsUseCase,
   ) {}
 
   async execute(input: CompleteRegistrationInput): Promise<CompleteRegistrationOutput> {
@@ -71,7 +73,16 @@ export class CompleteRegistrationUseCase {
 
     this.logger.log(`[registration] profile updated doctorId=${input.doctorId}`);
 
-    // 2. Notify all super_admins — fire-and-forget
+    // 2. Dispatch MPPS credential verification — fire-and-forget
+    // Registration MUST NOT fail if SACS is unavailable.
+    this.verifyMpps.execute(input.doctorId).catch((err: unknown) => {
+      this.logger.error(
+        `[registration] mpps verification failed for doctorId=${input.doctorId}`,
+        err instanceof Error ? err.message : String(err),
+      );
+    });
+
+    // 3. Notify all super_admins — fire-and-forget
     this.notifySuperAdmins(updated).catch((err: unknown) => {
       this.logger.error(
         `[registration] failed to notify super_admins for doctorId=${input.doctorId}`,

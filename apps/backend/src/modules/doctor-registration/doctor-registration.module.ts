@@ -22,6 +22,9 @@ import { DoctorRegistrationController } from './presentation/controllers/doctor-
 // Email
 import { EmailModule } from '../email/email.module';
 
+// Credential verification (fire-and-forget after registration)
+import { CredentialVerificationModule } from '../credential-verification/credential-verification.module';
+
 /**
  * DoctorRegistrationModule
  *
@@ -46,6 +49,9 @@ import { EmailModule } from '../email/email.module';
     SequelizeModule.forFeature([RegistrationProfileModel]),
     // EmailModule is imported to access MailerService for admin notifications.
     EmailModule,
+    // CredentialVerificationModule exports VerifyMppsUseCase used for
+    // fire-and-forget post-registration verification.
+    CredentialVerificationModule,
   ],
   controllers: [DoctorRegistrationController],
   providers: [
