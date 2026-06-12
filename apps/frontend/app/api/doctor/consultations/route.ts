@@ -172,9 +172,6 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
   }
 
   // Forward only the clinical fields the backend PUT endpoint accepts.
-  // Financial fields (amount, currency, payment_method, etc.) and
-  // integration fields (blocks_data, blocks_snapshot, report_data) are
-  // deferred to Fase 5 when those use cases are implemented in the backend.
   const ALLOWED_PUT_FIELDS = new Set([
     'chief_complaint',
     'notes',
@@ -189,8 +186,20 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     if (ALLOWED_PUT_FIELDS.has(k)) putBody[k] = v;
   }
 
+  // The dynamic "report builder" values are persisted in the backend
+  // `blocks_snapshot` (JSONB) column. The legacy UI sends them as `blocks_data`;
+  // map either spelling through so the clinical blocks survive reload.
+  if (fields.blocks_snapshot !== undefined) {
+    putBody.blocks_snapshot = fields.blocks_snapshot;
+  } else if (fields.blocks_data !== undefined) {
+    putBody.blocks_snapshot = fields.blocks_data;
+  }
+
   if (Object.keys(putBody).length === 0) {
-    return NextResponse.json({ error: 'Ningún campo permitido en el body' }, { status: 400 });
+    // started_at-only / unsupported-field calls have nothing to persist in
+    // Etapa 1 — return a no-op success instead of a 400 so non-blocking
+    // auto-tracking PATCHes don't surface as errors.
+    return NextResponse.json({ success: true, consultation: null, noop: true });
   }
 
   const result = await backendPut<Record<string, unknown>>(`/api/consultations/${id}`, putBody);

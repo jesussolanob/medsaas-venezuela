@@ -64,7 +64,15 @@ import {
 //   - applyAIResult → updateConsultation (actions.ts)
 //   - reposo autoSave → PATCH /api/doctor/consultations (existing BFF route)
 import { getDoctorId as getDevDoctorId, getDoctorProfile, getDoctorServices } from '../actions';
-import { listConsultations, getPatientConsultations, getConsultation, updateConsultation, approveConsultationPayment, getQuickItems, updateAppointmentStatus } from './actions';
+import {
+  listConsultations,
+  getPatientConsultations,
+  getConsultation,
+  updateConsultation,
+  approveConsultationPayment,
+  getQuickItems,
+  updateAppointmentStatus,
+} from './actions';
 import { getEhrPatients } from '../ehr/actions';
 import { getPatientPrescriptions, createPrescription } from './actions-prescriptions';
 import { useBcvRate } from '@/lib/useBcvRate';
@@ -520,7 +528,7 @@ function ConsultationsPage() {
       if (!doctorId) return;
       try {
         // Doctor profile → GET /api/doctor/profile
-        getDoctorProfile().then(profileData => {
+        getDoctorProfile().then((profileData) => {
           if (profileData) {
             setDoctorName(
               `${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim(),
@@ -551,16 +559,15 @@ function ConsultationsPage() {
 
         // Wire GET /api/doctor/quick-items — fetch exams and medications in parallel.
         // On error, lists stay empty so the UI degrades gracefully (no chips shown).
-        Promise.all([
-          getQuickItems('exam'),
-          getQuickItems('medication'),
-        ]).then(([exams, meds]) => {
-          setQuickExams(exams);
-          setQuickMeds(meds);
-        }).catch(() => {
-          setQuickExams([]);
-          setQuickMeds([]);
-        });
+        Promise.all([getQuickItems('exam'), getQuickItems('medication')])
+          .then(([exams, meds]) => {
+            setQuickExams(exams);
+            setQuickMeds(meds);
+          })
+          .catch(() => {
+            setQuickExams([]);
+            setQuickMeds([]);
+          });
 
         // RONDA 39: cargar bloques ACTIVOS del doctor (config viva).
         try {
@@ -598,13 +605,15 @@ function ConsultationsPage() {
         }
 
         // Pricing plans → GET /api/doctor/services
-        getDoctorServices().then(services => {
-          setPricingPlans(services.map(s => ({
-            id: s.id,
-            name: s.name,
-            price_usd: s.price_usd ?? 0,
-            duration_minutes: s.duration_minutes ?? 30,
-          })));
+        getDoctorServices().then((services) => {
+          setPricingPlans(
+            services.map((s) => ({
+              id: s.id,
+              name: s.name,
+              price_usd: s.price_usd ?? 0,
+              duration_minutes: s.duration_minutes ?? 30,
+            })),
+          );
         });
 
         // Cargar horario del doctor para bloques de citas
@@ -766,8 +775,18 @@ function ConsultationsPage() {
           started_at: fresh_raw.started_at,
           ended_at: fresh_raw.ended_at,
           duration_minutes: fresh_raw.duration_minutes,
-          blocks_snapshot: null, // blocks_snapshot not in Etapa-1 schema
-          blocks_data: null,     // blocks_data not in Etapa-1 schema
+          blocks_snapshot: null, // structure resolved separately from the doctor's template
+          // Backend persists the filled report VALUES in `blocks_snapshot` (JSONB record);
+          // hydrate the editor so saved dynamic blocks survive a reload.
+          blocks_data:
+            (fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot &&
+            typeof (fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot === 'object' &&
+            !Array.isArray((fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot)
+              ? ((fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot as Record<
+                  string,
+                  unknown
+                >)
+              : null,
           version: null,
         };
         setSelected(fresh);
@@ -818,9 +837,17 @@ function ConsultationsPage() {
       const rxList = await getPatientPrescriptions(c.patient_id);
       if (rxList.length > 0) {
         // Map backend prescriptions (flat schema) to legacy SavedPrescription shape
-        const saved: SavedPrescription[] = rxList.map(rx => ({
+        const saved: SavedPrescription[] = rxList.map((rx) => ({
           id: rx.id,
-          medications: [{ name: rx.medication, dose: rx.dosage || '', frequency: rx.frequency || '', duration: rx.duration || '', indications: rx.notes || '' }],
+          medications: [
+            {
+              name: rx.medication,
+              dose: rx.dosage || '',
+              frequency: rx.frequency || '',
+              duration: rx.duration || '',
+              indications: rx.notes || '',
+            },
+          ],
           notes: rx.notes,
           created_at: rx.created_at,
         }));
@@ -947,25 +974,27 @@ function ConsultationsPage() {
 
       // Reload consultation list from backend → GET /api/consultations
       const freshList = await listConsultations({ limit: 200 });
-      setConsultations(freshList.map((c) => ({
-        id: c.id,
-        consultation_code: c.consultation_code,
-        consultation_date: c.consultation_date,
-        chief_complaint: c.chief_complaint,
-        notes: c.notes,
-        diagnosis: c.diagnosis,
-        treatment: c.treatment,
-        status: 'pending' as Consultation['status'],
-        payment_status: c.payment_status,
-        appointment_id: c.appointment_id,
-        patient_id: c.patient_id,
-        patient_name: 'Paciente',
-        patient_phone: null,
-        started_at: c.started_at,
-        ended_at: c.ended_at,
-        duration_minutes: c.duration_minutes,
-        version: null,
-      })));
+      setConsultations(
+        freshList.map((c) => ({
+          id: c.id,
+          consultation_code: c.consultation_code,
+          consultation_date: c.consultation_date,
+          chief_complaint: c.chief_complaint,
+          notes: c.notes,
+          diagnosis: c.diagnosis,
+          treatment: c.treatment,
+          status: 'pending' as Consultation['status'],
+          payment_status: c.payment_status,
+          appointment_id: c.appointment_id,
+          patient_id: c.patient_id,
+          patient_name: 'Paciente',
+          patient_phone: null,
+          started_at: c.started_at,
+          ended_at: c.ended_at,
+          duration_minutes: c.duration_minutes,
+          version: null,
+        })),
+      );
 
       setShowNewConsultation(false);
       setReceiptFile(null);
@@ -1029,9 +1058,17 @@ function ConsultationsPage() {
 
       // Reload prescriptions from backend
       const rxList = await getPatientPrescriptions(selected.patient_id);
-      const saved: SavedPrescription[] = rxList.map(rx => ({
+      const saved: SavedPrescription[] = rxList.map((rx) => ({
         id: rx.id,
-        medications: [{ name: rx.medication, dose: rx.dosage || '', frequency: rx.frequency || '', duration: rx.duration || '', indications: rx.notes || '' }],
+        medications: [
+          {
+            name: rx.medication,
+            dose: rx.dosage || '',
+            frequency: rx.frequency || '',
+            duration: rx.duration || '',
+            indications: rx.notes || '',
+          },
+        ],
         notes: rx.notes,
         created_at: rx.created_at,
       }));
@@ -1482,7 +1519,9 @@ function ConsultationsPage() {
           blocks_data: { reposo: reposoPayload },
         }),
       }).catch((err) => console.warn('[reposo autosave]', err));
-      setSelected((prev) => (prev ? { ...prev, blocks_data: { reposo: reposoPayload } as any } : prev));
+      setSelected((prev) =>
+        prev ? { ...prev, blocks_data: { reposo: reposoPayload } as any } : prev,
+      );
     }, 1500);
     return () => {
       if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current);
@@ -1520,7 +1559,10 @@ function ConsultationsPage() {
         let content = '';
         const raw = bd[blockKey];
         if (Array.isArray(raw))
-          content = (raw as unknown[]).filter(Boolean).map((s) => `- ${s}`).join('\n');
+          content = (raw as unknown[])
+            .filter(Boolean)
+            .map((s) => `- ${s}`)
+            .join('\n');
         else if (typeof raw === 'string') content = raw;
         else if (raw != null) content = String(raw);
         if (!content.trim()) {
@@ -1545,7 +1587,11 @@ function ConsultationsPage() {
             treatment: report.treatment,
           },
           blocks_data: selected.blocks_data || {},
-          blocks_meta: effective.map((b) => ({ key: b.key, label: b.label, printable: b.printable })),
+          blocks_meta: effective.map((b) => ({
+            key: b.key,
+            label: b.label,
+            printable: b.printable,
+          })),
         };
       }
 
@@ -1576,20 +1622,28 @@ function ConsultationsPage() {
       const block = effective.find((b) => b.key === blockKey);
       let value: unknown = aiResult;
       if (block?.content_type === 'list') {
-        value = aiResult.split('\n').map((l) => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean);
+        value = aiResult
+          .split('\n')
+          .map((l) => l.replace(/^\s*[-*•]\s*/, '').trim())
+          .filter(Boolean);
       }
       const data = (selected.blocks_data || {}) as Record<string, unknown>;
       const next = { ...data, [blockKey]: value };
       setSelected({ ...selected, blocks_data: next });
       if (typeof value === 'string') {
-        if (blockKey === 'chief_complaint') setReport((p) => ({ ...p, chief_complaint: value as string }));
+        if (blockKey === 'chief_complaint')
+          setReport((p) => ({ ...p, chief_complaint: value as string }));
         else if (blockKey === 'diagnosis') setReport((p) => ({ ...p, diagnosis: value as string }));
         else if (blockKey === 'treatment') setReport((p) => ({ ...p, treatment: value as string }));
-        else if (blockKey === 'notes' || blockKey === 'informe') setReport((p) => ({ ...p, notes: value as string }));
+        else if (blockKey === 'notes' || blockKey === 'informe')
+          setReport((p) => ({ ...p, notes: value as string }));
       }
       // Persist: update clinical fields + blocks_data via PATCH BFF (non-blocking)
       const legacyUpdates: Record<string, string | null> = {};
-      if (typeof value === 'string' && ['chief_complaint', 'diagnosis', 'treatment', 'notes'].includes(blockKey)) {
+      if (
+        typeof value === 'string' &&
+        ['chief_complaint', 'diagnosis', 'treatment', 'notes'].includes(blockKey)
+      ) {
         legacyUpdates[blockKey] = value;
       }
       updateConsultation(selected.id, legacyUpdates).catch(() => {});
@@ -1765,7 +1819,10 @@ function ConsultationsPage() {
                         console.log('[generar-informe] setState called → showGenerateReport=true');
                       } catch (err) {
                         reportError('doctor/consultations', 'openGenerateReportModal', err);
-                        alert('Error abriendo el modal: ' + (err instanceof Error ? err.message : 'desconocido'));
+                        alert(
+                          'Error abriendo el modal: ' +
+                            (err instanceof Error ? err.message : 'desconocido'),
+                        );
                       }
                     }}
                     title="Generar informe"
@@ -2206,7 +2263,10 @@ function ConsultationsPage() {
                                           fetch('/api/doctor/consultations', {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ id: selected.id, blocks_snapshot: newSnap }),
+                                            body: JSON.stringify({
+                                              id: selected.id,
+                                              blocks_snapshot: newSnap,
+                                            }),
                                           }).catch(() => {});
                                           setSelected({
                                             ...selected,
@@ -2315,12 +2375,22 @@ function ConsultationsPage() {
                             fetch('/api/doctor/consultations', {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ id: selectedRef.current.id, blocks_data: next }),
+                              body: JSON.stringify({
+                                id: selectedRef.current.id,
+                                blocks_data: next,
+                              }),
                             }).catch(() => {});
                             // Sync legacy columns
-                            if (key === 'chief_complaint' || key === 'diagnosis' || key === 'treatment' || key === 'notes') {
+                            if (
+                              key === 'chief_complaint' ||
+                              key === 'diagnosis' ||
+                              key === 'treatment' ||
+                              key === 'notes'
+                            ) {
                               const legacyVal = typeof value === 'string' ? value : '';
-                              updateConsultation(selectedRef.current.id, { [key]: legacyVal }).catch(() => {});
+                              updateConsultation(selectedRef.current.id, {
+                                [key]: legacyVal,
+                              }).catch(() => {});
                             }
                           }, 1500);
                         }}
@@ -2329,7 +2399,10 @@ function ConsultationsPage() {
                           await fetch('/api/doctor/consultations', {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: selected!.id, blocks_data: (selected as Consultation).blocks_data || {} }),
+                            body: JSON.stringify({
+                              id: selected!.id,
+                              blocks_data: (selected as Consultation).blocks_data || {},
+                            }),
                           });
                           alert('Bloque guardado');
                         }}
@@ -2656,18 +2729,32 @@ function ConsultationsPage() {
                                   patient_id: selected.patient_id,
                                   consultation_id: selected.id,
                                   medication: exam.exam_name,
-                                  notes: exam.notes ? `Examen: ${exam.exam_name} - ${exam.notes}` : `Examen: ${exam.exam_name}`,
+                                  notes: exam.notes
+                                    ? `Examen: ${exam.exam_name} - ${exam.notes}`
+                                    : `Examen: ${exam.exam_name}`,
                                 });
                                 if (!result.success) {
-                                  reportError('doctor/consultations', 'savePrescripciones:exam', new Error(String(result.error)));
+                                  reportError(
+                                    'doctor/consultations',
+                                    'savePrescripciones:exam',
+                                    new Error(String(result.error)),
+                                  );
                                   failed.push(exam.exam_name);
                                 }
                               }
                               // Reload prescriptions from backend
                               const rxList = await getPatientPrescriptions(selected.patient_id);
-                              const saved: SavedPrescription[] = rxList.map(rx => ({
+                              const saved: SavedPrescription[] = rxList.map((rx) => ({
                                 id: rx.id,
-                                medications: [{ name: rx.medication, dose: rx.dosage || '', frequency: rx.frequency || '', duration: rx.duration || '', indications: rx.notes || '' }],
+                                medications: [
+                                  {
+                                    name: rx.medication,
+                                    dose: rx.dosage || '',
+                                    frequency: rx.frequency || '',
+                                    duration: rx.duration || '',
+                                    indications: rx.notes || '',
+                                  },
+                                ],
                                 notes: rx.notes,
                                 created_at: rx.created_at,
                               }));
@@ -2679,7 +2766,9 @@ function ConsultationsPage() {
                               }
                             } catch (err: unknown) {
                               reportError('doctor/consultations', 'savePrescripciones', err);
-                              alert(`Error al guardar prescripciones: ${err instanceof Error ? err.message : 'desconocido'}`);
+                              alert(
+                                `Error al guardar prescripciones: ${err instanceof Error ? err.message : 'desconocido'}`,
+                              );
                             } finally {
                               setIsSavingPrescripciones(false);
                             }
@@ -3752,14 +3841,21 @@ function ConsultationsPage() {
                           });
                           const data = await res.json().catch(() => ({}));
                           if (!res.ok || !data.url) {
-                            reportError('doctor/consultations', 'generateReport:response', new Error(`HTTP ${res.status}`), { status: res.status });
+                            reportError(
+                              'doctor/consultations',
+                              'generateReport:response',
+                              new Error(`HTTP ${res.status}`),
+                              { status: res.status },
+                            );
                             alert(data.error || `Error generando el PDF (status ${res.status})`);
                             return;
                           }
                           setGeneratedReportUrl(data.url);
                         } catch (err: unknown) {
                           reportError('doctor/consultations', 'generateReport', err);
-                          alert(`Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`);
+                          alert(
+                            `Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`,
+                          );
                         } finally {
                           setGeneratingReport(false);
                         }
@@ -4638,7 +4734,12 @@ function ConsultationsPage() {
                           });
                           const data = await res.json().catch(() => ({}));
                           if (!res.ok || !data.url) {
-                            reportError('doctor/consultations', 'generateReport2:response', new Error(`HTTP ${res.status}`), { status: res.status });
+                            reportError(
+                              'doctor/consultations',
+                              'generateReport2:response',
+                              new Error(`HTTP ${res.status}`),
+                              { status: res.status },
+                            );
                             alert(data.error || `Error generando el PDF (status ${res.status})`);
                             return;
                           }
@@ -4647,7 +4748,9 @@ function ConsultationsPage() {
                           setGeneratedReportUrl(data.url);
                         } catch (err: unknown) {
                           reportError('doctor/consultations', 'generateReport2', err);
-                          alert(`Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`);
+                          alert(
+                            `Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`,
+                          );
                         } finally {
                           setGeneratingReport(false);
                         }

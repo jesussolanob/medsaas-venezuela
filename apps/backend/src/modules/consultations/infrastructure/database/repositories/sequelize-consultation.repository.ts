@@ -113,11 +113,16 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
    *
    * The UPDATE + re-read happen atomically so the returned entity is guaranteed
    * to reflect the written state even under concurrent updates.
+   *
+   * blocksSnapshot is stored as JSONB in plaintext (Etapa 1).
+   * ETAPA 2: cifrar blocks_snapshot (PHI) — diferido, igual que patient_messages.body
    */
   async update(
     id: string,
     doctorId: string,
-    fields: Partial<Pick<Consultation, 'chiefComplaint' | 'diagnosis' | 'treatment' | 'notes'>>,
+    fields: Partial<
+      Pick<Consultation, 'chiefComplaint' | 'diagnosis' | 'treatment' | 'notes' | 'blocksSnapshot'>
+    >,
   ): Promise<Consultation> {
     const updateData: Record<string, unknown> = {};
 
@@ -134,6 +139,11 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     }
     if (fields.notes !== undefined) {
       updateData.notes = fields.notes ? this.crypto.encrypt(fields.notes) : null;
+    }
+    // blocksSnapshot: undefined → skip (partial update); null → clear; object → replace.
+    // Stored as plain JSONB in Etapa 1 (no encryption applied).
+    if (fields.blocksSnapshot !== undefined) {
+      updateData.blocksSnapshot = fields.blocksSnapshot;
     }
 
     return this.sequelize.transaction(async (t) => {
@@ -254,7 +264,10 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     };
   }
 
-  async findByAppointmentId(appointmentId: string, doctorId: string): Promise<import('../../../domain/entities/consultation.entity').Consultation | null> {
+  async findByAppointmentId(
+    appointmentId: string,
+    doctorId: string,
+  ): Promise<import('../../../domain/entities/consultation.entity').Consultation | null> {
     const row = await this.consultationModel.findOne({
       where: { appointmentId, doctorId } as WhereOptions,
     });

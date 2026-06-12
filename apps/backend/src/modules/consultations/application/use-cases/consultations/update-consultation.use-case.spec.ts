@@ -65,6 +65,74 @@ describe('UpdateConsultationUseCase', () => {
       diagnosis: 'Migraine',
       treatment: 'Rest',
       notes: undefined,
+      blocksSnapshot: undefined,
+    });
+  });
+
+  it('persists blocksSnapshot when provided', async () => {
+    const snapshot = { tension_arterial: '120/80', peso: 72 };
+    const consultation = makeConsultation();
+    const updated = makeConsultation({ blocksSnapshot: snapshot });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.update.mockResolvedValue(updated);
+
+    const result = await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      blocksSnapshot: snapshot,
+    });
+
+    expect(result.blocksSnapshot).toEqual(snapshot);
+    expect(mockRepo.update).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, {
+      chiefComplaint: undefined,
+      diagnosis: undefined,
+      treatment: undefined,
+      notes: undefined,
+      blocksSnapshot: snapshot,
+    });
+  });
+
+  it('does NOT include blocksSnapshot in the update call when input omits it', async () => {
+    const consultation = makeConsultation();
+    const updated = makeConsultation({ diagnosis: 'Flu' });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.update.mockResolvedValue(updated);
+
+    await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      diagnosis: 'Flu',
+      // blocksSnapshot intentionally absent
+    });
+
+    expect(mockRepo.update).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, {
+      chiefComplaint: undefined,
+      diagnosis: 'Flu',
+      treatment: undefined,
+      notes: undefined,
+      blocksSnapshot: undefined,
+    });
+  });
+
+  it('clears blocksSnapshot when null is passed', async () => {
+    const consultation = makeConsultation({ blocksSnapshot: { field: 'value' } });
+    const updated = makeConsultation({ blocksSnapshot: null });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.update.mockResolvedValue(updated);
+
+    const result = await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      blocksSnapshot: null,
+    });
+
+    expect(result.blocksSnapshot).toBeNull();
+    expect(mockRepo.update).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, {
+      chiefComplaint: undefined,
+      diagnosis: undefined,
+      treatment: undefined,
+      notes: undefined,
+      blocksSnapshot: null,
     });
   });
 

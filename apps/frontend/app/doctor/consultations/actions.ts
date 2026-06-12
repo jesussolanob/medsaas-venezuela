@@ -32,7 +32,13 @@ import { appErrorToString } from '@/lib/app-error';
 
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
-import { backendGet, backendPost, backendPut, backendDelete, type AppError } from '@/lib/api-client.server';
+import {
+  backendGet,
+  backendPost,
+  backendPut,
+  backendDelete,
+  type AppError,
+} from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,6 +58,8 @@ export type Consultation = {
   payment_status: 'pending' | 'approved';
   payment_method: string | null;
   amount: number | null;
+  /** Dynamic clinical "report builder" values (JSONB). Persisted by the backend. */
+  blocks_snapshot: Record<string, unknown> | null;
   started_at: string | null;
   ended_at: string | null;
   duration_minutes: number | null;
@@ -64,7 +72,6 @@ export type ConsultationActionResult = { success: true } | { success: false; err
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // List / read

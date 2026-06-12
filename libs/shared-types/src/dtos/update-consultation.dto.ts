@@ -8,6 +8,9 @@ export const UpdateConsultationDtoSchema = z
     diagnosis: z.string().max(2000).nullable().optional(),
     treatment: z.string().max(2000).nullable().optional(),
     notes: z.string().max(5000).nullable().optional(),
+    // Dynamic clinical blocks from the doctor's consultation template.
+    // ETAPA 2: cifrar blocks_snapshot (PHI) — diferido, igual que patient_messages.body
+    blocks_snapshot: z.record(z.string(), z.unknown()).nullable().optional(),
   })
   .strict();
 

@@ -50,11 +50,18 @@ export interface IConsultationRepository {
   /**
    * Partial update scoped to (id, doctorId).
    * Only the provided fields are written; others remain unchanged.
+   *
+   * blocksSnapshot semantics:
+   *   - undefined  → field not touched (omitted from the UPDATE)
+   *   - null       → field cleared (written as NULL)
+   *   - object     → field replaced with the new value
    */
   update(
     id: string,
     doctorId: string,
-    fields: Partial<Pick<Consultation, 'chiefComplaint' | 'diagnosis' | 'treatment' | 'notes'>>,
+    fields: Partial<
+      Pick<Consultation, 'chiefComplaint' | 'diagnosis' | 'treatment' | 'notes' | 'blocksSnapshot'>
+    >,
   ): Promise<Consultation>;
 
   /**

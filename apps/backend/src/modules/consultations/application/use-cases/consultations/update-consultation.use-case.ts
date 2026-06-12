@@ -14,6 +14,17 @@ export interface UpdateConsultationInput {
   diagnosis?: string | null;
   treatment?: string | null;
   notes?: string | null;
+  /**
+   * Dynamic clinical blocks from the doctor's consultation template.
+   *
+   * Partial-update semantics:
+   *   - undefined  → not included in the UPDATE (field left untouched)
+   *   - null       → written as NULL (clears the snapshot)
+   *   - object     → replaces the stored snapshot
+   *
+   * ETAPA 2: cifrar blocks_snapshot (PHI) — diferido, igual que patient_messages.body
+   */
+  blocksSnapshot?: Record<string, unknown> | null;
 }
 
 /**
@@ -46,6 +57,7 @@ export class UpdateConsultationUseCase {
       diagnosis: input.diagnosis,
       treatment: input.treatment,
       notes: input.notes,
+      blocksSnapshot: input.blocksSnapshot,
     });
   }
 }
