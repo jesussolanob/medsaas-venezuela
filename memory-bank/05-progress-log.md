@@ -1309,3 +1309,24 @@ front** en el público (+ teléfono).
   - regex + pasa `patient_id`); `NewAppointmentFlow` manda `patientId` del existente + valida alta inline;
     `BookingClient` público exige nombre+email+teléfono + formato; `PatientForm` valida email si viene.
 - 2179 unit verdes; shared-types+backend build+lint OK; frontend tsc 0. **Pendiente:** boot/curl/Playwright en ventana QA.
+
+## 2026-06-12 — Ventana QA de aislamiento entre doctores (Docker + curl) — 1 bug de seguridad corregido
+
+Pedido: verificar que cada doctor ve solo lo suyo + duplicados + comportamientos raros. Método: impersonar
+doctores A (`smokedocv2@dev.local`) y B (`dev@delta.local`) vía headers `x-dev-user-id` y atacar IDOR directo.
+
+**Verificado seguro:** pacientes/consultas/EHR/recetas (anti-enumeración: cross-doctor e inexistente devuelven
+idéntico NotFound; queries scopeadas por doctor_id). Anti-IDOR del body (header A + body doctor_id=B → paciente
+bajo A). **Opción B en vivo** (A con patient_id de B → `PATIENT_NOT_FOUND` 404; propio → 201 sin duplicar).
+Duplicados (cédula única/doctor; find-or-create reusa por cédula-hash). Invitación de calendario solo-si-email
+(confirmado por log `no patient email — skipping patient invite`). Edge: doble-booking mismo slot→422,
+doctor→/admin→403, precio negativo/email inválido/fecha sin offset→400.
+
+**🔴→✅ Bug de seguridad (commit `1ec4d86`):** GET/update/reschedule de una cita de OTRO doctor devolvía
+`UnauthorizedError` (distinguible de NOT_FOUND) → un doctor podía ENUMERAR la existencia de citas ajenas sondeando
+ids. Fix: los 4 use cases de appointments (`get-by-id`, `360`, `update-status`, `reschedule`) lanzan
+`AppointmentNotFoundError` igual que una cita inexistente. 106/106 tests appointments verdes.
+
+**Deuda menor (no bloqueante):** los errores NotFound devuelven HTTP **422** (default `DomainError`) en vez de
+404 — cosmético y consistente, no es fuga. El DTO de booking exige `patient_name` aun con `patient_id` (el front
+siempre lo manda). Mensaje de duplicado incluye la cédula (input del propio doctor, no cross-doctor).
