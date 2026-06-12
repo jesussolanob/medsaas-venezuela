@@ -1,6 +1,5 @@
 import { GetAppointment360UseCase, type Appointment360Input } from './get-appointment-360.use-case';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import { Appointment } from '../../../domain/entities/appointment.entity';
 import { Consultation } from '../../../../consultations/domain/entities/consultation.entity';
 import { Patient } from '../../../../patients/domain/entities/patient.entity';
@@ -347,13 +346,13 @@ describe('GetAppointment360UseCase', () => {
       await expect(useCase.execute(baseInput)).rejects.toBeInstanceOf(AppointmentNotFoundError);
     });
 
-    it('throws UnauthorizedError when appointment belongs to another doctor', async () => {
+    it('throws AppointmentNotFoundError (anti-enumeration) when appointment belongs to another doctor', async () => {
       // findByIdForDoctor returns null for cross-doctor access in the real repo,
-      // but if a stale entity somehow reaches the guard, UnauthorizedError is thrown.
+      // but if a stale entity reaches the guard, we treat it as not-found (no leak).
       const foreignAppt = makeAppointment({ doctorId: OTHER_DOCTOR });
       mockApptRepo.findByIdForDoctor.mockResolvedValue(foreignAppt);
 
-      await expect(useCase.execute(baseInput)).rejects.toBeInstanceOf(UnauthorizedError);
+      await expect(useCase.execute(baseInput)).rejects.toBeInstanceOf(AppointmentNotFoundError);
     });
 
     it('skips payment lookup when appointment has no paymentId', async () => {

@@ -3,7 +3,6 @@ import { Appointment } from '../../../domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentNotReschedulableError } from '../../../domain/errors/appointment-not-reschedulable.error';
 import { AppointmentConflictError } from '../../../domain/errors/appointment-conflict.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
@@ -45,8 +44,9 @@ export class RescheduleAppointmentUseCase {
     }
 
     // 2. Verify ownership (anti-IDOR)
+    // Anti-IDOR + anti-enumeración: cita de otro doctor → como inexistente.
     if (!appointment.canBeModifiedBy(input.actorId)) {
-      throw new UnauthorizedError();
+      throw new AppointmentNotFoundError(input.appointmentId);
     }
 
     // 3. Verify the appointment is in a reschedulable state

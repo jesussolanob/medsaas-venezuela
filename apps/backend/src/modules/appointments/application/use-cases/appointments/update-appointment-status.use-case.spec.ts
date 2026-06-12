@@ -2,7 +2,6 @@ import { UpdateAppointmentStatusUseCase } from './update-appointment-status.use-
 import type { IAppointmentRepository } from '../../../domain/repositories/appointment.repository';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentInvalidTransitionError } from '../../../domain/errors/appointment-invalid-transition.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -203,7 +202,7 @@ describe('UpdateAppointmentStatusUseCase', () => {
       await expect(useCase.execute(dto)).rejects.toBeInstanceOf(AppointmentInvalidTransitionError);
     });
 
-    it('throws UnauthorizedError when actor is not the owning doctor', async () => {
+    it('throws AppointmentNotFoundError (anti-enumeration) when actor is not the owning doctor', async () => {
       const appt = makeAppointment({ doctorId: 'doctor-uuid-1' });
       repo = makeRepo(appt);
       useCase = new UpdateAppointmentStatusUseCase(repo);
@@ -214,7 +213,7 @@ describe('UpdateAppointmentStatusUseCase', () => {
         actor_id: 'another-doctor',
       };
 
-      await expect(useCase.execute(dto)).rejects.toBeInstanceOf(UnauthorizedError);
+      await expect(useCase.execute(dto)).rejects.toBeInstanceOf(AppointmentNotFoundError);
       expect(repo.updateStatus).not.toHaveBeenCalled();
       expect(repo.logStatusChange).not.toHaveBeenCalled();
     });

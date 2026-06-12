@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Appointment } from '../../../domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
@@ -25,9 +24,10 @@ export class GetAppointmentByIdUseCase {
       throw new AppointmentNotFoundError(input.appointmentId);
     }
 
-    // Ownership check — prevents IDOR
+    // Anti-IDOR + anti-enumeración: una cita de otro doctor se trata como
+    // inexistente (mismo error que not-found), para no revelar su existencia.
     if (!appointment.canBeModifiedBy(input.doctorId)) {
-      throw new UnauthorizedError();
+      throw new AppointmentNotFoundError(input.appointmentId);
     }
 
     return appointment;

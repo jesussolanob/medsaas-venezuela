@@ -3,7 +3,6 @@ import type { IAppointmentRepository } from '../../../domain/repositories/appoin
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentNotReschedulableError } from '../../../domain/errors/appointment-not-reschedulable.error';
 import { AppointmentConflictError } from '../../../domain/errors/appointment-conflict.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -124,7 +123,7 @@ describe('RescheduleAppointmentUseCase', () => {
       expect(repo.updateScheduledAt).not.toHaveBeenCalled();
     });
 
-    it('throws UnauthorizedError when actor is not the owning doctor', async () => {
+    it('throws AppointmentNotFoundError (anti-enumeration) when actor is not the owning doctor', async () => {
       const appt = makeAppointment({ doctorId: DOCTOR_ID });
       repo = makeRepo(appt);
       useCase = new RescheduleAppointmentUseCase(repo);
@@ -135,7 +134,7 @@ describe('RescheduleAppointmentUseCase', () => {
           actorId: 'other-doctor',
           newScheduledAt: newDate,
         }),
-      ).rejects.toBeInstanceOf(UnauthorizedError);
+      ).rejects.toBeInstanceOf(AppointmentNotFoundError);
 
       expect(repo.updateScheduledAt).not.toHaveBeenCalled();
     });

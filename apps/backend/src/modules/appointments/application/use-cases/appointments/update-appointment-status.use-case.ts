@@ -3,7 +3,6 @@ import type { UpdateAppointmentStatusDto } from '@delta/shared-types';
 import type { Appointment } from '../../../domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentInvalidTransitionError } from '../../../domain/errors/appointment-invalid-transition.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
@@ -37,8 +36,9 @@ export class UpdateAppointmentStatusUseCase {
     }
 
     // 2. Verify ownership (anti-IDOR)
+    // Anti-IDOR + anti-enumeración: cita de otro doctor → como inexistente.
     if (!appointment.canBeModifiedBy(dto.actor_id)) {
-      throw new UnauthorizedError();
+      throw new AppointmentNotFoundError(dto.id);
     }
 
     // 3. Guard transition rules

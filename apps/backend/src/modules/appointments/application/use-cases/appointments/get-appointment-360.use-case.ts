@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
@@ -117,20 +116,14 @@ export class GetAppointment360UseCase {
       throw new AppointmentNotFoundError(input.appointmentId);
     }
 
-    // Redundant guard — findByIdForDoctor already scopes by doctorId,
-    // but we make the IDOR protection explicit at the use-case boundary too.
+    // Redundant guard — findByIdForDoctor already scopes by doctorId. Anti-enumeración:
+    // tratar como inexistente (no revelar existencia de citas de otros doctores).
     if (!appointment.canBeModifiedBy(input.doctorId)) {
-      throw new UnauthorizedError();
+      throw new AppointmentNotFoundError(input.appointmentId);
     }
 
     // 2. Run all secondary lookups in parallel for performance
-    const [
-      consultation,
-      payment,
-      patient,
-      doctorProfile,
-      changeLog,
-    ] = await Promise.all([
+    const [consultation, payment, patient, doctorProfile, changeLog] = await Promise.all([
       this.consultationRepo.findByAppointmentId(input.appointmentId, input.doctorId),
       appointment.paymentId
         ? this.paymentRepo.findByIdForDoctor(appointment.paymentId, input.doctorId)

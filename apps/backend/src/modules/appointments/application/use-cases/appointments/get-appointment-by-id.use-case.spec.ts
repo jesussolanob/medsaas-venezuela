@@ -1,7 +1,6 @@
 import { GetAppointmentByIdUseCase } from './get-appointment-by-id.use-case';
 import type { IAppointmentRepository } from '../../../domain/repositories/appointment.repository';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
-import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -86,13 +85,13 @@ describe('GetAppointmentByIdUseCase', () => {
     ).rejects.toBeInstanceOf(AppointmentNotFoundError);
   });
 
-  it('throws UnauthorizedError when actor is not the owning doctor', async () => {
+  it('throws AppointmentNotFoundError (anti-enumeration) when actor is not the owning doctor', async () => {
     const appt = makeAppointment({ doctorId: DOCTOR_ID });
     const repo = makeRepo(appt);
     const useCase = new GetAppointmentByIdUseCase(repo);
 
     await expect(
       useCase.execute({ appointmentId: APPT_ID, doctorId: 'another-doctor' }),
-    ).rejects.toBeInstanceOf(UnauthorizedError);
+    ).rejects.toBeInstanceOf(AppointmentNotFoundError);
   });
 });
