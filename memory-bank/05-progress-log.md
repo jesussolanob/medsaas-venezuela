@@ -1330,3 +1330,20 @@ ids. Fix: los 4 use cases de appointments (`get-by-id`, `360`, `update-status`, 
 **Deuda menor (no bloqueante):** los errores NotFound devuelven HTTP **422** (default `DomainError`) en vez de
 404 — cosmético y consistente, no es fuga. El DTO de booking exige `patient_name` aun con `patient_id` (el front
 siempre lo manda). Mensaje de duplicado incluye la cédula (input del propio doctor, no cross-doctor).
+
+## 2026-06-12 — Solapamiento de citas (doctor + paciente) (commit `2f0ab3b`) — build/lint/unit verdes, QA vivo pendiente
+
+El check de conflicto de slot era por **igualdad EXACTA** de `scheduled_at` → no detectaba solape (15:00 y 15:10
+con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
+
+- Migración `20260612000003`: `appointments.duration_minutes` (la cita guarda su duración = slot del consultorio).
+- Repo: `hasOverlap` (mismo doctor) + `hasPatientOverlap` (mismo paciente, CUALQUIER doctor — cross-doctor)
+  por intersección de intervalos: `scheduled_at < newEnd AND (scheduled_at + COALESCE(duration_minutes,30)*INTERVAL
+'1 min') > newStart`, con `excludeId` para reschedule. Eliminados `hasSlotConflict` y `hasDuplicate`(±15min).
+- Cableado en `CreateBooking` (overlap doctor + overlap paciente tras resolver el paciente), `CreateAppointment`
+  (reemplaza ambos checks viejos) y `reschedule` (con excludeId). Errores distintos: `AppointmentConflictError`
+  (slot del doctor) vs `AppointmentDuplicateError` (agenda del paciente).
+- **Insight del usuario:** para el mismo doctor la "duplicación" del paciente ya la cubre el solape; el único caso
+  que aporta es cross-doctor (paciente con dos doctores a la vez).
+- 2189 unit verdes; build+lint OK. La spec de integración del repo necesita Docker (los 5 fallos pre-existentes).
+  **QA vivo pendiente:** aplicar mig. `...03` + curl verificando solape doctor (15:00/15:10) y solape paciente cross-doctor.
