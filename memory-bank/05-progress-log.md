@@ -1276,3 +1276,21 @@ Commits `e26a70a`, `ecc8bf7`, `43999cf`, `8cd36a9`, `a45e6e4`, `86fbe8c`, `cdee3
 
 **⚠️ QA PENDIENTE (ventana Docker):** aplicar migraciones `20260612000001` + `20260612000002`; boot dist; curl real
 a tasa/stats-públicas/export/login-touch + RBAC; Playwright visual. Commits hechos SIN boot/curl (regla no-Docker).
+
+## 2026-06-12 — Ventana QA (Docker + Playwright) — VERIFICADO + 6 bugs corregidos
+
+Migraciones `...01`/`...02` aplicadas; backend dist booteado; QA con Playwright en AUTH_MODE=auth0
+(lucas@deltasalud.app super_admin; flip a doctor en BD para el área doctor). **Verificado real:** tasa dual
+(Binance 785/BCV 582), export CSV, login-touch+downgrade (trial vencido→past_due+log), public stats, dashboard
+admin (estados/CxC), "por ingresar", KPIs agenda, **consultorio bloques persisten+hidratan**, bloqueos (día
+Caracas), gastos, crear paciente (PII cifrada), plantillas PDF, bloques de consulta, **crear consulta completa**
+(cita bajo doctor correcto, hora Caracas), servicios c/descripción, crear plan admin.
+
+**6 bugs hallados y corregidos** (`96e8a40`, `bfeb653`, `e768978`): (1) export CSV `COALESCE(enum,text)`→`::text`;
+(2) login-touch enum vs `'trialing'` inexistente; (3) faltaba route handler `GET /api/doctor/patients/[id]` (404);
+(4) config bloques leía snake_case pero backend serializa **camelCase**; (5) NewAppointmentFlow leía `full_name`
+(backend `fullName`)→400 en /api/book; (6) NewAppointmentFlow usaba dev UUID fijo→cita bajo doctor equivocado.
+**Patrón recurrente:** el BFF devuelve `envelope.data` en camelCase; varios consumers frontend asumen snake_case.
+
+**Finding (decisión de producto):** `/api/book` exige `patientEmail` aunque el doctor agende un paciente
+existente sin email → falla. Definir si email es opcional en booking del doctor u obligatorio al crear paciente.
