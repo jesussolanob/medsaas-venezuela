@@ -372,4 +372,44 @@ export interface IAdminRepository {
   findProfileById(userId: string): Promise<AdminUserRow | null>;
   countSuperAdmins(): Promise<number>;
   setUserRole(userId: string, role: string): Promise<void>;
+
+  // Export (admin-only, no PII of patients)
+  exportDoctors(): Promise<DoctorExportRow[]>;
+
+  // Public stats (no PII, no auth required)
+  getPublicStats(): Promise<PublicStats>;
+}
+
+// ---------------------------------------------------------------------------
+// Export types
+// ---------------------------------------------------------------------------
+
+/**
+ * One row in the doctor export CSV.
+ * All fields are doctor identity — PII in an admin-only context.
+ */
+export interface DoctorExportRow {
+  /** PII — full name. Admin export only. */
+  fullName: string;
+  /** PII — email. Admin export only. */
+  email: string;
+  /** PII — cedula. Admin export only. */
+  cedula: string | null;
+  specialty: string | null;
+  plan: string | null;
+  subscriptionStatus: string | null;
+  subscriptionExpiresAt: Date | null;
+  lastSignInAt: Date | null;
+  activityStatus: 'active' | 'cold' | 'inactive';
+}
+
+/**
+ * Public aggregate counts — no PII whatsoever.
+ * Safe to expose on the landing page without authentication.
+ */
+export interface PublicStats {
+  /** COUNT of doctor profiles (verified if verification_status column exists, else all active). */
+  specialists: number;
+  /** COUNT of total patient rows. */
+  patients: number;
 }

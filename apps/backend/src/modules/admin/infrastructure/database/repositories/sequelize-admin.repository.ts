@@ -28,6 +28,8 @@ import type {
   PlanDetail,
   DashboardOverview,
   RecentDoctorRow,
+  DoctorExportRow,
+  PublicStats,
 } from '../../../domain/repositories/admin.repository';
 import type { PlanConfig } from '../../../domain/value-objects/plan-config.vo';
 import { PlanConfig as PlanConfigVO } from '../../../domain/value-objects/plan-config.vo';
@@ -94,57 +96,55 @@ export class SequelizeAdminRepository implements IAdminRepository {
   // ---------------------------------------------------------------------------
 
   async getDashboardData(): Promise<AdminDashboardData> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    const sevenDaysFromNow = new Date();
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    interface DashboardAggRow {
+      total_doctors: string;
+      active_doctors: string;
+      cold_doctors: string;
+      inactive_doctors: string;
+      appts_last_30d: string;
+      total_patients: string;
+      expiring_subs: string;
+    }
 
-    // Doctor count
-    const totalDoctorsResult = await this.sequelize.query<CountRow>(
-      `SELECT COUNT(*) as count FROM profiles WHERE role = 'doctor'`,
-      { type: QueryTypes.SELECT },
+    // Single round-trip: all KPIs in one query using CASE-based bucketing on last_sign_in_at.
+    // Buckets:
+    //   active   = last_sign_in_at >= now-7d
+    //   cold     = now-30d <= last_sign_in_at < now-7d
+    //   inactive = last_sign_in_at < now-30d OR IS NULL
+    const [agg] = await this.sequelize.query<DashboardAggRow>(
+      `SELECT
+         COUNT(*)                                                                        AS total_doctors,
+         COUNT(*) FILTER (WHERE last_sign_in_at >= :sevenDaysAgo)                       AS active_doctors,
+         COUNT(*) FILTER (WHERE last_sign_in_at >= :thirtyDaysAgo
+                            AND last_sign_in_at <  :sevenDaysAgo)                       AS cold_doctors,
+         COUNT(*) FILTER (WHERE last_sign_in_at <  :thirtyDaysAgo
+                            OR  last_sign_in_at IS NULL)                                AS inactive_doctors,
+         (SELECT COUNT(*) FROM appointments WHERE created_at >= :thirtyDaysAgo)         AS appts_last_30d,
+         (SELECT COUNT(*) FROM patients)                                                AS total_patients,
+         (SELECT COUNT(*) FROM subscriptions
+           WHERE status IN ('active', 'trial')
+             AND current_period_end BETWEEN NOW() AND :deadline)                        AS expiring_subs
+       FROM profiles
+       WHERE role = 'doctor'`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { sevenDaysAgo, thirtyDaysAgo, deadline: sevenDaysFromNow },
+      },
     );
-    const totalDoctors = parseInt(totalDoctorsResult[0]?.count ?? '0', 10);
-
-    // Appointments in last 30 days
-    const apptResult = await this.sequelize.query<CountRow>(
-      `SELECT COUNT(*) as count FROM appointments WHERE created_at >= :since`,
-      { type: QueryTypes.SELECT, replacements: { since: thirtyDaysAgo } },
-    );
-    const appointmentsLast30Days = parseInt(apptResult[0]?.count ?? '0', 10);
-
-    // Total patients
-    const patientResult = await this.sequelize.query<CountRow>(
-      `SELECT COUNT(*) as count FROM patients`,
-      { type: QueryTypes.SELECT },
-    );
-    const totalPatients = parseInt(patientResult[0]?.count ?? '0', 10);
-
-    // Expiring subscriptions in next 7 days
-    const expiringResult = await this.sequelize.query<CountRow>(
-      `SELECT COUNT(*) as count
-       FROM subscriptions
-       WHERE status IN ('active', 'trial')
-         AND current_period_end BETWEEN NOW() AND :deadline`,
-      { type: QueryTypes.SELECT, replacements: { deadline: sevenDaysFromNow } },
-    );
-    const expiringSubscriptionsCount = parseInt(expiringResult[0]?.count ?? '0', 10);
-
-    // Activity breakdown — in Etapa 1 all doctors are 'inactive' (no lastSignInAt)
-    // These counts will be accurate once Fase 4 (Auth0 login tracking) is in place.
-    const activeDoctors = 0;
-    const coldDoctors = 0;
-    const inactiveDoctors = totalDoctors;
 
     return {
-      totalDoctors,
-      activeDoctors,
-      coldDoctors,
-      inactiveDoctors,
-      appointmentsLast30Days,
-      totalPatients,
-      expiringSubscriptionsCount,
+      totalDoctors: parseInt(agg?.total_doctors ?? '0', 10),
+      activeDoctors: parseInt(agg?.active_doctors ?? '0', 10),
+      coldDoctors: parseInt(agg?.cold_doctors ?? '0', 10),
+      inactiveDoctors: parseInt(agg?.inactive_doctors ?? '0', 10),
+      appointmentsLast30Days: parseInt(agg?.appts_last_30d ?? '0', 10),
+      totalPatients: parseInt(agg?.total_patients ?? '0', 10),
+      expiringSubscriptionsCount: parseInt(agg?.expiring_subs ?? '0', 10),
     };
   }
 
@@ -1052,6 +1052,105 @@ export class SequelizeAdminRepository implements IAdminRepository {
   }
 
   // ---------------------------------------------------------------------------
+  // Export
+  // ---------------------------------------------------------------------------
+
+  async exportDoctors(): Promise<DoctorExportRow[]> {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    interface ExportRawRow {
+      full_name: string;
+      email: string;
+      cedula: string | null;
+      specialty: string | null;
+      plan: string | null;
+      subscription_status: string | null;
+      subscription_expires_at: Date | null;
+      last_sign_in_at: Date | null;
+    }
+
+    const rows = await this.sequelize.query<ExportRawRow>(
+      `SELECT
+         p.full_name,
+         p.email,
+         p.cedula,
+         p.specialty,
+         COALESCE(s.plan, p.plan)                   AS plan,
+         COALESCE(s.status, p.subscription_status)  AS subscription_status,
+         COALESCE(s.current_period_end, p.subscription_expires_at) AS subscription_expires_at,
+         p.last_sign_in_at
+       FROM profiles p
+       LEFT JOIN subscriptions s ON s.doctor_id = p.id
+       WHERE p.role = 'doctor'
+       ORDER BY p.full_name ASC`,
+      { type: QueryTypes.SELECT },
+    );
+
+    return rows.map((r): DoctorExportRow => {
+      let activityStatus: 'active' | 'cold' | 'inactive';
+      if (!r.last_sign_in_at) {
+        activityStatus = 'inactive';
+      } else if (r.last_sign_in_at >= sevenDaysAgo) {
+        activityStatus = 'active';
+      } else if (r.last_sign_in_at >= thirtyDaysAgo) {
+        activityStatus = 'cold';
+      } else {
+        activityStatus = 'inactive';
+      }
+
+      return {
+        fullName: r.full_name,
+        email: r.email,
+        cedula: r.cedula ?? null,
+        specialty: r.specialty ?? null,
+        plan: r.plan ?? null,
+        subscriptionStatus: r.subscription_status ?? null,
+        subscriptionExpiresAt: r.subscription_expires_at ?? null,
+        lastSignInAt: r.last_sign_in_at ?? null,
+        activityStatus,
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public stats (no PII)
+  // ---------------------------------------------------------------------------
+
+  async getPublicStats(): Promise<PublicStats> {
+    interface StatsRow {
+      specialists: string;
+      patients: string;
+    }
+
+    // Prefer verified doctors (verification_status = 'verified') when the column
+    // exists. If no verified rows are found, fall back to all doctors with role='doctor'.
+    // patients is a simple total count — no PII.
+    const [row] = await this.sequelize.query<StatsRow>(
+      `SELECT
+         (
+           SELECT COALESCE(
+             NULLIF(
+               COUNT(*) FILTER (WHERE verification_status = 'verified'),
+               0
+             ),
+             COUNT(*)
+           )
+           FROM profiles
+           WHERE role = 'doctor'
+         ) AS specialists,
+         (SELECT COUNT(*) FROM patients) AS patients`,
+      { type: QueryTypes.SELECT },
+    );
+
+    return {
+      specialists: parseInt(row?.specialists ?? '0', 10),
+      patients: parseInt(row?.patients ?? '0', 10),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
@@ -1066,8 +1165,8 @@ export class SequelizeAdminRepository implements IAdminRepository {
     const subscriptionPlan = (sub?.plan ?? row.plan ?? 'trial') as SubscriptionPlan;
     const subscriptionExpiresAt = sub?.currentPeriodEnd ?? row.subscriptionExpiresAt ?? null;
 
-    // lastSignInAt is always null in Etapa 1 — requires Auth0 (Fase 4).
-    const lastSignInAt: Date | null = null;
+    // Use real last_sign_in_at from the profiles row (column added in migration 20260612000002).
+    const lastSignInAt: Date | null = row.lastSignInAt ?? null;
 
     return new DoctorWithActivity(
       row.id,

@@ -7,8 +7,10 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
@@ -71,6 +73,7 @@ import { CreatePlanUseCase } from '../../application/use-cases/admin/create-plan
 import { ListPlansWithDetailsUseCase } from '../../application/use-cases/admin/list-plans-with-details.use-case';
 import { SetPlanFeaturesUseCase } from '../../application/use-cases/admin/set-plan-features.use-case';
 import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan-prices.use-case';
+import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-doctors.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -127,6 +130,7 @@ export class AdminController {
     private readonly listPlansWithDetailsOp: ListPlansWithDetailsUseCase,
     private readonly setPlanFeaturesOp: SetPlanFeaturesUseCase,
     private readonly setPlanPricesOp: SetPlanPricesUseCase,
+    private readonly exportDoctorsOp: ExportDoctorsUseCase,
   ) {}
 
   /**
@@ -198,16 +202,36 @@ export class AdminController {
   }
 
   /**
+   * GET /api/admin/doctors/export — download all doctors as a CSV file.
+   *
+   * Produces a UTF-8 CSV with headers:
+   *   Nombre, Email, Cédula, Especialidad, Plan, Estado suscripción,
+   *   Vencimiento, Último acceso, Estado actividad
+   *
+   * Content-Type: text/csv; charset=utf-8
+   * Content-Disposition: attachment; filename="especialistas.csv"
+   *
+   * SECURITY: Returns doctor PII (name, email, cédula). Guarded by @Roles('super_admin').
+   *
+   * NOTE: This static-path route MUST remain before 'doctors/:id' to avoid
+   * NestJS treating 'export' as a doctor id parameter.
+   */
+  @Get('doctors/export')
+  async exportDoctors(@Res() res: Response): Promise<void> {
+    const csv = await this.exportDoctorsOp.execute();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="especialistas.csv"');
+    res.send(csv);
+  }
+
+  /**
    * GET /api/admin/doctors — paginated list with optional filters.
    *
    * ?activity_status must be one of: active | cold | inactive — returns 400 if invalid.
    * ?subscription_status must be a valid SubscriptionStatus — returns 400 if invalid.
    *
-   * NOTE (Etapa 1 / Fase 4): activityStatus filtering is in-memory because
-   * lastSignInAt is not tracked until Auth0 is integrated (Fase 4). In Etapa 1,
-   * all doctors have null lastSignInAt → all classify as 'inactive'. The filter
-   * parameter is accepted and documented but its in-memory nature means the
-   * paginated total reflects the filtered page, not a full cross-page count.
+   * Activity filtering now uses real last_sign_in_at data (migration 20260612000002).
+   * Buckets: active = ≤7d, cold = 8-30d, inactive = >30d or null.
    */
   @Get('doctors')
   async listDoctors(

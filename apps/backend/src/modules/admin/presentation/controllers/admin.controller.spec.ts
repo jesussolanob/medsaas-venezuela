@@ -35,6 +35,7 @@ import { CreatePlanUseCase } from '../../application/use-cases/admin/create-plan
 import { ListPlansWithDetailsUseCase } from '../../application/use-cases/admin/list-plans-with-details.use-case';
 import { SetPlanFeaturesUseCase } from '../../application/use-cases/admin/set-plan-features.use-case';
 import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan-prices.use-case';
+import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-doctors.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
 import type { DoctorDetail, DoctorGrowthData } from '../../domain/repositories/admin.repository';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
@@ -189,6 +190,9 @@ const buildModule = async (): Promise<TestingModule> => {
   };
   const mockSetPlanFeatures = { execute: jest.fn().mockResolvedValue([]) };
   const mockSetPlanPrices = { execute: jest.fn().mockResolvedValue([]) };
+  const mockExportDoctors = {
+    execute: jest.fn().mockResolvedValue('Nombre,Email\r\nDr. House,house@test.com'),
+  };
 
   return Test.createTestingModule({
     controllers: [AdminController],
@@ -219,6 +223,7 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: ListPlansWithDetailsUseCase, useValue: mockListPlansWithDetails },
       { provide: SetPlanFeaturesUseCase, useValue: mockSetPlanFeatures },
       { provide: SetPlanPricesUseCase, useValue: mockSetPlanPrices },
+      { provide: ExportDoctorsUseCase, useValue: mockExportDoctors },
     ],
   })
     .overrideGuard(DevAuthGuard)
@@ -755,6 +760,46 @@ describe('AdminController', () => {
       expect(() =>
         pipe.transform({ prices: [{ period: 'weekly', price_usd: 5, is_active: true }] }),
       ).toThrow(BadRequestException);
+    });
+  });
+
+  describe('GET /admin/doctors/export', () => {
+    it('returns CSV with correct headers via res mock', async () => {
+      const resMock = {
+        setHeader: jest.fn(),
+        send: jest.fn(),
+      };
+      await controller.exportDoctors(resMock as never);
+      expect(resMock.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+      expect(resMock.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="especialistas.csv"',
+      );
+      expect(resMock.send).toHaveBeenCalledWith('Nombre,Email\r\nDr. House,house@test.com');
+    });
+
+    it('export endpoint uses ExportDoctorsUseCase', async () => {
+      const mockExport = module.get(ExportDoctorsUseCase) as jest.Mocked<ExportDoctorsUseCase>;
+      mockExport.execute.mockClear();
+      const resMock = { setHeader: jest.fn(), send: jest.fn() };
+      await controller.exportDoctors(resMock as never);
+      expect(mockExport.execute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('GET /admin/doctors — lastSignInAt in list', () => {
+    it('doctor list exposes activityStatus from DoctorWithActivity entity', async () => {
+      const result = await controller.listDoctors('1', '20');
+      const doctor = result.data[0] as Record<string, unknown>;
+      expect('activityStatus' in doctor).toBe(true);
+    });
+  });
+
+  describe('GET /admin/doctors/:id — lastSignInAt in detail', () => {
+    it('detail response includes lastSignInAt field', async () => {
+      const result = await controller.getDoctorById('doc-1');
+      const data = result.data as Record<string, unknown>;
+      expect('lastSignInAt' in data).toBe(true);
     });
   });
 

@@ -55,6 +55,8 @@ const makeRepo = (
     upsertPlanPrice: jest.fn(),
     setPlanPrices: jest.fn(),
     findPermanentPlanForRole: jest.fn(),
+    exportDoctors: jest.fn(),
+    getPublicStats: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('SetUserRoleUseCase', () => {

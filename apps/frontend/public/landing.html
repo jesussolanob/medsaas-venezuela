@@ -1324,11 +1324,11 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         </style>
         <div class="hero-stats">
           <div>
-            <div class="hero-stat-value">500+</div>
+            <div class="hero-stat-value" id="stat-specialists">500+</div>
             <div class="hero-stat-label">Especialistas</div>
           </div>
           <div>
-            <div class="hero-stat-value">12K+</div>
+            <div class="hero-stat-value" id="stat-patients">12K+</div>
             <div class="hero-stat-label">Pacientes</div>
           </div>
           <div>
@@ -1336,6 +1336,24 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
             <div class="hero-stat-label">Satisfacción</div>
           </div>
         </div>
+        <script>
+          // Contador real de especialistas/pacientes. Solo sobrescribe el valor
+          // estático cuando el backend devuelve un conteo > 0 (DB vacía conserva
+          // el placeholder de marketing). GET /api/public/stats — sin PII.
+          (function () {
+            fetch('/api/public/stats', { cache: 'no-store' })
+              .then(function (r) { return r.ok ? r.json() : null; })
+              .then(function (d) {
+                if (!d) return;
+                var nf = new Intl.NumberFormat('es-VE');
+                var s = document.getElementById('stat-specialists');
+                var p = document.getElementById('stat-patients');
+                if (s && d.specialists > 0) s.textContent = nf.format(d.specialists);
+                if (p && d.patients > 0) p.textContent = nf.format(d.patients);
+              })
+              .catch(function () {});
+          })();
+        </script>
         <!-- App Store badges -->
         <div class="app-stores">
           <span class="coming-soon-label">Próximamente</span>

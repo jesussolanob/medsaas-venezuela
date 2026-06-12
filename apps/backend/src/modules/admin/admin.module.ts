@@ -39,6 +39,8 @@ import { ListPlansWithDetailsUseCase } from './application/use-cases/admin/list-
 import { SetPlanFeaturesUseCase } from './application/use-cases/admin/set-plan-features.use-case';
 import { SetPlanPricesUseCase } from './application/use-cases/admin/set-plan-prices.use-case';
 import { GetPublicPlanCatalogUseCase } from './application/use-cases/admin/get-public-plan-catalog.use-case';
+import { ExportDoctorsUseCase } from './application/use-cases/admin/export-doctors.use-case';
+import { GetPublicStatsUseCase } from './application/use-cases/admin/get-public-stats.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -46,6 +48,7 @@ import { RolesGuard } from '../../presentation/guards/roles.guard';
 // Controllers
 import { AdminController } from './presentation/controllers/admin.controller';
 import { PlansCatalogController } from './presentation/controllers/plans-catalog.controller';
+import { PublicStatsController } from './presentation/controllers/public-stats.controller';
 
 /**
  * AdminModule — manages the admin panel for super_admin users.
@@ -69,7 +72,7 @@ import { PlansCatalogController } from './presentation/controllers/plans-catalog
       PlanPriceModel,
     ]),
   ],
-  controllers: [AdminController, PlansCatalogController],
+  controllers: [AdminController, PlansCatalogController, PublicStatsController],
   providers: [
     // Repository binding: domain interface → Sequelize implementation
     {
@@ -107,6 +110,8 @@ import { PlansCatalogController } from './presentation/controllers/plans-catalog
     SetPlanFeaturesUseCase,
     SetPlanPricesUseCase,
     GetPublicPlanCatalogUseCase,
+    ExportDoctorsUseCase,
+    GetPublicStatsUseCase,
   ],
 })
 export class AdminModule {}

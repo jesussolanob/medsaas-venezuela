@@ -1,34 +1,44 @@
-'use client'
+'use client';
 
 /**
  * /admin/doctors — Especialistas
  * 2026-05-02: rediseño según handoff Delta Health Tech.
  */
 
-import { useState, useEffect, useMemo } from 'react'
-import { Search, MoreHorizontal, Download, Plus, Clock, Users, UserCheck, AlertTriangle, ChevronDown } from 'lucide-react'
-import { reportError } from '@/lib/report-error'
-import NewDoctorModal from './NewDoctorModal'
-import DoctorDetailDrawer from './DoctorDetailDrawer'
-import { PageHead, Btn, StatCard, Card, StatusPill } from '@/components/dh'
-import { clsx } from 'clsx'
+import { useState, useEffect, useMemo } from 'react';
+import {
+  Search,
+  MoreHorizontal,
+  Download,
+  Plus,
+  Clock,
+  Users,
+  UserCheck,
+  AlertTriangle,
+  ChevronDown,
+} from 'lucide-react';
+import { reportError } from '@/lib/report-error';
+import NewDoctorModal from './NewDoctorModal';
+import DoctorDetailDrawer from './DoctorDetailDrawer';
+import { PageHead, Btn, StatCard, Card, StatusPill } from '@/components/dh';
+import { clsx } from 'clsx';
 
 interface Doctor {
-  id: string
-  full_name: string
-  email: string
-  specialty?: string
-  is_active: boolean
-  created_at?: string
-  last_sign_in_at?: string
-  plan?: string
-  subscription_status?: string
-  subscription_expires_at?: string
+  id: string;
+  full_name: string;
+  email: string;
+  specialty?: string;
+  is_active: boolean;
+  created_at?: string;
+  last_sign_in_at?: string;
+  plan?: string;
+  subscription_status?: string;
+  subscription_expires_at?: string;
 }
 
 function daysSince(dateStr?: string | null): number {
-  if (!dateStr) return 999
-  return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24))
+  if (!dateStr) return 999;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
 }
 
 // Colores avatar deterministicos (hash sobre id)
@@ -37,16 +47,21 @@ const AVATAR_COLORS = [
   'var(--dh-coral)',
   'var(--dh-ink)',
   'var(--dh-turquoise-700)',
-]
+];
 function avatarColorFor(id: string): string {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 
 function initialsOf(name?: string): string {
-  if (!name) return '?'
-  return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]?.toUpperCase() || '').join('')
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase() || '')
+    .join('');
 }
 
 // The "Plan / Estado" pill reflects SUBSCRIPTION status (the source of truth shown in
@@ -55,61 +70,80 @@ function initialsOf(name?: string): string {
 // activityStatus, always inactive until Auth0 tracks last_sign_in) — it must NOT gate
 // the subscription pill, otherwise every doctor renders as "Suspendido".
 // Default 'active': a doctor without a subscription row is treated as active (beta privada).
-function subscriptionPillStatus(subscriptionStatus?: string): 'past_due' | 'suspended' | 'trial' | 'active' {
+function subscriptionPillStatus(
+  subscriptionStatus?: string,
+): 'past_due' | 'suspended' | 'trial' | 'active' {
   switch (subscriptionStatus) {
-    case 'past_due': return 'past_due'
-    case 'suspended': return 'suspended'
-    case 'trial': return 'trial'
-    default: return 'active'
+    case 'past_due':
+      return 'past_due';
+    case 'suspended':
+      return 'suspended';
+    case 'trial':
+      return 'trial';
+    default:
+      return 'active';
   }
 }
 
 export default function UsersPanel() {
-  const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadDoctors = async () => {
     try {
-      const res = await fetch('/api/admin/doctors')
-      if (!res.ok) throw new Error('Failed to load doctors')
-      const data = await res.json()
-      setDoctors(data || [])
+      const res = await fetch('/api/admin/doctors');
+      if (!res.ok) throw new Error('Failed to load doctors');
+      const data = await res.json();
+      setDoctors(data || []);
     } catch (err) {
-      reportError('UsersPanel', 'loadDoctors', err)
+      reportError('UsersPanel', 'loadDoctors', err);
     }
-  }
+  };
 
   useEffect(() => {
     const load = async () => {
-      setLoading(true)
-      await loadDoctors()
-      setLoading(false)
-    }
-    load()
-  }, [])
+      setLoading(true);
+      await loadDoctors();
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  // Descarga el CSV de especialistas. La ruta devuelve Content-Disposition:
+  // attachment, así que un click en un <a> dispara la descarga sin navegar.
+  const exportDoctors = () => {
+    const a = document.createElement('a');
+    a.href = '/api/admin/doctors/export';
+    a.download = 'especialistas.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   const filteredDoctors = useMemo(() => {
-    if (!searchQuery) return doctors
-    const q = searchQuery.toLowerCase()
-    return doctors.filter(d =>
-      d.full_name?.toLowerCase().includes(q)
-      || d.email?.toLowerCase().includes(q)
-      || d.specialty?.toLowerCase().includes(q),
-    )
-  }, [doctors, searchQuery])
+    if (!searchQuery) return doctors;
+    const q = searchQuery.toLowerCase();
+    return doctors.filter(
+      (d) =>
+        d.full_name?.toLowerCase().includes(q) ||
+        d.email?.toLowerCase().includes(q) ||
+        d.specialty?.toLowerCase().includes(q),
+    );
+  }, [doctors, searchQuery]);
 
-  const activeDoctors = doctors.filter(d => d.is_active).length
-  const inactiveDays7 = doctors.filter(d => {
-    const days = daysSince(d.last_sign_in_at || d.created_at)
-    return days >= 7 && d.is_active
-  }).length
+  const activeDoctors = doctors.filter((d) => d.is_active).length;
+  const inactiveDays7 = doctors.filter((d) => {
+    const days = daysSince(d.last_sign_in_at || d.created_at);
+    return days >= 7 && d.is_active;
+  }).length;
   const newThisMonth = useMemo(() => {
-    const now = new Date()
-    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-    return doctors.filter(d => d.created_at && new Date(d.created_at).getTime() >= startMonth).length
-  }, [doctors])
+    const now = new Date();
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return doctors.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMonth)
+      .length;
+  }, [doctors]);
 
   return (
     <>
@@ -118,7 +152,13 @@ export default function UsersPanel() {
         subtitle={`${doctors.length} profesionales registrados · ${activeDoctors} activos en la plataforma`}
         actions={
           <>
-            <Btn variant="secondary" icon={<Download className="w-4 h-4" />}>Exportar</Btn>
+            <Btn
+              variant="secondary"
+              icon={<Download className="w-4 h-4" />}
+              onClick={exportDoctors}
+            >
+              Exportar
+            </Btn>
             <NewDoctorModal />
           </>
         }
@@ -166,7 +206,7 @@ export default function UsersPanel() {
           <input
             type="text"
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por nombre, cédula, email o especialidad..."
             className="flex-1 outline-none text-[13px] bg-transparent"
             style={{ color: 'var(--dh-ink)' }}
@@ -194,7 +234,14 @@ export default function UsersPanel() {
           <table className="w-full text-[13px]" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--dh-gray-50)' }}>
-                {['Especialista', 'Especialidad', 'Plan / Estado', 'Vencimiento', 'Actividad', ''].map(h => (
+                {[
+                  'Especialista',
+                  'Especialidad',
+                  'Plan / Estado',
+                  'Vencimiento',
+                  'Actividad',
+                  '',
+                ].map((h) => (
                   <th
                     key={h}
                     className="text-left"
@@ -217,7 +264,11 @@ export default function UsersPanel() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12" style={{ color: 'var(--dh-gray-400)' }}>
+                  <td
+                    colSpan={6}
+                    className="text-center py-12"
+                    style={{ color: 'var(--dh-gray-400)' }}
+                  >
                     Cargando especialistas…
                   </td>
                 </tr>
@@ -239,35 +290,53 @@ export default function UsersPanel() {
                 </tr>
               ) : (
                 filteredDoctors.map((d, i) => {
-                  const days = daysSince(d.last_sign_in_at || d.created_at)
-                  const status = subscriptionPillStatus(d.subscription_status)
+                  const days = daysSince(d.last_sign_in_at || d.created_at);
+                  const status = subscriptionPillStatus(d.subscription_status);
                   const vence = d.subscription_expires_at
-                    ? new Date(d.subscription_expires_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
-                    : '—'
+                    ? new Date(d.subscription_expires_at).toLocaleDateString('es-VE', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })
+                    : '—';
                   return (
                     <tr
                       key={d.id}
                       className="cursor-pointer transition-colors"
                       style={{
-                        borderBottom: i < filteredDoctors.length - 1 ? '1px solid var(--dh-gray-100)' : 'none',
+                        borderBottom:
+                          i < filteredDoctors.length - 1 ? '1px solid var(--dh-gray-100)' : 'none',
                       }}
                       onClick={() => setSelectedDoctor(d)}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-gray-50)' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--dh-gray-50)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                      }}
                     >
                       <td style={{ padding: '16px 20px' }}>
                         <div className="flex items-center gap-3">
                           <div
                             className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
-                            style={{ background: avatarColorFor(d.id), fontFamily: 'var(--dh-font-display)' }}
+                            style={{
+                              background: avatarColorFor(d.id),
+                              fontFamily: 'var(--dh-font-display)',
+                            }}
                           >
                             {initialsOf(d.full_name)}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-semibold truncate" style={{ color: 'var(--dh-ink)' }}>
+                            <div
+                              className="font-semibold truncate"
+                              style={{ color: 'var(--dh-ink)' }}
+                            >
                               {d.full_name}
                             </div>
-                            <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)', marginTop: 2 }}>
+                            <div
+                              className="text-[11px] truncate"
+                              style={{ color: 'var(--dh-gray-400)', marginTop: 2 }}
+                            >
                               {d.email}
                             </div>
                           </div>
@@ -280,14 +349,23 @@ export default function UsersPanel() {
                         <div className="flex flex-col gap-1.5 items-start">
                           <span
                             className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider"
-                            style={{ background: 'var(--dh-turquoise-50)', color: 'var(--dh-turquoise-700)' }}
+                            style={{
+                              background: 'var(--dh-turquoise-50)',
+                              color: 'var(--dh-turquoise-700)',
+                            }}
                           >
                             {d.plan || 'trial'}
                           </span>
                           <StatusPill status={status} size="sm" />
                         </div>
                       </td>
-                      <td style={{ padding: '16px 20px', fontFamily: 'var(--dh-font-mono)', color: 'var(--dh-gray-600)' }}>
+                      <td
+                        style={{
+                          padding: '16px 20px',
+                          fontFamily: 'var(--dh-font-mono)',
+                          color: 'var(--dh-gray-600)',
+                        }}
+                      >
                         {vence}
                       </td>
                       <td style={{ padding: '16px 20px' }}>
@@ -297,7 +375,7 @@ export default function UsersPanel() {
                           )}
                           style={{
                             background: days >= 14 ? '#FEE2E2' : days >= 7 ? '#FEF3C7' : '#D1FAE5',
-                            color:      days >= 14 ? '#B91C1C' : days >= 7 ? '#92400E' : '#047857',
+                            color: days >= 14 ? '#B91C1C' : days >= 7 ? '#92400E' : '#047857',
                           }}
                         >
                           <Clock className="w-3 h-3" />
@@ -306,15 +384,24 @@ export default function UsersPanel() {
                       </td>
                       <td style={{ padding: '16px 20px', textAlign: 'right' }}>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedDoctor(d) }}
-                          style={{ color: 'var(--dh-gray-400)', cursor: 'pointer', padding: 6, border: 'none', background: 'transparent' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDoctor(d);
+                          }}
+                          style={{
+                            color: 'var(--dh-gray-400)',
+                            cursor: 'pointer',
+                            padding: 6,
+                            border: 'none',
+                            background: 'transparent',
+                          }}
                           title="Ver detalle"
                         >
                           <MoreHorizontal className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
-                  )
+                  );
                 })
               )}
             </tbody>
@@ -350,8 +437,8 @@ export default function UsersPanel() {
               </p>
             </div>
           ) : (
-            filteredDoctors.map(d => {
-              const status = subscriptionPillStatus(d.subscription_status)
+            filteredDoctors.map((d) => {
+              const status = subscriptionPillStatus(d.subscription_status);
               return (
                 <button
                   key={d.id}
@@ -361,12 +448,18 @@ export default function UsersPanel() {
                 >
                   <div
                     className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
-                    style={{ background: avatarColorFor(d.id), fontFamily: 'var(--dh-font-display)' }}
+                    style={{
+                      background: avatarColorFor(d.id),
+                      fontFamily: 'var(--dh-font-display)',
+                    }}
                   >
                     {initialsOf(d.full_name)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate text-sm" style={{ color: 'var(--dh-ink)' }}>
+                    <div
+                      className="font-semibold truncate text-sm"
+                      style={{ color: 'var(--dh-ink)' }}
+                    >
                       {d.full_name}
                     </div>
                     <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)' }}>
@@ -375,7 +468,7 @@ export default function UsersPanel() {
                   </div>
                   <StatusPill status={status} size="sm" />
                 </button>
-              )
+              );
             })
           )}
         </div>
@@ -388,5 +481,5 @@ export default function UsersPanel() {
         onDoctorUpdated={loadDoctors}
       />
     </>
-  )
+  );
 }

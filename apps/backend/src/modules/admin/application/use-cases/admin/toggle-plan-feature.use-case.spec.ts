@@ -47,6 +47,8 @@ const makeRepo = (returnValue: PlanFeatureRow = featureRow): jest.Mocked<IAdminR
     upsertPlanPrice: jest.fn(),
     setPlanPrices: jest.fn(),
     findPermanentPlanForRole: jest.fn(),
+    exportDoctors: jest.fn(),
+    getPublicStats: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 const makeRedis = () => ({

@@ -57,6 +57,9 @@ export class ProfileAdminModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare state: string | null;
 
+  @Column({ type: DataType.DATE, allowNull: true, field: 'last_sign_in_at' })
+  declare lastSignInAt: Date | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 
