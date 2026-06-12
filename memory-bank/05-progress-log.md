@@ -1294,3 +1294,18 @@ Caracas), gastos, crear paciente (PII cifrada), plantillas PDF, bloques de consu
 
 **Finding (decisión de producto):** `/api/book` exige `patientEmail` aunque el doctor agende un paciente
 existente sin email → falla. Definir si email es opcional en booking del doctor u obligatorio al crear paciente.
+
+## 2026-06-12 — Booking opción B + email opcional (commit `2ae903e`) — build/lint verdes, QA vivo pendiente
+
+Resuelve el finding anterior. Decisión del usuario: email **opcional** (doctor) / **obligatorio a nivel de
+front** en el público (+ teléfono).
+
+- **Backend (`CreateBooking` + shared-types + integrations):** DTO acepta `patient_id` (uuid opcional) y
+  `patient_email` opcional/nullable validado con `.email()` (`''`→null). **Opción B:** si viene `patient_id`,
+  `loadPatientById(id, doctorId)` (scoped, `PatientNotFoundError` genérico anti-IDOR/anti-enumeración) — sin
+  re-crear. Si no, find-or-create por **email-hash → cédula-hash → crear** (nunca por nombre). El attendee de
+  Google y el `.ics` al paciente se omiten cuando no hay email (evento/Meet del doctor intactos).
+- **Frontend:** `lib/validation.ts` (`isValidEmail` regex compartida); `/api/book` route handler (email opcional
+  - regex + pasa `patient_id`); `NewAppointmentFlow` manda `patientId` del existente + valida alta inline;
+    `BookingClient` público exige nombre+email+teléfono + formato; `PatientForm` valida email si viene.
+- 2179 unit verdes; shared-types+backend build+lint OK; frontend tsc 0. **Pendiente:** boot/curl/Playwright en ventana QA.
