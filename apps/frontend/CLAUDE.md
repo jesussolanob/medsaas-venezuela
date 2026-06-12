@@ -1,11 +1,13 @@
 # MedSaaS Venezuela — Delta Medical CRM
 
 ## Qué es este proyecto
+
 SaaS multi-tenant para médicos especialistas en Venezuela.
 CRM médico omnicanal con gestión clínica, agenda, finanzas y portal de pacientes.
 Nombre comercial: **Delta Medical CRM**.
 
 ## Stack técnico
+
 - Next.js 16 (App Router) + React 19 + TypeScript + Tailwind v4
 - **Monorepo NX + pnpm.** Esta app es `apps/frontend` (UI + BFF).
 - **Sin Supabase** (eliminado). Auth, BD y storage los provee `apps/backend`
@@ -15,6 +17,7 @@ Nombre comercial: **Delta Medical CRM**.
 - Deploy objetivo: GCP (Cloud Run). Doc raíz: `../../CLAUDE.md` y `../../README.md`.
 
 ## Diseño y estilo
+
 - Colores: blanco, turquesa (teal-500), gris slate
 - Fondo global: bg-slate-50
 - Tarjetas: bg-white border border-slate-200 rounded-xl
@@ -27,6 +30,7 @@ Nombre comercial: **Delta Medical CRM**.
 ## Estructura de rutas
 
 ### /admin — Super Administrador
+
 - layout.tsx → Sidebar con navegación admin
 - page.tsx → Dashboard con KPIs en tiempo real
 - /doctors → Lista de médicos + NewDoctorModal + NewClinicModal
@@ -41,6 +45,7 @@ Nombre comercial: **Delta Medical CRM**.
 - ~~/finances~~ → ELIMINADO (beta privada — redirige a /admin)
 
 ### /doctor — App del Médico
+
 - layout.tsx → Sidebar con feature gating basado en plan_features
 - page.tsx → Dashboard con 3 KPIs (ingresos, pacientes, atendidos) + citas del día + finanzas
 - /agenda → Calendario + modal detalle con botones: Confirmar / Marcar atendida / Cancelar / No asistió
@@ -61,6 +66,7 @@ Nombre comercial: **Delta Medical CRM**.
 - ~~/plans~~ → REDIRIGE a /doctor/services (consolidado)
 
 ### /patient — Portal del Paciente
+
 - layout.tsx → Sidebar con navegación paciente
 - page.tsx → Dashboard con próxima cita, paquetes activos con info del doctor + link para agendar
 - /appointments → Historial de citas
@@ -72,6 +78,7 @@ Nombre comercial: **Delta Medical CRM**.
 - /register → Registro de paciente
 
 ### /book/[doctorId] — Booking público
+
 - page.tsx → Server component que carga datos del doctor
 - BookingClient.tsx → Formulario tipo ACORDEÓN con 5 pasos:
   1. Tipo de consulta (plan) — detecta paquetes activos prepagados
@@ -81,19 +88,22 @@ Nombre comercial: **Delta Medical CRM**.
   5. Confirmación con resumen
 
 ### /register — Registro de médicos
+
 - Formulario unificado con selector de 4 planes inline
 - Planes se cargan dinámicamente de plan_configs table
 - Email de verificación al registrar
 
 ### /login — Login unificado
+
 - Redirige según rol: super_admin→/admin, patient→/patient, doctor→/doctor
 - Si no hay perfil, revisa user_metadata.role del auth
 
 ### APIs (/app/api/)
+
 - /api/book → Crear cita con validación de duplicados, paquetes y slots
 - /api/doctor/schedule → GET/POST config de agenda y disponibilidad
 - /api/doctor/consultations → CRUD de consultas
-- /api/admin/* → Acciones admin
+- /api/admin/\* → Acciones admin
 
 ## Base de datos (PostgreSQL vía backend NestJS/Sequelize)
 
@@ -102,6 +112,7 @@ Nombre comercial: **Delta Medical CRM**.
 > sigue siendo válido; las FKs/constraints/índices viven en las migraciones.
 
 ### Tablas principales
+
 - profiles → id, full_name, email, role, specialty, professional_title, clinic_id, clinic_role, payment_methods, payment_details, avatar_url, allows_online, office_address, city, state
 - subscriptions → doctor_id, plan, status (trial|active|past_due|suspended), current_period_end
 - plan_configs → plan_key (trial|basic|professional|clinic), name, price, trial_days, is_active, sort_order
@@ -118,26 +129,46 @@ Nombre comercial: **Delta Medical CRM**.
 - ~~subscription_payments, payments, waitlist, doctor_patient_links, appointment_reminders_config~~ → ELIMINADAS (refactor 2026-04-21)
 
 ### Feature keys disponibles
+
 dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm, reminders, messages, invitations, settings
+
+Keys de IA (2026-06, solo plan Plus): `ai_assistant`, `ai_transcription`, `ai_reports`.
+
+> El gating del doctor (2026-06) = capacidades del ROL (`role_capabilities`) **∩** features del
+> PLAN (`plan_features`). Módulo no habilitado por el plan → candado → `/doctor/upgrade`.
+> Catálogo público de planes: `GET /api/plans`. Planes parametrizables desde `/admin/plans`
+> (precios por período en `plan_prices`); Delta Free permanente con downgrade perezoso.
+
+### Rutas nuevas (2026-06)
+
+- `/doctor/upgrade` → tarjetas de planes + upsell (guard `requirePlanFeature`)
+- `/doctor/onboarding` → onboarding obligatorio post-SSO (full-screen, cédula V/E/P, especialidad)
+- `/admin/plans` → editor de planes/precios/features
+- `/admin/verifications` → verificación de doctores (estado MPPS)
+- OAuth Google: `/api/integrations/google/auth` + `/callback` (cookie `state` CSRF, opt-in Meet)
 
 ### Taxonomía de estados (aclarada 2026-04-21)
 
 **Estado de CITA** (`appointments.status`):
+
 - `scheduled` → **Agendada** (recién creada)
 - `confirmed` → **Aprobada** (doctor confirma la cita)
 - `cancelled` → **Rechazada** (cita cancelada antes de ocurrir)
 
 **Estado de CONSULTA** (también `appointments.status`, pos-cita):
+
 - `completed` → **Paciente asistió** (cuenta como ingreso)
 - `no_show` → **No asistió** (no restituye paquetes)
 
 **Estado de PAGO** (`consultations.payment_status`):
+
 - `pending` → **Pendiente**
 - `approved` → **Aprobado**
 - ❌ NO existe `rechazado` — un pago simplemente sigue pendiente hasta que llegue
 - ❌ NO existe `cancelled` — se eliminó en migración 026
 
 **Quién cambia cada estado:**
+
 - Cita (scheduled→confirmed/cancelled): doctor o admin, botón en modal de agenda
 - Consulta (completed/no_show): doctor, botón "Marcar como atendida" / "No asistió"
 - Pago (pending→approved): doctor desde /doctor/cobros o dentro de la consulta
@@ -147,12 +178,14 @@ dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm
 **Reagendar citas:** sólo via RPC `reschedule_appointment` que valida ownership + conflictos.
 
 ## Modelo de suscripciones — Beta Privada (simplificado 2026-04-21)
+
 - **Trial Beta Privada**: $0, **1 año gratis** automático
 - **Basic**: $10 USD/mes (configurado en BD pero NO en uso durante beta)
 - **Professional**: $30 USD/mes (configurado pero NO en uso durante beta)
 - **Clinic**: $100 USD/mes (configurado pero NO en uso durante beta)
 
 ### Flujo de suscripción (beta privada)
+
 1. Médico se registra en /register → subscription status='active', plan='trial', 1 año gratis
 2. **NO hay flujo de aprobaciones** — el módulo /admin/approvals fue eliminado
 3. **NO hay flujo de comprobantes de pago** — durante beta el acceso es gratis
@@ -160,17 +193,20 @@ dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm
 5. Admin configura features por plan desde /admin/plan-features
 
 ### Cuando se lance el modelo de pago (post-beta)
+
 - Reactivar el módulo de aprobaciones (revertir commit del 2026-04-21)
 - Reintroducir tabla subscription_payments + endpoints aprovechando backup_20260421
 - Implementar Edge Function para procesamiento de pagos automático
 
 ### Feature gating en el doctor layout
+
 - El sidebar lee plan_features para mostrar/ocultar módulos
 - Status válidos: 'active', 'trial', 'trialing'
 - Si status inválido: solo dashboard, agenda, settings
 - Dashboard verifica plan_features para link de finanzas (no usa plan name)
 
 ## Modelo de paquetes de paciente
+
 - Paciente compra plan de varias sesiones → se crea patient_package
 - Al agendar desde paquete: se salta paso de pago, API valida ownership + sesiones disponibles
 - API usa optimistic lock (eq used_sessions) para prevenir race conditions
@@ -178,12 +214,14 @@ dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm
 - Panel paciente muestra paquetes con nombre del doctor y link para agendar
 
 ## Validaciones del booking (/api/book)
+
 - Previene citas duplicadas (mismo paciente + mismo horario ± 15 min)
 - Previene slots ocupados (otro paciente ya tomó ese horario)
 - Valida paquete: ownership, doctor correcto, status active, sesiones disponibles
 - Optimistic lock en used_sessions para prevenir sobre-uso concurrente
 
 ## Login y roles
+
 - super_admin / admin → /admin
 - patient → /patient/dashboard
 - doctor (incluye clinic admin) → /doctor
@@ -194,15 +232,18 @@ dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm
   doctor al crear; nunca sobrescribe un rol existente).
 
 ## Credenciales y servicios
+
 - Super Admin: jesussolano4@gmail.com
 - Doctor de prueba: ing.jesussolanob@gmail.com
 - GitHub: jesussolanob
 - Métodos de pago: Pago Móvil, Transferencia, Zelle, Binance, Efectivo USD/Bs, POS
 
 ## Especialidades disponibles
+
 Cardiología, Dermatología, Endocrinología, Gastroenterología, Ginecología y Obstetricia, Medicina General, Medicina Interna, Nefrología, Neurología, Oftalmología, Ortopedia y Traumatología, Otorrinolaringología, Pediatría, Psicología, Psiquiatría, Reumatología, Fisioterapia, Urología, Centro de Salud, Clínica General, Otra
 
 ## Lo que está hecho
+
 - [x] Schema de dominio completo (migrado a PostgreSQL/Sequelize en el backend)
 - [x] Login unificado con redirección por rol
 - [x] Registro de médicos con 4 planes + verificación email
@@ -223,6 +264,7 @@ Cardiología, Dermatología, Endocrinología, Gastroenterología, Ginecología y
 - [x] Banner de vencimiento de suscripción (amarillo/rojo)
 
 ## Lo que falta por hacer
+
 - [ ] Página bloqueante cuando suscripción suspendida (vista completa)
 - [ ] Edge Function para recordatorios automáticos (WhatsApp + Email)
 - [ ] Cron job para check_expired_subscriptions()

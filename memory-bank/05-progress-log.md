@@ -1193,3 +1193,55 @@ PENDIENTES del usuario); planes 100% parametrizables desde admin, Free permanent
 en curso. **Siguiente:** Fase 4 (consultorios modalidad + Google/Meet), Fase 5 (agenda bloqueos +
 horizonte de semanas), Fase 7 (IA — espera specs del usuario), Fase 8 (telemetría). Plan completo en
 `~/.claude/plans/jazzy-sprouting-hamster.md`.
+
+## 2026-06-11/12 — Módulo Doctor "vendible": Fases 1–8 COMPLETAS (catálogo público, registro, onboarding, Google, agenda, telemetría, MPPS)
+
+Continuación de la entrada anterior; mismo equipo de agentes (lead delega + verifica en disco;
+code-reviewer + security-agent por fase). Commits en `feature/migracion-backend`:
+
+- **Catálogo público de planes (`6d81bb8`).** `GET /api/plans?role=` SIN auth (módulo admin,
+  `PlansCatalogController` intencionalmente sin guards) → tarjetas en `/doctor/upgrade` y `/register`.
+  Solo planes/precios activos, sin flags internos.
+- **Fase 4 — Consultorios modalidad + Google/Meet opt-in (`11e291d`, frontend `1e75511`; CSRF `d1cf5b9`,
+  cookie state path `/` `0173dfb`).** `doctor_offices.modality`(in_person/online/both); nueva
+  `google_integrations` (tokens cifrados); `appointments` +meet_link+office_id. Módulo `integrations`:
+  `GET/POST/DELETE /api/integrations/google*`. OAuth en frontend (`/api/integrations/google/auth`+`/callback`
+  con state CSRF). Sin Google conectado → fallback `.ics`/Jitsi + email. **Google PROBADO real** (OAuth +
+  Meet) end-to-end.
+- **Fase 5 — Agenda bloqueos + horizonte de semanas (`fd1c776`, frontend `58bd5ea`).** Módulo
+  `availability-blocks` (`doctor_availability_blocks`) `GET/POST/DELETE /api/doctor/availability-blocks`;
+  `doctor_schedules` +booking_horizon_weeks. `GET /api/booking/:doctorId/slots` respeta bloqueos+horizonte.
+- **Servicios por consultorio (`4771d25`, frontend `1fe3e33`).** `pricing_plans.office_id`; planes y citas
+  asociados a consultorio. `GET /api/doctor/services?officeId`; create/update con office_id. NewAppointmentFlow:
+  consultorio → modalidad → planes.
+- **Especialidades en BD (`1e691b1`).** Módulo `specialties` + seed 29 (gestionable por admin sin redeploy).
+  `GET /api/specialties` (público); `POST/PUT /api/admin/specialties` (super_admin). Registro acepta especialidad.
+- **Registro doctor + panel admin de verificaciones (frontend `205ca7c`; email enriquecido `9c8b85b`,
+  `2de1664`/`a24d24b`/`a56bf51` ajustes).** `POST /api/doctor/registration`; panel `/admin/verifications`
+  (+ estado MPPS); email de verificación con datos completos del doctor (Resend).
+- **Onboarding obligatorio post-SSO (`8bf4a9d`; full-screen `7196f22`; gate por specialty `a24d24b`;
+  `/register`→`/login` `a1d80ca`; loader login `105ab18`).** Gate full-screen sin sidebar tras Auth0;
+  `OnboardingForm`+`SpecialtyCombobox`+`CedulaInput` V/E/P; especialidad obligatoria. Quitados WhatsApp y
+  Cita 360 del doctor; fix alta de paciente.
+- **Fase 8 — Telemetría por sesión (`9102238` modelo, `5073898` cliente; ingesta por lote `d8e2867`).**
+  `telemetry_sessions` (1 fila por session_id, `journey` jsonb) **reemplaza `action_events`** (eliminada).
+  `POST /api/telemetry/session` (doctor) con guard anti-PII (PiiGuard), `GET /api/telemetry/sessions`
+  (super_admin). `TelemetryProvider` captura low-touch en el cliente.
+- **Verificación automática de MPPS vía SACS (`2ef4ff9`).** Módulo `credential-verification`:
+  `credential_verifiers` + `credential_verifications`. `POST /api/admin/doctor-verifications/:doctorId/verify-mpps`
+  (SACS xajax por cédula, async no bloqueante), `GET .../credentials`. **MPPS verificado en vivo.** Colegiado = manual.
+- **Review cycle (`32045bc`, `9ffa28a`, `170e3b8`).** Correcciones HIGH/MED de Fases 2/3/4 + backend de review +
+  guard de rol en BFF de doctor + hidratación del combobox. `f65eb39` ignora screenshots qa-\*.png.
+
+Migraciones nuevas: `20260611000000`→`20260612000000` (plan-configs-parametric, profiles-verification,
+patient-identities, calendar-integration, availability-blocks, specialties, office-id-on-pricing-plans-and-
+appointments, telemetry-sessions, credential-verification; `action-events` introducida y luego reemplazada
+por telemetry-sessions).
+
+**Decisiones del usuario:** pagos de planes MANUALES + aprobación super_admin; Google/Meet opt-in; IA = chat
+único con Gemini (specs PENDIENTES); planes 100% parametrizables, Free permanente, downgrade perezoso sin
+perder datos; maestra de pacientes interna (no expone existencia cross-doctor).
+
+**PENDIENTE:** IA (Fase 7) espera specs del usuario; verificación de colegiado = manual (sin portal).
+**Deudas Etapa 2:** cifrar la cédula del doctor; audit-log admin de PII; timezone de citas; cron de
+downgrade/reminders.

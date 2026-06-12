@@ -234,13 +234,13 @@ Controller `@Controller('doctor/offices')`, `DevAuthGuard`, doctor-scoped anti-I
 Tabla `doctor_offices` (name, address, city, phone, schedule JSONB [{day,enabled,start,end} con **day 0=Lunes**],
 slot_duration, buffer_minutes, is_active).
 
-| Endpoint | Método | Notas |
-| --- | --- | --- |
-| `/api/doctor/offices` | GET | Lista offices del doctor (created_at asc). |
-| `/api/doctor/offices` | POST | Crea. Zod CreateOfficeDto (name req; schedule/slot_duration/buffer con defaults). |
-| `/api/doctor/offices/:id` | PUT | Actualiza (ownership; cross-doctor → 404). |
-| `/api/doctor/offices/:id` | DELETE | Elimina (204). |
-| `/api/doctor/offices/:id/toggle` | PATCH | Alterna is_active. |
+| Endpoint                         | Método | Notas                                                                             |
+| -------------------------------- | ------ | --------------------------------------------------------------------------------- |
+| `/api/doctor/offices`            | GET    | Lista offices del doctor (created_at asc).                                        |
+| `/api/doctor/offices`            | POST   | Crea. Zod CreateOfficeDto (name req; schedule/slot_duration/buffer con defaults). |
+| `/api/doctor/offices/:id`        | PUT    | Actualiza (ownership; cross-doctor → 404).                                        |
+| `/api/doctor/offices/:id`        | DELETE | Elimina (204).                                                                    |
+| `/api/doctor/offices/:id/toggle` | PATCH  | Alterna is_active.                                                                |
 
 **`GET /api/booking/:doctorId/slots?date=YYYY-MM-DD` reconstruido:** genera slots desde los offices ACTIVOS del
 doctor (no doctor_schedules). Para el weekday (offset day 0=Lunes vía `(getUTCDay+6)%7`), por cada office activo con
@@ -253,10 +253,10 @@ Controller `@Controller('doctor/templates')`, `DevAuthGuard`, doctor-scoped. Tab
 (UNIQUE doctor_id+template_type; types: informe|recipe|prescripciones|reposo; logo_url/signature_url solo string,
 uploads=Fase 5).
 
-| Endpoint | Método | Notas |
-| --- | --- | --- |
-| `/api/doctor/templates` | GET | Todas las plantillas del doctor (puede ser []). |
-| `/api/doctor/templates/:templateType` | PUT | Upsert por (doctor, type). Tipo inválido → 400 INVALID_TEMPLATE_TYPE. |
+| Endpoint                              | Método | Notas                                                                 |
+| ------------------------------------- | ------ | --------------------------------------------------------------------- |
+| `/api/doctor/templates`               | GET    | Todas las plantillas del doctor (puede ser []).                       |
+| `/api/doctor/templates/:templateType` | PUT    | Upsert por (doctor, type). Tipo inválido → 400 INVALID_TEMPLATE_TYPE. |
 
 ### `reminders` — recordatorios (mig 20260605000002) ✅ — envío=bloqueante Fase 6
 
@@ -266,3 +266,85 @@ Admin `@Controller('admin/reminders')` super_admin: GET `/queue` enriquecido con
 de pacientes** (no descifra patient.full_name). Verificado lead: 1311 tests, boot, curl+anti-IDOR+RBAC 403.
 Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío manual wa.me/mailto) NO usa este módulo
 → es consultas+citas PII (Fase 2). UI de settings (config 7d/24h) pendiente (Fase 2 doctor/settings).
+
+## Módulo Doctor "vendible" — Fases 1–8 (2026-06-11 → 06-12)
+
+> Endpoints añadidos al culminar el módulo doctor: planes parametrizables, registro/verificación,
+> especialidades, agenda (bloqueos+horizonte), servicios por consultorio, Google/Meet, telemetría,
+> verificación de credenciales (MPPS/SACS).
+
+### Planes parametrizables (módulo `admin` ampliado)
+
+| Endpoint                             | Método | Roles       | Notas                                                                                               |
+| ------------------------------------ | ------ | ----------- | --------------------------------------------------------------------------------------------------- |
+| `/api/admin/plans`                   | GET    | super_admin | Catálogo de planes (incluye `role_key`, `is_permanent`, precios y features).                        |
+| `/api/admin/plans`                   | POST   | super_admin | Crea plan (Zod; transaccional).                                                                     |
+| `/api/admin/plans/:planKey`          | PUT    | super_admin | Actualiza plan (toggle is_active, metadatos).                                                       |
+| `/api/admin/plans/:planKey/config`   | PUT    | super_admin | Actualiza config del plan (role_key/is_permanent/sort_order).                                       |
+| `/api/admin/plans/:planKey/features` | PUT    | super_admin | Set de features del plan (incluye `ai_assistant`/`ai_transcription`/`ai_reports`). Transaccional.   |
+| `/api/admin/plans/:planKey/prices`   | PUT    | super_admin | Set de precios por período (monthly/quarterly/semiannual/annual). Transaccional.                    |
+| `/api/plans?role=doctor`             | GET    | **Pública** | Catálogo público (`/doctor/upgrade`, `/register`). Solo planes/precios activos; sin flags internos. |
+| `/api/doctor/features`               | GET    | doctor      | Features del plan v2: downgrade perezoso a Free al expirar (Free permanente, no pierde datos).      |
+
+> `plan-features`/`plan-features/:planKey/:featureKey` (toggle individual) siguen existiendo (sección Admin arriba).
+> El gating del doctor = capacidades del ROL (role_capabilities) **∩** features del PLAN (plan_features). Módulo
+> no habilitado por el plan → candado → `/doctor/upgrade`.
+
+### Registro de doctor + verificación (módulos `doctor-registration` + `credential-verification`)
+
+| Endpoint                                                | Método | Roles       | Notas                                                                                                |
+| ------------------------------------------------------- | ------ | ----------- | ---------------------------------------------------------------------------------------------------- |
+| `/api/doctor/registration`                              | POST   | doctor      | Alta de datos profesionales (mpps/colegiado) → `verification_status=pending` + email a super_admins. |
+| `/api/admin/doctor-verifications`                       | GET    | super_admin | Lista de doctores por estado de verificación.                                                        |
+| `/api/admin/doctor-verifications/:doctorId`             | PUT    | super_admin | Aprueba/rechaza (verified/rejected) + verified_at/verified_by.                                       |
+| `/api/admin/doctor-verifications/:doctorId/verify-mpps` | POST   | super_admin | Verificación automática del MPPS vía SACS (xajax por cédula; async no bloqueante).                   |
+| `/api/admin/doctor-verifications/:doctorId/credentials` | GET    | super_admin | Resultado de las verificaciones de credenciales del doctor (verificadores por credencial).           |
+
+> Verificación NO restringe acceso aún (preparatorio). Verificador de colegiado = MANUAL (sin portal).
+
+### Especialidades (módulo `specialties`)
+
+| Endpoint                     | Método | Roles       | Notas                                                 |
+| ---------------------------- | ------ | ----------- | ----------------------------------------------------- |
+| `/api/specialties`           | GET    | **Pública** | Catálogo (seed 29). Consumido en registro/onboarding. |
+| `/api/admin/specialties`     | POST   | super_admin | Crea especialidad (gestionable sin redeploy).         |
+| `/api/admin/specialties/:id` | PUT    | super_admin | Edita especialidad.                                   |
+
+### Agenda — bloqueos + horizonte (módulo `availability-blocks` + `doctor-settings`)
+
+| Endpoint                              | Método  | Roles  | Notas                                                                                |
+| ------------------------------------- | ------- | ------ | ------------------------------------------------------------------------------------ |
+| `/api/doctor/availability-blocks`     | GET     | doctor | Bloqueos de disponibilidad del doctor.                                               |
+| `/api/doctor/availability-blocks`     | POST    | doctor | Crea bloqueo (ausencia/vacaciones). Anti-IDOR.                                       |
+| `/api/doctor/availability-blocks/:id` | DELETE  | doctor | Elimina bloqueo (ownership).                                                         |
+| `/api/doctor/schedule`                | GET/PUT | doctor | Ahora incluye `booking_horizon_weeks` (cuántas semanas adelante reserva el booking). |
+
+> `GET /api/booking/:doctorId/slots` respeta los bloqueos y el horizonte de semanas.
+
+### Servicios por consultorio (módulo `doctor-settings`)
+
+| Endpoint                                | Método   | Roles  | Notas                                                                  |
+| --------------------------------------- | -------- | ------ | ---------------------------------------------------------------------- |
+| `/api/doctor/services?officeId=`        | GET      | doctor | Pricing plans filtrables por consultorio.                              |
+| `/api/doctor/services`, `/services/:id` | POST/PUT | doctor | Create/update aceptan `office_id` (plan/cita asociados a consultorio). |
+
+### Integraciones — Google Calendar/Meet (módulo `integrations`) — OPT-IN
+
+| Endpoint                           | Método | Roles  | Notas                                                                  |
+| ---------------------------------- | ------ | ------ | ---------------------------------------------------------------------- |
+| `/api/integrations/google/status`  | GET    | doctor | Estado de la integración del doctor.                                   |
+| `/api/integrations/google/connect` | POST   | doctor | Guarda tokens (cifrados) tras el OAuth. Habilita Meet en citas online. |
+| `/api/integrations/google`         | DELETE | doctor | Desconecta Google.                                                     |
+
+> OAuth en el **frontend**: `/api/integrations/google/auth` (inicio) + `/api/integrations/google/callback`
+> (con cookie `state` CSRF, path `/`). Si el doctor NO conecta Google → fallback `.ics`/Jitsi + email (sin Meet).
+> Citas: `appointments.meet_link` + `office_id`; modalidad por consultorio (in_person/online/both).
+
+### Telemetría (módulo `telemetry`) — 1 fila por sesión
+
+| Endpoint                  | Método | Roles       | Notas                                                                                                          |
+| ------------------------- | ------ | ----------- | -------------------------------------------------------------------------------------------------------------- |
+| `/api/telemetry/session`  | POST   | doctor      | Upsert de la sesión (`telemetry_sessions`, 1 fila por session_id, `journey` jsonb). Guard anti-PII (PiiGuard). |
+| `/api/telemetry/sessions` | GET    | super_admin | Lista de sesiones de telemetría.                                                                               |
+
+> Reemplaza el modelo `action_events` (eliminado). Captura low-touch en el cliente (`TelemetryProvider`).

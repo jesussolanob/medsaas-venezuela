@@ -102,6 +102,29 @@ Dominio entrelazado con subscriptions — diseñar fronteras con cuidado. Tablas
   `subscription_changes_log` → considerar construir `subscription_changes_log` (tabla nueva) aquí.
   Diferido Fase 5: emails (sendPaymentApprovedEmail), PDF de factura (invoice-pdf).
 
+## MÓDULO DOCTOR "vendible" — Fases 1–8 (✅ 2026-06-11/12) — pagos manuales
+
+> Cierre del módulo doctor para hacerlo vendible. Equipo de agentes; review 0 CRITICAL/HIGH por fase.
+
+| Fase | Ítem                                                                                      | Estado     | Notas                                                                |
+| ---- | ----------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------- |
+| 1    | Planes parametrizables desde admin (role_key, is_permanent, precios por período, keys IA) | completado | `plan_prices` + `GET /api/plans` público. Free/Base/Plus.            |
+| 1    | Gating doble (role_capabilities ∩ plan_features) + upsell `/doctor/upgrade`               | completado | Candado → upgrade. Downgrade perezoso a Free sin perder datos.       |
+| 2    | Registro de doctor + verificación admin (mpps/colegiado, verification_status)             | completado | `POST /api/doctor/registration`; panel `/admin/verifications`.       |
+| 3    | Maestra de identidad de paciente (interna, por cédula)                                    | completado | `patient_identities`; no expone existencia cross-doctor.             |
+| 4    | Consultorios con modalidad + Google Calendar/Meet opt-in                                  | completado | Fallback `.ics`/Jitsi. Google probado real. meet_link en citas.      |
+| 5    | Agenda: bloqueos de disponibilidad + horizonte de semanas                                 | completado | `availability-blocks`; `booking_horizon_weeks` en slots.             |
+| 5    | Servicios/planes y citas asociados a consultorio (office_id)                              | completado | `GET /api/doctor/services?officeId`.                                 |
+| 6    | QR descargable del link público de booking                                                | completado | Componente `BookingQrCode`.                                          |
+| 7    | IA (chat único con Gemini)                                                                | pendiente  | Espera specs del usuario; feature keys `ai_*` sembradas (plan Plus). |
+| 8    | Telemetría por sesión (1 fila/sesión, journey JSON + PiiGuard)                            | completado | `telemetry_sessions` reemplaza `action_events`.                      |
+| —    | Onboarding obligatorio post-SSO (cédula V/E/P, especialidad obligatoria)                  | completado | Gate full-screen; `/register`→`/login` (Auth0).                      |
+| —    | Especialidades en BD (catálogo gestionable, seed 29)                                      | completado | `GET /api/specialties` público.                                      |
+| —    | Verificación MPPS automática vía SACS                                                     | completado | Colegiado = manual (sin portal).                                     |
+
+**Deudas Etapa 2:** cifrar cédula del doctor; audit-log admin de PII; timezone de citas; cron de
+downgrade/reminders.
+
 ## Reglas de priorización
 
 1. La migración de arquitectura (Fases 1-3) precede a cualquier feature MVP nueva.

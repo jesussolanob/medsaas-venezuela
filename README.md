@@ -4,6 +4,15 @@
 > omnicanal: agenda, pacientes, consultas, historia clínica (EHR), recetas,
 > finanzas, paquetes prepagados, portal del paciente y booking público.
 
+El **módulo del doctor** incluye: onboarding obligatorio post-SSO (cédula V/E/P +
+especialidad), planes parametrizables desde admin (precios por período, gating doble
+por rol ∩ plan con upsell, Free permanente + downgrade perezoso, pagos manuales con
+aprobación super_admin), registro y verificación de credenciales (MPPS automático vía
+SACS, colegiado manual), consultorios con modalidad (presencial/online) e integración
+opt-in con Google Calendar/Meet (fallback `.ics`/Jitsi), agenda con bloqueos de
+disponibilidad y horizonte de reserva, servicios y citas por consultorio, QR del link
+público de booking y telemetría por sesión. IA (chat con Gemini) pendiente de specs.
+
 Monorepo **NX** + **pnpm**. Documentación viva en [`memory-bank/`](./memory-bank)
 (empezar por `00-project-overview.md`). Convenciones para Claude Code en
 [`CLAUDE.md`](./CLAUDE.md).
@@ -28,16 +37,16 @@ libs/shared-crypto  AES-256-GCM + HMAC (datos de pacientes)
 
 ## Stack
 
-| Capa | Tecnología |
-|------|-----------|
-| Frontend | Next.js 16.2.3, React 19, TypeScript 5, Tailwind v4, shadcn/radix, recharts |
-| Backend | NestJS, Sequelize, PostgreSQL 16, Redis 7 |
-| Auth | Dev-stub (local) · **Auth0** BFF (prod) — conmutado por `AUTH_MODE` |
-| Storage | **MinIO** (local) · **GCS** (prod) — conmutado por `STORAGE_DRIVER` |
-| Email | **Resend** (plantillas en BD) · Noop driver para local |
-| Observabilidad | **Sentry** (gated por env) + `GlobalExceptionFilter` |
-| IA | Google Gemini (texto + transcripción) — pendiente de re-cableo |
-| Tooling | NX, pnpm, Jest, Playwright, ESLint, Prettier, Husky + commitlint |
+| Capa           | Tecnología                                                                  |
+| -------------- | --------------------------------------------------------------------------- |
+| Frontend       | Next.js 16.2.3, React 19, TypeScript 5, Tailwind v4, shadcn/radix, recharts |
+| Backend        | NestJS, Sequelize, PostgreSQL 16, Redis 7                                   |
+| Auth           | Dev-stub (local) · **Auth0** BFF (prod) — conmutado por `AUTH_MODE`         |
+| Storage        | **MinIO** (local) · **GCS** (prod) — conmutado por `STORAGE_DRIVER`         |
+| Email          | **Resend** (plantillas en BD) · Noop driver para local                      |
+| Observabilidad | **Sentry** (gated por env) + `GlobalExceptionFilter`                        |
+| IA             | Google Gemini (texto + transcripción) — pendiente de re-cableo              |
+| Tooling        | NX, pnpm, Jest, Playwright, ESLint, Prettier, Husky + commitlint            |
 
 ## Etapas
 

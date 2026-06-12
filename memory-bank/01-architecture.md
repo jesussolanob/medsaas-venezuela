@@ -76,6 +76,35 @@ GlobalExceptionFilter).
     `lib/capabilities.ts`). **Combinación con plan_features:** un módulo se muestra si el ROL puede verlo
     (capacidades) Y el PLAN lo habilita (plan_features) — dos puertas ortogonales. Admin edita vía
     `GET/PUT /api/admin/role-capabilities` (super_admin).
+- **ADR-007 (2026-06-11):** **Planes 100% parametrizables desde admin + gating doble.** `plan_configs` gana
+  `role_key`+`is_permanent`; nueva `plan_prices` (períodos monthly/quarterly/semiannual/annual); `plan_features`
+  añade feature_keys de IA (`ai_assistant`/`ai_transcription`/`ai_reports`). Catálogo vendible = **Delta Free
+  (permanente) / Base / Plus** (legacy desactivados). El gating del doctor es la **intersección** de
+  `role_capabilities` (RBAC del rol) y `plan_features` (lo que paga el plan): un módulo no habilitado por el plan
+  se muestra con candado → `/doctor/upgrade`. **Downgrade perezoso:** al expirar el plan se cae a Free **sin perder
+  datos** (`GET /api/doctor/features` v2 lo resuelve por request). Pagos de planes **MANUALES** + aprobación
+  super_admin (sin pasarela aún). Catálogo público: `GET /api/plans` (sin auth).
+- **ADR-008 (2026-06-11):** **Maestra de identidad de paciente (interna).** `patient_identities` (id global por
+  `cedula_hash` HMAC, UNIQUE) + `patients.identity_id`. Resolución idempotente inyectada en create-patient y booking.
+  Es **transparente al doctor**: NINGÚN endpoint expone la maestra ni la existencia de un paciente cross-doctor
+  (no se filtra que otro médico lo atiende). Cédulas iguales entre doctores comparten `identity_id`.
+- **ADR-009 (2026-06-11):** **Onboarding del doctor OBLIGATORIO post-SSO.** Gate full-screen (sin sidebar) tras el
+  login Auth0; cédula V/E/P; **especialidad obligatoria** (el gate es por specialty, no por cédula). El `/register`
+  legacy redirige a `/login` (Auth0, sin password). El rol se resuelve desde la BD (`profiles.role`), Auth0 solo da
+  acceso.
+- **ADR-010 (2026-06-11):** **Google Calendar/Meet OPT-IN + telemetría por sesión.** Google es opt-in: si el doctor
+  conecta Google (tokens cifrados en `google_integrations`) las citas online generan `meet_link`; si no, fallback
+  `.ics`/Jitsi + email. Modalidad por consultorio (`doctor_offices.modality` in_person/online/both);
+  `appointments` gana `meet_link`+`office_id`; planes/citas asociados a consultorio (`pricing_plans.office_id`).
+  OAuth con cookie `state` CSRF (path `/`). **Telemetría = 1 fila por sesión** (`telemetry_sessions`, `journey`
+  jsonb + PiiGuard) — reemplaza `action_events` (eliminada).
+- **ADR-011 (2026-06-12):** **Verificación de credenciales extensible.** `credential_verifiers` (un verificador por
+  credencial) + `credential_verifications` (resultados). **MPPS automático vía SACS** (xajax, consulta por cédula,
+  async no bloqueante); **colegiado = MANUAL** (sin portal). `profiles` gana `mpps_number`/`colegiado_number`/
+  `verification_status`(pending/verified/rejected)/`verified_at`/`verified_by`. La verificación NO restringe acceso
+  aún (preparatorio).
+- **IA (Fase 7) — pendiente:** chat único con **Gemini**; specs de las funciones IA PENDIENTES del usuario.
+  Feature keys ya sembradas (`ai_assistant`/`ai_transcription`/`ai_reports`) — solo desbloqueadas en plan Plus.
 
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
@@ -83,8 +112,15 @@ Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages
 `prescriptions`, `ehr_records`, `consultation_payments`, `payments`, `payment_items`.
 
 Suscripción/planes: `subscriptions`, `subscription_payments`, `subscription_changes_log`,
-`subscription_status_view`, `plan_configs`, `plan_features`, `plan_promotions`,
-`pricing_plans`, `package_templates`.
+`subscription_status_view`, `plan_configs` (+role_key,+is_permanent), `plan_prices` (nueva, por período),
+`plan_features` (+keys IA), `plan_promotions`, `pricing_plans` (+office_id), `package_templates`.
+
+Doctor/identidad (sesión 2026-06): `specialties` (catálogo, seed 29), `patient_identities` (id global por
+cédula hash) + `patients.identity_id`, `google_integrations` (tokens cifrados), `doctor_availability_blocks`,
+`credential_verifiers` + `credential_verifications`, `telemetry_sessions` (1 fila/sesión, journey jsonb —
+reemplaza `action_events`, eliminada). `profiles` ganó mpps_number/colegiado_number/verification_status/
+verified_at/verified_by; `doctor_offices.modality`; `appointments` meet_link+office_id; `doctor_schedules`
+booking_horizon_weeks.
 
 Doctor config: `doctor_offices`, `doctor_availability`, `doctor_schedule_config`,
 `doctor_templates`, `doctor_consultation_blocks`, `doctor_quick_items`,

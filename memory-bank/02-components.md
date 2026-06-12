@@ -166,6 +166,37 @@ Estado (orden `migracion/modulos/`):
 > de un módulo — crashea el server compilado (dist). Inyectarlo del DI global. Verificar con
 > boot del dist (`node dist/apps/backend/main.js`), no solo con tests.
 
+### Módulo Doctor "vendible" — Fases 1–8 (2026-06-11 → 06-12)
+
+- **admin (planes ampliado)** → `plan_configs` +role_key/+is_permanent; nueva `plan_prices` (períodos
+  monthly/quarterly/semiannual/annual); `plan_features` +keys IA. CRUD admin de planes/precios/features
+  (`/api/admin/plans*`) + catálogo público `GET /api/plans`. Gating = role_capabilities ∩ plan_features.
+- **doctor-registration** → `profiles` +mpps_number/colegiado_number/verification_status/verified_at/verified_by.
+  `POST /api/doctor/registration` (pending + email a super_admins) + panel admin `GET/PUT /api/admin/doctor-verifications`.
+- **credential-verification** → `credential_verifiers` + `credential_verifications`. MPPS automático vía SACS
+  (xajax por cédula, async); colegiado = manual. `POST /api/admin/doctor-verifications/:doctorId/verify-mpps`,
+  `GET .../credentials`.
+- **specialties** → catálogo en BD (seed 29, gestionable sin redeploy). `GET /api/specialties` (público) +
+  `POST/PUT /api/admin/specialties` (super_admin).
+- **patient-identities** → maestra interna por cédula (`patient_identities` + `patients.identity_id`). Resolución
+  idempotente en create-patient/booking. Transparente al doctor (no expone existencia cross-doctor).
+- **integrations (Google)** → `google_integrations` (tokens cifrados). `GET/POST/DELETE /api/integrations/google*`.
+  Opt-in: Meet en citas online si conecta; si no, fallback `.ics`/Jitsi. OAuth en frontend (state CSRF).
+- **availability-blocks** → `doctor_availability_blocks`. `GET/POST/DELETE /api/doctor/availability-blocks`.
+  `doctor_schedules` +booking_horizon_weeks (slots/booking lo respetan).
+- **telemetry** → `telemetry_sessions` (1 fila/sesión, journey jsonb + PiiGuard). `POST /api/telemetry/session`
+  (doctor), `GET /api/telemetry/sessions` (super_admin). Reemplaza `action_events`.
+- También tocados: booking/offices (modalidad)/appointments (meet_link+office_id)/doctor-settings (services
+  por consultorio)/packages.
+
+### Componentes frontend nuevos (sesión 2026-06)
+
+Editor admin de planes (`/admin/plans`) · `/doctor/upgrade` (tarjetas + upsell, guard `requirePlanFeature`) ·
+onboarding obligatorio (`OnboardingForm` + `SpecialtyCombobox` + `CedulaInput` V/E/P; render full-screen sin
+sidebar) · panel `/admin/verifications` (+ estado MPPS) · `BookingQrCode` (QR descargable del link público) ·
+`TelemetryProvider` (captura low-touch cliente) · `NewAppointmentFlow` (consultorio → modalidad → planes) ·
+loader full-screen al redirigir a Auth0 en login. Se quitó WhatsApp y Cita 360 del área doctor.
+
 **Infraestructura transversal:** `infrastructure/crypto/` (CryptoModule @Global: encrypt/decrypt
 AES-256-GCM + HMAC search hash, lee llaves de ConfigService, guard de llaves triviales);
 `infrastructure/cache/` (RedisModule ioredis); `infrastructure/auth/` (DevAuthGuard);
