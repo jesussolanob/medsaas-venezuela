@@ -1245,3 +1245,34 @@ perder datos; maestra de pacientes interna (no expone existencia cross-doctor).
 **PENDIENTE:** IA (Fase 7) espera specs del usuario; verificación de colegiado = manual (sin portal).
 **Deudas Etapa 2:** cifrar la cédula del doctor; audit-log admin de PII; timezone de citas; cron de
 downgrade/reminders.
+
+## 2026-06-12 — Lote Fase 5 + MVP (7 commits, equipo de agentes) — VERDE, QA pendiente
+
+Lote de integraciones Fase 5 + ítems MVP. Equipo de agentes (backend-agent por módulo, secuencial; lead
+verifica build/lint/test en disco + cablea frontend). Regla NO-Docker respetada (sin migrate/boot/curl).
+Commits `e26a70a`, `ecc8bf7`, `43999cf`, `8cd36a9`, `a45e6e4`, `86fbe8c`, `cdee37a` en `feature/migracion-backend`.
+
+1. **Google `event_id` (`e26a70a`):** persiste `appointments.google_calendar_event_id` (mig. `20260612000001`);
+   al cancelar la cita cancela el evento de gcal (best-effort). Dependencia `appointments→integrations` sin ciclo.
+2. **login-touch (`ecc8bf7`) — decisión del usuario: SIN cron:** al login registra `profiles.last_sign_in_at`
+   (mig. `20260612000002`) y degrada `active→past_due` si la suscripción venció (subscriptions+profiles+log),
+   respetando planes permanentes. Auth0 vía `resolve-identity`; dev-stub vía `POST /api/auth/login-touch`.
+3. **Tasa dual (`43999cf`):** USD/Bs con fuentes **Binance P2P** + **BCV** (dolarapi) + **manual**; el admin elige
+   (`POST /api/admin/settings/rate-source`, `GET /rates`). Refresco PEREZOSO en `getRate()` (sin cron) → beneficia
+   el endpoint público y el exchange-rate del doctor. Selector en `/admin/settings`. shared-types `SetRateSourceDto`.
+4. **Admin stats (`8cd36a9`):** estados Activo(≤7d)/Frío(7-30d)/Inactivo(>30d) REALES con `last_sign_in_at`;
+   KPIs reales de pacientes/CxC/expiring en el dashboard; **export CSV** de médicos (`GET /admin/doctors/export`);
+   **`GET /api/public/stats`** (sin auth, solo conteos) → contador real de la landing.
+5. **Timezone (`a45e6e4`):** `get-available-slots` calcula día/slots/HH:MM en **America/Caracas** (UTC-04:00 fijo),
+   antes en UTC (perdía citas de 20:00-23:59). Frontend: "citas de hoy" del dashboard también en Caracas.
+6. **UX doctor (`86fbe8c`):** "Por ingresar" (CxC = pagos pending) en dashboard+finanzas; `description` de servicio
+   en el booking público; KPIs de agenda (horas de consulta, promedio/día, mejor día).
+7. **Consultorio editable (`cdee37a`):** el PUT acepta y el GET expone `blocks_snapshot` (JSONB); el BFF mapea
+   `blocks_data→blocks_snapshot` (antes lo descartaba con 400); el editor `[id]` y la lista hidratan los bloques
+   guardados al cargar. Cifrado de `blocks_snapshot` (PHI) diferido a Etapa 2 (como `patient_messages.body`).
+
+**Resend:** ya estaba implementado (módulo email DDD con adaptador real); solo requiere `EMAIL_DRIVER=resend` +
+`RESEND_API_KEY`. **WhatsApp/Twilio:** diferido (acordado). Suite backend ~2161 tests verdes; lint 0; frontend tsc 0.
+
+**⚠️ QA PENDIENTE (ventana Docker):** aplicar migraciones `20260612000001` + `20260612000002`; boot dist; curl real
+a tasa/stats-públicas/export/login-touch + RBAC; Playwright visual. Commits hechos SIN boot/curl (regla no-Docker).

@@ -30,6 +30,21 @@ Estado: Fase 0 ✅ · Fase 1 en-progreso.
 | 7.11 | Servicios: campo descripción (se muestra en booking)                                                                                                                                               | pendiente |                                         |
 | 7.12 | BD limpieza: ocultar ID de cita en UI; eliminar campos marcados                                                                                                                                    | pendiente |                                         |
 
+## Avance 2026-06-12 (commits en `feature/migracion-backend`, QA pendiente)
+
+- **7.1** Landing: **contador real de especialistas** ✅ (`GET /api/public/stats`); pricing ya era dinámico.
+  Falta: "Cómo funciona" 3 pasos, especialidades VE, quitar botón paciente del nav. → en-progreso.
+- **7.2** Dashboard admin: estados Activo/Frío/Inactivo **reales** (con `last_sign_in_at`) + KPIs pacientes/CxC/
+  expiring cableados. → casi completo.
+- **7.3** Especialistas: estados reales + **export CSV** ✅ (Excel-compatible). Falta export PDF + vencimiento UI.
+- **7.4** Tasa USDT/Binance ✅ **completado** (dual Binance P2P + BCV + manual, admin elige, refresco perezoso).
+- **7.6** Agenda KPIs ✅ **completado** (horas de consulta, promedio/día, mejor día).
+- **7.7** Consultorio: historial **editable** con bloques dinámicos que persisten (`blocks_snapshot`). Falta
+  seguimientos/adjuntos. → en-progreso.
+- **7.9** Finanzas "**Por ingresar**" ✅ (CxC = pagos pending, dashboard+finanzas). Falta ingresos no-consulta + bug gráfica.
+- **7.11** Servicios: **descripción en booking** ✅ **completado**.
+- Extra (no-MVP): downgrade de plan **al login** (sin cron); Google `event_id` cancelable; timezone de citas (Caracas).
+
 ## Fase 9 (observabilidad/notificaciones) — habilitadores
 
 Sentry, GA4, Helicone (costos IA), Resend (email — ya en uso), Twilio (WhatsApp),
