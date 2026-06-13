@@ -25,7 +25,8 @@ const BRAND = {
 
 // ── Delta Isotipo (oficial del design system) ─────────────────────────────
 function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
-  return <DeltaMark size={size} bold className={className} />
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/brand/logo/delta-symbol.png" alt="Delta Salud" width={size} height={size} className={className} style={{ objectFit: 'contain' }} />
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────

@@ -11,7 +11,8 @@ import { DeltaMark } from '@/components/dh'
 
 // Wrapper local para mantener API existente con className opcional
 function DeltaIsotipo({ size = 40, className }: { size?: number; className?: string }) {
-  return <DeltaMark size={size} bold className={className} />
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/brand/logo/delta-symbol.png" alt="Delta Salud" width={size} height={size} className={className} style={{ objectFit: 'contain' }} />
 }
 
 function GoogleIcon({ className }: { className?: string }) {

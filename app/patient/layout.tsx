@@ -32,8 +32,10 @@ function isPathActive(pathname: string, href: string) {
 const publicRoutes = ['/patient/login', '/patient/register']
 
 /* Delta isotipo — usa el componente oficial del design system */
+// eslint-disable-next-line @next/next/no-img-element
 const DeltaIsotipo = ({ size = 36 }: { size?: number }) => (
-  <DeltaMark size={size} bold />
+  // eslint-disable-next-line @next/next/no-img-element
+  <img src="/brand/logo/delta-symbol.png" alt="Delta Salud" width={size} height={size} style={{ objectFit: 'contain' }} />
 )
 
 export default function PatientLayout({ children }: { children: React.ReactNode }) {

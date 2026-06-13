@@ -1,83 +1,56 @@
 /**
  * components/dh/Logo.tsx
  *
- * Sistema de logo Delta Health Tech.
- * Concepto: lazo asimétrico — uno guía (especialista, turquesa),
- * otro recibe (paciente, coral). Curvas orgánicas y fluidas.
+ * Sistema de logo Delta Salud.
+ * Usa los assets PNG del brand kit oficial (brand/logo/).
  *
- * Origen: handoff bundle 2026-05-02 (claude.ai/design)
+ * Actualizado 2026-06-13: reemplazado SVG artesanal por PNGs del kit de marca.
  */
 
 type MarkProps = {
   size?: number
-  primary?: string
-  accent?: string
+  /** Si true, usa la versión blanca del símbolo (para fondos oscuros) */
+  white?: boolean
+  /** Alias de white para compatibilidad con el uso anterior de bold */
   bold?: boolean
   className?: string
+  primary?: string   // ignorado — mantenido por compatibilidad
+  accent?: string    // ignorado — mantenido por compatibilidad
 }
 
 /**
- * Isotipo principal — lazo asimétrico (variante PRIMARIA del brand kit)
+ * Isotipo / símbolo solo (Δ mark) — usar en sidebars, favicons, espacios pequeños.
+ * Renderiza el PNG oficial del brand kit.
  */
 export function DeltaMark({
   size = 48,
-  primary = 'var(--dh-turquoise)',
-  accent = 'var(--dh-coral)',
-  bold = false,
+  white = false,
+  bold = false,       // bold se usaba antes, ahora ignorado
   className,
 }: MarkProps) {
-  const sw = bold ? 16 : 14
-  const gradientId = `dh-grad-${size}-${bold ? 'b' : 'r'}`
+  const src = white || bold
+    ? '/brand/logo/delta-symbol-white.png'
+    : '/brand/logo/delta-symbol.png'
   return (
-    <svg
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt="Delta Salud"
       width={size}
       height={size}
-      viewBox="0 0 120 120"
-      fill="none"
-      aria-label="Delta Health Tech"
       className={className}
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={primary} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={primary} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {/* Halo sutil que da cuerpo al isotipo */}
-      <path
-        d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56"
-        stroke={`url(#${gradientId})`}
-        strokeWidth={sw + 14}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Curva guía — especialista */}
-      <path
-        d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56"
-        stroke={primary}
-        strokeWidth={sw}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Curva receptiva — paciente */}
-      <path
-        d="M58 92 C 78 92, 92 78, 88 60"
-        stroke={accent}
-        strokeWidth={sw}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Punto de encuentro */}
-      <circle cx="78" cy="72" r="4.5" fill={accent} />
-    </svg>
+      style={{ objectFit: 'contain', display: 'inline-block' }}
+    />
   )
 }
 
 type WordmarkProps = {
   size?: number
-  color?: string
-  primary?: string
-  accent?: string
+  /** Si true, usa el logo blanco (para fondos oscuros) */
+  white?: boolean
+  color?: string    // ignorado — mantenido por compatibilidad
+  primary?: string  // ignorado — mantenido por compatibilidad
+  accent?: string   // ignorado — mantenido por compatibilidad
   vertical?: boolean
   showSubtitle?: boolean
   subtitle?: string
@@ -85,58 +58,51 @@ type WordmarkProps = {
 }
 
 /**
- * Wordmark completo: isotipo + tipografía "Delta." con punto turquesa
- * + opcional "Health Tech" en uppercase con tracking ancho.
+ * Wordmark completo: usa el logo horizontal PNG del brand kit oficial.
+ * delta-logo.png → fondos claros | delta-logo-white.png → fondos oscuros.
+ * El `subtitle` se renderiza debajo del logo si showSubtitle=true.
  */
 export function DeltaWordmark({
   size = 40,
-  color = 'var(--dh-ink)',
-  primary,
-  accent,
+  white = false,
   vertical = false,
   showSubtitle = true,
   subtitle = 'Medical CRM',
   className,
 }: WordmarkProps) {
-  const fontSize = size * 0.52
+  const src = white ? '/brand/logo/delta-logo-white.png' : '/brand/logo/delta-logo.png'
+  const logoHeight = size
   return (
     <div
       className={className}
       style={{
         display: 'inline-flex',
-        flexDirection: vertical ? 'column' : 'row',
-        alignItems: 'center',
-        gap: vertical ? size * 0.22 : size * 0.28,
+        flexDirection: 'column',
+        alignItems: vertical ? 'center' : 'flex-start',
+        gap: 4,
       }}
     >
-      <DeltaMark size={size} primary={primary} accent={accent} bold />
-      <div
-        style={{
-          fontFamily: 'var(--dh-font-display)',
-          fontWeight: 800,
-          fontSize: `${fontSize}px`,
-          color,
-          lineHeight: 1,
-          letterSpacing: '-0.035em',
-          textAlign: vertical ? 'center' : 'left',
-        }}
-      >
-        Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
-        {showSubtitle && (
-          <div
-            style={{
-              fontWeight: 600,
-              fontSize: `${fontSize * 0.38}px`,
-              color: 'var(--dh-gray-400)',
-              letterSpacing: '0.22em',
-              marginTop: vertical ? 8 : 6,
-              textTransform: 'uppercase',
-            }}
-          >
-            {subtitle}
-          </div>
-        )}
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Delta Salud"
+        height={logoHeight}
+        style={{ objectFit: 'contain', display: 'block' }}
+      />
+      {showSubtitle && (
+        <div
+          style={{
+            fontFamily: 'var(--dh-font-mono)',
+            fontWeight: 600,
+            fontSize: `${logoHeight * 0.22}px`,
+            color: 'var(--dh-gray-400)',
+            letterSpacing: '0.22em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {subtitle}
+        </div>
+      )}
     </div>
   )
 }

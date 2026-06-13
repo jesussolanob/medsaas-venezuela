@@ -23,7 +23,8 @@ import { DeltaMark } from '@/components/dh'
 
 // Wrapper para mantener API existente
 function DeltaIsotipo({ size = 40 }: { size?: number }) {
-  return <DeltaMark size={size} bold />
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/brand/logo/delta-symbol.png" alt="Delta Salud" width={size} height={size} style={{ objectFit: 'contain' }} />
 }
 
 function GoogleIcon({ className }: { className?: string }) {
