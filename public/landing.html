@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Delta Medical CRM — Tu especialista, a un lazo de distancia</title>
 <meta name="description" content="La primera plataforma venezolana que conecta especialistas de salud con sus pacientes. Agenda, historias clínicas, cobros y más en un solo lugar.">
-<!-- Favicon (logo oficial Delta Health Tech) -->
-<link rel="icon" type="image/png" href="/logos/delta-logo-1024.png">
-<link rel="apple-touch-icon" href="/logos/delta-logo-1024.png">
+<!-- Favicon (brand kit Delta Salud) -->
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/brand/favicon/favicon-192.png">
+<link rel="apple-touch-icon" href="/brand/favicon/apple-touch-icon.png">
+<link rel="manifest" href="/brand/site.webmanifest">
 <!-- Open Graph / social previews -->
 <meta property="og:type" content="website">
 <meta property="og:locale" content="es_VE">
@@ -197,15 +199,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
   align-items: center;
   gap: 12px;
 }
-.nav-logo svg { height: 36px; width: auto; }
-.nav-wordmark {
-  font-family: var(--dh-font-display);
-  font-weight: 800;
-  font-size: 22px;
-  color: var(--dh-ink);
-  letter-spacing: -0.02em;
-}
-.nav-wordmark span { color: var(--dh-turquoise); }
+.nav-logo img { height: 36px; width: auto; display: block; }
 .nav-links {
   display: flex;
   align-items: center;
@@ -1083,13 +1077,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
   gap: 10px;
   margin-bottom: 16px;
 }
-.footer-brand .logo-row svg { height: 32px; }
-.footer-brand .brand-name {
-  font-weight: 800;
-  font-size: 20px;
-  color: var(--dh-white);
-}
-.footer-brand .brand-name span { color: var(--dh-turquoise); }
+.footer-brand .logo-row img { height: 32px; width: auto; display: block; }
 .footer-brand p {
   font-size: 14px;
   line-height: 1.6;
@@ -1246,21 +1234,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
 <nav class="nav" id="nav">
   <div class="nav-inner">
     <a href="/" class="nav-logo">
-      <!-- Isotipo oficial Delta Health Tech (handoff bundle 2026-05-02):
-           lazo asimétrico — curva guía turquesa + receptiva coral + punto coral. -->
-      <svg width="36" height="36" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Delta Health Tech">
-        <defs>
-          <linearGradient id="dh-nav-grad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.18"/>
-            <stop offset="100%" stop-color="#06B6D4" stop-opacity="0"/>
-          </linearGradient>
-        </defs>
-        <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="url(#dh-nav-grad)" stroke-width="30" stroke-linecap="round" fill="none"/>
-        <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="#06B6D4" stroke-width="16" stroke-linecap="round" fill="none"/>
-        <path d="M58 92 C 78 92, 92 78, 88 60" stroke="#FF8A65" stroke-width="16" stroke-linecap="round" fill="none"/>
-        <circle cx="78" cy="72" r="4.5" fill="#FF8A65"/>
-      </svg>
-      <span class="nav-wordmark">Delta<span>.</span></span>
+      <img src="/brand/logo/delta-logo.png" alt="Delta Salud" style="height:36px;width:auto;object-fit:contain;display:block;">
     </a>
     <div class="nav-links">
       <a href="#especialistas">Especialistas</a>
@@ -2084,20 +2058,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
     <div class="footer-grid">
       <div class="footer-brand">
         <div class="logo-row">
-          <!-- Isotipo oficial Delta Health Tech (handoff bundle 2026-05-02) -->
-          <svg width="32" height="32" viewBox="0 0 120 120" fill="none" aria-label="Delta Health Tech">
-            <defs>
-              <linearGradient id="dh-footer-grad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.18"/>
-                <stop offset="100%" stop-color="#06B6D4" stop-opacity="0"/>
-              </linearGradient>
-            </defs>
-            <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="url(#dh-footer-grad)" stroke-width="30" stroke-linecap="round" fill="none"/>
-            <path d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56" stroke="#06B6D4" stroke-width="16" stroke-linecap="round" fill="none"/>
-            <path d="M58 92 C 78 92, 92 78, 88 60" stroke="#FF8A65" stroke-width="16" stroke-linecap="round" fill="none"/>
-            <circle cx="78" cy="72" r="4.5" fill="#FF8A65"/>
-          </svg>
-          <span class="brand-name">Delta<span>.</span></span>
+          <img src="/brand/logo/delta-logo-white.png" alt="Delta Salud" style="height:32px;width:auto;object-fit:contain;display:block;">
         </div>
         <p>La primera plataforma venezolana de salud digital que conecta especialistas con pacientes.</p>
         <div class="footer-stores">
