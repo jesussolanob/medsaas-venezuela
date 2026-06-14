@@ -1,0 +1,31 @@
+# Dependencies & build outputs — rebuilt inside the image
+node_modules
+**/node_modules
+dist
+**/dist
+.next
+**/.next
+.nx
+**/.nx/cache
+
+# VCS & local tooling
+.git
+.github
+.husky
+
+# Secrets & local env — NEVER copy into the image context
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Misc local material
+images
+tmp
+**/*.log
+coverage
+**/coverage
+playwright-report
+**/playwright-report
+test-results
+**/test-results

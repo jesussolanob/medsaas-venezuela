@@ -1,0 +1,24 @@
+# Controls what `gcloud builds submit` uploads as the build context.
+# Keep source; drop deps, build outputs, VCS and secrets (rebuilt in-image).
+.git
+node_modules
+**/node_modules
+dist
+**/dist
+.next
+**/.next
+.nx
+**/.nx/cache
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+images
+tmp
+**/*.log
+coverage
+**/coverage
+playwright-report
+**/playwright-report
+test-results
+**/test-results
