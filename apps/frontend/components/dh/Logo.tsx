@@ -2,87 +2,70 @@
  * components/dh/Logo.tsx
  *
  * Sistema de logo Delta Health Tech.
- * Concepto: lazo asimétrico — uno guía (especialista, turquesa),
- * otro recibe (paciente, coral). Curvas orgánicas y fluidas.
+ * Isotipo oficial: lazo coral + turquesa (delta entrelazada).
  *
- * Origen: handoff bundle 2026-05-02 (claude.ai/design)
+ * Origen: brand kit oficial 2026-06 (images/delta-iso). El isotipo es un PNG
+ * transparente de alta resolución; lo servimos optimizado desde /logos.
+ * Para la variante en blanco (sobre fondos de color) aplicamos un filtro CSS
+ * de silueta, así no necesitamos un asset aparte ni cambiar los call sites.
  */
 
-type MarkProps = {
-  size?: number
-  primary?: string
-  accent?: string
-  bold?: boolean
-  className?: string
-}
+import Image from 'next/image';
+
+const ISO_SRC = '/logos/delta-iso-512.png';
 
 /**
- * Isotipo principal — lazo asimétrico (variante PRIMARIA del brand kit)
+ * Detecta si el caller pidió el isotipo en blanco (uso sobre fondos de color),
+ * preservando la API previa basada en `primary`.
  */
-export function DeltaMark({
-  size = 48,
-  primary = 'var(--dh-turquoise)',
-  accent = 'var(--dh-coral)',
-  bold = false,
-  className,
-}: MarkProps) {
-  const sw = bold ? 16 : 14
-  const gradientId = `dh-grad-${size}-${bold ? 'b' : 'r'}`
+function isWhiteRequest(primary: string): boolean {
+  const v = primary.trim().toLowerCase();
+  return v === '#fff' || v === '#ffffff' || v === 'white';
+}
+
+type MarkProps = {
+  size?: number;
+  /** '#fff' | 'white' → renderiza el isotipo en blanco (sobre fondos de color) */
+  primary?: string;
+  /** Reservado por compat con la API previa; el isotipo oficial trae su color */
+  accent?: string;
+  /** Reservado por compat con la API previa */
+  bold?: boolean;
+  className?: string;
+};
+
+/**
+ * Isotipo principal — lazo coral + turquesa (variante PRIMARIA del brand kit)
+ */
+export function DeltaMark({ size = 48, primary = 'var(--dh-turquoise)', className }: MarkProps) {
+  const white = isWhiteRequest(primary);
   return (
-    <svg
+    <Image
+      src={ISO_SRC}
+      alt="Delta Health Tech"
       width={size}
       height={size}
-      viewBox="0 0 120 120"
-      fill="none"
-      aria-label="Delta Health Tech"
+      draggable={false}
       className={className}
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={primary} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={primary} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {/* Halo sutil que da cuerpo al isotipo */}
-      <path
-        d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56"
-        stroke={`url(#${gradientId})`}
-        strokeWidth={sw + 14}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Curva guía — especialista */}
-      <path
-        d="M22 78 C 22 38, 56 18, 78 38 C 96 54, 86 82, 62 82 C 46 82, 36 70, 42 56"
-        stroke={primary}
-        strokeWidth={sw}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Curva receptiva — paciente */}
-      <path
-        d="M58 92 C 78 92, 92 78, 88 60"
-        stroke={accent}
-        strokeWidth={sw}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Punto de encuentro */}
-      <circle cx="78" cy="72" r="4.5" fill={accent} />
-    </svg>
-  )
+      style={{
+        objectFit: 'contain',
+        // Silueta blanca para uso sobre fondos de color (ej. hero turquesa)
+        filter: white ? 'brightness(0) invert(1)' : undefined,
+      }}
+    />
+  );
 }
 
 type WordmarkProps = {
-  size?: number
-  color?: string
-  primary?: string
-  accent?: string
-  vertical?: boolean
-  showSubtitle?: boolean
-  subtitle?: string
-  className?: string
-}
+  size?: number;
+  color?: string;
+  primary?: string;
+  accent?: string;
+  vertical?: boolean;
+  showSubtitle?: boolean;
+  subtitle?: string;
+  className?: string;
+};
 
 /**
  * Wordmark completo: isotipo + tipografía "Delta." con punto turquesa
@@ -98,7 +81,7 @@ export function DeltaWordmark({
   subtitle = 'Medical CRM',
   className,
 }: WordmarkProps) {
-  const fontSize = size * 0.52
+  const fontSize = size * 0.52;
   return (
     <div
       className={className}
@@ -138,5 +121,5 @@ export function DeltaWordmark({
         )}
       </div>
     </div>
-  )
+  );
 }
