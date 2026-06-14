@@ -19,9 +19,10 @@ ENV NODE_ENV=production
 ENV PORT=8080
 # NX emits main.js + a pruned package.json/pnpm-lock.yaml here.
 COPY --from=build /repo/dist/apps/backend ./
-# Install the externalized prod deps. sequelize resolves its driver dynamically,
-# so the pruned manifest omits pg/pg-hstore — pin them explicitly.
+# Install the externalized prod deps. The pruned manifest omits packages that are
+# only required dynamically (sequelize's pg driver) or transitively (tslib, the
+# TS import helper) — add them explicitly so the bundle resolves at runtime.
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts \
- && pnpm add --prod pg@8.21.0 pg-hstore@2.3.4
+ && pnpm add --prod pg@8.21.0 pg-hstore@2.3.4 tslib@2.8.1
 EXPOSE 8080
 CMD ["node", "main.js"]
