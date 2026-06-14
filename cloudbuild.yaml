@@ -4,6 +4,9 @@
 substitutions:
   _AR: us-east1-docker.pkg.dev/sodium-shard-499116-r3/delta
   _TAG: latest
+  # NEXT_PUBLIC_* are baked into the frontend client bundle at build time.
+  _NP_GOOGLE_CLIENT_ID: ''
+  _NP_URL: ''
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -11,7 +14,21 @@ steps:
     args: ['build', '-f', 'apps/backend/Dockerfile', '-t', '${_AR}/backend:${_TAG}', '.']
   - name: gcr.io/cloud-builders/docker
     id: build-frontend
-    args: ['build', '-f', 'apps/frontend/Dockerfile', '-t', '${_AR}/frontend:${_TAG}', '.']
+    args:
+      - 'build'
+      - '-f'
+      - 'apps/frontend/Dockerfile'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_AUTH_MODE=auth0'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_GOOGLE_CLIENT_ID=${_NP_GOOGLE_CLIENT_ID}'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_URL=${_NP_URL}'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_SENTRY_ENABLED=false'
+      - '-t'
+      - '${_AR}/frontend:${_TAG}'
+      - '.'
 
 images:
   - '${_AR}/backend:${_TAG}'

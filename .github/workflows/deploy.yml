@@ -1,0 +1,123 @@
+name: Deploy (Cloud Run · test)
+
+# Despliega a Cloud Run desde la rama de migración (todavía NO master).
+on:
+  push:
+    branches: [feature/migracion-backend]
+  workflow_dispatch:
+
+# Necesario para Workload Identity Federation (auth sin claves).
+permissions:
+  contents: read
+  id-token: write
+
+# Evita despliegues concurrentes pisándose.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: sodium-shard-499116-r3
+  REGION: us-east1
+  AR: us-east1-docker.pkg.dev/sodium-shard-499116-r3/delta
+  SQL_CONN: sodium-shard-499116-r3:us-east1:delta-db
+  WIF_PROVIDER: projects/763714620325/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  DEPLOYER_SA: delta-deployer-sa@sodium-shard-499116-r3.iam.gserviceaccount.com
+  BACKEND_SA: delta-backend-sa@sodium-shard-499116-r3.iam.gserviceaccount.com
+  FRONTEND_SA: delta-frontend-sa@sodium-shard-499116-r3.iam.gserviceaccount.com
+  GCS_BUCKET: delta-files-sodium-shard-499116-r3
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auth to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # --- 1) Build & push both images via Cloud Build ----------------------
+      - name: Build & push images
+        run: |
+          gcloud builds submit --config cloudbuild.yaml \
+            --substitutions=_TAG=${{ github.sha }},_NP_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }},_NP_URL=${{ vars.FRONTEND_URL }} \
+            .
+
+      # --- 2) DB migrations through the Cloud SQL Auth Proxy ----------------
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run migrations
+        run: |
+          VER=$(curl -s https://api.github.com/repos/GoogleCloudPlatform/cloud-sql-proxy/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+          curl -Lo cloud-sql-proxy "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${VER}/cloud-sql-proxy.linux.amd64"
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 "$SQL_CONN" &
+          for i in $(seq 1 30); do nc -z 127.0.0.1 5432 && break; sleep 1; done
+          PW=$(gcloud secrets versions access latest --secret=DB_PASSWORD)
+          export NODE_ENV=production
+          export DATABASE_URL="postgres://delta:${PW}@127.0.0.1:5432/deltamedical"
+          pnpm nx run backend:migrate
+
+      # --- 3) Deploy backend (IAM-protected; not public) -------------------
+      - name: Deploy backend
+        run: |
+          gcloud run deploy delta-backend \
+            --image="$AR/backend:${{ github.sha }}" \
+            --region="$REGION" --service-account="$BACKEND_SA" \
+            --no-allow-unauthenticated \
+            --add-cloudsql-instances="$SQL_CONN" \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,ENCRYPTION_HMAC_SECRET=ENCRYPTION_HMAC_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest \
+            --set-env-vars=NODE_ENV=production,REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=noop \
+            --memory=512Mi --cpu=1 --min-instances=0 --max-instances=3 --port=8080
+
+      - name: Resolve backend URL + grant frontend invoker
+        id: backend
+        run: |
+          BURL=$(gcloud run services describe delta-backend --region="$REGION" --format='value(status.url)')
+          gcloud run services add-iam-policy-binding delta-backend --region="$REGION" \
+            --member="serviceAccount:$FRONTEND_SA" --role=roles/run.invoker --quiet
+          echo "url=$BURL" >> "$GITHUB_OUTPUT"
+
+      # --- 4) Deploy frontend (public on run.app for now) ------------------
+      - name: Deploy frontend
+        id: frontend
+        run: |
+          BURL="${{ steps.backend.outputs.url }}"
+          gcloud run deploy delta-frontend \
+            --image="$AR/frontend:${{ github.sha }}" \
+            --region="$REGION" --service-account="$FRONTEND_SA" \
+            --allow-unauthenticated \
+            --set-secrets=AUTH0_SECRET=AUTH0_SECRET:latest,AUTH0_CLIENT_SECRET=AUTH0_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_ISSUER_BASE_URL=https://${{ vars.AUTH0_DOMAIN }}/,AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},BACKEND_INTERNAL_URL=$BURL,BACKEND_IAM_AUDIENCE=$BURL \
+            --memory=512Mi --cpu=1 --min-instances=0 --max-instances=3 --port=8080
+          FURL=$(gcloud run services describe delta-frontend --region="$REGION" --format='value(status.url)')
+          # Self-referencing runtime vars (known only after the URL exists).
+          gcloud run services update delta-frontend --region="$REGION" \
+            --update-env-vars=AUTH0_BASE_URL=$FURL,APP_BASE_URL=$FURL,GOOGLE_REDIRECT_URI=$FURL/api/integrations/google/callback
+          echo "url=$FURL" >> "$GITHUB_OUTPUT"
+
+      - name: Point backend CORS at the frontend
+        run: |
+          gcloud run services update delta-backend --region="$REGION" \
+            --update-env-vars=CORS_ORIGIN=${{ steps.frontend.outputs.url }}
+
+      - name: Summary
+        run: |
+          echo "### Deploy OK :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Frontend: ${{ steps.frontend.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend (IAM, no público): ${{ steps.backend.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Si es el 1er deploy: setear la repo var FRONTEND_URL = la URL del frontend y agregar esa URL a los callbacks de Auth0." >> "$GITHUB_STEP_SUMMARY"
