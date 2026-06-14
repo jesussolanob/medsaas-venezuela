@@ -1,16 +1,23 @@
-import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
+import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
+import path from 'node:path';
 
 // AUDIT FIX 2026-04-28 (TS-1): la prop `eslint` ya no existe en NextConfig de
 // Next 16 — los flags de ESLint ahora se manejan vía CLI o `.eslintrc`. Se
 // remueve para que el typecheck pase. Si hace falta saltar lint en build,
 // usar `next build --no-lint` o configurar eslint-config-next directamente.
 const nextConfig: NextConfig = {
+  // Standalone output para contenedores (Cloud Run): produce un server.js con
+  // solo las deps usadas. outputFileTracingRoot apunta a la raíz del monorepo NX
+  // para que el trazado de archivos incluya las libs de workspace.
+  output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname, '../../'),
+
   typescript: { ignoreBuildErrors: true },
 
   // Required by @sentry/nextjs for App Router pageload tracing (Next 15+).
   experimental: {
-    clientTraceMetadata: ["sentry-trace", "baggage"],
+    clientTraceMetadata: ['sentry-trace', 'baggage'],
   },
 
   // 2026-05-02: la landing page es HTML estático que actualizamos seguido.
@@ -19,10 +26,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/landing.html",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
-        ],
+        source: '/landing.html',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }],
       },
     ];
   },
