@@ -7,18 +7,24 @@
  * hook (stable in Next.js 15+, no experimental flag required).
  */
 export async function register() {
+  // Attach the backend IAM token to all server-side fetches to the backend.
+  // Independent of Sentry — must run even when the DSN is absent.
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    installBackendAuthInterceptor();
+  }
+
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
   // No-op when DSN is absent — keeps local dev silent.
   if (!dsn) return;
 
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { init } = await import("@sentry/nextjs");
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { init } = await import('@sentry/nextjs');
     init({
       dsn,
-      environment: process.env.NODE_ENV ?? "development",
+      environment: process.env.NODE_ENV ?? 'development',
       // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
-      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === "true",
+      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === 'true',
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
       // Source maps are uploaded separately via SENTRY_AUTH_TOKEN in CI.
@@ -26,13 +32,13 @@ export async function register() {
     });
   }
 
-  if (process.env.NEXT_RUNTIME === "edge") {
-    const { init } = await import("@sentry/nextjs");
+  if (process.env.NEXT_RUNTIME === 'edge') {
+    const { init } = await import('@sentry/nextjs');
     init({
       dsn,
-      environment: process.env.NODE_ENV ?? "development",
+      environment: process.env.NODE_ENV ?? 'development',
       // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
-      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === "true",
+      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === 'true',
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
     });
@@ -58,6 +64,68 @@ export const onRequestError = async (
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
   if (!dsn) return;
 
-  const { captureRequestError } = await import("@sentry/nextjs");
+  const { captureRequestError } = await import('@sentry/nextjs');
   captureRequestError(error, request, context);
 };
+
+/**
+ * Installs a one-time global `fetch` interceptor that attaches a Google-signed
+ * OIDC ID token to every server-side request bound for the IAM-protected backend
+ * on Cloud Run (--no-allow-unauthenticated). The token's audience is the backend
+ * URL, validated by Cloud Run's IAM layer before the request reaches the app.
+ *
+ * Inert unless BOTH BACKEND_IAM_AUDIENCE and BACKEND_INTERNAL_URL are set, so
+ * local dev and non-GCP hosts are unaffected. Node.js runtime only — the Edge
+ * middleware (proxy.ts) makes its own backend call and degrades gracefully if it
+ * cannot reach the backend (falls back to the Auth0 role claim).
+ */
+function installBackendAuthInterceptor(): void {
+  const audience = process.env.BACKEND_IAM_AUDIENCE;
+  const backendBase = process.env.BACKEND_INTERNAL_URL;
+  if (!audience || !backendBase) return;
+
+  const METADATA_URL =
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity';
+  const REFRESH_SKEW_MS = 5 * 60 * 1000;
+  const FALLBACK_TTL_MS = 50 * 60 * 1000;
+
+  // Capture the original fetch BEFORE patching, and use it internally to avoid
+  // re-entering the interceptor when fetching the token itself.
+  const originalFetch = globalThis.fetch;
+  let cached: { token: string; expMs: number } | null = null;
+
+  async function idToken(): Promise<string> {
+    const now = Date.now();
+    if (cached && cached.expMs - REFRESH_SKEW_MS > now) return cached.token;
+    const res = await originalFetch(`${METADATA_URL}?audience=${encodeURIComponent(audience!)}`, {
+      headers: { 'Metadata-Flavor': 'Google' },
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`metadata id-token request failed: ${res.status}`);
+    const token = (await res.text()).trim();
+    let expMs = now + FALLBACK_TTL_MS;
+    try {
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString('utf8')) as {
+        exp?: number;
+      };
+      if (typeof payload.exp === 'number') expMs = payload.exp * 1000;
+    } catch {
+      // Non-decodable token — keep the conservative fallback TTL.
+    }
+    cached = { token, expMs };
+    return token;
+  }
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.startsWith(backendBase)) {
+      const token = await idToken();
+      const headers = new Headers(
+        init?.headers ?? (input instanceof Request ? input.headers : undefined),
+      );
+      headers.set('Authorization', `Bearer ${token}`);
+      return originalFetch(input, { ...init, headers });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+}
