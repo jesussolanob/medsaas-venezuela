@@ -52,9 +52,10 @@ landing (resto), export PDF, plantillas PDF de informe, cobro WhatsApp, limpieza
 Pendiente grande: **IA (Fase 7, Gemini)** — espera specs del usuario. También: cron de
 recordatorios (envío real WhatsApp/email), deploy GCP. Portal del paciente diferido.
 
-Etapa 1 (actual): construir todo en local — `DevAuthGuard`, Postgres/Redis/MinIO
-Docker, clave de cifrado fija en `.env`. Sin GCP/Cloudflare.
-Etapa 2 (después): producción — Auth0 BFF, GCP (Cloud Run/SQL/GCS), Cloudflare.
+Etapa 1 (actual): construir todo en local — `AppAuthGuard` (modo dev, headers `x-dev-user-*`),
+Postgres/Redis/MinIO Docker, clave de cifrado fija en `.env`. Sin GCP/Cloudflare.
+Etapa 2 (preparado): producción — `AUTH_MODE=auth0` → `Auth0Guard` con `jose` (JWKS, RS256,
+header `x-auth0-token`); GCP (Cloud Run/SQL/GCS), Cloudflare. El backend ya está listo.
 
 Decisión de arranque (2026-06-01): monorepo **in-place** en el repo actual
 (conserva historial git + remote `jesussolanob/medsaas-venezuela`); gestor **pnpm**.

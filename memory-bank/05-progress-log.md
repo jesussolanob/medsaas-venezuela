@@ -1347,3 +1347,26 @@ con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
   que aporta es cross-doctor (paciente con dos doctores a la vez).
 - 2189 unit verdes; build+lint OK. La spec de integración del repo necesita Docker (los 5 fallos pre-existentes).
   **QA vivo pendiente:** aplicar mig. `...03` + curl verificando solape doctor (15:00/15:10) y solape paciente cross-doctor.
+
+## 2026-06-15 — Deploy a GCP (Cloud Run) + Auth0 Etapa 2 (en curso)
+
+**Deploy FUNCIONANDO** (rama `feature/migracion-backend`, proyecto `sodium-shard-499116-r3`, us-east1):
+
+- Front público `https://delta-frontend-knliodnwza-ue.a.run.app` + Back IAM-aislado (403 desde afuera)
+  `https://delta-backend-knliodnwza-ue.a.run.app`. Cloud SQL `db-g1-small`, GCS bucket, **sin Redis**
+  (`REDIS_DISABLED=true` + shim en memoria). CI/CD por **GitHub Actions** (WIF sin claves) en push a la rama:
+  build (Cloud Build/Dockerfiles) → migraciones (Cloud SQL Auth Proxy) → deploy. Dockerfiles multi-stage
+  (backend pruneado + `pg`/`tslib` forzados; front Next standalone). Pool Sequelize parametrizable.
+- **Auth0** login operativo: Passwordless **email OTP en español + logo Delta** (clave: Authentication
+  Profile = **Identifier First**; Classic UL bloqueado en tenant nuevo) + Google. Email via Resend
+  (`no-reply@deltasalud.app`). Aislamiento backend por **IAM + interceptor de fetch** (token Google) en
+  `instrumentation.ts`.
+
+**Auth0 Etapa 2 — validación real de JWT en backend (commit `feat(auth): validacion real de Auth0...`):**
+
+- `AppAuthGuard` mode-aware: `AUTH_MODE=dev`→`DevAuthGuard` (headers, local); `AUTH_MODE=auth0`→`Auth0Guard`
+  (valida ID token via jose/JWKS RS256, iss/aud=client_id/exp, header `x-auth0-token`, resuelve perfil por
+  email con `IdentityResolverService` compartido). Se quitó el override `ALLOW_DEV_AUTH`. build/lint/test verdes.
+- **PENDIENTE** (próxima sesión): code-review (code-reviewer+security-agent), cablear el forward del
+  `x-auth0-token` en el frontend (interceptor), setear `AUTH_MODE=auth0`+AUTH0\_\* en el workflow, deploy y test.
+- Detalle completo de recursos/URLs/gotchas/checklist en la memoria persistente `gcp-deploy-auth0-estado`.

@@ -103,6 +103,15 @@ GlobalExceptionFilter).
   async no bloqueante); **colegiado = MANUAL** (sin portal). `profiles` gana `mpps_number`/`colegiado_number`/
   `verification_status`(pending/verified/rejected)/`verified_at`/`verified_by`. La verificación NO restringe acceso
   aún (preparatorio).
+- **ADR-012 (2026-06-15):** **Auth dual-mode (Etapa 1 → Etapa 2).** `AppAuthGuard` (mode-aware) reemplaza
+  `DevAuthGuard` directo en todos los controllers. `AUTH_MODE=dev` (default) → comportamiento idéntico a
+  DevAuthGuard (headers `x-dev-user-*`). `AUTH_MODE=auth0` → `Auth0Guard` valida ID token del header
+  **`x-auth0-token`** con `jose` (JWKS remoto, RS256, issuer+audience). El guard extrae email del payload,
+  llama a `IdentityResolverService` (find-or-create en BD, demote de super_admin/admin a doctor para perfiles
+  nuevos), y setea `request.user = { sub: <UUID perfil BD>, role: <rol BD>, email }`. El rol BD es autoritativo
+  — el claim del token es solo hint. Namespace de rol: `AUTH0_ROLE_NAMESPACE` (default `https://deltamedical.app`).
+  `InfraAuthModule` (@Global) registra los tres guards + `IdentityResolverService` disponibles en todo el app.
+  `ALLOW_DEV_AUTH` eliminado — la prod usa Auth0, no DevAuthGuard. Dependencia nueva: `jose` v6.
 - **IA (Fase 7) — pendiente:** chat único con **Gemini**; specs de las funciones IA PENDIENTES del usuario.
   Feature keys ya sembradas (`ai_assistant`/`ai_transcription`/`ai_reports`) — solo desbloqueadas en plan Plus.
 
