@@ -1367,6 +1367,17 @@ con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
 - `AppAuthGuard` mode-aware: `AUTH_MODE=dev`→`DevAuthGuard` (headers, local); `AUTH_MODE=auth0`→`Auth0Guard`
   (valida ID token via jose/JWKS RS256, iss/aud=client_id/exp, header `x-auth0-token`, resuelve perfil por
   email con `IdentityResolverService` compartido). Se quitó el override `ALLOW_DEV_AUTH`. build/lint/test verdes.
-- **PENDIENTE** (próxima sesión): code-review (code-reviewer+security-agent), cablear el forward del
-  `x-auth0-token` en el frontend (interceptor), setear `AUTH_MODE=auth0`+AUTH0\_\* en el workflow, deploy y test.
 - Detalle completo de recursos/URLs/gotchas/checklist en la memoria persistente `gcp-deploy-auth0-estado`.
+
+**Auth0 Etapa 2 — ✅ DESPLEGADO Y VIVO (2026-06-15, commit `1862e94`, run GHA success):**
+
+- Frontend reenvía el ID token Auth0 como `x-auth0-token`: nuevo `lib/auth0-token.server.ts`
+  (`getAuth0IdToken`, `cache()` por request, `session.tokenSet.idToken`) + `instrumentation.ts` lo añade a
+  todo fetch al backend (cubre `backendFetch` y fetch directos como dashboard-actions/login-touch).
+- Backend en prod con `AUTH_MODE=auth0` + AUTH0_DOMAIN/CLIENT_ID/ROLE_NAMESPACE; `ALLOW_DEV_AUTH` eliminado.
+  Boot limpio, `GcsStorageAdapter ready` (warning GCS resuelto). Bootstrap `resolve-identity` sin guard (M2M
+  internal-secret) intacto.
+- Code-review 0 CRIT/HIGH; 2 MEDIUM + 2 LOW corregidos (reason de jose no se filtra al cliente; race de
+  primer login con `UniqueConstraintError`; `fullName` fallback 'Pendiente'; comentario stale). 54/54 tests auth.
+- **PENDIENTE**: QA visual del usuario (login real → `whoami` `roleMatches:true`). Riesgo a vigilar: valida
+  ID token (no access) → expiración. Plan B: API audience `https://api.deltasalud.app` (ya creada).
