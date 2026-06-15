@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
@@ -31,12 +31,12 @@ interface PaginatedResponse<T> {
 /**
  * Admin controller for invoice management.
  *
- * All endpoints require DevAuthGuard + RolesGuard with 'super_admin'.
+ * All endpoints require AppAuthGuard + RolesGuard with 'super_admin'.
  * Replaces: apps/frontend/app/api/admin/invoices/route.ts
  *           apps/frontend/app/api/admin/mark-invoice-paid/route.ts
  */
 @Controller('admin/invoices')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class InvoicesController {
   constructor(

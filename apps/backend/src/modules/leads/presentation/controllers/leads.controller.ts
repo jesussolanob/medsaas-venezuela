@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -44,14 +44,14 @@ interface SuccessResponse<T> {
  * Leads (CRM) controller.
  *
  * Global prefix 'api' is set in main.ts — do NOT repeat it here.
- * All endpoints require DevAuthGuard (Etapa 1 only).
+ * All endpoints require AppAuthGuard.
  *
  * SECURITY: doctorId is ALWAYS taken from the authenticated user (user.sub).
  * Never trust doctor_id from the request body — anti-IDOR.
  * NEVER log phone or contact info from leads.
  */
 @Controller('doctor/leads')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class LeadsController {
   constructor(
     private readonly listLeads: ListLeadsUseCase,

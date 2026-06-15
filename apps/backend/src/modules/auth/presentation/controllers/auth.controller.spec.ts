@@ -3,12 +3,12 @@ import { HttpStatus } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { ResolveIdentityUseCase } from '../../application/use-cases/resolve-identity.use-case';
 import { ProcessLoginTouchUseCase } from '../../application/use-cases/process-login-touch.use-case';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import {
   ResolveSecretNotConfiguredError,
   ResolveSecretInvalidError,
 } from '../../domain/errors/identity-resolve.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const VALID_SECRET = 'dev-resolve-secret';
 
@@ -32,9 +32,11 @@ describe('AuthController', () => {
       providers: [
         { provide: ResolveIdentityUseCase, useValue: mockResolveUseCase },
         { provide: ProcessLoginTouchUseCase, useValue: mockLoginTouchUseCase },
-        DevAuthGuard,
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<AuthController>(AuthController);
     mockResolveUseCase.execute.mockReset();

@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
@@ -89,7 +89,7 @@ interface PaginatedResponse<T> {
 }
 
 /**
- * Admin controller — all endpoints require DevAuthGuard (authentication) and
+ * Admin controller — all endpoints require AppAuthGuard and
  * RolesGuard with @Roles('super_admin') (authorization).
  *
  * The @Roles('super_admin') and @UseGuards are applied at the class level so
@@ -101,7 +101,7 @@ interface PaginatedResponse<T> {
  * Duplicating it here would create conflicting routes.
  */
 @Controller('admin')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class AdminController {
   constructor(

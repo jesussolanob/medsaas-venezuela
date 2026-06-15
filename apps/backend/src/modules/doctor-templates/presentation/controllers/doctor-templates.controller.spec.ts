@@ -6,6 +6,7 @@ import { DoctorTemplate } from '../../domain/entities/doctor-template.entity';
 import { InvalidTemplateTypeError } from '../../domain/errors/invalid-template-type.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { UpsertDoctorTemplateDto } from '@delta/shared-types';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const now = new Date('2026-06-05T00:00:00Z');
@@ -48,7 +49,10 @@ describe('DoctorTemplatesController', () => {
         { provide: ListDoctorTemplatesUseCase, useValue: mockList },
         { provide: UpsertDoctorTemplateUseCase, useValue: mockUpsert },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<DoctorTemplatesController>(DoctorTemplatesController);
   });

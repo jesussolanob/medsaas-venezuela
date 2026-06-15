@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -70,7 +70,7 @@ interface PaginatedResponse<T> {
  * Payments controller.
  *
  * Global prefix 'api' is set in main.ts — do NOT repeat it here.
- * All endpoints require DevAuthGuard (Etapa 1 only).
+ * All endpoints require AppAuthGuard.
  *
  * SECURITY: doctor_id is ALWAYS taken from the authenticated user (user.sub).
  * Never trust doctor_id from the request body — anti-IDOR.
@@ -78,7 +78,7 @@ interface PaginatedResponse<T> {
  * Patient PII is never returned in responses — only patient_id is exposed.
  */
 @Controller('doctor/payments')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class PaymentsController {
   constructor(
     private readonly listPayments: ListConsultationPaymentsUseCase,

@@ -1,5 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -48,14 +57,14 @@ function toPackageResponse(pkg: PatientPackage): PackageResponseItem {
 /**
  * Packages controller — Etapa 1, doctor-only endpoints.
  *
- * All routes require DevAuthGuard; doctor_id is always taken from user.sub to
+ * All routes require AppAuthGuard; doctor_id is always taken from user.sub to
  * prevent cross-doctor IDOR via body injection.
  *
  * DEFERRED (not implemented):
  *   - DELETE /packages/:id (soft-cancel — not in Etapa 1 scope)
  */
 @Controller('packages')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class PackagesController {
   constructor(
     private readonly createPackage: CreatePackageUseCase,

@@ -8,6 +8,7 @@ import { MessageNotFoundError } from '../../domain/errors/message-not-found.erro
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { ThreadSummary } from '../../domain/repositories/message.repository';
 import type { SendMessageDto } from '@delta/shared-types';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PATIENT_ID = 'pppppppp-0000-0000-0000-000000000001';
@@ -54,7 +55,10 @@ describe('MessagesController', () => {
         { provide: GetThreadUseCase, useValue: mockGetThread },
         { provide: SendMessageUseCase, useValue: mockSendMessage },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<MessagesController>(MessagesController);
   });
@@ -157,9 +161,7 @@ describe('MessagesController', () => {
     });
 
     it('always uses doctorId from authenticated user (anti-IDOR)', async () => {
-      mockSendMessage.execute.mockResolvedValue(
-        makeMessage({ direction: 'doctor_to_patient' }),
-      );
+      mockSendMessage.execute.mockResolvedValue(makeMessage({ direction: 'doctor_to_patient' }));
 
       await controller.send(dto, mockUser);
 

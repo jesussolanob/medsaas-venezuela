@@ -1,14 +1,11 @@
 import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
 } from '../../../../presentation/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
-import {
-  UpsertDoctorTemplateDtoSchema,
-  type UpsertDoctorTemplateDto,
-} from '@delta/shared-types';
+import { UpsertDoctorTemplateDtoSchema, type UpsertDoctorTemplateDto } from '@delta/shared-types';
 
 import { ListDoctorTemplatesUseCase } from '../../application/use-cases/doctor-templates/list-doctor-templates.use-case';
 import { UpsertDoctorTemplateUseCase } from '../../application/use-cases/doctor-templates/upsert-doctor-template.use-case';
@@ -27,11 +24,11 @@ interface SuccessResponse<T> {
  * SECURITY:
  *   - doctorId is ALWAYS taken from the authenticated user (user.sub).
  *   - Never trust doctor_id from the request body — anti-IDOR.
- *   - All endpoints require DevAuthGuard (Etapa 1 only).
+ *   - All endpoints require AppAuthGuard.
  *   - logo_url / signature_url are plain storage URLs — upload is handled separately (Fase 5).
  */
 @Controller('doctor/templates')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class DoctorTemplatesController {
   constructor(
     private readonly listTemplates: ListDoctorTemplatesUseCase,
@@ -44,9 +41,7 @@ export class DoctorTemplatesController {
    * May return an empty array when no templates have been configured yet.
    */
   @Get()
-  async list(
-    @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<DoctorTemplate[]>> {
+  async list(@CurrentUser() user: CurrentUserPayload): Promise<SuccessResponse<DoctorTemplate[]>> {
     const templates = await this.listTemplates.execute(user.sub);
     return { success: true, data: templates };
   }

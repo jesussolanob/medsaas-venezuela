@@ -7,7 +7,6 @@ import {
   UpdatePlanFullBodySchema,
 } from '../../application/dtos/admin.dtos';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Reflector } from '@nestjs/core';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
@@ -41,6 +40,7 @@ import type { DoctorDetail, DoctorGrowthData } from '../../domain/repositories/a
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
 import { SettingNotAllowedError } from '../../domain/errors/setting-not-allowed.error';
 import { AdminUserNotFoundError } from '../../domain/errors/admin-user-not-found.error';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   UpsertSettingBodySchema,
   UpdatePlanBodySchema,
@@ -226,7 +226,7 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: ExportDoctorsUseCase, useValue: mockExportDoctors },
     ],
   })
-    .overrideGuard(DevAuthGuard)
+    .overrideGuard(AppAuthGuard)
     .useValue({ canActivate: () => true })
     .overrideGuard(RolesGuard)
     .useValue({ canActivate: () => true })

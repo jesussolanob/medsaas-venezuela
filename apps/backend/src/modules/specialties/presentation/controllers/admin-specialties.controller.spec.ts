@@ -6,6 +6,7 @@ import { Specialty } from '../../domain/entities/specialty.entity';
 import { SpecialtyConflictError } from '../../domain/errors/specialty-conflict.error';
 import { SpecialtyNotFoundError } from '../../domain/errors/specialty-not-found.error';
 import { SPECIALTY_REPOSITORY } from '../../domain/repositories/specialty.repository';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const now = new Date('2026-06-11T00:00:00Z');
 
@@ -37,7 +38,10 @@ describe('AdminSpecialtiesController', () => {
         { provide: UpdateSpecialtyUseCase, useValue: mockUpdate },
         { provide: SPECIALTY_REPOSITORY, useValue: {} },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get(AdminSpecialtiesController);
   });

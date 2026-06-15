@@ -18,7 +18,7 @@ const DEFAULT_SLOT_DURATION_MINUTES = 30;
 export interface RescheduleAppointmentInput {
   /** Appointment UUID from the path param. */
   appointmentId: string;
-  /** Authenticated doctor's userId (from DevAuthGuard). */
+  /** Authenticated doctor's userId (from AppAuthGuard). */
   actorId: string;
   /** New datetime for the appointment (already parsed to Date). */
   newScheduledAt: Date;

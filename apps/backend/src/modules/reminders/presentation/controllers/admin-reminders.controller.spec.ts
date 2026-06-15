@@ -1,8 +1,8 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AdminRemindersController } from './admin-reminders.controller';
 import { GetAdminRemindersQueueUseCase } from '../../application/use-cases/reminders/get-admin-reminders-queue.use-case';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const buildAdminQueueRow = () => ({
   id: 'item-1',
@@ -19,15 +19,15 @@ describe('AdminRemindersController', () => {
   let mockGetAdminQueue: jest.Mocked<GetAdminRemindersQueueUseCase>;
 
   beforeEach(async () => {
-    mockGetAdminQueue = { execute: jest.fn() } as unknown as jest.Mocked<GetAdminRemindersQueueUseCase>;
+    mockGetAdminQueue = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<GetAdminRemindersQueueUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AdminRemindersController],
-      providers: [
-        { provide: GetAdminRemindersQueueUseCase, useValue: mockGetAdminQueue },
-      ],
+      providers: [{ provide: GetAdminRemindersQueueUseCase, useValue: mockGetAdminQueue }],
     })
-      .overrideGuard(DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })

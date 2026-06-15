@@ -1,5 +1,5 @@
 import { Body, Controller, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
@@ -29,7 +29,7 @@ export interface SpecialtyAdminDto {
 /**
  * AdminSpecialtiesController — admin-only specialty management.
  *
- * Both endpoints require DevAuthGuard + RolesGuard with @Roles('super_admin').
+ * Both endpoints require AppAuthGuard + RolesGuard with @Roles('super_admin').
  *
  * POST /api/admin/specialties
  *   Creates a new specialty. Returns 409 if name already exists.
@@ -40,7 +40,7 @@ export interface SpecialtyAdminDto {
  *   Returns 404 if id not found, 409 if new name conflicts.
  */
 @Controller('admin/specialties')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class AdminSpecialtiesController {
   constructor(

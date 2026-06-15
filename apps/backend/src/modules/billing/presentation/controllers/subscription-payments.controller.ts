@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
@@ -33,7 +33,7 @@ interface PaginatedResponse<T> {
 /**
  * Controller for admin subscription payment management and finance KPIs.
  *
- * All endpoints require DevAuthGuard + RolesGuard with 'super_admin'.
+ * All endpoints require AppAuthGuard + RolesGuard with 'super_admin'.
  *
  * Routes:
  *   GET  /api/admin/subscription-payments         — paginated payment list
@@ -42,7 +42,7 @@ interface PaginatedResponse<T> {
  *   GET  /api/admin/finance-stats                 — aggregated finance KPIs
  */
 @Controller('admin')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class SubscriptionPaymentsController {
   constructor(

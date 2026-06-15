@@ -10,7 +10,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
@@ -35,13 +35,13 @@ interface SuccessResponse<T> {
 /**
  * Admin promotions controller.
  *
- * All endpoints require DevAuthGuard (authentication) and RolesGuard with
+ * All endpoints require AppAuthGuard and RolesGuard with
  * @Roles('super_admin') (authorization). Applied at class level — no gaps.
  *
  * Global prefix 'api' is set in main.ts — do NOT repeat it here.
  */
 @Controller('admin/promotions')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class AdminPromotionsController {
   constructor(

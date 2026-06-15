@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -26,7 +26,7 @@ interface CapabilitiesResponse {
  * Auth0-ready: the role comes from @CurrentUser().role — agnostic of auth source.
  */
 @Controller('me')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class MeCapabilitiesController {
   constructor(private readonly resolveCapabilities: ResolveCapabilitiesUseCase) {}
 

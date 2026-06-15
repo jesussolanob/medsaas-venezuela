@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -62,7 +62,7 @@ function toOutput(block: AvailabilityBlock): BlockOutput {
  * DELETE verifies ownership — foreign blocks return 404 (anti-IDOR).
  */
 @Controller('doctor/availability-blocks')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class AvailabilityBlocksController {
   constructor(
     private readonly listBlocks: ListAvailabilityBlocksUseCase,

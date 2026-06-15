@@ -14,9 +14,6 @@ import { SequelizeLoginTouchRepository } from './infrastructure/database/reposit
 import { ResolveIdentityUseCase } from './application/use-cases/resolve-identity.use-case';
 import { ProcessLoginTouchUseCase } from './application/use-cases/process-login-touch.use-case';
 
-// Guards
-import { DevAuthGuard } from '../../infrastructure/auth/dev-auth.guard';
-
 // Controller
 import { AuthController } from './presentation/controllers/auth.controller';
 
@@ -26,10 +23,13 @@ import { AuthController } from './presentation/controllers/auth.controller';
  * Owns two endpoints:
  *   POST /api/auth/resolve-identity — machine-to-machine (Auth0 BFF), authenticated
  *     via x-internal-auth-secret. Also performs a login touch on successful resolution.
- *   POST /api/auth/login-touch — dev-stub login endpoint, authenticated via DevAuthGuard.
- *     The lead wires the local frontend login action to this endpoint.
+ *   POST /api/auth/login-touch — fires a login touch for the authenticated user.
+ *     Authenticated via AppAuthGuard (mode-aware: dev or auth0).
  *
  * ConfigModule is global (registered in AppModule) — no re-import needed.
+ *
+ * Guards (AppAuthGuard, DevAuthGuard, Auth0Guard) come from the global
+ * InfraAuthModule — no need to re-declare them here.
  *
  * Sequelize providers are NOT injected directly into providers[]:
  *   AuthProfileModel is registered via SequelizeModule.forFeature and injected
@@ -52,7 +52,6 @@ import { AuthController } from './presentation/controllers/auth.controller';
     },
     ResolveIdentityUseCase,
     ProcessLoginTouchUseCase,
-    DevAuthGuard,
   ],
 })
 export class AuthModule {}

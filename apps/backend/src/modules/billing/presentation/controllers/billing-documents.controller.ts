@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -33,7 +33,7 @@ interface PaginatedResponse<T> {
  * Replaces: apps/frontend/app/api/doctor/billing/route.ts
  */
 @Controller('doctor/billing')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class BillingDocumentsController {
   constructor(
     private readonly listDocuments: ListBillingDocumentsUseCase,

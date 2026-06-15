@@ -11,7 +11,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -44,10 +44,10 @@ interface SuccessResponse<T> {
  * SECURITY:
  *   - doctorId is ALWAYS taken from the authenticated user (user.sub).
  *   - Never trust doctor_id from the request body — anti-IDOR.
- *   - All endpoints require DevAuthGuard (Etapa 1 only).
+ *   - All endpoints require AppAuthGuard.
  */
 @Controller('doctor/offices')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class OfficesController {
   constructor(
     private readonly listOffices: ListOfficesUseCase,

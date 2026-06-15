@@ -8,6 +8,7 @@ import { DeleteLeadUseCase } from '../../application/use-cases/leads/delete-lead
 import { Lead } from '../../domain/entities/lead.entity';
 import { LeadNotFoundError } from '../../domain/errors/lead-not-found.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const LEAD_ID = 'llllllll-0000-0000-0000-000000000001';
@@ -54,7 +55,10 @@ describe('LeadsController', () => {
         { provide: UpdateLeadStageUseCase, useValue: mockUpdateStage },
         { provide: DeleteLeadUseCase, useValue: mockDelete },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<LeadsController>(LeadsController);
   });

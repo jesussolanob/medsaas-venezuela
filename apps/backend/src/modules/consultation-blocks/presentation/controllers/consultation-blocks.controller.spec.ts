@@ -2,10 +2,10 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { ConsultationBlocksController } from './consultation-blocks.controller';
 import { GetConsultationBlocksUseCase } from '../../application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
 import { SaveConsultationBlocksUseCase } from '../../application/use-cases/consultation-blocks/save-consultation-blocks.use-case';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { EmptyBlockConfigError } from '../../domain/errors/empty-block-config.error';
 import { InvalidBlockKeyError } from '../../domain/errors/invalid-block-key.error';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'doctor-uuid-001';
 const DOCTOR_USER: CurrentUserPayload = {
@@ -30,7 +30,7 @@ describe('ConsultationBlocksController', () => {
         { provide: SaveConsultationBlocksUseCase, useValue: mockSaveBlocks },
       ],
     })
-      .overrideGuard(DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

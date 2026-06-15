@@ -9,6 +9,7 @@ import type { CurrentUserPayload } from '../../../../presentation/decorators/cur
 import type { UpsertTelemetrySessionDto } from '@delta/shared-types';
 import type { TelemetrySession } from '../../domain/entities/telemetry-session.entity';
 import type { AdminTelemetrySessionDto } from '../../application/dtos/telemetry-session-admin.dto';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const ADMIN_ID = 'f0f0f0f0-0000-0000-0000-000000000001';
@@ -80,7 +81,10 @@ describe('TelemetryController', () => {
         Reflector,
         RolesGuard,
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<TelemetryController>(TelemetryController);
   });

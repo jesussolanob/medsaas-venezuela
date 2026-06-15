@@ -1,5 +1,5 @@
 import { Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { VerifyMppsUseCase } from '../../application/use-cases/verify-mpps.use-case';
@@ -30,7 +30,7 @@ interface SuccessResponse<T> {
  *     for admin audit purposes only.
  */
 @Controller('admin/doctor-verifications')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class CredentialVerificationController {
   constructor(

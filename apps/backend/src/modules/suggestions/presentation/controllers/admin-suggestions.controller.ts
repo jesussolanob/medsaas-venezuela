@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
@@ -20,14 +20,14 @@ interface SuccessResponse<T> {
 }
 
 /**
- * Admin suggestions controller — all endpoints require DevAuthGuard (authentication)
+ * Admin suggestions controller — all endpoints require AppAuthGuard
  * and RolesGuard with @Roles('super_admin') (authorization).
  *
  * The @Roles('super_admin') and @UseGuards are applied at the class level so
  * every endpoint in this controller is protected — there are no gaps.
  */
 @Controller('admin/suggestions')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class AdminSuggestionsController {
   constructor(

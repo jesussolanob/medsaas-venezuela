@@ -9,6 +9,7 @@ import { Office } from '../../domain/entities/office.entity';
 import { OfficeNotFoundError } from '../../domain/errors/office-not-found.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { CreateOfficeDto, UpdateOfficeDto } from '@delta/shared-types';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OFFICE_ID = 'oooooooo-0000-0000-0000-000000000001';
@@ -56,7 +57,10 @@ describe('OfficesController', () => {
         { provide: DeleteOfficeUseCase, useValue: mockDelete },
         { provide: ToggleOfficeUseCase, useValue: mockToggle },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<OfficesController>(OfficesController);
   });

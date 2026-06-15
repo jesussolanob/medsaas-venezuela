@@ -7,6 +7,7 @@ import { GetEhrByIdUseCase } from '../../application/use-cases/ehr/get-ehr-by-id
 import { EhrRecord } from '../../domain/entities/ehr-record.entity';
 import { EhrRecordNotFoundError } from '../../domain/errors/ehr-record-not-found.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PATIENT_ID = 'pppppppp-0000-0000-0000-000000000001';
@@ -50,7 +51,10 @@ describe('EhrController', () => {
         { provide: UpdateEhrRecordUseCase, useValue: mockUpdate },
         { provide: GetEhrByIdUseCase, useValue: mockGetById },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<EhrController>(EhrController);
   });

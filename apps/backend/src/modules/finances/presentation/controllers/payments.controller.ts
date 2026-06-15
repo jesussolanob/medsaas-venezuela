@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -145,7 +145,7 @@ function toItemOutput(item: PaymentItem): PaymentItemOutput {
  *   - All endpoints guarded by DevAuthGuard (Etapa 1).
  */
 @Controller('finances/payments')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class PaymentsController {
   constructor(
     private readonly listPayments: ListPaymentsUseCase,

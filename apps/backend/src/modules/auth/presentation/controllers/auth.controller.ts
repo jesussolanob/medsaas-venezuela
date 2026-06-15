@@ -18,7 +18,7 @@ import { ResolveIdentityUseCase } from '../../application/use-cases/resolve-iden
 import { ProcessLoginTouchUseCase } from '../../application/use-cases/process-login-touch.use-case';
 import type { ProcessLoginTouchOutput } from '../../application/use-cases/process-login-touch.use-case';
 import { INTERNAL_AUTH_SECRET_HEADER } from '../../infrastructure/guards/internal-secret.guard';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -37,8 +37,8 @@ interface SuccessResponse<T> {
  *     Next.js BFF after a successful Auth0 login. Authenticates via
  *     x-internal-auth-secret. Also fires a best-effort login touch.
  *
- *   POST /api/auth/login-touch — dev-stub endpoint for local development.
- *     Authenticated via DevAuthGuard (x-dev-user-id / x-dev-user-role headers).
+ *   POST /api/auth/login-touch — fires a login touch for the authenticated user.
+ *     Authenticated via AppAuthGuard (dev or auth0 mode depending on AUTH_MODE).
  *     The profileId is always taken from user.sub (anti-IDOR — never from body).
  */
 @Controller('auth')
@@ -74,13 +74,14 @@ export class AuthController {
   /**
    * POST /api/auth/login-touch
    *
-   * Dev-stub endpoint for local development. Fires a login touch for the
-   * authenticated user. The profileId is ALWAYS taken from the guard-provided
-   * user.sub — body is intentionally ignored for anti-IDOR.
+   * Fires a login touch for the authenticated user. Used by the BFF after
+   * successful login in both dev and auth0 modes. The profileId is ALWAYS
+   * taken from the guard-provided user.sub — body is intentionally ignored
+   * for anti-IDOR.
    */
   @Post('login-touch')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(DevAuthGuard)
+  @UseGuards(AppAuthGuard)
   async loginTouch(
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<ProcessLoginTouchOutput>> {

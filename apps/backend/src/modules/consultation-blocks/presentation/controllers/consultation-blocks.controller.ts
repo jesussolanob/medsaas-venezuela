@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Put, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { CurrentUser } from '../../../../presentation/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
@@ -25,7 +25,7 @@ import {
  * pathway can be added in Etapa 2 behind a dedicated admin route with RBAC.
  */
 @Controller('doctor/consultation-blocks')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class ConsultationBlocksController {
   constructor(
     private readonly getBlocks: GetConsultationBlocksUseCase,

@@ -2,6 +2,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { CredentialVerificationController } from './credential-verification.controller';
 import { VerifyMppsUseCase } from '../../application/use-cases/verify-mpps.use-case';
 import { GetCredentialVerificationsUseCase } from '../../application/use-cases/get-credential-verifications.use-case';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'aaaa1111-aaaa-1111-aaaa-111111111111';
 
@@ -24,7 +25,7 @@ describe('CredentialVerificationController', () => {
         { provide: GetCredentialVerificationsUseCase, useValue: mockGetVerifications },
       ],
     })
-      .overrideGuard(require('../../../../infrastructure/auth/dev-auth.guard').DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(require('../../../../presentation/guards/roles.guard').RolesGuard)
       .useValue({ canActivate: () => true })

@@ -1,0 +1,50 @@
+import { Global, Module } from '@nestjs/common';
+import { SequelizeModule } from '@nestjs/sequelize';
+
+// Model needed by the identity repository
+import { AuthProfileModel } from '../../modules/auth/infrastructure/database/models/auth-profile.model';
+
+// Repository binding (reuses the one from AuthModule — same token/impl)
+import { IDENTITY_REPOSITORY } from '../../modules/auth/domain/repositories/identity.repository';
+import { SequelizeIdentityRepository } from '../../modules/auth/infrastructure/database/repositories/sequelize-identity.repository';
+
+// Auth guards and services
+import { IdentityResolverService } from './identity-resolver.service';
+import { DevAuthGuard } from './dev-auth.guard';
+import { Auth0Guard } from './auth0.guard';
+import { AppAuthGuard } from './app-auth.guard';
+
+/**
+ * InfraAuthModule
+ *
+ * Global module that makes AppAuthGuard (and its dependencies) injectable
+ * across all feature modules without importing this module in each one.
+ *
+ * Why @Global: guards decorated with @UseGuards() are resolved from the DI
+ * container of the module that declares them, or from a global provider. Since
+ * every controller in the app uses AppAuthGuard, registering it globally avoids
+ * circular-import issues and repetitive imports.
+ *
+ * Sequelize note: AuthProfileModel is registered here via SequelizeModule.forFeature
+ * to make @InjectModel(AuthProfileModel) available to SequelizeIdentityRepository.
+ * The AuthModule also registers it independently — NestJS deduplicates model
+ * registrations safely.
+ *
+ * NEVER add Sequelize instance directly to providers[] — only use forFeature().
+ */
+@Global()
+@Module({
+  imports: [SequelizeModule.forFeature([AuthProfileModel])],
+  providers: [
+    {
+      provide: IDENTITY_REPOSITORY,
+      useClass: SequelizeIdentityRepository,
+    },
+    IdentityResolverService,
+    DevAuthGuard,
+    Auth0Guard,
+    AppAuthGuard,
+  ],
+  exports: [AppAuthGuard, DevAuthGuard, Auth0Guard, IdentityResolverService],
+})
+export class InfraAuthModule {}

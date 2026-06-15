@@ -3,25 +3,23 @@ import type { Request } from 'express';
 import type { CurrentUserPayload } from '../../presentation/decorators/current-user.decorator';
 
 /**
- * Header-based authentication guard.
+ * Header-based authentication guard for local development.
  *
- * Reads the acting user from `x-dev-user-id` / `x-dev-user-role` headers, which
- * the frontend BFF sets after resolving the Auth0 identity. By default it refuses
- * to run when NODE_ENV=production (Etapa 1 → real JWT in Etapa 2, see
- * migracion/03-seguridad.md).
+ * Reads the acting user from `x-dev-user-id` / `x-dev-user-role` headers.
+ * The frontend BFF sets these headers after resolving the dev identity.
  *
- * Override: set ALLOW_DEV_AUTH=true to permit it in a production-mode deployment
- * ONLY when the backend is network-isolated (e.g. Cloud Run with
- * --no-allow-unauthenticated / IAM), so the headers can only be set by the
- * trusted frontend and never by an external caller.
+ * Refuses to run when NODE_ENV=production — the production path uses Auth0Guard
+ * via AppAuthGuard (AUTH_MODE=auth0). If you need to test this guard in a
+ * non-local environment, start the process with NODE_ENV=development.
+ *
+ * Never used directly in production controllers — always go through AppAuthGuard.
  */
 @Injectable()
 export class DevAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const allowDevAuth = process.env.ALLOW_DEV_AUTH === 'true';
-    if (process.env.NODE_ENV === 'production' && !allowDevAuth) {
+    if (process.env.NODE_ENV === 'production') {
       throw new Error(
-        'DevAuthGuard must not be used in production (set ALLOW_DEV_AUTH=true only on an IAM-isolated backend)',
+        'DevAuthGuard must not be used in production. Set AUTH_MODE=auth0 and use AppAuthGuard.',
       );
     }
 

@@ -4,6 +4,7 @@ import { ListMySuggestionsUseCase } from '../../application/use-cases/suggestion
 import { CreateSuggestionUseCase } from '../../application/use-cases/suggestions/create-suggestion.use-case';
 import { Suggestion } from '../../domain/entities/suggestion.entity';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const SUGGESTION_ID = 'ssssssss-0000-0000-0000-000000000001';
@@ -43,7 +44,10 @@ describe('SuggestionsController', () => {
         { provide: ListMySuggestionsUseCase, useValue: mockListMy },
         { provide: CreateSuggestionUseCase, useValue: mockCreate },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<SuggestionsController>(SuggestionsController);
   });

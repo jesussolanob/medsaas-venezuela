@@ -13,7 +13,7 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -77,7 +77,7 @@ interface SuccessResponse<T> {
  * All endpoints require DevAuthGuard (Etapa 1 only — never in production).
  */
 @Controller('doctor')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class DoctorController {
   constructor(
     private readonly getProfile: GetDoctorProfileUseCase,

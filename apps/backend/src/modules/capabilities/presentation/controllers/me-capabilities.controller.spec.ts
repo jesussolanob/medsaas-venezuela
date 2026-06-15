@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MeCapabilitiesController } from './me-capabilities.controller';
 import { ResolveCapabilitiesUseCase } from '../../application/use-cases/capabilities/resolve-capabilities.use-case';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const mockResolveUseCase = {
   execute: jest.fn(),
@@ -14,7 +15,10 @@ describe('MeCapabilitiesController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MeCapabilitiesController],
       providers: [{ provide: ResolveCapabilitiesUseCase, useValue: mockResolveUseCase }],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<MeCapabilitiesController>(MeCapabilitiesController);
   });

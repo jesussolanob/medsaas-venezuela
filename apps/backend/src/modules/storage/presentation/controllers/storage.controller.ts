@@ -11,7 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -43,7 +43,7 @@ interface SuccessResponse<T> {
  *     their own private objects (anti-IDOR).
  */
 @Controller('storage')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class StorageController {
   constructor(
     private readonly uploadFile: UploadFileUseCase,

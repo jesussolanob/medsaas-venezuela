@@ -3,10 +3,13 @@ import { DoctorRemindersController } from './doctor-reminders.controller';
 import { GetRemindersSettingsUseCase } from '../../application/use-cases/reminders/get-reminders-settings.use-case';
 import { UpsertRemindersSettingsUseCase } from '../../application/use-cases/reminders/upsert-reminders-settings.use-case';
 import { GetDoctorRemindersQueueUseCase } from '../../application/use-cases/reminders/get-doctor-reminders-queue.use-case';
-import { ReminderSettings, REMINDERS_SETTINGS_DEFAULTS } from '../../domain/entities/reminders-settings.entity';
+import {
+  ReminderSettings,
+  REMINDERS_SETTINGS_DEFAULTS,
+} from '../../domain/entities/reminders-settings.entity';
 import { ReminderQueueItem } from '../../domain/entities/reminder-queue-item.entity';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const mockUser: CurrentUserPayload = {
   sub: 'doctor-1',
@@ -14,8 +17,7 @@ const mockUser: CurrentUserPayload = {
   email: 'doctor-1@dev.local',
 };
 
-const buildDefaultSettings = (): ReminderSettings =>
-  ReminderSettings.defaults('doctor-1');
+const buildDefaultSettings = (): ReminderSettings => ReminderSettings.defaults('doctor-1');
 
 const buildQueueItem = (): ReminderQueueItem =>
   ReminderQueueItem.create({
@@ -43,7 +45,9 @@ describe('DoctorRemindersController', () => {
 
   beforeEach(async () => {
     mockGetSettings = { execute: jest.fn() } as unknown as jest.Mocked<GetRemindersSettingsUseCase>;
-    mockUpsertSettings = { execute: jest.fn() } as unknown as jest.Mocked<UpsertRemindersSettingsUseCase>;
+    mockUpsertSettings = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<UpsertRemindersSettingsUseCase>;
     mockGetQueue = { execute: jest.fn() } as unknown as jest.Mocked<GetDoctorRemindersQueueUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -54,7 +58,7 @@ describe('DoctorRemindersController', () => {
         { provide: GetDoctorRemindersQueueUseCase, useValue: mockGetQueue },
       ],
     })
-      .overrideGuard(DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
@@ -149,7 +153,11 @@ describe('DoctorRemindersController', () => {
   describe('anti-IDOR — settings scoped to user.sub', () => {
     it('always uses user.sub as doctorId even when called with different context', async () => {
       mockGetSettings.execute.mockResolvedValue(buildDefaultSettings());
-      const anotherUser: CurrentUserPayload = { sub: 'doctor-2', role: 'doctor', email: 'x@dev.local' };
+      const anotherUser: CurrentUserPayload = {
+        sub: 'doctor-2',
+        role: 'doctor',
+        email: 'x@dev.local',
+      };
 
       await controller.getRemindersSettings(anotherUser);
 

@@ -4,6 +4,7 @@ import { ListAllCapabilitiesUseCase } from '../../application/use-cases/capabili
 import { SetCapabilityUseCase } from '../../application/use-cases/capabilities/set-capability.use-case';
 import { RefreshCapabilitiesCacheUseCase } from '../../application/use-cases/capabilities/refresh-capabilities-cache.use-case';
 import { RoleCapability } from '../../domain/entities/role-capability.entity';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const makeRow = (
   role: string,
@@ -36,7 +37,10 @@ describe('AdminCapabilitiesController', () => {
         { provide: SetCapabilityUseCase, useValue: mockSetCapability },
         { provide: RefreshCapabilitiesCacheUseCase, useValue: mockRefreshCache },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<AdminCapabilitiesController>(AdminCapabilitiesController);
   });

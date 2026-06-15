@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
@@ -90,7 +90,7 @@ function toVerificationListItem(entity: DoctorRegistration): VerificationListIte
  *   - Never log full_name, cedula, mppsNumber, colegiadoNumber from this controller.
  */
 @Controller()
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class DoctorRegistrationController {
   constructor(
     private readonly completeRegistration: CompleteRegistrationUseCase,

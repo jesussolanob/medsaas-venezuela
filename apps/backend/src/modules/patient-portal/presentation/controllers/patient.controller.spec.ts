@@ -15,6 +15,7 @@ import { PatientMessageNotAllowedError } from '../../domain/errors/patient-messa
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { Patient } from '../../../patients/domain/entities/patient.entity';
 import { Prescription } from '../../../prescriptions/domain/entities/prescription.entity';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const PATIENT_AUTH_ID = 'patient-auth-uuid-1';
 const mockUser: CurrentUserPayload = {
@@ -50,7 +51,10 @@ describe('PatientController', () => {
         { provide: GetPatientProfileUseCase, useValue: mockGetProfile },
         { provide: UpdatePatientProfileUseCase, useValue: mockUpdateProfile },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<PatientController>(PatientController);
   });

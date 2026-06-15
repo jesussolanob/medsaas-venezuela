@@ -6,6 +6,7 @@ import { DeleteAvailabilityBlockUseCase } from '../../application/use-cases/avai
 import { AvailabilityBlock } from '../../domain/entities/availability-block.entity';
 import { AvailabilityBlockNotFoundError } from '../../domain/errors/availability-block-not-found.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'doctor-uuid-1';
 const mockUser: CurrentUserPayload = { sub: DOCTOR_ID, role: 'doctor', email: 'doc@dev.local' };
@@ -36,7 +37,10 @@ describe('AvailabilityBlocksController', () => {
         { provide: CreateAvailabilityBlockUseCase, useValue: { execute: jest.fn() } },
         { provide: DeleteAvailabilityBlockUseCase, useValue: { execute: jest.fn() } },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get(AvailabilityBlocksController);
     listUseCase = module.get(

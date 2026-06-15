@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
@@ -23,7 +23,7 @@ interface SuccessResponse<T> {
  *   - Returns doctor names (from profiles.full_name), not patient PII.
  */
 @Controller('admin/reminders')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class AdminRemindersController {
   constructor(private readonly getAdminQueueUseCase: GetAdminRemindersQueueUseCase) {}

@@ -7,6 +7,7 @@ import { DoctorRegistration } from '../../domain/entities/doctor-registration.en
 import { DoctorRegistrationNotFoundError } from '../../domain/errors/doctor-not-found.error';
 
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const adminUser: CurrentUserPayload = {
   sub: 'admin-1',
@@ -57,7 +58,10 @@ describe('DoctorRegistrationController', () => {
         { provide: ListPendingVerificationsUseCase, useValue: listVerificationsUseCase },
         { provide: UpdateVerificationStatusUseCase, useValue: updateVerificationUseCase },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<DoctorRegistrationController>(DoctorRegistrationController);
   });

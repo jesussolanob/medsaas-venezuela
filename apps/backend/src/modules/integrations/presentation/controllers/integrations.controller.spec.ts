@@ -4,6 +4,7 @@ import { ConnectGoogleUseCase } from '../../application/use-cases/integrations/c
 import { GetIntegrationStatusUseCase } from '../../application/use-cases/integrations/get-integration-status.use-case';
 import { DisconnectGoogleUseCase } from '../../application/use-cases/integrations/disconnect-google.use-case';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const mockUser: CurrentUserPayload = {
   sub: 'doctor-uuid',
@@ -30,7 +31,7 @@ describe('IntegrationsController', () => {
         { provide: DisconnectGoogleUseCase, useValue: disconnectGoogle },
       ],
     })
-      .overrideGuard(require('../../../../infrastructure/auth/dev-auth.guard').DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

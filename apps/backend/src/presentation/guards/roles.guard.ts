@@ -12,12 +12,12 @@ import type { CurrentUserPayload } from '../decorators/current-user.decorator';
 /**
  * Guard that enforces role-based access control using the @Roles() decorator.
  *
- * Must be applied AFTER an authentication guard (e.g. DevAuthGuard) that sets
+ * Must be applied AFTER an authentication guard (AppAuthGuard) that sets
  * `request.user`. When no @Roles() metadata is present on a route, access is
  * granted to any authenticated user.
  *
  * Usage:
- *   @UseGuards(DevAuthGuard, RolesGuard)
+ *   @UseGuards(AppAuthGuard, RolesGuard)
  *   @Roles('super_admin')
  *   @Post()
  *   updateRate() { ... }

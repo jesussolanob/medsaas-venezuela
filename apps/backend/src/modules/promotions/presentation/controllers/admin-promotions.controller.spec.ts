@@ -7,6 +7,7 @@ import { DeletePromotionUseCase } from '../../application/use-cases/promotions/d
 import { Promotion } from '../../domain/entities/promotion.entity';
 import { PromotionNotFoundError } from '../../domain/errors/promotion-not-found.error';
 import { InvalidPromotionError } from '../../domain/errors/invalid-promotion.error';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const PROMO_ID = 'pppppppp-0000-0000-0000-000000000001';
 const now = new Date('2026-06-04T00:00:00Z');
@@ -48,7 +49,10 @@ describe('AdminPromotionsController', () => {
         { provide: UpdatePromotionUseCase, useValue: mockUpdate },
         { provide: DeletePromotionUseCase, useValue: mockDelete },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<AdminPromotionsController>(AdminPromotionsController);
   });

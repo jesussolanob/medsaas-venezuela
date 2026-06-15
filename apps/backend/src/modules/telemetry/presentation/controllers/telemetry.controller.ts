@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
@@ -47,7 +47,7 @@ interface PaginatedResponse<T> {
  *   full journey JSONB for audit purposes.
  */
 @Controller('telemetry')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class TelemetryController {
   constructor(
     private readonly upsertSession: UpsertTelemetrySessionUseCase,

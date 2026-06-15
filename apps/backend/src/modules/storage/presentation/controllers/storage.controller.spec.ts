@@ -4,6 +4,7 @@ import { UploadFileUseCase } from '../../application/use-cases/upload-file.use-c
 import { GetSignedUrlUseCase } from '../../application/use-cases/get-signed-url.use-case';
 import { StorageValidationError, StorageUploadError } from '../../domain/errors/storage.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const mockUploadFileUseCase: jest.Mocked<Pick<UploadFileUseCase, 'execute'>> = {
   execute: jest.fn(),
@@ -56,7 +57,10 @@ describe('StorageController', () => {
         { provide: UploadFileUseCase, useValue: mockUploadFileUseCase },
         { provide: GetSignedUrlUseCase, useValue: mockGetSignedUrlUseCase },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get(StorageController);
     jest.clearAllMocks();
@@ -126,9 +130,7 @@ describe('StorageController', () => {
     });
 
     it('propagates StorageValidationError from use case', async () => {
-      mockUploadFileUseCase.execute.mockRejectedValue(
-        new StorageValidationError('Invalid kind'),
-      );
+      mockUploadFileUseCase.execute.mockRejectedValue(new StorageValidationError('Invalid kind'));
 
       await expect(
         controller.upload(mockFile as unknown as Express.Multer.File, 'bad-kind', mockUser),
@@ -136,9 +138,7 @@ describe('StorageController', () => {
     });
 
     it('propagates StorageUploadError from use case', async () => {
-      mockUploadFileUseCase.execute.mockRejectedValue(
-        new StorageUploadError('connection refused'),
-      );
+      mockUploadFileUseCase.execute.mockRejectedValue(new StorageUploadError('connection refused'));
 
       await expect(
         controller.upload(mockFile as unknown as Express.Multer.File, 'document', mockUser),
@@ -181,29 +181,29 @@ describe('StorageController', () => {
         new StorageValidationError('Access denied: path does not belong to the authenticated user'),
       );
 
-      await expect(
-        controller.signedUrl('receipt/doctor-999/secret.pdf', mockUser),
-      ).rejects.toThrow(StorageValidationError);
+      await expect(controller.signedUrl('receipt/doctor-999/secret.pdf', mockUser)).rejects.toThrow(
+        StorageValidationError,
+      );
     });
 
     it('propagates StorageValidationError for public kind path', async () => {
       mockGetSignedUrlUseCase.execute.mockRejectedValue(
-        new StorageValidationError('Path "avatar/doctor-001/photo.png" does not belong to a private kind'),
+        new StorageValidationError(
+          'Path "avatar/doctor-001/photo.png" does not belong to a private kind',
+        ),
       );
 
-      await expect(
-        controller.signedUrl('avatar/doctor-001/photo.png', mockUser),
-      ).rejects.toThrow(StorageValidationError);
+      await expect(controller.signedUrl('avatar/doctor-001/photo.png', mockUser)).rejects.toThrow(
+        StorageValidationError,
+      );
     });
 
     it('propagates StorageUploadError when storage adapter fails', async () => {
-      mockGetSignedUrlUseCase.execute.mockRejectedValue(
-        new StorageUploadError('presign timeout'),
-      );
+      mockGetSignedUrlUseCase.execute.mockRejectedValue(new StorageUploadError('presign timeout'));
 
-      await expect(
-        controller.signedUrl('receipt/doctor-001/1-r.pdf', mockUser),
-      ).rejects.toThrow(StorageUploadError);
+      await expect(controller.signedUrl('receipt/doctor-001/1-r.pdf', mockUser)).rejects.toThrow(
+        StorageUploadError,
+      );
     });
   });
 });

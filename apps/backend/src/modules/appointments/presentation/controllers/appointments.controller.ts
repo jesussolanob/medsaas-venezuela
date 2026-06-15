@@ -1,5 +1,15 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -38,11 +48,11 @@ interface PaginatedResponse<T> {
  * Appointments controller.
  *
  * Global prefix 'api' is set in main.ts — do NOT repeat it here.
- * All endpoints require DevAuthGuard (Etapa 1 only).
+ * All endpoints require AppAuthGuard.
  *
  */
 @Controller('appointments')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class AppointmentsController {
   constructor(
     private readonly createAppointment: CreateAppointmentUseCase,

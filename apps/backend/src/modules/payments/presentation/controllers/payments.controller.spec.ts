@@ -8,6 +8,7 @@ import { ConsultationPayment } from '../../domain/entities/consultation-payment.
 import { ConsultationPaymentNotFoundError } from '../../domain/errors/consultation-payment-not-found.error';
 import { PaymentAlreadyResolvedError } from '../../domain/errors/payment-already-resolved.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PATIENT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -59,7 +60,10 @@ describe('PaymentsController', () => {
         { provide: ApproveConsultationPaymentUseCase, useValue: mockApprove },
         { provide: RejectConsultationPaymentUseCase, useValue: mockReject },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<PaymentsController>(PaymentsController);
   });

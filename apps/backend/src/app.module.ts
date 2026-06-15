@@ -42,6 +42,7 @@ import { AvailabilityBlocksModule } from './modules/availability-blocks/availabi
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { CredentialVerificationModule } from './modules/credential-verification/credential-verification.module';
+import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
   imports: [
@@ -57,6 +58,9 @@ import { CredentialVerificationModule } from './modules/credential-verification/
     RedisModule,
     // Global crypto — must come before any module that uses CryptoService.
     CryptoModule,
+    // Global auth guards (AppAuthGuard, DevAuthGuard, Auth0Guard).
+    // Must come before all feature modules so guards are resolvable everywhere.
+    InfraAuthModule,
     AppointmentsModule,
     PatientsModule,
     ConsultationsModule,

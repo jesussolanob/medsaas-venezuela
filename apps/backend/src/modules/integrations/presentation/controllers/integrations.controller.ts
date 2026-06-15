@@ -8,7 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { CurrentUser } from '../../../../presentation/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { ConnectGoogleUseCase } from '../../application/use-cases/integrations/connect-google.use-case';
@@ -30,7 +30,7 @@ import type { ConnectGoogleDto } from '../../application/dtos/integration.dtos';
  *   DELETE /api/integrations/google                     → 204
  */
 @Controller('integrations/google')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class IntegrationsController {
   constructor(
     private readonly connectGoogle: ConnectGoogleUseCase,

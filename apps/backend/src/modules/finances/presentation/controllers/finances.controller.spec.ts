@@ -8,8 +8,8 @@ import { ListTransactionsUseCase } from '../../application/use-cases/finances/li
 import { DeleteTransactionUseCase } from '../../application/use-cases/finances/delete-transaction.use-case';
 import { GetLifetimeIncomeUseCase } from '../../application/use-cases/finances/get-lifetime-income.use-case';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { Reflector } from '@nestjs/core';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const mockUser: CurrentUserPayload = {
   sub: 'doctor-uuid-1',
@@ -46,7 +46,7 @@ describe('FinancesController', () => {
         { provide: GetLifetimeIncomeUseCase, useValue: mockLifetime },
       ],
     })
-      .overrideGuard(DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

@@ -5,11 +5,11 @@ import { GetUsdtRateUseCase } from '../../application/use-cases/finances/get-usd
 import { UpdateUsdtRateUseCase } from '../../application/use-cases/finances/update-usdt-rate.use-case';
 import { SetRateSourceUseCase } from '../../application/use-cases/finances/set-rate-source.use-case';
 import { GetRatesSummaryUseCase } from '../../application/use-cases/finances/get-rates-summary.use-case';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Reflector } from '@nestjs/core';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { RatesSummary } from '../../domain/repositories/usdt-rate.store';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const doctorUser: CurrentUserPayload = {
   sub: 'doctor-uuid-1',
@@ -41,7 +41,10 @@ describe('SettingsController (public)', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SettingsController],
       providers: [{ provide: GetUsdtRateUseCase, useValue: mockGetRate }],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get(SettingsController);
   });
@@ -88,7 +91,7 @@ describe('AdminSettingsController', () => {
         { provide: GetRatesSummaryUseCase, useValue: mockGetSummary },
       ],
     })
-      .overrideGuard(DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

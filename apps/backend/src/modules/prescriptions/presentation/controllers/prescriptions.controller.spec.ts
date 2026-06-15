@@ -6,6 +6,7 @@ import { GetPrescriptionByIdUseCase } from '../../application/use-cases/prescrip
 import { Prescription } from '../../domain/entities/prescription.entity';
 import { PrescriptionNotFoundError } from '../../domain/errors/prescription-not-found.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PATIENT_ID = 'pppppppp-0000-0000-0000-000000000001';
@@ -50,7 +51,10 @@ describe('PrescriptionsController', () => {
         { provide: GetPatientPrescriptionsUseCase, useValue: mockGetPatient },
         { provide: GetPrescriptionByIdUseCase, useValue: mockGetById },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<PrescriptionsController>(PrescriptionsController);
   });

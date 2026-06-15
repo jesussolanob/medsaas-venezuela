@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -57,7 +57,7 @@ interface PaginatedResponse<T> {
 /**
  * Patients controller.
  *
- * All endpoints require DevAuthGuard (Etapa 1 only).
+ * All endpoints require AppAuthGuard.
  * Global prefix 'api' is set in main.ts.
  *
  * PII POLICY: All endpoints are owner-scoped (doctorId from auth token, never from request
@@ -66,7 +66,7 @@ interface PaginatedResponse<T> {
  * List and search do NOT insert audit rows.
  */
 @Controller('patients')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class PatientsController {
   constructor(
     private readonly createPatient: CreatePatientUseCase,

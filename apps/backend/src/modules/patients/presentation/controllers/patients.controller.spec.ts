@@ -10,6 +10,7 @@ import { Patient } from '../../domain/entities/patient.entity';
 import { PatientNotFoundError } from '../../domain/errors/patient-not-found.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { Request } from 'express';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PATIENT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -62,7 +63,10 @@ describe('PatientsController', () => {
         { provide: UpdatePatientUseCase, useValue: mockUpdate },
         { provide: DeletePatientUseCase, useValue: mockDelete },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<PatientsController>(PatientsController);
   });

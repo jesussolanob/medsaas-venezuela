@@ -15,6 +15,7 @@ import { AppointmentConflictError } from '../../domain/errors/appointment-confli
 import { AppointmentNotReschedulableError } from '../../domain/errors/appointment-not-reschedulable.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { AppointmentListResult } from '../../domain/repositories/appointment.repository';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'doctor-uuid-1';
 const APPT_ID = 'appt-uuid-1';
@@ -78,7 +79,10 @@ describe('AppointmentsController', () => {
         { provide: RescheduleAppointmentUseCase, useValue: mockRescheduleUseCase },
         { provide: GetAppointment360UseCase, useValue: mockGet360UseCase },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<AppointmentsController>(AppointmentsController);
   });

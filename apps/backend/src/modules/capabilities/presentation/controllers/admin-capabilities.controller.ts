@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Put, UseGuards } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
@@ -39,13 +39,13 @@ function toCapabilityRow(entity: RoleCapability): CapabilityRow {
 /**
  * Admin controller for managing role capabilities.
  *
- * All endpoints require DevAuthGuard + RolesGuard with @Roles('super_admin').
+ * All endpoints require AppAuthGuard + RolesGuard with @Roles('super_admin').
  *
  * GET  /api/admin/role-capabilities → all rows grouped by role
  * PUT  /api/admin/role-capabilities → upsert a single capability + invalidate cache
  */
 @Controller('admin/role-capabilities')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class AdminCapabilitiesController {
   constructor(

@@ -12,7 +12,7 @@ import {
 /**
  * Guard that enforces module-level capability gating.
  *
- * Must be applied AFTER an authentication guard (e.g. DevAuthGuard) that has
+ * Must be applied AFTER an authentication guard (AppAuthGuard) that has
  * already populated `request.user`. Uses @RequireCapability() metadata to
  * determine which (moduleKey, action) is required.
  *
@@ -20,7 +20,7 @@ import {
  * (the route opts out of capability enforcement).
  *
  * Coexists with RolesGuard — apply both when needed:
- *   @UseGuards(DevAuthGuard, RolesGuard, CapabilitiesGuard)
+ *   @UseGuards(AppAuthGuard, RolesGuard, CapabilitiesGuard)
  *
  * Throws CapabilityDeniedError (403 CAPABILITY_DENIED) on denial.
  */

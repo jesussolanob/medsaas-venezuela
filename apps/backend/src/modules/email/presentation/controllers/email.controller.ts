@@ -1,13 +1,5 @@
-import {
-  Controller,
-  Post,
-  Body,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  UseGuards,
-} from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { Controller, Post, Body, HttpCode, HttpStatus, Inject, UseGuards } from '@nestjs/common';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import { EMAIL_PORT } from '../../application/ports/email.port';
@@ -35,7 +27,7 @@ interface SuccessResponse<T> {
  *   - Only super_admin can invoke this endpoint.
  */
 @Controller('email')
-@UseGuards(DevAuthGuard, RolesGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class EmailController {
   constructor(
@@ -53,9 +45,7 @@ export class EmailController {
    */
   @Post('test')
   @HttpCode(HttpStatus.OK)
-  async testEmail(
-    @Body() body: TestEmailBody,
-  ): Promise<SuccessResponse<EmailSendResult>> {
+  async testEmail(@Body() body: TestEmailBody): Promise<SuccessResponse<EmailSendResult>> {
     const result = await this.emailPort.send({
       to: body.to,
       subject: body.subject ?? 'Test email — Delta Medical CRM',

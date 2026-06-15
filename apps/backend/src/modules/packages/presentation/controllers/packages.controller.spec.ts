@@ -4,7 +4,7 @@ import { CreatePackageUseCase } from '../../application/use-cases/packages/creat
 import { GetPatientPackagesUseCase } from '../../application/use-cases/packages/get-patient-packages.use-case';
 import { GetDoctorPackagesUseCase } from '../../application/use-cases/packages/get-doctor-packages.use-case';
 import { PatientPackage } from '../../domain/entities/patient-package.entity';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const makePkg = (id = 'pkg-001') =>
   PatientPackage.create({
@@ -30,7 +30,9 @@ describe('PackagesController', () => {
   beforeEach(async () => {
     mockCreateUseCase = { execute: jest.fn() } as unknown as jest.Mocked<CreatePackageUseCase>;
     mockGetUseCase = { execute: jest.fn() } as unknown as jest.Mocked<GetPatientPackagesUseCase>;
-    mockGetDoctorPackagesUseCase = { execute: jest.fn() } as unknown as jest.Mocked<GetDoctorPackagesUseCase>;
+    mockGetDoctorPackagesUseCase = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<GetDoctorPackagesUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PackagesController],
@@ -40,7 +42,7 @@ describe('PackagesController', () => {
         { provide: GetDoctorPackagesUseCase, useValue: mockGetDoctorPackagesUseCase },
       ],
     })
-      .overrideGuard(DevAuthGuard)
+      .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

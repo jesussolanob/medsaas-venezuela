@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -158,7 +158,7 @@ type UpdateProfileBody = z.infer<typeof UpdateProfileBodySchema>;
  * Patient portal controller.
  *
  * Global prefix 'api' is set in main.ts.
- * All endpoints require DevAuthGuard (Etapa 1 only).
+ * All endpoints require AppAuthGuard.
  *
  * CRITICAL SECURITY RULE: every endpoint derives the access scope from
  * user.sub (authUserId from DevAuthGuard), never from path params or body.
@@ -170,7 +170,7 @@ type UpdateProfileBody = z.infer<typeof UpdateProfileBodySchema>;
  *   - GET /patient/reports — clinical data exposure requires product decision
  */
 @Controller('patient')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class PatientController {
   constructor(
     private readonly getDashboard: GetPatientDashboardUseCase,

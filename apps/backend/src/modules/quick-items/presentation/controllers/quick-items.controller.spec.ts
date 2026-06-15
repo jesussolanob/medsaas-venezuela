@@ -7,6 +7,7 @@ import { QuickItem } from '../../domain/entities/quick-item.entity';
 import { QuickItemNotFoundError } from '../../domain/errors/quick-item-not-found.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import type { CreateQuickItemDto, ListQuickItemsQuery } from '@delta/shared-types';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const ITEM_ID = 'iiiiiiii-0000-0000-0000-000000000001';
@@ -44,7 +45,10 @@ describe('QuickItemsController', () => {
         { provide: CreateQuickItemUseCase, useValue: mockCreate },
         { provide: DeleteQuickItemUseCase, useValue: mockDelete },
       ],
-    }).compile();
+    })
+      .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<QuickItemsController>(QuickItemsController);
   });
@@ -117,7 +121,12 @@ describe('QuickItemsController', () => {
     });
 
     it('creates medication item correctly', async () => {
-      const medDto: CreateQuickItemDto = { item_type: 'medication', name: 'Ibuprofeno 400mg', category: null, details: '1 tab c/8h' };
+      const medDto: CreateQuickItemDto = {
+        item_type: 'medication',
+        name: 'Ibuprofeno 400mg',
+        category: null,
+        details: '1 tab c/8h',
+      };
       const saved = makeItem({ itemType: 'medication', name: 'Ibuprofeno 400mg' });
       mockCreate.execute.mockResolvedValue(saved);
 

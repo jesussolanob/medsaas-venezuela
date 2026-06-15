@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../../../../infrastructure/auth/dev-auth.guard';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -19,7 +19,12 @@ import { SendMessageDtoSchema, type SendMessageDto } from '@delta/shared-types';
 import { ListThreadsUseCase } from '../../application/use-cases/messages/list-threads.use-case';
 import { GetThreadUseCase } from '../../application/use-cases/messages/get-thread.use-case';
 import { SendMessageUseCase } from '../../application/use-cases/messages/send-message.use-case';
-import { toThreadListItem, toMessageItem, type ThreadListItem, type MessageItem } from '../mappers/message.mapper';
+import {
+  toThreadListItem,
+  toMessageItem,
+  type ThreadListItem,
+  type MessageItem,
+} from '../mappers/message.mapper';
 
 interface SuccessResponse<T> {
   success: true;
@@ -38,7 +43,7 @@ interface SuccessResponse<T> {
  *   - Patient names are returned in plaintext to the owning doctor (owner-scoped, TLS/VPC).
  */
 @Controller('doctor/messages')
-@UseGuards(DevAuthGuard)
+@UseGuards(AppAuthGuard)
 export class MessagesController {
   constructor(
     private readonly listThreads: ListThreadsUseCase,
