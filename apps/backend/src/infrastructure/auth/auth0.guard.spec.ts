@@ -249,6 +249,32 @@ describe('Auth0Guard', () => {
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(Auth0TokenInvalidError);
   });
 
+  it('does not expose the internal jose reason in the public error message (information disclosure)', async () => {
+    const internalReason = 'JWT expired at 2024-01-01T00:00:00.000Z';
+    mockJwtVerify.mockRejectedValue(new Error(internalReason));
+
+    const ctx = makeContext({ 'x-auth0-token': 'expired.jwt' });
+    const error = await guard.canActivate(ctx).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Auth0TokenInvalidError);
+    expect((error as Auth0TokenInvalidError).message).toBe('Invalid Auth0 token');
+    expect((error as Auth0TokenInvalidError).message).not.toContain(internalReason);
+  });
+
+  it('logs the internal jose reason via logger.warn but does not surface it to the client', async () => {
+    const internalReason = 'signature verification failed — key mismatch';
+    mockJwtVerify.mockRejectedValue(new Error(internalReason));
+
+    // Spy on the private logger.warn through the guard instance
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loggerWarnSpy = jest.spyOn((guard as any).logger, 'warn');
+
+    const ctx = makeContext({ 'x-auth0-token': 'tampered.jwt' });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(Auth0TokenInvalidError);
+
+    expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining(internalReason));
+  });
+
   // -------------------------------------------------------------------------
   // Missing email claim
   // -------------------------------------------------------------------------
@@ -343,5 +369,44 @@ describe('Auth0Guard', () => {
     expect(resolver.resolve).toHaveBeenCalledWith(
       expect.objectContaining({ roleHint: 'assistant' }),
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // name claim (FIX 4 — fullName from token instead of email)
+  // -------------------------------------------------------------------------
+
+  it('passes name from Auth0 payload to IdentityResolverService when present', async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: makeValidPayload({ name: 'Dr. House' }),
+    });
+
+    const ctx = makeContext({ 'x-auth0-token': 'raw.jwt' });
+    await guard.canActivate(ctx);
+
+    expect(resolver.resolve).toHaveBeenCalledWith(expect.objectContaining({ name: 'Dr. House' }));
+  });
+
+  it('omits name from resolve call when Auth0 payload has no name claim', async () => {
+    const payloadWithoutName = makeValidPayload();
+    delete (payloadWithoutName as Record<string, unknown>).name;
+    mockJwtVerify.mockResolvedValue({ payload: payloadWithoutName });
+
+    const ctx = makeContext({ 'x-auth0-token': 'raw.jwt' });
+    await guard.canActivate(ctx);
+
+    const callArg = (resolver.resolve as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg['name']).toBeUndefined();
+  });
+
+  it('omits name when Auth0 name claim is an empty string', async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: makeValidPayload({ name: '   ' }),
+    });
+
+    const ctx = makeContext({ 'x-auth0-token': 'raw.jwt' });
+    await guard.canActivate(ctx);
+
+    const callArg = (resolver.resolve as jest.Mock).mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg['name']).toBeUndefined();
   });
 });

@@ -78,11 +78,14 @@ export class Auth0Guard implements CanActivate {
     const namespace = this.config.get<string>('AUTH0_ROLE_NAMESPACE') ?? DEFAULT_ROLE_NAMESPACE;
     const roleHint = payload[`${namespace}/role`] as string | undefined;
     const auth0Sub = typeof payload.sub === 'string' ? payload.sub : undefined;
+    const name =
+      typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : undefined;
 
     const resolved = await this.identityResolver.resolve({
       email,
       auth0Sub,
       roleHint,
+      name,
     });
 
     request.user = {
@@ -141,7 +144,8 @@ export class Auth0Guard implements CanActivate {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Auth0 token verification failed: ${reason}`);
-      throw new Auth0TokenInvalidError(reason);
+      // Throw a generic error — do NOT propagate `reason` to the client (information disclosure).
+      throw new Auth0TokenInvalidError();
     }
   }
 }

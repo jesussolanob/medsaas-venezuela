@@ -16,13 +16,16 @@ export class Auth0TokenMissingError extends DomainError {
 /**
  * Thrown when jose fails to verify the JWT (expired, wrong audience, bad signature, etc).
  * Maps to 401 Unauthorized.
+ *
+ * The internal rejection reason from jose is intentionally NOT included in the
+ * public message to avoid information disclosure. The caller should log it separately.
  */
 export class Auth0TokenInvalidError extends DomainError {
   readonly code = 'AUTH0_TOKEN_INVALID';
   override readonly httpStatus = 401;
 
-  constructor(reason?: string) {
-    super(reason ? `Invalid Auth0 token: ${reason}` : 'Invalid Auth0 token');
+  constructor() {
+    super('Invalid Auth0 token');
   }
 }
 

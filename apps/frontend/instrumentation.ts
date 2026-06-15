@@ -94,6 +94,19 @@ function installBackendAuthInterceptor(): void {
   const originalFetch = globalThis.fetch;
   let cached: { token: string; expMs: number } | null = null;
 
+  // Etapa 2 (AUTH_MODE=auth0): reader for the end-user's Auth0 ID token.
+  // Imported once (module-cached); returns null in dev mode or when there is no
+  // session, so dev and @Public requests are unaffected.
+  const userTokenModule = import('@/lib/auth0-token.server');
+  async function userAuth0Token(): Promise<string | null> {
+    try {
+      const { getAuth0IdToken } = await userTokenModule;
+      return await getAuth0IdToken();
+    } catch {
+      return null;
+    }
+  }
+
   async function idToken(): Promise<string> {
     const now = Date.now();
     if (cached && cached.expMs - REFRESH_SKEW_MS > now) return cached.token;
@@ -124,6 +137,11 @@ function installBackendAuthInterceptor(): void {
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
       headers.set('Authorization', `Bearer ${token}`);
+      // Etapa 2: forward the end-user's Auth0 ID token so the backend's
+      // Auth0Guard can validate it and resolve the caller's profile. Absent in
+      // dev mode or for unauthenticated requests — those proceed without it.
+      const userToken = await userAuth0Token();
+      if (userToken) headers.set('x-auth0-token', userToken);
       return originalFetch(input, { ...init, headers });
     }
     return originalFetch(input, init);

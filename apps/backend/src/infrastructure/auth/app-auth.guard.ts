@@ -10,7 +10,7 @@ import { Auth0Guard } from './auth0.guard';
  *
  *   AUTH_MODE=dev    (default / absent) → DevAuthGuard
  *     Reads x-dev-user-id / x-dev-user-role headers. Local development only.
- *     DevAuthGuard still refuses to run in production unless ALLOW_DEV_AUTH=true.
+ *     DevAuthGuard refuses to run when NODE_ENV=production.
  *
  *   AUTH_MODE=auth0  → Auth0Guard
  *     Validates x-auth0-token, resolves profile from DB, and sets request.user.

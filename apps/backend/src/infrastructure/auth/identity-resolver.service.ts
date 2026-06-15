@@ -24,6 +24,13 @@ export interface ResolveIdentityOptions {
   auth0Sub?: string;
   /** Role hint from the Auth0 namespace claim — the BD role always wins. */
   roleHint?: string;
+  /**
+   * Display name from the Auth0 `name` claim (optional).
+   * Used as fullName on first-time profile creation.
+   * Falls back to the literal string 'Pendiente' if absent.
+   * The email is intentionally NOT used to avoid storing PII in a plain-text name field.
+   */
+  name?: string;
 }
 
 export interface ResolvedIdentity {
@@ -81,7 +88,7 @@ export class IdentityResolverService {
     const created = await this.identityRepo.create({
       id: randomUUID(),
       email: normalizedEmail,
-      fullName: normalizedEmail,
+      fullName: opts.name ?? 'Pendiente',
       role: safeRole,
       auth0Sub: opts.auth0Sub ?? null,
     });

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op } from 'sequelize';
+import { Op, UniqueConstraintError } from 'sequelize';
 import { Identity } from '../../../domain/entities/identity.entity';
 import type {
   IIdentityRepository,
@@ -33,15 +33,30 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
   }
 
   async create(data: IdentityCreateData): Promise<Identity> {
-    const row = await this.model.create({
-      id: data.id,
-      fullName: data.fullName,
-      email: data.email,
-      role: data.role,
-      auth0Sub: data.auth0Sub,
-      isActive: true,
-    });
-    return this.toDomain(row);
+    try {
+      const row = await this.model.create({
+        id: data.id,
+        fullName: data.fullName,
+        email: data.email,
+        role: data.role,
+        auth0Sub: data.auth0Sub,
+        isActive: true,
+      });
+      return this.toDomain(row);
+    } catch (err) {
+      // Race condition on concurrent first-login: two requests both passed findByEmail
+      // and now clash against the UNIQUE index on `email`. The winner already wrote the
+      // row — read it back and return it instead of propagating a 500.
+      if (err instanceof UniqueConstraintError) {
+        const existing = await this.model.findOne({
+          where: { email: { [Op.iLike]: data.email } },
+        });
+        if (existing) {
+          return this.toDomain(existing);
+        }
+      }
+      throw err;
+    }
   }
 
   async updateAuth0Sub(id: string, auth0Sub: string): Promise<void> {
