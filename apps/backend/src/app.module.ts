@@ -42,6 +42,7 @@ import { AvailabilityBlocksModule } from './modules/availability-blocks/availabi
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { CredentialVerificationModule } from './modules/credential-verification/credential-verification.module';
+import { AiTranscriptionModule } from './modules/ai-transcription/ai-transcription.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -94,6 +95,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     TelemetryModule,
     SpecialtiesModule,
     CredentialVerificationModule,
+    AiTranscriptionModule,
   ],
   controllers: [HealthController],
   providers: [
