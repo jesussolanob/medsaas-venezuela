@@ -51,3 +51,51 @@ export async function requirePlanFeature(featureKey: string): Promise<string | n
     return null; // fail-open
   }
 }
+
+/**
+ * Versión booleana de la verificación de plan con comportamiento FAIL-OPEN.
+ * Útil en route handlers donde la feature no involucra datos sensibles de
+ * pacientes transmitidos a servicios externos.
+ *
+ * FAIL-OPEN: ante error de red o downtime del backend retorna `true` (acceso
+ * permitido). Tradeoff consciente: preferimos no bloquear doctores legítimos
+ * durante un downtime momentáneo sobre bloquear acceso a una feature de pago.
+ * Usar solo para features que NO transmiten PHI a servicios externos.
+ *
+ * @param featureKey - La clave de la feature a verificar (ej: 'ai_assistant')
+ * @returns true si la feature está habilitada (o si hubo error — fail-open).
+ */
+export async function hasPlanFeature(featureKey: string): Promise<boolean> {
+  try {
+    const result = await backendGet<DoctorFeaturesResponse>('/api/doctor/features');
+    if (!result.ok) return true; // fail-open ante error de red
+    const features = result.value?.features ?? {};
+    return features[featureKey] ?? false;
+  } catch {
+    return true; // fail-open
+  }
+}
+
+/**
+ * Versión booleana de la verificación de plan con comportamiento FAIL-CLOSED.
+ * Usar en endpoints que transmiten datos sensibles de pacientes (PHI) a servicios
+ * externos (ej: audio de consulta a Gemini). Si el backend de features está caído,
+ * denegamos el acceso para evitar un bypass inadvertido de una feature de pago
+ * que involucra datos sensibles.
+ *
+ * FAIL-CLOSED: ante error de red o downtime del backend retorna `false` (acceso
+ * denegado). El doctor recibe un 403 hasta que el backend se recupere.
+ *
+ * @param featureKey - La clave de la feature a verificar (ej: 'ai_transcription')
+ * @returns true solo si la feature está explícitamente habilitada; false en cualquier error.
+ */
+export async function hasPlanFeatureStrict(featureKey: string): Promise<boolean> {
+  try {
+    const result = await backendGet<DoctorFeaturesResponse>('/api/doctor/features');
+    if (!result.ok) return false; // fail-closed: sin confirmación del backend, sin acceso
+    const features = result.value?.features ?? {};
+    return features[featureKey] ?? false;
+  } catch {
+    return false; // fail-closed: error de red → denegar
+  }
+}

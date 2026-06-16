@@ -43,6 +43,7 @@ import {
   Upload,
   Timer,
   ExternalLink,
+  Lock,
 } from 'lucide-react';
 // Etapa 1: Supabase removed.
 // PLACEHOLDER — following data sources have no backend endpoint yet (Fase 5):
@@ -85,6 +86,7 @@ import { log } from '@/lib/logger';
 // L6 (2026-04-29): normaliza telefonos para wa.me (acepta legacy free-text)
 import { normalizePhoneVE } from '@/lib/phone-utils';
 import { reportError } from '@/lib/report-error';
+import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 
 type Consultation = {
   id: string;
@@ -211,6 +213,7 @@ function ConsultationsPage() {
   const searchParams = useSearchParams();
   const openId = searchParams.get('open');
   const { rate: bcvRate, toBs } = useBcvRate();
+  const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
 
   const [view, setView] = useState<ViewMode>('list');
   const [selected, setSelected] = useState<Consultation | null>(null);
@@ -2043,64 +2046,89 @@ function ConsultationsPage() {
               </div>
             </div>
 
-            {/* ── GRABAR CONSULTA (minutas tipo Google Meet) ──
+            {/* ── GRABAR CONSULTA (minutas tipo Google Meet) — requiere ai_transcription ──
                 2026-05-02: el doctor activa el micrófono, la IA transcribe
                 el audio y sugiere distribución entre bloques. Aplicar las
                 sugerencias actualiza directamente selected.blocks_data — el
-                doctor sigue presionando "Guardar" después como siempre. */}
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <p className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
-                  Grabar la consulta
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-600)' }}>
-                  Activa el micrófono y la IA transcribe + sugiere cómo distribuirlo en tus bloques.
-                </p>
+                doctor sigue presionando "Guardar" después como siempre.
+                Mientras planLoading es true, se muestra el placeholder bloqueado para
+                evitar el flash del componente premium antes de resolver el gate. */}
+            {planLoading || !planFeatures.ai_transcription ? (
+              <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-4">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                  <Lock className="w-4 h-4 text-slate-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-700">Grabar la consulta</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {planLoading ? 'Verificando plan...' : 'Disponible en un plan superior'}
+                  </p>
+                </div>
+                {!planLoading && (
+                  <a
+                    href="/doctor/upgrade"
+                    className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
+                  >
+                    Ver planes
+                  </a>
+                )}
               </div>
-              <ConsultationRecorder
-                availableBlocks={getEffectiveBlocks(selected).map((b) => ({
-                  key: b.key,
-                  label: b.label,
-                }))}
-                onApplyToBlock={(blockKey, content, mode) => {
-                  setSelected((prev) => {
-                    if (!prev) return prev;
-                    const currentData = (prev.blocks_data || {}) as Record<string, unknown>;
-                    const existing = currentData[blockKey];
-                    let next: unknown = content;
-                    if (mode === 'append' && typeof existing === 'string' && existing.trim()) {
-                      next = existing.trimEnd() + '\n\n' + content;
-                    }
-                    return {
-                      ...prev,
-                      blocks_data: { ...currentData, [blockKey]: next },
-                    };
-                  });
-                  // Sync con campos legacy (chief_complaint/diagnosis/treatment/notes)
-                  // que viven en columnas top-level además de blocks_data — para que
-                  // el resto de la UI (PDF, share, etc.) los lea correctamente.
-                  if (typeof content === 'string') {
-                    setReport((r) => {
-                      const map: Record<string, keyof typeof r> = {
-                        chief_complaint: 'chief_complaint',
-                        diagnosis: 'diagnosis',
-                        treatment: 'treatment',
-                        notes: 'notes',
-                        informe: 'notes',
+            ) : (
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+                    Grabar la consulta
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-600)' }}>
+                    Activa el micrófono y la IA transcribe + sugiere cómo distribuirlo en tus
+                    bloques.
+                  </p>
+                </div>
+                <ConsultationRecorder
+                  availableBlocks={getEffectiveBlocks(selected).map((b) => ({
+                    key: b.key,
+                    label: b.label,
+                  }))}
+                  onApplyToBlock={(blockKey, content, mode) => {
+                    setSelected((prev) => {
+                      if (!prev) return prev;
+                      const currentData = (prev.blocks_data || {}) as Record<string, unknown>;
+                      const existing = currentData[blockKey];
+                      let next: unknown = content;
+                      if (mode === 'append' && typeof existing === 'string' && existing.trim()) {
+                        next = existing.trimEnd() + '\n\n' + content;
+                      }
+                      return {
+                        ...prev,
+                        blocks_data: { ...currentData, [blockKey]: next },
                       };
-                      const field = map[blockKey];
-                      if (!field) return r;
-                      const current = (r as any)[field] as string | undefined;
-                      const newVal =
-                        mode === 'append' && current && current.trim()
-                          ? current.trimEnd() + '\n\n' + content
-                          : content;
-                      return { ...r, [field]: newVal } as any;
                     });
-                  }
-                }}
-              />
-            </div>
+                    // Sync con campos legacy (chief_complaint/diagnosis/treatment/notes)
+                    // que viven en columnas top-level además de blocks_data — para que
+                    // el resto de la UI (PDF, share, etc.) los lea correctamente.
+                    if (typeof content === 'string') {
+                      setReport((r) => {
+                        const map: Record<string, keyof typeof r> = {
+                          chief_complaint: 'chief_complaint',
+                          diagnosis: 'diagnosis',
+                          treatment: 'treatment',
+                          notes: 'notes',
+                          informe: 'notes',
+                        };
+                        const field = map[blockKey];
+                        if (!field) return r;
+                        const current = (r as any)[field] as string | undefined;
+                        const newVal =
+                          mode === 'append' && current && current.trim()
+                            ? current.trimEnd() + '\n\n' + content
+                            : content;
+                        return { ...r, [field]: newVal } as any;
+                      });
+                    }
+                  }}
+                />
+              </div>
+            )}
 
             {/* Medical Report Form with Safari-style Tabs */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -3012,161 +3040,189 @@ function ConsultationsPage() {
                 3 modos: resumir historial, mejorar redacción (con dropdown de bloque),
                 resumir informe completo. Antes existían dos sistemas duplicados (panel
                 global con summarize/improve/patient_history + botón "Mejorar con IA"
-                por bloque). Ahora todo vive aquí. */}
-            <div className="bg-gradient-to-br from-violet-50 to-blue-50 border border-violet-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-white" />
+                por bloque). Ahora todo vive aquí.
+                Plan gating: requiere feature ai_assistant.
+                Mientras planLoading es true, se muestra el placeholder bloqueado para
+                evitar el flash del componente premium antes de resolver el gate. */}
+            {planLoading || !planFeatures.ai_assistant ? (
+              <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-4">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                  <Lock className="w-4 h-4 text-slate-400" />
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-800">Asistente IA</p>
-                  <p className="text-[10px] text-slate-500">Powered by Gemini</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-700">Asistente IA</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {planLoading ? 'Verificando plan...' : 'Disponible en un plan superior'}
+                  </p>
                 </div>
+                {!planLoading && (
+                  <a
+                    href="/doctor/upgrade"
+                    className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
+                  >
+                    Ver planes
+                  </a>
+                )}
               </div>
+            ) : (
+              <div className="bg-gradient-to-br from-violet-50 to-blue-50 border border-violet-200 rounded-xl p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Asistente IA</p>
+                    <p className="text-[10px] text-slate-500">Powered by Gemini</p>
+                  </div>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  onClick={() => {
-                    setShowAiBlockPicker(false);
-                    callAI('patient_history');
-                  }}
-                  disabled={aiLoading}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  {aiLoading && aiAction === 'patient_history' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <History className="w-3.5 h-3.5" />
-                  )}
-                  Resumir historial del paciente
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    onClick={() => {
+                      setShowAiBlockPicker(false);
+                      callAI('patient_history');
+                    }}
+                    disabled={aiLoading}
+                    className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    {aiLoading && aiAction === 'patient_history' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <History className="w-3.5 h-3.5" />
+                    )}
+                    Resumir historial del paciente
+                  </button>
 
-                <button
-                  onClick={() => {
-                    // L1 (2026-04-29): toggle dropdown de selección de bloque.
-                    setShowAiBlockPicker((v) => !v);
-                  }}
-                  disabled={aiLoading}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  {aiLoading && aiAction === 'improve_block' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-3.5 h-3.5" />
-                  )}
-                  Mejorar redacción
-                </button>
+                  <button
+                    onClick={() => {
+                      // L1 (2026-04-29): toggle dropdown de selección de bloque.
+                      setShowAiBlockPicker((v) => !v);
+                    }}
+                    disabled={aiLoading}
+                    className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    {aiLoading && aiAction === 'improve_block' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-3.5 h-3.5" />
+                    )}
+                    Mejorar redacción
+                  </button>
 
-                <button
-                  onClick={() => {
-                    setShowAiBlockPicker(false);
-                    callAI('summarize_report');
-                  }}
-                  disabled={aiLoading}
-                  className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  {aiLoading && aiAction === 'summarize_report' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5" />
-                  )}
-                  Resumir informe
-                </button>
-              </div>
+                  <button
+                    onClick={() => {
+                      setShowAiBlockPicker(false);
+                      callAI('summarize_report');
+                    }}
+                    disabled={aiLoading || !planFeatures.ai_reports}
+                    title={!planFeatures.ai_reports ? 'Disponible en un plan superior' : undefined}
+                    className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    {aiLoading && aiAction === 'summarize_report' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : !planFeatures.ai_reports ? (
+                      <Lock className="w-3.5 h-3.5" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5" />
+                    )}
+                    Resumir informe
+                  </button>
+                </div>
 
-              {/* L1 (2026-04-29): dropdown de selección de bloque para "Mejorar redacción" */}
-              {showAiBlockPicker &&
-                selected &&
-                (() => {
-                  const effective = getEffectiveBlocks(selected);
-                  return (
-                    <div className="bg-white border border-violet-200 rounded-xl p-3 space-y-2">
-                      <p className="text-[11px] font-bold text-violet-700 uppercase tracking-wide">
-                        Selecciona un bloque para mejorar
-                      </p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        {effective.length === 0 && (
-                          <p className="text-xs text-slate-400 italic col-span-full">
-                            No hay bloques activos en esta consulta.
-                          </p>
-                        )}
-                        {effective.map((b) => (
-                          <button
-                            key={b.key}
-                            onClick={() => {
-                              setAiTargetBlockKey(b.key);
-                              setShowAiBlockPicker(false);
-                              callAI('improve_block', { blockKey: b.key });
-                            }}
-                            className="text-xs px-2 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-lg font-medium text-left truncate"
-                          >
-                            {b.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-              {/* AI Result — panel colapsable con Aplicar / Descartar */}
-              {(aiResult || aiLoading) && (
-                <div className="bg-white border border-violet-100 rounded-xl p-4 space-y-3">
-                  {aiLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-violet-600">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Analizando con IA...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">
-                          {aiAction === 'patient_history'
-                            ? 'Historial del paciente'
-                            : aiAction === 'summarize_report'
-                              ? 'Resumen del informe'
-                              : `Texto mejorado${aiTargetBlockKey ? ` (${aiTargetBlockKey})` : ''}`}
+                {/* L1 (2026-04-29): dropdown de selección de bloque para "Mejorar redacción" */}
+                {showAiBlockPicker &&
+                  selected &&
+                  (() => {
+                    const effective = getEffectiveBlocks(selected);
+                    return (
+                      <div className="bg-white border border-violet-200 rounded-xl p-3 space-y-2">
+                        <p className="text-[11px] font-bold text-violet-700 uppercase tracking-wide">
+                          Selecciona un bloque para mejorar
                         </p>
-                        <div className="flex gap-1">
-                          {/* Aplicar — solo aplica si el modo soporta escritura.
-                              patient_history es solo lectura informativa. */}
-                          {(aiAction === 'improve_block' || aiAction === 'summarize_report') && (
-                            <button
-                              onClick={applyAIResult}
-                              className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-1"
-                            >
-                              <Check className="w-3 h-3" /> Aplicar
-                            </button>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {effective.length === 0 && (
+                            <p className="text-xs text-slate-400 italic col-span-full">
+                              No hay bloques activos en esta consulta.
+                            </p>
                           )}
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(aiResult);
-                            }}
-                            className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
-                          >
-                            <Copy className="w-3 h-3" /> Copiar
-                          </button>
-                          <button
-                            onClick={() => {
-                              setAiResult('');
-                              setAiAction(null);
-                            }}
-                            title="Descartar"
-                            className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
-                          >
-                            <X className="w-3 h-3" /> Descartar
-                          </button>
+                          {effective.map((b) => (
+                            <button
+                              key={b.key}
+                              onClick={() => {
+                                setAiTargetBlockKey(b.key);
+                                setShowAiBlockPicker(false);
+                                callAI('improve_block', { blockKey: b.key });
+                              }}
+                              className="text-xs px-2 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-lg font-medium text-left truncate"
+                            >
+                              {b.label}
+                            </button>
+                          ))}
                         </div>
                       </div>
-                      {/* RONDA 46: render markdown del output de Gemini (bold, listas, headers) */}
-                      <MarkdownText
-                        text={aiResult}
-                        className="text-sm text-slate-700 leading-relaxed"
-                      />
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+                    );
+                  })()}
+
+                {/* AI Result — panel colapsable con Aplicar / Descartar */}
+                {(aiResult || aiLoading) && (
+                  <div className="bg-white border border-violet-100 rounded-xl p-4 space-y-3">
+                    {aiLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-violet-600">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Analizando con IA...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">
+                            {aiAction === 'patient_history'
+                              ? 'Historial del paciente'
+                              : aiAction === 'summarize_report'
+                                ? 'Resumen del informe'
+                                : `Texto mejorado${aiTargetBlockKey ? ` (${aiTargetBlockKey})` : ''}`}
+                          </p>
+                          <div className="flex gap-1">
+                            {/* Aplicar — solo aplica si el modo soporta escritura.
+                              patient_history es solo lectura informativa. */}
+                            {(aiAction === 'improve_block' || aiAction === 'summarize_report') && (
+                              <button
+                                onClick={applyAIResult}
+                                className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-1"
+                              >
+                                <Check className="w-3 h-3" /> Aplicar
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(aiResult);
+                              }}
+                              className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
+                            >
+                              <Copy className="w-3 h-3" /> Copiar
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAiResult('');
+                                setAiAction(null);
+                              }}
+                              title="Descartar"
+                              className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors flex items-center gap-1"
+                            >
+                              <X className="w-3 h-3" /> Descartar
+                            </button>
+                          </div>
+                        </div>
+                        {/* RONDA 46: render markdown del output de Gemini (bold, listas, headers) */}
+                        <MarkdownText
+                          text={aiResult}
+                          className="text-sm text-slate-700 leading-relaxed"
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* L7 (2026-04-29): Display read-only de la duración automática.
                 started_at se setea al marcar la cita 'completed' en el agenda.

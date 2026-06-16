@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth-guards';
+import { hasPlanFeatureStrict } from '@/lib/plan-gate.server';
 import { reportError } from '@/lib/report-error';
 
 // 2026-05-02: el modelo flash con audio es 2.5-flash. lite no soporta audio aún.
@@ -46,6 +47,24 @@ const ALLOWED_MIMES = new Set([
 export async function POST(req: NextRequest) {
   const guard = await requireRole(['doctor', 'super_admin']);
   if (!guard.ok) return guard.response;
+
+  // super_admin bypasa el gating de plan (acceso irrestricto para pruebas y soporte).
+  // Para doctores usamos hasPlanFeatureStrict (FAIL-CLOSED) porque este endpoint
+  // transmite audio de pacientes (PHI) a Gemini. Si el backend de features está
+  // caído, preferimos denegar el acceso antes que permitir un bypass involuntario.
+  if (guard.profile.role !== 'super_admin') {
+    const allowed = await hasPlanFeatureStrict('ai_transcription');
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Tu plan no incluye transcripción con IA',
+          code: 'PLAN_FEATURE_REQUIRED',
+        },
+        { status: 403 },
+      );
+    }
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -90,25 +109,53 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await audio.arrayBuffer());
   const base64 = buffer.toString('base64');
 
-  // Lista de bloques disponibles (opcional)
+  // Lista de bloques disponibles (opcional).
+  // Sanitización anti-prompt-injection:
+  //   - key: solo letras minúsculas y guión bajo; descartar bloques que no cumplan.
+  //   - label: truncar a 80 chars y eliminar saltos de línea / chars de control.
+  const BLOCK_KEY_RE = /^[a-z_]+$/;
   const availableBlocksRaw = formData.get('available_blocks') as string | null;
   let availableBlocks: { key: string; label: string }[] = [];
   try {
     if (availableBlocksRaw) {
       const parsed = JSON.parse(availableBlocksRaw);
-      if (Array.isArray(parsed)) availableBlocks = parsed.slice(0, 20);
+      if (Array.isArray(parsed)) {
+        availableBlocks = (parsed as unknown[])
+          .filter(
+            (b): b is { key: string; label: string } =>
+              b !== null &&
+              typeof b === 'object' &&
+              typeof (b as Record<string, unknown>).key === 'string' &&
+              typeof (b as Record<string, unknown>).label === 'string' &&
+              BLOCK_KEY_RE.test((b as Record<string, unknown>).key as string),
+          )
+          .slice(0, 20)
+          .map((b) => ({
+            key: b.key,
+            // Truncar label y quitar saltos de línea / chars de control (U+0000-U+001F)
+            label: b.label
+              .slice(0, 80)
+              .replace(/[\x00-\x1F]+/g, ' ')
+              .trim(),
+          }));
+      }
     }
   } catch {
     /* ignore */
   }
 
-  const language = (formData.get('language') as string | null) || 'es-VE';
+  // Whitelist de idiomas aceptados; cualquier otro valor se normaliza a es-VE.
+  const ALLOWED_LANGUAGES = new Set(['es-VE', 'es-ES', 'en-US', 'pt-BR']);
+  const rawLanguage = (formData.get('language') as string | null) ?? '';
+  const language = ALLOWED_LANGUAGES.has(rawLanguage) ? rawLanguage : 'es-VE';
 
   const blocksHint =
     availableBlocks.length > 0
       ? `\n\nLos bloques disponibles en la plantilla del doctor son:\n${availableBlocks
           .map((b) => `  • "${b.key}" → ${b.label}`)
-          .join('\n')}\n\nDespués de la transcripción, sugiere cómo distribuir el contenido entre estos bloques. Devuelve un JSON al final del mensaje con la siguiente estructura EXACTA:\n\`\`\`json\n{ "suggestions": [ { "block_key": "chief_complaint", "content": "..." }, ... ] }\n\`\`\``
+          .join(
+            '\n',
+          )}\n\nDespués de la transcripción, sugiere cómo distribuir el contenido entre estos bloques. Devuelve un JSON al final del mensaje con la siguiente estructura EXACTA:\n\`\`\`json\n{ "suggestions": [ { "block_key": "chief_complaint", "content": "..." }, ... ] }\n\`\`\``
       : '';
 
   const prompt = `Eres un asistente médico profesional. Vas a recibir el AUDIO de una consulta médica grabada por un especialista en Venezuela.
@@ -131,10 +178,7 @@ Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te
       body: JSON.stringify({
         contents: [
           {
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: mime, data: base64 } },
-            ],
+            parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
           },
         ],
         generationConfig: {
@@ -146,7 +190,10 @@ Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te
 
     if (!res.ok) {
       const errText = await res.text();
-      reportError('api/transcribe', 'POST:gemini', new Error(`Gemini ${res.status}`), { status: res.status, excerpt: errText.slice(0, 200) });
+      reportError('api/transcribe', 'POST:gemini', new Error(`Gemini ${res.status}`), {
+        status: res.status,
+        excerpt: errText.slice(0, 200),
+      });
       return NextResponse.json(
         { ok: false, error: `Error del servicio de transcripción (${res.status})` },
         { status: 502 },
@@ -200,7 +247,7 @@ Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error de red al transcribir';
-    reportError('api/transcribe', 'POST', err)
+    reportError('api/transcribe', 'POST', err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

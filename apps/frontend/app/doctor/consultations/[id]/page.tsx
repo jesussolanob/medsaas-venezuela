@@ -14,10 +14,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, User } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, User, Lock } from 'lucide-react';
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks';
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
 import { getConsultation, updateConsultation, approveConsultationPayment } from '../actions';
+import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 
 type Consultation = {
   id: string;
@@ -45,6 +46,7 @@ type Patient = {
 export default function ConsultationDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
@@ -365,35 +367,59 @@ export default function ConsultationDetailPage() {
         </div>
       )}
 
-      {/* ── GRABAR CONSULTA (minutas tipo Google Meet) ── */}
-      <div>
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div>
-            <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
-              Grabar la consulta
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-600)' }}>
-              Activa el micrófono y la IA transcribe + sugiere cómo distribuirlo en tus bloques.
+      {/* ── GRABAR CONSULTA (minutas tipo Google Meet) — requiere ai_transcription ──
+          Mientras planLoading es true, se muestra el placeholder bloqueado para
+          evitar el flash del componente premium antes de resolver el gate. */}
+      {planLoading || !planFeatures.ai_transcription ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-4">
+          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+            <Lock className="w-4 h-4 text-slate-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-slate-700">Grabar la consulta</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {planLoading ? 'Verificando plan...' : 'Disponible en un plan superior'}
             </p>
           </div>
-          <ConsultationRecorder
-            availableBlocks={(consultation.blocks_snapshot || []).map((b) => ({
-              key: b.key,
-              label: b.label,
-            }))}
-            onApplyToBlock={(blockKey, content, mode) => {
-              setBlocksData((prev) => {
-                const current = prev[blockKey];
-                let next: unknown = content;
-                if (mode === 'append' && typeof current === 'string' && current.trim()) {
-                  next = current.trimEnd() + '\n\n' + content;
-                }
-                return { ...prev, [blockKey]: next };
-              });
-            }}
-          />
+          {!planLoading && (
+            <a
+              href="/doctor/upgrade"
+              className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
+            >
+              Ver planes
+            </a>
+          )}
         </div>
-      </div>
+      ) : (
+        <div>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+                Grabar la consulta
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-600)' }}>
+                Activa el micrófono y la IA transcribe + sugiere cómo distribuirlo en tus bloques.
+              </p>
+            </div>
+            <ConsultationRecorder
+              availableBlocks={(consultation.blocks_snapshot || []).map((b) => ({
+                key: b.key,
+                label: b.label,
+              }))}
+              onApplyToBlock={(blockKey, content, mode) => {
+                setBlocksData((prev) => {
+                  const current = prev[blockKey];
+                  let next: unknown = content;
+                  if (mode === 'append' && typeof current === 'string' && current.trim()) {
+                    next = current.trimEnd() + '\n\n' + content;
+                  }
+                  return { ...prev, [blockKey]: next };
+                });
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── BLOQUES DINÁMICOS ── */}
       <div>

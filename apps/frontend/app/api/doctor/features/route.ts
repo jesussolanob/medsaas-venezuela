@@ -16,7 +16,9 @@ interface DoctorFeaturesResponse {
 }
 
 export async function GET() {
-  const guard = await requireRole(['doctor', 'assistant']);
+  // super_admin incluido para que hasPlanFeature* funcione correctamente cuando
+  // un super_admin invoca endpoints que llaman a este BFF (ej: transcribe/route.ts).
+  const guard = await requireRole(['doctor', 'assistant', 'super_admin']);
   if (!guard.ok) return guard.response;
 
   const result = await backendGet<DoctorFeaturesResponse>('/api/doctor/features');
