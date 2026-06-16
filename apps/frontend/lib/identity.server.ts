@@ -26,6 +26,20 @@ export interface ResolvedIdentity {
   role: string;
 }
 
+/**
+ * Thrown when there is no authenticated session (anonymous request, or an
+ * expired/absent Auth0 token). This is an EXPECTED condition — the BFF layer
+ * translates it into a clean 401, NOT an unhandled 500. Keeping it as a
+ * distinct type lets callers tell "no session" apart from genuine failures
+ * (missing secret, resolve-identity 5xx), which must still surface to Sentry.
+ */
+export class UnauthenticatedError extends Error {
+  constructor(message = 'No authenticated session') {
+    super(message);
+    this.name = 'UnauthenticatedError';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Resolve identity for dev mode
 // ---------------------------------------------------------------------------
@@ -52,7 +66,9 @@ const resolveAuth0Identity = cache(async (): Promise<ResolvedIdentity> => {
   const session = await auth0.getSession();
 
   if (!session?.user) {
-    throw new Error('[identity] No Auth0 session found — unauthenticated request reached BFF.');
+    throw new UnauthenticatedError(
+      '[identity] No Auth0 session found — unauthenticated request reached BFF.',
+    );
   }
 
   const { email, sub, name } = session.user;

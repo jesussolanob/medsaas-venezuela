@@ -22,7 +22,7 @@ import 'server-only';
 
 import type { Result } from '@delta/shared-types';
 import { ok, err } from '@delta/shared-types';
-import { resolveIdentity } from './identity.server';
+import { resolveIdentity, UnauthenticatedError } from './identity.server';
 
 // ---------------------------------------------------------------------------
 // AppError — structured error type for the frontend layer
@@ -80,9 +80,22 @@ export async function backendFetch<T>(
     // No override, or only partial — resolve identity per AUTH_MODE.
     // In dev mode: reads dev_user_id / dev_user_role cookies (same as before).
     // In auth0 mode: exchanges Auth0 session for backend profile UUID.
-    const identity = await resolveIdentity();
-    resolvedId = identity.id;
-    resolvedRole = identity.role;
+    try {
+      const identity = await resolveIdentity();
+      resolvedId = identity.id;
+      resolvedRole = identity.role;
+    } catch (error: unknown) {
+      // No session (anonymous or expired Auth0 token) is an EXPECTED outcome
+      // for unauthenticated hits to identity-gated BFF routes. Return a clean
+      // 401 instead of letting the throw bubble to Next's onRequestError,
+      // which would report it to Sentry as an unhandled 500 (noise).
+      if (error instanceof UnauthenticatedError) {
+        return err({ code: 'UNAUTHENTICATED', message: 'No autenticado', status: 401 });
+      }
+      // Any other failure (missing AUTH_RESOLVE_SECRET, resolve-identity 5xx)
+      // is a REAL error — let it propagate so Sentry captures it.
+      throw error;
+    }
   }
 
   const url = `${BACKEND_URL}${path}`;
