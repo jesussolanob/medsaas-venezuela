@@ -1,253 +1,106 @@
 /**
  * POST /api/doctor/consultations/transcribe
  *
- * Recibe un audio (FormData con campo 'audio'), lo transcribe con Gemini 2.5 Flash
- * y opcionalmente lo asigna a un bloque clínico específico.
+ * BFF multipart proxy — SERVER ONLY.
  *
- * Inspirado en las "minutas" automáticas de Google Meet/Calendar:
- * el doctor graba la consulta en vivo y el sistema le devuelve el texto
- * transcrito + (opcional) sugerencia de cómo distribuirlo en los bloques.
+ * Reenvía el audio de la consulta al módulo NestJS de transcripción
+ * (POST /api/ai/transcribe). El backend hace TODO: valida el plan del doctor
+ * (gating fail-closed de `ai_transcription`), sanitiza los bloques, llama a
+ * Gemini con la API key (que vive SOLO en el backend) y audita en ai_request_log.
  *
- * Setup:
- *   - GEMINI_API_KEY en Vercel env vars (compartida con /api/doctor/ai)
- *   - Soporta audio/webm, audio/mp4, audio/mpeg, audio/wav, audio/m4a
- *   - Limite del payload: 20 MB inline (≈ 30-40 min en webm comprimido)
+ * Este handler ya NO llama a Gemini ni conoce la GEMINI_API_KEY: solo proxea.
  *
- * Response:
- *   { ok: true, transcript: string, suggestion?: { block_key: string; content: string }[] }
- *   { ok: false, error: string }
+ * Request (multipart/form-data):
+ *   audio            (required) File  — audio de la consulta
+ *   available_blocks (optional) string JSON — [{ key, label }]
+ *   language         (optional) string — 'es-VE' | 'es-ES' | 'en-US' | 'pt-BR'
  *
- * FASE 5/6: pendiente backend — Gemini AI transcription not yet implemented in
- * NestJS. This handler calls the Gemini API directly (no Supabase dependency).
+ * Response (contrato que espera ConsultationRecorder):
+ *   { ok: true,  transcript: string, suggestions: { block_key, content }[] }
+ *   { ok: false, error: string, code?: string }
+ *
+ * Identidad: resuelta por requireRole() (dev cookies o sesión Auth0). En prod,
+ * el interceptor global de instrumentation.ts añade el token IAM + x-auth0-token
+ * a los fetch dirigidos al backend.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth-guards';
-import { hasPlanFeatureStrict } from '@/lib/plan-gate.server';
-import { reportError } from '@/lib/report-error';
 
-// 2026-05-02: el modelo flash con audio es 2.5-flash. lite no soporta audio aún.
-const GEMINI_MODEL = process.env.GEMINI_AUDIO_MODEL || 'gemini-2.5-flash';
-const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
 
-const ALLOWED_MIMES = new Set([
-  'audio/webm',
-  'audio/webm;codecs=opus',
-  'audio/ogg',
-  'audio/ogg;codecs=opus',
-  'audio/mp4',
-  'audio/m4a',
-  'audio/x-m4a',
-  'audio/mpeg',
-  'audio/mp3',
-  'audio/wav',
-  'audio/x-wav',
-]);
+interface BackendTranscribeData {
+  transcript: string;
+  suggestions: { block_key: string; content: string }[];
+}
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  // Auth básica + identidad. El gating real de plan (fail-closed) lo hace el backend.
   const guard = await requireRole(['doctor', 'super_admin']);
   if (!guard.ok) return guard.response;
 
-  // super_admin bypasa el gating de plan (acceso irrestricto para pruebas y soporte).
-  // Para doctores usamos hasPlanFeatureStrict (FAIL-CLOSED) porque este endpoint
-  // transmite audio de pacientes (PHI) a Gemini. Si el backend de features está
-  // caído, preferimos denegar el acceso antes que permitir un bypass involuntario.
-  if (guard.profile.role !== 'super_admin') {
-    const allowed = await hasPlanFeatureStrict('ai_transcription');
-    if (!allowed) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Tu plan no incluye transcripción con IA',
-          code: 'PLAN_FEATURE_REQUIRED',
-        },
-        { status: 403 },
-      );
-    }
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  let incoming: FormData;
+  try {
+    incoming = await req.formData();
+  } catch {
     return NextResponse.json(
-      { ok: false, error: 'GEMINI_API_KEY no configurada' },
-      { status: 500 },
+      { ok: false, error: 'Cuerpo inválido (multipart esperado)' },
+      { status: 400 },
     );
   }
 
-  let formData: FormData;
-  try {
-    formData = await req.formData();
-  } catch {
-    return NextResponse.json({ ok: false, error: 'FormData inválido' }, { status: 400 });
-  }
-
-  const audio = formData.get('audio') as File | null;
-  if (!audio) {
+  const audio = incoming.get('audio');
+  if (!audio || !(audio instanceof Blob)) {
     return NextResponse.json({ ok: false, error: 'Campo "audio" requerido' }, { status: 400 });
   }
-  if (audio.size > MAX_BYTES) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `Audio demasiado grande (max ${MAX_BYTES / 1024 / 1024} MB). Graba en sesiones más cortas.`,
-      },
-      { status: 413 },
-    );
-  }
 
-  // Normalizar mime type — algunos browsers mandan codecs=opus extra
-  const rawMime = audio.type || 'audio/webm';
-  const mime = rawMime.split(';')[0].trim();
-  if (!ALLOWED_MIMES.has(rawMime) && !ALLOWED_MIMES.has(mime)) {
-    return NextResponse.json(
-      { ok: false, error: `Formato no soportado: ${rawMime}` },
-      { status: 415 },
-    );
-  }
+  // Reconstruir el FormData para reenviar (preserva el nombre del archivo si existe).
+  const outgoing = new FormData();
+  outgoing.append('audio', audio, audio instanceof File ? audio.name : 'recording.webm');
+  const availableBlocks = incoming.get('available_blocks');
+  if (typeof availableBlocks === 'string') outgoing.append('available_blocks', availableBlocks);
+  const language = incoming.get('language');
+  if (typeof language === 'string') outgoing.append('language', language);
 
-  // Convertir a base64
-  const buffer = Buffer.from(await audio.arrayBuffer());
-  const base64 = buffer.toString('base64');
-
-  // Lista de bloques disponibles (opcional).
-  // Sanitización anti-prompt-injection:
-  //   - key: solo letras minúsculas y guión bajo; descartar bloques que no cumplan.
-  //   - label: truncar a 80 chars y eliminar saltos de línea / chars de control.
-  const BLOCK_KEY_RE = /^[a-z_]+$/;
-  const availableBlocksRaw = formData.get('available_blocks') as string | null;
-  let availableBlocks: { key: string; label: string }[] = [];
+  let backendRes: Response;
   try {
-    if (availableBlocksRaw) {
-      const parsed = JSON.parse(availableBlocksRaw);
-      if (Array.isArray(parsed)) {
-        availableBlocks = (parsed as unknown[])
-          .filter(
-            (b): b is { key: string; label: string } =>
-              b !== null &&
-              typeof b === 'object' &&
-              typeof (b as Record<string, unknown>).key === 'string' &&
-              typeof (b as Record<string, unknown>).label === 'string' &&
-              BLOCK_KEY_RE.test((b as Record<string, unknown>).key as string),
-          )
-          .slice(0, 20)
-          .map((b) => ({
-            key: b.key,
-            // Truncar label y quitar saltos de línea / chars de control (U+0000-U+001F)
-            label: b.label
-              .slice(0, 80)
-              .replace(/[\x00-\x1F]+/g, ' ')
-              .trim(),
-          }));
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-
-  // Whitelist de idiomas aceptados; cualquier otro valor se normaliza a es-VE.
-  const ALLOWED_LANGUAGES = new Set(['es-VE', 'es-ES', 'en-US', 'pt-BR']);
-  const rawLanguage = (formData.get('language') as string | null) ?? '';
-  const language = ALLOWED_LANGUAGES.has(rawLanguage) ? rawLanguage : 'es-VE';
-
-  const blocksHint =
-    availableBlocks.length > 0
-      ? `\n\nLos bloques disponibles en la plantilla del doctor son:\n${availableBlocks
-          .map((b) => `  • "${b.key}" → ${b.label}`)
-          .join(
-            '\n',
-          )}\n\nDespués de la transcripción, sugiere cómo distribuir el contenido entre estos bloques. Devuelve un JSON al final del mensaje con la siguiente estructura EXACTA:\n\`\`\`json\n{ "suggestions": [ { "block_key": "chief_complaint", "content": "..." }, ... ] }\n\`\`\``
-      : '';
-
-  const prompt = `Eres un asistente médico profesional. Vas a recibir el AUDIO de una consulta médica grabada por un especialista en Venezuela.
-
-Tu trabajo:
-1. Transcribir el audio palabra por palabra en español (Venezuela), preservando el contexto clínico.
-2. Limpiar muletillas obvias ("eh", "umm", "este") pero NO inventar contenido que no esté en el audio.
-3. Si hay términos médicos que no entiendes claramente, transcríbelos fonéticamente y agrega "[?]".
-4. Identificar quién habla cuando sea claro (DOCTOR: / PACIENTE:) si hay diálogo.${blocksHint}
-
-Idioma del audio: ${language}.
-
-Devuelve PRIMERO la transcripción completa en texto plano (sin markdown). Si te pidieron sugerencias de bloques, después de la transcripción devuelve el bloque JSON marcado con \`\`\`json y \`\`\`.`;
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
+    backendRes = await fetch(`${BACKEND_URL}/api/ai/transcribe`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 8192,
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      reportError('api/transcribe', 'POST:gemini', new Error(`Gemini ${res.status}`), {
-        status: res.status,
-        excerpt: errText.slice(0, 200),
-      });
-      return NextResponse.json(
-        { ok: false, error: `Error del servicio de transcripción (${res.status})` },
-        { status: 502 },
-      );
-    }
-
-    const data = await res.json();
-    const fullText: string = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (!fullText) {
-      return NextResponse.json(
-        { ok: false, error: 'Gemini retornó respuesta vacía' },
-        { status: 500 },
-      );
-    }
-
-    let suggestions: { block_key: string; content: string }[] = [];
-    let transcript = fullText;
-    const jsonMatch = fullText.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      transcript = fullText.replace(jsonMatch[0], '').trim();
-      try {
-        const parsed = JSON.parse(jsonMatch[1]);
-        if (Array.isArray(parsed?.suggestions)) {
-          suggestions = parsed.suggestions
-            .filter(
-              (s: unknown): s is { block_key: string; content: string } =>
-                s !== null &&
-                typeof s === 'object' &&
-                typeof (s as Record<string, unknown>).block_key === 'string' &&
-                typeof (s as Record<string, unknown>).content === 'string',
-            )
-            .map((s: { block_key: string; content: string }) => ({
-              block_key: s.block_key,
-              content: s.content,
-            }));
-        }
-      } catch (e) {
-        console.warn('[transcribe] no pude parsear JSON de sugerencias:', e);
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      transcript,
-      suggestions,
-      meta: {
-        bytes: audio.size,
-        mime,
-        model: GEMINI_MODEL,
+      headers: {
+        // Dev mode: el backend usa estos headers. Prod (auth0): el interceptor
+        // global añade x-auth0-token + token IAM; estos quedan inertes.
+        'x-dev-user-id': guard.user.id,
+        'x-dev-user-role': guard.profile.role,
+        // NO setear Content-Type — fetch añade el boundary multipart correcto.
       },
+      body: outgoing,
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Error de red al transcribir';
-    reportError('api/transcribe', 'POST', err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  } catch (networkErr: unknown) {
+    const message = networkErr instanceof Error ? networkErr.message : 'Error de red';
+    return NextResponse.json({ ok: false, error: message }, { status: 502 });
   }
+
+  // El backend responde con el envelope estándar { success, data } | { success:false, code, message }.
+  let json: { success?: boolean; data?: BackendTranscribeData; code?: string; message?: string };
+  try {
+    json = (await backendRes.json()) as typeof json;
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: 'Respuesta inválida del servicio de transcripción' },
+      { status: 502 },
+    );
+  }
+
+  if (!backendRes.ok || !json.success || !json.data) {
+    return NextResponse.json(
+      { ok: false, error: json.message ?? 'Error de transcripción', code: json.code },
+      { status: backendRes.status || 502 },
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    transcript: json.data.transcript,
+    suggestions: json.data.suggestions ?? [],
+  });
 }
