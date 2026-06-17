@@ -1295,105 +1295,6 @@ function ConsultationsPage() {
       .join('');
   }
 
-  function generatePDF() {
-    if (!selected) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const dateStr = new Date(selected.consultation_date).toLocaleDateString('es-VE', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    let bodyContent = '';
-    if (report.chief_complaint)
-      bodyContent +=
-        '<div class="section"><div class="section-title">Motivo de Consulta</div><div class="section-content">' +
-        report.chief_complaint +
-        '</div></div>';
-    if (report.notes)
-      bodyContent +=
-        '<div class="section"><div class="section-title">Informe Médico</div><div class="section-content">' +
-        report.notes +
-        '</div></div>';
-    if (report.diagnosis)
-      bodyContent +=
-        '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' +
-        report.diagnosis +
-        '</div></div>';
-
-    if (includeRecipe) {
-      if (recipe.medications.length > 0) {
-        bodyContent +=
-          '<div class="section"><div class="section-title">Medicamentos</div><div class="section-content">';
-        bodyContent += recipe.medications
-          .map(
-            (m: Medication, i: number) =>
-              '<div style="margin-bottom:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px">' +
-              '<div style="font-weight:700;color:#1e293b">' +
-              (i + 1) +
-              '. ' +
-              (m.name || '') +
-              '</div>' +
-              '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">' +
-              (m.dose
-                ? '<span style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' +
-                  m.dose +
-                  '</span>'
-                : '') +
-              (m.frequency
-                ? '<span style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' +
-                  m.frequency +
-                  '</span>'
-                : '') +
-              (m.duration
-                ? '<span style="font-size:12px;color:#475569"><strong>Duración:</strong> ' +
-                  m.duration +
-                  '</span>'
-                : '') +
-              '</div>' +
-              (m.indications
-                ? '<div style="font-size:12px;color:#64748b;margin-top:2px"><em>' +
-                  m.indications +
-                  '</em></div>'
-                : '') +
-              '</div>',
-          )
-          .join('');
-        bodyContent += '</div></div>';
-      }
-      if (report.treatment)
-        bodyContent +=
-          '<div class="section"><div class="section-title">Plan de Tratamiento</div><div class="section-content">' +
-          report.treatment +
-          '</div></div>';
-    }
-
-    if (includePrescripciones && prescripciones.length > 0) {
-      bodyContent +=
-        '<div class="section"><div class="section-title">Prescripciones</div><div class="section-content"><ul>' +
-        prescripciones
-          .filter((p) => p.exam_name.trim())
-          .map((p) => '<li>' + p.exam_name + (p.notes ? ' - ' + p.notes : '') + '</li>')
-          .join('') +
-        '</ul></div></div>';
-    }
-
-    const htmlContent = buildPdfHtml(
-      'informe',
-      'Informe Médico',
-      bodyContent,
-      selected.patient_name,
-      selected.consultation_code,
-      dateStr,
-    );
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-  }
-
   function addMedication() {
     setRecipe((p) => ({
       ...p,
@@ -1779,22 +1680,6 @@ function ConsultationsPage() {
 
                 {/* Grupo derecho: acciones de archivo (compactas, solo iconos en sm) */}
                 <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={generatePDF}
-                    title="Descargar PDF"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5" />{' '}
-                    <span className="hidden sm:inline">PDF</span>
-                  </button>
-                  <button
-                    onClick={generatePDF}
-                    title="Imprimir"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                  >
-                    <Printer className="w-3.5 h-3.5" />{' '}
-                    <span className="hidden sm:inline">Imprimir</span>
-                  </button>
                   {/* L1 (2026-04-29): botón "Eliminar" removido del header.
                       El endpoint DELETE sigue intacto en /api/doctor/consultations. */}
                   {/* L1 (2026-04-29) + FIX 2026-04-29: botón "Generar informe" más
@@ -3107,25 +2992,6 @@ function ConsultationsPage() {
                       <Wand2 className="w-3.5 h-3.5" />
                     )}
                     Mejorar redacción
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowAiBlockPicker(false);
-                      callAI('summarize_report');
-                    }}
-                    disabled={aiLoading || !planFeatures.ai_reports}
-                    title={!planFeatures.ai_reports ? 'Disponible en un plan superior' : undefined}
-                    className="flex items-center gap-2 px-3 py-2.5 bg-white border border-violet-200 rounded-xl text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                  >
-                    {aiLoading && aiAction === 'summarize_report' ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : !planFeatures.ai_reports ? (
-                      <Lock className="w-3.5 h-3.5" />
-                    ) : (
-                      <FileText className="w-3.5 h-3.5" />
-                    )}
-                    Resumir informe
                   </button>
                 </div>
 

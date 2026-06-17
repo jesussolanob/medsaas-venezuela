@@ -1026,8 +1026,8 @@ export default function FinancesPage() {
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
               Ingresos vs Egresos · últimos 6 meses
             </p>
-            <div className="w-full h-64">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full">
+              <ResponsiveContainer width="100%" height={256}>
                 <BarChart
                   data={reportChartData}
                   margin={{ top: 8, right: 8, bottom: 0, left: -16 }}

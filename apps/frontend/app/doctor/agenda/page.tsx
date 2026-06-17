@@ -3037,7 +3037,15 @@ export default function AgendaPage() {
                         !newConsulta.plan_id ||
                         creatingConsulta
                       }
-                      className="flex-1 py-2.5 g-bg text-white rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                      className={`flex-1 py-2.5 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors ${
+                        !newConsulta.patient_id ||
+                        !newConsulta.date ||
+                        !newConsulta.time ||
+                        !newConsulta.plan_id ||
+                        creatingConsulta
+                          ? 'bg-slate-300 cursor-not-allowed'
+                          : 'g-bg hover:opacity-90'
+                      }`}
                     >
                       {creatingConsulta ? (
                         <Loader2 className="w-4 h-4 animate-spin" />

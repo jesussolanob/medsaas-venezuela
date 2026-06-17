@@ -621,9 +621,8 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   // ── Helpers derivados ──────────────────────────────────────────────────────
   const step1Done = !!selectedPatient;
   const step2Done = !!scheduledAt;
-  // step3Done: always true once the doctor has explicitly set the mode (the
-  // office selector offers a "no specific office" option so no selection is needed).
-  const step3Done = true;
+  // step3Done: gris si el doctor no tiene consultorios definidos; verde cuando hay al menos uno.
+  const step3Done = offices.length > 0;
   const step4Done = step3Done;
   const step5Done = !!selectedPlan || !!usePackage;
   const step6Done =
