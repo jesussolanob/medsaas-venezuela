@@ -9,7 +9,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LayoutDashboard,
   Calendar,
@@ -140,17 +140,23 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     } catch {}
   }, []);
 
-  // Onboarding gate: on every navigation within /doctor, check if the doctor
-  // has completed their profile. If not (no cedula) and they are NOT already
-  // on /doctor/onboarding, force-redirect there.
+  // Onboarding gate: corre UNA sola vez al entrar al portal — NO en cada
+  // navegación. Antes el check se disparaba en cada cambio de pathname y ponía
+  // el layout en 'checking' (return null), ocultando TODO (sidebar incluido) y
+  // dando la sensación de "refresh de toda la página". Con un ref, las
+  // navegaciones client-side solo cambian el contenido de la derecha (children).
+  const gateCheckedRef = useRef(false);
   useEffect(() => {
-    // Skip the check when already on the onboarding route — avoids an
-    // infinite redirect loop when the gate fires on the onboarding page itself.
-    // (The onboarding page has its own standalone layout and will render fine.)
+    // Skip en la ruta de onboarding (tiene su propio layout full-screen).
     if (pathname === '/doctor/onboarding' || pathname.startsWith('/doctor/onboarding/')) {
       setOnboardingState('ok');
       return;
     }
+
+    // Solo el primer chequeo por montaje del portal. Una vez resuelto, las
+    // navegaciones NO re-disparan el gate (el sidebar persiste).
+    if (gateCheckedRef.current) return;
+    gateCheckedRef.current = true;
 
     let cancelled = false;
     setOnboardingState('checking');
