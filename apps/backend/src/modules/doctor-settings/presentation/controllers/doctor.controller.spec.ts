@@ -7,6 +7,7 @@ import { UpdateDoctorScheduleUseCase } from '../../application/use-cases/doctor-
 import { GetDoctorFeaturesUseCase } from '../../application/use-cases/doctor-settings/get-doctor-features.use-case';
 import { GetDoctorFeaturesV2UseCase } from '../../application/use-cases/doctor-settings/get-doctor-features-v2.use-case';
 import { GetSubscriptionInfoUseCase } from '../../application/use-cases/doctor-settings/get-subscription-info.use-case';
+import { GetDoctorSubscriptionPanelUseCase } from '../../application/use-cases/doctor-settings/get-doctor-subscription-panel.use-case';
 import { GetServicesUseCase } from '../../application/use-cases/doctor-settings/get-services.use-case';
 import { CreateServiceUseCase } from '../../application/use-cases/doctor-settings/create-service.use-case';
 import { UpdateServiceUseCase } from '../../application/use-cases/doctor-settings/update-service.use-case';
@@ -77,6 +78,7 @@ describe('DoctorController', () => {
   const mockGetFeatures = { execute: jest.fn() };
   const mockGetFeaturesV2 = { execute: jest.fn() };
   const mockGetSubscription = { execute: jest.fn() };
+  const mockGetSubscriptionPanel = { execute: jest.fn() };
   const mockGetServices = { execute: jest.fn() };
   const mockCreateService = { execute: jest.fn() };
   const mockUpdateService = { execute: jest.fn() };
@@ -95,6 +97,7 @@ describe('DoctorController', () => {
         { provide: GetDoctorFeaturesUseCase, useValue: mockGetFeatures },
         { provide: GetDoctorFeaturesV2UseCase, useValue: mockGetFeaturesV2 },
         { provide: GetSubscriptionInfoUseCase, useValue: mockGetSubscription },
+        { provide: GetDoctorSubscriptionPanelUseCase, useValue: mockGetSubscriptionPanel },
         { provide: GetServicesUseCase, useValue: mockGetServices },
         { provide: CreateServiceUseCase, useValue: mockCreateService },
         { provide: UpdateServiceUseCase, useValue: mockUpdateService },
@@ -350,7 +353,63 @@ describe('DoctorController', () => {
   });
 
   describe('GET /doctor/subscription', () => {
-    it('returns subscription info with bannerLevel', async () => {
+    it('returns full subscription panel data matching SubscriptionData shape', async () => {
+      const panelOutput = {
+        state: {
+          plan: 'Beta Privada',
+          status: 'trial',
+          expires_at: '2027-06-17T00:00:00.000Z',
+          days_remaining: 365,
+          is_expired: false,
+          is_in_trial: true,
+        },
+        pricing: {
+          base_price_usd: 0,
+          currency: 'USD',
+          duration_options: [],
+        },
+        payment_methods: {
+          enabled: ['pago_movil', 'zelle'],
+          config: { pago_movil: { numero: '04241234567' }, zelle: { email: 'pay@test.com' } },
+        },
+        stripe_enabled: false,
+        payments: [],
+      };
+      mockGetSubscriptionPanel.execute.mockResolvedValue(panelOutput);
+
+      const result = await controller.subscription(USER);
+
+      expect(result).toEqual(panelOutput);
+      expect(result.state.is_in_trial).toBe(true);
+      expect(result.stripe_enabled).toBe(false);
+      expect(mockGetSubscriptionPanel.execute).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+
+    it('delegates to GetDoctorSubscriptionPanelUseCase using user.sub as doctorId', async () => {
+      mockGetSubscriptionPanel.execute.mockResolvedValue({
+        state: {
+          plan: 'Trial',
+          status: 'trial',
+          expires_at: null,
+          days_remaining: 0,
+          is_expired: false,
+          is_in_trial: true,
+        },
+        pricing: { base_price_usd: 0, currency: 'USD', duration_options: [] },
+        payment_methods: { enabled: [], config: {} },
+        stripe_enabled: false,
+        payments: [],
+      });
+
+      await controller.subscription(USER);
+
+      expect(mockGetSubscriptionPanel.execute).toHaveBeenCalledTimes(1);
+      expect(mockGetSubscriptionPanel.execute).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+  });
+
+  describe('GET /doctor/subscription/info', () => {
+    it('returns lightweight subscription info with bannerLevel', async () => {
       const sub = {
         status: 'active',
         plan: 'professional',
@@ -360,7 +419,7 @@ describe('DoctorController', () => {
       };
       mockGetSubscription.execute.mockResolvedValue(sub);
 
-      const result = await controller.subscription(USER);
+      const result = await controller.subscriptionInfo(USER);
 
       expect(result.success).toBe(true);
       expect(result.data.bannerLevel).toBe('none');

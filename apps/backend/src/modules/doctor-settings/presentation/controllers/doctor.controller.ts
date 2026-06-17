@@ -45,6 +45,10 @@ import {
   GetSubscriptionInfoUseCase,
   type SubscriptionInfoOutput,
 } from '../../application/use-cases/doctor-settings/get-subscription-info.use-case';
+import {
+  GetDoctorSubscriptionPanelUseCase,
+  type SubscriptionPanelOutput,
+} from '../../application/use-cases/doctor-settings/get-doctor-subscription-panel.use-case';
 import { GetServicesUseCase } from '../../application/use-cases/doctor-settings/get-services.use-case';
 import { CreateServiceUseCase } from '../../application/use-cases/doctor-settings/create-service.use-case';
 import { UpdateServiceUseCase } from '../../application/use-cases/doctor-settings/update-service.use-case';
@@ -87,6 +91,7 @@ export class DoctorController {
     private readonly getFeatures: GetDoctorFeaturesUseCase,
     private readonly getFeaturesV2: GetDoctorFeaturesV2UseCase,
     private readonly getSubscription: GetSubscriptionInfoUseCase,
+    private readonly getSubscriptionPanel: GetDoctorSubscriptionPanelUseCase,
     private readonly getServices: GetServicesUseCase,
     private readonly createService: CreateServiceUseCase,
     private readonly updateService: UpdateServiceUseCase,
@@ -179,9 +184,39 @@ export class DoctorController {
     return { success: true, data: result };
   }
 
-  /** GET /api/doctor/subscription */
+  /**
+   * GET /api/doctor/subscription
+   *
+   * Returns the full subscription panel data: current state (plan, status,
+   * expiry, days remaining), pricing options (duration + promotions),
+   * platform payment methods config, and the doctor's payment history.
+   *
+   * This endpoint replaces the previous stub (501) and the older minimal
+   * SubscriptionInfoOutput shape. The new shape matches SubscriptionData
+   * consumed by the frontend SubscriptionPanel component.
+   *
+   * SECURITY: doctor_id is taken from the authenticated JWT — never from
+   * a query param or body (anti-IDOR).
+   *
+   * DEFERRED (not implemented in this endpoint):
+   *   POST /doctor/subscription/checkout — submit payment comprobante
+   *   POST /doctor/subscription/receipt  — upload receipt image
+   *   (Both remain 501 in the BFF until a future task implements them.)
+   */
   @Get('subscription')
-  async subscription(
+  async subscription(@CurrentUser() user: CurrentUserPayload): Promise<SubscriptionPanelOutput> {
+    return this.getSubscriptionPanel.execute(user.sub);
+  }
+
+  /**
+   * GET /api/doctor/subscription/info
+   *
+   * Lightweight subscription info for banner/guard checks. Kept for
+   * backwards compatibility with internal callers (banner component, etc.)
+   * that use the minimal SubscriptionInfoOutput shape.
+   */
+  @Get('subscription/info')
+  async subscriptionInfo(
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<SubscriptionInfoOutput>> {
     const result = await this.getSubscription.execute(user.sub);

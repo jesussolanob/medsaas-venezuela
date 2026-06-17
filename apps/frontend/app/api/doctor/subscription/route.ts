@@ -1,19 +1,34 @@
+import 'server-only';
+
 /**
  * GET /api/doctor/subscription
  *
- * ETAPA 2 — NOT IMPLEMENTED.
- * Subscription state (profile plan/status, payment history, duration options)
- * will be served by the NestJS billing module once implemented.
- * The previous implementation queried Supabase directly via createAdminClient
- * and lib/subscription (which also uses Supabase) — both removed here.
+ * Thin-proxy → NestJS GET /api/doctor/subscription
  *
- * Callers receive a clear 501 so the UI can show a "próximamente" message.
+ * The backend returns a SubscriptionPanelOutput object directly (no envelope)
+ * matching the SubscriptionData shape consumed by the frontend SubscriptionPanel
+ * component. The BFF forwards it as-is so the panel can call setData(j) when r.ok.
+ *
+ * ETAPA 1: dev-auth headers via backendFetch.
+ *
+ * DEFERRED (remain 501 in separate BFF routes until future tasks implement them):
+ *   POST /api/doctor/subscription/checkout  — submit payment comprobante
+ *   POST /api/doctor/subscription/receipt   — upload receipt image
  */
+
 import { NextResponse } from 'next/server';
+import { backendFetch } from '@/lib/api-client.server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(): Promise<NextResponse> {
-  return NextResponse.json(
-    { error: 'Gestión de suscripción disponible próximamente', code: 'NOT_IMPLEMENTED' },
-    { status: 501 },
-  );
+  const result = await backendFetch('/api/doctor/subscription', { method: 'GET' });
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error?.message ?? 'Error al obtener la suscripción', code: 'BACKEND_ERROR' },
+      { status: result.error?.status ?? 500 },
+    );
+  }
+  // Return the panel data directly — SubscriptionPanel consumes it with setData(j)
+  return NextResponse.json(result.value);
 }
