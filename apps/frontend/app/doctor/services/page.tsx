@@ -26,8 +26,10 @@ import {
   EyeOff,
   Tag,
   Building2,
+  AlertTriangle,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Link from 'next/link';
 import type { DoctorService } from '@/app/doctor/services-shared';
 
 type DoctorOffice = {
@@ -178,6 +180,8 @@ export default function ServicesPage() {
     return offices.find((o) => o.id === officeId)?.name ?? 'General';
   }
 
+  const noOffices = !loading && offices.length === 0;
+
   const filtered = items.filter((i) => {
     const matchType = filter === 'all' || i.type === filter;
     const matchOffice =
@@ -229,36 +233,80 @@ export default function ServicesPage() {
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => openNew('plan')}
-            className="flex items-center gap-2 text-white text-[13px] font-bold px-5 py-2.5 rounded-full transition-all hover:-translate-y-px"
-            style={{ background: 'var(--dh-turquoise)' }}
+            disabled={noOffices}
+            title={
+              noOffices ? 'Primero debés agregar un consultorio para poder crear planes' : undefined
+            }
+            className={`flex items-center gap-2 text-[13px] font-bold px-5 py-2.5 rounded-full transition-all ${
+              noOffices
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : 'text-white hover:-translate-y-px'
+            }`}
+            style={noOffices ? undefined : { background: 'var(--dh-turquoise)' }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--dh-turquoise-700)';
+              if (!noOffices) e.currentTarget.style.background = 'var(--dh-turquoise-700)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--dh-turquoise)';
+              if (!noOffices) e.currentTarget.style.background = 'var(--dh-turquoise)';
             }}
           >
             <Plus className="w-4 h-4" /> Plan de consulta
           </button>
           <button
             onClick={() => openNew('service')}
-            className="flex items-center gap-2 text-[13px] font-bold px-5 py-2.5 rounded-full transition-all"
-            style={{
-              border: '1.5px solid var(--dh-turquoise-100)',
-              color: 'var(--dh-turquoise-700)',
-              background: 'white',
-            }}
+            disabled={noOffices}
+            title={
+              noOffices
+                ? 'Primero debés agregar un consultorio para poder crear servicios'
+                : undefined
+            }
+            className={`flex items-center gap-2 text-[13px] font-bold px-5 py-2.5 rounded-full transition-all ${
+              noOffices
+                ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                : ''
+            }`}
+            style={
+              noOffices
+                ? undefined
+                : {
+                    border: '1.5px solid var(--dh-turquoise-100)',
+                    color: 'var(--dh-turquoise-700)',
+                    background: 'white',
+                  }
+            }
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--dh-turquoise-50)';
+              if (!noOffices) e.currentTarget.style.background = 'var(--dh-turquoise-50)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'white';
+              if (!noOffices) e.currentTarget.style.background = 'white';
             }}
           >
             <Plus className="w-4 h-4" /> Servicio extra
           </button>
         </div>
       </div>
+
+      {/* Aviso: sin consultorios no se pueden crear planes */}
+      {noOffices && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800">
+              Necesitás crear al menos un consultorio antes de agregar planes
+            </p>
+            <p className="text-sm text-amber-700 mt-0.5">
+              Los planes se asocian a un consultorio. Una vez que agregues uno, podrás crear tus
+              planes y servicios.
+            </p>
+          </div>
+          <Link
+            href="/doctor/offices"
+            className="shrink-0 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 px-4 py-2 rounded-lg transition-colors"
+          >
+            Agregar consultorio
+          </Link>
+        </div>
+      )}
 
       {/* Filters row */}
       <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-wrap">
@@ -672,8 +720,13 @@ export default function ServicesPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+                disabled={saving || (!editing && noOffices)}
+                title={
+                  !editing && noOffices
+                    ? 'Necesitás un consultorio para crear este plan'
+                    : undefined
+                }
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {saving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

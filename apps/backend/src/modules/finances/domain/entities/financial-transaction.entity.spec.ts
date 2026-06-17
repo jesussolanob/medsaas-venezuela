@@ -48,4 +48,64 @@ describe('FinancialTransaction', () => {
       expect(tx.isOwnedBy('other-uuid')).toBe(false);
     });
   });
+
+  describe('conceptId', () => {
+    it('defaults conceptId to null when not provided', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      expect(tx.conceptId).toBeNull();
+    });
+
+    it('carries conceptId when provided', () => {
+      const tx = FinancialTransaction.create({ ...baseParams, conceptId: 'concept-uuid-1' });
+      expect(tx.conceptId).toBe('concept-uuid-1');
+    });
+  });
+
+  describe('patch()', () => {
+    it('returns a new transaction with updated description (immutable)', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      const patched = tx.patch({ description: 'Urgencia' });
+      expect(patched.description).toBe('Urgencia');
+      expect(tx.description).toBe('Manual consultation fee');
+    });
+
+    it('returns a new transaction with updated amount', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      const patched = tx.patch({ amount: new Money(250, 'USD') });
+      expect(patched.amount.amount).toBe(250);
+      expect(tx.amount.amount).toBe(100);
+    });
+
+    it('returns a new transaction with updated date', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      const newDate = new Date('2026-07-01T00:00:00Z');
+      const patched = tx.patch({ date: newDate });
+      expect(patched.date).toEqual(newDate);
+    });
+
+    it('sets conceptId when provided', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      const patched = tx.patch({ conceptId: 'concept-uuid-1' });
+      expect(patched.conceptId).toBe('concept-uuid-1');
+    });
+
+    it('sets conceptId to null when explicitly passed null', () => {
+      const tx = FinancialTransaction.create({ ...baseParams, conceptId: 'concept-uuid-1' });
+      const patched = tx.patch({ conceptId: null });
+      expect(patched.conceptId).toBeNull();
+    });
+
+    it('preserves existing conceptId when not specified in patch', () => {
+      const tx = FinancialTransaction.create({ ...baseParams, conceptId: 'concept-uuid-1' });
+      const patched = tx.patch({ description: 'Changed' });
+      expect(patched.conceptId).toBe('concept-uuid-1');
+    });
+
+    it('does not change type or doctorId', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      const patched = tx.patch({ description: 'Changed' });
+      expect(patched.type).toBe('income');
+      expect(patched.doctorId).toBe('doc-uuid-1');
+    });
+  });
 });

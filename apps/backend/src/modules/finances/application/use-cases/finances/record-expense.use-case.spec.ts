@@ -31,6 +31,7 @@ describe('RecordExpenseUseCase', () => {
       sumExpenses: jest.fn(),
       delete: jest.fn(),
       lifetimeIncome: jest.fn(),
+      updateTransaction: jest.fn(),
     };
     useCase = new RecordExpenseUseCase(mockRepo);
   });

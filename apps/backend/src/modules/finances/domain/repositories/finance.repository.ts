@@ -69,6 +69,16 @@ export interface IFinanceRepository {
   delete(id: string, doctorId: string): Promise<void>;
 
   /**
+   * Persists an updated transaction (all editable fields replaced).
+   * doctorId is included in the WHERE clause as a second ownership gate —
+   * defense in depth even when the use-case has already verified ownership.
+   */
+  updateTransaction(
+    transaction: FinancialTransaction,
+    doctorId: string,
+  ): Promise<FinancialTransaction>;
+
+  /**
    * Returns the all-time total income for a doctor (approved consultations + manual income).
    * No date filtering applied.
    */

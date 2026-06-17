@@ -5,7 +5,7 @@ import { appErrorToString } from '@/lib/app-error';
 /**
  * app/doctor/finances/actions.ts
  *
- * Server Actions for the finances page (expenses / consultations-for-reports).
+ * Server Actions for the finances page (expenses / income / consultations-for-reports).
  * ETAPA 1 — thin-proxy to the NestJS `finances` + `consultations` modules.
  *
  * Backend endpoints used:
@@ -13,6 +13,17 @@ import { appErrorToString } from '@/lib/app-error';
  *        → financial_transactions (includes type='income'|'expense')
  *   POST /api/finances/expense
  *        → records a manual expense entry
+ *   GET  /api/finances/income-concepts
+ *        → list of income concepts [{ id, name, isActive, sortOrder }]
+ *   POST /api/finances/income-concepts
+ *        → create income concept { name }
+ *   PUT  /api/finances/income-concepts/:id
+ *        → update income concept { name?, isActive?, sortOrder? }
+ *   DELETE /api/finances/income-concepts/:id → 204
+ *   POST /api/finances/income
+ *        → record manual income { amount, currency?, description, conceptId?, date? }
+ *   PUT  /api/finances/transactions/:id
+ *        → edit transaction { description?, amount?, currency?, transactionDate?, conceptId? }
  *   GET  /api/consultations?page=1&limit=100
  *        → paginated consultation list (clinical fields)
  *   GET  /api/consultations/with-patient?limit=100
@@ -31,7 +42,7 @@ import { appErrorToString } from '@/lib/app-error';
 
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
-import { backendGet, backendPost, type AppError } from '@/lib/api-client.server';
+import { backendGet, backendPost, backendPut, backendDelete } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,7 +128,6 @@ interface ConsultationWithPatient {
   patient_email: string | null;
 }
 
-
 // ---------------------------------------------------------------------------
 // Expenses (financial_transactions type='expense')
 // ---------------------------------------------------------------------------
@@ -150,23 +160,29 @@ export async function getExpenses(month?: string): Promise<BackendExpense[]> {
 
   if (Array.isArray(raw)) {
     items = raw;
-  } else if (raw && typeof raw === 'object' && Array.isArray((raw as PaginatedEnvelope<TransactionItem>).data)) {
+  } else if (
+    raw &&
+    typeof raw === 'object' &&
+    Array.isArray((raw as PaginatedEnvelope<TransactionItem>).data)
+  ) {
     items = (raw as PaginatedEnvelope<TransactionItem>).data;
   }
 
   return items
     .filter((t) => t.type === 'expense')
-    .map((t): BackendExpense => ({
-      id: t.id,
-      // Backend stores the full description — use it as concept.
-      // vendor_name falls back to the description (no separate vendor field).
-      vendor_name: t.description,
-      concept: t.description,
-      amount: t.amount,
-      due_date: t.date ? t.date.slice(0, 10) : t.createdAt.slice(0, 10),
-      paid: true, // financial_transactions are always committed
-      notes: t.currency !== 'USD' ? t.currency : undefined,
-    }));
+    .map(
+      (t): BackendExpense => ({
+        id: t.id,
+        // Backend stores the full description — use it as concept.
+        // vendor_name falls back to the description (no separate vendor field).
+        vendor_name: t.description,
+        concept: t.description,
+        amount: t.amount,
+        due_date: t.date ? t.date.slice(0, 10) : t.createdAt.slice(0, 10),
+        paid: true, // financial_transactions are always committed
+        notes: t.currency !== 'USD' ? t.currency : undefined,
+      }),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +220,158 @@ export async function addExpense(input: AddExpenseInput): Promise<AddExpenseResu
 }
 
 // ---------------------------------------------------------------------------
+// Income concepts
+// ---------------------------------------------------------------------------
+
+export type IncomeConcept = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type ConceptResult =
+  | { success: true; data: IncomeConcept }
+  | { success: false; error: string };
+export type SimpleResult = { success: true } | { success: false; error: string };
+
+/**
+ * Fetch all income concepts for the authenticated doctor.
+ */
+export async function getIncomeConcepts(): Promise<IncomeConcept[]> {
+  const result = await backendGet<IncomeConcept[]>('/api/finances/income-concepts');
+  if (!result.ok) {
+    log.error('[getIncomeConcepts] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+  const raw = result.value as unknown;
+  if (Array.isArray(raw)) return raw as IncomeConcept[];
+  return [];
+}
+
+/**
+ * Create a new income concept.
+ */
+export async function createIncomeConcept(name: string): Promise<ConceptResult> {
+  const result = await backendPost<IncomeConcept>('/api/finances/income-concepts', {
+    name: name.trim(),
+  });
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+  revalidatePath('/doctor/finances');
+  return { success: true, data: result.value };
+}
+
+/**
+ * Update an income concept (name / isActive / sortOrder).
+ */
+export async function updateIncomeConcept(
+  id: string,
+  patch: { name?: string; isActive?: boolean; sortOrder?: number },
+): Promise<ConceptResult> {
+  const result = await backendPut<IncomeConcept>(`/api/finances/income-concepts/${id}`, patch);
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+  revalidatePath('/doctor/finances');
+  return { success: true, data: result.value };
+}
+
+/**
+ * Delete an income concept.
+ */
+export async function deleteIncomeConcept(id: string): Promise<SimpleResult> {
+  const result = await backendDelete<void>(`/api/finances/income-concepts/${id}`);
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+  revalidatePath('/doctor/finances');
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Add income (extraordinary / manual)
+// ---------------------------------------------------------------------------
+
+export type AddIncomeInput = {
+  description: string;
+  amount: number;
+  currency: string;
+  conceptId?: string;
+  date?: string;
+};
+
+export type AddIncomeResult = { success: true } | { success: false; error: string };
+
+/**
+ * Record a manual extraordinary income for the authenticated doctor.
+ */
+export async function addIncome(input: AddIncomeInput): Promise<AddIncomeResult> {
+  const payload: {
+    amount: number;
+    currency: string;
+    description: string;
+    conceptId?: string;
+    date?: string;
+  } = {
+    amount: input.amount,
+    currency: input.currency || 'USD',
+    description: input.description.trim(),
+  };
+  if (input.conceptId) payload.conceptId = input.conceptId;
+  if (input.date) payload.date = `${input.date}T12:00:00.000Z`;
+
+  const result = await backendPost<unknown>('/api/finances/income', payload);
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+  revalidatePath('/doctor/finances');
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Edit transaction (expense or income)
+// ---------------------------------------------------------------------------
+
+export type EditTransactionInput = {
+  id: string;
+  description?: string;
+  amount?: number;
+  currency?: string;
+  transactionDate?: string;
+  conceptId?: string | null;
+};
+
+export type EditTransactionResult = { success: true } | { success: false; error: string };
+
+/**
+ * Edit an existing financial transaction (expense or manual income).
+ */
+export async function editTransaction(input: EditTransactionInput): Promise<EditTransactionResult> {
+  const { id, ...patch } = input;
+
+  // Build patch without undefined keys
+  const body: Record<string, unknown> = {};
+  if (patch.description !== undefined) body.description = patch.description.trim();
+  if (patch.amount !== undefined) body.amount = patch.amount;
+  if (patch.currency !== undefined) body.currency = patch.currency;
+  if (patch.transactionDate !== undefined)
+    body.transactionDate = `${patch.transactionDate}T12:00:00.000Z`;
+  if ('conceptId' in patch) body.conceptId = patch.conceptId ?? null;
+
+  const result = await backendPut<unknown>(`/api/finances/transactions/${id}`, body);
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+  revalidatePath('/doctor/finances');
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
 // Consultations for reports tab
 // ---------------------------------------------------------------------------
 
@@ -221,16 +389,12 @@ export async function addExpense(input: AddExpenseInput): Promise<AddExpenseResu
  *   appointment_mode, payment_method, payment_reference, blocks_data,
  *   patient_cedula, plan_name → all returned as null
  */
-export async function getConsultationsForReports(
-  limit = 100,
-): Promise<BackendConsultationRow[]> {
+export async function getConsultationsForReports(limit = 100): Promise<BackendConsultationRow[]> {
   const [listResult, withPatientResult] = await Promise.all([
     backendGet<PaginatedEnvelope<ConsultationListItem>>(
       `/api/consultations?page=1&limit=${Math.min(limit, 100)}`,
     ),
-    backendGet<unknown>(
-      `/api/consultations/with-patient?limit=${Math.min(limit, 100)}`,
-    ),
+    backendGet<unknown>(`/api/consultations/with-patient?limit=${Math.min(limit, 100)}`),
   ]);
 
   const listItems: ConsultationListItem[] = (() => {
@@ -243,7 +407,11 @@ export async function getConsultationsForReports(
     }
     const raw = listResult.value as unknown;
     if (Array.isArray(raw)) return raw as ConsultationListItem[];
-    if (raw && typeof raw === 'object' && Array.isArray((raw as PaginatedEnvelope<ConsultationListItem>).data)) {
+    if (
+      raw &&
+      typeof raw === 'object' &&
+      Array.isArray((raw as PaginatedEnvelope<ConsultationListItem>).data)
+    ) {
       return (raw as PaginatedEnvelope<ConsultationListItem>).data;
     }
     return [];
@@ -256,7 +424,7 @@ export async function getConsultationsForReports(
     const withPatientItems: ConsultationWithPatient[] = Array.isArray(rawWithPatient)
       ? rawWithPatient
       : Array.isArray((rawWithPatient as { data?: unknown[] })?.data)
-        ? ((rawWithPatient as { data: ConsultationWithPatient[] }).data)
+        ? (rawWithPatient as { data: ConsultationWithPatient[] }).data
         : [];
 
     for (const item of withPatientItems) {

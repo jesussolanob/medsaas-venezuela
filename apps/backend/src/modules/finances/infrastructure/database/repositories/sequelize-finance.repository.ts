@@ -54,6 +54,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
       description: transaction.description,
       relatedConsultationId: transaction.relatedConsultationId,
       transactionDate: transaction.date,
+      conceptId: transaction.conceptId ?? null,
     });
     return this.toDomain(row);
   }
@@ -131,13 +132,34 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
     return this.sumByType(doctorId, month, 'expense');
   }
 
+  async updateTransaction(
+    transaction: FinancialTransaction,
+    doctorId: string,
+  ): Promise<FinancialTransaction> {
+    await this.txModel.update(
+      {
+        amount: transaction.amount.amount,
+        currency: transaction.amount.currency,
+        description: transaction.description,
+        transactionDate: transaction.date,
+        conceptId: transaction.conceptId,
+      },
+      // doctorId in WHERE is a second ownership gate (defense in depth).
+      { where: { id: transaction.id, doctorId } as WhereOptions },
+    );
+    const updated = await this.txModel.findByPk(transaction.id);
+    // The record was just updated — it cannot be missing at this point.
+    return this.toDomain(updated!);
+  }
+
   async delete(id: string, doctorId: string): Promise<void> {
     const row = await this.txModel.findOne({
       where: { id } as WhereOptions,
     });
 
     if (!row) throw new TransactionNotFoundError();
-    if (row.doctorId !== doctorId) throw new ForbiddenDomainError('Transaction does not belong to this doctor');
+    if (row.doctorId !== doctorId)
+      throw new ForbiddenDomainError('Transaction does not belong to this doctor');
 
     await this.txModel.destroy({
       where: { id } as WhereOptions,
@@ -251,6 +273,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
       relatedConsultationId: row.relatedConsultationId,
       date: row.transactionDate,
       createdAt: row.createdAt,
+      conceptId: row.conceptId ?? null,
     });
   }
 }

@@ -124,6 +124,8 @@ function makeDoctorProfile(): DoctorProfile {
     currencyMode: null,
     customRate: null,
     customRateLabel: null,
+    cedula: null,
+    birthDate: null,
   });
 }
 

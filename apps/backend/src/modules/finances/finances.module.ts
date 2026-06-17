@@ -5,14 +5,17 @@ import { FinancialTransactionModel } from './infrastructure/database/models/fina
 import { AppSettingModel } from './infrastructure/database/models/app-setting.model';
 import { PaymentModel } from './infrastructure/database/models/payment.model';
 import { PaymentItemModel } from './infrastructure/database/models/payment-item.model';
+import { IncomeConceptModel } from './infrastructure/database/models/income-concept.model';
 import { SequelizeFinanceRepository } from './infrastructure/database/repositories/sequelize-finance.repository';
 import { RedisUsdtRateStore } from './infrastructure/database/repositories/redis-usdt-rate.store';
 import { SequelizePaymentRepository } from './infrastructure/database/repositories/sequelize-payment.repository';
+import { SequelizeIncomeConceptRepository } from './infrastructure/database/repositories/sequelize-income-concept.repository';
 import { BinanceRateFetcher } from './infrastructure/rate-fetchers/binance-rate.fetcher';
 import { BcvRateFetcher } from './infrastructure/rate-fetchers/bcv-rate.fetcher';
 import { FINANCE_REPOSITORY } from './domain/repositories/finance.repository';
 import { USDT_RATE_STORE } from './domain/repositories/usdt-rate.store';
 import { PAYMENT_REPOSITORY } from './domain/repositories/payment.repository';
+import { INCOME_CONCEPT_REPOSITORY } from './domain/repositories/income-concept.repository';
 import { BINANCE_RATE_FETCHER, BCV_RATE_FETCHER } from './domain/repositories/rate-fetcher.ports';
 
 // Use cases — finances
@@ -26,6 +29,11 @@ import { SetRateSourceUseCase } from './application/use-cases/finances/set-rate-
 import { GetRatesSummaryUseCase } from './application/use-cases/finances/get-rates-summary.use-case';
 import { DeleteTransactionUseCase } from './application/use-cases/finances/delete-transaction.use-case';
 import { GetLifetimeIncomeUseCase } from './application/use-cases/finances/get-lifetime-income.use-case';
+import { ListIncomeConceptsUseCase } from './application/use-cases/finances/list-income-concepts.use-case';
+import { CreateIncomeConceptUseCase } from './application/use-cases/finances/create-income-concept.use-case';
+import { UpdateIncomeConceptUseCase } from './application/use-cases/finances/update-income-concept.use-case';
+import { DeleteIncomeConceptUseCase } from './application/use-cases/finances/delete-income-concept.use-case';
+import { UpdateTransactionUseCase } from './application/use-cases/finances/update-transaction.use-case';
 
 // Use cases — payments
 import { ListPaymentsUseCase } from './application/use-cases/payments/list-payments.use-case';
@@ -60,6 +68,7 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
       PaymentModel,
       PaymentItemModel,
       AppointmentModel,
+      IncomeConceptModel,
     ]),
   ],
   controllers: [
@@ -95,6 +104,10 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
       provide: PAYMENT_REPOSITORY,
       useClass: SequelizePaymentRepository,
     },
+    {
+      provide: INCOME_CONCEPT_REPOSITORY,
+      useClass: SequelizeIncomeConceptRepository,
+    },
 
     // Guards
     RolesGuard,
@@ -110,6 +123,11 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
     GetRatesSummaryUseCase,
     DeleteTransactionUseCase,
     GetLifetimeIncomeUseCase,
+    ListIncomeConceptsUseCase,
+    CreateIncomeConceptUseCase,
+    UpdateIncomeConceptUseCase,
+    DeleteIncomeConceptUseCase,
+    UpdateTransactionUseCase,
 
     // Use cases — payments
     ListPaymentsUseCase,

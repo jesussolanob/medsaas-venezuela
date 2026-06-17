@@ -13,7 +13,14 @@ import {
   getExpenses,
   addExpense,
   getConsultationsForReports,
+  getIncomeConcepts,
+  addIncome,
+  createIncomeConcept,
+  updateIncomeConcept,
+  deleteIncomeConcept,
+  editTransaction,
   type BackendConsultationRow,
+  type IncomeConcept,
 } from './actions';
 import {
   DollarSign,
@@ -39,6 +46,9 @@ import {
   Stethoscope,
   Pill,
   MessageCircle,
+  Pencil,
+  Check,
+  ArrowDownCircle,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -69,6 +79,16 @@ type Expense = {
   due_date: string;
   paid: boolean;
   notes?: string;
+};
+
+/** Ingreso manual extraordinario (financial_transactions type='income') */
+type ManualIncome = {
+  id: string;
+  description: string;
+  amount: number;
+  currency: string;
+  conceptId: string | null;
+  date: string;
 };
 
 // ConsultationRow — re-exported from actions.ts (backend-aligned shape).
@@ -130,15 +150,45 @@ export default function FinancesPage() {
   // 2026-04-30: modal de detalle de consulta (UX feature request).
   const [detailRow, setDetailRow] = useState<ConsultationRow | null>(null);
 
+  // #6 — Registrar ingreso extraordinario
+  const [incomeConcepts, setIncomeConcepts] = useState<IncomeConcept[]>([]);
+  const [showIncomeModal, setShowIncomeModal] = useState(false);
+  const [savingIncome, setSavingIncome] = useState(false);
+  const [incomeError, setIncomeError] = useState('');
+  const [incomeForm, setIncomeForm] = useState({
+    description: '',
+    amount: '',
+    conceptId: '',
+    date: new Date().toISOString().split('T')[0],
+  });
+
+  // #7 — Editar transacción (gasto o ingreso manual)
+  const [editingTx, setEditingTx] = useState<{
+    id: string;
+    type: 'expense' | 'manual_income';
+    description: string;
+    amount: string;
+    date: string;
+    conceptId: string;
+  } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Ingresos manuales (financial_transactions type='income')
+  // Pendiente endpoint /api/finances/transactions?type=income (Fase 5)
+  const [, setManualIncomes] = useState<ManualIncome[]>([]);
+
   // ETAPA 1: loadData migrado al backend. Supabase eliminado.
   const loadData = async () => {
     setLoading(true);
     try {
       // Pagos APROBADOS (ingresos reales) + PENDIENTES (cuentas por cobrar) vía backend (BFF).
-      const [paid, pending, exp, cons] = await Promise.all([
+      // Adicionalmente cargamos: gastos, conceptos de ingreso y consultas en paralelo.
+      const [paid, pending, exp, concepts, cons] = await Promise.all([
         getPayments({ status: 'approved' }),
         getPayments({ status: 'pending' }),
         getExpenses(),
+        getIncomeConcepts(),
         getConsultationsForReports(200),
       ]);
 
@@ -157,8 +207,9 @@ export default function FinancesPage() {
 
       setIncomes(paid.map(toIncome));
       setPendingIncomes(pending.map(toIncome));
+      setIncomeConcepts(concepts);
 
-      // Map backend expenses to the Expense shape consumed by the UI
+      // getExpenses() ya filtra type='expense' en el backend
       setExpenses(
         exp.map((e) => ({
           id: e.id,
@@ -170,6 +221,9 @@ export default function FinancesPage() {
           notes: e.notes,
         })),
       );
+
+      // Ingresos manuales: pendiente endpoint /api/finances/transactions?type=income (Fase 5)
+      setManualIncomes([]);
 
       setConsultationsRows(cons);
     } catch (err) {
@@ -616,6 +670,73 @@ export default function FinancesPage() {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
   };
 
+  // #6 — Guardar ingreso extraordinario
+  const handleAddIncome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIncomeError('');
+    if (!incomeForm.description || !incomeForm.amount) {
+      setIncomeError('Descripción y monto son obligatorios.');
+      return;
+    }
+    setSavingIncome(true);
+    try {
+      const result = await addIncome({
+        description: incomeForm.description,
+        amount: parseFloat(incomeForm.amount),
+        currency: 'USD',
+        conceptId: incomeForm.conceptId || undefined,
+        date: incomeForm.date || undefined,
+      });
+      if (!result.success) {
+        setIncomeError(result.error);
+      } else {
+        setIncomeForm({
+          description: '',
+          amount: '',
+          conceptId: '',
+          date: new Date().toISOString().split('T')[0],
+        });
+        setShowIncomeModal(false);
+        loadData();
+      }
+    } catch (err) {
+      reportError('doctor/finances', 'handleAddIncome', err);
+      setIncomeError('Ocurrió un error al registrar el ingreso.');
+    }
+    setSavingIncome(false);
+  };
+
+  // #7 — Guardar edición de transacción (gasto o ingreso manual)
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+    setEditError('');
+    if (!editingTx.description || !editingTx.amount) {
+      setEditError('Descripción y monto son obligatorios.');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const result = await editTransaction({
+        id: editingTx.id,
+        description: editingTx.description,
+        amount: parseFloat(editingTx.amount),
+        transactionDate: editingTx.date || undefined,
+        conceptId: editingTx.conceptId || null,
+      });
+      if (!result.success) {
+        setEditError(result.error);
+      } else {
+        setEditingTx(null);
+        loadData();
+      }
+    } catch (err) {
+      reportError('doctor/finances', 'handleSaveEdit', err);
+      setEditError('Ocurrió un error al guardar los cambios.');
+    }
+    setSavingEdit(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -697,14 +818,27 @@ export default function FinancesPage() {
             );
           })}
         </div>
-        {tab !== 'reports' && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* #6 — Botón Registrar ingreso */}
           <button
-            onClick={() => downloadCSV('all')}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-sm font-semibold hover:bg-teal-100 transition-colors"
+            onClick={() => {
+              setIncomeError('');
+              setShowIncomeModal(true);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
           >
-            <Download className="w-4 h-4" /> Descargar movimientos (CSV)
+            <ArrowDownCircle className="w-4 h-4" /> Registrar ingreso
           </button>
-        )}
+          {tab !== 'reports' && (
+            <button
+              onClick={() => downloadCSV('all')}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-sm font-semibold hover:bg-teal-100 transition-colors"
+            >
+              <Download className="w-4 h-4" /> Descargar (CSV)
+            </button>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards — visibles en overview/income/expenses (no en reports) */}
@@ -1272,11 +1406,12 @@ export default function FinancesPage() {
                         <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                           Monto Bs
                         </th>
+                        <th className="w-10"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {tableIncomes.map((inc) => (
-                        <tr key={inc.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={inc.id} className="hover:bg-slate-50 transition-colors group">
                           <td className="px-5 py-3 text-xs text-slate-600">
                             {new Date(inc.date).toLocaleDateString('es-VE')}
                           </td>
@@ -1292,6 +1427,26 @@ export default function FinancesPage() {
                           <td className="px-5 py-3 text-xs text-slate-400 text-right">
                             {bcvRate ? toBs(inc.amount_usd || 0) : '—'}
                           </td>
+                          {/* #7 — Editar ingreso (solo ingresos manuales; pagos de consulta no se editan aquí) */}
+                          <td className="px-2 py-3">
+                            <button
+                              onClick={() => {
+                                setEditError('');
+                                setEditingTx({
+                                  id: inc.id,
+                                  type: 'manual_income',
+                                  description: inc.patient_name,
+                                  amount: String(inc.amount_usd),
+                                  date: inc.date ? inc.date.slice(0, 10) : '',
+                                  conceptId: '',
+                                });
+                              }}
+                              className="p-1 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50 opacity-0 group-hover:opacity-100 transition-all"
+                              title="Editar ingreso"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1306,6 +1461,7 @@ export default function FinancesPage() {
                         <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">
                           {bcvRate ? toBs(tableTotal) : '—'}
                         </td>
+                        <td></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1314,6 +1470,57 @@ export default function FinancesPage() {
             </div>
           );
         })()}
+
+      {/* #6 — Modal: Registrar ingreso extraordinario */}
+      {showIncomeModal && (
+        <IncomeModal
+          concepts={incomeConcepts}
+          form={incomeForm}
+          saving={savingIncome}
+          error={incomeError}
+          onChangeForm={setIncomeForm}
+          onSubmit={handleAddIncome}
+          onClose={() => setShowIncomeModal(false)}
+          onCreateConcept={async (name) => {
+            const res = await createIncomeConcept(name);
+            if (res.success) {
+              setIncomeConcepts((prev) => [...prev, res.data]);
+              setIncomeForm((f) => ({ ...f, conceptId: res.data.id }));
+            }
+            return res;
+          }}
+          onUpdateConcept={async (id, patch) => {
+            const res = await updateIncomeConcept(id, patch);
+            if (res.success) {
+              setIncomeConcepts((prev) => prev.map((c) => (c.id === id ? res.data : c)));
+            }
+            return res;
+          }}
+          onDeleteConcept={async (id) => {
+            const res = await deleteIncomeConcept(id);
+            if (res.success) {
+              setIncomeConcepts((prev) => prev.filter((c) => c.id !== id));
+              if (incomeForm.conceptId === id) {
+                setIncomeForm((f) => ({ ...f, conceptId: '' }));
+              }
+            }
+            return res;
+          }}
+        />
+      )}
+
+      {/* #7 — Modal: Editar transacción */}
+      {editingTx && (
+        <EditTransactionModal
+          tx={editingTx}
+          concepts={incomeConcepts}
+          saving={savingEdit}
+          error={editError}
+          onChangeTx={setEditingTx}
+          onSubmit={handleSaveEdit}
+          onClose={() => setEditingTx(null)}
+        />
+      )}
 
       {/* Expenses Table */}
       {(tab === 'overview' || tab === 'expenses') &&
@@ -1465,7 +1672,7 @@ export default function FinancesPage() {
                         <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                           Monto Bs
                         </th>
-                        <th className="w-10"></th>
+                        <th className="w-16"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1490,12 +1697,33 @@ export default function FinancesPage() {
                             {bcvRate ? toBs(exp.amount || 0) : '—'}
                           </td>
                           <td className="px-2 py-3">
-                            <button
-                              onClick={() => handleDeleteExpense(exp.id)}
-                              className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              {/* #7 — Editar gasto */}
+                              <button
+                                onClick={() => {
+                                  setEditError('');
+                                  setEditingTx({
+                                    id: exp.id,
+                                    type: 'expense',
+                                    description: exp.concept,
+                                    amount: String(exp.amount),
+                                    date: exp.due_date,
+                                    conceptId: '',
+                                  });
+                                }}
+                                className="p-1 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50"
+                                title="Editar gasto"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteExpense(exp.id)}
+                                className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                title="Eliminar gasto"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1874,6 +2102,511 @@ function DetailField({
       ) : (
         <p className="text-sm text-slate-800 whitespace-pre-wrap">{value}</p>
       )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// #6 — IncomeModal
+// Modal para registrar un ingreso extraordinario/manual.
+// Incluye selector de concepto y mini-gestor inline (agregar/editar/eliminar).
+// ════════════════════════════════════════════════════════════════════════════
+
+type IncomeForm = {
+  description: string;
+  amount: string;
+  conceptId: string;
+  date: string;
+};
+
+type ConceptManagerResult =
+  | { success: true; data: IncomeConcept }
+  | { success: false; error: string };
+
+type SimpleActionResult = { success: true } | { success: false; error: string };
+
+function IncomeModal({
+  concepts,
+  form,
+  saving,
+  error,
+  onChangeForm,
+  onSubmit,
+  onClose,
+  onCreateConcept,
+  onUpdateConcept,
+  onDeleteConcept,
+}: {
+  concepts: IncomeConcept[];
+  form: IncomeForm;
+  saving: boolean;
+  error: string;
+  onChangeForm: React.Dispatch<React.SetStateAction<IncomeForm>>;
+  onSubmit: (e: React.FormEvent) => void;
+  onClose: () => void;
+  onCreateConcept: (name: string) => Promise<ConceptManagerResult>;
+  onUpdateConcept: (
+    id: string,
+    patch: { name?: string; isActive?: boolean },
+  ) => Promise<ConceptManagerResult>;
+  onDeleteConcept: (id: string) => Promise<SimpleActionResult>;
+}) {
+  const [showManager, setShowManager] = useState(false);
+  const [newConceptName, setNewConceptName] = useState('');
+  const [savingConcept, setSavingConcept] = useState(false);
+  const [conceptError, setConceptError] = useState('');
+  const [editingConceptId, setEditingConceptId] = useState<string | null>(null);
+  const [editingConceptName, setEditingConceptName] = useState('');
+
+  const handleCreateConcept = async () => {
+    if (!newConceptName.trim()) return;
+    setSavingConcept(true);
+    setConceptError('');
+    const res = await onCreateConcept(newConceptName.trim());
+    if (!res.success) setConceptError(res.error);
+    else setNewConceptName('');
+    setSavingConcept(false);
+  };
+
+  const handleUpdateConcept = async (id: string) => {
+    if (!editingConceptName.trim()) return;
+    setSavingConcept(true);
+    setConceptError('');
+    const res = await onUpdateConcept(id, { name: editingConceptName.trim() });
+    if (!res.success) setConceptError(res.error);
+    else setEditingConceptId(null);
+    setSavingConcept(false);
+  };
+
+  const handleDeleteConcept = async (id: string) => {
+    setSavingConcept(true);
+    setConceptError('');
+    const res = await onDeleteConcept(id);
+    if (!res.success) setConceptError(res.error);
+    setSavingConcept(false);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-3 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
+            >
+              <ArrowDownCircle className="w-4 h-4 text-white" />
+            </div>
+            <h2 className="text-base font-bold text-slate-800">Registrar ingreso</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-slate-100 rounded-lg"
+            aria-label="Cerrar"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={onSubmit} className="px-6 py-5 space-y-4">
+          {/* Descripción */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              Descripción <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="Ej. Consulta particular, honorarios, etc."
+              value={form.description}
+              onChange={(e) => onChangeForm((f) => ({ ...f, description: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+              required
+            />
+          </div>
+
+          {/* Monto */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              Monto (USD) <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+                $
+              </span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={form.amount}
+                onChange={(e) => onChangeForm((f) => ({ ...f, amount: e.target.value }))}
+                className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Fecha */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fecha</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => onChangeForm((f) => ({ ...f, date: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+            />
+          </div>
+
+          {/* Concepto */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-600">
+                Concepto (opcional)
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowManager((v) => !v)}
+                className="text-[10px] font-bold text-teal-600 hover:text-teal-700"
+              >
+                {showManager ? 'Cerrar gestor' : 'Gestionar conceptos'}
+              </button>
+            </div>
+
+            <select
+              value={form.conceptId}
+              onChange={(e) => onChangeForm((f) => ({ ...f, conceptId: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+            >
+              <option value="">— Sin concepto —</option>
+              {concepts
+                .filter((c) => c.isActive)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
+
+            {/* Mini-gestor inline de conceptos */}
+            {showManager && (
+              <div className="mt-3 border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Gestionar conceptos
+                </p>
+
+                {/* Lista */}
+                <div className="space-y-1.5">
+                  {concepts.length === 0 && (
+                    <p className="text-xs text-slate-400 italic">No hay conceptos aún.</p>
+                  )}
+                  {concepts.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-slate-200"
+                    >
+                      {editingConceptId === c.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editingConceptName}
+                            onChange={(e) => setEditingConceptName(e.target.value)}
+                            className="flex-1 text-xs px-2 py-1 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-teal-300"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateConcept(c.id)}
+                            disabled={savingConcept}
+                            className="p-1 rounded-md text-teal-600 hover:bg-teal-50"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingConceptId(null)}
+                            className="p-1 rounded-md text-slate-400 hover:bg-slate-100"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className={`flex-1 text-xs font-medium ${c.isActive ? 'text-slate-800' : 'text-slate-400 line-through'}`}
+                          >
+                            {c.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingConceptId(c.id);
+                              setEditingConceptName(c.name);
+                            }}
+                            className="p-1 rounded-md text-slate-300 hover:text-teal-600 hover:bg-teal-50"
+                            title="Editar"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteConcept(c.id)}
+                            disabled={savingConcept}
+                            className="p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Agregar nuevo */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nuevo concepto..."
+                    value={newConceptName}
+                    onChange={(e) => setNewConceptName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCreateConcept();
+                      }
+                    }}
+                    className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateConcept}
+                    disabled={savingConcept || !newConceptName.trim()}
+                    className="px-3 py-2 rounded-lg text-xs font-bold text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-50"
+                  >
+                    {savingConcept ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+
+                {conceptError && <p className="text-xs text-red-500 font-medium">{conceptError}</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Error general */}
+          {error && (
+            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200">
+              <p className="text-xs text-red-600 font-medium">{error}</p>
+            </div>
+          )}
+
+          {/* Acciones */}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              Guardar ingreso
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// #7 — EditTransactionModal
+// Modal de edición para una transacción financiera (gasto o ingreso manual).
+// ════════════════════════════════════════════════════════════════════════════
+
+type EditingTx = {
+  id: string;
+  type: 'expense' | 'manual_income';
+  description: string;
+  amount: string;
+  date: string;
+  conceptId: string;
+};
+
+function EditTransactionModal({
+  tx,
+  concepts,
+  saving,
+  error,
+  onChangeTx,
+  onSubmit,
+  onClose,
+}: {
+  tx: EditingTx;
+  concepts: IncomeConcept[];
+  saving: boolean;
+  error: string;
+  onChangeTx: React.Dispatch<React.SetStateAction<EditingTx | null>>;
+  onSubmit: (e: React.FormEvent) => void;
+  onClose: () => void;
+}) {
+  const isIncome = tx.type === 'manual_income';
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-3 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+              <Pencil className="w-4 h-4 text-slate-600" />
+            </div>
+            <h2 className="text-base font-bold text-slate-800">
+              Editar {isIncome ? 'ingreso' : 'gasto'}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-slate-100 rounded-lg"
+            aria-label="Cerrar"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={onSubmit} className="px-6 py-5 space-y-4">
+          {/* Descripción */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              Descripción <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={tx.description}
+              onChange={(e) =>
+                onChangeTx((prev) => prev && { ...prev, description: e.target.value })
+              }
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+              required
+            />
+          </div>
+
+          {/* Monto */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              Monto (USD) <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+                $
+              </span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={tx.amount}
+                onChange={(e) => onChangeTx((prev) => prev && { ...prev, amount: e.target.value })}
+                className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Fecha */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fecha</label>
+            <input
+              type="date"
+              value={tx.date}
+              onChange={(e) => onChangeTx((prev) => prev && { ...prev, date: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+            />
+          </div>
+
+          {/* Concepto (solo para ingresos manuales) */}
+          {isIncome && concepts.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                Concepto (opcional)
+              </label>
+              <select
+                value={tx.conceptId}
+                onChange={(e) =>
+                  onChangeTx((prev) => prev && { ...prev, conceptId: e.target.value })
+                }
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+              >
+                <option value="">— Sin concepto —</option>
+                {concepts
+                  .filter((c) => c.isActive)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200">
+              <p className="text-xs text-red-600 font-medium">{error}</p>
+            </div>
+          )}
+
+          {/* Acciones */}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              Guardar cambios
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

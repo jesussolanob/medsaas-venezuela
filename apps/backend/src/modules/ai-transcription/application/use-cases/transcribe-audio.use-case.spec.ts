@@ -38,6 +38,8 @@ function makeProfile(plan: string, subscriptionStatus: string): DoctorProfile {
     currencyMode: 'usd_bcv',
     customRate: null,
     customRateLabel: null,
+    cedula: null,
+    birthDate: null,
   });
 }
 

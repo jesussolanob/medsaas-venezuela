@@ -12,6 +12,8 @@ export const RecordFinanceEntryDtoSchema = z
     related_consultation_id: z.string().uuid().nullable().optional(),
     /** ISO date string for the transaction date. Defaults to now if omitted. */
     date: z.string().datetime({ offset: true }).optional(),
+    /** Optional link to an income_concept (only for income entries). */
+    conceptId: z.string().uuid().nullable().optional(),
   })
   .strict();
 

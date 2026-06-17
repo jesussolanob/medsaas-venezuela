@@ -20,6 +20,7 @@ describe('DeleteTransactionUseCase', () => {
       sumExpenses: jest.fn(),
       delete: jest.fn(),
       lifetimeIncome: jest.fn(),
+      updateTransaction: jest.fn(),
     };
     useCase = new DeleteTransactionUseCase(mockRepo);
   });

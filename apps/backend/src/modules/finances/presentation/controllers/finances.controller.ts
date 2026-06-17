@@ -9,6 +9,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -18,7 +19,16 @@ import {
   type CurrentUserPayload,
 } from '../../../../presentation/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
-import { RecordFinanceEntryDtoSchema, type RecordFinanceEntryDto } from '@delta/shared-types';
+import {
+  RecordFinanceEntryDtoSchema,
+  type RecordFinanceEntryDto,
+  CreateIncomeConceptDtoSchema,
+  type CreateIncomeConceptDto,
+  UpdateIncomeConceptDtoSchema,
+  type UpdateIncomeConceptDto,
+  UpdateTransactionDtoSchema,
+  type UpdateTransactionDto,
+} from '@delta/shared-types';
 
 import {
   GetFinancialSummaryUseCase,
@@ -41,6 +51,20 @@ import {
   GetLifetimeIncomeUseCase,
   type GetLifetimeIncomeOutput,
 } from '../../application/use-cases/finances/get-lifetime-income.use-case';
+import {
+  ListIncomeConceptsUseCase,
+  type IncomeConceptItem,
+} from '../../application/use-cases/finances/list-income-concepts.use-case';
+import {
+  CreateIncomeConceptUseCase,
+  type IncomeConceptOutput,
+} from '../../application/use-cases/finances/create-income-concept.use-case';
+import { UpdateIncomeConceptUseCase } from '../../application/use-cases/finances/update-income-concept.use-case';
+import { DeleteIncomeConceptUseCase } from '../../application/use-cases/finances/delete-income-concept.use-case';
+import {
+  UpdateTransactionUseCase,
+  type UpdateTransactionOutput,
+} from '../../application/use-cases/finances/update-transaction.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -86,6 +110,11 @@ export class FinancesController {
     private readonly listTransactions: ListTransactionsUseCase,
     private readonly deleteTransaction: DeleteTransactionUseCase,
     private readonly getLifetimeIncome: GetLifetimeIncomeUseCase,
+    private readonly listIncomeConcepts: ListIncomeConceptsUseCase,
+    private readonly createIncomeConcept: CreateIncomeConceptUseCase,
+    private readonly updateIncomeConcept: UpdateIncomeConceptUseCase,
+    private readonly deleteIncomeConcept: DeleteIncomeConceptUseCase,
+    private readonly updateTransaction: UpdateTransactionUseCase,
   ) {}
 
   /**
@@ -140,6 +169,7 @@ export class FinancesController {
       description: dto.description,
       relatedConsultationId: dto.related_consultation_id ?? null,
       date: dto.date ? new Date(dto.date) : undefined,
+      conceptId: dto.conceptId ?? null,
     });
     return { success: true, data: result };
   }
@@ -184,6 +214,101 @@ export class FinancesController {
       description: dto.description,
       relatedConsultationId: dto.related_consultation_id ?? null,
       date: dto.date ? new Date(dto.date) : undefined,
+    });
+    return { success: true, data: result };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Feature A — Income concepts
+  // ---------------------------------------------------------------------------
+
+  /**
+   * GET /api/finances/income-concepts
+   * Returns active income concepts for the authenticated doctor, ordered by sort_order ASC.
+   */
+  @Get('income-concepts')
+  async listConcepts(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<IncomeConceptItem[]>> {
+    const result = await this.listIncomeConcepts.execute(user.sub);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/finances/income-concepts
+   * Creates a new income concept for the authenticated doctor.
+   */
+  @Post('income-concepts')
+  async createConcept(
+    @Body(new ZodValidationPipe(CreateIncomeConceptDtoSchema)) dto: CreateIncomeConceptDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<IncomeConceptOutput>> {
+    const result = await this.createIncomeConcept.execute({
+      doctorId: user.sub,
+      name: dto.name,
+    });
+    return { success: true, data: result };
+  }
+
+  /**
+   * PUT /api/finances/income-concepts/:id
+   * Updates name, isActive, or sortOrder of an existing concept.
+   * Ownership enforced — throws 403 if concept belongs to another doctor.
+   */
+  @Put('income-concepts/:id')
+  async updateConcept(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdateIncomeConceptDtoSchema)) dto: UpdateIncomeConceptDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<IncomeConceptOutput>> {
+    const result = await this.updateIncomeConcept.execute({
+      id,
+      doctorId: user.sub,
+      name: dto.name,
+      isActive: dto.isActive,
+      sortOrder: dto.sortOrder,
+    });
+    return { success: true, data: result };
+  }
+
+  /**
+   * DELETE /api/finances/income-concepts/:id
+   * Soft-deletes the concept (is_active = false).
+   * Hard delete is NOT used to preserve FK integrity with income transactions.
+   */
+  @Delete('income-concepts/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteConcept(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<void> {
+    await this.deleteIncomeConcept.execute({ id, doctorId: user.sub });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Feature B — Edit transactions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * PUT /api/finances/transactions/:id
+   * Edits description, amount, currency, transactionDate, or conceptId (income only).
+   * type and doctorId are immutable.
+   * Ownership enforced — throws 403 if transaction belongs to another doctor.
+   */
+  @Put('transactions/:id')
+  async updateTransactionHandler(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdateTransactionDtoSchema)) dto: UpdateTransactionDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<UpdateTransactionOutput>> {
+    const result = await this.updateTransaction.execute({
+      transactionId: id,
+      doctorId: user.sub,
+      description: dto.description,
+      amount: dto.amount,
+      currency: dto.currency,
+      transactionDate: dto.transactionDate ? new Date(dto.transactionDate) : undefined,
+      conceptId: dto.conceptId,
     });
     return { success: true, data: result };
   }

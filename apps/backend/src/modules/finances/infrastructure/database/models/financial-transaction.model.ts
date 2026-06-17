@@ -6,6 +6,7 @@ import {
   Model,
   PrimaryKey,
   Table,
+  UpdatedAt,
 } from 'sequelize-typescript';
 
 /**
@@ -13,6 +14,8 @@ import {
  *
  * Maps to: migracion/03b-schema-real.md (finances section) +
  * migration 20260602000004-finances.cjs
+ * Extended by: 20260617000002-income-concepts.cjs (concept_id)
+ *              20260617000003-financial-transactions-updated-at.cjs (updated_at)
  *
  * No business logic here — pure ORM mapping. All domain logic lives in
  * FinancialTransaction entity and use cases.
@@ -20,7 +23,6 @@ import {
 @Table({
   tableName: 'financial_transactions',
   timestamps: true,
-  updatedAt: false, // table has only created_at
   underscored: true,
 })
 export class FinancialTransactionModel extends Model {
@@ -50,7 +52,15 @@ export class FinancialTransactionModel extends Model {
   @Column({ type: DataType.DATE, allowNull: false, field: 'transaction_date' })
   declare transactionDate: Date;
 
+  /** Nullable FK to income_concepts — set only for income-type rows. */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'concept_id' })
+  declare conceptId: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;
+
+  @UpdatedAt
+  @Column({ field: 'updated_at' })
+  declare updatedAt: Date;
 }

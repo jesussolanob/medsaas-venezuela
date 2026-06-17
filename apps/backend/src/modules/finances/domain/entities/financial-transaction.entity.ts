@@ -19,6 +19,8 @@ export class FinancialTransaction {
     public readonly relatedConsultationId: string | null,
     public readonly date: Date,
     public readonly createdAt: Date,
+    /** Nullable FK to income_concepts (income transactions only). */
+    public readonly conceptId: string | null = null,
   ) {}
 
   /** Factory for constructing a new (unpersisted) transaction. */
@@ -31,6 +33,7 @@ export class FinancialTransaction {
     relatedConsultationId: string | null;
     date: Date;
     createdAt: Date;
+    conceptId?: string | null;
   }): FinancialTransaction {
     return new FinancialTransaction(
       params.id,
@@ -41,11 +44,35 @@ export class FinancialTransaction {
       params.relatedConsultationId,
       params.date,
       params.createdAt,
+      params.conceptId ?? null,
     );
   }
 
   /** Returns true when this transaction belongs to the given doctor. */
   isOwnedBy(actorId: string): boolean {
     return this.doctorId === actorId;
+  }
+
+  /**
+   * Returns a new transaction with the given editable fields patched (immutable).
+   * type and doctorId cannot be changed.
+   */
+  patch(fields: {
+    amount?: Money;
+    description?: string;
+    date?: Date;
+    conceptId?: string | null;
+  }): FinancialTransaction {
+    return new FinancialTransaction(
+      this.id,
+      this.doctorId,
+      this.type,
+      fields.amount ?? this.amount,
+      fields.description ?? this.description,
+      this.relatedConsultationId,
+      fields.date ?? this.date,
+      this.createdAt,
+      fields.conceptId !== undefined ? fields.conceptId : this.conceptId,
+    );
   }
 }
