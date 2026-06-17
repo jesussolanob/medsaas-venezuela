@@ -59,9 +59,7 @@ export default function RemindersPage() {
         // Fetch doctor profile from NestJS backend (replaces supabase.from('profiles'))
         const profile = await getDoctorProfile();
         if (profile) {
-          setDoctorName(
-            `${profile.professional_title || ''} ${profile.full_name || ''}`.trim(),
-          );
+          setDoctorName(`${profile.professionalTitle || ''} ${profile.fullName || ''}`.trim());
           setDoctorPhone(profile.phone || '');
         }
 
@@ -80,8 +78,7 @@ export default function RemindersPage() {
         for (const appt of apptItems) {
           const isDup = consultItems.some((c) => {
             const diff = Math.abs(
-              new Date(c.consultation_date).getTime() -
-                new Date(appt.consultation_date).getTime(),
+              new Date(c.consultation_date).getTime() - new Date(appt.consultation_date).getTime(),
             );
             return c.patient_name === appt.patient_name && diff < 3600000;
           });
@@ -89,8 +86,7 @@ export default function RemindersPage() {
         }
         combined.sort(
           (a, b) =>
-            new Date(a.consultation_date).getTime() -
-            new Date(b.consultation_date).getTime(),
+            new Date(a.consultation_date).getTime() - new Date(b.consultation_date).getTime(),
         );
 
         setUpcomingConsults(combined);

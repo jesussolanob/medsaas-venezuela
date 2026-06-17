@@ -62,17 +62,17 @@ export async function getBillingConsultations(): Promise<BillingConsultation[]> 
   return result.ok && Array.isArray(result.value) ? result.value : [];
 }
 
-/** The doctor's profile in the shape the billing header expects (avatar_url → logo_url). */
+/** The doctor's profile in the shape the billing header expects (avatarUrl → logo_url). */
 export async function getBillingProfile(): Promise<BillingProfile | null> {
   const p = await getDoctorProfile();
   if (!p) return null;
   return {
-    full_name: p.full_name,
+    full_name: p.fullName,
     specialty: p.specialty ?? '',
     phone: p.phone ?? '',
     email: p.email,
-    logo_url: p.avatar_url,
-    professional_title: p.professional_title,
+    logo_url: p.avatarUrl,
+    professional_title: p.professionalTitle,
   };
 }
 

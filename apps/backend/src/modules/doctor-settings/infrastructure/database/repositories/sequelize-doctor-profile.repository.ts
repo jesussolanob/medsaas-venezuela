@@ -95,6 +95,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       customRateLabel: row.customRateLabel,
       cedula: row.cedula,
       birthDate,
+      onboardingCompleted: row.onboardingCompleted ?? false,
     });
   }
 }

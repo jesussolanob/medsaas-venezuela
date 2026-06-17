@@ -32,6 +32,12 @@ export interface DoctorProfileCreateParams {
   cedula: string | null;
   /** Doctor's date of birth in ISO format (YYYY-MM-DD). Editable by the doctor. */
   birthDate: string | null;
+  /**
+   * Explicit flag set by CompleteRegistrationUseCase when the doctor submits
+   * the onboarding form. Replaces the fragile frontend heuristic that inferred
+   * onboarding completion from specialty being non-null.
+   */
+  onboardingCompleted: boolean;
 }
 
 export interface DoctorProfileUpdateParams {
@@ -78,6 +84,8 @@ export class DoctorProfile {
   readonly cedula: string | null;
   /** Date of birth in YYYY-MM-DD format. Nullable and editable by the doctor. */
   readonly birthDate: string | null;
+  /** True once the doctor has submitted the onboarding form. Set server-side — never derived from specialty. */
+  readonly onboardingCompleted: boolean;
 
   constructor(params: DoctorProfileCreateParams) {
     this.id = params.id;
@@ -104,6 +112,7 @@ export class DoctorProfile {
     this.customRateLabel = params.customRateLabel;
     this.cedula = params.cedula;
     this.birthDate = params.birthDate;
+    this.onboardingCompleted = params.onboardingCompleted;
   }
 
   /** Public booking link for sharing with patients. */

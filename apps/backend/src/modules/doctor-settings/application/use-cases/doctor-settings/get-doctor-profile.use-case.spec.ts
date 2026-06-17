@@ -31,6 +31,7 @@ function makeProfile(): DoctorProfile {
     customRateLabel: null,
     cedula: 'V-12345678',
     birthDate: '1985-03-15',
+    onboardingCompleted: true,
   });
 }
 
@@ -71,5 +72,14 @@ describe('GetDoctorProfileUseCase', () => {
 
     expect(result.cedula).toBe('V-12345678');
     expect(result.birthDate).toBe('1985-03-15');
+  });
+
+  it('includes onboardingCompleted in the returned profile', async () => {
+    const profile = makeProfile();
+    mockRepo.findByDoctorId.mockResolvedValue(profile);
+
+    const result = await useCase.execute(DOCTOR_ID);
+
+    expect(result.onboardingCompleted).toBe(true);
   });
 });

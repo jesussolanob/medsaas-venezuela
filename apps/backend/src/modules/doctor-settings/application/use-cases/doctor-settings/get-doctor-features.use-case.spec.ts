@@ -35,6 +35,7 @@ function makeProfile(plan: string | null): DoctorProfile {
     customRateLabel: null,
     cedula: null,
     birthDate: null,
+    onboardingCompleted: true,
   });
 }
 

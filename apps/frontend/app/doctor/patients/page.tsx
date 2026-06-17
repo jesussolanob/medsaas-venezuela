@@ -293,8 +293,8 @@ export default function PatientsPage() {
 
       // Load payment methods → GET /api/doctor/profile (backend)
       getDoctorProfile().then((profile) => {
-        if (profile?.payment_methods && Array.isArray(profile.payment_methods)) {
-          setDoctorPaymentMethods(profile.payment_methods);
+        if (profile?.paymentMethods && Array.isArray(profile.paymentMethods)) {
+          setDoctorPaymentMethods(profile.paymentMethods);
         }
       });
     });

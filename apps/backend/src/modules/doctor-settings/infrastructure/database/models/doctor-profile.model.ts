@@ -111,6 +111,15 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.DATEONLY, allowNull: true, field: 'birth_date' })
   declare birthDate: string | null;
 
+  /**
+   * Explicit onboarding completion flag. Added in migration 20260617000004.
+   * Set to true by CompleteRegistrationUseCase when the doctor submits the
+   * onboarding form. DEFAULT false — never derived from specialty.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_completed' })
+  declare onboardingCompleted: boolean;
+
   @Default(true)
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;

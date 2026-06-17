@@ -44,24 +44,35 @@ export async function getDevUserInfo(): Promise<{ id: string; role: string }> {
 // Doctor profile (from NestJS backend)
 // ---------------------------------------------------------------------------
 
+/**
+ * Wire shape returned by GET /api/doctor/profile (camelCase — NestJS serializer).
+ * Mirrors settings/actions.ts BackendDoctorProfile. Keep these in sync.
+ */
 interface BackendProfile {
   id: string;
-  full_name: string;
+  fullName: string;
   email: string;
   role: string;
   specialty: string | null;
-  professional_title: string | null;
+  professionalTitle: string | null;
   phone: string | null;
   cedula: string | null;
-  avatar_url: string | null;
-  allows_online: boolean | null;
-  office_address: string | null;
+  birthDate: string | null;
+  avatarUrl: string | null;
+  allowsOnline: boolean | null;
+  officeAddress: string | null;
   city: string | null;
   state: string | null;
-  payment_methods: string[] | null;
-  payment_details: Record<string, unknown> | null;
+  paymentMethods: string[] | null;
+  paymentDetails: Record<string, unknown> | null;
   plan: string | null;
-  subscription_status: string | null;
+  subscriptionStatus: string | null;
+  /**
+   * Explicit server-side flag set to true once the doctor completes the
+   * onboarding form. Preferred over the specialty-presence heuristic.
+   * Optional for backward compatibility while the backend rolls out the field.
+   */
+  onboardingCompleted?: boolean;
 }
 
 export type DoctorProfile = BackendProfile;
@@ -197,11 +208,33 @@ export { appErrorToString };
 /**
  * Returns true when the doctor has completed onboarding.
  * Used by the doctor layout to gate access to the portal.
+ *
+ * FAIL-OPEN policy: if the profile endpoint is unreachable (network error,
+ * backend restart, etc.) getDoctorProfile() returns null. We treat null as
+ * "onboarding complete" rather than blocking the doctor, because a missing
+ * profile is a transient infra problem — not evidence of incomplete onboarding.
+ * The trade-off: a brand-new doctor with an empty profile could slip through,
+ * but that is far less harmful than a working doctor being locked out repeatedly.
+ *
+ * Precedence:
+ *   1. profile === null (load error) → true (fail-open)
+ *   2. profile.onboardingCompleted explicit flag (new field, may be absent) → use it
+ *   3. Fallback heuristic: specialty filled → considered complete (transition period)
  */
 export async function checkOnboardingComplete(): Promise<boolean> {
   const profile = await getDoctorProfile();
-  // The profile endpoint exposes `specialty` (required at onboarding) but NOT
-  // `cedula`, so specialty is the canonical "complete" signal: a freshly
-  // SSO-created doctor has no specialty until they submit the onboarding form.
-  return Boolean(profile?.specialty && profile.specialty.trim().length > 0);
+
+  // Fail-open: transient backend error must not block an already-onboarded doctor.
+  if (profile === null) {
+    return true;
+  }
+
+  // Prefer the explicit server flag when the backend supplies it.
+  if (profile.onboardingCompleted !== undefined) {
+    return profile.onboardingCompleted;
+  }
+
+  // Fallback heuristic for backward compatibility during the backend rollout:
+  // specialty is the first required field in the onboarding form.
+  return Boolean(profile.specialty && profile.specialty.trim().length > 0);
 }

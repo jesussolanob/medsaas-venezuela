@@ -534,10 +534,10 @@ function ConsultationsPage() {
         getDoctorProfile().then((profileData) => {
           if (profileData) {
             setDoctorName(
-              `${profileData.professional_title || ''} ${profileData.full_name || ''}`.trim(),
+              `${profileData.professionalTitle || ''} ${profileData.fullName || ''}`.trim(),
             );
-            if (profileData.payment_methods && Array.isArray(profileData.payment_methods)) {
-              setDoctorPaymentMethods(profileData.payment_methods);
+            if (profileData.paymentMethods && Array.isArray(profileData.paymentMethods)) {
+              setDoctorPaymentMethods(profileData.paymentMethods);
             }
             // logo_url, signature_url, license_number not in Etapa-1 profile schema → stays null
           }

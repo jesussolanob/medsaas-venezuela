@@ -60,6 +60,14 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.UUID, allowNull: true, field: 'verified_by' })
   declare verifiedBy: string | null;
 
+  /**
+   * Explicit onboarding completion flag. Added in migration 20260617000004.
+   * Set to true by updateRegistration when the doctor submits the onboarding form.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_completed' })
+  declare onboardingCompleted: boolean;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

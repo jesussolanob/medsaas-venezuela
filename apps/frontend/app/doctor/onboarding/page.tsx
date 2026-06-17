@@ -82,7 +82,7 @@ export default async function DoctorOnboardingPage() {
 
         {/* Form */}
         <OnboardingForm
-          initialFullName={profile?.full_name ?? ''}
+          initialFullName={profile?.fullName ?? ''}
           initialCedulaPrefix={initialCedulaPrefix}
           initialCedulaNumber={initialCedulaNumber}
           initialSpecialty={profile?.specialty ?? ''}

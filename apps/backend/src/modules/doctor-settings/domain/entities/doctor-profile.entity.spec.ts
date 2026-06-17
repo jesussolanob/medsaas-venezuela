@@ -25,6 +25,7 @@ const BASE_PARAMS = {
   customRateLabel: null,
   cedula: null,
   birthDate: null,
+  onboardingCompleted: false,
 };
 
 describe('DoctorProfile entity', () => {
@@ -136,5 +137,15 @@ describe('DoctorProfile entity', () => {
   it('stores null birthDate when not provided', () => {
     const profile = DoctorProfile.create({ ...BASE_PARAMS, birthDate: null });
     expect(profile.birthDate).toBeNull();
+  });
+
+  it('stores onboardingCompleted = false by default', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, onboardingCompleted: false });
+    expect(profile.onboardingCompleted).toBe(false);
+  });
+
+  it('stores onboardingCompleted = true when doctor has completed onboarding', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, onboardingCompleted: true });
+    expect(profile.onboardingCompleted).toBe(true);
   });
 });

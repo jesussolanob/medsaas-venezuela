@@ -187,13 +187,13 @@ export default function DoctorDashboard() {
           getDashboardAllTimeStats(),
         ]);
 
-        // Map profile — DoctorProfile already uses snake_case matching the local Profile type.
+        // Map profile — DoctorProfile uses camelCase (NestJS wire format).
         if (prof) {
           setProfile({
-            full_name: prof.full_name,
+            full_name: prof.fullName,
             specialty: prof.specialty ?? null,
             email: prof.email,
-            professional_title: prof.professional_title ?? null,
+            professional_title: prof.professionalTitle ?? null,
             cedula: prof.cedula ?? null,
           });
         }

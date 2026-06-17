@@ -48,6 +48,7 @@ function makeProfile(): DoctorProfile {
     customRateLabel: null,
     cedula: 'V-12345678',
     birthDate: '1985-03-15',
+    onboardingCompleted: true,
   });
 }
 
@@ -135,6 +136,15 @@ describe('DoctorController', () => {
 
       expect(result.data.cedula).toBe('V-12345678');
       expect(result.data.birthDate).toBe('1985-03-15');
+    });
+
+    it('includes onboardingCompleted in the response data', async () => {
+      const profile = makeProfile();
+      mockGetProfile.execute.mockResolvedValue(profile);
+
+      const result = await controller.profile(USER);
+
+      expect(result.data.onboardingCompleted).toBe(true);
     });
   });
 

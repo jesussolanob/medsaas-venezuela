@@ -148,7 +148,7 @@ export default function TemplatesPage() {
     // ── 1) Cargar perfil del doctor (nombre, especialidad, logo y firma globales — RONDA 17 source of truth)
     const profile = await getDoctorProfile();
     if (profile) {
-      setDoctorName(profile.full_name || '');
+      setDoctorName(profile.fullName || '');
       setDoctorSpecialty(profile.specialty || '');
       setProfileLogoUrl((profile as any).logo_url || null);
       setProfileSignatureUrl((profile as any).signature_url || null);

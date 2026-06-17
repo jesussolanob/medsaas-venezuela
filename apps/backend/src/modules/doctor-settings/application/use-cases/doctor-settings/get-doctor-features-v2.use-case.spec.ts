@@ -39,6 +39,7 @@ function makeProfile(plan: string | null, subscriptionStatus: string | null): Do
     customRateLabel: null,
     cedula: null,
     birthDate: null,
+    onboardingCompleted: true,
   });
 }
 

@@ -33,6 +33,7 @@ function makeProfile(
     customRateLabel: null,
     cedula: null,
     birthDate: null,
+    onboardingCompleted: true,
     ...overrides,
   });
 }

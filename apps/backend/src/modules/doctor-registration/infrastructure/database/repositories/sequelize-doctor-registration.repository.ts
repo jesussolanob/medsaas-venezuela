@@ -42,6 +42,8 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
       verificationStatus: 'pending',
       verifiedAt: null,
       verifiedBy: null,
+      // Mark onboarding complete — explicit flag replaces fragile specialty heuristic.
+      onboardingCompleted: true,
     });
 
     return this.toDomain(row);
