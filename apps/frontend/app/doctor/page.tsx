@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { formatUsd, formatBs } from '@/lib/finances';
+import { formatUsd, formatBs, type PaymentRow } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
 import {
   Users,
@@ -23,6 +23,7 @@ import {
   Receipt,
   Wallet,
   X,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -33,6 +34,10 @@ import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
 import { addPatient } from '@/app/doctor/patients/actions';
 import { addExpense } from '@/app/doctor/finances/actions';
+import {
+  getPayments,
+  updatePaymentStatus as updatePaymentStatusAction,
+} from '@/app/doctor/finances/payments-actions';
 import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
@@ -122,6 +127,12 @@ export default function DoctorDashboard() {
     category: 'other',
     dueDate: todayStr,
   });
+
+  // "Registrar pago" modal — lista los cobros pendientes y permite aprobarlos.
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingPayments, setPendingPayments] = useState<PaymentRow[]>([]);
+  const [loadingPendingPayments, setLoadingPendingPayments] = useState(false);
+  const [approvingPaymentId, setApprovingPaymentId] = useState<string | null>(null);
 
   // Month filter state (year-month)
   const now = new Date();
@@ -346,6 +357,43 @@ export default function DoctorDashboard() {
       });
     } finally {
       setExpenseSaving(false);
+    }
+  }
+
+  // Carga los cobros pendientes desde el backend para el modal "Registrar pago".
+  const loadPendingPayments = useCallback(async () => {
+    setLoadingPendingPayments(true);
+    try {
+      const rows = await getPayments({ status: 'pending' });
+      setPendingPayments(rows);
+    } catch (err: unknown) {
+      reportError('doctor/page', 'loadPendingPayments', err);
+      setPendingPayments([]);
+    } finally {
+      setLoadingPendingPayments(false);
+    }
+  }, []);
+
+  function handleOpenPaymentModal() {
+    setShowPaymentModal(true);
+    void loadPendingPayments();
+  }
+
+  async function handleApprovePayment(paymentId: string) {
+    setApprovingPaymentId(paymentId);
+    try {
+      const result = await updatePaymentStatusAction(paymentId, 'approved');
+      if (!result.success) throw new Error(result.error);
+      showToast({ type: 'success', message: 'Pago aprobado correctamente' });
+      // Quita el pago aprobado de la lista local sin recargar todo.
+      setPendingPayments((prev) => prev.filter((p) => p.id !== paymentId));
+    } catch (err: unknown) {
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al aprobar el pago',
+      });
+    } finally {
+      setApprovingPaymentId(null);
     }
   }
 
@@ -842,14 +890,14 @@ export default function DoctorDashboard() {
 
               {/* Acciones rápidas de finanzas */}
               <div className="grid grid-cols-2 gap-2 pt-1">
-                <Link
-                  href="/doctor/cobros"
+                <button
+                  onClick={handleOpenPaymentModal}
                   className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: 'var(--dh-turquoise)' }}
                 >
                   <Wallet className="w-3.5 h-3.5" />
                   Registrar pago
-                </Link>
+                </button>
                 <button
                   onClick={() => setShowExpenseModal(true)}
                   className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-colors"
@@ -958,6 +1006,138 @@ export default function DoctorDashboard() {
                 Crear cita ahora
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Registrar pago — lista cobros pendientes y permite aprobarlos */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 pb-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
+                  <Wallet className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Registrar pago</h2>
+                  <p className="text-xs text-slate-400">Cobros pendientes de aprobación</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                aria-label="Cerrar"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 p-5">
+              {loadingPendingPayments ? (
+                <div className="flex items-center justify-center py-12 gap-2 text-slate-400">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span className="text-sm">Cargando cobros pendientes...</span>
+                </div>
+              ) : pendingPayments.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="w-7 h-7 text-emerald-500" />
+                  </div>
+                  <p className="font-semibold text-slate-800 mb-1">Todo al día</p>
+                  <p className="text-sm text-slate-400 mb-4">
+                    No hay cobros pendientes de aprobación.
+                  </p>
+                  <Link
+                    href="/doctor/cobros"
+                    onClick={() => setShowPaymentModal(false)}
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal-600 hover:text-teal-700"
+                  >
+                    Ver historial completo
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingPayments.map((payment) => {
+                    const patientName = payment.appointment?.patient_name || 'Paciente';
+                    const concept =
+                      payment.appointment?.plan_name ||
+                      payment.consultation?.consultation_code ||
+                      'Consulta';
+                    const amount = payment.amount_usd ?? 0;
+                    const dateStr = payment.appointment?.scheduled_at || payment.created_at;
+                    const isApproving = approvingPaymentId === payment.id;
+
+                    return (
+                      <div
+                        key={payment.id}
+                        className="flex items-center gap-3 p-3.5 rounded-xl border border-slate-100 bg-slate-50"
+                      >
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">
+                            {patientName}
+                          </p>
+                          <p className="text-xs text-slate-400 truncate mt-0.5">{concept}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {new Intl.DateTimeFormat('es-VE', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            }).format(new Date(dateStr))}
+                          </p>
+                        </div>
+
+                        {/* Monto */}
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-bold text-slate-900">{formatUsd(amount)}</p>
+                          {bcvRate && amount > 0 && (
+                            <p className="text-[11px] text-slate-400">{toBs(amount)}</p>
+                          )}
+                        </div>
+
+                        {/* Botón aprobar */}
+                        <button
+                          onClick={() => void handleApprovePayment(payment.id)}
+                          disabled={isApproving || approvingPaymentId !== null}
+                          className="shrink-0 flex items-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ background: 'var(--dh-turquoise)' }}
+                          aria-label={`Aprobar pago de ${patientName}`}
+                        >
+                          {isApproving ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle className="w-3.5 h-3.5" />
+                          )}
+                          {isApproving ? 'Aprobando...' : 'Aprobar'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!loadingPendingPayments && pendingPayments.length > 0 && (
+              <div className="p-4 pt-3 border-t border-slate-100 shrink-0 flex items-center justify-between">
+                <span className="text-xs text-slate-400">
+                  {pendingPayments.length} cobro{pendingPayments.length !== 1 ? 's' : ''} pendiente
+                  {pendingPayments.length !== 1 ? 's' : ''}
+                </span>
+                <Link
+                  href="/doctor/cobros"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="text-xs font-semibold text-teal-600 hover:text-teal-700 flex items-center gap-1"
+                >
+                  Ver detalle completo
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}
