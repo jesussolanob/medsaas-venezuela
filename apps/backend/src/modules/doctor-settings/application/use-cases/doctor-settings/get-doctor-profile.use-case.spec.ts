@@ -29,6 +29,8 @@ function makeProfile(): DoctorProfile {
     currencyMode: 'usd_bcv',
     customRate: null,
     customRateLabel: null,
+    cedula: 'V-12345678',
+    birthDate: '1985-03-15',
   });
 }
 
@@ -59,5 +61,15 @@ describe('GetDoctorProfileUseCase', () => {
     mockRepo.findByDoctorId.mockResolvedValue(null);
 
     await expect(useCase.execute(DOCTOR_ID)).rejects.toBeInstanceOf(DoctorProfileNotFoundError);
+  });
+
+  it('includes cedula and birthDate in the returned profile', async () => {
+    const profile = makeProfile();
+    mockRepo.findByDoctorId.mockResolvedValue(profile);
+
+    const result = await useCase.execute(DOCTOR_ID);
+
+    expect(result.cedula).toBe('V-12345678');
+    expect(result.birthDate).toBe('1985-03-15');
   });
 });

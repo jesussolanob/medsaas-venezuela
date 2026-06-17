@@ -54,6 +54,7 @@ export default function ConsultationDetailPage() {
   const [consultation, setConsultation] = useState<Consultation | null>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [blocksData, setBlocksData] = useState<Record<string, unknown>>({});
+  const [blocksSnapshot, setBlocksSnapshot] = useState<SnapshotBlock[] | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -109,6 +110,7 @@ export default function ConsultationDetailPage() {
 
       setConsultation(consultation);
       setBlocksData(storedValues); // hydrate the editor with previously-saved values
+      setBlocksSnapshot(snapshot); // track snapshot separately so label edits can be persisted
 
       // Auto-tracking: setear started_at via PATCH BFF route (non-blocking)
       // Only if not yet completed — status not available in Etapa 1, skip check.
@@ -164,13 +166,14 @@ export default function ConsultationDetailPage() {
     setSaving(true);
     setMsg(null);
     try {
-      // Save blocks_data via existing BFF PATCH route
+      // Save blocks_data and updated blocks_snapshot (with any renamed labels) via BFF PATCH route
       const r = await fetch('/api/doctor/consultations', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: consultation.id,
           blocks_data: blocksData,
+          ...(blocksSnapshot ? { blocks_snapshot: blocksSnapshot } : {}),
         }),
       });
       const j = await r.json();
@@ -402,7 +405,7 @@ export default function ConsultationDetailPage() {
               </p>
             </div>
             <ConsultationRecorder
-              availableBlocks={(consultation.blocks_snapshot || []).map((b) => ({
+              availableBlocks={(blocksSnapshot ?? consultation.blocks_snapshot ?? []).map((b) => ({
                 key: b.key,
                 label: b.label,
               }))}
@@ -436,9 +439,14 @@ export default function ConsultationDetailPage() {
           </a>
         </div>
         <DynamicBlocks
-          blocks={consultation.blocks_snapshot}
+          blocks={blocksSnapshot ?? consultation.blocks_snapshot}
           values={blocksData}
           onChange={(key, value) => setBlocksData((d) => ({ ...d, [key]: value }))}
+          onLabelChange={(key, newLabel) =>
+            setBlocksSnapshot((prev) =>
+              prev ? prev.map((b) => (b.key === key ? { ...b, label: newLabel } : b)) : prev,
+            )
+          }
           onSave={save}
           saving={saving}
         />

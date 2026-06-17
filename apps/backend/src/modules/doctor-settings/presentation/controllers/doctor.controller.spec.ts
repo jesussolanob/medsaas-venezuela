@@ -45,6 +45,8 @@ function makeProfile(): DoctorProfile {
     currencyMode: 'usd_bcv',
     customRate: null,
     customRateLabel: null,
+    cedula: 'V-12345678',
+    birthDate: '1985-03-15',
   });
 }
 
@@ -121,6 +123,16 @@ describe('DoctorController', () => {
       expect(result.data).toBe(profile);
       expect(mockGetProfile.execute).toHaveBeenCalledWith(DOCTOR_ID);
     });
+
+    it('includes cedula and birthDate in the response data', async () => {
+      const profile = makeProfile();
+      mockGetProfile.execute.mockResolvedValue(profile);
+
+      const result = await controller.profile(USER);
+
+      expect(result.data.cedula).toBe('V-12345678');
+      expect(result.data.birthDate).toBe('1985-03-15');
+    });
   });
 
   describe('PUT /doctor/profile', () => {
@@ -153,6 +165,7 @@ describe('DoctorController', () => {
         signatureUrl: 'https://cdn.example.com/sig.png',
         licenseNumber: 'MED-001',
         phone: undefined,
+        birthDate: undefined,
       });
     });
 
@@ -166,6 +179,40 @@ describe('DoctorController', () => {
         DOCTOR_ID,
         expect.objectContaining({ phone: '04141234567' }),
       );
+    });
+
+    it('passes birth_date to the use case as birthDate (camelCase)', async () => {
+      const updated = makeProfile();
+      mockUpdateProfile.execute.mockResolvedValue(updated);
+
+      await controller.updateProfileHandler({ birth_date: '1990-06-01' }, USER);
+
+      expect(mockUpdateProfile.execute).toHaveBeenCalledWith(
+        DOCTOR_ID,
+        expect.objectContaining({ birthDate: '1990-06-01' }),
+      );
+    });
+
+    it('passes null birth_date to clear the field', async () => {
+      const updated = makeProfile();
+      mockUpdateProfile.execute.mockResolvedValue(updated);
+
+      await controller.updateProfileHandler({ birth_date: null }, USER);
+
+      expect(mockUpdateProfile.execute).toHaveBeenCalledWith(
+        DOCTOR_ID,
+        expect.objectContaining({ birthDate: null }),
+      );
+    });
+
+    it('does not pass cedula to the use case (read-only field)', async () => {
+      const updated = makeProfile();
+      mockUpdateProfile.execute.mockResolvedValue(updated);
+
+      await controller.updateProfileHandler({ specialty: 'Neurología' }, USER);
+
+      const callArgs = mockUpdateProfile.execute.mock.calls[0][1] as Record<string, unknown>;
+      expect('cedula' in callArgs).toBe(false);
     });
   });
 

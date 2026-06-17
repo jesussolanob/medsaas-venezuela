@@ -31,6 +31,7 @@ import {
   FileBadge,
   Smartphone,
   CreditCard,
+  Lock,
 } from 'lucide-react';
 import {
   loadSettingsProfile,
@@ -244,7 +245,9 @@ function SettingsPageInner() {
     specialty: '',
     professional_title: 'Dr.',
     allows_online: true,
+    birth_date: '' as string,
   });
+  const [cedula, setCedula] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
@@ -348,6 +351,7 @@ function SettingsPageInner() {
           specialty: profileData.specialty,
           professional_title: profileData.professional_title,
           allows_online: profileData.allows_online,
+          birth_date: profileData.birth_date ?? '',
         });
         setAvatarUrl(profileData.avatar_url);
         // Backend now returns logo_url, signature_url, license_number.
@@ -356,6 +360,7 @@ function SettingsPageInner() {
         setLicenseNumber(profileData.license_number ?? '');
         setPaymentMethods(profileData.payment_methods);
         setPaymentDetails(profileData.payment_details);
+        setCedula(profileData.cedula ?? null);
       }
 
       setGoogleStatus(googleStatusData);
@@ -382,6 +387,7 @@ function SettingsPageInner() {
       professional_title: profile.professional_title,
       allows_online: profile.allows_online,
       phone: profile.phone,
+      birth_date: profile.birth_date || null,
     });
 
     if (!result.ok) {
@@ -951,6 +957,41 @@ function SettingsPageInner() {
                       />
                     </div>
                   </div>
+
+                  {/* Cédula (read-only) + Fecha de nacimiento (editable) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Cédula / Identificación
+                      </label>
+                      <div className="relative">
+                        <input
+                          value={cedula ?? '—'}
+                          disabled
+                          className={fi + ' bg-slate-100 text-slate-500 cursor-not-allowed pr-9'}
+                        />
+                        <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        No editable — registrada al crear la cuenta
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Fecha de nacimiento
+                      </label>
+                      <input
+                        type="date"
+                        value={profile.birth_date}
+                        onChange={(e) => setProfile((p) => ({ ...p, birth_date: e.target.value }))}
+                        className={fi}
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        Se guarda al presionar &ldquo;Guardar cambios&rdquo;
+                      </p>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">
                       Especialidad

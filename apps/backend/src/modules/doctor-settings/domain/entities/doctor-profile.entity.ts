@@ -28,6 +28,10 @@ export interface DoctorProfileCreateParams {
   currencyMode: string | null;
   customRate: number | null;
   customRateLabel: string | null;
+  /** National ID (cedula). Read-only after onboarding — never updated via profile PUT. */
+  cedula: string | null;
+  /** Doctor's date of birth in ISO format (YYYY-MM-DD). Editable by the doctor. */
+  birthDate: string | null;
 }
 
 export interface DoctorProfileUpdateParams {
@@ -43,6 +47,8 @@ export interface DoctorProfileUpdateParams {
   signatureUrl?: string | null;
   licenseNumber?: string | null;
   phone?: string | null;
+  /** Doctor's date of birth (YYYY-MM-DD). Editable. cedula is intentionally excluded. */
+  birthDate?: string | null;
 }
 
 export class DoctorProfile {
@@ -68,6 +74,10 @@ export class DoctorProfile {
   readonly currencyMode: string | null;
   readonly customRate: number | null;
   readonly customRateLabel: string | null;
+  /** National ID (cedula). Read-only after onboarding. */
+  readonly cedula: string | null;
+  /** Date of birth in YYYY-MM-DD format. Nullable and editable by the doctor. */
+  readonly birthDate: string | null;
 
   constructor(params: DoctorProfileCreateParams) {
     this.id = params.id;
@@ -92,6 +102,8 @@ export class DoctorProfile {
     this.currencyMode = params.currencyMode;
     this.customRate = params.customRate;
     this.customRateLabel = params.customRateLabel;
+    this.cedula = params.cedula;
+    this.birthDate = params.birthDate;
   }
 
   /** Public booking link for sharing with patients. */

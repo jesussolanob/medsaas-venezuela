@@ -67,6 +67,8 @@ interface BackendDoctorProfile {
   phone: string | null;
   plan: string | null;
   subscriptionStatus: string | null;
+  cedula: string | null;
+  birthDate: string | null;
 }
 
 /** Shape returned by GET/PUT /api/doctor/schedule (camelCase). */
@@ -100,6 +102,8 @@ export interface SettingsProfileView {
   payment_methods: string[];
   payment_details: Record<string, Record<string, string>>;
   phone: string;
+  cedula: string | null;
+  birth_date: string | null;
 }
 
 /** Schedule view consumed by the UI state. */
@@ -133,6 +137,8 @@ function profileToView(b: BackendDoctorProfile): SettingsProfileView {
     payment_methods: b.paymentMethods ?? ['pago_movil', 'transferencia'],
     payment_details: (b.paymentDetails as Record<string, Record<string, string>>) ?? {},
     phone: b.phone ?? '',
+    cedula: b.cedula ?? null,
+    birth_date: b.birthDate ?? null,
   };
 }
 
@@ -183,6 +189,7 @@ export async function saveSettingsProfile(input: {
   office_address?: string;
   city?: string;
   phone?: string;
+  birth_date?: string | null;
 }): Promise<ActionResult> {
   const body: Record<string, unknown> = {
     specialty: input.specialty || null,
@@ -199,6 +206,10 @@ export async function saveSettingsProfile(input: {
   }
   if (input.city !== undefined) {
     body.city = input.city || null;
+  }
+
+  if (input.birth_date !== undefined) {
+    body.birth_date = input.birth_date || null;
   }
 
   const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', body);

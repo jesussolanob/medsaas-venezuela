@@ -96,6 +96,21 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'custom_rate_label' })
   declare customRateLabel: string | null;
 
+  /**
+   * National ID (cedula). Already present in the profiles table.
+   * Read-only after onboarding — never written via PUT /doctor/profile.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'cedula' })
+  declare cedula: string | null;
+
+  /**
+   * Date of birth. New column added in migration 20260617000001.
+   * DATEONLY → Sequelize returns a 'YYYY-MM-DD' string (not a JS Date),
+   * which matches the DoctorProfile entity contract (string | null).
+   */
+  @Column({ type: DataType.DATEONLY, allowNull: true, field: 'birth_date' })
+  declare birthDate: string | null;
+
   @Default(true)
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;

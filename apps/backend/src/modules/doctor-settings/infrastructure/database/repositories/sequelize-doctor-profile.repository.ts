@@ -43,6 +43,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       ...(params.signatureUrl !== undefined && { signatureUrl: params.signatureUrl }),
       ...(params.licenseNumber !== undefined && { licenseNumber: params.licenseNumber }),
       ...(params.phone !== undefined && { phone: params.phone }),
+      ...(params.birthDate !== undefined && { birthDate: params.birthDate }),
     });
 
     return this.toDomain(row);
@@ -65,6 +66,10 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
   }
 
   private toDomain(row: DoctorProfileModel): DoctorProfile {
+    // Sequelize maps DATEONLY → string 'YYYY-MM-DD'; normalise to string | null.
+    const birthDate: string | null =
+      row.birthDate != null ? String(row.birthDate).slice(0, 10) : null;
+
     return DoctorProfile.create({
       id: row.id,
       fullName: row.fullName,
@@ -88,6 +93,8 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       currencyMode: row.currencyMode,
       customRate: row.customRate != null ? Number(row.customRate) : null,
       customRateLabel: row.customRateLabel,
+      cedula: row.cedula,
+      birthDate,
     });
   }
 }

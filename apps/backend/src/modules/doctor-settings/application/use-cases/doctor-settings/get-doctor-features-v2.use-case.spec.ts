@@ -37,6 +37,8 @@ function makeProfile(plan: string | null, subscriptionStatus: string | null): Do
     currencyMode: 'usd_bcv',
     customRate: null,
     customRateLabel: null,
+    cedula: null,
+    birthDate: null,
   });
 }
 

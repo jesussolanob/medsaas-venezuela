@@ -33,6 +33,8 @@ function makeProfile(plan: string | null): DoctorProfile {
     currencyMode: 'usd_bcv',
     customRate: null,
     customRateLabel: null,
+    cedula: null,
+    birthDate: null,
   });
 }
 

@@ -23,6 +23,8 @@ const BASE_PARAMS = {
   currencyMode: 'usd_bcv',
   customRate: null,
   customRateLabel: null,
+  cedula: null,
+  birthDate: null,
 };
 
 describe('DoctorProfile entity', () => {
@@ -114,5 +116,25 @@ describe('DoctorProfile entity', () => {
     expect(profile.currencyMode).toBe('custom');
     expect(profile.customRate).toBe(48.75);
     expect(profile.customRateLabel).toBe('Clínica Delta');
+  });
+
+  it('stores cedula when provided (read-only field)', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, cedula: 'V-12345678' });
+    expect(profile.cedula).toBe('V-12345678');
+  });
+
+  it('stores null cedula when not provided', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, cedula: null });
+    expect(profile.cedula).toBeNull();
+  });
+
+  it('stores birthDate in YYYY-MM-DD format when provided', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, birthDate: '1985-03-15' });
+    expect(profile.birthDate).toBe('1985-03-15');
+  });
+
+  it('stores null birthDate when not provided', () => {
+    const profile = DoctorProfile.create({ ...BASE_PARAMS, birthDate: null });
+    expect(profile.birthDate).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 /**
  * DynamicBlocks — renderiza los bloques de consulta según la configuración
@@ -10,6 +10,7 @@
  *     blocks={consultation.blocks_snapshot}
  *     values={consultation.blocks_data || {}}
  *     onChange={(key, value) => ...}
+ *     onLabelChange={(key, newLabel) => ...}
  *     readOnly={false}
  *   />
  */
@@ -18,79 +19,148 @@
 // La IA ahora vive en UN SOLO panel global "Asistente IA" en consultations/page.tsx
 // con tres modos: resumir historial, mejorar redacción y resumir informe.
 
-import { useState } from 'react'
-import { Calendar, FileText, List as ListIcon, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState } from 'react';
+import { Calendar, FileText, List as ListIcon, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 
 export type SnapshotBlock = {
-  key: string
-  label: string
-  content_type: 'rich_text' | 'list' | 'date' | 'file' | 'structured' | 'numeric'
-  sort_order: number
-  printable: boolean
-  send_to_patient: boolean
-}
+  key: string;
+  label: string;
+  content_type: 'rich_text' | 'list' | 'date' | 'file' | 'structured' | 'numeric';
+  sort_order: number;
+  printable: boolean;
+  send_to_patient: boolean;
+};
 
 type Props = {
-  blocks?: SnapshotBlock[] | null
-  values?: Record<string, unknown>
-  onChange?: (key: string, value: unknown) => void
-  readOnly?: boolean
-  onSave?: () => void
-  saving?: boolean
-}
+  blocks?: SnapshotBlock[] | null;
+  values?: Record<string, unknown>;
+  onChange?: (key: string, value: unknown) => void;
+  onLabelChange?: (key: string, newLabel: string) => void;
+  readOnly?: boolean;
+  onSave?: () => void;
+  saving?: boolean;
+};
 
-export default function DynamicBlocks({ blocks, values = {}, onChange, readOnly = false, onSave, saving }: Props) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+export default function DynamicBlocks({
+  blocks,
+  values = {},
+  onChange,
+  onLabelChange,
+  readOnly = false,
+  onSave,
+  saving,
+}: Props) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [editingLabel, setEditingLabel] = useState<Record<string, boolean>>({});
+  const [labelDraft, setLabelDraft] = useState<Record<string, string>>({});
 
   if (!blocks || blocks.length === 0) {
     return (
       <div className="text-sm text-slate-500 italic p-4 bg-slate-50 rounded-lg">
         No hay bloques configurados para esta consulta.
         {!readOnly && (
-          <> Configura tus bloques en{' '}
-            <a href="/doctor/settings/consultation-blocks" className="text-teal-600 font-semibold hover:underline">
+          <>
+            {' '}
+            Configura tus bloques en{' '}
+            <a
+              href="/doctor/settings/consultation-blocks"
+              className="text-teal-600 font-semibold hover:underline"
+            >
               Configuración → Bloques de consulta
             </a>
             .
           </>
         )}
       </div>
-    )
+    );
   }
 
   // Ordenar por sort_order
-  const sorted = [...blocks].sort((a, b) => a.sort_order - b.sort_order)
+  const sorted = [...blocks].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <div className="space-y-3">
-      {sorted.map(block => {
-        const value = values[block.key]
-        const isCollapsed = collapsed[block.key]
+      {sorted.map((block) => {
+        const value = values[block.key];
+        const isCollapsed = collapsed[block.key];
 
         return (
-          <div key={block.key} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div
+            key={block.key}
+            className="bg-white border border-slate-200 rounded-xl overflow-hidden"
+          >
             <div className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors">
-              <button
-                type="button"
-                onClick={() => setCollapsed(c => ({ ...c, [block.key]: !c[block.key] }))}
-                className="flex items-center gap-2 flex-1 min-w-0 text-left"
-              >
-                <BlockIcon type={block.content_type} />
-                <span className="text-sm font-semibold text-slate-900 truncate">{block.label}</span>
-                {!block.printable && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">
-                    Interno
-                  </span>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setCollapsed((c) => ({ ...c, [block.key]: !c[block.key] }))}
+                  className="flex items-center gap-2 min-w-0 text-left"
+                  aria-label={isCollapsed ? 'Expandir bloque' : 'Colapsar bloque'}
+                >
+                  <BlockIcon type={block.content_type} />
+                </button>
+
+                {editingLabel[block.key] ? (
+                  <LabelInput
+                    value={labelDraft[block.key] ?? block.label}
+                    onChange={(v) => setLabelDraft((d) => ({ ...d, [block.key]: v }))}
+                    onConfirm={() => {
+                      const trimmed = (labelDraft[block.key] ?? '').trim();
+                      if (trimmed && trimmed !== block.label) {
+                        onLabelChange?.(block.key, trimmed);
+                      }
+                      setEditingLabel((e) => ({ ...e, [block.key]: false }));
+                    }}
+                    onCancel={() => {
+                      setEditingLabel((e) => ({ ...e, [block.key]: false }));
+                      setLabelDraft((d) => ({ ...d, [block.key]: block.label }));
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCollapsed((c) => ({ ...c, [block.key]: !c[block.key] }))}
+                    className="flex items-center gap-2 min-w-0 text-left flex-1"
+                  >
+                    <span className="text-sm font-semibold text-slate-900 truncate">
+                      {block.label}
+                    </span>
+                    {!block.printable && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider shrink-0">
+                        Interno
+                      </span>
+                    )}
+                  </button>
                 )}
-              </button>
+
+                {!readOnly && !editingLabel[block.key] && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLabelDraft((d) => ({ ...d, [block.key]: block.label }));
+                      setEditingLabel((e) => ({ ...e, [block.key]: true }));
+                    }}
+                    className="shrink-0 p-1 text-slate-300 hover:text-teal-500 rounded transition-colors"
+                    aria-label="Renombrar bloque"
+                    title="Renombrar bloque"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setCollapsed(c => ({ ...c, [block.key]: !c[block.key] }))}
+                  onClick={() => setCollapsed((c) => ({ ...c, [block.key]: !c[block.key] }))}
                   className="text-slate-400"
                   aria-label={isCollapsed ? 'Expandir bloque' : 'Colapsar bloque'}
                 >
-                  {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                  {isCollapsed ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronUp className="w-4 h-4" />
+                  )}
                 </button>
               </div>
             </div>
@@ -100,13 +170,13 @@ export default function DynamicBlocks({ blocks, values = {}, onChange, readOnly 
                 <BlockEditor
                   block={block}
                   value={value}
-                  onChange={v => onChange?.(block.key, v)}
+                  onChange={(v) => onChange?.(block.key, v)}
                   readOnly={readOnly}
                 />
               </div>
             )}
           </div>
-        )
+        );
       })}
 
       {!readOnly && onSave && (
@@ -121,99 +191,152 @@ export default function DynamicBlocks({ blocks, values = {}, onChange, readOnly 
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function BlockIcon({ type }: { type: SnapshotBlock['content_type'] }) {
-  if (type === 'date') return <Calendar className="w-4 h-4 text-teal-500" />
-  if (type === 'list') return <ListIcon className="w-4 h-4 text-teal-500" />
-  return <FileText className="w-4 h-4 text-teal-500" />
+  if (type === 'date') return <Calendar className="w-4 h-4 text-teal-500" />;
+  if (type === 'list') return <ListIcon className="w-4 h-4 text-teal-500" />;
+  return <FileText className="w-4 h-4 text-teal-500" />;
 }
 
 function BlockEditor({
-  block, value, onChange, readOnly,
+  block,
+  value,
+  onChange,
+  readOnly,
 }: {
-  block: SnapshotBlock
-  value: unknown
-  onChange: (v: unknown) => void
-  readOnly: boolean
+  block: SnapshotBlock;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  readOnly: boolean;
 }) {
   switch (block.content_type) {
     case 'date': {
-      const s = typeof value === 'string' ? value : ''
+      const s = typeof value === 'string' ? value : '';
       if (readOnly) {
-        return <p className="text-sm text-slate-700">{s ? new Date(s).toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</p>
+        return (
+          <p className="text-sm text-slate-700">
+            {s
+              ? new Date(s).toLocaleDateString('es-VE', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })
+              : '—'}
+          </p>
+        );
       }
       return (
         <input
           type="date"
           value={s.slice(0, 10)}
-          onChange={e => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
         />
-      )
+      );
     }
 
     case 'list': {
-      const items = Array.isArray(value) ? (value as string[]) : []
+      const items = Array.isArray(value) ? (value as string[]) : [];
       if (readOnly) {
-        return items.length === 0
-          ? <p className="text-sm text-slate-400 italic">Vacío</p>
-          : <ul className="list-disc pl-5 space-y-1 text-sm text-slate-700">
-              {items.map((it, i) => <li key={i}>{it}</li>)}
-            </ul>
+        return items.length === 0 ? (
+          <p className="text-sm text-slate-400 italic">Vacío</p>
+        ) : (
+          <ul className="list-disc pl-5 space-y-1 text-sm text-slate-700">
+            {items.map((it, i) => (
+              <li key={i}>{it}</li>
+            ))}
+          </ul>
+        );
       }
-      return <ListEditor items={items} onChange={onChange} />
+      return <ListEditor items={items} onChange={onChange} />;
     }
 
     case 'numeric': {
-      const n = typeof value === 'number' ? value : (typeof value === 'string' ? Number(value) : 0)
-      if (readOnly) return <p className="text-sm text-slate-700">{Number.isFinite(n) ? n : '—'}</p>
+      const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0;
+      if (readOnly) return <p className="text-sm text-slate-700">{Number.isFinite(n) ? n : '—'}</p>;
       return (
         <input
           type="number"
           value={Number.isFinite(n) ? n : ''}
-          onChange={e => onChange(Number(e.target.value))}
+          onChange={(e) => onChange(Number(e.target.value))}
           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
         />
-      )
+      );
     }
 
     case 'structured':
     case 'rich_text':
     case 'file':
     default: {
-      const s = typeof value === 'string' ? value : ''
+      const s = typeof value === 'string' ? value : '';
       if (readOnly) {
-        return s
-          ? <div className="text-sm text-slate-700 whitespace-pre-wrap">{s}</div>
-          : <p className="text-sm text-slate-400 italic">Sin información</p>
+        return s ? (
+          <div className="text-sm text-slate-700 whitespace-pre-wrap">{s}</div>
+        ) : (
+          <p className="text-sm text-slate-400 italic">Sin información</p>
+        );
       }
       return (
         <textarea
           value={s}
-          onChange={e => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           rows={5}
           placeholder={`Escribe aquí: ${block.label.toLowerCase()}…`}
           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-vertical focus:border-teal-400 outline-none"
         />
-      )
+      );
     }
   }
 }
 
+function LabelInput({
+  value,
+  onChange,
+  onConfirm,
+  onCancel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <input
+      autoFocus
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onConfirm();
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      onBlur={onConfirm}
+      className="flex-1 min-w-0 px-2 py-0.5 text-sm font-semibold text-slate-900 border border-teal-400 rounded focus:outline-none focus:ring-2 focus:ring-teal-300"
+      aria-label="Nombre del bloque"
+    />
+  );
+}
+
 function ListEditor({ items, onChange }: { items: string[]; onChange: (v: string[]) => void }) {
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useState('');
   return (
     <div className="space-y-2">
       {items.map((it, i) => (
         <div key={i} className="flex items-center gap-2">
           <input
             value={it}
-            onChange={e => {
-              const next = [...items]
-              next[i] = e.target.value
-              onChange(next)
+            onChange={(e) => {
+              const next = [...items];
+              next[i] = e.target.value;
+              onChange(next);
             }}
             className="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-sm"
           />
@@ -229,12 +352,12 @@ function ListEditor({ items, onChange }: { items: string[]; onChange: (v: string
       <div className="flex items-center gap-2">
         <input
           value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
             if (e.key === 'Enter' && draft.trim()) {
-              e.preventDefault()
-              onChange([...items, draft.trim()])
-              setDraft('')
+              e.preventDefault();
+              onChange([...items, draft.trim()]);
+              setDraft('');
             }
           }}
           placeholder="Agregar ítem + Enter"
@@ -244,8 +367,8 @@ function ListEditor({ items, onChange }: { items: string[]; onChange: (v: string
           type="button"
           onClick={() => {
             if (draft.trim()) {
-              onChange([...items, draft.trim()])
-              setDraft('')
+              onChange([...items, draft.trim()]);
+              setDraft('');
             }
           }}
           className="px-2 py-1 text-xs font-semibold text-teal-600 hover:bg-teal-50 rounded"
@@ -254,5 +377,5 @@ function ListEditor({ items, onChange }: { items: string[]; onChange: (v: string
         </button>
       </div>
     </div>
-  )
+  );
 }

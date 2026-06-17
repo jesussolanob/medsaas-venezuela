@@ -122,6 +122,8 @@ export class DoctorController {
       signatureUrl: dto.signature_url,
       licenseNumber: dto.license_number,
       phone: dto.phone,
+      // birthDate is editable; cedula is intentionally excluded (read-only)
+      birthDate: dto.birth_date,
     });
     return { success: true, data: result };
   }

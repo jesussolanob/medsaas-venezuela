@@ -41,6 +41,11 @@ const PERIOD_LABELS: Record<Period, string> = {
   annual: 'Anual',
 };
 
+/**
+ * Fallback labels for feature keys when the backend does not send a feature_label.
+ * NOT used as the primary source of truth — backend's feature_label field takes
+ * precedence. Add entries here only to avoid showing raw snake_case keys to the user.
+ */
 const FEATURE_LABELS: Record<string, string> = {
   dashboard: 'Panel principal',
   agenda: 'Agenda',
@@ -60,26 +65,6 @@ const FEATURE_LABELS: Record<string, string> = {
   ai_transcription: 'Transcripción IA',
   ai_reports: 'Reportes IA',
 };
-
-// Keys that appear in the feature comparison table (in order)
-const COMPARISON_FEATURES = [
-  'dashboard',
-  'agenda',
-  'patients',
-  'consultations',
-  'ehr',
-  'finances',
-  'billing',
-  'reports',
-  'crm',
-  'reminders',
-  'messages',
-  'invitations',
-  'services',
-  'ai_assistant',
-  'ai_transcription',
-  'ai_reports',
-];
 
 const WHATSAPP_NUMBER = '58412000000'; // placeholder — admin configures this
 const WHATSAPP_MESSAGE = encodeURIComponent(
@@ -103,15 +88,46 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
     return feature?.enabled ?? false;
   }
 
-  // Determine which features are relevant (enabled in at least one plan)
-  const relevantFeatures = COMPARISON_FEATURES.filter((fk) =>
-    plans.some((p) => isFeatureEnabled(p, fk)),
+  // Derive the feature list entirely from BD data — no hardcoded list.
+  // Collect all unique feature_keys from all plans, preserving insertion order
+  // (the plan with the most features — typically the top-tier — defines the order).
+  // Only include features enabled in at least one plan so purely disabled keys
+  // don't pollute the comparison table.
+  const seenKeys = new Set<string>();
+  const relevantFeatures: Array<{ key: string; label: string }> = [];
+
+  // Sort plans descending by feature count so the most complete plan sets the order.
+  const plansByFeatureCount = [...plans].sort(
+    (a, b) =>
+      b.features.filter((f) => f.enabled).length - a.features.filter((f) => f.enabled).length,
   );
+
+  for (const plan of plansByFeatureCount) {
+    for (const feat of plan.features) {
+      if (seenKeys.has(feat.feature_key)) continue;
+      seenKeys.add(feat.feature_key);
+      // Use backend label first, then local fallback, then raw key.
+      const label =
+        feat.feature_label?.trim() || FEATURE_LABELS[feat.feature_key] || feat.feature_key;
+      // Only add to the table if enabled in at least one plan.
+      const enabledInAnyPlan = plans.some((p) => isFeatureEnabled(p, feat.feature_key));
+      if (enabledInAnyPlan) {
+        relevantFeatures.push({ key: feat.feature_key, label });
+      }
+    }
+  }
 
   // Which periods have at least one active price across plans
   const availablePeriods = (['monthly', 'quarterly', 'semiannual', 'annual'] as Period[]).filter(
     (period) => plans.some((p) => p.prices.some((pr) => pr.period === period && pr.is_active)),
   );
+
+  // Período efectivo: si el elegido no tiene precios en BD, usar el primero
+  // disponible (evita "Precio no disponible" cuando sí hay precios en otro período).
+  // Valor derivado en vez de setState-en-effect.
+  const effectivePeriod: Period = availablePeriods.includes(selectedPeriod)
+    ? selectedPeriod
+    : (availablePeriods[0] ?? selectedPeriod);
 
   // Mark the "best value" plan (non-permanent with most features)
   const paidPlans = plans.filter((p) => !p.is_permanent);
@@ -164,7 +180,7 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
               key={period}
               onClick={() => setSelectedPeriod(period)}
               className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                selectedPeriod === period
+                effectivePeriod === period
                   ? 'bg-teal-500 text-white'
                   : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-300'
               }`}
@@ -178,7 +194,7 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
       {/* Plan cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {plans.map((plan) => {
-          const price = getPriceForPeriod(plan, selectedPeriod);
+          const price = getPriceForPeriod(plan, effectivePeriod);
           const isFeatured = plan.plan_key === featuredPlanKey;
           const isPermanent = plan.is_permanent;
           const enabledCount = plan.features.filter((f) => f.enabled).length;
@@ -221,7 +237,7 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
                     <div>
                       <span className="text-2xl font-bold text-slate-800">${price}</span>
                       <span className="text-sm text-slate-500 ml-1">
-                        USD / {PERIOD_LABELS[selectedPeriod]?.toLowerCase()}
+                        USD / {PERIOD_LABELS[effectivePeriod]?.toLowerCase()}
                       </span>
                     </div>
                   ) : (
@@ -246,17 +262,17 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
 
               {/* Feature list */}
               <div className="px-5 pb-5 border-t border-slate-100 pt-4 space-y-2">
-                {relevantFeatures.slice(0, 8).map((fk) => {
-                  const enabled = isFeatureEnabled(plan, fk);
+                {relevantFeatures.slice(0, 8).map(({ key, label }) => {
+                  const enabled = isFeatureEnabled(plan, key);
                   return (
-                    <div key={fk} className="flex items-center gap-2">
+                    <div key={key} className="flex items-center gap-2">
                       {enabled ? (
                         <Check className="w-3.5 h-3.5 text-teal-500 shrink-0" />
                       ) : (
                         <X className="w-3.5 h-3.5 text-slate-200 shrink-0" />
                       )}
                       <span className={`text-xs ${enabled ? 'text-slate-700' : 'text-slate-300'}`}>
-                        {FEATURE_LABELS[fk] ?? fk}
+                        {label}
                       </span>
                     </div>
                   );
@@ -299,14 +315,14 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
                 </tr>
               </thead>
               <tbody>
-                {relevantFeatures.map((fk) => (
+                {relevantFeatures.map(({ key, label }) => (
                   <tr
-                    key={fk}
+                    key={key}
                     className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-colors"
                   >
-                    <td className="px-5 py-2.5 text-slate-700">{FEATURE_LABELS[fk] ?? fk}</td>
+                    <td className="px-5 py-2.5 text-slate-700">{label}</td>
                     {plans.map((p) => {
-                      const enabled = isFeatureEnabled(p, fk);
+                      const enabled = isFeatureEnabled(p, key);
                       return (
                         <td key={p.plan_key} className="text-center px-4 py-2.5">
                           {enabled ? (
