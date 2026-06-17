@@ -23,7 +23,13 @@ import { backendPost } from '@/lib/api-client.server';
 const STATE_COOKIE = 'g_oauth_state';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const origin = new URL(req.url).origin;
+  // En Cloud Run, new URL(req.url).origin resuelve al bind interno (0.0.0.0:8080).
+  // Usar la URL pública configurada para el redirect de vuelta a la app.
+  const origin =
+    process.env.NEXT_PUBLIC_URL ||
+    process.env.APP_BASE_URL ||
+    process.env.NEXTAUTH_URL ||
+    new URL(req.url).origin;
   const settingsUrl = `${origin}/doctor/settings?tab=integrations`;
 
   const fail = (msg: string): NextResponse => {
