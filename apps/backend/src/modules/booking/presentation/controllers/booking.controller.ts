@@ -16,6 +16,7 @@ import { GetBookingDoctorInfoUseCase } from '../../application/use-cases/booking
 import { GetBookingPlansUseCase } from '../../application/use-cases/booking/get-booking-plans.use-case';
 import { GetBookingPackagesUseCase } from '../../application/use-cases/booking/get-booking-packages.use-case';
 import { GetAvailableSlotsUseCase } from '../../application/use-cases/booking/get-available-slots.use-case';
+import { GetBookingOfficesUseCase } from '../../application/use-cases/booking/get-booking-offices.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -44,7 +45,29 @@ export class BookingController {
     private readonly getPlans: GetBookingPlansUseCase,
     private readonly getPackages: GetBookingPackagesUseCase,
     private readonly getSlots: GetAvailableSlotsUseCase,
+    private readonly getOffices: GetBookingOfficesUseCase,
   ) {}
+
+  /**
+   * GET /api/booking/:doctorId/offices
+   *
+   * Public endpoint — no auth required.
+   * Returns ACTIVE offices for the doctor with public fields only.
+   * Used by the booking widget to let patients select a consultorio.
+   *
+   * Response fields per office (camelCase):
+   *   id, name, address, city, phone, schedule, slotDuration,
+   *   bufferMinutes, modality, allowsOnline
+   *
+   * No PII, no doctorId, no createdAt/updatedAt exposed.
+   */
+  @Get(':doctorId/offices')
+  async getDoctorOffices(
+    @Param('doctorId', ParseUUIDPipe) doctorId: string,
+  ): Promise<SuccessResponse<unknown>> {
+    const offices = await this.getOffices.execute(doctorId);
+    return { success: true, data: offices };
+  }
 
   /**
    * GET /api/booking/:doctorId/info

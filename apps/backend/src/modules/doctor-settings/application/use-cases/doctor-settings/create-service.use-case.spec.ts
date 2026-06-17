@@ -4,6 +4,7 @@ import type { IOfficeRepository } from '../../../../offices/domain/repositories/
 import { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
 import { Office } from '../../../../offices/domain/entities/office.entity';
 import { OfficeNotOwnedError } from '../../../domain/errors/office-not-owned.error';
+import { PlanRequiresOfficeError } from '../../../domain/errors/plan-requires-office.error';
 
 const DOCTOR_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const OFFICE_ID = 'b2c3d4e5-f6a7-8901-bcde-f01234567890';
@@ -71,7 +72,22 @@ describe('CreateServiceUseCase', () => {
     useCase = new CreateServiceUseCase(mockPlanRepo, mockOfficeRepo);
   });
 
-  it('creates a general service (no office) without calling officeRepo', async () => {
+  it('throws PlanRequiresOfficeError when doctor has no offices', async () => {
+    mockOfficeRepo.listByDoctor.mockResolvedValue([]);
+
+    await expect(
+      useCase.execute(DOCTOR_ID, {
+        name: 'Consulta Inicial',
+        priceUsd: 80,
+      }),
+    ).rejects.toBeInstanceOf(PlanRequiresOfficeError);
+
+    expect(mockPlanRepo.save).not.toHaveBeenCalled();
+    expect(mockOfficeRepo.findByIdForDoctor).not.toHaveBeenCalled();
+  });
+
+  it('creates a general service (no office) without calling findByIdForDoctor', async () => {
+    mockOfficeRepo.listByDoctor.mockResolvedValue([makeOffice()]);
     const saved = makePricingPlan();
     mockPlanRepo.save.mockResolvedValue(saved);
 
@@ -90,6 +106,7 @@ describe('CreateServiceUseCase', () => {
   });
 
   it('creates an office-specific service after validating ownership', async () => {
+    mockOfficeRepo.listByDoctor.mockResolvedValue([makeOffice()]);
     const saved = makePricingPlan({ officeId: OFFICE_ID });
     mockOfficeRepo.findByIdForDoctor.mockResolvedValue(makeOffice());
     mockPlanRepo.save.mockResolvedValue(saved);
@@ -110,6 +127,7 @@ describe('CreateServiceUseCase', () => {
   });
 
   it('throws OfficeNotOwnedError when office does not belong to doctor', async () => {
+    mockOfficeRepo.listByDoctor.mockResolvedValue([makeOffice()]);
     mockOfficeRepo.findByIdForDoctor.mockResolvedValue(null);
 
     await expect(
@@ -124,6 +142,7 @@ describe('CreateServiceUseCase', () => {
   });
 
   it('applies default values for optional fields', async () => {
+    mockOfficeRepo.listByDoctor.mockResolvedValue([makeOffice()]);
     const saved = makePricingPlan({
       name: 'Consulta',
       priceUsd: 50,
@@ -144,6 +163,7 @@ describe('CreateServiceUseCase', () => {
   });
 
   it('sets officeId to null when officeId is explicitly null', async () => {
+    mockOfficeRepo.listByDoctor.mockResolvedValue([makeOffice()]);
     const saved = makePricingPlan();
     mockPlanRepo.save.mockResolvedValue(saved);
 

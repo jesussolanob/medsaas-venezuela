@@ -94,7 +94,7 @@ type DoctorOffice = {
   schedule: { day: number; enabled: boolean; start: string; end: string }[];
   slot_duration: number;
   buffer_minutes: number;
-  modality?: OfficeModality;
+  modality: OfficeModality;
 };
 
 /** Total price for a plan: price_usd is per-session, multiply by sessions_count */
@@ -308,6 +308,7 @@ export default function BookingClient({
   paymentDetails = {},
   bookedSlots = [],
   bookingHorizonWeeks = 8,
+  initialOffices = [],
 }: {
   doctor: DoctorProfile;
   plans: PricingPlan[];
@@ -316,6 +317,8 @@ export default function BookingClient({
   bookedSlots?: string[];
   /** Número de semanas a mostrar en el selector de fechas (viene del schedule del doctor). */
   bookingHorizonWeeks?: number;
+  /** Consultorios del médico, cargados por el server component desde /api/booking/:id/offices. */
+  initialOffices?: DoctorOffice[];
 }) {
   // BCV rate for dual currency
   const { rate: bcvRate, toBs } = useBcvRate();
@@ -347,9 +350,14 @@ export default function BookingClient({
   const [activePackage, setActivePackage] = useState<ActivePackage | null>(null);
   const [usingPackage, setUsingPackage] = useState(false);
 
-  // Doctor offices
-  const [doctorOffices, setDoctorOffices] = useState<DoctorOffice[]>([]);
-  const [selectedOffice, setSelectedOffice] = useState<DoctorOffice | null>(null);
+  // Doctor offices — seeded from server component (public /api/booking/:id/offices).
+  // No client-side fetch needed: the server component already resolved this before render.
+  const [doctorOffices] = useState<DoctorOffice[]>(initialOffices);
+  const [selectedOffice, setSelectedOffice] = useState<DoctorOffice | null>(() => {
+    // Auto-select when only one office exists — skip the selector step.
+    if (initialOffices.length === 1) return initialOffices[0];
+    return null;
+  });
 
   // Selections
   const [selectedPlan, setSelectedPlan] = useState<PricingPlan | null>(null);
@@ -404,11 +412,12 @@ export default function BookingClient({
   // Map: YYYY-MM-DD → Set<HH:MM> (horas bloqueadas en esa fecha).
   const [blockedTimes, setBlockedTimes] = useState<Map<string, Set<string>>>(new Map());
 
-  // RONDA 27: pasamos los offices del doctor para que generateSlots respete
-  // sus dias habilitados, horarios y duracion entre citas. Sin offices → generic.
+  // Slot generation uses the selected office (single-office or user-chosen),
+  // or all offices together before an office is selected (shows union of schedules).
   // Fase 5: horizonDays = bookingHorizonWeeks * 7
   const horizonDays = Math.max(1, Math.min(52, bookingHorizonWeeks)) * 7;
-  const allSlots = generateSlots(doctorOffices, horizonDays);
+  const officesForSlots = selectedOffice ? [selectedOffice] : doctorOffices;
+  const allSlots = generateSlots(officesForSlots, horizonDays);
   const grouped = groupByDate(allSlots);
   const dates = Object.keys(grouped).sort();
   const weekDates = dates.slice(weekOffset * 5, weekOffset * 5 + 5);
@@ -450,28 +459,8 @@ export default function BookingClient({
     }
   };
 
-  // Fetch doctor offices on mount via the backend offices endpoint.
-  // GET /api/doctor/offices — requires doctor identity, but booking is public.
-  // ETAPA 2 TODO: expose a public /api/booking/:doctorId/offices endpoint.
-  // For now we degrade gracefully: no offices → generic time slots are used.
-  useEffect(() => {
-    const fetchOffices = async () => {
-      try {
-        const res = await fetch(
-          `/api/booking/${doctor.id}/slots?date=${new Date().toISOString().slice(0, 10)}`,
-        );
-        // We only use the offices fetch to pre-configure slot generation.
-        // The slots endpoint gives us availability per date; we still use the
-        // local generateSlots() for the weekly calendar display.
-        // If the endpoint fails, generic slots are shown — acceptable degradation.
-        if (!res.ok) return;
-        // No offices data in this endpoint — leave doctorOffices empty to use generic slots.
-      } catch {
-        // Degrade silently — generateSlots() uses generic fallback.
-      }
-    };
-    fetchOffices();
-  }, [doctor.id]);
+  // Doctor offices are loaded server-side in page.tsx via publicFetch.
+  // No client-side fetch is needed — initialOffices prop already contains the data.
 
   /**
    * Fase 5: cuando el paciente selecciona una fecha, consultar el endpoint
@@ -516,18 +505,9 @@ export default function BookingClient({
     void fetchDateSlots();
   }, [selectedDate, doctor.id, blockedTimes]);
 
-  // When date is selected, find the matching office for that day
-  useEffect(() => {
-    if (selectedDate && doctorOffices.length > 0) {
-      const dateObj = new Date(selectedDate + 'T12:00:00');
-      const jsDay = dateObj.getDay();
-      const dayIdx = jsDay === 0 ? 6 : jsDay - 1;
-      const matchingOffice = doctorOffices.find((o) =>
-        o.schedule.some((s) => s.day === dayIdx && s.enabled),
-      );
-      setSelectedOffice(matchingOffice || null);
-    }
-  }, [selectedDate, doctorOffices]);
+  // When there are 2+ offices and a date is selected but no office is chosen yet,
+  // do NOT auto-assign — the user must pick an office explicitly in step 2.
+  // (For single-office doctors, selectedOffice is already set in useState init.)
 
   // ── Auth Handlers ─────────────────────────────────────────────────────────
   // ETAPA 1: Patient auth (login/register) requires Auth0 (Etapa 2).
@@ -679,6 +659,7 @@ export default function BookingClient({
           receiptUrl,
           appointmentMode: appointmentMode || 'presencial',
           packageId: usingPackage ? activePackage?.id : null,
+          officeId: selectedOffice?.id ?? null,
           // ETAPA 2 TODO: forward patientClinical to backend CreateBookingDto
           // when the backend schema is extended to accept it.
         }),
@@ -709,8 +690,8 @@ export default function BookingClient({
       setBookedCode(result.appointmentCode || '');
       setBookedMeetLink(result.meetLink ?? null);
       setDone(true);
-    } catch (err: any) {
-      setError(err?.message || 'Error inesperado');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error inesperado');
     }
     setSubmitting(false);
     submittingRef.current = false; // RONDA 24: liberar guard
@@ -1062,7 +1043,8 @@ export default function BookingClient({
                       },
                     );
                     setUsingPackage(true);
-                    setActiveStep(2);
+                    // Skip office selector when 0 or 1 offices (already resolved)
+                    setActiveStep(doctorOffices.length >= 2 ? 2 : 3);
                   }}
                   className={`w-full text-left rounded-xl p-4 transition-all border-2 ${
                     usingPackage
@@ -1100,7 +1082,8 @@ export default function BookingClient({
                     onClick={() => {
                       setSelectedPlan(plan);
                       setUsingPackage(false);
-                      setActiveStep(2);
+                      // Skip office selector when 0 or 1 offices
+                      setActiveStep(doctorOffices.length >= 2 ? 2 : 3);
                     }}
                     className={`relative w-full text-left rounded-xl p-4 transition-all ${
                       isSelected
@@ -1155,15 +1138,193 @@ export default function BookingClient({
             </div>
           </AccordionSection>
 
-          {/* ── Step 2: Selecciona el día ──────────────────────────────────── */}
+          {/* ── Step 2: Selecciona el consultorio ─────────────────────────── */}
+          {(() => {
+            const noOffices = doctorOffices.length === 0;
+            const singleOffice = doctorOffices.length === 1;
+            const multiOffice = doctorOffices.length >= 2;
+            const anyOnline = noOffices
+              ? doctor.allows_online !== false
+              : doctorOffices.some((o) => o.modality === 'online' || o.modality === 'both');
+
+            // When 0 offices: check if doctor allows online at all
+            const noAvailability = noOffices && !anyOnline;
+
+            const officeSummary = noOffices
+              ? anyOnline
+                ? 'Solo videoconsulta disponible'
+                : 'Sin disponibilidad configurada'
+              : singleOffice
+                ? doctorOffices[0]?.name
+                : selectedOffice?.name;
+
+            return (
+              <AccordionSection
+                step={2}
+                currentStep={activeStep}
+                title="Consultorio"
+                icon={MapPin}
+                summary={officeSummary}
+                completed={(noOffices || singleOffice || !!selectedOffice) && activeStep > 2}
+                onOpen={() => (doctorOffices.length >= 2 ? setActiveStep(2) : undefined)}
+              >
+                <div className="space-y-3">
+                  {noAvailability && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                        <div>
+                          <p className="text-sm font-semibold text-amber-800">
+                            Sin disponibilidad configurada
+                          </p>
+                          <p className="text-xs text-amber-700 mt-0.5">
+                            Este médico aún no tiene consultorios ni videoconsulta habilitada. Por
+                            favor contáctalo directamente para coordinar tu cita.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {noOffices && anyOnline && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                      <div className="flex items-start gap-3">
+                        <Video className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
+                        <div>
+                          <p className="text-sm font-semibold text-blue-800">
+                            Solo disponible por videoconsulta
+                          </p>
+                          <p className="text-xs text-blue-700 mt-0.5">
+                            Este médico atiende únicamente de forma online. Selecciona fecha y hora
+                            para continuar.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep(3)}
+                        className="mt-3 w-full py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity"
+                        style={{ background: BRAND.turquoise }}
+                      >
+                        Continuar
+                      </button>
+                    </div>
+                  )}
+
+                  {singleOffice && doctorOffices[0] && (
+                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4">
+                      <div className="flex items-start gap-3">
+                        <MapPin
+                          className="w-4 h-4 shrink-0 mt-0.5"
+                          style={{ color: BRAND.turquoise }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold" style={{ color: BRAND.ink }}>
+                            {doctorOffices[0].name}
+                          </p>
+                          <p className="text-xs text-cyan-700 mt-0.5">
+                            {doctorOffices[0].address}, {doctorOffices[0].city}
+                          </p>
+                          {doctorOffices[0].phone && (
+                            <p className="text-xs text-cyan-600 mt-0.5">{doctorOffices[0].phone}</p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep(3)}
+                        className="mt-3 w-full py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity"
+                        style={{ background: BRAND.turquoise }}
+                      >
+                        Continuar
+                      </button>
+                    </div>
+                  )}
+
+                  {multiOffice && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-slate-500">
+                        Este médico tiene {doctorOffices.length} consultorios. Elige dónde quieres
+                        atenderte:
+                      </p>
+                      {doctorOffices.map((office) => {
+                        const isSelected = selectedOffice?.id === office.id;
+                        return (
+                          <button
+                            key={office.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedOffice(office);
+                              // Reset date/slot when office changes
+                              setSelectedDate(null);
+                              setSelectedSlot(null);
+                              setAppointmentMode('');
+                              setWeekOffset(0);
+                              setActiveStep(3);
+                            }}
+                            className={`w-full text-left rounded-xl p-4 border-2 transition-all ${
+                              isSelected
+                                ? 'border-cyan-500 bg-cyan-50/50 shadow-md shadow-cyan-100'
+                                : 'border-slate-200 bg-white hover:border-cyan-300'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                  isSelected ? 'bg-cyan-100' : 'bg-slate-100'
+                                }`}
+                              >
+                                <MapPin
+                                  className="w-4 h-4"
+                                  style={{ color: isSelected ? BRAND.turquoise : '#94a3b8' }}
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold" style={{ color: BRAND.ink }}>
+                                  {office.name}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  {office.address}, {office.city}
+                                </p>
+                                {office.phone && (
+                                  <p className="text-xs text-slate-400 mt-0.5">{office.phone}</p>
+                                )}
+                                <span
+                                  className={`inline-block mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                    office.modality === 'both'
+                                      ? 'bg-teal-50 text-teal-700'
+                                      : office.modality === 'online'
+                                        ? 'bg-blue-50 text-blue-700'
+                                        : 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {office.modality === 'both'
+                                    ? 'Presencial y online'
+                                    : office.modality === 'online'
+                                      ? 'Solo online'
+                                      : 'Solo presencial'}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </AccordionSection>
+            );
+          })()}
+
+          {/* ── Step 3: Selecciona el día ──────────────────────────────────── */}
           <AccordionSection
-            step={2}
+            step={3}
             currentStep={activeStep}
             title="Fecha de la cita"
             icon={Calendar}
             summary={selectedSlot ? selectedSlot.label : undefined}
-            completed={!!selectedDate && activeStep > 2}
-            onOpen={() => setActiveStep(2)}
+            completed={!!selectedDate && activeStep > 3}
+            onOpen={() => setActiveStep(3)}
           >
             <div className="space-y-3">
               <div
@@ -1259,7 +1420,7 @@ export default function BookingClient({
                           onClick={() => {
                             if (!isUnavailable) {
                               setSelectedSlot(slot);
-                              setActiveStep(3);
+                              setActiveStep(4);
                             }
                           }}
                           disabled={isUnavailable}
@@ -1291,46 +1452,30 @@ export default function BookingClient({
             </div>
           </AccordionSection>
 
-          {/* ── Step 3: Modalidad ──────────────────────────────────────────── */}
+          {/* ── Step 4: Modalidad ──────────────────────────────────────────── */}
           {(() => {
-            // Determine which modality options are available for this booking.
-            // Priority: selected office modality > any office modality > doctor.allows_online flag.
-            // TODO: When the public booking endpoint exposes office-level modality,
-            //       use it here to show office-aware choices per-day selection.
-            const officeModality = selectedOffice?.modality;
-            const anyOfficeModality =
-              doctorOffices.length > 0
-                ? doctorOffices.some((o) => o.modality === 'both' || o.modality === 'online')
-                  ? 'both'
-                  : 'in_person'
-                : null;
+            // Derive modality from the selected office (now always known by this step).
+            // When 0 offices: falls back to doctor.allows_online flag.
+            const effectiveModality: OfficeModality | null =
+              selectedOffice?.modality ?? (doctorOffices.length === 0 ? null : 'in_person');
 
-            const effectiveModality: OfficeModality | null = officeModality ?? anyOfficeModality;
             const allowsInPerson =
-              !effectiveModality ||
-              effectiveModality === 'in_person' ||
-              effectiveModality === 'both';
+              selectedOffice !== null && // must have an office for presencial
+              (effectiveModality === 'in_person' || effectiveModality === 'both');
             const allowsOnline =
               effectiveModality === 'online' || effectiveModality === 'both'
                 ? true
-                : doctor.allows_online !== false;
+                : selectedOffice === null && doctor.allows_online !== false;
 
-            // Auto-select when only one option is available
             const onlyInPerson = allowsInPerson && !allowsOnline;
             const onlyOnline = allowsOnline && !allowsInPerson;
 
-            // Auto-advance when there's no choice to make
-            if ((onlyInPerson && !appointmentMode) || (onlyOnline && !appointmentMode)) {
-              // Effect: pre-select and skip this step via useEffect equivalent
-              // (handled below with a derived value shown in the summary)
-            }
-
             return (
               <AccordionSection
-                step={3}
+                step={4}
                 currentStep={activeStep}
                 title="Modalidad"
-                icon={MapPin}
+                icon={Activity}
                 summary={
                   onlyInPerson
                     ? 'Presencial (único modo disponible)'
@@ -1342,11 +1487,11 @@ export default function BookingClient({
                           ? 'Presencial'
                           : undefined
                 }
-                completed={!!appointmentMode && activeStep > 3}
-                onOpen={() => setActiveStep(3)}
+                completed={!!appointmentMode && activeStep > 4}
+                onOpen={() => setActiveStep(4)}
               >
                 <div className="space-y-3">
-                  {/* When only one mode, show info banner and auto-continue */}
+                  {/* When only one mode, show info banner */}
                   {(onlyInPerson || onlyOnline) && (
                     <div className="bg-teal-50 border border-teal-200 rounded-xl p-3">
                       <p className="text-xs text-teal-700">
@@ -1364,7 +1509,7 @@ export default function BookingClient({
                       <button
                         onClick={() => {
                           setAppointmentMode('presencial');
-                          setActiveStep(4);
+                          setActiveStep(5);
                         }}
                         className={`p-4 rounded-xl border-2 text-left transition-all ${
                           appointmentMode === 'presencial'
@@ -1402,8 +1547,7 @@ export default function BookingClient({
                       <button
                         onClick={() => {
                           setAppointmentMode('online');
-                          setSelectedOffice(null);
-                          setActiveStep(4);
+                          setActiveStep(5);
                         }}
                         className={`p-4 rounded-xl border-2 text-left transition-all ${
                           appointmentMode === 'online'
@@ -1436,7 +1580,7 @@ export default function BookingClient({
                     )}
                   </div>
 
-                  {/* Show assigned office for the selected date */}
+                  {/* Show selected office address when presencial */}
                   {appointmentMode === 'presencial' && selectedOffice && (
                     <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4">
                       <div className="flex items-start gap-3">
@@ -1458,7 +1602,7 @@ export default function BookingClient({
                       </div>
                     </div>
                   )}
-                  {appointmentMode === 'presencial' && !selectedOffice && selectedDate && (
+                  {appointmentMode === 'presencial' && !selectedOffice && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                       <p className="text-xs text-amber-700">
                         {doctor.office_address ||
@@ -1471,9 +1615,9 @@ export default function BookingClient({
             );
           })()}
 
-          {/* ── Step 4: Tus datos ──────────────────────────────────────────── */}
+          {/* ── Step 5: Tus datos ──────────────────────────────────────────── */}
           <AccordionSection
-            step={4}
+            step={5}
             currentStep={activeStep}
             title="Tus datos"
             icon={User}
@@ -1485,9 +1629,9 @@ export default function BookingClient({
                   : undefined
             }
             completed={
-              (!!authUser || (guestMode && !!form.full_name && !!form.email)) && activeStep > 4
+              (!!authUser || (guestMode && !!form.full_name && !!form.email)) && activeStep > 5
             }
-            onOpen={() => setActiveStep(4)}
+            onOpen={() => setActiveStep(5)}
           >
             <div className="space-y-4">
               {authUser ? (
@@ -1517,7 +1661,7 @@ export default function BookingClient({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveStep(usingPackage ? 6 : 5)}
+                    onClick={() => setActiveStep(usingPackage ? 7 : 6)}
                     className="w-full py-3 rounded-xl text-sm font-bold transition-all text-white hover:opacity-90"
                     style={{ background: BRAND.turquoise }}
                   >
@@ -1729,7 +1873,12 @@ export default function BookingClient({
                           </label>
                           <select
                             value={form.sex}
-                            onChange={(e) => setForm((f) => ({ ...f, sex: e.target.value as any }))}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                sex: e.target.value as '' | 'male' | 'female' | 'other',
+                              }))
+                            }
                             className={fi}
                           >
                             <option value="">Seleccionar…</option>
@@ -1924,7 +2073,7 @@ export default function BookingClient({
                         return;
                       }
                       setError('');
-                      setActiveStep(usingPackage ? 6 : 5);
+                      setActiveStep(usingPackage ? 7 : 6);
                     }}
                     className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
                     style={{ background: BRAND.turquoise }}
@@ -1947,10 +2096,10 @@ export default function BookingClient({
             </div>
           </AccordionSection>
 
-          {/* ── Step 5: Método de pago (skip if using package) ─────────────── */}
+          {/* ── Step 6: Método de pago (skip if using package) ─────────────── */}
           {!usingPackage && (
             <AccordionSection
-              step={5}
+              step={6}
               currentStep={activeStep}
               title="Método de pago"
               icon={CreditCard}
@@ -1962,9 +2111,9 @@ export default function BookingClient({
                     : undefined
               }
               completed={
-                (!!selectedPaymentMethod || (useInsurance && !!selectedInsurance)) && activeStep > 5
+                (!!selectedPaymentMethod || (useInsurance && !!selectedInsurance)) && activeStep > 6
               }
-              onOpen={() => setActiveStep(5)}
+              onOpen={() => setActiveStep(6)}
             >
               <div className="space-y-4">
                 {/* Amount reminder */}
@@ -2083,7 +2232,7 @@ export default function BookingClient({
                 {selectedPaymentMethod && (
                   <button
                     type="button"
-                    onClick={() => setActiveStep(6)}
+                    onClick={() => setActiveStep(7)}
                     className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
                     style={{ background: BRAND.turquoise }}
                   >
@@ -2094,9 +2243,9 @@ export default function BookingClient({
             </AccordionSection>
           )}
 
-          {/* ── Step 6: Motivo y confirmación ──────────────────────────────── */}
+          {/* ── Step 7: Motivo y confirmación ──────────────────────────────── */}
           <AccordionSection
-            step={6}
+            step={7}
             currentStep={activeStep}
             title="Confirmar cita"
             icon={CheckCircle}

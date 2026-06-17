@@ -57,6 +57,19 @@ interface BookedSlotRow {
   scheduledAt: string;
 }
 
+interface DoctorOfficeRaw {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  schedule: { day: number; enabled: boolean; start: string; end: string }[];
+  slotDuration: number;
+  bufferMinutes: number;
+  modality?: 'in_person' | 'online' | 'both';
+  allowsOnline?: boolean;
+}
+
 // Server Component — fetches doctor data from the NestJS backend (public endpoints).
 export default async function PublicBookingPage({
   params,
@@ -65,10 +78,11 @@ export default async function PublicBookingPage({
 }) {
   const { doctorId } = await params;
 
-  // Fetch doctor info, plans, and booked slots in parallel.
-  const [doctorInfo, plans] = await Promise.all([
+  // Fetch doctor info, plans, and offices in parallel.
+  const [doctorInfo, plans, officesRaw] = await Promise.all([
     publicFetch<DoctorInfo>(`/api/booking/${doctorId}/info`),
     publicFetch<PricingPlan[]>(`/api/booking/${doctorId}/plans`),
+    publicFetch<DoctorOfficeRaw[]>(`/api/booking/${doctorId}/offices`),
   ]);
 
   if (!doctorInfo) {
@@ -114,6 +128,22 @@ export default async function PublicBookingPage({
   // can lazy-load per-date availability when the user picks a date.
   const bookedSlots: string[] = [];
 
+  // Normalize backend camelCase offices → BookingClient snake_case shape.
+  const offices =
+    officesRaw && officesRaw.length > 0
+      ? officesRaw.map((o) => ({
+          id: o.id,
+          name: o.name,
+          address: o.address,
+          city: o.city,
+          phone: o.phone,
+          schedule: o.schedule ?? [],
+          slot_duration: o.slotDuration ?? 30,
+          buffer_minutes: o.bufferMinutes ?? 0,
+          modality: o.modality ?? 'in_person',
+        }))
+      : [];
+
   // paymentMethods and paymentDetails come from doctorInfo (backend includes them).
   const paymentMethods = doctorInfo.paymentMethods ?? [];
   const paymentDetails = (doctorInfo.paymentDetails ?? {}) as Record<
@@ -148,6 +178,7 @@ export default async function PublicBookingPage({
       paymentDetails={paymentDetails}
       bookedSlots={bookedSlots}
       bookingHorizonWeeks={bookingHorizonWeeks}
+      initialOffices={offices}
     />
   );
 }

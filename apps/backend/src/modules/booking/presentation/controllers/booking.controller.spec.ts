@@ -6,6 +6,7 @@ import { GetBookingDoctorInfoUseCase } from '../../application/use-cases/booking
 import { GetBookingPlansUseCase } from '../../application/use-cases/booking/get-booking-plans.use-case';
 import { GetBookingPackagesUseCase } from '../../application/use-cases/booking/get-booking-packages.use-case';
 import { GetAvailableSlotsUseCase } from '../../application/use-cases/booking/get-available-slots.use-case';
+import { GetBookingOfficesUseCase } from '../../application/use-cases/booking/get-booking-offices.use-case';
 import { DoctorNotFoundError } from '../../application/use-cases/booking/create-booking.use-case';
 import { Appointment } from '../../../appointments/domain/entities/appointment.entity';
 import { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
@@ -48,6 +49,7 @@ describe('BookingController', () => {
   let mockGetPlans: jest.Mocked<GetBookingPlansUseCase>;
   let mockGetPackages: jest.Mocked<GetBookingPackagesUseCase>;
   let mockGetSlots: jest.Mocked<GetAvailableSlotsUseCase>;
+  let mockGetOffices: jest.Mocked<GetBookingOfficesUseCase>;
 
   beforeEach(async () => {
     mockCreateUseCase = { execute: jest.fn() } as unknown as jest.Mocked<CreateBookingUseCase>;
@@ -57,6 +59,7 @@ describe('BookingController', () => {
     mockGetPlans = { execute: jest.fn() } as unknown as jest.Mocked<GetBookingPlansUseCase>;
     mockGetPackages = { execute: jest.fn() } as unknown as jest.Mocked<GetBookingPackagesUseCase>;
     mockGetSlots = { execute: jest.fn() } as unknown as jest.Mocked<GetAvailableSlotsUseCase>;
+    mockGetOffices = { execute: jest.fn() } as unknown as jest.Mocked<GetBookingOfficesUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BookingController],
@@ -66,6 +69,7 @@ describe('BookingController', () => {
         { provide: GetBookingPlansUseCase, useValue: mockGetPlans },
         { provide: GetBookingPackagesUseCase, useValue: mockGetPackages },
         { provide: GetAvailableSlotsUseCase, useValue: mockGetSlots },
+        { provide: GetBookingOfficesUseCase, useValue: mockGetOffices },
       ],
     }).compile();
 
@@ -168,6 +172,39 @@ describe('BookingController', () => {
         BadRequestException,
       );
       expect(mockGetSlots.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDoctorOffices', () => {
+    it('delegates to GetBookingOfficesUseCase and returns offices envelope', async () => {
+      const officeDto = {
+        id: 'off-001',
+        name: 'Consultorio A',
+        address: 'Av. Libertador 1',
+        city: 'Caracas',
+        phone: '+58 212 555 0001',
+        schedule: [{ day: 0, enabled: true, start: '08:00', end: '17:00' }],
+        slotDuration: 30,
+        bufferMinutes: 10,
+        modality: 'in_person' as const,
+        allowsOnline: false,
+      };
+      mockGetOffices.execute.mockResolvedValue([officeDto]);
+
+      const response = await controller.getDoctorOffices('doc-001');
+
+      expect(response.success).toBe(true);
+      expect(Array.isArray(response.data)).toBe(true);
+      expect(mockGetOffices.execute).toHaveBeenCalledWith('doc-001');
+    });
+
+    it('returns empty array when doctor has no active offices', async () => {
+      mockGetOffices.execute.mockResolvedValue([]);
+
+      const response = await controller.getDoctorOffices('doc-001');
+
+      expect(response.success).toBe(true);
+      expect(response.data).toEqual([]);
     });
   });
 

@@ -11,6 +11,7 @@ import {
   type IOfficeRepository,
 } from '../../../../offices/domain/repositories/office.repository';
 import { OfficeNotOwnedError } from '../../../domain/errors/office-not-owned.error';
+import { PlanRequiresOfficeError } from '../../../domain/errors/plan-requires-office.error';
 
 export interface CreateServiceInput {
   name: string;
@@ -34,6 +35,12 @@ export class CreateServiceUseCase {
   ) {}
 
   async execute(doctorId: string, input: CreateServiceInput): Promise<PricingPlan> {
+    // Guard: doctor must have at least one office before creating plans
+    const doctorOffices = await this.officeRepo.listByDoctor(doctorId);
+    if (doctorOffices.length === 0) {
+      throw new PlanRequiresOfficeError();
+    }
+
     // Validate office ownership when an office_id is provided
     const officeId = input.officeId ?? null;
     if (officeId !== null) {

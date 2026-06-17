@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       paymentReference,
       appointmentMode,
       packageId,
+      officeId,
     } = body;
 
     // Basic required field validation
@@ -117,6 +118,7 @@ export async function POST(req: NextRequest) {
       payment_reference: paymentReference || null,
       bcv_rate: bcvRate,
       package_id: packageId || null,
+      office_id: officeId || null,
     };
 
     // Forward to the backend booking endpoint (no auth headers — it's public)
