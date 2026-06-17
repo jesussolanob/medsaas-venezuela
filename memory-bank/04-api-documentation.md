@@ -367,3 +367,14 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 > **⚠️ Convención de serialización (lección de QA 2026-06-12):** backend NestJS y BFF devuelven `envelope.data`
 > en **camelCase** (`fullName`, `defaultLabel`, `blockKey`…). Los consumers frontend deben leer camelCase, no
 > snake_case (causó 4 bugs del lote). Frontend route handler nuevo: `GET /api/doctor/patients/[id]`.
+
+### IA — Transcripción de consultas (2026-06-16/17)
+
+| Endpoint             | Método | Roles              | Notas                                                                                                                                                                                                                                                                                            |
+| -------------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/ai/transcribe` | POST   | doctor/super_admin | Backend NestJS (módulo `ai-transcription`, DDD). multipart `audio` + opc. `available_blocks`(JSON)/`language`. Gating **FAIL-CLOSED** de `ai_transcription` (super_admin bypassa). Gemini (key en header, NUNCA URL). Audita `ai_request_log` (sin PHI). Devuelve `{ transcript, suggestions }`. |
+
+> **Frontend:** `POST /api/doctor/consultations/transcribe` ahora es **proxy delgado** que reenvía el audio
+> a `/api/ai/transcribe`. La `GEMINI_API_KEY` vive SOLO en el backend (Secret Manager). Gating de UI por plan
+> (`useDoctorFeatures`): recorder→`ai_transcription`, panel Asistente IA→`ai_assistant`, Resumir informe→`ai_reports`.
+> ⚠️ Free tier de Gemini = entrena con datos (riesgo PII aceptado por el usuario para arrancar).

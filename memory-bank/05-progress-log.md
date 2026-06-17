@@ -1381,3 +1381,22 @@ con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
   primer login con `UniqueConstraintError`; `fullName` fallback 'Pendiente'; comentario stale). 54/54 tests auth.
 - **PENDIENTE**: QA visual del usuario (login real → `whoami` `roleMatches:true`). Riesgo a vigilar: valida
   ID token (no access) → expiración. Plan B: API audience `https://api.deltasalud.app` (ya creada).
+
+## 2026-06-17 — IA: gating por plan + módulo backend de transcripción (Gemini) — DESPLEGADO
+
+- **Gemini FREE tier (AI Studio)** elegido para arrancar; key creada vía gcloud (proyecto sin billing),
+  en `.env` backend + Secret Manager. ⚠️ Free tier entrena con datos → riesgo PII de pacientes **aceptado
+  explícitamente por el usuario** para arrancar (revisar antes de escalar; alternativa paid/Vertex).
+- **Gating por plan de features IA (frontend, commit `fdcf7d5`)**: estaban SIN gating. Ahora 2 capas:
+  UI (`useDoctorFeatures` + candado/upgrade) y API. Mapeo: recorder→`ai_transcription`,
+  panel Asistente IA→`ai_assistant`, "Resumir informe"→`ai_reports`. Helper `hasPlanFeature` (fail-open) +
+  `hasPlanFeatureStrict` (fail-closed, para PHI). `/api/doctor/ai` sigue stub 501.
+- **Módulo backend `ai-transcription` (DDD, commit `4f13402`)**: `POST /api/ai/transcribe`. Gating fail-closed,
+  adapter Gemini (key en header x-goog-api-key, timeout, NUNCA loguea PHI), sanitización anti prompt-injection,
+  migración `20260616000000-ai-request-log.cjs` (audit sin contenido). 49 tests.
+- **Frontend `/transcribe` → proxy al backend (commit `0b0f5d6`)**: la key sale del frontend; vive solo en backend.
+  `deploy.yml` inyecta `GEMINI_API_KEY` al servicio delta-backend (SA con secretAccessor).
+- Reviews: security-agent (2 HIGH: leak de key en URL + detalle al cliente → corregidos) + code-reviewer.
+  Lead verificó build/lint/test en disco. Desplegado a prod (runs GHA success).
+- **PENDIENTE**: QA visual del usuario (grabar consulta real → transcripción en vivo). Implementar el módulo
+  real de `/api/doctor/ai` (Asistente IA: resumir/mejorar) — hoy stub 501; ahí gatear `ai_reports` por acción.
