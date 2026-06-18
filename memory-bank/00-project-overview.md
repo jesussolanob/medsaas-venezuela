@@ -7,17 +7,26 @@
 
 CRM clínico omnicanal para médicos especialistas: gestión de agenda, pacientes,
 consultas, historia clínica (EHR), recetas, finanzas, cobros, paquetes prepagados,
-portal del paciente y booking público. Nombre comercial: **Delta Medical CRM**.
+portal del paciente, booking público, compartir documentos con el paciente (enlace +
+código) e IA de texto (mejorar/resumir/historial). Nombre comercial: **Delta Medical CRM**.
 
 Modelo de negocio: **suscripción por médico**, con planes **100% parametrizables
 desde admin** (`plan_configs` + `plan_prices` por período + `plan_features`):
 
-- **Delta Free** — permanente (nunca expira), gratis, features básicas.
-- **Delta Base** — $10/mes ($27 trim · $51 sem · $96 anual).
+- **Delta Free** — permanente (nunca expira), gratis. Solo `{dashboard, settings,
+patients, consultations}` (+ Consultorios/Plantillas, sin moduleKey). SIN booking
+  online ni agenda/finanzas/crm/ehr/reports/etc.
+- **Delta Base** — $10/mes ($27 trim · $51 sem · $96 anual). Todos los módulos (incl. booking).
 - **Delta Plus** — $30/mes ($81 trim · $153 sem · $288 anual), incluye features de IA.
 
+> Los 4 planes legacy (trial/basic/professional/clinic) quedaron **desactivados** en
+> `plan_configs`; el catálogo vendible es Free/Base/Plus. La tabla `subscriptions`
+> está vacía (suscripciones se resuelven por plan efectivo + downgrade perezoso).
+
 **Gating del doctor** = capacidades del ROL (`role_capabilities`) **∩** features del
-PLAN (`plan_features`). Módulo no habilitado → candado → `/doctor/upgrade`. Al expirar:
+PLAN (`plan_features`). Módulo no habilitado → candado → `/doctor/upgrade`. La página
+pública `/book/:doctorId` se gatea con la feature `booking` (Free=off → "Reservas no
+disponibles"; backend rechaza el POST con `BookingNotEnabledError` 403). Al expirar:
 **downgrade perezoso** a Delta Free SIN perder datos (se persiste al **login**, sin cron).
 **Pagos = MANUALES** (transferencia/Pago Móvil/etc.) + **aprobación de super_admin**
 (módulo `billing`). Verificación de credenciales del doctor: **MPPS automática** vía SACS,
@@ -49,8 +58,17 @@ bloques dinámicos, finanzas/cobros/gastos, plantillas PDF, servicios, booking p
 7.6 KPIs agenda, 7.11 servicios — completos; 7.1/7.2/7.3/7.7/7.9 avanzados. Restan
 landing (resto), export PDF, plantillas PDF de informe, cobro WhatsApp, limpieza BD.
 
-Pendiente grande: **IA (Fase 7, Gemini)** — espera specs del usuario. También: cron de
-recordatorios (envío real WhatsApp/email), deploy GCP. Portal del paciente diferido.
+Sesión 2026-06-18: **compartir documentos** (#12) cableado front+back (enlace + código
+6 dígitos + **cédula**, 48h, PDF con pdf-lib, email Resend); **gating de planes** fijado
+(Free mínimo, feature `booking` nueva); panel de **suscripción** corregido (plan
+permanente sin "termina el null", botón Mejorar mi plan → `/doctor/upgrade`, plan actual
+resaltado en upgrade); **IA de texto reactivada** (improve_block/summarize_report/
+patient_history) — el BFF `/api/doctor/ai` ya proxea a `/api/ai/text` (el endpoint
+backend `/api/ai/text` está **en construcción esta sesión**, ver progress-log).
+
+Pendiente: completar/cablear el endpoint backend `/api/ai/text` (módulo IA de texto que
+reusa la infra de `ai-transcription`); cron de recordatorios (envío real WhatsApp/email).
+Portal del paciente diferido. Deploy GCP funciona (Auth0 Etapa 2 vivo).
 
 Etapa 1 (actual): construir todo en local — `AppAuthGuard` (modo dev, headers `x-dev-user-*`),
 Postgres/Redis/MinIO Docker, clave de cifrado fija en `.env`. Sin GCP/Cloudflare.

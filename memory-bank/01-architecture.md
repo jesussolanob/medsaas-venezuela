@@ -112,8 +112,38 @@ GlobalExceptionFilter).
   — el claim del token es solo hint. Namespace de rol: `AUTH0_ROLE_NAMESPACE` (default `https://deltamedical.app`).
   `InfraAuthModule` (@Global) registra los tres guards + `IdentityResolverService` disponibles en todo el app.
   `ALLOW_DEV_AUTH` eliminado — la prod usa Auth0, no DevAuthGuard. Dependencia nueva: `jose` v6.
-- **IA (Fase 7) — pendiente:** chat único con **Gemini**; specs de las funciones IA PENDIENTES del usuario.
-  Feature keys ya sembradas (`ai_assistant`/`ai_transcription`/`ai_reports`) — solo desbloqueadas en plan Plus.
+- **ADR-013 (2026-06-18):** **Compartir documentos de consulta con el paciente.** Módulo
+  `document-sharing`. El doctor genera un enlace público + **código de 6 dígitos (48h)**; el paciente
+  abre `/documents/[token]`, ingresa **cédula + código** y descarga un **PDF consolidado** (informe/recetas/
+  EHR seleccionados, generado con `pdf-lib`). El email lo envía Resend (`shared_documents_code`).
+  **Doble factor:** se exige que `code` **Y** `cedula` matcheen al paciente del enlace; mismatch → mismo 422
+  genérico (anti-oracle) e incrementa ambos contadores anti-fuerza-bruta. **Cédula normalizada** (strip
+  espacios/guiones/puntos + uppercase) → tolerante al prefijo V/E/P (`12345678` ≡ `V-12345678`). El
+  `sessionToken` post-verificación es **HMAC-SHA256(AUTH_RESOLVE_SECRET)** (no JWT, 15min); la descarga usa
+  query param **`?sessionToken=`** (no `?session=`). El enlace usa **`APP_BASE_URL`** del backend (antes
+  generaba `localhost`). Endpoints: 1 autenticado (doctor) + 3 públicos. Tablas `shared_document_links` +
+  `document_access_codes` (migs `20260618000001`/`...02`). DEUDA Etapa 2: rate limiting real.
+- **ADR-014 (2026-06-18):** **Feature `booking` gateada por plan.** La página pública `/book/:doctorId` deja
+  de estar siempre activa: depende de la feature `booking` en `plan_features` del **plan efectivo** del doctor
+  (resuelto con la misma lógica de downgrade perezoso). Delta Free=off; Base/Plus=on. Puerto
+  `IBookingFeatureChecker` (vive en el dominio de booking, impl en infra reusa modelos de doctor-settings).
+  `GET /api/booking/:id/info` expone `bookingEnabled`; `CreateBookingUseCase` lanza `BookingNotEnabledError`
+  (403) como defensa en profundidad. Frontend: settings oculta el tab "Link público"/QR y `/book` muestra
+  "Reservas no disponibles". **Gating de planes afinado:** Free = `{dashboard, settings, patients,
+consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda/billing/crm/ehr/finances/
+  invitations/messages/reminders/reports/services/booking. Base/Plus = todo; IA solo en Plus. Legacy
+  (trial/basic/professional/clinic) desactivados; quedan Free/Base/Plus.
+- **ADR-015 (2026-06-18, en progreso):** **IA de texto reactivada (era Supabase).** Se reactivan 3 funciones
+  que existían pre-migración y estaban como stub 501: `improve_block` (mejorar redacción de un bloque, gating
+  `ai_assistant`), `summarize_report` (resumir informe, gating `ai_reports`), `patient_history` (resumen del
+  historial, gating `ai_assistant`). El BFF `/api/doctor/ai` ya NO es stub: proxea a `POST /api/ai/text` (rol
+  validado en el BFF; **gating por plan + super_admin bypass se aplican EN EL BACKEND** con el plan efectivo).
+  El módulo backend reusa la infra de `ai-transcription` (adapter Gemini temp 0.3/maxOutputTokens 2048,
+  `ai_request_log`, prompts médicos en español). **(verificar)** El endpoint backend `/api/ai/text`
+  (use-case + controller `@Post('text')` + DTO) **aún no está en el código** a esta fecha — sólo existen el
+  port `IAiTextGenerator` y los errores de dominio (`ai-feature-denied`/`ai-text-provider`/
+  `patient-not-found-for-ai`); el cambio del BFF está **sin commitear**. Feature keys ya sembradas
+  (`ai_assistant`/`ai_transcription`/`ai_reports`), desbloqueadas sólo en plan Plus.
 
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
@@ -140,6 +170,9 @@ Otros: `patient_messages`, `leads`, `lead_messages`, `shared_files`, `avatars`,
 `invoices`, `billing_documents`, `accounts_payable`, `payment_accounts`,
 `app_settings`, `admin_roles`, `reminders_queue`, `ai_request_log`,
 `appointment_changes_log`, `package_balance_log`.
+
+Compartir documentos (2026-06-18): `shared_document_links` + `document_access_codes`
+(migs `20260618000001`/`20260618000002`).
 
 > El schema completo vive en los `.sql` de la raíz (`00_PASO1_*`, `01_PASO2_*`,
 > `sql_migration_v24/v25`, `sql_seed_ehr`) y `migrations/`. La migration inicial de

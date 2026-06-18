@@ -2,6 +2,54 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-18 — Sesión: bug citas, compartir documentos #12, planes/gating, suscripción, IA texto
+
+Commits en `feature/migracion-backend`:
+
+- **Bug crítico de citas (commit `57ede68`):** `SequelizeAppointmentRepository.hasOverlap` usaba
+  `status = ANY(:array)` (SQL inválido con `replacements` de Sequelize) → creaba cita/consulta rompía.
+  Fix `ANY` → `IN (:activeStatuses)`. (Regresión REG-01 en el guion QA.)
+
+- **#12 Compartir documentos (commits `7fe6c18`, `5bc730c`, `33958ea`, `4f1a081`):** módulo backend
+  `document-sharing` + frontend `ShareDocumentsModal` (en consultas) y página pública `/documents/[token]`.
+  El doctor genera enlace público + **código de 6 dígitos (48h)**; email Resend; PDF consolidado (pdf-lib).
+  Fixes de la sesión: query param `?sessionToken=` (antes `?session=` → 401, REG-02); `APP_BASE_URL` en el
+  backend (antes el enlace traía `localhost`, REG-03); y la descarga ahora **exige cédula + código** (match
+  tolerante al prefijo V/E/P: `12345678` ≡ `V-12345678`; mismatch → 422 genérico anti-oracle).
+  Endpoints: POST `/api/consultations/:id/share`, POST `/api/documents/:token/verify-code` (body `{code,cedula}`),
+  GET `/api/documents/:token/download?sessionToken=`, POST `/api/documents/:token/request-code`.
+
+- **alert() → toast (commit `f112f8b`):** 60 `alert()` nativos reemplazados por `showToast`
+  (`@/components/ui/Toaster`) en 12 pantallas doctor + admin.
+
+- **Planes / gating (commit `96f3d89`):** en `plan_configs` se desactivaron los 4 legacy
+  (trial/basic/professional/clinic); activos solo **Delta Free / Base / Plus**. `subscriptions` vacía.
+  **Delta Free** (plan_features) = solo `{dashboard, settings, patients, consultations}` (+ Consultorios/
+  Plantillas sin moduleKey); deshabilitados agenda/billing/crm/ehr/finances/invitations/messages/reminders/
+  reports/services. Base/Plus = todo; IA solo en Plus. **Feature `booking` nueva**: gatea `/book/:doctorId`
+  (Free=off, Base/Plus=on). Backend: `GET /api/booking/:id/info` expone `bookingEnabled` (plan efectivo);
+  `CreateBookingUseCase` lanza `BookingNotEnabledError` (403); puerto `IBookingFeatureChecker`. Front: settings
+  oculta tab "Link público"/QR; `/book` muestra "Reservas no disponibles".
+
+- **Suscripción (commits `713de54`, `4032c73`, `aee958e`):** (a) la pestaña cargaba infinito → el handler
+  backend ahora envuelve `GET /api/doctor/subscription` en `{success,data}`; (b) panel correcto para **plan
+  permanente** (Delta Free): resuelve plan efectivo + `state.is_permanent` → "Plan permanente / ∞ sin
+  vencimiento" (sin "termina el null"); (c) botón "Mejorar mi plan" → `Link` a `/doctor/upgrade`; (d)
+  `/doctor/upgrade` resalta el **plan actual** (badge "Plan actual", lee `effective_plan_key` de
+  `/api/doctor/features`).
+
+- **IA de texto reactivada (EN PROGRESO — sin commitear):** se reactivan 3 funciones de la era Supabase que
+  estaban como stub 501: `improve_block` (gating `ai_assistant`), `summarize_report` (gating `ai_reports`),
+  `patient_history` (gating `ai_assistant`). El BFF `app/api/doctor/ai/route.ts` ya proxea a `POST /api/ai/text`
+  (cambio **sin commitear**). El módulo backend reusa la infra de `ai-transcription` (Gemini temp 0.3/maxOutput
+  2048, `ai_request_log`, gating por plan, prompts médicos en español).
+  ⚠️ **(verificar) El endpoint backend `/api/ai/text` aún NO está en el código** a esta fecha: solo existen el
+  port `IAiTextGenerator` y los errores de dominio (`ai-feature-denied`/`ai-text-provider`/
+  `patient-not-found-for-ai`, archivos untracked). Falta el use-case + controller `@Post('text')` + DTO + adapter.
+
+- **QA (commits `f46e9bc`, `e7d0797`):** ver entrada siguiente — guion único de 23 módulos con metodología de
+  2 agentes en paralelo; incluye los casos de regresión de esta sesión.
+
 ## 2026-06-18 — QA: mega guion de pruebas (docs)
 
 - Creado `memory-bank/07-qa-test-script.md` (archivo ÚNICO, 23 módulos): harness BD prod +

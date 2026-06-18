@@ -80,13 +80,13 @@
 
 ### Booking público (módulo ✅ — SIN auth)
 
-| Endpoint                                 | Método | Notas                                                                                                                                       |
-| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/booking/:doctorId/info`            | GET    | Datos públicos del doctor. 404 si no existe/inactivo (anti-enumeración).                                                                    |
-| `/api/booking/:doctorId/plans`           | GET    | Pricing plans con `show_in_booking=true`.                                                                                                   |
-| `/api/booking/:doctorId/packages?email=` | GET    | Saldo de paquetes del paciente por email (Zod email; no filtra PII).                                                                        |
-| `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. |
-| _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                           |
+| Endpoint                                 | Método | Notas                                                                                                                                                                                                                                 |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/booking/:doctorId/info`            | GET    | Datos públicos del doctor + **`bookingEnabled`** (feature `booking` del plan efectivo — 2026-06-18). 404 si no existe/inactivo (anti-enumeración).                                                                                    |
+| `/api/booking/:doctorId/plans`           | GET    | Pricing plans con `show_in_booking=true`.                                                                                                                                                                                             |
+| `/api/booking/:doctorId/packages?email=` | GET    | Saldo de paquetes del paciente por email (Zod email; no filtra PII).                                                                                                                                                                  |
+| `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. **403 `BookingNotEnabledError`** si el plan del doctor no incluye `booking` (2026-06-18). |
+| _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                                                                                                                     |
 
 ### Finances (módulo ✅)
 
@@ -101,14 +101,14 @@
 
 ### Doctor settings (módulo ✅)
 
-| Endpoint                                           | Método              | Notas                                                                                   |
-| -------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------- |
-| `/api/doctor/profile`                              | GET/PUT             | Perfil del doctor (incluye payment_details/payment_methods, solo del dueño).            |
-| `/api/doctor/schedule`                             | GET/PUT             | Horario (default L-V 08:00-17:00 30min si no existe). PUT invalida Redis slots:{id}:\*. |
-| `/api/doctor/features`                             | GET                 | Features del plan (Redis cache TTL 3600, degrada a DB si Redis cae).                    |
-| `/api/doctor/subscription`                         | GET                 | Estado + `bannerLevel` (suspended/critical≤3d/warning≤7d/none).                         |
-| `/api/doctor/services`, `/api/doctor/services/:id` | GET/POST/PUT/DELETE | Pricing plans del doctor (ownership).                                                   |
-| _(diferido)_                                       |                     | `/doctor/templates` (req. tabla doctor_templates + PDF).                                |
+| Endpoint                                           | Método              | Notas                                                                                                                                                                                                                                                                               |
+| -------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/profile`                              | GET/PUT             | Perfil del doctor (incluye payment_details/payment_methods, solo del dueño).                                                                                                                                                                                                        |
+| `/api/doctor/schedule`                             | GET/PUT             | Horario (default L-V 08:00-17:00 30min si no existe). PUT invalida Redis slots:{id}:\*.                                                                                                                                                                                             |
+| `/api/doctor/features`                             | GET                 | Features del plan (Redis cache TTL 3600, degrada a DB si Redis cae). Incluye `effective_plan_key` (lo usa UpgradeClient para resaltar el plan actual).                                                                                                                              |
+| `/api/doctor/subscription`                         | GET                 | Panel de suscripción envuelto en **`{ success, data }`** (2026-06-18 — antes el panel cargaba infinito). Resuelve plan efectivo + `state.is_permanent` (plan permanente Free → "∞ sin vencimiento", sin "termina el null") + `bannerLevel` (suspended/critical≤3d/warning≤7d/none). |
+| `/api/doctor/services`, `/api/doctor/services/:id` | GET/POST/PUT/DELETE | Pricing plans del doctor (ownership).                                                                                                                                                                                                                                               |
+| _(diferido)_                                       |                     | `/doctor/templates` (req. tabla doctor_templates + PDF).                                                                                                                                                                                                                            |
 
 ### Patient portal (módulo ✅ — rol patient, scope por auth_user_id)
 
@@ -215,14 +215,14 @@ Decorator reutilizable: `@RequireCapability('finanzas', 'view')` en conjunto con
 Coexiste con RolesGuard (RolesGuard = identidad mínima; CapabilitiesGuard = permiso granular por módulo+acción).
 Aplica sin re-login — el token solo lleva el rol; el mapa de permisos se resuelve en BD/Redis.
 
-### Document Sharing (módulo ✅ 2026-06-18 — enlace público + código 6 dígitos)
+### Document Sharing (módulo ✅ 2026-06-18 — enlace público + código 6 dígitos + cédula)
 
-| Endpoint                                          | Método | Auth                   | Notas                                                                                                                                                                                 |
-| ------------------------------------------------- | ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/consultations/:id/share`                    | POST   | AppAuthGuard (doctor)  | Body: `{ sections: { report, prescriptions, ehr } }` (al menos 1 true). Respuesta: `{ url, code, expiresAt }`. Email fire-and-forget. Token = 48 bytes base64url.                     |
-| `/api/documents/:token/verify-code`               | POST   | Pública                | Body: `{ code: string }` (6 dígitos). Anti-bruteforce: bloqueo a 5 intentos. Respuesta: `{ sessionToken, sections, expiresAt }`. Todos los errores → 422 genérico (anti-enumeración). |
-| `/api/documents/:token/download?sessionToken=...` | GET    | Pública (sessionToken) | Valida HMAC-SHA256 del sessionToken (15min TTL, sin DB). Genera PDF (pdf-lib, A4). Content-Type: application/pdf, Cache-Control: no-store.                                            |
-| `/api/documents/:token/request-code`              | POST   | Pública                | Genera nuevo código 6 dígitos (invalida el anterior), re-envía email fire-and-forget. Respuesta: `{ expiresAt }`.                                                                     |
+| Endpoint                                          | Método | Auth                   | Notas                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------- | ------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/consultations/:id/share`                    | POST   | AppAuthGuard (doctor)  | Body: `{ sections: { report, prescriptions, ehr } }` (al menos 1 true). Respuesta envuelta `{ success, data:{ url, code, expiresAt } }`. `url` usa `APP_BASE_URL` del backend (ya no `localhost`). Email fire-and-forget. Token = 48 bytes base64url.                                                                                                                      |
+| `/api/documents/:token/verify-code`               | POST   | Pública                | Body: **`{ code: string, cedula: string }`** — código 6 dígitos **Y** cédula deben matchear al paciente del enlace. Cédula normalizada (sin espacios/guiones/puntos, uppercase → tolerante a V/E/P). Anti-bruteforce (5 intentos, incrementa ambos contadores). Respuesta: `{ sessionToken, sections, expiresAt }`. Cualquier mismatch → mismo 422 genérico (anti-oracle). |
+| `/api/documents/:token/download?sessionToken=...` | GET    | Pública (sessionToken) | Query param **`sessionToken`** (NO `session`). Valida HMAC-SHA256 (15min TTL, sin DB). Genera PDF (pdf-lib, A4). Content-Type: application/pdf, Cache-Control: no-store. sessionToken ausente → 400.                                                                                                                                                                       |
+| `/api/documents/:token/request-code`              | POST   | Pública                | Genera nuevo código 6 dígitos (invalida el anterior), re-envía email fire-and-forget. Cooldown 60s → 429. Respuesta: `{ expiresAt }`.                                                                                                                                                                                                                                      |
 
 > Session token format: `base64url(JSON({linkId, token, exp})).<hex_HMAC_SHA256>`. Firmado con `AUTH_RESOLVE_SECRET`.
 > Todos los errores en superficies públicas son genéricos (404 anti-enumeración). Nunca loguear PHI/code/token.
@@ -390,3 +390,13 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 > a `/api/ai/transcribe`. La `GEMINI_API_KEY` vive SOLO en el backend (Secret Manager). Gating de UI por plan
 > (`useDoctorFeatures`): recorder→`ai_transcription`, panel Asistente IA→`ai_assistant`, Resumir informe→`ai_reports`.
 > ⚠️ Free tier de Gemini = entrena con datos (riesgo PII aceptado por el usuario para arrancar).
+
+### IA — Texto (reactivada / en construcción 2026-06-18)
+
+| Endpoint       | Método | Roles              | Notas                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/ai/text` | POST   | doctor/super_admin | Backend NestJS — reusa infra de `ai-transcription` (adapter Gemini temp 0.3/maxOutput 2048, `ai_request_log`, gating por plan). Acciones: `improve_block` (gating `ai_assistant`), `summarize_report` (gating `ai_reports`), `patient_history` (gating `ai_assistant`). Respuesta `{ result }`. **(verificar) — el endpoint backend aún no está en el código** (solo port + errores de dominio); cambio del BFF sin commitear. |
+
+> **Frontend:** `POST /api/doctor/ai` ya NO es stub 501 — proxea a `/api/ai/text` (valida rol; gating por plan +
+> super_admin bypass se aplican en el backend con el plan efectivo). El frontend (`callAI`) lee `data.result`.
+> Prompts médicos en español. Marcar como **recién reactivado**.

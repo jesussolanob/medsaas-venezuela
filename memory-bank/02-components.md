@@ -224,9 +224,16 @@ Pendiente (crecen por módulo): finance, packages, plans, notifications.
 ## Feature flags (tabla `plan_features`)
 
 dashboard, agenda, patients, consultations, ehr, finances, billing, reports, crm,
-reminders, messages, invitations, settings. El sidebar del doctor los lee para
-mostrar/ocultar módulos (status válidos: active, trial, trialing). Keys IA (plan Plus):
-`ai_assistant`, `ai_transcription`, `ai_reports`.
+reminders, messages, invitations, settings, services, **booking** (nueva 2026-06-18,
+gatea `/book/:doctorId`). El sidebar del doctor los lee para mostrar/ocultar módulos
+(status válidos: active, trial, trialing). Keys IA (plan Plus): `ai_assistant`,
+`ai_transcription`, `ai_reports`.
+
+**Gating por plan (2026-06-18):** Delta Free = solo `{dashboard, settings, patients,
+consultations}` (+ Consultorios/Plantillas, que no tienen moduleKey). Deshabilitados en
+Free: agenda, billing, crm, ehr, finances, invitations, messages, reminders, reports,
+services, **booking**. Base/Plus = todo; IA solo en Plus. Planes legacy
+(trial/basic/professional/clinic) desactivados; activos solo Free/Base/Plus.
 
 ## Lote Fase 5 + MVP (2026-06-12) — componentes/módulos añadidos
 
@@ -246,11 +253,62 @@ mostrar/ocultar módulos (status válidos: active, trial, trialing). Keys IA (pl
 > **Convención (lección QA 2026-06-12):** el BFF/api-client devuelve `envelope.data` en **camelCase**; los componentes
 > frontend deben leer camelCase (varios bugs por asumir snake_case: NewAppointmentFlow, consultation-blocks config).
 
-### `document-sharing` — ✅ DDD implementado (2026-06-18)
+### `document-sharing` — ✅ DDD implementado + frontend cableado (2026-06-18)
 
 Módulo `modules/document-sharing/`. Doctor comparte documentos de consulta (informe/recetas/EHR) vía enlace
 público + código 6 dígitos 48h; paciente descarga PDF consolidado (`pdf-lib`). 4 endpoints: 1 autenticado
 (doctor) + 3 públicos (verify-code, download, request-code). Session token HMAC-SHA256 15min sin JWT.
 Anti-bruteforce (5 intentos). Fire-and-forget email (`MailerService.sendTemplate('shared_documents_code', ...)`).
 Tablas: `shared_document_links` + `document_access_codes` (migraciones `20260618000001` + `20260618000002`).
-54 tests. **Pendiente frontend**: modal doctor + página `/documents/[token]` pública.
+
+**Doble factor (fix 2026-06-18):** la verificación exige **cédula + código** (`POST .../verify-code` body
+`{code, cedula}`); ambos deben matchear al paciente del enlace, mismatch → mismo 422 genérico (anti-oracle).
+**Cédula normalizada** (strip espacios/guiones/puntos + uppercase) → tolerante a V/E/P. La descarga usa
+`?sessionToken=` (NO `?session=`). El enlace usa `APP_BASE_URL` del backend (ya no `localhost`).
+
+**Frontend (✅ cableado 2026-06-18):**
+
+- `ShareDocumentsModal` (en `consultations/page.tsx`): el doctor selecciona secciones y genera enlace+código.
+- `/documents/[token]/page.tsx` (pública): el paciente ingresa **cédula + código** → descarga PDF.
+- Route handler `app/api/documents/[token]/verify-code/route.ts` reenvía `{code, cedula}`.
+
+### `booking` — feature gateada por plan (2026-06-18)
+
+La página pública `/book/:doctorId` ahora se gatea con la feature `booking` del **plan efectivo** del doctor.
+
+- Backend: puerto `IBookingFeatureChecker` (dominio booking) + `SequelizeBookingFeatureChecker` (infra, reusa
+  modelos de doctor-settings); resuelve plan efectivo (downgrade perezoso) y chequea `plan_features.booking`.
+  `GET /api/booking/:id/info` añade `bookingEnabled`; `CreateBookingUseCase` lanza `BookingNotEnabledError`
+  (403, `booking-not-enabled.error.ts`) — defensa en profundidad. `BookingModule` registra el checker.
+- Frontend: `settings/page.tsx` oculta el tab "Link público"/QR si la feature está off; `book/[doctorId]/page.tsx`
+  muestra "Reservas no disponibles" cuando `bookingEnabled=false`. Free=off, Base/Plus=on.
+
+### IA de texto (reactivada, en progreso 2026-06-18)
+
+3 funciones de texto reactivadas (era Supabase): `improve_block` (gating `ai_assistant`), `summarize_report`
+(gating `ai_reports`), `patient_history` (gating `ai_assistant`).
+
+- **Frontend BFF (sin commitear):** `app/api/doctor/ai/route.ts` ya NO devuelve 501 — proxea a
+  `POST /api/ai/text` vía `backendPost`; valida rol y reenvía body; el frontend lee `data.result`.
+- **Backend:** el módulo reusa la infra de `ai-transcription` (adapter Gemini, `ai_request_log`, gating por
+  plan). Scaffolding presente: port `application/ports/ai-text-generator.port.ts` (`IAiTextGenerator`) +
+  errores de dominio `ai-feature-denied.error.ts`/`ai-text-provider.error.ts`/`patient-not-found-for-ai.error.ts`.
+  **(verificar) Falta** el use-case + controller `@Post('text')` + DTO del endpoint `/api/ai/text` (aún no en
+  el código a esta fecha). Marcar como **recién reactivado / en construcción**.
+
+### Suscripción — panel corregido (2026-06-18)
+
+- `components/doctor/SubscriptionPanel.tsx`: maneja **plan permanente** (Delta Free) — resuelve plan efectivo +
+  `state.is_permanent` y muestra "Plan permanente / ∞ sin vencimiento" (ya no "termina el null"). Botón
+  "Mejorar mi plan" → `Link` a `/doctor/upgrade`. El handler backend `GET /api/doctor/subscription` ahora
+  envuelve en `{success, data}` (antes el panel se quedaba cargando infinito).
+- `app/doctor/upgrade/UpgradeClient.tsx`: resalta el **plan actual** (badge "Plan actual"), leyendo
+  `effective_plan_key` de `/api/doctor/features`.
+- Backend: `get-doctor-subscription-panel.use-case` + `sequelize-subscription-panel.repository` resuelven plan
+  efectivo e `is_permanent`.
+
+### alert() → toast (2026-06-18)
+
+60 `alert()` nativos reemplazados por `showToast` (`@/components/ui/Toaster`) en 12 pantallas doctor+admin
+(agenda, cobros, consultations, offices, patients, reminders, services, settings, templates, admin/aprobaciones,
+admin/promotions, admin/subscriptions).

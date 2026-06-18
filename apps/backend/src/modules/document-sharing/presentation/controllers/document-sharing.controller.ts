@@ -32,7 +32,7 @@ interface SuccessResponse<T> {
  * PUBLIC endpoints (NO auth — designed for patient browser):
  *   POST /api/documents/:token/verify-code
  *     → validates 6-digit code, returns sessionToken (15 min).
- *   GET  /api/documents/:token/download?session=<sessionToken>
+ *   GET  /api/documents/:token/download?sessionToken=<sessionToken>
  *     → validates sessionToken, returns PDF bytes.
  *   POST /api/documents/:token/request-code
  *     → generates a new 6-digit code (old code becomes stale) and re-sends email.
