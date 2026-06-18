@@ -38,14 +38,16 @@ Commits en `feature/migracion-backend`:
   `/doctor/upgrade` resalta el **plan actual** (badge "Plan actual", lee `effective_plan_key` de
   `/api/doctor/features`).
 
-- **IA de texto reactivada (EN PROGRESO — sin commitear):** se reactivan 3 funciones de la era Supabase que
-  estaban como stub 501: `improve_block` (gating `ai_assistant`), `summarize_report` (gating `ai_reports`),
-  `patient_history` (gating `ai_assistant`). El BFF `app/api/doctor/ai/route.ts` ya proxea a `POST /api/ai/text`
-  (cambio **sin commitear**). El módulo backend reusa la infra de `ai-transcription` (Gemini temp 0.3/maxOutput
-  2048, `ai_request_log`, gating por plan, prompts médicos en español).
-  ⚠️ **(verificar) El endpoint backend `/api/ai/text` aún NO está en el código** a esta fecha: solo existen el
-  port `IAiTextGenerator` y los errores de dominio (`ai-feature-denied`/`ai-text-provider`/
-  `patient-not-found-for-ai`, archivos untracked). Falta el use-case + controller `@Post('text')` + DTO + adapter.
+- **IA de texto reactivada (DESPLEGADA, commit `b25522b`):** 3 funciones de la era Supabase que estaban como
+  stub 501: `improve_block` (gating `ai_assistant`), `summarize_report` (gating `ai_reports`), `patient_history`
+  (gating `ai_assistant`, anti-IDOR). Backend `POST /api/ai/text` en el módulo `ai-transcription` (reusa Gemini
+  adapter temp 0.3/maxOutput 2048, `ai_request_log`, resolución de plan efectivo + gating, prompts médicos
+  legacy en español; super_admin bypasa). BFF `app/api/doctor/ai/route.ts` proxea (ya no es stub). 103 tests.
+  🚨 **BLOQUEADO por Google:** la API key de Gemini da **403 "Your project has been denied access"**
+  (gemini-2.5-flash) y el fallback gemini-1.5-flash da 404 (retirado) → toda IA (texto + transcripción) responde
+  502 hasta que el usuario arregle el acceso a Gemini (otra cuenta/proyecto AI Studio, billing o región). NO es
+  bug de código: gating verificado (502 provider-error, no 403 de plan). TODO menor: actualizar el modelo
+  fallback a uno vigente en `gemini-text.adapter.ts`/`gemini-transcription.adapter.ts`.
 
 - **QA (commits `f46e9bc`, `e7d0797`):** ver entrada siguiente — guion único de 23 módulos con metodología de
   2 agentes en paralelo; incluye los casos de regresión de esta sesión.
