@@ -126,18 +126,18 @@ export class DocumentSharingController {
   }
 
   /**
-   * GET /api/documents/:token/download?session=<sessionToken>
+   * GET /api/documents/:token/download?sessionToken=<sessionToken>
    *
    * Validates the HMAC session token and streams the PDF.
    * Response: application/pdf (binary, no JSON envelope).
    *
    * The session token is short-lived (15 min) and issued by verify-code.
-   * An absent or empty session query param is rejected before reaching the use case.
+   * An absent or empty sessionToken query param is rejected before reaching the use case.
    */
   @Get('documents/:token/download')
   async downloadPdf(
     @Param('token') token: string,
-    @Query('session') sessionToken: string | undefined,
+    @Query('sessionToken') sessionToken: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
     // Explicit presence check: the use case also validates, but catching it here

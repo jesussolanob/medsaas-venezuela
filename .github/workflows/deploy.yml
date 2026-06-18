@@ -113,7 +113,7 @@ jobs:
         run: |
           FURL="${{ steps.frontend.outputs.url }}"
           gcloud run services update delta-backend --region="$REGION" \
-            --update-env-vars=CORS_ORIGIN=$FURL,GOOGLE_REDIRECT_URI=$FURL/api/integrations/google/callback
+            --update-env-vars=CORS_ORIGIN=$FURL,APP_BASE_URL=$FURL,GOOGLE_REDIRECT_URI=$FURL/api/integrations/google/callback
 
       - name: Summary
         run: |
