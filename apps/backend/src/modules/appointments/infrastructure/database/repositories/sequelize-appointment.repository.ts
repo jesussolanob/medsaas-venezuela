@@ -166,7 +166,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       `SELECT COUNT(*) AS cnt
        FROM appointments
        WHERE doctor_id = :doctorId
-         AND status = ANY(:activeStatuses)
+         AND status IN (:activeStatuses)
          AND scheduled_at < :newEnd
          AND (scheduled_at + COALESCE(duration_minutes, 30) * INTERVAL '1 minute') > :newStart
          ${excludeClause}`,
@@ -206,7 +206,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       `SELECT COUNT(*) AS cnt
        FROM appointments
        WHERE patient_id = :patientId
-         AND status = ANY(:activeStatuses)
+         AND status IN (:activeStatuses)
          AND scheduled_at < :newEnd
          AND (scheduled_at + COALESCE(duration_minutes, 30) * INTERVAL '1 minute') > :newStart
          ${excludeClause}`,
