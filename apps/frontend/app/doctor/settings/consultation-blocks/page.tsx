@@ -121,7 +121,16 @@ export default function ConsultationBlocksConfigPage() {
     setRows((rs) => rs.map((r) => (r.block_key === key ? { ...r, enabled: !r.enabled } : r)));
   }
   function setLabel(key: string, label: string) {
-    setRows((rs) => rs.map((r) => (r.block_key === key ? { ...r, custom_label: label } : r)));
+    // El campo de nombre muestra el valor EFECTIVO. Si el texto queda vacío o
+    // coincide con el nombre por defecto del catálogo, se guarda como sin override
+    // ('' → null en el save) para que el backend resuelva al default.
+    setRows((rs) =>
+      rs.map((r) => {
+        if (r.block_key !== key) return r;
+        const isDefault = label.trim() === '' || label.trim() === r.default_label;
+        return { ...r, custom_label: isDefault ? '' : label };
+      }),
+    );
   }
   function setDescription(key: string, description: string) {
     // Guardar null cuando el campo está vacío para que el backend sepa
@@ -256,19 +265,25 @@ export default function ConsultationBlocksConfigPage() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-900">{r.default_label}</span>
-                  <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                  {/* Nombre del bloque editable EN SITIO (el que se ve en negrilla).
+                      Muestra el valor efectivo (override del doctor o el default). */}
+                  <input
+                    type="text"
+                    value={r.custom_label || r.default_label}
+                    onChange={(e) => setLabel(r.block_key, e.target.value)}
+                    disabled={!r.enabled}
+                    title="Nombre del bloque (editable). Borralo para volver al nombre por defecto."
+                    className="flex-1 min-w-0 font-semibold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-teal-400 outline-none disabled:opacity-60 py-0.5"
+                  />
+                  <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
                     {r.block_key}
                   </span>
                 </div>
-                <input
-                  type="text"
-                  placeholder={`Personalizar nombre (default: "${r.default_label}")`}
-                  value={r.custom_label}
-                  onChange={(e) => setLabel(r.block_key, e.target.value)}
-                  disabled={!r.enabled}
-                  className="w-full mt-1 px-2 py-1 text-sm border border-slate-200 rounded focus:border-teal-400 outline-none disabled:bg-slate-100"
-                />
+                {r.custom_label && r.custom_label !== r.default_label && (
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    Por defecto: {r.default_label}
+                  </p>
+                )}
                 <textarea
                   rows={2}
                   placeholder={
