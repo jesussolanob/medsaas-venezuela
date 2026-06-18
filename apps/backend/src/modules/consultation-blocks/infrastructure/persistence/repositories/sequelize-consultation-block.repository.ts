@@ -56,6 +56,7 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
       defaultPrintable: r.defaultPrintable,
       defaultSendToPatient: r.defaultSendToPatient,
       defaultEnabled: r.defaultEnabled,
+      description: r.description,
     }));
   }
 
@@ -95,6 +96,7 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
       sortOrder: r.sortOrder,
       customLabel: r.customLabel,
       customContentType: r.customContentType,
+      customDescription: r.customDescription,
       printable: r.printable,
       sendToPatient: r.sendToPatient,
     }));
@@ -128,6 +130,7 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
             sortOrder: b.sortOrder,
             customLabel: b.customLabel,
             customContentType: b.customContentType,
+            customDescription: b.customDescription,
             printable: b.printable,
             sendToPatient: b.sendToPatient,
           })),
@@ -146,13 +149,16 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
    *
    * Cascade (highest priority first):
    *   1. doctor_consultation_blocks — if the doctor has an entry for this key,
-   *      their enabled, label, content_type, sort_order, printable, send_to_patient
-   *      all take precedence.
+   *      their enabled, label, content_type, sort_order, printable, send_to_patient,
+   *      and custom_description all take precedence.
    *   2. specialty_default_blocks — if the doctor's specialty has a default for
    *      this key, use its enabled and sort_order (label/content_type from catalog).
    *   3. consultation_block_catalog — default_enabled determines inclusion;
-   *      default_label, default_content_type, default_printable, default_send_to_patient
-   *      are the ultimate fallbacks.
+   *      default_label, default_content_type, default_printable, default_send_to_patient,
+   *      and description are the ultimate fallbacks.
+   *
+   * Description cascade:
+   *   resolved description = doctorEntry.customDescription ?? catalog.description
    *
    * Only blocks with enabled=true appear in the result.
    * Sorted by sort_order ASC, key ASC as tiebreaker.
@@ -206,6 +212,10 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
       // Cascade: send_to_patient
       const sendToPatient = doctorEntry?.sendToPatient ?? cat.defaultSendToPatient;
 
+      // Cascade: description (resolved = customDescription ?? catalog.description)
+      const customDescription = doctorEntry?.customDescription ?? null;
+      const description = customDescription ?? cat.description;
+
       blocks.push(
         new ConsultationBlock({
           key: cat.key,
@@ -215,6 +225,8 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
           sortOrder,
           printable,
           sendToPatient,
+          description,
+          customDescription,
         }),
       );
     }

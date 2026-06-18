@@ -60,6 +60,7 @@ export class SaveConsultationBlocksUseCase {
         sortOrder: b.sort_order ?? idx,
         customLabel: b.custom_label ?? null,
         customContentType: b.custom_content_type ?? null,
+        customDescription: b.custom_description ?? null,
         printable: b.printable ?? null,
         sendToPatient: b.send_to_patient ?? null,
       })),

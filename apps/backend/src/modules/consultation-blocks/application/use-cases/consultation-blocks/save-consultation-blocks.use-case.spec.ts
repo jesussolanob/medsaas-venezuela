@@ -80,7 +80,7 @@ describe('SaveConsultationBlocksUseCase', () => {
     expect(captured?.blocks.at(1)?.sortOrder).toBe(10); // explicit value
   });
 
-  it('passes custom_label and custom_content_type correctly', async () => {
+  it('passes custom_label, custom_content_type and custom_description correctly', async () => {
     let captured: Parameters<IConsultationBlockRepository['replaceDoctorBlocks']>[0] | undefined;
     repo.replaceDoctorBlocks.mockImplementation(async (params) => {
       captured = params;
@@ -93,12 +93,42 @@ describe('SaveConsultationBlocksUseCase', () => {
           block_key: 'chief_complaint',
           custom_label: 'Mi motivo',
           custom_content_type: 'list',
+          custom_description: 'Mi descripción personalizada',
         },
       ],
     });
 
     expect(captured?.blocks.at(0)?.customLabel).toBe('Mi motivo');
     expect(captured?.blocks.at(0)?.customContentType).toBe('list');
+    expect(captured?.blocks.at(0)?.customDescription).toBe('Mi descripción personalizada');
+  });
+
+  it('passes null customDescription when custom_description is omitted', async () => {
+    let captured: Parameters<IConsultationBlockRepository['replaceDoctorBlocks']>[0] | undefined;
+    repo.replaceDoctorBlocks.mockImplementation(async (params) => {
+      captured = params;
+      return 1;
+    });
+
+    await useCase.execute(DOCTOR_ID, {
+      blocks: [{ block_key: 'chief_complaint', enabled: true }],
+    });
+
+    expect(captured?.blocks.at(0)?.customDescription).toBeNull();
+  });
+
+  it('passes null customDescription when custom_description is explicitly null', async () => {
+    let captured: Parameters<IConsultationBlockRepository['replaceDoctorBlocks']>[0] | undefined;
+    repo.replaceDoctorBlocks.mockImplementation(async (params) => {
+      captured = params;
+      return 1;
+    });
+
+    await useCase.execute(DOCTOR_ID, {
+      blocks: [{ block_key: 'chief_complaint', enabled: true, custom_description: null }],
+    });
+
+    expect(captured?.blocks.at(0)?.customDescription).toBeNull();
   });
 
   // ── EmptyBlockConfigError ─────────────────────────────────────────────────

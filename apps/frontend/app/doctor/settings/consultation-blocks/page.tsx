@@ -24,10 +24,24 @@ type CatalogEntry = {
   defaultEnabled?: boolean;
 };
 
+type DoctorConfigEntry = {
+  blockKey: string;
+  enabled: boolean;
+  sortOrder: number;
+  customLabel?: string | null;
+  customDescription?: string | null;
+  printable?: boolean | null;
+  sendToPatient?: boolean | null;
+};
+
 type BlockRow = {
   block_key: string;
   default_label: string;
   custom_label: string;
+  /** Descripción predeterminada del catálogo. Se usa como placeholder. */
+  default_description: string | null;
+  /** Override del doctor. null = sin override (usa la del catálogo). */
+  custom_description: string | null;
   enabled: boolean;
   sort_order: number;
   printable: boolean | null;
@@ -54,8 +68,8 @@ export default function ConsultationBlocksConfigPage() {
     setSpecialty(j.doctor_specialty);
 
     const catalog: CatalogEntry[] = j.catalog || [];
-    const doctorCfg: any[] = j.doctor_config || [];
-    const specialtyDefaults: any[] = j.specialty_defaults || [];
+    const doctorCfg: DoctorConfigEntry[] = j.doctor_config || [];
+    const specialtyDefaults: DoctorConfigEntry[] = j.specialty_defaults || [];
     // El backend serializa en camelCase (blockKey, customLabel, sortOrder…).
     const cfgMap = new Map(doctorCfg.map((c) => [c.blockKey, c]));
     const specialtyMap = new Map(specialtyDefaults.map((s) => [s.blockKey, s]));
@@ -73,7 +87,10 @@ export default function ConsultationBlocksConfigPage() {
       return {
         block_key: c.key,
         default_label: c.defaultLabel,
-        custom_label: cfg?.customLabel || '',
+        custom_label: cfg?.customLabel ?? '',
+        default_description: c.description,
+        // customDescription del doctor; null = sin override (se mostrará el default como placeholder).
+        custom_description: cfg?.customDescription ?? null,
         enabled,
         sort_order,
         printable: cfg?.printable ?? null,
@@ -106,6 +123,12 @@ export default function ConsultationBlocksConfigPage() {
   function setLabel(key: string, label: string) {
     setRows((rs) => rs.map((r) => (r.block_key === key ? { ...r, custom_label: label } : r)));
   }
+  function setDescription(key: string, description: string) {
+    // Guardar null cuando el campo está vacío para que el backend sepa
+    // que no hay override y use la descripción del catálogo.
+    const value = description.trim() === '' ? null : description;
+    setRows((rs) => rs.map((r) => (r.block_key === key ? { ...r, custom_description: value } : r)));
+  }
   function move(key: string, dir: -1 | 1) {
     setRows((rs) => {
       const idx = rs.findIndex((r) => r.block_key === key);
@@ -132,6 +155,7 @@ export default function ConsultationBlocksConfigPage() {
         enabled: r.enabled,
         sort_order: r.sort_order,
         custom_label: r.custom_label || null,
+        custom_description: r.custom_description,
         printable: r.printable,
         send_to_patient: r.send_to_patient,
       }));
@@ -244,6 +268,18 @@ export default function ConsultationBlocksConfigPage() {
                   onChange={(e) => setLabel(r.block_key, e.target.value)}
                   disabled={!r.enabled}
                   className="w-full mt-1 px-2 py-1 text-sm border border-slate-200 rounded focus:border-teal-400 outline-none disabled:bg-slate-100"
+                />
+                <textarea
+                  rows={2}
+                  placeholder={
+                    r.default_description
+                      ? `Descripción (default: "${r.default_description}")`
+                      : 'Descripción del bloque (opcional)'
+                  }
+                  value={r.custom_description ?? ''}
+                  onChange={(e) => setDescription(r.block_key, e.target.value)}
+                  disabled={!r.enabled}
+                  className="w-full mt-1 px-2 py-1 text-sm border border-slate-200 rounded focus:border-teal-400 outline-none resize-none disabled:bg-slate-100 text-slate-700 placeholder:text-slate-400"
                 />
               </div>
 

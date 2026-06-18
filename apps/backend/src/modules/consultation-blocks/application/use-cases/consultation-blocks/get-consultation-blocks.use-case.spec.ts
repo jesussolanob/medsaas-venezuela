@@ -25,6 +25,8 @@ function makeResolvedBlock(key: string): ConsultationBlock {
     sortOrder: 1,
     printable: true,
     sendToPatient: true,
+    description: 'Descripción del catálogo',
+    customDescription: null,
   });
 }
 
@@ -45,6 +47,7 @@ describe('GetConsultationBlocksUseCase', () => {
       defaultPrintable: true,
       defaultSendToPatient: true,
       defaultEnabled: true,
+      description: 'Descripción del catálogo',
     };
     const doctorBlock = {
       doctorId: DOCTOR_ID,
@@ -53,6 +56,7 @@ describe('GetConsultationBlocksUseCase', () => {
       sortOrder: 1,
       customLabel: null,
       customContentType: null,
+      customDescription: null,
       printable: null,
       sendToPatient: null,
     };

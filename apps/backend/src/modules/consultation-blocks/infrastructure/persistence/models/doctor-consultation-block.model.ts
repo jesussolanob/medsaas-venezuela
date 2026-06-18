@@ -50,6 +50,9 @@ export class DoctorConsultationBlockModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'send_to_patient' })
   declare sendToPatient: boolean | null;
 
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'custom_description' })
+  declare customDescription: string | null;
+
   @UpdatedAt
   @Column({ field: 'updated_at' })
   declare updatedAt: Date;

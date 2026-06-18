@@ -15,6 +15,7 @@ export const SaveBlocksDtoSchema = z.object({
       sort_order: z.number().int().min(0).optional(),
       custom_label: z.string().nullable().optional(),
       custom_content_type: z.string().nullable().optional(),
+      custom_description: z.string().nullable().optional(),
       printable: z.boolean().nullable().optional(),
       send_to_patient: z.boolean().nullable().optional(),
     }),

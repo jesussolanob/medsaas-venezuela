@@ -11,6 +11,8 @@ export interface CatalogRow {
   defaultPrintable: boolean;
   defaultSendToPatient: boolean;
   defaultEnabled: boolean;
+  /** Catalog-level description. Null when the catalog entry has no description. */
+  description: string | null;
 }
 
 // ── Specialty default row ─────────────────────────────────────────────────
@@ -31,6 +33,7 @@ export interface DoctorBlockRow {
   sortOrder: number;
   customLabel: string | null;
   customContentType: string | null;
+  customDescription: string | null;
   printable: boolean | null;
   sendToPatient: boolean | null;
 }
@@ -45,6 +48,7 @@ export interface SaveDoctorBlocksParams {
     sortOrder: number;
     customLabel: string | null;
     customContentType: string | null;
+    customDescription: string | null;
     printable: boolean | null;
     sendToPatient: boolean | null;
   }>;
