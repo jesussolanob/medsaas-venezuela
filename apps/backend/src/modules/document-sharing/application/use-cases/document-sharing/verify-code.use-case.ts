@@ -107,9 +107,12 @@ export class VerifyCodeUseCase {
     // 5. Fetch patient (decrypted) and evaluate cédula match.
     //    Never log the cédula value.
     //    If the patient record is not found or has no cedula, cedulaOk = false.
+    //    Match is lenient on the V/E/P prefix: a patient stored as "V12345678"
+    //    also matches an input of "12345678" (and vice-versa). The prefix letter
+    //    adds negligible security — the 6-digit code + 48h expiry + brute-force
+    //    cap is the real gate — and patients commonly omit it.
     const patient = await this.patientRepo.findById(link.patientId, link.doctorId);
-    const cedulaOk =
-      patient?.cedula != null && normalizeCedula(patient.cedula) === normalizeCedula(input.cedula);
+    const cedulaOk = patient?.cedula != null && cedulasMatch(patient.cedula, input.cedula);
 
     // 6. If EITHER factor fails → increment BOTH counters and throw the same
     //    generic error (oracle-safe: no distinction between wrong code vs wrong cédula).
@@ -176,4 +179,26 @@ export class VerifyCodeUseCase {
  */
 export function normalizeCedula(raw: string): string {
   return raw.replace(/[\s\-\.]/g, '').toUpperCase();
+}
+
+/**
+ * Returns the digits-only form of a cédula (drops the V/E/P/J prefix and any
+ * separators). e.g. "V-12.345.678" → "12345678", "12345678" → "12345678".
+ */
+export function cedulaDigits(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
+/**
+ * Compares a stored cédula against user input, tolerant of the V/E/P prefix and
+ * formatting. Matches when the full normalized values are equal OR the numeric
+ * parts are equal (so "V12345678" accepts "12345678"). Empty/no-digit inputs
+ * never match. The comparison is scoped to a single patient (the link owner), so
+ * digits-only matching cannot cross patients.
+ */
+export function cedulasMatch(stored: string, input: string): boolean {
+  if (normalizeCedula(stored) === normalizeCedula(input)) return true;
+  const a = cedulaDigits(stored);
+  const b = cedulaDigits(input);
+  return a.length > 0 && a === b;
 }

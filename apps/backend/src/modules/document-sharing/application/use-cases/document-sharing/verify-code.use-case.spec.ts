@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { VerifyCodeUseCase, normalizeCedula } from './verify-code.use-case';
+import { VerifyCodeUseCase, normalizeCedula, cedulasMatch } from './verify-code.use-case';
 import type { ISharedDocumentLinkRepository } from '../../../domain/repositories/shared-document-link.repository';
 import type { IDocumentAccessCodeRepository } from '../../../domain/repositories/document-access-code.repository';
 import type { IPatientRepository } from '../../../../patients/domain/repositories/patient.repository';
@@ -356,5 +356,28 @@ describe('normalizeCedula', () => {
     const c = normalizeCedula('V 12 345 678');
     expect(a).toBe(b);
     expect(b).toBe(c);
+  });
+});
+
+describe('cedulasMatch (prefix-tolerant)', () => {
+  it('matches identical normalized cédulas', () => {
+    expect(cedulasMatch('V-12.345.678', 'v12345678')).toBe(true);
+  });
+
+  it('matches when input omits the V/E/P prefix', () => {
+    expect(cedulasMatch('V12345678', '12345678')).toBe(true);
+  });
+
+  it('matches when stored omits the prefix but input has it', () => {
+    expect(cedulasMatch('12345678', 'V-12345678')).toBe(true);
+  });
+
+  it('does not match different numbers', () => {
+    expect(cedulasMatch('V12345678', '99999999')).toBe(false);
+  });
+
+  it('does not match empty / no-digit input', () => {
+    expect(cedulasMatch('V12345678', '')).toBe(false);
+    expect(cedulasMatch('V12345678', 'V')).toBe(false);
   });
 });
