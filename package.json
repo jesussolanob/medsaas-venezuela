@@ -63,6 +63,7 @@
     "ioredis": "^5.11.0",
     "jose": "^6.2.3",
     "minio": "^8.0.7",
+    "pdf-lib": "^1.17.1",
     "pg": "^8.21.0",
     "pg-hstore": "^2.3.4",
     "reflect-metadata": "^0.1.13",

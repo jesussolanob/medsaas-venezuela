@@ -26,6 +26,7 @@ describe('GetPatientPrescriptionsUseCase', () => {
     mockRepo = {
       findById: jest.fn(),
       findByPatient: jest.fn(),
+      findByConsultation: jest.fn(),
       save: jest.fn(),
     };
     useCase = new GetPatientPrescriptionsUseCase(mockRepo);

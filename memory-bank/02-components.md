@@ -245,3 +245,12 @@ mostrar/ocultar módulos (status válidos: active, trial, trialing). Keys IA (pl
 
 > **Convención (lección QA 2026-06-12):** el BFF/api-client devuelve `envelope.data` en **camelCase**; los componentes
 > frontend deben leer camelCase (varios bugs por asumir snake_case: NewAppointmentFlow, consultation-blocks config).
+
+### `document-sharing` — ✅ DDD implementado (2026-06-18)
+
+Módulo `modules/document-sharing/`. Doctor comparte documentos de consulta (informe/recetas/EHR) vía enlace
+público + código 6 dígitos 48h; paciente descarga PDF consolidado (`pdf-lib`). 4 endpoints: 1 autenticado
+(doctor) + 3 públicos (verify-code, download, request-code). Session token HMAC-SHA256 15min sin JWT.
+Anti-bruteforce (5 intentos). Fire-and-forget email (`MailerService.sendTemplate('shared_documents_code', ...)`).
+Tablas: `shared_document_links` + `document_access_codes` (migraciones `20260618000001` + `20260618000002`).
+54 tests. **Pendiente frontend**: modal doctor + página `/documents/[token]` pública.

@@ -19,6 +19,7 @@ import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicB
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
 import { getConsultation, updateConsultation, approveConsultationPayment } from '../actions';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
+import ShareDocumentsModal from './ShareDocumentsModal';
 
 type Consultation = {
   id: string;
@@ -243,9 +244,12 @@ export default function ConsultationDetailPage() {
             </p>
           </div>
         </div>
-        <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-2">
-          <User className="w-4 h-4 text-white/60" />
-          <span className="text-sm">{patient?.full_name || '—'}</span>
+        <div className="mt-3 pt-3 border-t border-white/20 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-white/60" />
+            <span className="text-sm">{patient?.full_name || '—'}</span>
+          </div>
+          <ShareDocumentsModal consultationId={consultation.id} />
         </div>
       </div>
 

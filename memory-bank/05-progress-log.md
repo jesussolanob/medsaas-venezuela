@@ -1400,3 +1400,25 @@ con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
   Lead verificó build/lint/test en disco. Desplegado a prod (runs GHA success).
 - **PENDIENTE**: QA visual del usuario (grabar consulta real → transcripción en vivo). Implementar el módulo
   real de `/api/doctor/ai` (Asistente IA: resumir/mejorar) — hoy stub 501; ahí gatear `ai_reports` por acción.
+
+## 2026-06-18 — Módulo `document-sharing` (compartir documentos vía link+código) — IMPLEMENTADO
+
+- **Módulo nuevo** `apps/backend/src/modules/document-sharing/` (DDD, 4 capas). Permite al doctor compartir
+  documentos de una consulta (informe clínico, recetas, EHR) con el paciente vía enlace público + código de 6 dígitos
+  válido 48h; el paciente descarga un PDF consolidado.
+- **Tablas nuevas** (migraciones `.cjs` > timestamp 20260618):
+  - `shared_document_links` (token UNIQUE 48-byte base64url, sections JSONB, status active|revoked, doctor_id, consultation_id, patient_id). `timestamps: false`.
+  - `document_access_codes` (code 6 dígitos, expires_at 48h, failed_attempts, used_at; CASCADE DELETE de link). `timestamps: false`.
+  - Migración `20260618000001-document-sharing.cjs` (tablas + índices). Migración `20260618000002-shared-documents-email-template.cjs` (seed plantilla email `shared_documents_code` con ON CONFLICT DO NOTHING).
+- **Flujo doctor**: `POST /api/consultations/:id/share` (auth AppAuthGuard) → token 48 bytes (`crypto.randomBytes(48).toString('base64url')`), código 6 dígitos (`crypto.randomInt(0,1_000_000).toString().padStart(6,'0')`), email fire-and-forget (nunca falla el share si el email falla). Respuesta: `{ url, code, expiresAt }`.
+- **Flujo paciente** (3 endpoints públicos, sin guard):
+  - `POST /api/documents/:token/verify-code` — verifica código; anti-bruteforce (bloqueo a 5 intentos fallidos); error genérico (no distingue link inexistente vs inactivo vs código malo — anti-enumeración). Retorna `{ sessionToken, sections, expiresAt }`.
+  - `GET /api/documents/:token/download?sessionToken=...` — valida HMAC del sessionToken (sin DB), genera PDF con `pdf-lib`, responde `application/pdf` con `Cache-Control: no-store`.
+  - `POST /api/documents/:token/request-code` — genera nuevo código y re-envía email (fire-and-forget). Retorna `{ expiresAt }`.
+- **Session token**: `base64url(JSON({linkId, token, exp})) + "." + hex(HMAC-SHA256(payload, AUTH_RESOLVE_SECRET))` — sin JWT, validado por `crypto.timingSafeEqual` (constant-time). TTL 15 min.
+- **PDF**: `pdf-lib` (instalado en root), A4 (595×841 pts), renderiza condicionalmente: informe (campos clínicos + blocks_snapshot), recetas (listado), EHR. Multi-página (agrega página nueva cuando `yPos < margin + 60`).
+- **Dependencias cruzadas**: `findByConsultation(consultationId, doctorId)` añadido a `IPrescriptionRepository` + `IEhrRepository` con implementaciones en Sequelize. `PrescriptionsModule` y `EhrModule` exportan sus tokens de repositorio. `DocumentSharingModule` importa ConsultationsModule, PrescriptionsModule, EhrModule, PatientsModule, EmailModule.
+- **Seguridad**: error 404 genérico en superficies públicas (anti-enumeración de tokens); never log PHI/code/token; download scopeado por `doctorId` del link (anti-IDOR aunque el link sea público). `randomUUID` de Node built-in `crypto` (no `uuid` package).
+- **Tests**: 54 tests nuevos (7 suites: entities x2, errors x6, use-cases x4, controller x1, pdf-generator x1). Specs de prescriptions/ehr actualizados para incluir `findByConsultation` en mocks. **Total post-módulo: 2348 tests / 302 suites (todos pasan, excluyendo Docker integration).**
+- **Build**: webpack OK (cache hit). **Lint** (módulo aislado): 0 errores, 0 warnings. Lint global SIGSEGV = pre-existing ARM Mac OOM issue, no relacionado.
+- **Diferidos**: frontend (modal doctor + página `/documents/[token]` pública), revoke endpoint, rate limiting 60s en request-code, nombre del doctor en PDF (hoy placeholder `'Dr./Dra.'` — requiere profiles module), QA visual.

@@ -31,5 +31,8 @@ import { PrescriptionsController } from './presentation/controllers/prescription
     GetPatientPrescriptionsUseCase,
     GetPrescriptionByIdUseCase,
   ],
+  // Export PRESCRIPTION_REPOSITORY so DocumentSharingModule can fetch prescriptions
+  // for the consultation PDF without duplicating the Sequelize model.
+  exports: [PRESCRIPTION_REPOSITORY],
 })
 export class PrescriptionsModule {}

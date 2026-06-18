@@ -31,5 +31,8 @@ import { EhrController } from './presentation/controllers/ehr.controller';
     UpdateEhrRecordUseCase,
     GetEhrByIdUseCase,
   ],
+  // Export EHR_REPOSITORY so DocumentSharingModule can fetch EHR records
+  // for the consultation PDF without duplicating the Sequelize model.
+  exports: [EHR_REPOSITORY],
 })
 export class EhrModule {}

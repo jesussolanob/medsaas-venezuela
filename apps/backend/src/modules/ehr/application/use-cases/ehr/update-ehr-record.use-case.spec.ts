@@ -28,6 +28,7 @@ describe('UpdateEhrRecordUseCase', () => {
     mockRepo = {
       findById: jest.fn(),
       findByPatient: jest.fn(),
+      findByConsultation: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
     };

@@ -215,6 +215,18 @@ Decorator reutilizable: `@RequireCapability('finanzas', 'view')` en conjunto con
 Coexiste con RolesGuard (RolesGuard = identidad mínima; CapabilitiesGuard = permiso granular por módulo+acción).
 Aplica sin re-login — el token solo lleva el rol; el mapa de permisos se resuelve en BD/Redis.
 
+### Document Sharing (módulo ✅ 2026-06-18 — enlace público + código 6 dígitos)
+
+| Endpoint                                          | Método | Auth                   | Notas                                                                                                                                                                                 |
+| ------------------------------------------------- | ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/consultations/:id/share`                    | POST   | AppAuthGuard (doctor)  | Body: `{ sections: { report, prescriptions, ehr } }` (al menos 1 true). Respuesta: `{ url, code, expiresAt }`. Email fire-and-forget. Token = 48 bytes base64url.                     |
+| `/api/documents/:token/verify-code`               | POST   | Pública                | Body: `{ code: string }` (6 dígitos). Anti-bruteforce: bloqueo a 5 intentos. Respuesta: `{ sessionToken, sections, expiresAt }`. Todos los errores → 422 genérico (anti-enumeración). |
+| `/api/documents/:token/download?sessionToken=...` | GET    | Pública (sessionToken) | Valida HMAC-SHA256 del sessionToken (15min TTL, sin DB). Genera PDF (pdf-lib, A4). Content-Type: application/pdf, Cache-Control: no-store.                                            |
+| `/api/documents/:token/request-code`              | POST   | Pública                | Genera nuevo código 6 dígitos (invalida el anterior), re-envía email fire-and-forget. Respuesta: `{ expiresAt }`.                                                                     |
+
+> Session token format: `base64url(JSON({linkId, token, exp})).<hex_HMAC_SHA256>`. Firmado con `AUTH_RESOLVE_SECRET`.
+> Todos los errores en superficies públicas son genéricos (404 anti-enumeración). Nunca loguear PHI/code/token.
+
 ## Referencia: rutas API legacy (Next.js) a migrar
 
 Las 64 rutas en `app/api/**/route.ts` son la fuente de la lógica a migrar. Por

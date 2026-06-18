@@ -41,6 +41,14 @@ export class SequelizePrescriptionRepository implements IPrescriptionRepository 
     return rows.map((r) => this.toDomain(r));
   }
 
+  async findByConsultation(consultationId: string, doctorId: string): Promise<Prescription[]> {
+    const rows = await this.prescriptionModel.findAll({
+      where: { consultationId, doctorId } as WhereOptions,
+      order: [['createdAt', 'ASC']],
+    });
+    return rows.map((r) => this.toDomain(r));
+  }
+
   async save(prescription: Prescription): Promise<Prescription> {
     const row = await this.prescriptionModel.create({
       id: prescription.id,

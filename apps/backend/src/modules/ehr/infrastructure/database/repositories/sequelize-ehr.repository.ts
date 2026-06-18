@@ -35,6 +35,14 @@ export class SequelizeEhrRepository implements IEhrRepository {
     return this.toDomain(row);
   }
 
+  async findByConsultation(consultationId: string, doctorId: string): Promise<EhrRecord | null> {
+    const row = await this.ehrModel.findOne({
+      where: { consultationId, doctorId } as WhereOptions,
+    });
+    if (!row) return null;
+    return this.toDomain(row);
+  }
+
   async findByPatient(patientId: string, doctorId: string): Promise<EhrRecord[]> {
     const rows = await this.ehrModel.findAll({
       where: { patientId, doctorId } as WhereOptions,

@@ -17,4 +17,10 @@ export interface IPrescriptionRepository {
 
   /** Persist a new prescription. */
   save(prescription: Prescription): Promise<Prescription>;
+
+  /**
+   * Returns all prescriptions for a specific consultation, scoped to doctorId.
+   * Used by document-sharing to assemble the PDF for a specific consultation.
+   */
+  findByConsultation(consultationId: string, doctorId: string): Promise<Prescription[]>;
 }

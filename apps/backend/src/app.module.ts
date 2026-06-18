@@ -43,6 +43,7 @@ import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { CredentialVerificationModule } from './modules/credential-verification/credential-verification.module';
 import { AiTranscriptionModule } from './modules/ai-transcription/ai-transcription.module';
+import { DocumentSharingModule } from './modules/document-sharing/document-sharing.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -96,6 +97,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     SpecialtiesModule,
     CredentialVerificationModule,
     AiTranscriptionModule,
+    DocumentSharingModule,
   ],
   controllers: [HealthController],
   providers: [

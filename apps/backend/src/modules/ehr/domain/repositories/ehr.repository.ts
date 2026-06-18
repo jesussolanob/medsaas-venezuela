@@ -27,4 +27,11 @@ export interface IEhrRepository {
     doctorId: string,
     fields: Partial<Pick<EhrRecord, 'diagnosis' | 'treatmentPlan'>>,
   ): Promise<EhrRecord>;
+
+  /**
+   * Returns the EHR record for a specific consultation, scoped to doctorId.
+   * Returns null when no EHR record exists for the consultation.
+   * Used by document-sharing to assemble the PDF.
+   */
+  findByConsultation(consultationId: string, doctorId: string): Promise<EhrRecord | null>;
 }
