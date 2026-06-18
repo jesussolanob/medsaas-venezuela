@@ -2,6 +2,16 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-18 — QA: mega guion de pruebas (docs)
+
+- Creado `memory-bank/07-qa-test-script.md` (core: harness BD prod + auth/onboarding,
+  perfil, offices, servicios, agenda/citas, consultas, pacientes) y
+  `07b-qa-test-script-extra.md` (EHR, recetas, finanzas, booking, paquetes,
+  suscripción/billing, compartir docs, recordatorios, mensajes, CRM, Google, MPPS,
+  admin, portal paciente, IA + casos de regresión + checklist de cierre).
+- Tablas/columnas verificadas contra migraciones reales; incluye 5 casos de regresión
+  (cita SQL `IN`/`ANY`, descarga `sessionToken`, enlace localhost, onboarding, planes booking).
+
 ## 2026-06-01 — Estado pre-migración (baseline)
 
 Punto de partida: app Next.js 16 + Supabase en producción (Vercel + Supabase
