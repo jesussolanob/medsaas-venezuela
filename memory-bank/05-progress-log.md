@@ -4,13 +4,14 @@
 
 ## 2026-06-18 — QA: mega guion de pruebas (docs)
 
-- Creado `memory-bank/07-qa-test-script.md` (core: harness BD prod + auth/onboarding,
-  perfil, offices, servicios, agenda/citas, consultas, pacientes) y
-  `07b-qa-test-script-extra.md` (EHR, recetas, finanzas, booking, paquetes,
-  suscripción/billing, compartir docs, recordatorios, mensajes, CRM, Google, MPPS,
-  admin, portal paciente, IA + casos de regresión + checklist de cierre).
-- Tablas/columnas verificadas contra migraciones reales; incluye 5 casos de regresión
-  (cita SQL `IN`/`ANY`, descarga `sessionToken`, enlace localhost, onboarding, planes booking).
+- Creado `memory-bank/07-qa-test-script.md` (archivo ÚNICO, 23 módulos): harness BD prod +
+  metodología obligatoria de **2 agentes en paralelo** (front-tester + verificador BD/logs que
+  se retroalimentan) + guion por módulo (auth/onboarding, perfil, offices, servicios, agenda,
+  consultas, pacientes, EHR, recetas, finanzas, booking, paquetes, suscripción/billing, compartir
+  docs, recordatorios, mensajes, CRM, Google, MPPS, admin, portal paciente, IA) + regresión + cierre.
+- Tablas/columnas verificadas contra migraciones reales; incluye casos de regresión
+  (cita SQL `IN`/`ANY`, descarga `sessionToken`, enlace localhost, onboarding, planes booking) y
+  el flujo cédula+código de descarga de documentos. (Se fusionó el antiguo `07b` en este archivo.)
 
 ## 2026-06-01 — Estado pre-migración (baseline)
 
