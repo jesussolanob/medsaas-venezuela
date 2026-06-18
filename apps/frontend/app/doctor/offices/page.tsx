@@ -27,6 +27,7 @@ import {
   Users,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { showToast } from '@/components/ui/Toaster';
 
 type Office = {
   id: string;
@@ -148,7 +149,7 @@ export default function OfficesPage() {
 
   async function handleSave() {
     if (!name.trim() || !address.trim() || !city.trim()) {
-      alert('Nombre, dirección y ciudad son obligatorios');
+      showToast({ type: 'error', message: 'Nombre, dirección y ciudad son obligatorios' });
       return;
     }
     setSaving(true);

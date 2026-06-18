@@ -51,6 +51,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SubscriptionPanel from '@/components/doctor/SubscriptionPanel';
 import BookingQrCode from '@/components/doctor/BookingQrCode';
 import { reportError } from '@/lib/report-error';
+import { showToast } from '@/components/ui/Toaster';
 
 type PricingPlan = {
   id: string;
@@ -528,7 +529,10 @@ function SettingsPageInner() {
     });
 
     if (!result.ok) {
-      alert('No se pudo guardar los métodos de pago. ' + (result.error ?? ''));
+      showToast({
+        type: 'error',
+        message: 'No se pudo guardar los métodos de pago. ' + (result.error ?? ''),
+      });
       return;
     }
 

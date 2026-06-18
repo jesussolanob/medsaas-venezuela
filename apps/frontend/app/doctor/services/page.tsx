@@ -29,6 +29,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { showToast } from '@/components/ui/Toaster';
 import Link from 'next/link';
 import type { DoctorService } from '@/app/doctor/services-shared';
 
@@ -123,7 +124,7 @@ export default function ServicesPage() {
 
   async function handleSave() {
     if (!name.trim() || !priceUsd) {
-      alert('Nombre y precio son obligatorios');
+      showToast({ type: 'error', message: 'Nombre y precio son obligatorios' });
       return;
     }
     setSaving(true);
@@ -146,7 +147,7 @@ export default function ServicesPage() {
     }
 
     if (!result.success) {
-      alert(result.error);
+      showToast({ type: 'error', message: result.error ?? 'Error al guardar el servicio' });
     }
 
     setSaving(false);

@@ -68,6 +68,7 @@ import UploadDropZone from '@/components/shared/UploadDropZone';
 import MarkdownText from '@/components/shared/MarkdownText';
 // AUDIT FIX 2026-04-28 (C-9): sanitizer para HTML rich-text (defense-in-depth).
 import { sanitizeHtml } from '@/lib/sanitize-html';
+import { showToast } from '@/components/ui/Toaster';
 
 // Inline type (mirrors @/lib/shared-files.SharedFile) — no Supabase dependency.
 // Fase 5: replace with backend endpoint and remove this local type.
@@ -1545,9 +1546,11 @@ export default function PatientsPage() {
                           // Fase 5: wire POST /api/shared-files/instruction here.
                           setSavingInstruction(true);
                           try {
-                            alert(
-                              'Función de seguimiento no disponible aún. Disponible en Fase 5.',
-                            );
+                            showToast({
+                              type: 'info',
+                              message:
+                                'Función de seguimiento no disponible aún. Disponible en Fase 5.',
+                            });
                             setNewInstructionTitle('');
                             setNewInstructionDesc('');
                           } finally {
@@ -1716,9 +1719,11 @@ export default function PatientsPage() {
                                       )
                                         return;
                                       // Etapa 1: no backend endpoint for shared_files. No-op.
-                                      alert(
-                                        'Función de seguimiento no disponible aún. Disponible en Fase 5.',
-                                      );
+                                      showToast({
+                                        type: 'info',
+                                        message:
+                                          'Función de seguimiento no disponible aún. Disponible en Fase 5.',
+                                      });
                                     }}
                                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     title="Eliminar"
@@ -1787,12 +1792,18 @@ export default function PatientsPage() {
               <button
                 onClick={async () => {
                   if (!doctorUploadDesc.trim()) {
-                    alert('Escribe un comentario o adjunta un archivo');
+                    showToast({
+                      type: 'error',
+                      message: 'Escribe un comentario o adjunta un archivo',
+                    });
                     return;
                   }
                   // Etapa 1: shared_files has no backend endpoint. No-op stub.
                   // Fase 5: wire POST /api/shared-files/comment here.
-                  alert('Función de seguimiento no disponible aún. Disponible en Fase 5.');
+                  showToast({
+                    type: 'info',
+                    message: 'Función de seguimiento no disponible aún. Disponible en Fase 5.',
+                  });
                 }}
                 disabled={!doctorUploadDesc.trim()}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
@@ -1871,7 +1882,10 @@ export default function PatientsPage() {
                     try {
                       // Etapa 1: shared_files has no backend endpoint. No-op stub.
                       // Fase 5: wire PATCH /api/shared-files/:id here.
-                      alert('Edición de archivos de seguimiento no disponible aún (Fase 5).');
+                      showToast({
+                        type: 'info',
+                        message: 'Edición de archivos de seguimiento no disponible aún (Fase 5).',
+                      });
                       setEditingFile(null);
                     } finally {
                       setSavingEditFile(false);

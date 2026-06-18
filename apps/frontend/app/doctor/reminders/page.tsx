@@ -23,6 +23,7 @@ import { getUpcomingConsultations, getUpcomingAppointments } from './actions';
 import { toLocalYMD } from '@/lib/timezone';
 // L6 (2026-04-29): normaliza telefonos venezolanos (legacy free-text + canonico).
 import { normalizePhoneVE } from '@/lib/phone-utils';
+import { showToast } from '@/components/ui/Toaster';
 
 type Consultation = {
   id: string;
@@ -173,7 +174,7 @@ export default function RemindersPage() {
     // L6 (2026-04-29): normaliza para que wa.me reciba 58XXXXXXXXXX siempre.
     const phone = normalizePhoneVE(consult.patient_phone);
     if (!phone) {
-      alert('Teléfono inválido');
+      showToast({ type: 'error', message: 'Teléfono inválido' });
       setSending(null);
       return;
     }

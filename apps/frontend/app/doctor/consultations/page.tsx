@@ -87,6 +87,7 @@ import { log } from '@/lib/logger';
 import { normalizePhoneVE } from '@/lib/phone-utils';
 import { reportError } from '@/lib/report-error';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
+import { showToast } from '@/components/ui/Toaster';
 
 type Consultation = {
   id: string;
@@ -692,10 +693,13 @@ function ConsultationsPage() {
       setSelected(null);
       setView('list');
       setConfirmDeleteConsulta(null);
-      alert('Consulta eliminada correctamente');
+      showToast({ type: 'success', message: 'Consulta eliminada correctamente' });
     } catch (err: unknown) {
       reportError('doctor/consultations', 'handleDeleteConsulta', err);
-      alert(err instanceof Error ? err.message : 'Error al eliminar la consulta');
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al eliminar la consulta',
+      });
     }
     setDeletingConsulta(false);
   }
@@ -884,11 +888,11 @@ function ConsultationsPage() {
 
   async function createNewConsultation() {
     if (!newConsultation.patient_id || !newConsultation.consultation_date) {
-      alert('Completa paciente y fecha');
+      showToast({ type: 'error', message: 'Completa paciente y fecha' });
       return;
     }
     if (!newConsultation.plan_id) {
-      alert('Selecciona un plan o servicio');
+      showToast({ type: 'error', message: 'Selecciona un plan o servicio' });
       return;
     }
     setIsCreatingConsultation(true);
@@ -1014,7 +1018,7 @@ function ConsultationsPage() {
       });
     } catch (err) {
       reportError('doctor/consultations', 'createConsultation', err);
-      alert('Error al crear consulta');
+      showToast({ type: 'error', message: 'Error al crear consulta' });
     } finally {
       setIsCreatingConsultation(false);
     }
@@ -1028,12 +1032,15 @@ function ConsultationsPage() {
       (recipe.medications && recipe.medications.length > 0) ||
       (recipe.notes && recipe.notes.replace(/<[^>]*>/g, '').trim().length > 0);
     if (!selected || !hasContent) {
-      alert('Agrega al menos un medicamento o escribe notas de la receta');
+      showToast({
+        type: 'error',
+        message: 'Agrega al menos un medicamento o escribe notas de la receta',
+      });
       return;
     }
     if (!selected.patient_id) {
       log.error('[saveRecipe] selected.patient_id es null/undefined', { selected });
-      alert('Error: la consulta no tiene un paciente asociado');
+      showToast({ type: 'error', message: 'Error: la consulta no tiene un paciente asociado' });
       return;
     }
 
@@ -1054,7 +1061,7 @@ function ConsultationsPage() {
           notes: med.indications || recipe.notes || null,
         });
         if (!result.success) {
-          alert(`Error al guardar receta: ${result.error}`);
+          showToast({ type: 'error', message: `Error al guardar receta: ${result.error}` });
           return;
         }
       }
@@ -1077,10 +1084,13 @@ function ConsultationsPage() {
       }));
       setSavedPrescriptions(saved);
       setShowRecipe(false);
-      alert('Receta guardada correctamente');
+      showToast({ type: 'success', message: 'Receta guardada correctamente' });
     } catch (err: unknown) {
       reportError('doctor/consultations', 'saveRecipe', err);
-      alert(`Error al guardar receta: ${err instanceof Error ? err.message : 'desconocido'}`);
+      showToast({
+        type: 'error',
+        message: `Error al guardar receta: ${err instanceof Error ? err.message : 'desconocido'}`,
+      });
     } finally {
       setIsSavingRecipe(false);
     }
@@ -1323,7 +1333,7 @@ function ConsultationsPage() {
         treatment: report.treatment || null,
       });
       if (!result.success) {
-        alert(`Error al guardar: ${result.error}`);
+        showToast({ type: 'error', message: `Error al guardar: ${result.error}` });
         return;
       }
       setConsultations((prev) => prev.map((c) => (c.id === selected.id ? { ...c, ...report } : c)));
@@ -1690,7 +1700,7 @@ function ConsultationsPage() {
                     onClick={() => {
                       console.log('[generar-informe] click START', { selected: !!selected });
                       if (!selected) {
-                        alert('Abre primero una consulta');
+                        showToast({ type: 'error', message: 'Abre primero una consulta' });
                         return;
                       }
                       try {
@@ -1707,10 +1717,12 @@ function ConsultationsPage() {
                         console.log('[generar-informe] setState called → showGenerateReport=true');
                       } catch (err) {
                         reportError('doctor/consultations', 'openGenerateReportModal', err);
-                        alert(
-                          'Error abriendo el modal: ' +
+                        showToast({
+                          type: 'error',
+                          message:
+                            'Error abriendo el modal: ' +
                             (err instanceof Error ? err.message : 'desconocido'),
-                        );
+                        });
                       }
                     }}
                     title="Generar informe"
@@ -1847,7 +1859,10 @@ function ConsultationsPage() {
                                   }
 
                                   if (docs.length === 0) {
-                                    alert('Selecciona al menos un documento con contenido');
+                                    showToast({
+                                      type: 'error',
+                                      message: 'Selecciona al menos un documento con contenido',
+                                    });
                                     return;
                                   }
 
@@ -1878,7 +1893,11 @@ function ConsultationsPage() {
                                       `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
                                       '_blank',
                                     );
-                                  else alert('Este paciente no tiene teléfono válido registrado');
+                                  else
+                                    showToast({
+                                      type: 'error',
+                                      message: 'Este paciente no tiene teléfono válido registrado',
+                                    });
                                   setShowShare(false);
                                 }}
                                 className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-green-600 transition-colors"
@@ -1892,7 +1911,10 @@ function ConsultationsPage() {
                                     .filter((b) => shareKeys.has(b.key))
                                     .map((b) => b.label);
                                   if (docs.length === 0) {
-                                    alert('Selecciona al menos un documento');
+                                    showToast({
+                                      type: 'error',
+                                      message: 'Selecciona al menos un documento',
+                                    });
                                     return;
                                   }
                                   const subject = `Documentos médicos - Consulta ${selected.consultation_code}`;
@@ -1915,7 +1937,11 @@ function ConsultationsPage() {
                                       `mailto:${patientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
                                       '_blank',
                                     );
-                                  else alert('Este paciente no tiene email registrado');
+                                  else
+                                    showToast({
+                                      type: 'error',
+                                      message: 'Este paciente no tiene email registrado',
+                                    });
                                   setShowShare(false);
                                 }}
                                 className="flex-1 flex items-center justify-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors"
@@ -2144,7 +2170,10 @@ function ConsultationsPage() {
                                       });
                                       if (!res.ok) {
                                         const e = await res.json().catch(() => ({}));
-                                        alert(e.error || 'No se pudo agregar el bloque');
+                                        showToast({
+                                          type: 'error',
+                                          message: e.error || 'No se pudo agregar el bloque',
+                                        });
                                         return;
                                       }
                                       // Refrescar config viva
@@ -2191,7 +2220,10 @@ function ConsultationsPage() {
                                       setConsultationTab(`block:${c.key}`);
                                     } catch (err) {
                                       reportError('doctor/consultations', 'addBlock', err);
-                                      alert('Error agregando el bloque');
+                                      showToast({
+                                        type: 'error',
+                                        message: 'Error agregando el bloque',
+                                      });
                                     } finally {
                                       setAddingBlock(false);
                                     }
@@ -2317,7 +2349,7 @@ function ConsultationsPage() {
                               blocks_data: (selected as Consultation).blocks_data || {},
                             }),
                           });
-                          alert('Bloque guardado');
+                          showToast({ type: 'success', message: 'Bloque guardado' });
                         }}
                       />
                     </div>
@@ -2620,12 +2652,18 @@ function ConsultationsPage() {
                               !selected ||
                               prescripciones.filter((p) => p.exam_name.trim()).length === 0
                             ) {
-                              alert('Agrega al menos un examen con nombre');
+                              showToast({
+                                type: 'error',
+                                message: 'Agrega al menos un examen con nombre',
+                              });
                               return;
                             }
                             // RONDA 22: validar patient_id + capturar error de Supabase por insert
                             if (!selected.patient_id) {
-                              alert('Error: la consulta no tiene un paciente asociado');
+                              showToast({
+                                type: 'error',
+                                message: 'Error: la consulta no tiene un paciente asociado',
+                              });
                               return;
                             }
                             log.debug('[savePrescripciones] insertando', {
@@ -2673,15 +2711,22 @@ function ConsultationsPage() {
                               }));
                               setSavedPrescriptions(saved);
                               if (failed.length > 0) {
-                                alert(`Algunas prescripciones fallaron: ${failed.join(', ')}`);
+                                showToast({
+                                  type: 'error',
+                                  message: `Algunas prescripciones fallaron: ${failed.join(', ')}`,
+                                });
                               } else {
-                                alert(`Prescripciones guardadas (${exams.length})`);
+                                showToast({
+                                  type: 'success',
+                                  message: `Prescripciones guardadas (${exams.length})`,
+                                });
                               }
                             } catch (err: unknown) {
                               reportError('doctor/consultations', 'savePrescripciones', err);
-                              alert(
-                                `Error al guardar prescripciones: ${err instanceof Error ? err.message : 'desconocido'}`,
-                              );
+                              showToast({
+                                type: 'error',
+                                message: `Error al guardar prescripciones: ${err instanceof Error ? err.message : 'desconocido'}`,
+                              });
                             } finally {
                               setIsSavingPrescripciones(false);
                             }
@@ -2835,7 +2880,7 @@ function ConsultationsPage() {
                     <button
                       onClick={() => {
                         if (!reposoFrom || !reposoDiagnosis || reposoDays === 0) {
-                          alert('Completa todos los campos');
+                          showToast({ type: 'error', message: 'Completa todos los campos' });
                           return;
                         }
                         const printWindow = window.open('', '_blank');
@@ -3705,7 +3750,7 @@ function ConsultationsPage() {
                     <button
                       onClick={async () => {
                         if (reportSelectedKeys.size === 0) {
-                          alert('Selecciona al menos un bloque');
+                          showToast({ type: 'error', message: 'Selecciona al menos un bloque' });
                           return;
                         }
                         setGeneratingReport(true);
@@ -3769,15 +3814,20 @@ function ConsultationsPage() {
                               new Error(`HTTP ${res.status}`),
                               { status: res.status },
                             );
-                            alert(data.error || `Error generando el PDF (status ${res.status})`);
+                            showToast({
+                              type: 'error',
+                              message:
+                                data.error || `Error generando el PDF (status ${res.status})`,
+                            });
                             return;
                           }
                           setGeneratedReportUrl(data.url);
                         } catch (err: unknown) {
                           reportError('doctor/consultations', 'generateReport', err);
-                          alert(
-                            `Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`,
-                          );
+                          showToast({
+                            type: 'error',
+                            message: `Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`,
+                          });
                         } finally {
                           setGeneratingReport(false);
                         }
@@ -4595,7 +4645,7 @@ function ConsultationsPage() {
                     <button
                       onClick={async () => {
                         if (reportSelectedKeys.size === 0) {
-                          alert('Selecciona al menos un bloque');
+                          showToast({ type: 'error', message: 'Selecciona al menos un bloque' });
                           return;
                         }
                         setGeneratingReport(true);
@@ -4662,7 +4712,11 @@ function ConsultationsPage() {
                               new Error(`HTTP ${res.status}`),
                               { status: res.status },
                             );
-                            alert(data.error || `Error generando el PDF (status ${res.status})`);
+                            showToast({
+                              type: 'error',
+                              message:
+                                data.error || `Error generando el PDF (status ${res.status})`,
+                            });
                             return;
                           }
                           // FIX 2026-04-29: en lugar de window.open (bloqueado por Safari
@@ -4670,9 +4724,10 @@ function ConsultationsPage() {
                           setGeneratedReportUrl(data.url);
                         } catch (err: unknown) {
                           reportError('doctor/consultations', 'generateReport2', err);
-                          alert(
-                            `Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`,
-                          );
+                          showToast({
+                            type: 'error',
+                            message: `Error generando el informe: ${err instanceof Error ? err.message : 'desconocido'}`,
+                          });
                         } finally {
                           setGeneratingReport(false);
                         }

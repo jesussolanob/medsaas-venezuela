@@ -2156,7 +2156,7 @@ export default function AgendaPage() {
                           });
                           const j = await r.json();
                           if (!r.ok) {
-                            alert(j.error || 'Error');
+                            showToast({ type: 'error', message: j.error || 'Error' });
                             return;
                           }
                           setDetailAppt({ ...detailAppt, status: 'confirmed' });
@@ -2322,7 +2322,7 @@ export default function AgendaPage() {
                           setDetailAppt(null);
                           window.location.reload();
                         } catch (e: any) {
-                          alert(e.message || 'Error al actualizar');
+                          showToast({ type: 'error', message: e.message || 'Error al actualizar' });
                         } finally {
                           setStatusSaving(false);
                         }

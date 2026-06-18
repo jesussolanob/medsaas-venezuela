@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
+import { showToast } from '@/components/ui/Toaster';
 import {
   getPayments,
   updatePaymentStatus as updatePaymentStatusAction,
@@ -133,7 +134,7 @@ export default function CobrosPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       reportError('doctor/cobros', 'handleReceiptUpload', err);
-      alert('Error al subir el comprobante. ' + msg);
+      showToast({ type: 'error', message: 'Error al subir el comprobante. ' + msg });
     } finally {
       setUploadingReceipt(false);
     }
@@ -202,7 +203,7 @@ export default function CobrosPage() {
     const data = await getPaymentsForExport(dateFrom, dateTo);
 
     if (!data || data.length === 0) {
-      alert('No hay datos en ese rango de fechas');
+      showToast({ type: 'info', message: 'No hay datos en ese rango de fechas' });
       return;
     }
 
@@ -344,7 +345,7 @@ export default function CobrosPage() {
     ]);
 
     if (!prof) {
-      alert('No se pudo cargar la información del doctor');
+      showToast({ type: 'error', message: 'No se pudo cargar la información del doctor' });
       return;
     }
 
@@ -387,7 +388,7 @@ export default function CobrosPage() {
 
     const w = window.open('', '_blank');
     if (!w) {
-      alert('Permite ventanas emergentes para generar el PDF');
+      showToast({ type: 'error', message: 'Permite ventanas emergentes para generar el PDF' });
       return;
     }
     w.document.write(html);
@@ -428,7 +429,10 @@ export default function CobrosPage() {
       await fetchPayments();
     } catch (err: unknown) {
       reportError('doctor/cobros', 'updatePaymentStatus', err);
-      setActionToast({ type: 'error', msg: err instanceof Error ? err.message : 'Error al actualizar el pago' });
+      setActionToast({
+        type: 'error',
+        msg: err instanceof Error ? err.message : 'Error al actualizar el pago',
+      });
       setTimeout(() => setActionToast(null), 3500);
     } finally {
       setUpdatingStatus(false);

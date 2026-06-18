@@ -24,6 +24,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
+import { showToast } from '@/components/ui/Toaster';
 
 // ── TIPOS DINÁMICOS ─────────────────────────────────────────────────────
 // Ahora TemplateType es cualquier block_key que el doctor tenga activo.
@@ -273,7 +274,7 @@ export default function TemplatesPage() {
       }
     } catch (err: unknown) {
       reportError('doctor/templates', `uploadFile:${type}`, err);
-      alert(`Error al subir ${type === 'logo' ? 'logo' : 'firma'}`);
+      showToast({ type: 'error', message: `Error al subir ${type === 'logo' ? 'logo' : 'firma'}` });
     } finally {
       if (type === 'logo') setUploadingLogo(false);
       else setUploadingSignature(false);
@@ -296,7 +297,7 @@ export default function TemplatesPage() {
 
       const result = await saveTemplateConfig(activeTab, input);
       if (!result.ok) {
-        alert(result.error ?? 'Error al guardar plantilla');
+        showToast({ type: 'error', message: result.error ?? 'Error al guardar plantilla' });
         return;
       }
 
@@ -328,7 +329,10 @@ export default function TemplatesPage() {
       );
 
       if (!result.ok) {
-        alert(result.error ?? 'Error al aplicar a todas las plantillas');
+        showToast({
+          type: 'error',
+          message: result.error ?? 'Error al aplicar a todas las plantillas',
+        });
         return;
       }
 
