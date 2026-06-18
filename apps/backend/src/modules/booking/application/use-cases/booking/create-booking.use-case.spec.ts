@@ -3,11 +3,13 @@ import {
   DoctorNotFoundError,
   PatientNotFoundError,
 } from './create-booking.use-case';
+import { BookingNotEnabledError } from '../../../domain/errors/booking-not-enabled.error';
 import { CreateBookingDtoSchema } from '@delta/shared-types';
 import type {
   IBookingDoctorLoader,
   DoctorPublicInfo,
 } from '../../../domain/repositories/booking-doctor.repository';
+import type { IBookingFeatureChecker } from '../../../domain/repositories/booking-feature-checker.repository';
 import { ConsumePackageSessionUseCase } from '../../../../packages/application/use-cases/packages/consume-package-session.use-case';
 import { Appointment } from '../../../../appointments/domain/entities/appointment.entity';
 import { Patient } from '../../../../patients/domain/entities/patient.entity';
@@ -571,6 +573,109 @@ describe('CreateBookingUseCase', () => {
       expect(result.meetLink).toBeNull();
       // updateGoogleEventId should NOT be called if notification failed
       expect(mockAppointmentRepo.updateGoogleEventId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('booking feature gate — BookingNotEnabledError', () => {
+    let mockFeatureChecker: jest.Mocked<IBookingFeatureChecker>;
+
+    beforeEach(() => {
+      mockFeatureChecker = { isBookingEnabled: jest.fn() };
+    });
+
+    function makeUseCaseWithChecker(checker: IBookingFeatureChecker) {
+      return new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null,
+        mockResolveIdentity,
+        null,
+        null,
+        checker,
+      );
+    }
+
+    it('throws BookingNotEnabledError (403) when booking feature is disabled for the doctor plan', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(false);
+
+      const ucWithChecker = makeUseCaseWithChecker(mockFeatureChecker);
+
+      await expect(ucWithChecker.execute(makeDto())).rejects.toThrow(BookingNotEnabledError);
+    });
+
+    it('BookingNotEnabledError carries httpStatus 403', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(false);
+
+      const ucWithChecker = makeUseCaseWithChecker(mockFeatureChecker);
+
+      try {
+        await ucWithChecker.execute(makeDto());
+      } catch (err) {
+        expect((err as BookingNotEnabledError).httpStatus).toBe(403);
+        expect((err as BookingNotEnabledError).code).toBe('BOOKING_NOT_ENABLED');
+      }
+    });
+
+    it('proceeds with booking when feature checker returns true', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(true);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+      mockAppointmentRepo.save.mockResolvedValue(
+        // Inline appointment — avoids importing makeAppointment here
+        {
+          id: 'appt-001',
+          doctorId: 'doc-001',
+          patientId: 'pat-001',
+          scheduledAt: new Date('2026-07-01T10:00:00Z'),
+          status: 'scheduled',
+        } as unknown as import('../../../../appointments/domain/entities/appointment.entity').Appointment,
+      );
+
+      const ucWithChecker = makeUseCaseWithChecker(mockFeatureChecker);
+
+      const result = await ucWithChecker.execute(makeDto());
+
+      expect(result.appointment).toBeDefined();
+      expect(mockFeatureChecker.isBookingEnabled).toHaveBeenCalledWith('doc-001');
+    });
+
+    it('does not call feature checker when doctor is not found (fails fast at Step 2)', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(null);
+
+      const ucWithChecker = makeUseCaseWithChecker(mockFeatureChecker);
+
+      await expect(ucWithChecker.execute(makeDto())).rejects.toThrow(DoctorNotFoundError);
+      expect(mockFeatureChecker.isBookingEnabled).not.toHaveBeenCalled();
+    });
+
+    it('skips feature check when featureChecker is null (backward compat)', async () => {
+      // useCase in parent beforeEach has no featureChecker (null) → should not throw
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+      mockAppointmentRepo.save.mockResolvedValue({
+        id: 'appt-001',
+        doctorId: 'doc-001',
+        patientId: 'pat-001',
+        scheduledAt: new Date('2026-07-01T10:00:00Z'),
+        status: 'scheduled',
+      } as unknown as import('../../../../appointments/domain/entities/appointment.entity').Appointment);
+
+      // useCase was constructed without featureChecker (null) in beforeEach
+      await expect(useCase.execute(makeDto())).resolves.toBeDefined();
     });
   });
 

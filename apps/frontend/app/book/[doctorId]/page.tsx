@@ -42,6 +42,9 @@ interface DoctorInfo {
   paymentDetails?: Record<string, unknown> | null;
   // Fase 5 — horizonte de booking en semanas (default 8 si no viene)
   bookingHorizonWeeks?: number | null;
+  // Gating por plan: el booking online solo está disponible si el plan del doctor
+  // habilita la feature `booking` (Delta Base+). Delta Free → false.
+  bookingEnabled?: boolean | null;
 }
 
 interface PricingPlan {
@@ -97,6 +100,26 @@ export default async function PublicBookingPage({
             El link de booking no es válido o el médico ya no está disponible.
           </p>
           <p className="text-xs text-slate-300 mt-4 font-mono break-all">ID: {doctorId}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Gating por plan: si el plan del doctor NO habilita booking online (ej. Delta Free),
+  // no se permite reservar — ni aunque alguien tenga el link. El backend es la fuente de
+  // verdad (también rechaza el POST); acá mostramos un estado amigable.
+  if (doctorInfo.bookingEnabled === false) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-slate-300" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-700">Reservas en línea no disponibles</h2>
+          <p className="text-sm text-slate-400 mt-2">
+            Este profesional no tiene habilitada la reserva de citas en línea. Por favor contáctalo
+            directamente para agendar.
+          </p>
         </div>
       </div>
     );

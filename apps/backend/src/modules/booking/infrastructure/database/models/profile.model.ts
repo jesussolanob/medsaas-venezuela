@@ -68,6 +68,22 @@ export class ProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;
 
+  /**
+   * The doctor's current plan key (e.g. 'delta_free', 'delta_base', 'delta_plus').
+   * Used by the booking feature checker to resolve the effective plan.
+   * Null means the doctor has never had a plan set → treat as 'delta_free'.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare plan: string | null;
+
+  /**
+   * The doctor's current subscription status (e.g. 'active', 'trial', 'past_due').
+   * Used together with `plan` for lazy-downgrade resolution.
+   * Null → treat as expired → downgrade to permanent free plan.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'subscription_status' })
+  declare subscriptionStatus: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

@@ -3,10 +3,16 @@ import { SequelizeModule } from '@nestjs/sequelize';
 
 // Infrastructure models
 import { ProfileModel } from './infrastructure/database/models/profile.model';
+// Reuse doctor-settings models for plan_configs and plan_features tables
+// (same DB tables — BookingModule does not own these tables, only reads them).
+import { PlanConfigDoctorModel } from '../doctor-settings/infrastructure/database/models/plan-config-doctor.model';
+import { PlanFeaturesModel } from '../doctor-settings/infrastructure/database/models/plan-features.model';
 
 // Repository implementation + token
 import { SequelizeBookingDoctorRepository } from './infrastructure/database/repositories/sequelize-booking-doctor.repository';
 import { BOOKING_DOCTOR_LOADER } from './domain/repositories/booking-doctor.repository';
+import { SequelizeBookingFeatureChecker } from './infrastructure/database/repositories/sequelize-booking-feature-checker.repository';
+import { BOOKING_FEATURE_CHECKER } from './domain/repositories/booking-feature-checker.repository';
 
 // Use cases
 import { CreateBookingUseCase } from './application/use-cases/booking/create-booking.use-case';
@@ -56,7 +62,11 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
       AppointmentModel,
       AppointmentChangesLogModel,
       DoctorScheduleModel,
+      // plan_configs and plan_features are owned by DoctorSettingsModule but read
+      // here by SequelizeBookingFeatureChecker for effective-plan resolution.
       // Note: OfficeModel is registered inside OfficesModule — do NOT re-register it here.
+      PlanConfigDoctorModel,
+      PlanFeaturesModel,
     ]),
     PackagesModule,
     PatientsModule,
@@ -80,6 +90,12 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
     {
       provide: BOOKING_DOCTOR_LOADER,
       useClass: SequelizeBookingDoctorRepository,
+    },
+
+    // Booking feature checker — resolves effective plan and checks booking feature flag
+    {
+      provide: BOOKING_FEATURE_CHECKER,
+      useClass: SequelizeBookingFeatureChecker,
     },
 
     // Appointment repository binding (CreateBookingUseCase + GetAvailableSlotsUseCase)

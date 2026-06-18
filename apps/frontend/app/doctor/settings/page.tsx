@@ -333,6 +333,28 @@ function SettingsPageInner() {
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const publicLink = doctorId ? `${baseUrl}/book/${doctorId}` : '';
 
+  // El booking (link público + QR) se habilita por plan. En Delta Free está
+  // bloqueado: no se muestra el tab ni el link/QR. Default true para evitar
+  // flash-of-locked mientras cargan las features.
+  const [bookingEnabled, setBookingEnabled] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/doctor/features', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = await res.json();
+        const features = json?.data?.features ?? json?.features ?? {};
+        if (!cancelled) setBookingEnabled(features.booking === true);
+      } catch {
+        /* si falla, dejamos el default para no bloquear de más */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Load all data
   useEffect(() => {
     async function load() {
@@ -678,7 +700,8 @@ function SettingsPageInner() {
   const tabs: { id: TabId; label: string; icon: any }[] = [
     { id: 'profile', label: 'Mi perfil', icon: User },
     { id: 'subscription', label: 'Suscripción', icon: CreditCard },
-    { id: 'booking', label: 'Link público', icon: Link2 },
+    // "Link público" (booking) solo si el plan habilita la feature `booking`.
+    ...(bookingEnabled ? [{ id: 'booking' as TabId, label: 'Link público', icon: Link2 }] : []),
     { id: 'payment', label: 'Métodos de pago', icon: DollarSign },
     { id: 'notifications', label: 'Notificaciones', icon: Bell },
     { id: 'integrations', label: 'Integraciones', icon: ExternalLink },
@@ -1066,7 +1089,7 @@ function SettingsPageInner() {
         {tab === 'subscription' && <SubscriptionPanel embedded />}
 
         {/* ---------------- BOOKING ---------------- */}
-        {tab === 'booking' && (
+        {tab === 'booking' && bookingEnabled && (
           <div className="space-y-4">
             <div className="g-bg rounded-xl p-6 text-white">
               <div className="flex items-start gap-4">

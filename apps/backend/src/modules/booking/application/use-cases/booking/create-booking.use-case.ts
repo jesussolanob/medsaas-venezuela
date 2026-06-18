@@ -21,6 +21,11 @@ import {
   type IBookingDoctorLoader,
 } from '../../../domain/repositories/booking-doctor.repository';
 import {
+  BOOKING_FEATURE_CHECKER,
+  type IBookingFeatureChecker,
+} from '../../../domain/repositories/booking-feature-checker.repository';
+import { BookingNotEnabledError } from '../../../domain/errors/booking-not-enabled.error';
+import {
   PAYMENT_REPOSITORY,
   type IPaymentRepository,
 } from '../../../../finances/domain/repositories/payment.repository';
@@ -108,6 +113,16 @@ export class CreateBookingUseCase {
     @Optional()
     @Inject(APPOINTMENT_NOTIFICATION_SERVICE)
     private readonly notificationService: AppointmentNotificationService | null = null,
+    /**
+     * Feature checker — optional for backward compatibility with existing tests.
+     * When present, blocks booking if the doctor's effective plan does not include
+     * the `booking` feature (BookingNotEnabledError → HTTP 403).
+     *
+     * TODO(cleanup): make required once all test suites are updated.
+     */
+    @Optional()
+    @Inject(BOOKING_FEATURE_CHECKER)
+    private readonly featureChecker: IBookingFeatureChecker | null = null,
   ) {}
 
   async execute(dto: CreateBookingDto): Promise<CreateBookingResult> {
@@ -120,6 +135,16 @@ export class CreateBookingUseCase {
     const doctor = await this.doctorLoader.findById(dto.doctor_id);
     if (!doctor || !doctor.isActive) {
       throw new DoctorNotFoundError();
+    }
+
+    // --- Step 2a: Verify booking feature is enabled for this doctor's plan ---
+    // Defence in depth: the frontend hides the booking link/QR when bookingEnabled=false,
+    // but a direct POST must still be rejected if the plan does not include booking.
+    if (this.featureChecker) {
+      const bookingEnabled = await this.featureChecker.isBookingEnabled(dto.doctor_id);
+      if (!bookingEnabled) {
+        throw new BookingNotEnabledError();
+      }
     }
 
     // --- Step 2b: Validate office modality (if office_id provided) ---
