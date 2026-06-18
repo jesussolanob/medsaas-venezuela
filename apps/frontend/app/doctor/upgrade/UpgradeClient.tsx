@@ -73,9 +73,11 @@ const WHATSAPP_MESSAGE = encodeURIComponent(
 
 interface UpgradeClientProps {
   plans: Plan[];
+  /** Plan EFECTIVO actual del doctor — se resalta como "Plan actual". */
+  currentPlanKey?: string | null;
 }
 
-export default function UpgradeClient({ plans }: UpgradeClientProps) {
+export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('monthly');
 
   function getPriceForPeriod(plan: Plan, period: Period): number | null {
@@ -195,6 +197,7 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {plans.map((plan) => {
           const price = getPriceForPeriod(plan, effectivePeriod);
+          const isCurrent = currentPlanKey != null && plan.plan_key === currentPlanKey;
           const isFeatured = plan.plan_key === featuredPlanKey;
           const isPermanent = plan.is_permanent;
           const enabledCount = plan.features.filter((f) => f.enabled).length;
@@ -203,12 +206,14 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
             <div
               key={plan.plan_key}
               className={`relative bg-white rounded-xl overflow-hidden border transition-all ${
-                isFeatured
-                  ? 'border-teal-400 shadow-lg shadow-teal-100'
-                  : 'border-slate-200 hover:border-slate-300'
+                isCurrent
+                  ? 'border-teal-500 ring-2 ring-teal-300 shadow-lg shadow-teal-100'
+                  : isFeatured
+                    ? 'border-teal-400 shadow-lg shadow-teal-100'
+                    : 'border-slate-200 hover:border-slate-300'
               }`}
             >
-              {isFeatured && (
+              {(isFeatured || isCurrent) && (
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-500" />
               )}
               <div className="px-5 pt-5 pb-4">
@@ -219,11 +224,18 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
                       {enabledCount} módulos incluidos
                     </p>
                   </div>
-                  {isFeatured && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-700 text-[10px] font-bold rounded-full border border-teal-100">
-                      <Star className="w-2.5 h-2.5" />
-                      Popular
+                  {isCurrent ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-500 text-white text-[10px] font-bold rounded-full">
+                      <Check className="w-2.5 h-2.5" />
+                      Plan actual
                     </span>
+                  ) : (
+                    isFeatured && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-700 text-[10px] font-bold rounded-full border border-teal-100">
+                        <Star className="w-2.5 h-2.5" />
+                        Popular
+                      </span>
+                    )
                   )}
                 </div>
 
@@ -245,19 +257,26 @@ export default function UpgradeClient({ plans }: UpgradeClientProps) {
                   )}
                 </div>
 
-                <a
-                  href={`https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_MESSAGE}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-                    isFeatured
-                      ? 'bg-teal-500 text-white hover:bg-teal-600'
-                      : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  {isPermanent ? 'Plan actual' : 'Contratar'}
-                </a>
+                {isCurrent ? (
+                  <div className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-teal-50 text-teal-700 border border-teal-200 cursor-default">
+                    <Check className="w-4 h-4" />
+                    Plan actual
+                  </div>
+                ) : (
+                  <a
+                    href={`https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_MESSAGE}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+                      isFeatured
+                        ? 'bg-teal-500 text-white hover:bg-teal-600'
+                        : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    Contratar
+                  </a>
+                )}
               </div>
 
               {/* Feature list */}

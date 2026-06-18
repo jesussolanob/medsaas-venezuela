@@ -13,6 +13,7 @@
  * /doctor (dashboard banner cuando está vencido) o standalone.
  */
 
+import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import {
   CreditCard,
@@ -235,8 +236,8 @@ export default function SubscriptionPanel({ embedded = false }: { embedded?: boo
           </div>
         )}
 
-        <button
-          onClick={() => setShowCheckout(true)}
+        <Link
+          href="/doctor/upgrade"
           className="w-full py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white rounded-xl font-bold text-sm hover:opacity-95 transition flex items-center justify-center gap-2 shadow-sm"
         >
           <Sparkles className="w-4 h-4" />
@@ -247,7 +248,7 @@ export default function SubscriptionPanel({ embedded = false }: { embedded?: boo
               : state.is_in_trial
                 ? 'Adquirir mi plan'
                 : 'Renovar / Extender'}
-        </button>
+        </Link>
       </div>
 
       {/* ── Historial de pagos ──────────────────────────────────────────── */}

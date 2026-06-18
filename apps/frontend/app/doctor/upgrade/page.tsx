@@ -29,9 +29,23 @@ interface CatalogPlan {
   prices: CatalogPlanPrice[];
 }
 
+interface DoctorFeaturesResponse {
+  plan_key: string;
+  effective_plan_key: string;
+  is_downgraded: boolean;
+  features: Record<string, boolean>;
+}
+
 export default async function UpgradePage() {
-  const result = await backendGet<CatalogPlan[]>('/api/plans?role=doctor');
+  // Catálogo de planes + plan EFECTIVO del doctor (para resaltar el plan actual).
+  const [result, featuresResult] = await Promise.all([
+    backendGet<CatalogPlan[]>('/api/plans?role=doctor'),
+    backendGet<DoctorFeaturesResponse>('/api/doctor/features'),
+  ]);
   const allPlans = result.ok && Array.isArray(result.value) ? result.value : [];
+  const currentPlanKey = featuresResult.ok
+    ? (featuresResult.value.effective_plan_key ?? featuresResult.value.plan_key ?? null)
+    : null;
 
   // The catalog already returns only active plans; map to the client shape.
   const upgradePlans = [...allPlans]
@@ -50,5 +64,5 @@ export default async function UpgradePage() {
       })),
     }));
 
-  return <UpgradeClient plans={upgradePlans} />;
+  return <UpgradeClient plans={upgradePlans} currentPlanKey={currentPlanKey} />;
 }
