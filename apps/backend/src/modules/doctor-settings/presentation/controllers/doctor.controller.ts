@@ -204,8 +204,14 @@ export class DoctorController {
    *   (Both remain 501 in the BFF until a future task implements them.)
    */
   @Get('subscription')
-  async subscription(@CurrentUser() user: CurrentUserPayload): Promise<SubscriptionPanelOutput> {
-    return this.getSubscriptionPanel.execute(user.sub);
+  async subscription(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<{ success: true; data: SubscriptionPanelOutput }> {
+    // Wrap in the standard { success, data } envelope so the BFF's backendFetch
+    // (which unwraps `.data`) can consume it like every other doctor endpoint.
+    // Returning the raw object made backendFetch yield `undefined` → empty 500.
+    const result = await this.getSubscriptionPanel.execute(user.sub);
+    return { success: true, data: result };
   }
 
   /**

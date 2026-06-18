@@ -389,9 +389,9 @@ describe('DoctorController', () => {
 
       const result = await controller.subscription(USER);
 
-      expect(result).toEqual(panelOutput);
-      expect(result.state.is_in_trial).toBe(true);
-      expect(result.stripe_enabled).toBe(false);
+      expect(result).toEqual({ success: true, data: panelOutput });
+      expect(result.data.state.is_in_trial).toBe(true);
+      expect(result.data.stripe_enabled).toBe(false);
       expect(mockGetSubscriptionPanel.execute).toHaveBeenCalledWith(DOCTOR_ID);
     });
 
