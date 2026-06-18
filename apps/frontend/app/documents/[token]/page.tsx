@@ -74,6 +74,7 @@ export default function DocumentDownloadPage() {
 
   const [pageState, setPageState] = useState<PageState>('input');
   const [code, setCode] = useState('');
+  const [cedula, setCedula] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [requestingCode, setRequestingCode] = useState(false);
@@ -87,7 +88,8 @@ export default function DocumentDownloadPage() {
 
   async function handleVerify() {
     const trimmed = code.replace(/\s/g, '');
-    if (trimmed.length !== 6 || verifying) return;
+    const trimmedCedula = cedula.trim();
+    if (trimmed.length !== 6 || trimmedCedula.length < 5 || verifying) return;
 
     setVerifying(true);
     setVerifyError(null);
@@ -96,7 +98,7 @@ export default function DocumentDownloadPage() {
       const res = await fetch(`/api/documents/${token}/verify-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: trimmed }),
+        body: JSON.stringify({ code: trimmed, cedula: trimmedCedula }),
       });
 
       const json = (await res.json()) as
@@ -237,11 +239,40 @@ export default function DocumentDownloadPage() {
                 </div>
                 <h1 className="text-lg font-bold">Descarga tus documentos</h1>
                 <p className="text-sm text-white/70 mt-1">
-                  Ingresa el código de 6 dígitos que recibiste por email.
+                  Ingresa tu cédula y el código de 6 dígitos que recibiste por email. Ambos deben
+                  coincidir.
                 </p>
               </div>
 
               <div className="px-6 py-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="verify-cedula"
+                    className="text-xs font-semibold text-slate-500 uppercase tracking-wider"
+                  >
+                    Cédula
+                  </label>
+                  <input
+                    id="verify-cedula"
+                    type="text"
+                    inputMode="text"
+                    maxLength={30}
+                    value={cedula}
+                    onChange={(e) => setCedula(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleVerify();
+                    }}
+                    placeholder="V-12345678"
+                    autoComplete="off"
+                    autoFocus
+                    className={`w-full text-lg px-4 py-3 border rounded-xl bg-slate-50 placeholder-slate-300 text-slate-800 focus:outline-none focus:ring-2 transition-shadow ${
+                      verifyError
+                        ? 'border-red-300 focus:ring-red-200'
+                        : 'border-slate-200 focus:ring-teal-200 focus:border-teal-400'
+                    }`}
+                  />
+                </div>
+
                 <div className="space-y-1.5">
                   <label
                     htmlFor="verify-code"
@@ -267,7 +298,6 @@ export default function DocumentDownloadPage() {
                         ? 'border-red-300 focus:ring-red-200'
                         : 'border-slate-200 focus:ring-teal-200 focus:border-teal-400'
                     }`}
-                    autoFocus
                   />
                 </div>
 
@@ -280,7 +310,7 @@ export default function DocumentDownloadPage() {
 
                 <button
                   onClick={handleVerify}
-                  disabled={code.length !== 6 || verifying}
+                  disabled={code.length !== 6 || cedula.trim().length < 5 || verifying}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold bg-teal-500 hover:bg-teal-600 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {verifying ? (

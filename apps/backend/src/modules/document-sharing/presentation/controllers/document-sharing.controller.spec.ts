@@ -96,17 +96,43 @@ describe('DocumentSharingController', () => {
         expiresAt,
       });
 
-      const result = await controller.verifyCodeEndpoint('link-token', { code: '123456' });
+      const result = await controller.verifyCodeEndpoint('link-token', {
+        code: '123456',
+        cedula: 'V-12345678',
+      });
 
       expect(result.success).toBe(true);
       expect(result.data.sessionToken).toBe('tok.sig');
+    });
+
+    it('passes both code and cedula to the use case', async () => {
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      mockVerifyUseCase.execute.mockResolvedValue({
+        sessionToken: 'tok.sig',
+        sections: { report: true, prescriptions: false, ehr: false },
+        expiresAt,
+      });
+
+      await controller.verifyCodeEndpoint('link-token', {
+        code: '654321',
+        cedula: 'V-12.345.678',
+      });
+
+      const callArg = mockVerifyUseCase.execute.mock.calls[0]?.[0] as {
+        token: string;
+        code: string;
+        cedula: string;
+      };
+      expect(callArg.token).toBe('link-token');
+      expect(callArg.code).toBe('654321');
+      expect(callArg.cedula).toBe('V-12.345.678');
     });
 
     it('propagates InvalidAccessCodeError from use case', async () => {
       mockVerifyUseCase.execute.mockRejectedValue(new InvalidAccessCodeError());
 
       await expect(
-        controller.verifyCodeEndpoint('link-token', { code: '000000' }),
+        controller.verifyCodeEndpoint('link-token', { code: '000000', cedula: 'V-12345678' }),
       ).rejects.toBeInstanceOf(InvalidAccessCodeError);
     });
   });

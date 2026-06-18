@@ -138,6 +138,17 @@ const signToken = (linkId: string, token: string, exp: Date): string => {
     } as jest.Mocked<
       import('../../../domain/repositories/document-access-code.repository').IDocumentAccessCodeRepository
     >,
+    {
+      findById: jest.fn(),
+      findByCedulaHash: jest.fn(),
+      findByEmailHash: jest.fn(),
+      list: jest.fn(),
+      findAllByDoctor: jest.fn(),
+      save: jest.fn(),
+      update: jest.fn(),
+      softDelete: jest.fn(),
+      logReveal: jest.fn(),
+    } as jest.Mocked<IPatientRepository>,
     mockConfig,
   );
   return verifyUseCase.signSessionToken(linkId, token, exp);

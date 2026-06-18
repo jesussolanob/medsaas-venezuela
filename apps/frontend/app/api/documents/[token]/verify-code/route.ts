@@ -4,7 +4,7 @@
  * Thin-proxy PÚBLICO → NestJS POST /api/documents/:token/verify-code
  * SIN headers de auth — el endpoint del backend es público.
  *
- * Body: { code: string }  (6 dígitos)
+ * Body: { code: string (6 dígitos), cedula: string }
  * Respuesta exitosa: { sessionToken, sections, doctorName, patientNameMasked, expiresAt }
  */
 
@@ -20,7 +20,7 @@ export async function POST(
 ): Promise<NextResponse> {
   const { token } = await params;
 
-  let body: { code?: string };
+  let body: { code?: string; cedula?: string };
   try {
     body = await req.json();
   } catch {
@@ -28,8 +28,12 @@ export async function POST(
   }
 
   const code = typeof body?.code === 'string' ? body.code.trim() : '';
+  const cedula = typeof body?.cedula === 'string' ? body.cedula.trim() : '';
   if (!code) {
     return NextResponse.json({ error: 'El código es requerido' }, { status: 400 });
+  }
+  if (!cedula) {
+    return NextResponse.json({ error: 'La cédula es requerida' }, { status: 400 });
   }
 
   let backendRes: Response;
@@ -37,7 +41,7 @@ export async function POST(
     backendRes = await fetch(`${BACKEND_URL}/api/documents/${token}/verify-code`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, cedula }),
     });
   } catch {
     return NextResponse.json(

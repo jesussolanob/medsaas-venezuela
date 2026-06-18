@@ -96,12 +96,16 @@ export class DocumentSharingController {
   /**
    * POST /api/documents/:token/verify-code
    *
-   * Body: { code: "123456" }
+   * Body: { code: "123456", cedula: "V-12345678" }
+   *
+   * Both the 6-digit code AND the patient's cédula must match to obtain the
+   * session token. Any mismatch returns the same generic 422 error to prevent
+   * an oracle attack (callers cannot tell which factor failed).
    *
    * On success: { sessionToken, sections, expiresAt }
    * On failure: 422 InvalidAccessCodeError or 404 for invalid/revoked links.
    *
-   * Anti-bruteforce: 5 failed attempts invalidate the current code.
+   * Anti-bruteforce: failure increments BOTH code-level and link-level counters.
    */
   @Post('documents/:token/verify-code')
   async verifyCodeEndpoint(
@@ -114,7 +118,7 @@ export class DocumentSharingController {
       expiresAt: string;
     }>
   > {
-    const result = await this.verifyCode.execute({ token, code: dto.code });
+    const result = await this.verifyCode.execute({ token, code: dto.code, cedula: dto.cedula });
     return {
       success: true,
       data: {
