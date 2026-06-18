@@ -1,14 +1,20 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AiTranscriptionController } from './ai-transcription.controller';
 import { TranscribeAudioUseCase } from '../../application/use-cases/transcribe-audio.use-case';
+import { AiTextUseCase } from '../../application/use-cases/ai-text.use-case';
 import { TranscriptionFeatureDeniedError } from '../../domain/errors/transcription-feature-denied.error';
 import { TranscriptionAudioInvalidError } from '../../domain/errors/transcription-audio-invalid.error';
 import { TranscriptionProviderError } from '../../domain/errors/transcription-provider-error';
+import { AiFeatureDeniedError } from '../../domain/errors/ai-feature-denied.error';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 
 const mockTranscribeAudioUseCase: jest.Mocked<Pick<TranscribeAudioUseCase, 'execute'>> = {
+  execute: jest.fn(),
+};
+
+const mockAiTextUseCase: jest.Mocked<Pick<AiTextUseCase, 'execute'>> = {
   execute: jest.fn(),
 };
 
@@ -60,7 +66,10 @@ describe('AiTranscriptionController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AiTranscriptionController],
-      providers: [{ provide: TranscribeAudioUseCase, useValue: mockTranscribeAudioUseCase }],
+      providers: [
+        { provide: TranscribeAudioUseCase, useValue: mockTranscribeAudioUseCase },
+        { provide: AiTextUseCase, useValue: mockAiTextUseCase },
+      ],
     })
       .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: jest.fn().mockReturnValue(true) })
@@ -338,5 +347,136 @@ describe('AiTranscriptionController', () => {
         mockDoctor,
       ),
     ).rejects.toBeInstanceOf(TranscriptionProviderError);
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /api/ai/text — generateText
+  // -----------------------------------------------------------------------
+
+  describe('generateText', () => {
+    it('returns success response for improve_block action', async () => {
+      mockAiTextUseCase.execute.mockResolvedValue({ result: 'Texto mejorado.' });
+
+      const body = {
+        action: 'improve_block',
+        content: 'Dolor de cabeza.',
+        block_key: 'chief_complaint',
+        block_label: 'Motivo de consulta',
+      };
+
+      const result = await controller.generateText(body, mockDoctor);
+
+      expect(result.success).toBe(true);
+      expect(result.data.result).toBe('Texto mejorado.');
+    });
+
+    it('passes doctorId from authenticated user (never from body)', async () => {
+      mockAiTextUseCase.execute.mockResolvedValue({ result: 'ok' });
+
+      const body = {
+        action: 'improve_block',
+        content: 'text',
+        block_key: 'notes',
+        block_label: 'Notas',
+      };
+
+      await controller.generateText(body, mockDoctor);
+
+      const call = mockAiTextUseCase.execute.mock.calls[0]![0]!;
+      expect(call.doctorId).toBe('doctor-uuid-001');
+    });
+
+    it('passes isSuperAdmin=true for super_admin role', async () => {
+      mockAiTextUseCase.execute.mockResolvedValue({ result: 'ok' });
+
+      const body = {
+        action: 'improve_block',
+        content: 'text',
+        block_key: 'notes',
+        block_label: 'Notas',
+      };
+
+      await controller.generateText(body, mockAdmin);
+
+      const call = mockAiTextUseCase.execute.mock.calls[0]![0]!;
+      expect(call.isSuperAdmin).toBe(true);
+    });
+
+    it('throws BadRequestException for invalid action', async () => {
+      const { BadRequestException: BadReqEx } = await import('@nestjs/common');
+
+      await expect(
+        controller.generateText({ action: 'invalid_action' }, mockDoctor),
+      ).rejects.toBeInstanceOf(BadReqEx);
+    });
+
+    it('throws BadRequestException for missing action', async () => {
+      const { BadRequestException: BadReqEx } = await import('@nestjs/common');
+
+      await expect(controller.generateText({}, mockDoctor)).rejects.toBeInstanceOf(BadReqEx);
+    });
+
+    it('throws BadRequestException for improve_block without content', async () => {
+      const { BadRequestException: BadReqEx } = await import('@nestjs/common');
+
+      await expect(
+        controller.generateText(
+          { action: 'improve_block', block_key: 'notes', block_label: 'Notas' },
+          mockDoctor,
+        ),
+      ).rejects.toBeInstanceOf(BadReqEx);
+    });
+
+    it('throws BadRequestException for patient_history without patientId', async () => {
+      const { BadRequestException: BadReqEx } = await import('@nestjs/common');
+
+      await expect(
+        controller.generateText({ action: 'patient_history' }, mockDoctor),
+      ).rejects.toBeInstanceOf(BadReqEx);
+    });
+
+    it('propagates AiFeatureDeniedError from use case', async () => {
+      mockAiTextUseCase.execute.mockRejectedValue(new AiFeatureDeniedError('plan_not_included'));
+
+      await expect(
+        controller.generateText(
+          {
+            action: 'improve_block',
+            content: 'text',
+            block_key: 'notes',
+            block_label: 'Notas',
+          },
+          mockDoctor,
+        ),
+      ).rejects.toBeInstanceOf(AiFeatureDeniedError);
+    });
+
+    it('passes summarize_report action with correct shape', async () => {
+      mockAiTextUseCase.execute.mockResolvedValue({ result: 'Resumen.' });
+
+      const body = {
+        action: 'summarize_report',
+        legacy: { chief_complaint: 'Fiebre', diagnosis: null, treatment: null, notes: null },
+        blocks_data: {},
+        blocks_meta: [],
+      };
+
+      const result = await controller.generateText(body, mockDoctor);
+
+      expect(result.success).toBe(true);
+      const call = mockAiTextUseCase.execute.mock.calls[0]![0]!;
+      expect(call.actionInput.action).toBe('summarize_report');
+    });
+
+    it('throws BadRequestException for summarize_report without legacy object', async () => {
+      const { BadRequestException: BadReqEx } = await import('@nestjs/common');
+
+      await expect(
+        controller.generateText(
+          { action: 'summarize_report', legacy: 'invalid', blocks_data: {}, blocks_meta: [] },
+          mockDoctor,
+        ),
+      ).rejects.toBeInstanceOf(BadReqEx);
+    });
   });
 });

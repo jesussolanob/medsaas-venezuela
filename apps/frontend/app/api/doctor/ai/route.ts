@@ -1,40 +1,42 @@
 /**
  * POST /api/doctor/ai
  *
- * ETAPA 2 — NOT IMPLEMENTED.
- * AI/Gemini integration requires the NestJS AI module (rate limiting via backend
- * ai_request_log, prompt building, Gemini API key management). Implementing this
- * entirely on the backend is deferred to Etapa 2.
+ * Thin-proxy → NestJS POST /api/ai/text.
  *
- * Callers receive a clear 501 so the UI can show a "próximamente" message.
+ * Reactiva las 3 funciones de IA de texto (era Supabase):
+ *   - improve_block     → mejora la redacción de un bloque (gating `ai_assistant`)
+ *   - summarize_report  → resume el informe completo (gating `ai_reports`)
+ *   - patient_history   → resumen ejecutivo del historial (gating `ai_assistant`)
  *
- * Plan gating: requiere feature `ai_assistant`. super_admin bypasa el gating.
+ * El gating por plan + super_admin bypass se aplica EN EL BACKEND (resuelve el plan
+ * efectivo). Aquí solo validamos rol y reenviamos. El frontend consume `data.result`.
  */
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth-guards';
-import { hasPlanFeature } from '@/lib/plan-gate.server';
+import { backendPost } from '@/lib/api-client.server';
 
-export async function POST(): Promise<NextResponse> {
+export const dynamic = 'force-dynamic';
+
+export async function POST(req: Request): Promise<NextResponse> {
   const guard = await requireRole(['doctor', 'super_admin']);
   if (!guard.ok) return guard.response;
 
-  // super_admin bypasa el gating de plan.
-  if (guard.profile.role !== 'super_admin') {
-    const allowed = await hasPlanFeature('ai_assistant');
-    if (!allowed) {
-      return NextResponse.json(
-        {
-          error: 'Tu plan no incluye el Asistente IA',
-          code: 'PLAN_FEATURE_REQUIRED',
-        },
-        { status: 403 },
-      );
-    }
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 });
   }
 
-  // TODO: gatear summarize_report por ai_reports cuando se implemente el módulo /ai real.
-  return NextResponse.json(
-    { error: 'IA disponible próximamente', code: 'NOT_IMPLEMENTED' },
-    { status: 501 },
-  );
+  const result = await backendPost<{ result: string }>('/api/ai/text', body);
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message, code: result.error.code },
+      { status: result.error.status || 500 },
+    );
+  }
+
+  // El frontend (callAI) lee `data.result`.
+  return NextResponse.json({ result: result.value?.result ?? '' });
 }

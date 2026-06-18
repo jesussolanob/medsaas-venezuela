@@ -7,6 +7,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
@@ -20,6 +21,8 @@ import { TranscribeAudioUseCase } from '../../application/use-cases/transcribe-a
 import type { TranscribeAudioOutputDto } from '../../application/dtos/transcribe-audio.dto';
 import { ALLOWED_LANGUAGES } from '../../application/dtos/transcribe-audio.dto';
 import { TranscriptionAudioInvalidError } from '../../domain/errors/transcription-audio-invalid.error';
+import { AiTextUseCase } from '../../application/use-cases/ai-text.use-case';
+import type { AiTextOutputDto, AiTextActionInput } from '../../application/dtos/ai-text.dto';
 
 /**
  * Removes ASCII control characters (U+0000–U+001F) from a string.
@@ -58,6 +61,11 @@ interface TranscribeSuccessResponse {
   data: TranscribeAudioOutputDto;
 }
 
+interface AiTextSuccessResponse {
+  success: true;
+  data: AiTextOutputDto;
+}
+
 /**
  * AiTranscriptionController
  *
@@ -73,11 +81,17 @@ interface TranscribeSuccessResponse {
  * doctor's current effective plan includes the `ai_transcription` feature.
  * super_admin bypasses the gate.
  */
+/** Allowed action values for POST /api/ai/text. */
+const ALLOWED_AI_TEXT_ACTIONS = new Set(['improve_block', 'summarize_report', 'patient_history']);
+
 @Controller('ai')
 @UseGuards(AppAuthGuard, RolesGuard)
 @Roles('doctor', 'super_admin')
 export class AiTranscriptionController {
-  constructor(private readonly transcribeAudio: TranscribeAudioUseCase) {}
+  constructor(
+    private readonly transcribeAudio: TranscribeAudioUseCase,
+    private readonly aiText: AiTextUseCase,
+  ) {}
 
   /**
    * POST /api/ai/transcribe
@@ -136,9 +150,118 @@ export class AiTranscriptionController {
     return { success: true, data: result };
   }
 
+  /**
+   * POST /api/ai/text
+   *
+   * Accepts a JSON body with an `action` discriminator and action-specific fields.
+   *
+   * Actions:
+   *   - improve_block   → { action, content, block_key, block_label }
+   *   - summarize_report → { action, legacy, blocks_data, blocks_meta }
+   *   - patient_history  → { action, patientId }
+   *
+   * Response: { success: true, data: { result: string } }
+   */
+  @Post('text')
+  @HttpCode(HttpStatus.OK)
+  async generateText(
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<AiTextSuccessResponse> {
+    const action = body['action'];
+
+    if (typeof action !== 'string' || !ALLOWED_AI_TEXT_ACTIONS.has(action)) {
+      throw new BadRequestException(
+        'Campo "action" inválido. Valores permitidos: improve_block, summarize_report, patient_history.',
+      );
+    }
+
+    const actionInput = this.parseActionInput(action, body);
+
+    const result = await this.aiText.execute({
+      actionInput,
+      doctorId: user.sub,
+      isSuperAdmin: user.role === 'super_admin',
+    });
+
+    return { success: true, data: result };
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Parses and validates the action-specific fields from the request body.
+   * Throws BadRequestException for missing required fields.
+   */
+  private parseActionInput(action: string, body: Record<string, unknown>): AiTextActionInput {
+    if (action === 'improve_block') {
+      const content = body['content'];
+      const block_key = body['block_key'];
+      const block_label = body['block_label'];
+
+      if (typeof content !== 'string' || !content.trim()) {
+        throw new BadRequestException('Campo "content" es requerido para improve_block.');
+      }
+      if (typeof block_key !== 'string' || !block_key.trim()) {
+        throw new BadRequestException('Campo "block_key" es requerido para improve_block.');
+      }
+      if (typeof block_label !== 'string' || !block_label.trim()) {
+        throw new BadRequestException('Campo "block_label" es requerido para improve_block.');
+      }
+
+      return {
+        action: 'improve_block',
+        content: content.slice(0, 10_000),
+        block_key: block_key.slice(0, 100),
+        block_label: block_label.slice(0, 200),
+      };
+    }
+
+    if (action === 'summarize_report') {
+      const legacy = body['legacy'];
+      const blocks_data = body['blocks_data'];
+      const blocks_meta = body['blocks_meta'];
+
+      if (legacy === null || typeof legacy !== 'object' || Array.isArray(legacy)) {
+        throw new BadRequestException('Campo "legacy" debe ser un objeto para summarize_report.');
+      }
+      if (blocks_data === null || typeof blocks_data !== 'object' || Array.isArray(blocks_data)) {
+        throw new BadRequestException(
+          'Campo "blocks_data" debe ser un objeto para summarize_report.',
+        );
+      }
+      if (!Array.isArray(blocks_meta)) {
+        throw new BadRequestException(
+          'Campo "blocks_meta" debe ser un array para summarize_report.',
+        );
+      }
+
+      return {
+        action: 'summarize_report',
+        legacy: legacy as Record<string, string | null | undefined>,
+        blocks_data: blocks_data as Record<string, unknown>,
+        blocks_meta: (blocks_meta as unknown[])
+          .filter(
+            (m): m is { key: string; label: string } =>
+              m !== null &&
+              typeof m === 'object' &&
+              typeof (m as Record<string, unknown>)['key'] === 'string' &&
+              typeof (m as Record<string, unknown>)['label'] === 'string',
+          )
+          .slice(0, 50),
+      };
+    }
+
+    // patient_history
+    const patientId = body['patientId'];
+    if (typeof patientId !== 'string' || !patientId.trim()) {
+      throw new BadRequestException('Campo "patientId" es requerido para patient_history.');
+    }
+
+    return { action: 'patient_history', patientId };
+  }
 
   /**
    * Sanitizes the available_blocks JSON string.
