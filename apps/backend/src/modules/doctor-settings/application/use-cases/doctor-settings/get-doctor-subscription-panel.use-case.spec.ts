@@ -25,6 +25,7 @@ function makeTrialPanelData(overrides: Partial<SubscriptionPanelData> = {}): Sub
     expiresAt: FUTURE_ISO,
     daysRemaining: 365,
     isExpired: false,
+    isPermanent: false,
     isInTrial: true,
     basePriceUsd: 0,
     currency: 'USD',
@@ -40,11 +41,35 @@ function makeTrialPanelData(overrides: Partial<SubscriptionPanelData> = {}): Sub
   };
 }
 
+function makePermanentFreePanelData(): SubscriptionPanelData {
+  return {
+    planKey: 'delta_free',
+    planName: 'Delta Free',
+    status: 'active',
+    expiresAt: null,
+    daysRemaining: 0,
+    isExpired: false,
+    isPermanent: true,
+    isInTrial: false,
+    basePriceUsd: 0,
+    currency: 'USD',
+    durationOptions: [],
+    paymentMethodsEnabled: ['pago_movil', 'zelle'],
+    paymentMethodsConfig: {
+      pago_movil: { numero: '04241234567', banco: 'Banesco' },
+      zelle: { email: 'pagos@delta.com' },
+    },
+    stripeEnabled: false,
+    payments: [],
+  };
+}
+
 function makeActivePanelData(): SubscriptionPanelData {
   return makeTrialPanelData({
     planKey: 'basic',
     planName: 'Básico',
     status: 'active',
+    isPermanent: false,
     isInTrial: false,
     basePriceUsd: 10,
     durationOptions: [
@@ -120,6 +145,7 @@ describe('GetDoctorSubscriptionPanelUseCase', () => {
       expect(result.state.is_in_trial).toBe(true);
       expect(result.state.is_expired).toBe(false);
       expect(result.state.days_remaining).toBe(365);
+      expect(result.state.is_permanent).toBe(false);
     });
 
     it('passes doctorId to the repository', async () => {
@@ -289,6 +315,73 @@ describe('GetDoctorSubscriptionPanelUseCase', () => {
       mockRepo.findPanelData.mockRejectedValue(new Error('DB connection failed'));
 
       await expect(useCase.execute(DOCTOR_ID)).rejects.toThrow('DB connection failed');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Permanent plan (delta_free) — doctor without subscription
+  // ---------------------------------------------------------------------------
+
+  describe('permanent plan (delta_free) — no subscription', () => {
+    it('returns is_permanent=true, expires_at=null, is_in_trial=false', async () => {
+      mockRepo.findPanelData.mockResolvedValue(makePermanentFreePanelData());
+
+      const result: SubscriptionPanelOutput = await useCase.execute(DOCTOR_ID);
+
+      expect(result.state.is_permanent).toBe(true);
+      expect(result.state.expires_at).toBeNull();
+      expect(result.state.is_in_trial).toBe(false);
+      expect(result.state.is_expired).toBe(false);
+    });
+
+    it('returns plan name "Delta Free" for permanent plan', async () => {
+      mockRepo.findPanelData.mockResolvedValue(makePermanentFreePanelData());
+
+      const result: SubscriptionPanelOutput = await useCase.execute(DOCTOR_ID);
+
+      expect(result.state.plan).toBe('Delta Free');
+    });
+
+    it('returns days_remaining=0 for permanent plan (no countdown)', async () => {
+      mockRepo.findPanelData.mockResolvedValue(makePermanentFreePanelData());
+
+      const result: SubscriptionPanelOutput = await useCase.execute(DOCTOR_ID);
+
+      expect(result.state.days_remaining).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Active paid subscription — not permanent
+  // ---------------------------------------------------------------------------
+
+  describe('active paid subscription — is_permanent=false', () => {
+    it('returns is_permanent=false for an active non-permanent plan', async () => {
+      mockRepo.findPanelData.mockResolvedValue(makeActivePanelData());
+
+      const result: SubscriptionPanelOutput = await useCase.execute(DOCTOR_ID);
+
+      expect(result.state.is_permanent).toBe(false);
+    });
+
+    it('returns non-null expires_at for an active paid subscription', async () => {
+      const futureDate = FUTURE_ISO;
+      mockRepo.findPanelData.mockResolvedValue(
+        makeTrialPanelData({
+          planKey: 'basic',
+          planName: 'Básico',
+          status: 'active',
+          isPermanent: false,
+          isInTrial: false,
+          expiresAt: futureDate,
+          daysRemaining: 365,
+        }),
+      );
+
+      const result: SubscriptionPanelOutput = await useCase.execute(DOCTOR_ID);
+
+      expect(result.state.expires_at).toBe(futureDate);
+      expect(result.state.is_permanent).toBe(false);
     });
   });
 });

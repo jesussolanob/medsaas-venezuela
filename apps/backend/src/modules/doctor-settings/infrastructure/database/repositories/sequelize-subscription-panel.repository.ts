@@ -20,6 +20,11 @@ interface PlanConfigRow {
   name: string;
   price: string | null;
   currency: string | null;
+  is_permanent: boolean;
+}
+
+interface DefaultPlanRow {
+  plan_key: string;
 }
 
 interface PlanPriceRow {
@@ -105,14 +110,31 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
       this.fetchSettings(),
     ]);
 
-    // Resolve plan key + status + expiry — subscriptions row wins, profiles is fallback
-    const planKey = sub?.plan ?? profile?.plan ?? 'trial';
-    const status = sub?.status ?? profile?.subscriptionStatus ?? 'trial';
+    // Stored plan key + status — subscriptions row wins, profiles is fallback
+    const storedPlanKey = sub?.plan ?? profile?.plan ?? null;
+    const status = sub?.status ?? profile?.subscriptionStatus ?? null;
     const rawExpiresAt: Date | null = sub?.currentPeriodEnd ?? null;
 
-    // Compute days remaining
+    // -------------------------------------------------------------------------
+    // Resolve effective plan (mirrors GetDoctorFeaturesV2UseCase lazy-downgrade)
+    //   Rule 1: if stored plan is permanent → keep it, no downgrade.
+    //   Rule 2: if status ∈ {active, trial, trialing} → keep stored plan.
+    //   Rule 3: otherwise (expired/suspended/null) → fall back to the permanent
+    //           plan for the doctor role (delta_free today).
+    // -------------------------------------------------------------------------
+    const effectivePlanKey = await this.resolveEffectivePlanKey(storedPlanKey, status);
+
+    // Load plan config + duration options in parallel for the effective plan
+    const [planConfig, durationOptions] = await Promise.all([
+      this.fetchPlanConfig(effectivePlanKey),
+      this.buildDurationOptions(effectivePlanKey),
+    ]);
+
+    const isPermanent = planConfig?.is_permanent ?? false;
+
+    // Compute days remaining — permanent plans never expire
     const now = Date.now();
-    const expiresAtMs = rawExpiresAt ? rawExpiresAt.getTime() : null;
+    const expiresAtMs = !isPermanent && rawExpiresAt ? rawExpiresAt.getTime() : null;
     const daysRemaining =
       expiresAtMs !== null
         ? expiresAtMs > now
@@ -120,16 +142,12 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
           : 0
         : 0;
 
-    const isExpired = expiresAtMs !== null ? expiresAtMs < now : false;
-    const isInTrial = status === 'trial';
+    const isExpired = !isPermanent && expiresAtMs !== null ? expiresAtMs < now : false;
 
-    // Load plan config + duration options in parallel
-    const [planConfig, durationOptions] = await Promise.all([
-      this.fetchPlanConfig(planKey),
-      this.buildDurationOptions(planKey),
-    ]);
+    // is_in_trial is only true when status is 'trial' AND the plan is not permanent
+    const isInTrial = !isPermanent && status === 'trial';
 
-    const planName = planConfig?.name ?? planKey;
+    const planName = planConfig?.name ?? effectivePlanKey;
     const basePriceUsd =
       planConfig?.price !== null && planConfig?.price !== undefined ? Number(planConfig.price) : 0;
     const currency = planConfig?.currency ?? 'USD';
@@ -137,12 +155,13 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
     const { paymentMethodsEnabled, paymentMethodsConfig } = this.parsePaymentSettings(settings);
 
     return {
-      planKey,
+      planKey: effectivePlanKey,
       planName,
-      status,
-      expiresAt: rawExpiresAt ? rawExpiresAt.toISOString() : null,
+      status: status ?? 'active',
+      expiresAt: !isPermanent && rawExpiresAt ? rawExpiresAt.toISOString() : null,
       daysRemaining,
       isExpired,
+      isPermanent,
       isInTrial,
       basePriceUsd,
       currency,
@@ -154,13 +173,59 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
     };
   }
 
+  /**
+   * Resolves the effective plan key using lazy-downgrade rules:
+   *   1. If the stored plan is permanent → return it as-is.
+   *   2. If subscription status is active/trial/trialing → return stored plan.
+   *   3. Otherwise → query the default permanent plan for role='doctor'.
+   */
+  private async resolveEffectivePlanKey(
+    storedPlanKey: string | null,
+    status: string | null,
+  ): Promise<string> {
+    const FALLBACK = 'delta_free';
+
+    if (storedPlanKey) {
+      // Rule 1: check if the stored plan itself is permanent
+      const stored = await this.fetchPlanConfig(storedPlanKey);
+      if (stored?.is_permanent) {
+        return storedPlanKey;
+      }
+
+      // Rule 2: active/trial/trialing → keep stored plan
+      const validStatuses = new Set(['active', 'trial', 'trialing']);
+      if (status && validStatuses.has(status)) {
+        return storedPlanKey;
+      }
+    }
+
+    // Rule 3: no valid plan/status → use the permanent plan for role=doctor
+    const permanentPlan = await this.fetchDefaultPermanentPlan('doctor');
+    return permanentPlan ?? FALLBACK;
+  }
+
+  /** Queries the first active permanent plan for a given role key. */
+  private async fetchDefaultPermanentPlan(roleKey: string): Promise<string | null> {
+    const rows = await this.sequelize.query<DefaultPlanRow>(
+      `SELECT plan_key
+         FROM plan_configs
+        WHERE role_key = :roleKey
+          AND is_permanent = true
+          AND is_active = true
+        ORDER BY sort_order ASC
+        LIMIT 1`,
+      { type: QueryTypes.SELECT, replacements: { roleKey } },
+    );
+    return rows[0]?.plan_key ?? null;
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
   private async fetchPlanConfig(planKey: string): Promise<PlanConfigRow | null> {
     const rows = await this.sequelize.query<PlanConfigRow>(
-      `SELECT plan_key, name, price, currency
+      `SELECT plan_key, name, price, currency, is_permanent
          FROM plan_configs
         WHERE plan_key = :planKey
         LIMIT 1`,

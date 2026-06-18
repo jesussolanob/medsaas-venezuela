@@ -371,6 +371,7 @@ describe('DoctorController', () => {
           expires_at: '2027-06-17T00:00:00.000Z',
           days_remaining: 365,
           is_expired: false,
+          is_permanent: false,
           is_in_trial: true,
         },
         pricing: {
@@ -403,6 +404,7 @@ describe('DoctorController', () => {
           expires_at: null,
           days_remaining: 0,
           is_expired: false,
+          is_permanent: false,
           is_in_trial: true,
         },
         pricing: { base_price_usd: 0, currency: 'USD', duration_options: [] },

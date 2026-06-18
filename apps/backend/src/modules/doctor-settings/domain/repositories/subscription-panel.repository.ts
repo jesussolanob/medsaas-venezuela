@@ -47,11 +47,13 @@ export interface SubscriptionPanelData {
   status: string;
   /** ISO date string (or null if no expiry). */
   expiresAt: string | null;
-  /** Calendar days remaining until expiry (0 if expired, null if no expiry). */
+  /** Calendar days remaining until expiry (0 if expired, 0 if no expiry). */
   daysRemaining: number;
   /** True when current datetime > expiresAt. */
   isExpired: boolean;
-  /** True when status === 'trial'. */
+  /** True when plan is permanent (e.g. delta_free). */
+  isPermanent: boolean;
+  /** True when status === 'trial' AND the plan is not permanent. */
   isInTrial: boolean;
   /** Base monthly price from plan_configs (USD). */
   basePriceUsd: number;

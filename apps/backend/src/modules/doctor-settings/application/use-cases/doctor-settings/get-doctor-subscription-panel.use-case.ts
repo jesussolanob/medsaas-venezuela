@@ -51,6 +51,7 @@ export interface SubscriptionPanelOutput {
     expires_at: string | null;
     days_remaining: number;
     is_expired: boolean;
+    is_permanent: boolean;
     is_in_trial: boolean;
   };
   pricing: {
@@ -100,6 +101,7 @@ export class GetDoctorSubscriptionPanelUseCase {
         expires_at: data.expiresAt,
         days_remaining: data.daysRemaining,
         is_expired: data.isExpired,
+        is_permanent: data.isPermanent,
         is_in_trial: data.isInTrial,
       },
       pricing: {
