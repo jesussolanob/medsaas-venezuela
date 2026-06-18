@@ -103,25 +103,34 @@ export default async function PublicBookingPage({
   }
 
   // Normalize backend camelCase → BookingClient snake_case prop shape.
-  const activePlans =
-    plans && plans.length > 0
-      ? plans.map((p) => ({
-          id: p.id,
-          name: p.name,
-          price_usd: p.priceUsd,
-          duration_minutes: p.durationMinutes,
-          sessions_count: p.sessionsCount ?? 1,
-          description: p.description ?? null,
-        }))
-      : [
-          {
-            id: 'default',
-            name: 'Consulta General',
-            price_usd: 20,
-            duration_minutes: 30,
-            sessions_count: 1,
-          },
-        ];
+  // Sin fallback: si el doctor no tiene planes, NO se inventa uno por defecto.
+  const activePlans = (plans ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    price_usd: p.priceUsd,
+    duration_minutes: p.durationMinutes,
+    sessions_count: p.sessionsCount ?? 1,
+    description: p.description ?? null,
+  }));
+
+  // Sin planes activos no hay nada que reservar → estado amigable en vez de
+  // mostrar un plan inventado.
+  if (activePlans.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-slate-300" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-700">Reservas no disponibles</h2>
+          <p className="text-sm text-slate-400 mt-2">
+            Este profesional aún no tiene servicios configurados para agendar en línea. Por favor
+            contáctalo directamente.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Booked slots: fetched client-side per date via /api/booking/:doctorId/slots
   // to keep the server payload small. Passing empty array here so BookingClient
