@@ -6,8 +6,13 @@ import { AiTextProviderError } from '../../domain/errors/ai-text-provider.error'
 /** Gemini model for text generation tasks. Falls back to primary if not set. */
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
-/** Fallback model used when the primary returns 429 (rate limit). */
-const FALLBACK_GEMINI_MODEL = 'gemini-1.5-flash';
+/**
+ * Fallback model used when the primary returns 429 (rate limit).
+ * `gemini-flash-latest` is a rolling alias that always resolves to a current
+ * Flash model, so it does not 404 when a specific version is retired
+ * (the old `gemini-1.5-flash` was retired → 404).
+ */
+const FALLBACK_GEMINI_MODEL = 'gemini-flash-latest';
 
 /** Default fetch timeout in milliseconds. Override via GEMINI_TIMEOUT_MS env var. */
 const DEFAULT_TIMEOUT_MS = 60_000;
