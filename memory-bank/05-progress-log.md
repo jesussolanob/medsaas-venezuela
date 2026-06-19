@@ -2,6 +2,37 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-19 — Sesión: IA desbloqueada (local), estilo de emails, cédula obligatoria, guard de compartir
+
+Stack local levantado (Docker Postgres/Redis/MinIO + backend NestJS :3001). Commits en `feature/migracion-backend`:
+
+- **IA desbloqueada en LOCAL (commit `b6e4c2c`):** el bloqueo de Gemini NO era la región (Venezuela) sino la
+  cuenta **Workspace `deltasalud.app`**, a la que Google le niega el free tier (403 "project denied access" en
+  todo proyecto). Con una key de la **cuenta personal @gmail** (proyecto `970828866309`) funciona. QA local
+  4/4: `improve_block`, `summarize_report`, `patient_history` y **`/api/ai/transcribe`** (audio→texto +
+  sugerencias por bloques) → 200; gating doctor sin Plus → 403. Fix de fallback `gemini-1.5-flash`(404)→
+  `gemini-flash-latest`. `.env` local con la key personal (gitignored). **PROD sigue con la key Workspace
+  denegada en Secret Manager → 502 hasta poner la personal o migrar a Vertex** (plan del usuario; Vertex =
+  no entrena con PII, ideal pacientes). Ver memoria `ia-gemini-decision`.
+- **Estilo de emails (commit `3a01ef5`, mig. `20260619000000`):** 7 de 9 plantillas ya estaban en marca
+  (teal `#0d9488`/slate). Restyle de las 2 fuera de estilo: `invoice` (azul Google `#1a73e8`) y
+  `doctor_pending_verification` (gris sin wrapper) → estilo house. `down()` revierte; subject/text/vars intactos.
+- **Cédula obligatoria para pacientes (commit `854c340`):** antes `nullable/optional`. Ahora requerida en
+  `create-patient` y `create-booking` (shared-types); `update-patient` no-nullable (no se puede borrar);
+  `create-appointment` refine (obligatoria solo si paciente nuevo, sin `patient_id`). Frontend: `required` +
+  validación en PatientForm, doctor/patients (crear+editar), BookingClient (registro+invitado), NewAppointmentFlow
+  (alta inline). El lado **doctor ya la exigía** (registro/onboarding/admin). Motivo: sin cédula un paciente
+  nunca podía abrir un documento compartido. Verificado e2e: POST /api/patients sin cédula → 400, con → 201.
+- **Guard de compartir sin cédula (commit `646c83e`):** `ShareConsultationUseCase` ahora falla con **422
+  `PATIENT_CEDULA_REQUIRED_FOR_SHARING`** y mensaje accionable si el paciente no tiene cédula (cubre pacientes
+  legacy con cédula NULL), en vez de dejar que el paciente choque con un 422 genérico en verify-code. El
+  `ShareDocumentsModal` ya muestra el mensaje del backend. Verificado e2e (422 sin cédula, 201 con).
+- **Descarga de documentos:** confirmado que **funciona** end-to-end (share→verify-code con cédula→PDF 200).
+  El "no funciona" reportado era data de prueba (paciente sin cédula); raíz cerrada por los 2 cambios de arriba.
+- **Verificación:** suite backend completa **2605 tests verdes** (+ nuevos en booking schema y share-consultation);
+  frontend `tsc` 0 errores. ⚠️ Datos legacy: en local 12/22 pacientes con cédula NULL (en prod habrá similares;
+  se backfillean al editarlos — el form ahora la exige).
+
 ## 2026-06-18 — Sesión: bug citas, compartir documentos #12, planes/gating, suscripción, IA texto
 
 Commits en `feature/migracion-backend`:
