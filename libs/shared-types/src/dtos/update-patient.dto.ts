@@ -9,7 +9,9 @@ import { z } from 'zod';
  */
 export const UpdatePatientDtoSchema = z.object({
   full_name: z.string().min(1).max(200).optional(),
-  cedula: z.string().max(20).nullable().optional(),
+  // Cédula is mandatory: optional in a partial patch (omit = leave unchanged),
+  // but it can never be set to null/empty — a patient always keeps a cédula.
+  cedula: z.string().trim().min(5, 'La cédula es obligatoria').max(20).optional(),
   phone: z.string().max(30).nullable().optional(),
   email: z.string().email().nullable().optional(),
   source: z.string().nullable().optional(),

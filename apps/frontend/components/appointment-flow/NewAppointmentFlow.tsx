@@ -509,6 +509,10 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   // ── Crear paciente inline ──────────────────────────────────────────────────
   async function createPatientInline(e: React.FormEvent) {
     e.preventDefault();
+    if (!newPatient.cedula.trim() || newPatient.cedula.trim().length < 5) {
+      setGlobalError('La cédula es obligatoria');
+      return;
+    }
     // Email opcional, pero si viene debe ser válido.
     if (newPatient.email && !isValidEmail(newPatient.email)) {
       setGlobalError('El email no tiene un formato válido.');
@@ -807,6 +811,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
                   <CedulaInput
                     value={newPatient.cedula}
                     onChange={(v) => setNewPatient({ ...newPatient, cedula: v })}
+                    required
                   />
                   <PhoneInput
                     value={newPatient.phone}

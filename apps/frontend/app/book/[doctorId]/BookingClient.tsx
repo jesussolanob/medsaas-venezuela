@@ -528,6 +528,10 @@ export default function BookingClient({
       setError('Nombre, email y teléfono son obligatorios');
       return;
     }
+    if (!form.cedula.trim() || form.cedula.trim().length < 5) {
+      setError('La cédula es obligatoria');
+      return;
+    }
     if (!isValidEmail(form.email)) {
       setError('El email no tiene un formato válido');
       return;
@@ -574,10 +578,15 @@ export default function BookingClient({
       return;
     }
 
-    // Guest validation — público: nombre + email + teléfono obligatorios + email válido.
+    // Guest validation — público: nombre + email + teléfono + cédula obligatorios.
     if (!authUser) {
       if (!form.full_name.trim() || !form.email.trim() || !form.phone.trim()) {
         setError('Nombre, email y teléfono son requeridos');
+        submittingRef.current = false;
+        return;
+      }
+      if (!form.cedula.trim() || form.cedula.trim().length < 5) {
+        setError('La cédula es obligatoria');
         submittingRef.current = false;
         return;
       }
@@ -1786,12 +1795,13 @@ export default function BookingClient({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                      Cédula
+                      Cédula <span className="text-red-500">*</span>
                     </label>
                     {/* L6 (2026-04-29): cedula canonica V-XXXXXXXX */}
                     <CedulaInput
                       value={form.cedula}
                       onChange={(v) => setForm((f) => ({ ...f, cedula: v }))}
+                      required
                     />
                   </div>
                   <div>
@@ -2057,12 +2067,13 @@ export default function BookingClient({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                      Cédula
+                      Cédula <span className="text-red-500">*</span>
                     </label>
                     {/* L6 (2026-04-29): cedula canonica (modo invitado) */}
                     <CedulaInput
                       value={form.cedula}
                       onChange={(v) => setForm((f) => ({ ...f, cedula: v }))}
+                      required
                     />
                   </div>
                   <button
@@ -2070,6 +2081,10 @@ export default function BookingClient({
                     onClick={() => {
                       if (!form.full_name.trim() || !form.email.trim()) {
                         setError('Nombre y email son requeridos');
+                        return;
+                      }
+                      if (!form.cedula.trim() || form.cedula.trim().length < 5) {
+                        setError('La cédula es obligatoria');
                         return;
                       }
                       setError('');

@@ -338,6 +338,10 @@ export default function PatientsPage() {
       setEditError('El nombre es obligatorio');
       return;
     }
+    if (!editPat.cedula.trim() || editPat.cedula.trim().length < 5) {
+      setEditError('La cédula es obligatoria');
+      return;
+    }
     setSavingEdit(true);
     setEditError('');
     try {
@@ -474,6 +478,10 @@ export default function PatientsPage() {
     e.preventDefault();
     if (!newPat.full_name.trim()) {
       setPatError('El nombre es obligatorio');
+      return;
+    }
+    if (!newPat.cedula.trim() || newPat.cedula.trim().length < 5) {
+      setPatError('La cédula es obligatoria');
       return;
     }
     if (!doctorId) return;
@@ -2268,12 +2276,16 @@ export default function PatientsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Cédula</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Cédula <span className="text-red-400">*</span>
+                  </label>
                   <input
                     value={newPat.cedula}
                     onChange={(e) => setNewPat((p) => ({ ...p, cedula: e.target.value }))}
                     placeholder="V-12345678"
                     className={fi}
+                    required
+                    minLength={5}
                   />
                 </div>
                 <div>
@@ -2426,11 +2438,16 @@ export default function PatientsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Cédula</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Cédula <span className="text-red-400">*</span>
+                  </label>
                   <input
                     value={editPat.cedula}
                     onChange={(e) => setEditPat((p) => ({ ...p, cedula: e.target.value }))}
+                    placeholder="V-12345678"
                     className={fi}
+                    required
+                    minLength={5}
                   />
                 </div>
                 <div>

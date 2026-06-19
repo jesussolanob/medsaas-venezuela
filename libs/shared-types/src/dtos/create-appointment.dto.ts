@@ -29,6 +29,14 @@ export const CreateAppointmentDtoSchema = z
      */
     office_id: z.string().uuid().nullable().optional(),
   })
-  .strict();
+  .strict()
+  // A cédula is mandatory for every patient. Existing patients are referenced by
+  // patient_id (their cédula already lives on the record); for a new walk-in
+  // patient (no patient_id) the cédula must be supplied here.
+  .refine(
+    (d) =>
+      d.patient_id != null || (d.patient_cedula != null && d.patient_cedula.trim().length >= 5),
+    { message: 'La cédula del paciente es obligatoria', path: ['patient_cedula'] },
+  );
 
 export type CreateAppointmentDto = z.infer<typeof CreateAppointmentDtoSchema>;

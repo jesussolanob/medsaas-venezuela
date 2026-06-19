@@ -41,7 +41,9 @@ export const CreateBookingDtoSchema = z
       .nullable()
       .optional()
       .transform((v) => (v === '' ? null : v)),
-    patient_cedula: z.string().max(20).nullable().optional(),
+    // Required — public self-booking creates a patient identity, which must
+    // carry a cédula (also used as a second factor for shared-document access).
+    patient_cedula: z.string().trim().min(5, 'La cédula es obligatoria').max(20),
     patient_phone: z.string().max(30).nullable().optional(),
 
     // Appointment details

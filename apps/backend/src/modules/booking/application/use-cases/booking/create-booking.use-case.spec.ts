@@ -685,11 +685,24 @@ describe('CreateBookingUseCase', () => {
       // Valid v4 UUID (Zod v4 enforces RFC 4122 version bits)
       doctor_id: 'a2ae2d7f-7445-4aff-b39b-ab08f1b75dc0',
       patient_name: 'Ana',
+      // cédula is mandatory for self-booking (creates a patient identity)
+      patient_cedula: 'V-12345678',
       scheduled_at: '2026-08-01T10:00:00Z',
       appointment_mode: 'presencial',
       plan_name: 'Consulta',
       plan_price: 30,
     };
+
+    it('rejects a missing patient_cedula', () => {
+      const { patient_cedula: _omit, ...withoutCedula } = basePayload;
+      const result = CreateBookingDtoSchema.safeParse(withoutCedula);
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a too-short patient_cedula', () => {
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload, patient_cedula: 'V12' });
+      expect(result.success).toBe(false);
+    });
 
     it('rejects an invalid email format', () => {
       const result = CreateBookingDtoSchema.safeParse({

@@ -132,6 +132,10 @@ export default function PatientForm({
       setError('El nombre completo es obligatorio');
       return;
     }
+    if (!data.cedula?.trim() || data.cedula.trim().length < 5) {
+      setError('La cédula es obligatoria');
+      return;
+    }
     // Email opcional, pero si viene debe ser válido.
     if (data.email?.trim() && !isValidEmail(data.email)) {
       setError('El email no tiene un formato válido');
@@ -189,13 +193,14 @@ export default function PatientForm({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={lbl}>
-              <Hash className="w-3 h-3" /> Cédula
+              <Hash className="w-3 h-3" /> Cédula <span className="text-red-500">*</span>
             </label>
             {/* L6 (2026-04-29): dropdown V/E/J/G + numero canonico */}
             <CedulaInput
               value={data.cedula ?? ''}
               onChange={(v) => set('cedula', v)}
               placeholder="12345678"
+              required
             />
           </div>
           <div>

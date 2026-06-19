@@ -222,6 +222,7 @@ describe('BookingController', () => {
         doctor_id: '980025b4-9956-4646-94f8-58401c86773a',
         patient_name: 'María López',
         patient_email: 'maria@example.com',
+        patient_cedula: 'V-12345678',
         scheduled_at: '2026-07-01T10:00:00Z',
         appointment_mode: 'presencial' as const,
         plan_name: 'Consulta',
