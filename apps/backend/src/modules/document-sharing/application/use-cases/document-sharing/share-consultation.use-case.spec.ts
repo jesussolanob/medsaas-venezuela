@@ -10,6 +10,7 @@ import { DocumentAccessCode } from '../../../domain/entities/document-access-cod
 import { Consultation } from '../../../../consultations/domain/entities/consultation.entity';
 import { NoSectionsSelectedError } from '../../../domain/errors/no-sections-selected.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
+import { PatientCedulaRequiredForSharingError } from '../../../domain/errors/patient-cedula-required.error';
 
 const mockLinkRepo: jest.Mocked<ISharedDocumentLinkRepository> = {
   save: jest.fn(),
@@ -107,6 +108,20 @@ const makeCode = (): DocumentAccessCode =>
     createdAt: new Date(),
   });
 
+// Minimal patient stub. Defaults to a patient WITH a cédula (required to share)
+// and no email (notification skipped). Override fields per-test as needed.
+const makePatient = (overrides: Record<string, unknown> = {}) =>
+  ({
+    id: 'patient-1',
+    doctorId: 'doctor-1',
+    fullName: 'Test Patient',
+    cedula: 'V-12345678',
+    email: null,
+    ...overrides,
+  }) as Parameters<typeof mockPatientRepo.findById>[0] extends never
+    ? never
+    : Awaited<ReturnType<typeof mockPatientRepo.findById>>;
+
 describe('ShareConsultationUseCase', () => {
   let useCase: ShareConsultationUseCase;
 
@@ -124,7 +139,8 @@ describe('ShareConsultationUseCase', () => {
     mockLinkRepo.save.mockResolvedValue(makeLink());
     mockCodeRepo.save.mockResolvedValue(makeCode());
     mockConsultationRepo.findById.mockResolvedValue(makeConsultation());
-    mockPatientRepo.findById.mockResolvedValue(null); // no email → skip notification
+    // Patient has a cédula (required to share) but no email → notification skipped.
+    mockPatientRepo.findById.mockResolvedValue(makePatient());
   });
 
   it('returns url, code, expiresAt on success', async () => {
@@ -166,6 +182,36 @@ describe('ShareConsultationUseCase', () => {
     ).rejects.toBeInstanceOf(ConsultationNotOwnedError);
   });
 
+  it('throws PatientCedulaRequiredForSharingError when patient has no cédula', async () => {
+    mockPatientRepo.findById.mockResolvedValue(makePatient({ cedula: null }));
+
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: { sections: { report: true, prescriptions: false, ehr: false } },
+        doctorName: 'Dr. Test',
+      }),
+    ).rejects.toBeInstanceOf(PatientCedulaRequiredForSharingError);
+
+    // No link/code should be persisted when the precondition fails.
+    expect(mockLinkRepo.save).not.toHaveBeenCalled();
+    expect(mockCodeRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('throws PatientCedulaRequiredForSharingError when patient record is missing', async () => {
+    mockPatientRepo.findById.mockResolvedValue(null);
+
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: { sections: { report: true, prescriptions: false, ehr: false } },
+        doctorName: 'Dr. Test',
+      }),
+    ).rejects.toBeInstanceOf(PatientCedulaRequiredForSharingError);
+  });
+
   it('throws NoSectionsSelectedError when all sections are false', async () => {
     await expect(
       useCase.execute({
@@ -190,14 +236,7 @@ describe('ShareConsultationUseCase', () => {
   });
 
   it('does NOT throw when email fails (fire-and-forget)', async () => {
-    mockPatientRepo.findById.mockResolvedValue({
-      id: 'patient-1',
-      doctorId: 'doctor-1',
-      fullName: 'Test Patient',
-      email: 'test@test.com',
-    } as Parameters<typeof mockPatientRepo.findById>[0] extends never
-      ? never
-      : Awaited<ReturnType<typeof mockPatientRepo.findById>>);
+    mockPatientRepo.findById.mockResolvedValue(makePatient({ email: 'test@test.com' }));
     mockMailer.sendTemplate.mockRejectedValue(new Error('SMTP error'));
 
     // Should not throw even if email fails

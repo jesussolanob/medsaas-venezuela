@@ -14,6 +14,7 @@ import { SharedDocumentLink } from '../../../domain/entities/shared-document-lin
 import { DocumentAccessCode } from '../../../domain/entities/document-access-code.entity';
 import { NoSectionsSelectedError } from '../../../domain/errors/no-sections-selected.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
+import { PatientCedulaRequiredForSharingError } from '../../../domain/errors/patient-cedula-required.error';
 import type { ShareConsultationDto } from '../../dtos/share-consultation.dto';
 import {
   CONSULTATION_REPOSITORY,
@@ -78,6 +79,15 @@ export class ShareConsultationUseCase {
     const consultation = await this.consultationRepo.findById(input.consultationId, input.doctorId);
     if (!consultation || !consultation.canBeModifiedBy(input.doctorId)) {
       throw new ConsultationNotOwnedError();
+    }
+
+    // 1b. The patient must have a cédula on file — it is the second factor the
+    //     patient enters to open the shared document (verify-code). Without it
+    //     the link is unusable, so fail early with a clear message for the doctor
+    //     instead of letting the patient hit a generic 422 with no way forward.
+    const patient = await this.patientRepo.findById(consultation.patientId, input.doctorId);
+    if (!patient?.cedula || !patient.cedula.trim()) {
+      throw new PatientCedulaRequiredForSharingError();
     }
 
     // 2. Validate at least one section
