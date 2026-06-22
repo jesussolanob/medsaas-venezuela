@@ -53,6 +53,15 @@ import { AppAuthGuard } from './app-auth.guard';
     Auth0Guard,
     AppAuthGuard,
   ],
-  exports: [AppAuthGuard, DevAuthGuard, Auth0Guard, IdentityResolverService],
+  exports: [
+    AppAuthGuard,
+    DevAuthGuard,
+    Auth0Guard,
+    IdentityResolverService,
+    // Must be exported: AppAuthGuard is re-resolved in every consuming module's
+    // injector (via @UseGuards), so its ACCOUNT_STATUS_PORT dependency has to be
+    // globally available — otherwise modules like StorageModule fail to bootstrap.
+    ACCOUNT_STATUS_PORT,
+  ],
 })
 export class InfraAuthModule {}
