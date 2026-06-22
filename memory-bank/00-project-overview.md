@@ -58,17 +58,22 @@ bloques dinámicos, finanzas/cobros/gastos, plantillas PDF, servicios, booking p
 7.6 KPIs agenda, 7.11 servicios — completos; 7.1/7.2/7.3/7.7/7.9 avanzados. Restan
 landing (resto), export PDF, plantillas PDF de informe, cobro WhatsApp, limpieza BD.
 
+**Sesión 2026-06-22:** super admin **"todo configurable"** — 4 features nuevas: bloqueo/desbloqueo
+de acceso de doctor (ban duro independiente de verificación), **especialidades UI** (crear/editar/activar),
+**app-settings genéricos** (editor key/value), **editor de plantillas de email** (9 plantillas, subject+html+text,
+preview sandbox, variables visuales). Diagnóstico: **tabla `email_send_log`** (cero PII, para auditoría post-mortem).
+**IA en prod:** key personal Gemini subida a Secret Manager (v2); debería funcionar en prod ahora.
+
 Sesión 2026-06-18: **compartir documentos** (#12) cableado front+back (enlace + código
 6 dígitos + **cédula**, 48h, PDF con pdf-lib, email Resend); **gating de planes** fijado
 (Free mínimo, feature `booking` nueva); panel de **suscripción** corregido (plan
 permanente sin "termina el null", botón Mejorar mi plan → `/doctor/upgrade`, plan actual
 resaltado en upgrade); **IA de texto reactivada** (improve_block/summarize_report/
-patient_history) — el BFF `/api/doctor/ai` ya proxea a `/api/ai/text` (el endpoint
-backend `/api/ai/text` está **en construcción esta sesión**, ver progress-log).
+patient_history) — el BFF `/api/doctor/ai` ya proxea a `/api/ai/text`.
 
-Pendiente: completar/cablear el endpoint backend `/api/ai/text` (módulo IA de texto que
-reusa la infra de `ai-transcription`); cron de recordatorios (envío real WhatsApp/email).
-Portal del paciente diferido. Deploy GCP funciona (Auth0 Etapa 2 vivo).
+Pendiente: cron de recordatorios (envío real WhatsApp/email). Portal del paciente diferido.
+Deploy GCP funciona (Auth0 Etapa 2 vivo). 🚨 **Gemini:** la key personal funciona (QA local
+2026-06-19), pero Vertex AI (sin entrenamiento con PII) es el objetivo Etapa 2 del usuario.
 
 Etapa 1 (actual): construir todo en local — `AppAuthGuard` (modo dev, headers `x-dev-user-*`),
 Postgres/Redis/MinIO Docker, clave de cifrado fija en `.env`. Sin GCP/Cloudflare.

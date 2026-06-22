@@ -105,6 +105,15 @@ Estado (orden `migracion/modulos/`):
 - 08 admin → ✅ DDD. super_admin: dashboard KPIs, médicos+actividad, suscripciones, planes/features
   (toggle), stats, settings. Todos con @Roles('super_admin')+RolesGuard. `modules/admin/`.
 
+**Admin ampliado (2026-06-22 — 4 features nuevas de "todo configurable"):**
+
+- **Bloquear/desbloquear acceso de doctor** (`PUT /api/admin/doctors/:id/access`): ban duro de cuenta independiente de verificación/suscripción. Reusa `profiles.is_active`, enforcement en `AppAuthGuard` (403 `ACCOUNT_BLOCKED` para no-super_admin si is_active=false). Endpoint acepta `{is_active, reason?}`. No bloquea super_admin (anti-lockout). Frontend: botón en `/admin/verifications` + pantalla global de bloqueo + logout.
+- **Especialidades UI (`GET /api/admin/specialties`)**: lista todas (activas+inactivas). Frontend: página `/admin/specialties` (crear/editar/activar) + sidebar. Antes solo POST/PUT (sin GET).
+- **App-settings genéricos (`GET/PUT /api/admin/settings`)**: editor key/value. Filtra secretos, upsert de cualquier key. Las keys de tasas en solo-lectura.
+- **Editor de plantillas de email (`GET/PUT /api/admin/email-templates/:name`)**: lista, obtén (subject+html+text), edita. SIN crear/borra (set fijo de 9 plantillas reales: `appointment_confirmed`, `doctor_pending_verification`, `invoice`, `payment_approved`, `reminder_24h`, `reminder_3h`, `reminder_7d`, `shared_documents_code`, `welcome`). Preview en iframe sandbox. Variables {{..}} visibles. Cubre recordatorios + todo el correo.
+
+**Diagnóstico: tabla `email_send_log`** (migración `20260622000000-add-email-send-log`). Registra cada correo SIN PII: `recipient_type` ('patient'|'doctor'|'admin'|'system'), `recipient_id` (uuid, NO email), `template_name`, `status` (sent|failed), `provider` (resend|noop|sandbox), `provider_message_id`, `error_detail`, `created_at`. Fuente: `MailerService.sendTemplate()` (7 callers). Para diagnóstico/auditoría post-mortem.
+
 **🎉 Módulos base del backend (10/10).** 614 tests verdes; dist boota sin colisión.
 
 ### Grupo A — APIs nuevas (paridad con proyecto original, desde 2026-06-03)
