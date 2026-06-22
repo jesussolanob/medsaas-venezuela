@@ -55,6 +55,7 @@ const makeRepo = (): jest.Mocked<IAdminRepository> =>
     setUserRole: jest.fn(),
     exportDoctors: jest.fn(),
     getPublicStats: jest.fn(),
+    setProfileActive: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 const makeRedis = (cachedValue: string | null = null) => ({

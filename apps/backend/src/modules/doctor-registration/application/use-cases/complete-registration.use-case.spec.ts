@@ -4,7 +4,9 @@ import type { MailerService } from '../../../email/application/services/mailer.s
 import type { VerifyMppsUseCase } from '../../../credential-verification/application/use-cases/verify-mpps.use-case';
 import { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
 
-const makeRegistration = (overrides = {}): DoctorRegistration =>
+const makeRegistration = (
+  overrides: Partial<Parameters<typeof DoctorRegistration.create>[0]> = {},
+): DoctorRegistration =>
   DoctorRegistration.create({
     id: 'doc-1',
     fullName: 'Carlos M.',
@@ -17,6 +19,7 @@ const makeRegistration = (overrides = {}): DoctorRegistration =>
     verifiedAt: null,
     verifiedBy: null,
     createdAt: new Date(),
+    isActive: true,
     ...overrides,
   });
 

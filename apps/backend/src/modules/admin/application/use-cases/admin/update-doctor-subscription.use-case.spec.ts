@@ -51,6 +51,7 @@ const makeRepo = (
     findPermanentPlanForRole: jest.fn(),
     exportDoctors: jest.fn(),
     getPublicStats: jest.fn(),
+    setProfileActive: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 const makeRedis = () => ({

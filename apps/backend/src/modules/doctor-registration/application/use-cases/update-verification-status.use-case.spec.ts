@@ -16,6 +16,7 @@ const makePendingRegistration = (): DoctorRegistration =>
     verifiedAt: null,
     verifiedBy: null,
     createdAt: new Date(),
+    isActive: true,
   });
 
 describe('UpdateVerificationStatusUseCase', () => {

@@ -35,6 +35,7 @@ import { ListPlansWithDetailsUseCase } from '../../application/use-cases/admin/l
 import { SetPlanFeaturesUseCase } from '../../application/use-cases/admin/set-plan-features.use-case';
 import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan-prices.use-case';
 import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-doctors.use-case';
+import { SetDoctorAccessUseCase } from '../../application/use-cases/admin/set-doctor-access.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
 import type { DoctorDetail, DoctorGrowthData } from '../../domain/repositories/admin.repository';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
@@ -193,6 +194,9 @@ const buildModule = async (): Promise<TestingModule> => {
   const mockExportDoctors = {
     execute: jest.fn().mockResolvedValue('Nombre,Email\r\nDr. House,house@test.com'),
   };
+  const mockSetDoctorAccess = {
+    execute: jest.fn().mockResolvedValue({ id: 'doc-1', isActive: false }),
+  };
 
   return Test.createTestingModule({
     controllers: [AdminController],
@@ -224,6 +228,7 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: SetPlanFeaturesUseCase, useValue: mockSetPlanFeatures },
       { provide: SetPlanPricesUseCase, useValue: mockSetPlanPrices },
       { provide: ExportDoctorsUseCase, useValue: mockExportDoctors },
+      { provide: SetDoctorAccessUseCase, useValue: mockSetDoctorAccess },
     ],
   })
     .overrideGuard(AppAuthGuard)
