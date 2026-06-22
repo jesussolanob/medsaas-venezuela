@@ -2,6 +2,18 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-22 — Sesión: super admin "todo configurable" (4 features) + key Gemini en prod
+
+Prod: se subió la key personal de Gemini a Secret Manager (v2) y se forzó revisión backend → IA debería andar en prod (ver `ia-gemini-decision`). Luego, tanda de super admin (equipo de agentes: lead spec → backend/frontend-agent → review → lead verifica en disco). Commits en `feature/migracion-backend`:
+
+- **Bloquear/desbloquear acceso de doctor (`9dbbc1b`)** — ban DURO de cuenta para super_admin, independiente de verification/subscription. Reusa `profiles.is_active` (sin migración). Enforcement en `AppAuthGuard` (choke point único, cubre dev+Auth0): si role≠super_admin y is_active=false → **403 `ACCOUNT_BLOCKED`** (super_admin nunca se bloquea, anti-lockout; fail-open si perfil no existe). Endpoint `PUT /api/admin/doctors/:id/access {is_active, reason?}` (reglas: no bloquear super_admin, no auto-bloqueo). Listado de verificaciones ahora expone `isActive`. Frontend: botón en `/admin/verifications` + pantalla global de cuenta bloqueada + logout (hook que intercepta fetch a /api/\* → 403 ACCOUNT_BLOCKED). **Security review APROBADO (0 CRIT/HIGH).**
+- **Especialidades UI (`3516065`)** — antes solo POST/PUT admin (sin GET ni UI). Backend: `GET /api/admin/specialties` (lista todas, activas+inactivas) + repo `findAll`. Frontend: página `/admin/specialties` (crear/editar/activar) + sidebar.
+- **App-settings genéricos (`4c379df`)** — el backend `GET/PUT /api/admin/settings` ya existía (filtra secrets, upsert de cualquier key). Frontend: editor key/value en `/admin/settings` (las keys de tasas en solo-lectura para no solapar con la UI de tasas).
+- **Editor de plantillas de email (`8d21b5b`)** — antes los `email_templates` solo se editaban por migración/BD. Backend (módulo email): repo `findAll`+`update`, use-cases list/get/update, controller `admin/email-templates` (GET lista, GET :name, PUT :name; super_admin). NO crea/borra (set fijo). Frontend: `/admin/email-templates` (lista + editor subject/html/text + toggle, preview en iframe sandbox, variables {{..}} extraídas del contenido) + sidebar. Cubre recordatorios + invoice/welcome/payment/verification/shared-docs.
+- **Fix de specs (`c35d7e2`, test-only)** — el gate de suite completa atrapó ~20 specs hermanos del módulo admin rotos por el nuevo `setProfileActive` en `IAdminRepository` + dependencia en AdminController + `isActive` en DoctorRegistration. Reparados (mocks/fixtures). **Suite backend completa: 325 suites, 2690 tests verde.** (Prod no afectado: la CI despliega sin correr tests.)
+
+**Hallazgos de la auditoría del super admin (lo que YA era configurable, no se tocó):** planes+precios (`/admin/plans`), features-por-plan (toggles en `/admin/plans`), pagos de doctores (`/admin/aprobaciones` + `/admin/subscriptions` + invoices), verificación de credenciales (`/admin/verifications` + MPPS SACS), capacidades RBAC (`/admin/roles`), promociones (`/admin/promotions`), tasas USDT/BCV, admins, sugerencias. **Config de recordatorios por-doctor YA existe** (`GET/PUT /api/doctor/reminders/settings`: enable/canal/offsets 7d-24h-3h-1h/plantillas WhatsApp/quiet-hours); el admin solo ve la cola. El envío automático sigue DIFERIDO (sin cron; el "30 min antes" es por Google Calendar). Por eso la #4 se hizo como editor de plantillas de email (cubre recordatorios + todo).
+
 ## 2026-06-19 — Sesión: IA desbloqueada (local), estilo de emails, cédula obligatoria, guard de compartir
 
 Stack local levantado (Docker Postgres/Redis/MinIO + backend NestJS :3001). Commits en `feature/migracion-backend`:

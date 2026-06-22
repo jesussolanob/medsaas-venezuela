@@ -126,19 +126,24 @@
 
 ### Admin (módulo ✅ — TODOS super_admin, RolesGuard a nivel de clase)
 
-| Endpoint                                                                    | Método  | Notas                                                                                          |
-| --------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------- |
-| `/api/admin/dashboard`                                                      | GET     | KPIs (médicos por actividad, citas 30d, pacientes, suscripciones por vencer). Redis cache 300. |
-| `/api/admin/doctors`, `/api/admin/doctors/:id`                              | GET     | Lista (filtros activity_status/subscription_status → 400 si inválido) + detalle.               |
-| `/api/admin/doctors/:id/subscription`                                       | PUT     | Actualiza suscripción (Zod) + invalida cache.                                                  |
-| `/api/admin/subscriptions`                                                  | GET     | Todas con filtros.                                                                             |
-| `/api/admin/plans`, `/api/admin/plans/:planKey`                             | GET/PUT | Planes (toggle is_active, Zod).                                                                |
-| `/api/admin/plan-features`, `/api/admin/plan-features/:planKey/:featureKey` | GET/PUT | Toggle feature (upsert + invalida features:{plan}).                                            |
-| `/api/admin/patients`                                                       | GET     | Stats globales (solo counts, sin PII).                                                         |
-| `/api/admin/settings`                                                       | GET     | Config general (no expone secretos).                                                           |
+| Endpoint                                                                    | Método  | Notas                                                                                                                                                                                       |
+| --------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/admin/dashboard`                                                      | GET     | KPIs (médicos por actividad, citas 30d, pacientes, suscripciones por vencer). Redis cache 300.                                                                                              |
+| `/api/admin/doctors`, `/api/admin/doctors/:id`                              | GET     | Lista (filtros activity_status/subscription_status → 400 si inválido) + detalle.                                                                                                            |
+| `/api/admin/doctors/:id/subscription`                                       | PUT     | Actualiza suscripción (Zod) + invalida cache.                                                                                                                                               |
+| `/api/admin/doctors/:id/access`                                             | PUT     | **Bloquear/desbloquear acceso** (ban duro). Body `{ is_active, reason? }`. Setea `profiles.is_active`. No bloquea super_admin ni self (422 `CANNOT_BLOCK_SUPER_ADMIN`/`CANNOT_BLOCK_SELF`). |
+| `/api/admin/subscriptions`                                                  | GET     | Todas con filtros.                                                                                                                                                                          |
+| `/api/admin/plans`, `/api/admin/plans/:planKey`                             | GET/PUT | Planes (toggle is_active, Zod).                                                                                                                                                             |
+| `/api/admin/plan-features`, `/api/admin/plan-features/:planKey/:featureKey` | GET/PUT | Toggle feature (upsert + invalida features:{plan}).                                                                                                                                         |
+| `/api/admin/patients`                                                       | GET     | Stats globales (solo counts, sin PII).                                                                                                                                                      |
+| `/api/admin/settings`                                                       | GET/PUT | Config general clave/valor (no expone secretos). PUT upsert de cualquier key (editor genérico).                                                                                             |
+| `/api/admin/email-templates`, `/api/admin/email-templates/:name`            | GET/PUT | **Editor de plantillas de email**. GET lista (resumen) / GET :name (subject+html+text) / PUT :name (parcial). Solo edita existentes (no crea/borra). 404 `EMAIL_TEMPLATE_NOT_FOUND`.        |
 
 > Nota: `POST /admin/settings/usdt-rate` vive en el módulo finances (no duplicado). lastSignInAt/activity
 > tracking llega en Fase 4 (auth).
+> **Ban de cuenta:** `AppAuthGuard` (choke point de TODOS los controllers guardados) verifica `profiles.is_active`
+> tras resolver `request.user`: si role≠super_admin e is_active=false → **403 `ACCOUNT_BLOCKED`**. super_admin
+> nunca se bloquea (anti-lockout); fail-open si el perfil no existe. El listado de verificaciones expone `isActive`.
 
 ### Módulo `payments` (cobros de consulta) — Grupo A ✅ (2026-06-03)
 
@@ -316,11 +321,12 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 
 ### Especialidades (módulo `specialties`)
 
-| Endpoint                     | Método | Roles       | Notas                                                 |
-| ---------------------------- | ------ | ----------- | ----------------------------------------------------- |
-| `/api/specialties`           | GET    | **Pública** | Catálogo (seed 29). Consumido en registro/onboarding. |
-| `/api/admin/specialties`     | POST   | super_admin | Crea especialidad (gestionable sin redeploy).         |
-| `/api/admin/specialties/:id` | PUT    | super_admin | Edita especialidad.                                   |
+| Endpoint                     | Método | Roles       | Notas                                                                             |
+| ---------------------------- | ------ | ----------- | --------------------------------------------------------------------------------- |
+| `/api/specialties`           | GET    | **Pública** | Catálogo (seed 29). Consumido en registro/onboarding.                             |
+| `/api/admin/specialties`     | GET    | super_admin | Lista TODAS (activas e inactivas) ordenadas por sortOrder. Para el mantenedor UI. |
+| `/api/admin/specialties`     | POST   | super_admin | Crea especialidad (gestionable sin redeploy).                                     |
+| `/api/admin/specialties/:id` | PUT    | super_admin | Edita especialidad (name/is_active/sort_order).                                   |
 
 ### Agenda — bloqueos + horizonte (módulo `availability-blocks` + `doctor-settings`)
 
