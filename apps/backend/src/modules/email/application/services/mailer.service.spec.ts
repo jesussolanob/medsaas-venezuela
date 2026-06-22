@@ -8,7 +8,9 @@ import { EmailTemplateNotFoundError } from '../../domain/errors/email-template-n
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeTemplate(overrides: Partial<Parameters<typeof EmailTemplate.create>[0]> = {}): EmailTemplate {
+function makeTemplate(
+  overrides: Partial<Parameters<typeof EmailTemplate.create>[0]> = {},
+): EmailTemplate {
   return EmailTemplate.create({
     id: 'tpl-1',
     name: 'invoice',
@@ -35,6 +37,8 @@ describe('MailerService', () => {
   beforeEach(() => {
     templateRepo = {
       findByName: jest.fn(),
+      findAll: jest.fn(),
+      update: jest.fn(),
     };
 
     emailPort = {
@@ -51,9 +55,9 @@ describe('MailerService', () => {
   it('throws EmailTemplateNotFoundError when template does not exist', async () => {
     templateRepo.findByName.mockResolvedValue(null);
 
-    await expect(
-      service.sendTemplate('invoice', 'doc@example.com', {}),
-    ).rejects.toThrow(EmailTemplateNotFoundError);
+    await expect(service.sendTemplate('invoice', 'doc@example.com', {})).rejects.toThrow(
+      EmailTemplateNotFoundError,
+    );
 
     expect(emailPort.send).not.toHaveBeenCalled();
   });
@@ -61,9 +65,9 @@ describe('MailerService', () => {
   it('passes the template name to the repository', async () => {
     templateRepo.findByName.mockResolvedValue(null);
 
-    await expect(
-      service.sendTemplate('reminder', 'doc@example.com', {}),
-    ).rejects.toThrow(EmailTemplateNotFoundError);
+    await expect(service.sendTemplate('reminder', 'doc@example.com', {})).rejects.toThrow(
+      EmailTemplateNotFoundError,
+    );
 
     expect(templateRepo.findByName).toHaveBeenCalledWith('reminder');
   });
@@ -132,11 +136,13 @@ describe('MailerService', () => {
   });
 
   it('replaces unknown placeholders with empty string', async () => {
-    templateRepo.findByName.mockResolvedValue(makeTemplate({
-      subject: 'Hello {{missingKey}}',
-      html: '<p>{{missingKey}}</p>',
-      text: null,
-    }));
+    templateRepo.findByName.mockResolvedValue(
+      makeTemplate({
+        subject: 'Hello {{missingKey}}',
+        html: '<p>{{missingKey}}</p>',
+        text: null,
+      }),
+    );
     emailPort.send.mockResolvedValue({ id: 'msg-1' });
 
     await service.sendTemplate('invoice', 'doc@example.com', {});
@@ -147,11 +153,13 @@ describe('MailerService', () => {
   });
 
   it('serialises numeric values to string', async () => {
-    templateRepo.findByName.mockResolvedValue(makeTemplate({
-      subject: 'Amount: {{amount}}',
-      html: '<p>{{amount}}</p>',
-      text: null,
-    }));
+    templateRepo.findByName.mockResolvedValue(
+      makeTemplate({
+        subject: 'Amount: {{amount}}',
+        html: '<p>{{amount}}</p>',
+        text: null,
+      }),
+    );
     emailPort.send.mockResolvedValue({ id: 'msg-1' });
 
     await service.sendTemplate('invoice', 'doc@example.com', { amount: 150.5 });
@@ -161,11 +169,13 @@ describe('MailerService', () => {
   });
 
   it('replaces null value with empty string', async () => {
-    templateRepo.findByName.mockResolvedValue(makeTemplate({
-      subject: 'Desc: {{description}}',
-      html: '<p></p>',
-      text: null,
-    }));
+    templateRepo.findByName.mockResolvedValue(
+      makeTemplate({
+        subject: 'Desc: {{description}}',
+        html: '<p></p>',
+        text: null,
+      }),
+    );
     emailPort.send.mockResolvedValue({ id: 'msg-1' });
 
     await service.sendTemplate('invoice', 'doc@example.com', { description: null });
@@ -179,7 +189,9 @@ describe('MailerService', () => {
   // ---------------------------------------------------------------------------
 
   it('forwards to and returns the result from emailPort.send', async () => {
-    templateRepo.findByName.mockResolvedValue(makeTemplate({ subject: 'S', html: 'H', text: null }));
+    templateRepo.findByName.mockResolvedValue(
+      makeTemplate({ subject: 'S', html: 'H', text: null }),
+    );
     const mockResult: EmailSendResult = { id: 'resend-123' };
     emailPort.send.mockResolvedValue(mockResult);
 
@@ -192,11 +204,13 @@ describe('MailerService', () => {
   });
 
   it('propagates emailPort.send errors to the caller', async () => {
-    templateRepo.findByName.mockResolvedValue(makeTemplate({ subject: 'S', html: 'H', text: null }));
+    templateRepo.findByName.mockResolvedValue(
+      makeTemplate({ subject: 'S', html: 'H', text: null }),
+    );
     emailPort.send.mockRejectedValue(new Error('provider error'));
 
-    await expect(
-      service.sendTemplate('invoice', 'doc@example.com', {}),
-    ).rejects.toThrow('provider error');
+    await expect(service.sendTemplate('invoice', 'doc@example.com', {})).rejects.toThrow(
+      'provider error',
+    );
   });
 });

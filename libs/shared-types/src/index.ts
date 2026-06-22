@@ -48,3 +48,4 @@ export * from './dtos/telemetry-session.dto';
 export * from './dtos/specialties.dto';
 export * from './dtos/set-rate-source.dto';
 export * from './dtos/income-concept.dto';
+export * from './dtos/update-email-template.dto';

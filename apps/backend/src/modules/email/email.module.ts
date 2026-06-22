@@ -9,6 +9,10 @@ import { EmailTemplateModel } from './infrastructure/database/models/email-templ
 import { SequelizeEmailTemplateRepository } from './infrastructure/database/repositories/sequelize-email-template.repository';
 import { MailerService } from './application/services/mailer.service';
 import { EmailController } from './presentation/controllers/email.controller';
+import { AdminEmailTemplatesController } from './presentation/controllers/admin-email-templates.controller';
+import { ListEmailTemplatesUseCase } from './application/use-cases/list-email-templates.use-case';
+import { GetEmailTemplateUseCase } from './application/use-cases/get-email-template.use-case';
+import { UpdateEmailTemplateUseCase } from './application/use-cases/update-email-template.use-case';
 
 /**
  * EmailModule — transactional email delivery via pluggable adapters.
@@ -37,10 +41,8 @@ import { EmailController } from './presentation/controllers/email.controller';
  * Adding it again here causes a crash in the dist build.
  */
 @Module({
-  imports: [
-    SequelizeModule.forFeature([EmailTemplateModel]),
-  ],
-  controllers: [EmailController],
+  imports: [SequelizeModule.forFeature([EmailTemplateModel])],
+  controllers: [EmailController, AdminEmailTemplatesController],
   providers: [
     {
       provide: EMAIL_PORT,
@@ -59,6 +61,9 @@ import { EmailController } from './presentation/controllers/email.controller';
       useClass: SequelizeEmailTemplateRepository,
     },
     MailerService,
+    ListEmailTemplatesUseCase,
+    GetEmailTemplateUseCase,
+    UpdateEmailTemplateUseCase,
   ],
   exports: [EMAIL_PORT, MailerService],
 })
