@@ -2,6 +2,17 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-22 — Módulo de ayuda (chat IA por perfil) — DESPLEGADO
+
+Chat de ayuda con IA disponible para los 3 perfiles (super_admin/doctor/patient). Read-only: guía sobre el uso de la app, NO ejecuta acciones. Equipo de agentes (3 redactores de manuales en paralelo → backend-agent → code-reviewer + security-agent → lead verifica/cablea/despliega). Commit `7eb97b4` en `feature/migracion-backend`.
+
+- **Manuales** (base de conocimiento): 3 strings TS bundle-safe en `apps/backend/src/modules/help-assistant/guides/{super-admin(647 ln),specialist(459),patient(356)}-guide.content.ts`. Redactados leyendo páginas reales + memory-bank (labels reales en es-VE, reglas de negocio, flujos paso a paso, FAQ). Editar ahí para cambiar lo que sabe el chat.
+- **Backend** módulo DDD `help-assistant` (sin BD ni persistencia): `POST /api/help/chat` (AppAuthGuard+RolesGuard super_admin/doctor/patient). Selecciona el manual por el **rol del CurrentUser** (server-side; el body NO elige guía). Reusa `GeminiTextAdapter` (`AI_TEXT_GENERATOR_PORT`) vía useFactory — sin importar AiTranscriptionModule. SIN gating por plan. Validación boundary (≤30 msgs, ≤4000 chars/msg RECHAZA, ≤24000 total, último=user). `buildHelpPrompt` sanitiza delimitadores/falsos turnos (anti prompt-injection). `HelpChatProviderError` 502, log sin PII. 52 tests verdes, build EXIT 0.
+- **Frontend**: `HelpWidget` global en root `layout.tsx` (sobrevive navegación; resetea al cerrar; AbortController), botón `HelpButton` en topbars doctor/admin/patient, pub/sub `helpChatStore`, thin-proxy `/api/help/chat`. tsc EXIT 0.
+- **Review** code + security: **0 CRITICAL/HIGH**. Hardening aplicado (logging internalDetail, rechazo explícito vs truncado, sanitización anti-inyección, +22 tests de controller, AbortController, aria-modal, aviso anti-PII).
+- **Deploy ✅** (run 27990422906, 8m49s): backend booteó OK, frontend desplegado. Smoke test prod: `POST /api/help/chat` anónimo → 401 `No autenticado` (ruta+guard OK); ruta inexistente → 404. **Pendiente: QA visual del usuario** (chat real autenticado → ejercita la key Gemini en prod).
+- ⚠️ Gemini free tier entrena con datos → el chat avisa "No ingreses datos de pacientes" (riesgo PII interino ya aceptado).
+
 ## 2026-06-22 — Sesión: super admin "todo configurable" (4 features) + key Gemini en prod
 
 Prod: se subió la key personal de Gemini a Secret Manager (v2) y se forzó revisión backend → IA debería andar en prod (ver `ia-gemini-decision`). Luego, tanda de super admin (equipo de agentes: lead spec → backend/frontend-agent → review → lead verifica en disco). Commits en `feature/migracion-backend`:

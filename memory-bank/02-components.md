@@ -321,3 +321,18 @@ La página pública `/book/:doctorId` ahora se gatea con la feature `booking` de
 60 `alert()` nativos reemplazados por `showToast` (`@/components/ui/Toaster`) en 12 pantallas doctor+admin
 (agenda, cobros, consultations, offices, patients, reminders, services, settings, templates, admin/aprobaciones,
 admin/promotions, admin/subscriptions).
+
+### Chat de ayuda — HelpWidget (2026-06-22)
+
+Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + lanzador en topbar.
+
+- `components/help/HelpWidget.tsx` — panel de chat montado UNA vez en el root `app/layout.tsx`, por lo que
+  SOBREVIVE la navegación entre páginas; se resetea solo al cerrarlo (no persiste historial). Mantiene los
+  mensajes en estado local y reenvía toda la conversación en cada request (contexto multi-turno). `AbortController`
+  cancela la request en vuelo si se cierra. Renderizador markdown-lite seguro (sin `dangerouslySetInnerHTML`).
+  Llama al thin-proxy `POST /api/help/chat`. Avisa "No ingreses datos de pacientes".
+- `components/help/HelpButton.tsx` — botón "Ayuda" en los topbars de `doctor/admin/patient` layouts.
+- `components/help/helpChatStore.ts` — pub/sub singleton (patrón Toaster) que conecta el botón del header con el
+  panel del root layout (open/close), sin prop drilling entre layouts.
+- Backend: módulo `help-assistant` (ver 04-api-documentation). La guía se elige por rol del CurrentUser; los
+  manuales viven como strings TS en `apps/backend/src/modules/help-assistant/guides/`.
