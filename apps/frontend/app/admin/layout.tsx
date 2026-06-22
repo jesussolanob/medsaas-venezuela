@@ -32,6 +32,7 @@ import {
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
 import SearchCommandPalette from './SearchCommandPalette';
+import { HelpButton } from '@/components/help/HelpButton';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
@@ -327,6 +328,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
             <div className="flex items-center gap-2">
               <SearchCommandPalette />
+              <HelpButton />
               <AdminNotifications />
             </div>
           </header>

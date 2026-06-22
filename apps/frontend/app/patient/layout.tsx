@@ -17,6 +17,7 @@ import {
 import { clsx } from 'clsx';
 import { getPatientDashboard, getPatientProfile } from './actions';
 import SearchCommandPalette from './SearchCommandPalette';
+import { HelpButton } from '@/components/help/HelpButton';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
@@ -321,6 +322,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
             </div>
             <div className="flex items-center gap-3">
               <SearchCommandPalette />
+              <HelpButton />
               <div
                 className="relative p-2 rounded-full cursor-pointer transition-colors"
                 style={{ color: 'var(--dh-gray-600)' }}

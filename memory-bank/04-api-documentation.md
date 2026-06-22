@@ -412,3 +412,16 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 > **Frontend:** `POST /api/doctor/ai` ya NO es stub 501 — proxea a `/api/ai/text` (valida rol; gating por plan +
 > super_admin bypass se aplican en el backend con el plan efectivo). El frontend (`callAI`) lee `data.result`.
 > Prompts médicos en español. Marcar como **recién reactivado**.
+
+### Ayuda — Chat asistente por perfil (2026-06-22)
+
+| Endpoint         | Método | Roles                      | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------- | ------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/help/chat` | POST   | super_admin/doctor/patient | Backend NestJS, módulo **`help-assistant`** (DDD, sin BD ni persistencia). Body `{ messages:[{role:'user'\|'assistant', content}] }`. Selecciona el MANUAL por el **rol del CurrentUser** (server-side; el body NO elige guía): super_admin→admin, doctor→especialista, patient→paciente, otro→especialista. Reusa `GeminiTextAdapter` (`AI_TEXT_GENERATOR_PORT`). **SIN gating por plan** (ayuda para todos). Valida en boundary: ≤30 msgs, ≤4000 chars/msg (RECHAZA, no trunca), ≤24000 total, último=user. Responde `{ reply }`. Errores de proveedor → `HelpChatProviderError` 502 (sin PII en logs). |
+
+> **Manuales** = strings TS en `apps/backend/src/modules/help-assistant/guides/{super-admin,specialist,patient}-guide.content.ts`
+> (bundle-safe, sin backticks). Editar ahí para cambiar el conocimiento del chat. El prompt sanitiza delimitadores/falsos
+> turnos del input del usuario (anti prompt-injection). ⚠️ Gemini free tier entrena con datos → el chat avisa "No
+> ingreses datos de pacientes". **Frontend:** `POST /api/help/chat` = thin-proxy (`requireRole`). Widget global
+> `components/help/HelpWidget.tsx` montado en el root `layout.tsx` (sobrevive la navegación; se resetea al cerrar);
+> botón "Ayuda" (`HelpButton`) en los topbars de doctor/admin/patient; estado vía pub/sub `helpChatStore`.
