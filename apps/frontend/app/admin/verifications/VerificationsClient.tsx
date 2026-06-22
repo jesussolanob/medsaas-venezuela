@@ -28,6 +28,8 @@ import {
   AlertCircle,
   HelpCircle,
   RotateCcw,
+  Ban,
+  ShieldOff,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 
@@ -46,6 +48,13 @@ export interface VerificationItem {
   colegiadoNumber: string | null;
   verificationStatus: string;
   createdAt: string;
+  /**
+   * Estado de acceso a la cuenta (ban duro).
+   * El listado GET /api/admin/doctor-verifications NO incluye este campo —
+   * se inicializa en undefined y se actualiza localmente tras cada acción de acceso.
+   * undefined = estado desconocido (se muestran ambas opciones al admin).
+   */
+  isActive?: boolean;
 }
 
 type MppsStatus = 'pending' | 'verified' | 'not_found' | 'mismatch' | 'error';
@@ -278,6 +287,7 @@ export default function VerificationsClient({ initialItems }: Props) {
   const [updating, startUpdating] = useTransition();
   const [pendingDoctorId, setPendingDoctorId] = useState<string | null>(null);
   const [loadingRefresh, startRefresh] = useTransition();
+  const [accessPendingId, setAccessPendingId] = useState<string | null>(null);
 
   // Map doctorId → mpps state
   const [mppsMap, setMppsMap] = useState<MppsMap>({});
@@ -459,6 +469,71 @@ export default function VerificationsClient({ initialItems }: Props) {
   }
 
   // ---------------------------------------------------------------------------
+  // Toggle account access (hard ban)
+  // ---------------------------------------------------------------------------
+
+  async function handleToggleAccess(doctorId: string, targetActive: boolean, fullName: string) {
+    const action = targetActive ? 'desbloquear' : 'bloquear';
+    const confirmed = window.confirm(
+      targetActive
+        ? `¿Confirmas que deseas DESBLOQUEAR el acceso de ${fullName}? El médico podrá usar la plataforma nuevamente.`
+        : `¿Confirmas que deseas BLOQUEAR el acceso de ${fullName}? El médico recibirá un error 403 en cualquier operación.`,
+    );
+    if (!confirmed) return;
+
+    setAccessPendingId(doctorId);
+
+    try {
+      const res = await fetch(`/api/admin/doctors/${doctorId}/access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: targetActive }),
+      });
+
+      const json = (await res.json()) as {
+        success?: boolean;
+        data?: { id: string; isActive: boolean };
+        error?: string;
+        code?: string;
+      };
+
+      if (!res.ok || !json.success) {
+        const knownErrors: Record<string, string> = {
+          DOCTOR_NOT_FOUND: 'Médico no encontrado.',
+          CANNOT_BLOCK_SUPER_ADMIN: 'No se puede bloquear a un super administrador.',
+          CANNOT_BLOCK_SELF: 'No puedes bloquearte a ti mismo.',
+        };
+        const message =
+          (json.code ? knownErrors[json.code] : undefined) ??
+          json.error ??
+          'Error al actualizar el acceso. Intenta nuevamente.';
+        showToast({ type: 'error', message });
+        return;
+      }
+
+      // Optimistic local update — backend confirmed the change.
+      setItems((prev) =>
+        prev.map((item) =>
+          item.doctorId === doctorId
+            ? { ...item, isActive: json.data?.isActive ?? targetActive }
+            : item,
+        ),
+      );
+
+      showToast({
+        type: 'success',
+        message: targetActive
+          ? `Acceso de ${fullName} desbloqueado correctamente.`
+          : `Acceso de ${fullName} bloqueado correctamente.`,
+      });
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión al actualizar el acceso.' });
+    } finally {
+      setAccessPendingId(null);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Refresh full list
   // ---------------------------------------------------------------------------
 
@@ -619,6 +694,9 @@ export default function VerificationsClient({ initialItems }: Props) {
             const isBusy = updating && pendingDoctorId === item.doctorId;
             const mppsState = mppsMap[item.doctorId];
             const isVerifyingThisDoctor = verifyingMppsId === item.doctorId;
+            const isAccessPending = accessPendingId === item.doctorId;
+            // isActive: true = cuenta activa, false = bloqueada, undefined = desconocido
+            const isActive = item.isActive;
 
             return (
               <article
@@ -725,61 +803,127 @@ export default function VerificationsClient({ initialItems }: Props) {
                     </dl>
                   </div>
 
-                  {/* Right: manual action buttons (only for pending) */}
-                  {item.verificationStatus === 'pending' && (
-                    <div className="flex sm:flex-col gap-2 shrink-0">
-                      <button
-                        onClick={() => handleUpdateStatus(item.doctorId, 'verified')}
-                        disabled={isBusy || updating}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
-                        style={{
-                          background: 'var(--dh-turquoise)',
-                          color: 'white',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isBusy) e.currentTarget.style.opacity = '0.88';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.opacity = '1';
-                        }}
-                        aria-label={`Marcar a ${item.fullName} como verificado`}
-                      >
-                        {isBusy ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <ShieldCheck className="w-4 h-4" />
-                        )}
-                        Verificar
-                      </button>
+                  {/* Right: action buttons */}
+                  <div className="flex sm:flex-col gap-2 shrink-0">
+                    {/* Verification buttons — only for pending status */}
+                    {item.verificationStatus === 'pending' && (
+                      <>
+                        <button
+                          onClick={() => handleUpdateStatus(item.doctorId, 'verified')}
+                          disabled={isBusy || updating}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
+                          style={{
+                            background: 'var(--dh-turquoise)',
+                            color: 'white',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isBusy) e.currentTarget.style.opacity = '0.88';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
+                          aria-label={`Marcar a ${item.fullName} como verificado`}
+                        >
+                          {isBusy ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ShieldCheck className="w-4 h-4" />
+                          )}
+                          Verificar
+                        </button>
 
-                      <button
-                        onClick={() => handleUpdateStatus(item.doctorId, 'rejected')}
-                        disabled={isBusy || updating}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-slate-200 transition-colors disabled:opacity-50"
-                        style={{ color: 'var(--dh-gray-600)' }}
-                        onMouseEnter={(e) => {
-                          if (!isBusy) {
-                            e.currentTarget.style.borderColor = '#FCA5A5';
-                            e.currentTarget.style.color = '#DC2626';
-                            e.currentTarget.style.background = '#FEF2F2';
+                        <button
+                          onClick={() => handleUpdateStatus(item.doctorId, 'rejected')}
+                          disabled={isBusy || updating}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-slate-200 transition-colors disabled:opacity-50"
+                          style={{ color: 'var(--dh-gray-600)' }}
+                          onMouseEnter={(e) => {
+                            if (!isBusy) {
+                              e.currentTarget.style.borderColor = '#FCA5A5';
+                              e.currentTarget.style.color = '#DC2626';
+                              e.currentTarget.style.background = '#FEF2F2';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = '';
+                            e.currentTarget.style.color = 'var(--dh-gray-600)';
+                            e.currentTarget.style.background = '';
+                          }}
+                          aria-label={`Rechazar a ${item.fullName}`}
+                        >
+                          {isBusy ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ShieldX className="w-4 h-4" />
+                          )}
+                          Rechazar
+                        </button>
+                      </>
+                    )}
+
+                    {/* Account access toggle — visible for all tabs */}
+                    <div className="sm:mt-1">
+                      {/* Badge when account is known-blocked */}
+                      {isActive === false && (
+                        <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full mb-1.5 w-fit">
+                          <ShieldOff className="w-3 h-3" aria-hidden="true" />
+                          Acceso bloqueado
+                        </span>
+                      )}
+
+                      {isActive === false ? (
+                        <button
+                          onClick={() =>
+                            void handleToggleAccess(item.doctorId, true, item.fullName)
                           }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = '';
-                          e.currentTarget.style.color = 'var(--dh-gray-600)';
-                          e.currentTarget.style.background = '';
-                        }}
-                        aria-label={`Rechazar a ${item.fullName}`}
-                      >
-                        {isBusy ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <ShieldX className="w-4 h-4" />
-                        )}
-                        Rechazar
-                      </button>
+                          disabled={isAccessPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-all disabled:opacity-50"
+                          style={{
+                            borderColor: '#D1FAE5',
+                            color: '#065F46',
+                            background: '#ECFDF5',
+                          }}
+                          aria-label={`Desbloquear acceso de ${item.fullName}`}
+                        >
+                          {isAccessPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                          )}
+                          {isAccessPending ? 'Actualizando…' : 'Desbloquear acceso'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() =>
+                            void handleToggleAccess(item.doctorId, false, item.fullName)
+                          }
+                          disabled={isAccessPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border border-slate-200 transition-all disabled:opacity-50"
+                          style={{ color: 'var(--dh-gray-500)' }}
+                          onMouseEnter={(e) => {
+                            if (!isAccessPending) {
+                              e.currentTarget.style.borderColor = '#FCA5A5';
+                              e.currentTarget.style.color = '#DC2626';
+                              e.currentTarget.style.background = '#FEF2F2';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = '';
+                            e.currentTarget.style.color = 'var(--dh-gray-500)';
+                            e.currentTarget.style.background = '';
+                          }}
+                          aria-label={`Bloquear acceso de ${item.fullName}`}
+                        >
+                          {isAccessPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Ban className="w-3.5 h-3.5" />
+                          )}
+                          {isAccessPending ? 'Actualizando…' : 'Bloquear acceso'}
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </article>
             );

@@ -32,6 +32,7 @@ import {
   UpdatePlanFullBodySchema,
   SetPlanFeaturesBodySchema,
   SetPlanPricesBodySchema,
+  SetDoctorAccessBodySchema,
   VALID_ACTIVITY_STATUSES,
   VALID_SUBSCRIPTION_STATUSES,
   VALID_SUBSCRIPTION_PLANS,
@@ -47,6 +48,7 @@ import {
   type UpdatePlanFullBody,
   type SetPlanFeaturesBody,
   type SetPlanPricesBody,
+  type SetDoctorAccessBody,
 } from '../../application/dtos/admin.dtos';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDashboardOverviewUseCase } from '../../application/use-cases/admin/get-dashboard-overview.use-case';
@@ -74,6 +76,7 @@ import { ListPlansWithDetailsUseCase } from '../../application/use-cases/admin/l
 import { SetPlanFeaturesUseCase } from '../../application/use-cases/admin/set-plan-features.use-case';
 import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan-prices.use-case';
 import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-doctors.use-case';
+import { SetDoctorAccessUseCase } from '../../application/use-cases/admin/set-doctor-access.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -131,6 +134,7 @@ export class AdminController {
     private readonly setPlanFeaturesOp: SetPlanFeaturesUseCase,
     private readonly setPlanPricesOp: SetPlanPricesUseCase,
     private readonly exportDoctorsOp: ExportDoctorsUseCase,
+    private readonly setDoctorAccessOp: SetDoctorAccessUseCase,
   ) {}
 
   /**
@@ -335,6 +339,37 @@ export class AdminController {
       notes: body.notes ?? null,
     });
     return { success: true, data: { updated: true } };
+  }
+
+  /**
+   * PUT /api/admin/doctors/:id/access — block or unblock a doctor account.
+   *
+   * Body: { is_active: boolean, reason?: string }
+   *
+   * Sets profiles.is_active for the target doctor. is_active=false is a hard ban:
+   * AppAuthGuard will return 403 ACCOUNT_BLOCKED on every subsequent request
+   * from that profile, regardless of verification or subscription status.
+   *
+   * Business rules (enforced by SetDoctorAccessUseCase):
+   *   - Target profile must exist.
+   *   - Cannot block a super_admin profile (CANNOT_BLOCK_SUPER_ADMIN → 422).
+   *   - Cannot block one's own account (CANNOT_BLOCK_SELF → 422).
+   *
+   * SECURITY: actorId is always read from request.user.sub (anti-IDOR).
+   */
+  @Put('doctors/:id/access')
+  async setDoctorAccess(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') targetId: string,
+    @Body(new ZodValidationPipe(SetDoctorAccessBodySchema)) body: SetDoctorAccessBody,
+  ): Promise<SuccessResponse<{ id: string; isActive: boolean }>> {
+    const result = await this.setDoctorAccessOp.execute({
+      targetId,
+      actorId: user.sub,
+      isActive: body.is_active,
+      reason: body.reason,
+    });
+    return { success: true, data: result };
   }
 
   /**

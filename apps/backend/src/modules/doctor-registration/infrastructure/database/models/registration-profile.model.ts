@@ -61,6 +61,14 @@ export class RegistrationProfileModel extends Model {
   declare verifiedBy: string | null;
 
   /**
+   * Hard-ban flag — set to false by super_admin to block account access.
+   * NULL is treated as true (active) for all existing rows.
+   */
+  @Default(true)
+  @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
+  declare isActive: boolean | null;
+
+  /**
    * Explicit onboarding completion flag. Added in migration 20260617000004.
    * Set to true by updateRegistration when the doctor submits the onboarding form.
    */

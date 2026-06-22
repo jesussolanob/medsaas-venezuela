@@ -378,6 +378,14 @@ export interface IAdminRepository {
 
   // Public stats (no PII, no auth required)
   getPublicStats(): Promise<PublicStats>;
+
+  // Account access control (hard ban)
+  /**
+   * Sets profiles.is_active for the given profileId.
+   * Returns the updated is_active value as confirmation.
+   * Throws DoctorNotFoundError if the profile does not exist.
+   */
+  setProfileActive(profileId: string, isActive: boolean): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------

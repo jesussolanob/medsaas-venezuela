@@ -31,6 +31,7 @@ describe('ListPendingVerificationsUseCase', () => {
       verifiedAt: null,
       verifiedBy: null,
       createdAt: new Date(),
+      isActive: true,
     });
     mockRepo.listByVerificationStatus.mockResolvedValue([registration]);
 

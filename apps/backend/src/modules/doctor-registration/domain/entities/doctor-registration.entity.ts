@@ -18,6 +18,8 @@ export interface DoctorRegistrationProps {
   verifiedAt: Date | null;
   verifiedBy: string | null;
   createdAt: Date;
+  /** Whether the account is active. NULL from DB is normalised to true (fail-open). */
+  isActive: boolean;
 }
 
 export class DoctorRegistration {
@@ -32,6 +34,8 @@ export class DoctorRegistration {
   readonly verifiedAt: Date | null;
   readonly verifiedBy: string | null;
   readonly createdAt: Date;
+  /** Whether the account is active. Always a boolean (null normalised to true). */
+  readonly isActive: boolean;
 
   private constructor(props: DoctorRegistrationProps) {
     this.id = props.id;
@@ -45,6 +49,7 @@ export class DoctorRegistration {
     this.verifiedAt = props.verifiedAt;
     this.verifiedBy = props.verifiedBy;
     this.createdAt = props.createdAt;
+    this.isActive = props.isActive;
   }
 
   static create(props: DoctorRegistrationProps): DoctorRegistration {
@@ -84,6 +89,7 @@ export class DoctorRegistration {
       verifiedAt,
       verifiedBy,
       createdAt: this.createdAt,
+      isActive: this.isActive,
     });
   }
 
@@ -110,6 +116,7 @@ export class DoctorRegistration {
       verifiedAt: null,
       verifiedBy: null,
       createdAt: this.createdAt,
+      isActive: this.isActive,
     });
   }
 }

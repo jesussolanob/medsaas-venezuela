@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { QueryTypes, type Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { PlanPriceUpsertError } from '../../../domain/errors/plan-price-upsert.error';
+import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 import type {
   IAdminRepository,
   AdminDashboardData,
@@ -1212,5 +1213,23 @@ export class SequelizeAdminRepository implements IAdminRepository {
       priceUsd: Number(row.priceUsd),
       isActive: row.isActive,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account access control (hard ban)
+  // ---------------------------------------------------------------------------
+
+  async setProfileActive(profileId: string, isActive: boolean): Promise<boolean> {
+    const [affectedRows] = await this.profileModel.update(
+      { isActive },
+      { where: { id: profileId } },
+    );
+
+    if (affectedRows === 0) {
+      // Profile does not exist — caller should have validated this, but guard here.
+      throw new DoctorNotFoundError(profileId);
+    }
+
+    return isActive;
   }
 }

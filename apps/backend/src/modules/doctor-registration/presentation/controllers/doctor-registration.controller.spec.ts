@@ -16,7 +16,9 @@ const adminUser: CurrentUserPayload = {
 };
 const doctorUser: CurrentUserPayload = { sub: 'doc-1', role: 'doctor', email: 'dr@example.com' };
 
-const makeEntity = (overrides = {}): DoctorRegistration =>
+const makeEntity = (
+  overrides: Partial<Parameters<typeof DoctorRegistration.create>[0]> = {},
+): DoctorRegistration =>
   DoctorRegistration.create({
     id: 'doc-1',
     fullName: 'Dr. Test',
@@ -29,6 +31,7 @@ const makeEntity = (overrides = {}): DoctorRegistration =>
     verifiedAt: null,
     verifiedBy: null,
     createdAt: new Date('2026-01-01'),
+    isActive: true,
     ...overrides,
   });
 
@@ -162,6 +165,20 @@ describe('DoctorRegistrationController', () => {
       const item = result.data[0];
       expect(item?.doctorId).toBe('doc-1');
       expect(item?.verificationStatus).toBe('pending');
+      expect(item?.isActive).toBe(true);
+    });
+
+    it('exposes isActive=false when the doctor account is blocked', async () => {
+      const blocked = makeEntity({ isActive: false });
+      listVerificationsUseCase.execute.mockResolvedValue([blocked]);
+
+      const result = await controller.listVerificationsByStatus({
+        status: 'pending',
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(result.data[0]?.isActive).toBe(false);
     });
 
     it('passes verified status and pagination to use case', async () => {

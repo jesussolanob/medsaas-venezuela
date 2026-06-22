@@ -8,6 +8,10 @@ import { AuthProfileModel } from '../../modules/auth/infrastructure/database/mod
 import { IDENTITY_REPOSITORY } from '../../modules/auth/domain/repositories/identity.repository';
 import { SequelizeIdentityRepository } from '../../modules/auth/infrastructure/database/repositories/sequelize-identity.repository';
 
+// Account-status port (block enforcement)
+import { ACCOUNT_STATUS_PORT } from './account-status.port';
+import { SequelizeAccountStatusAdapter } from './sequelize-account-status.adapter';
+
 // Auth guards and services
 import { IdentityResolverService } from './identity-resolver.service';
 import { DevAuthGuard } from './dev-auth.guard';
@@ -39,6 +43,10 @@ import { AppAuthGuard } from './app-auth.guard';
     {
       provide: IDENTITY_REPOSITORY,
       useClass: SequelizeIdentityRepository,
+    },
+    {
+      provide: ACCOUNT_STATUS_PORT,
+      useClass: SequelizeAccountStatusAdapter,
     },
     IdentityResolverService,
     DevAuthGuard,

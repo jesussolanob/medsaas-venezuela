@@ -37,8 +37,10 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
+import { blockedLogoutAction } from './blocked-logout-action';
 import DoctorNotificationToast from './DoctorNotificationToast';
 import SearchCommandPalette from './SearchCommandPalette';
+import { useAccountBlockedGuard } from '@/hooks/useAccountBlockedGuard';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
@@ -123,6 +125,12 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [mobileOpen, setMobileOpen] = useState(false);
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
+  const [accountBlocked, setAccountBlocked] = useState(false);
+
+  // Intercept 403 ACCOUNT_BLOCKED from any BFF fetch in the doctor portal.
+  useAccountBlockedGuard(() => {
+    setAccountBlocked(true);
+  });
 
   // Onboarding gate: 'checking' → 'ok' | 'redirect'
   // While 'checking', render nothing to avoid flash of portal content.
@@ -256,6 +264,54 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   // nest in the App Router, so we skip the portal chrome for that route here.
   if (pathname === '/doctor/onboarding' || pathname.startsWith('/doctor/onboarding/')) {
     return <>{children}</>;
+  }
+
+  // Full-screen blocked account screen. Shown when any backend call returns
+  // 403 ACCOUNT_BLOCKED. Prevents the doctor from using any portal feature.
+  if (accountBlocked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-8 max-w-md w-full text-center shadow-sm">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
+            style={{ background: '#FEF2F2' }}
+          >
+            <svg
+              className="w-8 h-8"
+              style={{ color: '#DC2626' }}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+              />
+            </svg>
+          </div>
+          <h1
+            className="text-xl font-bold mb-2"
+            style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
+          >
+            Cuenta bloqueada
+          </h1>
+          <p className="text-sm mb-6" style={{ color: 'var(--dh-gray-500)' }}>
+            Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunícate
+            con el soporte de Delta Medical.
+          </p>
+          <button
+            onClick={() => void blockedLogoutAction()}
+            className="w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
+            style={{ background: 'var(--dh-turquoise)' }}
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -53,6 +53,8 @@ export interface VerificationListItemDto {
   mppsNumber: string | null;
   colegiadoNumber: string | null;
   verificationStatus: string;
+  /** Whether the account is active. false means the account is hard-banned by super_admin. */
+  isActive: boolean;
   createdAt: Date;
 }
 
@@ -65,6 +67,7 @@ function toVerificationListItem(entity: DoctorRegistration): VerificationListIte
     mppsNumber: entity.mppsNumber,
     colegiadoNumber: entity.colegiadoNumber,
     verificationStatus: entity.verificationStatus,
+    isActive: entity.isActive,
     createdAt: entity.createdAt,
   };
 }

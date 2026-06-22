@@ -108,6 +108,8 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
       verifiedAt: row.verifiedAt,
       verifiedBy: row.verifiedBy,
       createdAt: row.createdAt,
+      // NULL from DB means active — treat as true (fail-open, matches AppAuthGuard behaviour).
+      isActive: row.isActive !== false,
     });
   }
 }

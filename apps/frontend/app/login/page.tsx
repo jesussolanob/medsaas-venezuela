@@ -51,13 +51,16 @@ function LoginInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const authError = searchParams.get('error');
+  const isBlocked = searchParams.get('blocked') === '1';
   const [loading] = useState(false);
   const [error, setError] = useState(
-    authError === 'auth'
-      ? 'Error de autenticación. Intenta de nuevo.'
-      : authError === 'suspended'
-        ? 'Tu cuenta se encuentra suspendida. Contacta al administrador.'
-        : '',
+    isBlocked
+      ? 'Tu cuenta ha sido bloqueada. Contacta al administrador de Delta Medical.'
+      : authError === 'auth'
+        ? 'Error de autenticación. Intenta de nuevo.'
+        : authError === 'suspended'
+          ? 'Tu cuenta se encuentra suspendida. Contacta al administrador.'
+          : '',
   );
 
   const [showEmailForm, setShowEmailForm] = useState(false);

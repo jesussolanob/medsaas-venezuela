@@ -12,6 +12,7 @@ const baseProps: DoctorRegistrationProps = {
   verifiedAt: null,
   verifiedBy: null,
   createdAt: new Date('2026-01-01'),
+  isActive: true,
 };
 
 describe('DoctorRegistration entity', () => {
@@ -28,6 +29,7 @@ describe('DoctorRegistration entity', () => {
       expect(entity.verificationStatus).toBe('pending');
       expect(entity.verifiedAt).toBeNull();
       expect(entity.verifiedBy).toBeNull();
+      expect(entity.isActive).toBe(true);
     });
 
     it('creates entity with null optional fields', () => {
@@ -150,6 +152,36 @@ describe('DoctorRegistration entity', () => {
       });
       expect(updated.id).toBe(original.id);
       expect(updated.email).toBe(original.email);
+    });
+
+    it('preserves isActive through registration update', () => {
+      const blocked = DoctorRegistration.create({ ...baseProps, isActive: false });
+      const updated = blocked.withRegistrationUpdate({
+        fullName: 'New Name',
+        cedula: 'E-111',
+        mppsNumber: null,
+        colegiadoNumber: null,
+        specialty: null,
+      });
+      expect(updated.isActive).toBe(false);
+    });
+  });
+
+  describe('isActive', () => {
+    it('stores true when provided as true', () => {
+      const entity = DoctorRegistration.create({ ...baseProps, isActive: true });
+      expect(entity.isActive).toBe(true);
+    });
+
+    it('stores false when provided as false (blocked account)', () => {
+      const entity = DoctorRegistration.create({ ...baseProps, isActive: false });
+      expect(entity.isActive).toBe(false);
+    });
+
+    it('preserves isActive through withVerification', () => {
+      const blocked = DoctorRegistration.create({ ...baseProps, isActive: false });
+      const updated = blocked.withVerification('verified', 'admin-1', new Date());
+      expect(updated.isActive).toBe(false);
     });
   });
 });

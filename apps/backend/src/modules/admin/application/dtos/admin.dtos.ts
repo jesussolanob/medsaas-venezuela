@@ -247,6 +247,19 @@ export const SetPlanPricesBodySchema = z
 export type SetPlanPricesBody = z.infer<typeof SetPlanPricesBodySchema>;
 
 // ---------------------------------------------------------------------------
+// PUT /admin/doctors/:id/access — block or unblock a doctor account
+// ---------------------------------------------------------------------------
+
+export const SetDoctorAccessBodySchema = z
+  .object({
+    is_active: z.boolean({ error: 'is_active must be a boolean' }),
+    reason: z.string().max(500).optional(),
+  })
+  .strict();
+
+export type SetDoctorAccessBody = z.infer<typeof SetDoctorAccessBodySchema>;
+
+// ---------------------------------------------------------------------------
 // PUT /admin/admins/:id/role — set a user's role (grant/revoke super_admin)
 // ---------------------------------------------------------------------------
 
