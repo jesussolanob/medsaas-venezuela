@@ -1,11 +1,20 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import {
   EMAIL_TEMPLATE_REPOSITORY,
   type IEmailTemplateRepository,
 } from '../../domain/repositories/email-template.repository';
+import {
+  EMAIL_SEND_LOG_REPOSITORY,
+  type IEmailSendLogRepository,
+} from '../../domain/repositories/email-send-log.repository';
 import { EMAIL_PORT } from '../ports/email.port';
 import type { IEmailPort, EmailSendResult } from '../ports/email.port';
 import { EmailTemplateNotFoundError } from '../../domain/errors/email-template-not-found.error';
+import { EmailSendLog, type EmailRecipientRef } from '../../domain/entities/email-send-log.entity';
+
+export type { EmailRecipientRef };
 
 /**
  * MailerService — application-layer service for template-driven email delivery.
@@ -14,11 +23,16 @@ import { EmailTemplateNotFoundError } from '../../domain/errors/email-template-n
  * {{key}} placeholders with caller-provided data, and dispatches the result
  * via the injected IEmailPort.
  *
+ * Every dispatch attempt (success or failure) is recorded in `email_send_log`
+ * via IEmailSendLogRepository. The log write is DEFENSIVE: if it fails the
+ * original send result / error is still returned/thrown unchanged.
+ *
  * This service is exported from EmailModule so any other module that imports
  * EmailModule can inject it by class reference.
  *
  * SECURITY:
  *   - Never log the rendered HTML, subject, or recipient addresses.
+ *   - Never log `recipient` ref details beyond type and id (no PII).
  *   - Data values are serialised to string but NOT HTML-escaped — all data
  *     is provided by the backend itself (not user-controlled HTML input).
  *   - If a placeholder key is absent from `data`, it is replaced with an
@@ -33,14 +47,19 @@ export class MailerService {
     private readonly templateRepo: IEmailTemplateRepository,
     @Inject(EMAIL_PORT)
     private readonly emailPort: IEmailPort,
+    @Inject(EMAIL_SEND_LOG_REPOSITORY)
+    private readonly sendLogRepo: IEmailSendLogRepository,
+    private readonly config: ConfigService,
   ) {}
 
   /**
-   * Sends an email rendered from a stored template.
+   * Sends an email rendered from a stored template and records the outcome.
    *
-   * @param name   Logical template key (e.g. 'invoice').
-   * @param to     Recipient address(es).
-   * @param data   Placeholder values. Keys must match {{key}} tokens in the template.
+   * @param name      Logical template key (e.g. 'invoice').
+   * @param to        Recipient address(es).
+   * @param data      Placeholder values. Keys must match {{key}} tokens in the template.
+   * @param recipient Optional typed reference to the recipient entity (no PII).
+   *                  Used only for logging — never stored as email/name.
    *
    * @throws {EmailTemplateNotFoundError} when the template is missing or inactive.
    *
@@ -50,6 +69,7 @@ export class MailerService {
     name: string,
     to: string | string[],
     data: Record<string, unknown>,
+    recipient?: EmailRecipientRef,
   ): Promise<EmailSendResult> {
     const template = await this.templateRepo.findByName(name);
 
@@ -61,9 +81,47 @@ export class MailerService {
     const html = this.render(template.html, data);
     const text = template.text !== null ? this.render(template.text, data) : undefined;
 
-    this.logger.debug(`[mailer] sending template='${name}' to=${Array.isArray(to) ? to.length : 1} recipient(s)`);
+    this.logger.debug(
+      `[mailer] sending template='${name}' to=${Array.isArray(to) ? to.length : 1} recipient(s)`,
+    );
 
-    return this.emailPort.send({ to, subject, html, text });
+    const recipientType = recipient?.type ?? 'system';
+    const recipientId = recipient?.id ?? null;
+    const provider = this.config.get<string>('EMAIL_DRIVER') ?? 'noop';
+
+    let result: EmailSendResult;
+    try {
+      result = await this.emailPort.send({ to, subject, html, text });
+    } catch (sendError: unknown) {
+      // Record failure log — DEFENSIVE: log write must never shadow the original error.
+      await this.safeRecord(
+        EmailSendLog.failed({
+          id: randomUUID(),
+          recipientType,
+          recipientId,
+          templateName: name,
+          provider,
+          errorDetail: sendError instanceof Error ? sendError.message : String(sendError),
+          createdAt: new Date(),
+        }),
+      );
+      throw sendError;
+    }
+
+    // Record success log — DEFENSIVE.
+    await this.safeRecord(
+      EmailSendLog.sent({
+        id: randomUUID(),
+        recipientType,
+        recipientId,
+        templateName: name,
+        provider,
+        providerMessageId: result.id,
+        createdAt: new Date(),
+      }),
+    );
+
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -85,5 +143,20 @@ export class MailerService {
       }
       return String(value);
     });
+  }
+
+  /**
+   * Writes a log entry without ever throwing.
+   * If the repository fails, a warning is emitted and execution continues.
+   */
+  private async safeRecord(entry: EmailSendLog): Promise<void> {
+    try {
+      await this.sendLogRepo.record(entry);
+    } catch (logError: unknown) {
+      const msg = logError instanceof Error ? logError.message : String(logError);
+      this.logger.warn(
+        `[mailer] failed to write send log for template='${entry.templateName}': ${msg}`,
+      );
+    }
   }
 }

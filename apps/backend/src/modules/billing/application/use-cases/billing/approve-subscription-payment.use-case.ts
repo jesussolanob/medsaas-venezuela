@@ -118,13 +118,20 @@ export class ApproveSubscriptionPaymentUseCase {
         day: 'numeric',
       });
 
-      await this.mailerService.sendTemplate('payment_approved', profile.email, {
-        doctorName: profile.fullName,
-        amount: `USD ${amountUsd.toFixed(2)}`,
-        date: dateFormatted,
-      });
+      await this.mailerService.sendTemplate(
+        'payment_approved',
+        profile.email,
+        {
+          doctorName: profile.fullName,
+          amount: `USD ${amountUsd.toFixed(2)}`,
+          date: dateFormatted,
+        },
+        { type: 'doctor', id: doctorId },
+      );
 
-      this.logger.debug(`[approve-payment] payment_approved email dispatched for payment=${paymentId}`);
+      this.logger.debug(
+        `[approve-payment] payment_approved email dispatched for payment=${paymentId}`,
+      );
     } catch (err: unknown) {
       // Log without PII (no email, no name, no amount that could identify the doctor)
       const message = err instanceof Error ? err.message : 'unknown error';

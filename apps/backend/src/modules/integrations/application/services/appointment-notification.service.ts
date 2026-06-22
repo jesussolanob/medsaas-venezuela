@@ -198,16 +198,21 @@ export class AppointmentNotificationService {
             ? 'appointment_confirmation_inperson'
             : 'appointment_confirmation_online';
 
-        await this.mailer.sendTemplate(templateName, input.patientEmail, {
-          patient_name: input.patientName,
-          doctor_name: input.doctorName,
-          appointment_date: new Date(input.scheduledAtISO).toLocaleDateString('es-VE'),
-          appointment_time: new Date(input.scheduledAtISO).toLocaleTimeString('es-VE'),
-          meet_link: extra.meetLink ?? '',
-          office_address: input.officeAddress ?? '',
-          office_name: input.officeName ?? '',
-          ics_content: icsContent,
-        });
+        await this.mailer.sendTemplate(
+          templateName,
+          input.patientEmail,
+          {
+            patient_name: input.patientName,
+            doctor_name: input.doctorName,
+            appointment_date: new Date(input.scheduledAtISO).toLocaleDateString('es-VE'),
+            appointment_time: new Date(input.scheduledAtISO).toLocaleTimeString('es-VE'),
+            meet_link: extra.meetLink ?? '',
+            office_address: input.officeAddress ?? '',
+            office_name: input.officeName ?? '',
+            ics_content: icsContent,
+          },
+          { type: 'patient', id: null },
+        );
       } else {
         this.logger.debug(
           `[notify] MailerService not injected — skipping email for appointment ${input.appointmentId}`,

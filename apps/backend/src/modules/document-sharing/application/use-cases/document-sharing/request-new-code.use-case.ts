@@ -140,13 +140,18 @@ export class RequestNewCodeUseCase {
         minute: '2-digit',
       });
 
-      await this.mailer.sendTemplate('shared_documents_code', patient.email, {
-        patientName: patient.fullName,
-        doctorName: 'Su médico',
-        code: params.code,
-        url: params.url,
-        expiresAt: expiresAtStr,
-      });
+      await this.mailer.sendTemplate(
+        'shared_documents_code',
+        patient.email,
+        {
+          patientName: patient.fullName,
+          doctorName: 'Su médico',
+          code: params.code,
+          url: params.url,
+          expiresAt: expiresAtStr,
+        },
+        { type: 'patient', id: params.patientId },
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`[request-code] email notification failed: ${message}`);

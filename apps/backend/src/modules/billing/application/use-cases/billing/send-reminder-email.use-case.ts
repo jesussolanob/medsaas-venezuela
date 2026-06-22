@@ -59,12 +59,17 @@ export class SendReminderEmailUseCase {
     const templateName = SendReminderEmailUseCase.TEMPLATE_MAP[offset];
 
     try {
-      await this.mailerService.sendTemplate(templateName, data.recipientEmail, {
-        patientName: data.patientName,
-        doctorName: data.doctorName,
-        date: data.date,
-        time: data.time,
-      });
+      await this.mailerService.sendTemplate(
+        templateName,
+        data.recipientEmail,
+        {
+          patientName: data.patientName,
+          doctorName: data.doctorName,
+          date: data.date,
+          time: data.time,
+        },
+        { type: 'patient', id: null },
+      );
 
       this.logger.debug(`[reminder] dispatched offset=${offset}`);
       return true;

@@ -3,10 +3,13 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { ConfigService } from '@nestjs/config';
 import { EMAIL_PORT } from './application/ports/email.port';
 import { EMAIL_TEMPLATE_REPOSITORY } from './domain/repositories/email-template.repository';
+import { EMAIL_SEND_LOG_REPOSITORY } from './domain/repositories/email-send-log.repository';
 import { createEmailAdapter } from './infrastructure/adapters/email-adapter.factory';
 import { SandboxEmailPort } from './infrastructure/adapters/sandbox-email.adapter';
 import { EmailTemplateModel } from './infrastructure/database/models/email-template.model';
+import { EmailSendLogModel } from './infrastructure/database/models/email-send-log.model';
 import { SequelizeEmailTemplateRepository } from './infrastructure/database/repositories/sequelize-email-template.repository';
+import { SequelizeEmailSendLogRepository } from './infrastructure/database/repositories/sequelize-email-send-log.repository';
 import { MailerService } from './application/services/mailer.service';
 import { EmailController } from './presentation/controllers/email.controller';
 import { AdminEmailTemplatesController } from './presentation/controllers/admin-email-templates.controller';
@@ -41,7 +44,7 @@ import { UpdateEmailTemplateUseCase } from './application/use-cases/update-email
  * Adding it again here causes a crash in the dist build.
  */
 @Module({
-  imports: [SequelizeModule.forFeature([EmailTemplateModel])],
+  imports: [SequelizeModule.forFeature([EmailTemplateModel, EmailSendLogModel])],
   controllers: [EmailController, AdminEmailTemplatesController],
   providers: [
     {
@@ -59,6 +62,10 @@ import { UpdateEmailTemplateUseCase } from './application/use-cases/update-email
     {
       provide: EMAIL_TEMPLATE_REPOSITORY,
       useClass: SequelizeEmailTemplateRepository,
+    },
+    {
+      provide: EMAIL_SEND_LOG_REPOSITORY,
+      useClass: SequelizeEmailSendLogRepository,
     },
     MailerService,
     ListEmailTemplatesUseCase,

@@ -79,13 +79,18 @@ export class SendInvoiceEmailUseCase {
       const amountFormatted = `${invoice.currency} ${invoice.amount.toFixed(2)}`;
       const description = invoice.description ?? 'Suscripción mensual Delta Medical';
 
-      await this.mailerService.sendTemplate('invoice', doctorProfile.email, {
-        invoiceNumber: invoice.invoiceNumber,
-        amount: amountFormatted,
-        description,
-        date: issuedDate,
-        doctorName: doctorProfile.fullName,
-      });
+      await this.mailerService.sendTemplate(
+        'invoice',
+        doctorProfile.email,
+        {
+          invoiceNumber: invoice.invoiceNumber,
+          amount: amountFormatted,
+          description,
+          date: issuedDate,
+          doctorName: doctorProfile.fullName,
+        },
+        { type: 'doctor', id: invoice.doctorId },
+      );
 
       emailSent = true;
     } catch (err: unknown) {

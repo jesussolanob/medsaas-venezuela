@@ -206,6 +206,7 @@ describe('ApproveSubscriptionPaymentUseCase', () => {
       'payment_approved',
       'doctor@example.com',
       expect.objectContaining({ doctorName: 'Dr. Pérez', amount: 'USD 50.00' }),
+      { type: 'doctor', id: 'doc-1' },
     );
   });
 

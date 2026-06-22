@@ -177,13 +177,18 @@ export class ShareConsultationUseCase {
         minute: '2-digit',
       });
 
-      await this.mailer.sendTemplate('shared_documents_code', patient.email, {
-        patientName: patient.fullName,
-        doctorName: params.doctorName,
-        code: params.code,
-        url: params.url,
-        expiresAt: expiresAtStr,
-      });
+      await this.mailer.sendTemplate(
+        'shared_documents_code',
+        patient.email,
+        {
+          patientName: patient.fullName,
+          doctorName: params.doctorName,
+          code: params.code,
+          url: params.url,
+          expiresAt: expiresAtStr,
+        },
+        { type: 'patient', id: params.patientId },
+      );
     } catch (err) {
       // Fire-and-forget: email failures are logged but never propagated.
       const message = err instanceof Error ? err.message : String(err);

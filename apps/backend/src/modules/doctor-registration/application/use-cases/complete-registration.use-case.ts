@@ -106,15 +106,20 @@ export class CompleteRegistrationUseCase {
 
     const emails = admins.map((a) => a.email);
 
-    await this.mailer.sendTemplate('doctor_pending_verification', emails, {
-      doctorId: registration.id,
-      fullName: registration.fullName || NOT_SPECIFIED,
-      doctorEmail: registration.email || NOT_SPECIFIED,
-      cedula: registration.cedula || NOT_SPECIFIED,
-      specialty: registration.specialty || NOT_SPECIFIED,
-      mppsNumber: registration.mppsNumber || NOT_SPECIFIED,
-      colegiadoNumber: registration.colegiadoNumber || NOT_SPECIFIED,
-    });
+    await this.mailer.sendTemplate(
+      'doctor_pending_verification',
+      emails,
+      {
+        doctorId: registration.id,
+        fullName: registration.fullName || NOT_SPECIFIED,
+        doctorEmail: registration.email || NOT_SPECIFIED,
+        cedula: registration.cedula || NOT_SPECIFIED,
+        specialty: registration.specialty || NOT_SPECIFIED,
+        mppsNumber: registration.mppsNumber || NOT_SPECIFIED,
+        colegiadoNumber: registration.colegiadoNumber || NOT_SPECIFIED,
+      },
+      { type: 'admin', id: null },
+    );
 
     this.logger.log(
       `[registration] verification notification dispatched to ${admins.length} admin(s)`,

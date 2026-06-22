@@ -131,6 +131,7 @@ describe('CompleteRegistrationUseCase', () => {
         mppsNumber: 'MP-001',
         colegiadoNumber: 'COL-002',
       },
+      { type: 'admin', id: null },
     );
   });
 
@@ -153,6 +154,7 @@ describe('CompleteRegistrationUseCase', () => {
         mppsNumber: 'No especificado',
         colegiadoNumber: 'No especificado',
       }),
+      { type: 'admin', id: null },
     );
   });
 
