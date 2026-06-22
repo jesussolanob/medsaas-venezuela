@@ -1,4 +1,4 @@
-import { Body, Controller, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
@@ -11,6 +11,7 @@ import {
 } from '@delta/shared-types';
 import { CreateSpecialtyUseCase } from '../../application/use-cases/create-specialty.use-case';
 import { UpdateSpecialtyUseCase } from '../../application/use-cases/update-specialty.use-case';
+import { ListAllSpecialtiesUseCase } from '../../application/use-cases/list-all-specialties.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -29,7 +30,10 @@ export interface SpecialtyAdminDto {
 /**
  * AdminSpecialtiesController — admin-only specialty management.
  *
- * Both endpoints require AppAuthGuard + RolesGuard with @Roles('super_admin').
+ * All endpoints require AppAuthGuard + RolesGuard with @Roles('super_admin').
+ *
+ * GET /api/admin/specialties
+ *   Returns ALL specialties (active and inactive) for admin management.
  *
  * POST /api/admin/specialties
  *   Creates a new specialty. Returns 409 if name already exists.
@@ -44,9 +48,16 @@ export interface SpecialtyAdminDto {
 @Roles('super_admin')
 export class AdminSpecialtiesController {
   constructor(
+    private readonly listAllSpecialties: ListAllSpecialtiesUseCase,
     private readonly createSpecialty: CreateSpecialtyUseCase,
     private readonly updateSpecialty: UpdateSpecialtyUseCase,
   ) {}
+
+  @Get()
+  async listAll(): Promise<SuccessResponse<SpecialtyAdminDto[]>> {
+    const specialties = await this.listAllSpecialties.execute();
+    return { success: true, data: specialties.map((s) => this.toAdminDto(s)) };
+  }
 
   @Post()
   async create(

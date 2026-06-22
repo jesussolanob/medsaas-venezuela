@@ -5,6 +5,7 @@ import { SpecialtyModel } from './infrastructure/persistence/models/specialty.mo
 import { SequelizeSpecialtyRepository } from './infrastructure/persistence/repositories/sequelize-specialty.repository';
 import { SPECIALTY_REPOSITORY } from './domain/repositories/specialty.repository';
 
+import { ListAllSpecialtiesUseCase } from './application/use-cases/list-all-specialties.use-case';
 import { ListActiveSpecialtiesUseCase } from './application/use-cases/list-active-specialties.use-case';
 import { CreateSpecialtyUseCase } from './application/use-cases/create-specialty.use-case';
 import { UpdateSpecialtyUseCase } from './application/use-cases/update-specialty.use-case';
@@ -21,6 +22,7 @@ import { AdminSpecialtiesController } from './presentation/controllers/admin-spe
  *   GET /api/specialties — no auth (selector for registration + settings)
  *
  * Admin surface (super_admin only):
+ *   GET  /api/admin/specialties — list all specialties (active + inactive)
  *   POST /api/admin/specialties — add a new specialty without redeploy
  *   PUT  /api/admin/specialties/:id — edit / activate / deactivate
  *
@@ -37,6 +39,7 @@ import { AdminSpecialtiesController } from './presentation/controllers/admin-spe
       useClass: SequelizeSpecialtyRepository,
     },
     RolesGuard,
+    ListAllSpecialtiesUseCase,
     ListActiveSpecialtiesUseCase,
     CreateSpecialtyUseCase,
     UpdateSpecialtyUseCase,

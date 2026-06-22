@@ -26,6 +26,7 @@ import {
   Shield,
   Package,
   BadgeCheck,
+  Stethoscope,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
@@ -58,6 +59,7 @@ const navItems: AdminNavItem[] = [
   },
   { name: 'Planes', href: '/admin/plans', icon: Package },
   { name: 'Verificaciones', href: '/admin/verifications', icon: BadgeCheck },
+  { name: 'Especialidades', href: '/admin/specialties', icon: Stethoscope },
   { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
   {
     name: 'Sugerencias',

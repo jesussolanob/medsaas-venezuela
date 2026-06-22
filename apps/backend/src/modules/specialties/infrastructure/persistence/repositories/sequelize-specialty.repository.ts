@@ -16,6 +16,16 @@ export class SequelizeSpecialtyRepository implements ISpecialtyRepository {
     private readonly model: typeof SpecialtyModel,
   ) {}
 
+  async findAll(): Promise<Specialty[]> {
+    const rows = await this.model.findAll({
+      order: [
+        ['sortOrder', 'ASC'],
+        ['name', 'ASC'],
+      ],
+    });
+    return rows.map((r) => this.toDomain(r));
+  }
+
   async findAllActive(): Promise<Specialty[]> {
     const rows = await this.model.findAll({
       where: { isActive: true },

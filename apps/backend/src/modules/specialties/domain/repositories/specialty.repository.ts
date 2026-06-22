@@ -15,6 +15,12 @@ export interface UpdateSpecialtyParams {
 
 export interface ISpecialtyRepository {
   /**
+   * Returns all specialties (active AND inactive) ordered by sort_order ASC, name ASC.
+   * Used by the admin GET /api/admin/specialties endpoint.
+   */
+  findAll(): Promise<Specialty[]>;
+
+  /**
    * Returns all active specialties ordered by sort_order ASC, name ASC.
    * Used by the public GET /api/specialties endpoint.
    */

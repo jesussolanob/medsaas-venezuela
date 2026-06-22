@@ -24,6 +24,7 @@ describe('UpdateSpecialtyUseCase', () => {
 
   beforeEach(() => {
     mockRepo = {
+      findAll: jest.fn(),
       findAllActive: jest.fn(),
       findById: jest.fn(),
       findByName: jest.fn(),
