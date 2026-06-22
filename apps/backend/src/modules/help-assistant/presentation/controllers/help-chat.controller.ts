@@ -30,7 +30,8 @@ const MAX_TOTAL_CHARS = 24_000;
 const VALID_ROLES = new Set<string>(['user', 'assistant']);
 
 interface HelpChatSuccessResponse {
-  reply: string;
+  success: true;
+  data: { reply: string };
 }
 
 /**
@@ -65,7 +66,8 @@ export class HelpChatController {
       messages,
     });
 
-    return { reply: output.reply };
+    // Standard response envelope — the BFF (api-client.server) unwraps `data`.
+    return { success: true, data: { reply: output.reply } };
   }
 
   // ---------------------------------------------------------------------------

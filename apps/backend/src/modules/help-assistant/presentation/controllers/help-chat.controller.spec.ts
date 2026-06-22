@@ -54,7 +54,7 @@ describe('HelpChatController', () => {
   // Happy path
   // -------------------------------------------------------------------------
 
-  it('should return { reply } from the use case on a valid single-message request', async () => {
+  it('should return the standard { success, data:{ reply } } envelope on a valid request', async () => {
     mockHelpChat.execute.mockResolvedValue({ reply: 'La agenda está en el menú lateral.' });
 
     const result = await controller.chat(
@@ -62,7 +62,10 @@ describe('HelpChatController', () => {
       mockUser,
     );
 
-    expect(result).toEqual({ reply: 'La agenda está en el menú lateral.' });
+    expect(result).toEqual({
+      success: true,
+      data: { reply: 'La agenda está en el menú lateral.' },
+    });
     expect(mockHelpChat.execute).toHaveBeenCalledTimes(1);
     expect(mockHelpChat.execute).toHaveBeenCalledWith({
       role: 'doctor',
@@ -97,7 +100,7 @@ describe('HelpChatController', () => {
 
     const result = await controller.chat(buildBody(messages), mockUser);
 
-    expect(result).toEqual({ reply: 'respuesta' });
+    expect(result).toEqual({ success: true, data: { reply: 'respuesta' } });
   });
 
   // -------------------------------------------------------------------------
