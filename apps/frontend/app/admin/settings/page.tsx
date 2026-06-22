@@ -11,7 +11,35 @@ import {
   CheckCircle2,
   AlertCircle,
   UserPlus,
+  Settings2,
+  Pencil,
+  X,
+  Save,
+  Info,
 } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Configuración general — tipos y constantes
+// ---------------------------------------------------------------------------
+
+interface AppSetting {
+  key: string;
+  value: string;
+  updatedAt: string;
+}
+
+/**
+ * Keys que pertenecen a la sección "Fuente de tasa del sistema".
+ * Se muestran como solo-lectura en el editor genérico para evitar
+ * conflictos con la UI de tasas dedicada.
+ */
+const RATE_MANAGED_KEYS = new Set([
+  'usdt_rate',
+  'usdt_rate_raw',
+  'usdt_bcv_rate',
+  'usdt_binance_rate',
+  'rate_source',
+]);
 
 type Admin = {
   id: string;
@@ -66,6 +94,18 @@ export default function AdminSettingsPage() {
   const [savingSource, setSavingSource] = useState<RateSource | null>(null);
   const [manualInput, setManualInput] = useState('');
   const [ratesMsg, setRatesMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  // ── Configuración general (editor genérico de app_settings) ───────────────
+  const [appSettings, setAppSettings] = useState<AppSetting[]>([]);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+  const [savingSetting, setSavingSetting] = useState<string | null>(null);
+  const [settingsMsg, setSettingsMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [newSettingKey, setNewSettingKey] = useState('');
+  const [newSettingValue, setNewSettingValue] = useState('');
+  const [savingNewSetting, setSavingNewSetting] = useState(false);
+  const [newSettingOpen, setNewSettingOpen] = useState(false);
 
   async function loadAdmins() {
     setLoadingAdmins(true);
@@ -154,10 +194,89 @@ export default function AdminSettingsPage() {
     }
   }
 
+  async function loadAppSettings() {
+    setSettingsLoading(true);
+    try {
+      const r = await fetch('/api/admin/settings', { cache: 'no-store' });
+      const j = await r.json();
+      if (r.ok && Array.isArray(j.data)) {
+        setAppSettings(j.data as AppSetting[]);
+      } else {
+        setSettingsMsg({ kind: 'err', text: j.error ?? 'Error al cargar la configuración' });
+      }
+    } catch {
+      setSettingsMsg({ kind: 'err', text: 'Error al cargar la configuración' });
+    } finally {
+      setSettingsLoading(false);
+    }
+  }
+
+  async function saveSetting(key: string, value: string) {
+    setSavingSetting(key);
+    setSettingsMsg(null);
+    try {
+      const r = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setSettingsMsg({ kind: 'err', text: j.error ?? 'Error al guardar' });
+      } else {
+        setSettingsMsg({ kind: 'ok', text: `Ajuste "${key}" guardado` });
+        setEditingKey(null);
+        // Optimistic update
+        setAppSettings((prev) =>
+          prev.map((s) =>
+            s.key === key ? { ...s, value, updatedAt: new Date().toISOString() } : s,
+          ),
+        );
+      }
+    } catch {
+      setSettingsMsg({ kind: 'err', text: 'Error al guardar' });
+    } finally {
+      setSavingSetting(null);
+    }
+  }
+
+  async function saveNewSetting() {
+    const trimmedKey = newSettingKey.trim();
+    const trimmedValue = newSettingValue.trim();
+    if (!trimmedKey) {
+      setSettingsMsg({ kind: 'err', text: 'La clave no puede estar vacía' });
+      return;
+    }
+    setSavingNewSetting(true);
+    setSettingsMsg(null);
+    try {
+      const r = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: trimmedKey, value: trimmedValue }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setSettingsMsg({ kind: 'err', text: j.error ?? 'Error al guardar' });
+      } else {
+        setSettingsMsg({ kind: 'ok', text: `Ajuste "${trimmedKey}" creado` });
+        setNewSettingKey('');
+        setNewSettingValue('');
+        setNewSettingOpen(false);
+        await loadAppSettings();
+      }
+    } catch {
+      setSettingsMsg({ kind: 'err', text: 'Error al guardar' });
+    } finally {
+      setSavingNewSetting(false);
+    }
+  }
+
   useEffect(() => {
     loadAdmins();
     loadBCV();
     loadRates();
+    loadAppSettings();
   }, []);
 
   async function createAdmin(e: React.FormEvent) {
@@ -549,6 +668,222 @@ export default function AdminSettingsPage() {
             consulta automáticamente al cargar. Estas tasas se usan para convertir precios USD/EUR →
             BsS en citas, facturas y reportes.
           </p>
+        </section>
+
+        {/* ── Configuración general ── */}
+        <section className="bg-white rounded-xl border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Settings2 className="w-5 h-5 text-teal-600" />
+              <h2 className="text-lg font-semibold text-slate-900">Configuración general</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadAppSettings}
+                disabled={settingsLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-lg disabled:opacity-50"
+              >
+                {settingsLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                Actualizar
+              </button>
+              <button
+                onClick={() => {
+                  setNewSettingOpen(true);
+                  setSettingsMsg(null);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-lg"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo ajuste
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-500 mb-4">
+            Editor de parámetros de plataforma. Todos los valores se guardan como texto. Las claves
+            de tasas de cambio se gestionan en la sección &quot;Fuente de tasa del sistema&quot;.
+          </p>
+
+          {settingsMsg && (
+            <div
+              className={`mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                settingsMsg.kind === 'ok'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-red-50 text-red-700'
+              }`}
+            >
+              {settingsMsg.kind === 'ok' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0" />
+              )}
+              {settingsMsg.text}
+            </div>
+          )}
+
+          {/* Formulario nuevo ajuste */}
+          {newSettingOpen && (
+            <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <p className="text-sm font-semibold text-slate-700 mb-3">Agregar nuevo ajuste</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">
+                    Clave <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ej. sales_whatsapp_number"
+                    value={newSettingKey}
+                    onChange={(e) => setNewSettingKey(e.target.value)}
+                    maxLength={200}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Valor (texto)</label>
+                  <input
+                    type="text"
+                    placeholder="ej. +58 412 000 0000"
+                    value={newSettingValue}
+                    onChange={(e) => setNewSettingValue(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewSettingOpen(false);
+                    setNewSettingKey('');
+                    setNewSettingValue('');
+                  }}
+                  className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={saveNewSetting}
+                  disabled={savingNewSetting || !newSettingKey.trim()}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                >
+                  {savingNewSetting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  Guardar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de ajustes */}
+          {settingsLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+            </div>
+          ) : appSettings.length === 0 ? (
+            <p className="text-sm text-slate-400 py-8 text-center">No hay ajustes configurados</p>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {appSettings.map((setting) => {
+                const isRateKey = RATE_MANAGED_KEYS.has(setting.key);
+                const isEditing = editingKey === setting.key;
+
+                return (
+                  <div key={setting.key} className="py-3">
+                    <div className="flex items-start gap-3">
+                      {/* Clave */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                            {setting.key}
+                          </span>
+                          {isRateKey && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              <Info className="w-3 h-3" />
+                              Gestionado en &ldquo;Fuente de tasa&rdquo;
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Valor — editable o solo-lectura */}
+                        {isRateKey ? (
+                          <p className="mt-1.5 text-sm text-slate-500 break-all">{setting.value}</p>
+                        ) : isEditing ? (
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editingValue}
+                              onChange={(e) => setEditingValue(e.target.value)}
+                              className="flex-1 px-3 py-1.5 border border-teal-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveSetting(setting.key, editingValue);
+                                if (e.key === 'Escape') setEditingKey(null);
+                              }}
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => saveSetting(setting.key, editingValue)}
+                              disabled={savingSetting === setting.key}
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                            >
+                              {savingSetting === setting.key ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Save className="w-3.5 h-3.5" />
+                              )}
+                              Guardar
+                            </button>
+                            <button
+                              onClick={() => setEditingKey(null)}
+                              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="mt-1.5 text-sm text-slate-800 break-all">
+                            {setting.value || <span className="text-slate-400 italic">vacío</span>}
+                          </p>
+                        )}
+
+                        {/* Fecha de actualización */}
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          Actualizado:{' '}
+                          {new Intl.DateTimeFormat('es-VE', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          }).format(new Date(setting.updatedAt))}
+                        </p>
+                      </div>
+
+                      {/* Botón editar (solo para keys no-tasa) */}
+                      {!isRateKey && !isEditing && (
+                        <button
+                          onClick={() => {
+                            setEditingKey(setting.key);
+                            setEditingValue(setting.value);
+                            setSettingsMsg(null);
+                          }}
+                          className="mt-0.5 p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors shrink-0"
+                          title="Editar valor"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       </div>
     </div>
