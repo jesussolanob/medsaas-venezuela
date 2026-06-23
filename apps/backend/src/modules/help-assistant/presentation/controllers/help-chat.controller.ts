@@ -63,6 +63,7 @@ export class HelpChatController {
 
     const output = await this.helpChat.execute({
       role: user.role,
+      userId: user.sub,
       messages,
     });
 

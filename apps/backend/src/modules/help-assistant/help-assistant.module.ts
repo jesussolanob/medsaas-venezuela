@@ -10,6 +10,10 @@ import { AI_TEXT_GENERATOR_PORT } from '../ai-transcription/application/ports/ai
 // Sequelize models, repositories, and plan-gating logic).
 import { GeminiTextAdapter } from '../ai-transcription/infrastructure/adapters/gemini-text.adapter';
 
+// DoctorSettingsModule is imported to resolve GetDoctorFeaturesV2UseCase for
+// plan-awareness context injection. It exports the use case for cross-module use.
+import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
+
 // Application layer
 import { HelpChatUseCase } from './application/use-cases/help-chat.use-case';
 
@@ -28,11 +32,16 @@ import { HelpChatController } from './presentation/controllers/help-chat.control
  * The AI provider (GeminiTextAdapter) is bound locally to AI_TEXT_GENERATOR_PORT
  * using the same factory pattern as AiTranscriptionModule, keeping the two modules
  * independently deployable and testable.
+ *
+ * DoctorSettingsModule is imported to provide GetDoctorFeaturesV2UseCase, which
+ * resolves the doctor's effective plan and feature map for plan-aware guidance.
  */
 @Module({
   imports: [
     // ConfigModule is global, but explicit import makes the dependency clear.
     ConfigModule,
+    // Provides GetDoctorFeaturesV2UseCase (exported from DoctorSettingsModule).
+    DoctorSettingsModule,
   ],
   controllers: [HelpChatController],
   providers: [

@@ -146,15 +146,12 @@ Los modulos que tu plan no habilita aparecen con candado y llevan a /doctor/upgr
 Es tu panel de control. Contiene:
 
 - **Saludo** con tu nombre y especialidad.
-- **Tarjetas de indicadores (KPIs):** Ingresos del Mes (total facturado en USD, pagos aprobados mas ingresos manuales), Pacientes del Mes (citas agendadas en el mes) y Consultas Atendidas (citas completadas este mes).
-- **Cita actual o proxima** destacada, con el paciente y la hora. Botones: **Abrir Consulta** (si ya existe la consulta) o **Ir a Agenda**.
-- **Acciones rapidas:**
-  - **Crear Paciente** — abre el formulario de paciente en un modal.
-  - **Crear Cita** — abre el flujo de nueva cita (modal tipo acordeon con varios pasos).
-  - **Registrar Pago** — atajo a la pantalla de Cobros.
-  - **Registrar Gasto** — abre un modal para anotar un gasto (categoria, monto, moneda, nota).
+- **Tarjetas de indicadores (KPIs):** Ingresos totales (total facturado en USD, con su equivalente en bolivares), Mis pacientes (registrados en tu consultorio) y Pacientes atendidos (con al menos una consulta).
+- **Cita actual o proxima** destacada, con el paciente y la hora. Al pulsarla te lleva a **Abrir consulta** (si ya existe la consulta) o a **Ver agenda**.
+- **Acciones rapidas** (botones en el encabezado de bienvenida): **Ver Pacientes**, **Ver Agenda**, **Crear Consulta** (abre el flujo de nueva consulta, un modal tipo acordeon con varios pasos que tambien agenda la cita) y **Crear Paciente** (abre el formulario de paciente en un modal).
+- **Acciones rapidas de finanzas** (en la tarjeta de resumen financiero): **Registrar pago** (abre un modal con los cobros pendientes para aprobarlos) y **Registrar gasto** (abre un modal para anotar un gasto: categoria, monto, moneda, nota).
 - **Resumen financiero del mes:** Ingresos, Gastos y Neto (puede ser negativo), en USD y su equivalente en bolivares.
-- **Citas de hoy:** tabla con la hora, el paciente y el estado de cada cita.
+- **Citas del Día:** lista con la hora, el paciente y el estado de cada cita de hoy (si no hay, 'No hay citas programadas para hoy').
 
 Si tu plan no incluye finanzas, esa seccion no se muestra. Los KPIs se calculan en tiempo real cada vez que abres el dashboard.
 
@@ -164,17 +161,15 @@ Calendario visual de tus citas. (Requiere plan Base o Plus.)
 
 - **Selector de vista:** Semana, Mes o Dia.
 - **Navegacion de fechas:** flechas anterior/siguiente y boton **Hoy**.
-- **Disponibilidad / Bloqueos:** seccion 'Bloqueos y Horizonte de booking'. Con el boton de **Agregar Bloqueo** creas una ausencia (por ejemplo 'Vacaciones' o 'Enfermedad') indicando nombre, fecha de inicio y fecha de fin. En los dias bloqueados no se pueden agendar citas. Tambien defines el **horizonte de booking** (cuantas semanas hacia adelante aceptas reservas).
+- **Disponibilidad / Bloqueos:** seccion **Disponibilidad** (subtitulo 'Bloqueos · Horizonte de booking'). En el bloque **Bloqueos de disponibilidad**, con el boton **Agregar bloqueo** creas una ausencia (por ejemplo 'Vacaciones', 'Feriado' o 'Reunion medica') indicando nombre, fecha de inicio y fecha de fin. En los dias bloqueados no se pueden agendar citas. En la misma seccion, **Semanas visibles en el booking** define el horizonte (cuantas semanas hacia adelante aceptas reservas) y se guarda con su boton **Guardar**.
+- **Boton Nueva consulta:** en la cabecera de la agenda, el boton **Nueva consulta** abre el flujo (acordeon) para crear una consulta y agendar su cita.
 - **Calendario:** las citas aparecen como tarjetas con color segun su estado.
-- **Detalles de cita** (al pulsar una cita): muestra paciente, hora, modalidad, plan, motivo y estado. Botones segun el estado:
-  - **Confirmar** (cuando esta Agendada): pasa la cita a Confirmada.
-  - **Marcar como atendida** (cuando esta Confirmada): marca que el paciente asistio (cuenta como ingreso).
-  - **No asistio** (cuando esta Confirmada): marca que el paciente no vino. No restituye sesiones de paquete.
-  - **Cancelar / Eliminar cita** (cuando esta Agendada o Confirmada).
-  - **Nueva consulta** o **Abrir Consulta**: para registrar/abrir la consulta de esa cita.
-  - **Cita 360** (/doctor/cita-360): vista integral de la cita.
-  - **Reagendar cita**: cambia fecha/hora (valida que no haya conflictos).
-  - Para citas online: **Google Meet** o link de videollamada para copiar.
+- **Detalles de cita** (al pulsar una cita): muestra paciente, hora, modalidad, plan, motivo y estado. Botones disponibles:
+  - **Confirmar cita** (cuando esta Agendada): pasa la cita a Confirmada.
+  - **Cancelar cita** (cuando esta Agendada o Confirmada): pide una razon opcional; si la cita usaba un paquete prepagado, la sesion se restituye.
+  - **Ir a consulta**: abre la consulta de esa cita. El estado de la consulta (atendida / no asistio) y el pago se gestionan DENTRO de la consulta, no desde la agenda.
+  - **Ver Cita 360°** (/doctor/cita-360): vista integral de la cita (auditoria completa).
+  - Para citas online con Google Meet: boton **Abrir Meet**.
 
 Estados de una cita: Agendada (recien creada), Confirmada (la confirmaste), Atendida/completada (el paciente asistio), No asistio, Cancelada/rechazada. Todo cambio de estado queda auditado automaticamente.
 
@@ -211,10 +206,10 @@ Es el editor completo de una consulta. Contiene:
 - **Bloques dinamicos de la consulta:** son los campos clinicos (por ejemplo Motivo de consulta, Diagnostico, Tratamiento, Plan de tratamiento, Observaciones, Reposo, etc.). Los bloques que aparecen los defines tu en Configuracion (ver seccion de bloques de consulta). Cada bloque es un area de texto editable.
 - **Botones de IA en cada bloque** (solo plan Delta Plus): **Mejorar con IA** (mejora la redaccion del bloque), **Resumen del informe** (genera un resumen) y **Resumir historial del paciente** / **Historial del paciente** (trae contexto de consultas anteriores). Tras usar la IA puedes **Copiar texto** o aplicar el resultado. Si no tienes plan Plus, estos botones no estan disponibles.
 - **Grabadora de voz / transcripcion** (solo plan Plus): boton **Grabar la consulta** (o 'Grabar consulta'). Mientras procesa veras 'Transcribiendo audio...' y 'Procesando con IA — no cierres esta pagina...'. La IA transcribe el audio y sugiere que bloques llenar. Puedes **Grabar otra vez**.
-- **Informacion del pago:** monto en USD y bolivares, metodo de pago y estado. Boton **Aprobar pago** (marca el pago como aprobado). Si ya esta aprobado, se muestra como tal.
-- **Compartir documentos:** boton **Compartir documentos** (ver flujo en la seccion 7).
-- **Recetas:** puedes agregar recetas (medicamento, dosis, frecuencia, duracion).
-- **Acciones principales:** **Guardar**, **Marcar como atendida** (completa la cita) y cerrar.
+- **Informacion del pago:** monto en USD y bolivares, metodo de pago y estado. Boton **Marcar pago como aprobado** (al aplicarlo se muestra como 'Pago aprobado ✓'). El estado actual se indica como Pendiente o Aprobado.
+- **Compartir documentos:** boton **Compartir** (abre el modal 'Compartir documentos'; ver flujo en la seccion 7).
+- **Recetas:** con **Nueva receta** puedes agregar recetas (medicamento, dosis, frecuencia, duracion).
+- **Acciones principales:** **Guardar consulta**, **Marcar como atendida** (completa la cita) y **No asistio**.
 
 ### 6.6 Cobros — /doctor/cobros
 
@@ -295,21 +290,23 @@ Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear,
 
 ## 7. Flujos completos paso a paso
 
-### 7.1 Crear / agendar una cita
+### 7.1 Crear / agendar una cita (a traves del flujo de Nueva consulta)
 
-1. Desde **Inicio** pulsa **Crear Cita**, o entra a **Agenda** y crea una **Nueva cita**.
+En Delta no existe un boton 'Crear Cita' aparte: la cita se agenda como parte del flujo de **Nueva consulta** (un modal tipo acordeon, igual que el booking publico). El boton se llama **Crear Consulta** en Inicio y **Nueva consulta** en Agenda.
+
+1. Desde **Inicio** pulsa **Crear Consulta**, o entra a **Agenda** y pulsa **Nueva consulta**.
 2. Selecciona el **paciente** (busca o crea uno nuevo).
 3. Selecciona la **fecha** y la **hora** entre los slots disponibles.
-4. Selecciona la **modalidad** (presencial u online).
-5. Selecciona el **plan/servicio** (tarifa) y, si aplica, el metodo de pago.
-6. Confirma. La cita queda en estado **Agendada**.
-7. Despues, desde Agenda, **Confirma** la cita; cuando ocurra, marca **Atendida** o **No asistio**.
+4. Selecciona el **consultorio y la modalidad** (presencial u online).
+5. Indica el **motivo** y el **plan de consulta** (tarifa) y, si aplica, el metodo de pago.
+6. Pulsa **Crear consulta**. La cita queda en estado **Agendada**.
+7. Despues, desde Agenda, abre la cita y pulsa **Confirmar cita**. Para marcarla **Atendida** o **No asistio**, entra a la consulta con **Ir a consulta** (esos estados se gestionan dentro de la consulta, no en la agenda).
 
 Si conectaste Google Calendar y la cita es online, se crea automaticamente el evento con link de Google Meet.
 
 ### 7.2 Registrar una consulta con bloques dinamicos
 
-1. Abre la consulta desde la cita (**Abrir Consulta** / **Nueva consulta**) o desde **Pacientes** (Nueva consulta) o **Consultas**.
+1. Abre la consulta desde la cita: en **Agenda** pulsa la cita y luego **Ir a consulta**; o crea una desde **Pacientes** (**Nueva consulta**) o desde **Consultas** (**Nueva consulta**).
 2. Se abre el detalle con tus **bloques dinamicos** (los que configuraste en Bloques de consulta).
 3. Escribe el contenido en cada bloque (Motivo, Diagnostico, Tratamiento, etc.).
 4. Si tienes plan Plus, usa **Mejorar con IA** para pulir la redaccion de un bloque, o **Grabar la consulta** para transcribir audio.
@@ -327,7 +324,7 @@ Si ves estos botones desactivados o ausentes, es porque tu plan no es Plus: mejo
 
 ### 7.4 Compartir un documento con el paciente (enlace + codigo de 6 digitos + cedula, 48 horas)
 
-1. En el detalle de la consulta pulsa **Compartir documentos**.
+1. En el detalle de la consulta pulsa el boton **Compartir**, que abre el modal 'Compartir documentos'.
 2. En el modal, marca que **secciones** compartir (puedes elegir varias):
    - **Informe de la consulta** (diagnostico, motivo y notas clinicas).
    - **Recetas** (medicamentos, dosis e indicaciones).
@@ -344,10 +341,10 @@ Si ves estos botones desactivados o ausentes, es porque tu plan no es Plus: mejo
 
 ### 7.5 Registrar un pago/cobro y un gasto
 
-- **Cobro de una consulta:** en **Cobros** o dentro del detalle de la consulta, elige el metodo de pago y pulsa **Aprobar pago** / **Aprobar**. El pago pasa de Pendiente a Aprobado y se cuenta como ingreso.
+- **Cobro de una consulta:** en **Cobros** pulsa **Aprobar**, o dentro del detalle de la consulta pulsa **Marcar pago como aprobado**. El pago pasa de Pendiente a Aprobado y se cuenta como ingreso.
 - **Registrar pago manual:** en Cobros puedes registrar un pago indicando paciente, monto (USD/Bs), metodo y referencia.
 - **Registrar ingreso manual:** en **Finanzas**, boton **Registrar ingreso** (monto, descripcion, moneda).
-- **Registrar gasto:** en **Inicio** (Registrar Gasto) o en **Finanzas**: elige categoria (Alquiler, Personal, Insumos, Servicios, Impuestos, Otros), monto, moneda y nota.
+- **Registrar gasto:** en **Inicio** (boton **Registrar gasto**) o en **Finanzas**: elige categoria (Alquiler, Personal, Insumos, Servicios, Impuestos, Otros), monto, moneda y nota.
 
 ### 7.6 Cobro / compartir por WhatsApp
 
@@ -362,7 +359,7 @@ En **Configuracion** tienes **Compartir por WhatsApp**: redactas un mensaje (con
 
 ### 7.8 Bloqueos de disponibilidad y horizonte de semanas
 
-En **Agenda**, seccion 'Bloqueos y Horizonte de booking': con **Agregar Bloqueo** marcas ausencias (vacaciones, enfermedad) por rango de fechas — en esos dias no se agendan citas. El **horizonte de booking** define cuantas semanas hacia adelante pueden reservarte los pacientes.
+En **Agenda**, abre la seccion **Disponibilidad** (subtitulo 'Bloqueos · Horizonte de booking'): en **Bloqueos de disponibilidad**, con **Agregar bloqueo** marcas ausencias (vacaciones, feriado, reunion) por rango de fechas — en esos dias no se agendan citas. El campo **Semanas visibles en el booking** define cuantas semanas hacia adelante pueden reservarte los pacientes (se guarda con su boton **Guardar**).
 
 ### 7.9 Generar el QR del link publico de booking
 
@@ -416,7 +413,7 @@ No. Si tu suscripcion vence, tu cuenta baja a Delta Free al iniciar sesion (down
 En **Pacientes** pulsa **Nuevo paciente** (o **Crear Paciente** desde Inicio). La cedula es obligatoria.
 
 **Como comparto un informe o receta con mi paciente?**
-Abre la consulta, pulsa **Compartir documentos**, elige las secciones (Informe, Recetas, EHR), genera el enlace y se envia por email al paciente con un codigo de 6 digitos. El paciente entra con el codigo y su cedula. El enlace vence en 48 horas. Requiere que el paciente tenga cedula.
+Abre la consulta, pulsa el boton **Compartir** (abre 'Compartir documentos'), elige las secciones (Informe, Recetas, EHR), pulsa **Generar enlace y enviar** y se envia por email al paciente con un codigo de 6 digitos. El paciente entra con el codigo y su cedula. El enlace vence en 48 horas. Requiere que el paciente tenga cedula.
 
 **El paciente no tiene cedula y no puedo compartir, que hago?**
 Ve a **Pacientes**, edita el paciente y agrega su cedula; luego vuelve a compartir.
@@ -434,16 +431,16 @@ En **Configuracion**, boton **Conectar Google Calendar y Meet**. Con Google cone
 En **Consultorios** (/doctor/offices): crea un consultorio, define modalidad, duracion del slot, buffer y los dias/horas que atiendes. Esos horarios generan los slots de tu agenda y del booking.
 
 **Como bloqueo dias (vacaciones)?**
-En **Agenda**, seccion 'Bloqueos y Horizonte de booking', usa **Agregar Bloqueo** con el rango de fechas. En esos dias no se podran agendar citas.
+En **Agenda**, seccion **Disponibilidad** ('Bloqueos · Horizonte de booking'), usa **Agregar bloqueo** con el rango de fechas. En esos dias no se podran agendar citas.
 
 **Como apruebo un pago?**
-En **Cobros** (/doctor/cobros) o dentro del detalle de la consulta, pulsa **Aprobar pago**. El pago pasa de Pendiente a Aprobado. No existen estados 'rechazado' ni 'cancelado' para pagos.
+En **Cobros** (/doctor/cobros) usa **Aprobar**, o dentro del detalle de la consulta pulsa **Marcar pago como aprobado**. El pago pasa de Pendiente a Aprobado. No existen estados 'rechazado' ni 'cancelado' para pagos.
 
 **Como registro un gasto o un ingreso manual?**
-Gasto: en **Inicio** (Registrar Gasto) o en **Finanzas**, eligiendo categoria, monto y moneda. Ingreso manual: en **Finanzas**, **Registrar ingreso**.
+Gasto: en **Inicio** (boton **Registrar gasto**) o en **Finanzas**, eligiendo categoria, monto y moneda. Ingreso manual: en **Finanzas**, **Registrar ingreso**.
 
 **Cual es la diferencia entre Confirmar, Atendida y No asistio?**
-Confirmar pasa una cita Agendada a Confirmada. **Marcar como atendida** indica que el paciente asistio (cuenta como ingreso). **No asistio** indica que no vino (no devuelve sesiones de paquete).
+**Confirmar cita** (en Agenda) pasa una cita Agendada a Confirmada. **Marcar como atendida** (dentro de la consulta) indica que el paciente asistio (cuenta como ingreso). **No asistio** (dentro de la consulta) indica que no vino (no devuelve sesiones de paquete).
 
 **Mi cuenta dice 'Cuenta bloqueada', que hago?**
 Tu cuenta fue bloqueada por un administrador. Comunicate con el soporte de Delta Medical. Esto es distinto de la verificacion de credenciales y del plan.

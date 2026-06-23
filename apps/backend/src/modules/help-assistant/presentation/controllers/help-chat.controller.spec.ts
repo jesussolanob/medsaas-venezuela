@@ -69,6 +69,7 @@ describe('HelpChatController', () => {
     expect(mockHelpChat.execute).toHaveBeenCalledTimes(1);
     expect(mockHelpChat.execute).toHaveBeenCalledWith({
       role: 'doctor',
+      userId: 'doctor-1',
       messages: [{ role: 'user', content: '¿Dónde está la agenda?' }],
     });
   });
@@ -85,7 +86,7 @@ describe('HelpChatController', () => {
     await controller.chat(buildBody([{ role: 'user', content: 'ayuda' }]), adminUser);
 
     expect(mockHelpChat.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ role: 'super_admin' }),
+      expect.objectContaining({ role: 'super_admin', userId: 'admin-1' }),
     );
   });
 

@@ -13,6 +13,8 @@ export interface ChatMessage {
 export interface HelpChatInput {
   /** Authenticated user's role (determines which guide to load). */
   role: string;
+  /** Authenticated user's ID (used to resolve plan features for doctors). */
+  userId: string;
   /** Ordered list of conversation turns. Last message must be from 'user'. */
   messages: ChatMessage[];
 }

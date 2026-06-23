@@ -133,6 +133,7 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
   ],
   // Export DOCTOR_PROFILE_REPOSITORY so other modules (e.g. AppointmentsModule for cita-360)
   // can inject the doctor profile without duplicating model registrations.
-  exports: [DOCTOR_PROFILE_REPOSITORY],
+  // Export GetDoctorFeaturesV2UseCase so HelpAssistantModule can inject plan-awareness context.
+  exports: [DOCTOR_PROFILE_REPOSITORY, GetDoctorFeaturesV2UseCase],
 })
 export class DoctorSettingsModule {}

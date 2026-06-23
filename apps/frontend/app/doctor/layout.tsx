@@ -120,6 +120,24 @@ function isPlanUnlocked(item: NavItem, planFeatures: PlanFeatures | null): boole
   return planUnlocks(planFeatures, item.moduleKey);
 }
 
+/** Human-readable plan name for the sidebar badge (e.g. 'delta_free' → 'Delta Free'). */
+const PLAN_DISPLAY_NAMES: Record<string, string> = {
+  delta_free: 'Delta Free',
+  delta_base: 'Delta Base',
+  delta_plus: 'Delta Plus',
+};
+
+function formatPlanLabel(planKey: string | undefined): string {
+  if (!planKey) return 'Plan activo';
+  return (
+    PLAN_DISPLAY_NAMES[planKey] ??
+    planKey
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  );
+}
+
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -579,7 +597,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                     style={{ color: 'var(--dh-turquoise-700)' }}
                   />
                   <p className="text-xs font-bold" style={{ color: 'var(--dh-turquoise-700)' }}>
-                    {planFeatures?.effective_plan_key ?? 'Plan activo'}
+                    {formatPlanLabel(planFeatures?.effective_plan_key)}
                   </p>
                 </div>
                 {planFeatures && planFeatures.effective_plan_key !== 'delta_plus' && (

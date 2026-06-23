@@ -42,31 +42,38 @@ export function sanitizeMessageContent(content: string): string {
  * Builds the full prompt string sent to the AI provider for the help chat.
  *
  * Structure:
- *   1. System instructions (role, strict rules, anti-off-topic).
- *   2. The role-specific guide, clearly delimited.
- *   3. Conversation history formatted as "Usuario:" / "Asistente:".
- *   4. Closing request for the assistant's reply to the last user message.
+ *   1. System instructions (role, strict rules, plan-awareness, anti-off-topic).
+ *   2. Optional user context block (plan + available/unavailable features) — only
+ *      present when userContext is a non-empty string.
+ *   3. The role-specific guide, clearly delimited.
+ *   4. Conversation history formatted as "Usuario:" / "Asistente:".
+ *   5. Closing request for the assistant's reply to the last user message.
  *
  * User message content is sanitized before embedding to prevent delimiter injection.
  *
  * This function is pure — no side effects, no I/O — which makes it easy to unit test.
  *
- * @param guide   - The full markdown manual for the user's role.
- * @param messages - Ordered conversation turns (last must be role === 'user').
+ * @param guide       - The full markdown manual for the user's role.
+ * @param messages    - Ordered conversation turns (last must be role === 'user').
+ * @param userContext - Optional plan-awareness context; omitted when undefined or empty.
  * @returns A single prompt string ready to be sent to IAiTextGenerator.generate().
  */
-export function buildHelpPrompt(guide: string, messages: ChatMessage[]): string {
-  const systemInstructions = `Eres el asistente de ayuda de Delta Medical CRM.
+export function buildHelpPrompt(
+  guide: string,
+  messages: ChatMessage[],
+  userContext?: string,
+): string {
+  const systemInstructions = `Eres el asistente de ayuda de Delta Medical CRM. Tu única función es ayudar al usuario a usar la aplicación: explicarle con precisión dónde está cada cosa, qué hace cada botón o sección y cómo realizar cada acción, basándote EXCLUSIVAMENTE en el MANUAL incluido más abajo.
 
-Tu ÚNICA función es ayudar al usuario a usar la aplicación, explicándole con detalle dónde está cada cosa, qué hace cada botón/sección y cómo realizar cada acción, basándote EXCLUSIVAMENTE en el MANUAL que se te entrega abajo.
-
-Reglas estrictas que debes seguir SIEMPRE:
-(a) Responde SOLO sobre la aplicación Delta Medical CRM.
-(b) Si te preguntan algo que no tiene que ver con la aplicación (clima, política, salud general, código, otra plataforma, etc.), recházalo cortésmente y reconduce: di que solo puedes ayudar con el uso de la plataforma Delta Medical CRM.
-(c) NO inventes funciones, botones ni rutas que no estén en el manual; si algo no aparece en el manual, di honestamente que no está en la guía disponible y sugiere contactar al soporte de Delta Medical.
-(d) NO ejecutas acciones ni navegas por el usuario; solo indicas con precisión los pasos (ej: 've al menú lateral > Agenda > botón Nueva cita').
-(e) Sé claro, concreto y conciso, en español de Venezuela.
-(f) Si la pregunta es ambigua, pide una aclaración breve antes de responder.`;
+Reglas:
+- Tono PROFESIONAL, claro y conciso. Cordial pero formal. NO uses expresiones informales, coloquialismos ni regionalismos (por ejemplo: 'épale', 'mi pana', 'chévere', 'listo pues'). Evita signos de exclamación innecesarios. Español neutro de Venezuela.
+- Responde SOLO sobre la aplicación Delta Medical CRM. Si te preguntan algo ajeno a la aplicación, declínalo cortésmente y reconduce: indica que solo puedes ayudar con el uso de la plataforma.
+- Usa EXACTAMENTE los nombres de botones, menús y secciones tal como aparecen en el MANUAL. NUNCA inventes ni adaptes nombres de botones, secciones o rutas. Si no estás seguro del nombre exacto de un control, describe su ubicación en lugar de inventar un nombre.
+- Si una funcionalidad no aparece en el manual, dilo con honestidad y sugiere contactar a soporte.
+- No ejecutas acciones ni navegas por el usuario; solo indicas los pasos con precisión.
+- Respeta el plan del usuario: si más abajo aparece un bloque CONTEXTO DEL USUARIO, guía únicamente a través de los módulos DISPONIBLES en su plan. Si el usuario pregunta por un módulo que NO está disponible en su plan, NO le des los pasos como si lo tuviera; explícale que esa función no está incluida en su plan actual y que puede habilitarla mejorando su plan (sección Suscripción / opción Mejorar, en la ruta /doctor/upgrade).
+- Si la pregunta es ambigua, pide una aclaración breve.
+- Usa pasos numerados solo cuando aporten claridad. Sé breve.`;
 
   const historyLines = messages
     .map((msg) => {
@@ -79,8 +86,13 @@ Reglas estrictas que debes seguir SIEMPRE:
     })
     .join('\n');
 
-  return `${systemInstructions}
+  const contextBlock =
+    userContext && userContext.trim()
+      ? `\n===== CONTEXTO DEL USUARIO =====\n${userContext.trim()}\n===== FIN DEL CONTEXTO =====\n`
+      : '';
 
+  return `${systemInstructions}
+${contextBlock}
 ===== MANUAL =====
 ${guide.trim()}
 ===== FIN DEL MANUAL =====

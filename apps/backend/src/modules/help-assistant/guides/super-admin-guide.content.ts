@@ -127,9 +127,10 @@ exporta y se activa/suspende a un especialista.
 - Subtítulo con el total de profesionales registrados y cuántos están activos.
 - Botón **Exportar** — descarga un archivo CSV (especialistas.csv) con la lista de médicos
   (compatible con Excel).
-- Botón **Crear especialista** (modal NewDoctorModal) — abre un formulario para dar de alta a un
-  médico nuevo. Campos: nombre completo, email, especialidad (selector dinámico) y plan. Al
-  guardar se crea la cuenta y el perfil, y se envía un correo de verificación automático.
+- Botón **Nuevo médico** — abre un formulario (titulado "Nuevo médico") para dar de alta a un
+  médico nuevo. Campos: nombre completo, email, especialidad (selector dinámico) y plan. El botón
+  para guardar dice **Crear médico**: al guardar se crea la cuenta y el perfil, y se envía un
+  correo de verificación automático.
 
 **Tarjetas KPI:** Total registrados (y nuevos este mes), Activos (% del total), "+7d sin
 actividad" (posible churn) y Nuevos este mes.
