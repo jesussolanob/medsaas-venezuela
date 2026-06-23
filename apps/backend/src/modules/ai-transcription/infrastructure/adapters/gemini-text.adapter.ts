@@ -102,7 +102,11 @@ export class GeminiTextAdapter implements IAiTextGenerator {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 2048,
+            // gemini-2.5-flash is a "thinking" model: reasoning tokens count against
+            // this budget. 2048 was too low — thinking consumed it and the visible
+            // answer got truncated mid-sentence. 8192 leaves ample room for the reply
+            // (matches the transcription adapter).
+            maxOutputTokens: 8192,
           },
         }),
       });
