@@ -1539,3 +1539,37 @@ con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
 - **Tests**: 54 tests nuevos (7 suites: entities x2, errors x6, use-cases x4, controller x1, pdf-generator x1). Specs de prescriptions/ehr actualizados para incluir `findByConsultation` en mocks. **Total post-módulo: 2348 tests / 302 suites (todos pasan, excluyendo Docker integration).**
 - **Build**: webpack OK (cache hit). **Lint** (módulo aislado): 0 errores, 0 warnings. Lint global SIGSEGV = pre-existing ARM Mac OOM issue, no relacionado.
 - **Diferidos**: frontend (modal doctor + página `/documents/[token]` pública), revoke endpoint, rate limiting 60s en request-code, nombre del doctor en PDF (hoy placeholder `'Dr./Dra.'` — requiere profiles module), QA visual.
+
+## 2026-06-23 — Registrar pago manual (admin) + logout Auth0 real + descuento por ciclo — PUSHEADO
+
+> Sesión de retoma tras corte de internet: el trabajo estaba completo en el working tree sin commitear.
+> Verificado en disco y empujado en 3 commits a `feature/migracion-backend` (auto-deploy Cloud Run).
+
+- **`feat(billing): registrar pago manual de suscripción (admin)` (commit `d1c72b2`)**: el super admin
+  registra un pago recibido por fuera de la app (efectivo/transferencia directa); crea el pago como
+  `approved` y extiende la suscripción del doctor de forma **atómica**, sin pasar por el flujo de
+  comprobantes (distinto de "Aprobaciones", que revisa lo que suben los doctores).
+  - Backend: `RegisterManualPaymentUseCase` (verifica doctor con `IProfileLookupRepository` → `DoctorNotFoundError`/404,
+    calcula `newExpiresAt = now + durationMonths`), método `saveApprovedAndExtend` en
+    `ISubscriptionPaymentRepository` + impl Sequelize (INSERT approved + update period_end + sync profiles +
+    subscription_changes_log, atómico), DTO Zod `RegisterManualPaymentBodySchema` (doctor_id uuid, amount_usd>0,
+    method, duration_months 1–36, reference_number?), endpoint `POST /api/admin/subscription-payments`
+    (`@Roles('super_admin')`), provider en `billing.module`.
+  - Frontend: página `/admin/pagos/registrar` (form: médico, monto USD, meses, método, referencia),
+    BFF `POST /api/admin/subscription-payments` (`requireRole(['super_admin'])`), sidebar admin refactorizado
+    a grupos colapsables con nuevo grupo **"Pagos"** (Aprobaciones + Registrar pago).
+- **`fix(auth): logout real en modo Auth0 + sesión absoluta de 8h` (commit `62e01d1`)**: en `AUTH_MODE=auth0`
+  el logout solo borraba cookies dev-stub (no cerraba la sesión httpOnly del SDK). Ahora doctor/admin/patient/
+  blocked redirigen a `/auth/logout`. `instrumentation.ts` separa `needsIamToken` (GCP IAM, prod) de
+  `needsUserToken` (auth0) → en local-auth0 reenvía el ID token sin requerir IAM. `auth0.ts`: sesión 8h
+  absolutas (`rolling:false`).
+- **`feat(upgrade): mostrar descuento por ciclo de pago` (commit `a92b93c`)**: deriva el % de descuento de un
+  ciclo multi-mes vs pagar mensual × N (descuento embebido en `plan_prices`, sin columna) y lo muestra en el
+  selector de ciclo y por plan.
+- **Verificación en disco**: ✅ backend unit tests 117/117 (suite billing, incluye `RegisterManualPaymentUseCase`
+  - controller spec). ✅ archivos frontend nuevos lint-limpios (los 2 `set-state-in-effect` son de `useEffect`
+    pre-existentes, regla nueva repo-wide). ⚠️ **lint global backend NO corre local** (OOM por typed-linting) →
+    CI lo valida arriba. **BOOT-test NO ejecutado** (RAM) — hay cambio de DI (`RegisterManualPaymentUseCase`),
+    vigilar que el deploy levante (lección 06-22).
+- **PENDIENTE**: confirmar que el deploy de Cloud Run levantó OK (boot/DI); QA visual del flujo de registrar
+  pago (admin → extiende suscripción del doctor); el usuario reinicia sesión con permisos bypaseados para seguir.
