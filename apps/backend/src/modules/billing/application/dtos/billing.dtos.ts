@@ -9,6 +9,26 @@ export const RejectSubscriptionPaymentBodySchema = z.object({
 });
 export type RejectSubscriptionPaymentBody = z.infer<typeof RejectSubscriptionPaymentBodySchema>;
 
+/**
+ * Body for POST /api/admin/subscription-payments — manual payment registration.
+ *
+ * Super admins use this to record a payment that arrived via cash or wire transfer
+ * directly, bypassing the pending-comprobante flow. The subscription is extended
+ * atomically in the same request.
+ */
+export const RegisterManualPaymentBodySchema = z.object({
+  doctor_id: z.string().uuid({ message: 'doctor_id debe ser un UUID válido' }),
+  amount_usd: z.number().positive({ message: 'amount_usd debe ser mayor que cero' }),
+  method: z.string().min(1, { message: 'method no puede estar vacío' }),
+  duration_months: z
+    .number()
+    .int({ message: 'duration_months debe ser un entero' })
+    .min(1, { message: 'duration_months debe ser al menos 1' })
+    .max(36, { message: 'duration_months no puede exceder 36' }),
+  reference_number: z.string().optional(),
+});
+export type RegisterManualPaymentBody = z.infer<typeof RegisterManualPaymentBodySchema>;
+
 // ---------------------------------------------------------------------------
 // Invoices
 // ---------------------------------------------------------------------------

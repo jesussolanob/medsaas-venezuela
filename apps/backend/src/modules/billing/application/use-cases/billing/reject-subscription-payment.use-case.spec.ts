@@ -30,6 +30,7 @@ describe('RejectSubscriptionPaymentUseCase', () => {
       findById: jest.fn(),
       save: jest.fn(),
       approveAndExtend: jest.fn(),
+      saveApprovedAndExtend: jest.fn(),
       reject: jest.fn().mockResolvedValue(undefined),
       getFinanceStats: jest.fn(),
     };

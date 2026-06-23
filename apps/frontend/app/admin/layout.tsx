@@ -28,6 +28,9 @@ import {
   BadgeCheck,
   Stethoscope,
   Mail,
+  Wallet,
+  Plus,
+  ChevronDown,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
@@ -38,18 +41,32 @@ import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
 import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
 
-type AdminNavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
+type NavLeaf = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
+type NavGroup = { name: string; icon: React.ElementType; children: NavLeaf[] };
+type NavEntry = NavLeaf | NavGroup;
 
-// 8 tabs del design (orden del PROMPT.md):
-// Dashboard · Especialistas · Aprobaciones · Pacientes · Finanzas · Suscripciones · Roles · Configuración
-const navItems: AdminNavItem[] = [
+function isNavGroup(entry: NavEntry): entry is NavGroup {
+  return (entry as NavGroup).children !== undefined;
+}
+
+// "Pagos" agrupa todo lo relativo a cobros de suscripción de doctores:
+//   - Aprobaciones: revisar/aprobar comprobantes que suben los doctores.
+//   - Registrar pago: el admin registra un pago manual (efectivo/transferencia directa).
+const navItems: NavEntry[] = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, moduleKey: 'dashboard' },
   { name: 'Especialistas', href: '/admin/doctors', icon: Users, moduleKey: 'doctors' },
   {
-    name: 'Aprobaciones',
-    href: '/admin/aprobaciones',
-    icon: ClipboardCheck,
-    moduleKey: 'approvals',
+    name: 'Pagos',
+    icon: Wallet,
+    children: [
+      {
+        name: 'Aprobaciones',
+        href: '/admin/aprobaciones',
+        icon: ClipboardCheck,
+        moduleKey: 'approvals',
+      },
+      { name: 'Registrar pago', href: '/admin/pagos/registrar', icon: Plus },
+    ],
   },
   { name: 'Pacientes', href: '/admin/patients', icon: UsersRound, moduleKey: 'patients' },
   { name: 'Finanzas', href: '/admin/finanzas', icon: TrendingUp }, // sin gating: no hay módulo 'finances' para admin en el seed (beta)
@@ -86,6 +103,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const [pinned, setPinned] = useState(true);
   const [hovered, setHovered] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (name: string) =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+  const isLeafVisible = (leaf: NavLeaf) =>
+    caps === null || !leaf.moduleKey || can(caps, leaf.moduleKey, 'view');
 
   useEffect(() => {
     try {
@@ -113,13 +142,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const sidebarVisible = pinned || hovered;
 
   function handleLogout() {
-    // ETAPA 1: limpiar cookies del dev-stub. Fase 4: signOut de Auth0.
+    // En Auth0, delegar al SDK logout: limpia la sesión httpOnly y pasa por
+    // el /v2/logout de Auth0. Sin esto, borrar las cookies dev-stub no cierra
+    // la sesión real y el usuario seguía autenticado.
+    if (process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0') {
+      window.location.href = '/auth/logout';
+      return;
+    }
+    // Dev-stub: limpiar cookies y volver al login.
     document.cookie = 'dev_user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     document.cookie = 'dev_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     router.push('/login');
   }
 
-  const activeTitle = navItems.find((n) => isPathActive(pathname, n.href))?.name ?? 'Admin';
+  const allLeaves: NavLeaf[] = navItems.flatMap((e) => (isNavGroup(e) ? e.children : [e]));
+  const activeTitle = allLeaves.find((n) => isPathActive(pathname, n.href))?.name ?? 'Admin';
 
   return (
     <>
@@ -222,16 +259,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {navItems
-              .filter(
-                (item) => caps === null || !item.moduleKey || can(caps, item.moduleKey, 'view'),
-              )
-              .map((item) => {
-                const active = isPathActive(pathname, item.href);
+            {navItems.map((entry) => {
+              // Leaf item
+              if (!isNavGroup(entry)) {
+                if (!isLeafVisible(entry)) return null;
+                const active = isPathActive(pathname, entry.href);
                 return (
                   <Link
-                    key={item.name}
-                    href={item.href}
+                    key={entry.name}
+                    href={entry.href}
                     onClick={() => setMobileOpen(false)}
                     className={clsx(
                       'flex items-center gap-3 px-3.5 py-2.5 text-sm rounded-[var(--dh-r-md)] transition-all',
@@ -242,11 +278,70 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       fontWeight: active ? 600 : 500,
                     }}
                   >
-                    <item.icon className="w-[18px] h-[18px] shrink-0" />
-                    {item.name}
+                    <entry.icon className="w-[18px] h-[18px] shrink-0" />
+                    {entry.name}
                   </Link>
                 );
-              })}
+              }
+
+              // Group with collapsible children
+              const visibleChildren = entry.children.filter(isLeafVisible);
+              if (visibleChildren.length === 0) return null;
+              const anyChildActive = visibleChildren.some((c) => isPathActive(pathname, c.href));
+              const expanded = openGroups.has(entry.name) || anyChildActive;
+
+              return (
+                <div key={entry.name}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(entry.name)}
+                    aria-expanded={expanded}
+                    className="flex items-center gap-3 px-3.5 py-2.5 w-full text-sm rounded-[var(--dh-r-md)] transition-all"
+                    style={{
+                      color: anyChildActive ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
+                      fontWeight: anyChildActive ? 600 : 500,
+                    }}
+                  >
+                    <entry.icon className="w-[18px] h-[18px] shrink-0" />
+                    <span className="flex-1 text-left">{entry.name}</span>
+                    <ChevronDown
+                      className={clsx(
+                        'w-4 h-4 shrink-0 transition-transform',
+                        expanded && 'rotate-180',
+                      )}
+                    />
+                  </button>
+                  {expanded && (
+                    <div
+                      className="mt-0.5 ml-[18px] pl-3 space-y-0.5"
+                      style={{ borderLeft: '1px solid var(--dh-gray-100)' }}
+                    >
+                      {visibleChildren.map((child) => {
+                        const active = isPathActive(pathname, child.href);
+                        return (
+                          <Link
+                            key={child.name}
+                            href={child.href}
+                            onClick={() => setMobileOpen(false)}
+                            className={clsx(
+                              'flex items-center gap-3 px-3.5 py-2 text-[13px] rounded-[var(--dh-r-md)] transition-all',
+                              active && 'nav-item-active',
+                            )}
+                            style={{
+                              color: active ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
+                              fontWeight: active ? 600 : 500,
+                            }}
+                          >
+                            <child.icon className="w-4 h-4 shrink-0" />
+                            {child.name}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </nav>
 
           {/* Footer: status + logout */}

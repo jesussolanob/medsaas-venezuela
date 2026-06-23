@@ -28,6 +28,7 @@ import { SequelizeProfileLookupRepository } from './infrastructure/database/repo
 import { ListSubscriptionPaymentsUseCase } from './application/use-cases/billing/list-subscription-payments.use-case';
 import { ApproveSubscriptionPaymentUseCase } from './application/use-cases/billing/approve-subscription-payment.use-case';
 import { RejectSubscriptionPaymentUseCase } from './application/use-cases/billing/reject-subscription-payment.use-case';
+import { RegisterManualPaymentUseCase } from './application/use-cases/billing/register-manual-payment.use-case';
 import { CreateInvoiceUseCase } from './application/use-cases/billing/create-invoice.use-case';
 import { ListInvoicesUseCase } from './application/use-cases/billing/list-invoices.use-case';
 import { MarkInvoicePaidUseCase } from './application/use-cases/billing/mark-invoice-paid.use-case';
@@ -98,6 +99,7 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
     ListSubscriptionPaymentsUseCase,
     ApproveSubscriptionPaymentUseCase,
     RejectSubscriptionPaymentUseCase,
+    RegisterManualPaymentUseCase,
 
     // Use cases — invoices
     CreateInvoiceUseCase,

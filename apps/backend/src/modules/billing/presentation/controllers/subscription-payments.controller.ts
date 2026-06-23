@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
@@ -10,10 +10,13 @@ import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation
 import {
   RejectSubscriptionPaymentBodySchema,
   type RejectSubscriptionPaymentBody,
+  RegisterManualPaymentBodySchema,
+  type RegisterManualPaymentBody,
 } from '../../application/dtos/billing.dtos';
 import { ListSubscriptionPaymentsUseCase } from '../../application/use-cases/billing/list-subscription-payments.use-case';
 import { ApproveSubscriptionPaymentUseCase } from '../../application/use-cases/billing/approve-subscription-payment.use-case';
 import { RejectSubscriptionPaymentUseCase } from '../../application/use-cases/billing/reject-subscription-payment.use-case';
+import { RegisterManualPaymentUseCase } from '../../application/use-cases/billing/register-manual-payment.use-case';
 import { GetFinanceStatsUseCase } from '../../application/use-cases/billing/get-finance-stats.use-case';
 import type { SubscriptionPaymentStatus } from '../../domain/entities/subscription-payment.entity';
 
@@ -36,6 +39,7 @@ interface PaginatedResponse<T> {
  * All endpoints require AppAuthGuard + RolesGuard with 'super_admin'.
  *
  * Routes:
+ *   POST /api/admin/subscription-payments         — register manual payment (super_admin)
  *   GET  /api/admin/subscription-payments         — paginated payment list
  *   PUT  /api/admin/subscription-payments/:id/approve
  *   PUT  /api/admin/subscription-payments/:id/reject
@@ -49,8 +53,34 @@ export class SubscriptionPaymentsController {
     private readonly listPayments: ListSubscriptionPaymentsUseCase,
     private readonly approvePayment: ApproveSubscriptionPaymentUseCase,
     private readonly rejectPayment: RejectSubscriptionPaymentUseCase,
+    private readonly registerManualPayment: RegisterManualPaymentUseCase,
     private readonly getFinanceStatsUseCase: GetFinanceStatsUseCase,
   ) {}
+
+  /**
+   * POST /api/admin/subscription-payments
+   *
+   * Registers a payment that was collected manually (cash, wire transfer, etc.)
+   * and extends the doctor's subscription atomically — no comprobante flow needed.
+   *
+   * Body: { doctor_id, amount_usd, method, duration_months, reference_number? }
+   */
+  @Post('subscription-payments')
+  async registerManual(
+    @Body(new ZodValidationPipe(RegisterManualPaymentBodySchema))
+    body: RegisterManualPaymentBody,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<unknown>> {
+    const result = await this.registerManualPayment.execute({
+      doctorId: body.doctor_id,
+      amountUsd: body.amount_usd,
+      method: body.method,
+      durationMonths: body.duration_months,
+      referenceNumber: body.reference_number,
+      reviewerId: user.sub,
+    });
+    return { success: true, data: this.toOutput(result) };
+  }
 
   /**
    * GET /api/admin/subscription-payments?status=pending|approved|rejected

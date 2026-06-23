@@ -65,6 +65,22 @@ export interface CreateSubscriptionPaymentParams {
   durationMonths: number;
 }
 
+/**
+ * Parameters for creating a manually-registered (already-approved) payment
+ * and extending the subscription atomically.
+ */
+export interface SaveApprovedAndExtendParams {
+  id: string;
+  doctorId: string;
+  amountUsd: number;
+  method: string;
+  referenceNumber: string | null;
+  durationMonths: number;
+  reviewerId: string;
+  reviewedAt: Date;
+  newExpiresAt: Date;
+}
+
 export interface ApproveSubscriptionPaymentParams {
   paymentId: string;
   reviewerId: string;
@@ -128,6 +144,22 @@ export interface ISubscriptionPaymentRepository {
       actorRole: string;
     },
   ): Promise<void>;
+
+  /**
+   * Creates a new subscription payment with status='approved' AND extends the
+   * subscription in a single transaction. Also inserts a subscription_changes_log entry.
+   *
+   * Used for manual payments registered directly by a super_admin (e.g. cash / wire transfer).
+   *
+   * Steps (atomic):
+   *   1. INSERT subscription_payment with status='approved'
+   *   2. Update subscriptions.current_period_end = newExpiresAt
+   *   3. Sync profiles snapshot (subscription_status='active', subscription_expires_at)
+   *   4. INSERT subscription_changes_log
+   *
+   * Returns the persisted SubscriptionPayment domain entity.
+   */
+  saveApprovedAndExtend(params: SaveApprovedAndExtendParams): Promise<SubscriptionPayment>;
 
   /**
    * Rejects a subscription payment (status, reviewed_by, reviewed_at).

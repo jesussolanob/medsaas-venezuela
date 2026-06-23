@@ -7,6 +7,7 @@ import type {
   ISubscriptionPaymentRepository,
   CreateSubscriptionPaymentParams,
   ApproveSubscriptionPaymentParams,
+  SaveApprovedAndExtendParams,
   SubscriptionPaymentListFilters,
   SubscriptionPaymentListResult,
   FinanceStats,
@@ -166,6 +167,77 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
     }
   }
 
+  async saveApprovedAndExtend(params: SaveApprovedAndExtendParams): Promise<SubscriptionPayment> {
+    const t = await this.sequelize.transaction();
+
+    try {
+      const now = params.reviewedAt;
+
+      // 1. INSERT payment with status='approved' directly.
+      const created = await this.model.create(
+        {
+          id: params.id,
+          doctorId: params.doctorId,
+          amountUsd: params.amountUsd,
+          method: params.method,
+          referenceNumber: params.referenceNumber,
+          durationMonths: params.durationMonths,
+          status: 'approved' as SubscriptionPaymentStatus,
+          reviewedBy: params.reviewerId,
+          reviewedAt: now,
+        },
+        { transaction: t },
+      );
+
+      // 2. Extend subscriptions.current_period_end.
+      await this.subscriptionModel.update(
+        {
+          status: 'active',
+          currentPeriodEnd: params.newExpiresAt,
+          updatedAt: now,
+        },
+        { where: { doctorId: params.doctorId }, transaction: t },
+      );
+
+      // 3. Sync profiles snapshot.
+      await this.profileModel.update(
+        {
+          subscriptionStatus: 'active',
+          subscriptionExpiresAt: params.newExpiresAt,
+          updatedAt: now,
+        },
+        { where: { id: params.doctorId }, transaction: t },
+      );
+
+      // 4. INSERT subscription_changes_log.
+      await this.logModel.create(
+        {
+          id: randomUUID(),
+          doctorId: params.doctorId,
+          action: 'payment_approved',
+          actorId: params.reviewerId,
+          actorRole: 'super_admin',
+          reason: null,
+          subscriptionExpiresAt: params.newExpiresAt,
+          metadata: {
+            amount_usd: params.amountUsd,
+            method: params.method,
+            reference: params.referenceNumber,
+            months_added: params.durationMonths,
+            manual_registration: true,
+          },
+        },
+        { transaction: t },
+      );
+
+      await t.commit();
+      return this.rowToDomain(created);
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
   async reject(paymentId: string, reviewerId: string, reason?: string): Promise<void> {
     const now = new Date();
 
@@ -272,7 +344,20 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
     }
 
     // --- Month buckets (last 6 months, approved payments) ---
-    const SPANISH_MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const SPANISH_MONTHS = [
+      'Ene',
+      'Feb',
+      'Mar',
+      'Abr',
+      'May',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dic',
+    ];
     const sixMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
 
     interface BucketRow {

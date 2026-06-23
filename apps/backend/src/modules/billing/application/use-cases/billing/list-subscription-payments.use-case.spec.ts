@@ -28,6 +28,7 @@ describe('ListSubscriptionPaymentsUseCase', () => {
       findById: jest.fn(),
       save: jest.fn(),
       approveAndExtend: jest.fn(),
+      saveApprovedAndExtend: jest.fn(),
       reject: jest.fn(),
       getFinanceStats: jest.fn(),
     };

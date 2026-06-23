@@ -40,6 +40,7 @@ const makeRepo = (): jest.Mocked<ISubscriptionPaymentRepository> =>
     findById: jest.fn(),
     save: jest.fn(),
     approveAndExtend: jest.fn(),
+    saveApprovedAndExtend: jest.fn(),
     reject: jest.fn(),
     getFinanceStats: jest.fn().mockResolvedValue(makeStats()),
   }) as jest.Mocked<ISubscriptionPaymentRepository>;
@@ -60,12 +61,7 @@ describe('GetFinanceStatsUseCase', () => {
     expect(result.mtdRevenue).toBe(300);
     expect(result.momChange).toBe(50);
     expect(repo.getFinanceStats).toHaveBeenCalledTimes(1);
-    expect(redis.set).toHaveBeenCalledWith(
-      'admin:finance-stats',
-      expect.any(String),
-      'EX',
-      120,
-    );
+    expect(redis.set).toHaveBeenCalledWith('admin:finance-stats', expect.any(String), 'EX', 120);
   });
 
   it('returns from cache and skips repo when cache hit', async () => {
