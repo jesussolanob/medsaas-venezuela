@@ -41,6 +41,13 @@ const PERIOD_LABELS: Record<Period, string> = {
   annual: 'Anual',
 };
 
+const PERIOD_MONTHS: Record<Period, number> = {
+  monthly: 1,
+  quarterly: 3,
+  semiannual: 6,
+  annual: 12,
+};
+
 /**
  * Fallback labels for feature keys when the backend does not send a feature_label.
  * NOT used as the primary source of truth — backend's feature_label field takes
@@ -83,6 +90,28 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
   function getPriceForPeriod(plan: Plan, period: Period): number | null {
     const price = plan.prices.find((p) => p.period === period && p.is_active);
     return price ? price.price_usd : null;
+  }
+
+  // Discount implied by a multi-month period vs paying monthly × N months.
+  // The discount is baked into plan_prices (no separate column), so we derive it.
+  function getDiscountPct(plan: Plan, period: Period): number | null {
+    if (period === 'monthly') return null;
+    const monthly = getPriceForPeriod(plan, 'monthly');
+    const periodPrice = getPriceForPeriod(plan, period);
+    if (monthly == null || periodPrice == null || monthly <= 0) return null;
+    const fullPrice = monthly * PERIOD_MONTHS[period];
+    if (periodPrice >= fullPrice) return null;
+    return Math.round((1 - periodPrice / fullPrice) * 100);
+  }
+
+  // Best discount available for a period across all plans (for the period selector).
+  function getMaxDiscountForPeriod(period: Period): number | null {
+    let max = 0;
+    for (const plan of plans) {
+      const d = getDiscountPct(plan, period);
+      if (d && d > max) max = d;
+    }
+    return max > 0 ? max : null;
   }
 
   function isFeatureEnabled(plan: Plan, featureKey: string): boolean {
@@ -177,19 +206,30 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
       {availablePeriods.length > 1 && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-slate-500 font-medium mr-1">Ciclo de pago:</span>
-          {availablePeriods.map((period) => (
-            <button
-              key={period}
-              onClick={() => setSelectedPeriod(period)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                effectivePeriod === period
-                  ? 'bg-teal-500 text-white'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-300'
-              }`}
-            >
-              {PERIOD_LABELS[period]}
-            </button>
-          ))}
+          {availablePeriods.map((period) => {
+            const disc = getMaxDiscountForPeriod(period);
+            const isActive = effectivePeriod === period;
+            return (
+              <button
+                key={period}
+                onClick={() => setSelectedPeriod(period)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                  isActive
+                    ? 'bg-teal-500 text-white'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:border-teal-300'
+                }`}
+              >
+                {PERIOD_LABELS[period]}
+                {disc ? (
+                  <span
+                    className={`ml-1.5 text-[11px] font-bold ${isActive ? 'text-white' : 'text-emerald-600'}`}
+                  >
+                    -{disc}%
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -246,12 +286,28 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                       <span className="text-sm text-slate-500 ml-1">para siempre</span>
                     </div>
                   ) : price !== null ? (
-                    <div>
-                      <span className="text-2xl font-bold text-slate-800">${price}</span>
-                      <span className="text-sm text-slate-500 ml-1">
-                        USD / {PERIOD_LABELS[effectivePeriod]?.toLowerCase()}
-                      </span>
-                    </div>
+                    (() => {
+                      const discount = getDiscountPct(plan, effectivePeriod);
+                      const months = PERIOD_MONTHS[effectivePeriod];
+                      return (
+                        <div>
+                          <span className="text-2xl font-bold text-slate-800">${price}</span>
+                          <span className="text-sm text-slate-500 ml-1">
+                            USD / {PERIOD_LABELS[effectivePeriod]?.toLowerCase()}
+                          </span>
+                          {discount ? (
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-100">
+                                Ahorra {discount}%
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                ≈ ${(price / months).toFixed(0)}/mes
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()
                   ) : (
                     <span className="text-sm text-slate-400">Precio no disponible</span>
                   )}
