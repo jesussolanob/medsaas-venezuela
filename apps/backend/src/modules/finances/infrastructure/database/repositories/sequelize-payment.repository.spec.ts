@@ -318,6 +318,74 @@ describe('SequelizePaymentRepository', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // listForDoctor
+  // ---------------------------------------------------------------------------
+  describe('listForDoctor()', () => {
+    /** Minimal raw row as Sequelize would return it from the JOIN query. */
+    const makeListRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'pay-001',
+      payment_code: 'BK-001',
+      amount_usd: '30.00',
+      amount_bs: null,
+      status: 'pending',
+      paid_at: null,
+      method_snapshot: 'pago_movil',
+      created_at: '2026-06-01T00:00:00.000Z',
+      appt_id: 'appt-001',
+      appointment_code: 'BK-20260601-001',
+      scheduled_at: '2026-06-01T10:00:00.000Z',
+      patient_name: 'María López',
+      patient_phone: '+58412345678',
+      plan_name: 'Consulta General',
+      payment_receipt_url: null,
+      consultation_id: null,
+      consultation_code: null,
+      ...overrides,
+    });
+
+    it('maps patient_phone from the appointment join into patientPhone', async () => {
+      mockSequelize.query.mockResolvedValue([makeListRow()]);
+
+      const results = await repo.listForDoctor({ doctorId: 'doc-001' });
+      const first = results[0];
+
+      expect(results).toHaveLength(1);
+      expect(first).toBeDefined();
+      expect(first?.appointment?.patientPhone).toBe('+58412345678');
+    });
+
+    it('sets patientPhone to null when patient_phone is absent in the row', async () => {
+      mockSequelize.query.mockResolvedValue([makeListRow({ patient_phone: null })]);
+
+      const results = await repo.listForDoctor({ doctorId: 'doc-001' });
+      const first = results[0];
+
+      expect(first).toBeDefined();
+      expect(first?.appointment?.patientPhone).toBeNull();
+    });
+
+    it('sets appointment to null when appt_id is null', async () => {
+      mockSequelize.query.mockResolvedValue([
+        makeListRow({ appt_id: null, appointment_code: null, scheduled_at: null }),
+      ]);
+
+      const results = await repo.listForDoctor({ doctorId: 'doc-001' });
+      const first = results[0];
+
+      expect(first).toBeDefined();
+      expect(first?.appointment).toBeNull();
+    });
+
+    it('returns an empty array when the query returns no rows', async () => {
+      mockSequelize.query.mockResolvedValue([]);
+
+      const results = await repo.listForDoctor({ doctorId: 'doc-001' });
+
+      expect(results).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // listItems
   // ---------------------------------------------------------------------------
   describe('listItems()', () => {

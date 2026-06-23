@@ -60,6 +60,12 @@ interface PaymentOutput {
     appointment_code: string | null;
     scheduled_at: string;
     patient_name: string | null;
+    /**
+     * Plain-text phone snapshot from appointments.patient_phone.
+     * Used by the frontend to build a WhatsApp link (MVP 7.10).
+     * This is the snapshot stored at booking time — not from patients.*
+     */
+    patient_phone: string | null;
     plan_name: string | null;
     payment_receipt_url: string | null;
     consultation_id: string | null;
@@ -106,6 +112,7 @@ function toPaymentOutput(p: PaymentWithRelations): PaymentOutput {
           appointment_code: p.appointment.appointmentCode,
           scheduled_at: p.appointment.scheduledAt.toISOString(),
           patient_name: p.appointment.patientName,
+          patient_phone: p.appointment.patientPhone,
           plan_name: p.appointment.planName,
           payment_receipt_url: p.appointment.paymentReceiptUrl,
           consultation_id: p.appointment.consultationId,

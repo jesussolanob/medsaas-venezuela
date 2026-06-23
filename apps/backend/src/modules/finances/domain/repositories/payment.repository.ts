@@ -21,6 +21,8 @@ export interface PaymentWithRelations {
     appointmentCode: string | null;
     scheduledAt: Date;
     patientName: string | null;
+    /** Plain-text phone snapshot from appointments.patient_phone. Used to build WhatsApp links. */
+    patientPhone: string | null;
     planName: string | null;
     paymentReceiptUrl: string | null;
     consultationId: string | null;

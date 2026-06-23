@@ -31,6 +31,8 @@ interface PaymentListRow {
   appointment_code: string | null;
   scheduled_at: string | null;
   patient_name: string | null;
+  /** Plain-text phone snapshot from appointments.patient_phone. */
+  patient_phone: string | null;
   plan_name: string | null;
   payment_receipt_url: string | null;
   consultation_id: string | null;
@@ -99,6 +101,7 @@ export class SequelizePaymentRepository implements IPaymentRepository {
          a.appointment_code,
          a.scheduled_at,
          a.patient_name,
+         a.patient_phone,
          a.plan_name,
          a.payment_receipt_url,
          a.consultation_id,
@@ -445,6 +448,7 @@ export class SequelizePaymentRepository implements IPaymentRepository {
             appointmentCode: r.appointment_code,
             scheduledAt: new Date(r.scheduled_at!),
             patientName: r.patient_name,
+            patientPhone: r.patient_phone ?? null,
             planName: r.plan_name,
             paymentReceiptUrl: r.payment_receipt_url,
             consultationId: r.consultation_id,

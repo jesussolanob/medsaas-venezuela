@@ -21,6 +21,8 @@ import {
 } from '@/app/doctor/finances/payments-actions';
 import { formatPaymentMethod } from '@/lib/payment-methods';
 import { buildReceiptHtml } from '@/lib/receipt-pdf';
+import { waLink } from '@/lib/phone-utils';
+import { getDoctorProfile } from '@/app/doctor/actions';
 import {
   getServicesForModal,
   getDoctorProfileForReceipt,
@@ -48,6 +50,7 @@ import {
   ExternalLink,
   Upload,
   Plus,
+  MessageSquare,
 } from 'lucide-react';
 
 type CobrosTab = 'pending' | 'approved';
@@ -62,6 +65,8 @@ type Payment = {
   scheduled_at: string;
   appointment_code?: string;
   payment_receipt_url?: string | null;
+  /** Texto plano desde el backend (7.10). NUNCA loguear. Puede ser null. */
+  patient_phone?: string | null;
   _source?: 'appointment' | 'consultation';
 };
 
@@ -101,6 +106,13 @@ export default function CobrosPage() {
   >([]);
   const [addingItem, setAddingItem] = useState(false);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
+
+  // 7.10: métodos de pago del doctor para el mensaje de WhatsApp
+  const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([]);
+  const [doctorPaymentDetails, setDoctorPaymentDetails] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const [sendingWa, setSendingWa] = useState(false);
 
   async function handleReceiptUpload(file: File) {
     if (!selectedPayment) return;
@@ -171,6 +183,8 @@ export default function CobrosPage() {
           p.payment_code ||
           '',
         payment_receipt_url: p.appointment?.payment_receipt_url || null,
+        // 7.10: teléfono del paciente para WhatsApp. Puede ser null.
+        patient_phone: p.appointment?.patient_phone ?? null,
         _source: 'appointment' as const,
       })),
     );
@@ -180,6 +194,21 @@ export default function CobrosPage() {
   useEffect(() => {
     fetchPayments();
   }, [fetchPayments]);
+
+  // 7.10: cargar datos de pago del doctor una sola vez al montar
+  useEffect(() => {
+    let cancelled = false;
+    getDoctorProfile().then((prof) => {
+      if (cancelled || !prof) return;
+      setDoctorPaymentMethods((prof.paymentMethods as string[] | null) ?? []);
+      setDoctorPaymentDetails(
+        (prof.paymentDetails as Record<string, Record<string, string>> | null) ?? {},
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // NOTE (Etapa 1): Supabase Realtime was removed — no WebSocket layer in Etapa 1.
   // fetchPayments() is called after every mutation (approve, add item, receipt upload)
@@ -436,6 +465,118 @@ export default function CobrosPage() {
       setTimeout(() => setActionToast(null), 3500);
     } finally {
       setUpdatingStatus(false);
+    }
+  }
+
+  // 7.10: construye el texto del mensaje de cobro por WhatsApp
+  function buildWhatsAppMessage(payment: Payment): string {
+    const amountUsd = payment.plan_price ?? 0;
+    const amountBs = bcvRate ? amountUsd * bcvRate : null;
+    const service = payment.plan_name || 'consulta médica';
+    const code = payment.appointment_code ? ` (Ref. ${payment.appointment_code})` : '';
+
+    const usdStr = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+    }).format(amountUsd);
+
+    const bsStr = amountBs
+      ? new Intl.NumberFormat('es-VE', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amountBs) + ' Bs'
+      : null;
+
+    const amountLine = bsStr
+      ? `*Monto:* ${usdStr} USD (${bsStr}${bcvRate ? ` | Tasa BCV: ${bcvRate.toFixed(2)} Bs/$` : ''})`
+      : `*Monto:* ${usdStr} USD`;
+
+    // Formatear métodos de pago del doctor
+    const PAYMENT_LABELS: Record<string, string> = {
+      pago_movil: 'Pago Móvil',
+      transferencia: 'Transferencia Bancaria',
+      zelle: 'Zelle',
+      binance: 'Binance Pay',
+      cash_usd: 'Efectivo USD',
+      cash_bs: 'Efectivo Bs',
+      pos: 'Punto de venta (POS)',
+    };
+
+    const paymentLines: string[] = [];
+    for (const methodId of doctorPaymentMethods) {
+      const label = PAYMENT_LABELS[methodId] ?? methodId;
+      const details = doctorPaymentDetails[methodId];
+
+      if (!details || Object.keys(details).length === 0) {
+        paymentLines.push(`• *${label}*`);
+        continue;
+      }
+
+      const parts: string[] = [];
+      if (methodId === 'pago_movil') {
+        if (details.phone) parts.push(`Tlf: ${details.phone}`);
+        if (details.bank) parts.push(`Banco: ${details.bank}`);
+        if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
+        if (details.holder) parts.push(`Titular: ${details.holder}`);
+      } else if (methodId === 'transferencia') {
+        if (details.bank) parts.push(`Banco: ${details.bank}`);
+        if (details.account) parts.push(`Cuenta: ${details.account}`);
+        if (details.account_type) parts.push(`Tipo: ${details.account_type}`);
+        if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
+        if (details.holder) parts.push(`Titular: ${details.holder}`);
+      } else if (methodId === 'zelle') {
+        if (details.email) parts.push(`Email: ${details.email}`);
+        if (details.holder) parts.push(`Nombre: ${details.holder}`);
+        if (details.bank) parts.push(`Banco: ${details.bank}`);
+      } else if (methodId === 'binance') {
+        if (details.binance_id) parts.push(`ID: ${details.binance_id}`);
+        if (details.email) parts.push(`Email: ${details.email}`);
+      } else if (methodId === 'pos') {
+        if (details.bank) parts.push(`Banco del POS: ${details.bank}`);
+      }
+
+      paymentLines.push(`• *${label}:* ${parts.join(' | ')}`);
+    }
+
+    const noMethodsNote =
+      paymentLines.length === 0
+        ? '\n_No tienes métodos de pago configurados. Configúralos en Ajustes > Métodos de pago._'
+        : '';
+
+    const paymentSection =
+      paymentLines.length > 0 ? `\n\n*Datos de pago:*\n${paymentLines.join('\n')}` : noMethodsNote;
+
+    return (
+      `Hola ${payment.patient_name}, le escribo del consultorio para recordarle el pago pendiente de su ${service}${code}.\n\n` +
+      `${amountLine}${paymentSection}\n\n` +
+      `Por favor, confirme el pago una vez realizado. Quedamos atentos a cualquier consulta.`
+    );
+  }
+
+  // 7.10: abre WhatsApp con el mensaje de cobro
+  function handleWhatsApp(payment: Payment) {
+    if (!payment.patient_phone) {
+      showToast({
+        type: 'error',
+        message: 'El paciente no tiene un teléfono válido registrado',
+      });
+      return;
+    }
+    setSendingWa(true);
+    try {
+      const message = buildWhatsAppMessage(payment);
+      const link = waLink(payment.patient_phone, message);
+      if (!link) {
+        showToast({
+          type: 'error',
+          message: 'El teléfono del paciente no es válido para WhatsApp',
+        });
+        return;
+      }
+      window.open(link, '_blank', 'noopener,noreferrer');
+    } finally {
+      setSendingWa(false);
     }
   }
 
@@ -909,6 +1050,28 @@ export default function CobrosPage() {
 
               {/* RONDA 34 — Botones de acciones extra */}
               <div className="space-y-2 pt-3 border-t border-slate-100">
+                {/* 7.10: Cobrar por WhatsApp — solo para pagos pendientes */}
+                {selectedPayment.status === 'pending' && (
+                  <button
+                    onClick={() => handleWhatsApp(selectedPayment)}
+                    disabled={sendingWa || !selectedPayment.patient_phone}
+                    title={
+                      !selectedPayment.patient_phone
+                        ? 'El paciente no tiene teléfono registrado'
+                        : 'Enviar mensaje de cobro por WhatsApp'
+                    }
+                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+                      selectedPayment.patient_phone
+                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    {selectedPayment.patient_phone
+                      ? 'Cobrar por WhatsApp'
+                      : 'Sin teléfono registrado'}
+                  </button>
+                )}
                 <button
                   onClick={openAddItemModal}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-sm font-semibold text-slate-600 hover:border-teal-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"

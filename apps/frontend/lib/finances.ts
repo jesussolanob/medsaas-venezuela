@@ -34,6 +34,8 @@ export type PaymentRow = {
     plan_name: string | null;
     payment_receipt_url: string | null;
     consultation_id: string | null;
+    /** Texto plano. Viene del backend desde 7.10. NUNCA loguear (PII). */
+    patient_phone?: string | null;
   } | null;
   consultation?: {
     consultation_code: string | null;

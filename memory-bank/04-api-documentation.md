@@ -169,14 +169,14 @@
 
 > Fuente de verdad financiera (cobros/dashboard/finanzas). doctorId de `user.sub`.
 
-| Endpoint                                   | Método | Notas                                                                                                                           |
-| ------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/finances/payments`                   | GET    | Lista del doctor con joins appointment+consultation. Filtros status/from_date/to_date. Forma = `PaymentRow` de lib/finances.ts. |
-| `/api/finances/payments/totals`            | GET    | KPIs {approvedUsd,pendingUsd,approvedCount,pendingCount}.                                                                       |
-| `/api/finances/payments/:id/status`        | PUT    | {status:'pending'\|'approved'}. Sincroniza `consultations.payment_status`.                                                      |
-| `/api/finances/payments/:id/items`         | GET    | Line-items del pago.                                                                                                            |
-| `/api/finances/payments/:id/items`         | POST   | {name,amount_usd,source_type?,source_id?}. Recalcula total + appointment.plan_price.                                            |
-| `/api/finances/payments/:id/items/:itemId` | DELETE | Borra item + recalcula.                                                                                                         |
+| Endpoint                                   | Método | Notas                                                                                                                                                                                                                    |
+| ------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/finances/payments`                   | GET    | Lista del doctor con joins appointment+consultation. Filtros status/from_date/to_date. Forma = `PaymentRow` de lib/finances.ts. (7.10) incluye `patient_phone` (texto plano, sin enmascarar) para el cobro por WhatsApp. |
+| `/api/finances/payments/totals`            | GET    | KPIs {approvedUsd,pendingUsd,approvedCount,pendingCount}.                                                                                                                                                                |
+| `/api/finances/payments/:id/status`        | PUT    | {status:'pending'\|'approved'}. Sincroniza `consultations.payment_status`.                                                                                                                                               |
+| `/api/finances/payments/:id/items`         | GET    | Line-items del pago.                                                                                                                                                                                                     |
+| `/api/finances/payments/:id/items`         | POST   | {name,amount_usd,source_type?,source_id?}. Recalcula total + appointment.plan_price.                                                                                                                                     |
+| `/api/finances/payments/:id/items/:itemId` | DELETE | Borra item + recalcula.                                                                                                                                                                                                  |
 
 > CreateBooking crea la fila `payments` (status pending) y enlaza `appointments.payment_id`.
 > Diferido Fase 5: subida de comprobante (storage→GCS), realtime, PDF de recibo.

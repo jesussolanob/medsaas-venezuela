@@ -2,6 +2,14 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-23 — MVP 7.10: cobro por WhatsApp
+
+- **7.10 ✅ (backend + frontend):** botón "Cobrar por WhatsApp" en `/doctor/cobros` (drawer de detalle, solo pagos `pending`). Abre `wa.me` del paciente con un mensaje pre-formateado: saludo + **monto USD + Bs** (tasa BCV) + referencia (`plan_name`/`appointment_code`) + **datos de pago del doctor** (Pago Móvil/transferencia/Zelle/Binance/POS formateados desde `paymentDetails`). **NO hay pasarela ni link de pago** (aclaración del usuario): el paciente paga manual. Reusa el helper `lib/phone-utils.ts` (`waLink`).
+  - **Backend (chico):** `GET /api/finances/payments` ahora devuelve `patient_phone` (en el bloque `appointment`). `appointments.patient_phone` es **texto plano** (no cifrado); la agenda lo enmascara en presentación, cobros lo devuelve completo (necesario para wa.me, consistente con consultas). Owner-scoped, sin logging de PII. 372 tests, build EXIT 0. **Security APROBADO** (0 CRIT/HIGH; 1 MEDIUM = teléfono completo en lista vs endpoint dedicado+audit-log, deuda aceptada por precedente de consultas).
+  - **Frontend:** `patient_phone` en el type `Payment`; carga `paymentMethods`/`paymentDetails` vía `getDoctorProfile()`; botón deshabilitado "Sin teléfono registrado" si no hay teléfono; toast si el número es inválido para VE; nota si el doctor no tiene métodos configurados. tsc + build EXIT 0.
+  - **Shape real `paymentDetails`** = `Record<string, Record<string,string>>` por método: pago_movil `{bank,phone,id_number,holder}`, transferencia `{bank,account,account_type,id_number,holder}`, zelle `{email,holder,bank}`, binance `{binance_id,email}`, pos `{bank}`, cash_usd/cash_bs (solo presencia).
+  - **Omitido (no pedido):** el "filtro estado consulta" del enunciado original (cobros filtra por estado de PAGO pending/approved, no de consulta).
+
 ## 2026-06-23 — MVP 7.3: export PDF de especialistas (admin) + patrón PDF reutilizable
 
 - **7.3 ✅ (frontend):** estados Activo/Frío/Inactivo y export **CSV** ya existían. Se agregó: **export PDF tabular** del listado de especialistas (`/admin/doctors`) + **badge visual de vencimiento**.

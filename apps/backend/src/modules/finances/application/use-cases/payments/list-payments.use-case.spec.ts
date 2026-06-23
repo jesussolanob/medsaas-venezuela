@@ -18,6 +18,7 @@ const makeRelationsRow = (overrides: Partial<PaymentWithRelations> = {}): Paymen
     appointmentCode: 'BK-20260601-001',
     scheduledAt: new Date('2026-06-01T10:00:00Z'),
     patientName: 'María López',
+    patientPhone: '+58412345678',
     planName: 'Consulta General',
     paymentReceiptUrl: null,
     consultationId: null,
