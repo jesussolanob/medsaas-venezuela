@@ -11,6 +11,8 @@ import { appErrorToString } from '@/lib/app-error';
  * Backend endpoints used:
  *   GET  /api/finances/transactions?month=YYYY-MM&page=1&limit=500
  *        → financial_transactions (includes type='income'|'expense')
+ *   GET  /api/finances/income-transactions?month=YYYY-MM&limit=200
+ *        → financial_transactions type='income' (manual incomes) with patientId + patientName
  *   POST /api/finances/expense
  *        → records a manual expense entry
  *   GET  /api/finances/income-concepts
@@ -21,7 +23,10 @@ import { appErrorToString } from '@/lib/app-error';
  *        → update income concept { name?, isActive?, sortOrder? }
  *   DELETE /api/finances/income-concepts/:id → 204
  *   POST /api/finances/income
- *        → record manual income { amount, currency?, description, conceptId?, date? }
+ *        → record manual income { amount, currency?, description, conceptId?, date?,
+ *          relatedConsultationId?, patientId? }
+ *          RULE: if relatedConsultationId is set, patientId is derived from the
+ *          consultation (patientId is ignored). If not, patientId is used directly.
  *   PUT  /api/finances/transactions/:id
  *        → edit transaction { description?, amount?, currency?, transactionDate?, conceptId? }
  *   GET  /api/consultations?page=1&limit=100
@@ -126,6 +131,49 @@ interface ConsultationWithPatient {
   patient_name: string;
   patient_phone: string | null;
   patient_email: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Manual incomes (financial_transactions type='income')
+// ---------------------------------------------------------------------------
+
+/** Shape returned by GET /api/finances/income-transactions */
+export type IncomeTransactionItem = {
+  id: string;
+  amount: number;
+  currency: string;
+  description: string;
+  date: string;
+  conceptId: string | null;
+  patientId: string | null;
+  patientName: string | null;
+};
+
+/**
+ * Fetch manual income transactions for the authenticated doctor.
+ * Calls GET /api/finances/income-transactions?month=YYYY-MM&limit=200.
+ * Returns an empty array on error (page renders with partial data rather than crashing).
+ */
+export async function getManualIncomes(month?: string): Promise<IncomeTransactionItem[]> {
+  const qs = new URLSearchParams({ limit: '200' });
+  if (month) qs.set('month', month);
+
+  const result = await backendGet<unknown>(`/api/finances/income-transactions?${qs.toString()}`);
+
+  if (!result.ok) {
+    log.error('[getManualIncomes] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+
+  const raw = result.value as unknown;
+  if (Array.isArray(raw)) return raw as IncomeTransactionItem[];
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: unknown[] }).data)) {
+    return (raw as { data: IncomeTransactionItem[] }).data;
+  }
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -303,27 +351,41 @@ export type AddIncomeInput = {
   currency: string;
   conceptId?: string;
   date?: string;
+  /**
+   * If set, the backend derives the patient from the consultation (anti-IDOR).
+   * When present, patientId is ignored by the backend.
+   */
+  relatedConsultationId?: string | null;
+  /**
+   * Direct patient association. Used only when relatedConsultationId is absent.
+   * Backend validates ownership before persisting.
+   */
+  patientId?: string | null;
 };
 
 export type AddIncomeResult = { success: true } | { success: false; error: string };
 
 /**
  * Record a manual extraordinary income for the authenticated doctor.
+ *
+ * Association logic (mirrors backend rule):
+ *   - relatedConsultationId present → patient is derived from the consultation.
+ *   - relatedConsultationId absent + patientId present → direct patient link.
+ *   - Both absent → generic income without patient association.
  */
 export async function addIncome(input: AddIncomeInput): Promise<AddIncomeResult> {
-  const payload: {
-    amount: number;
-    currency: string;
-    description: string;
-    conceptId?: string;
-    date?: string;
-  } = {
+  const payload: Record<string, unknown> = {
     amount: input.amount,
     currency: input.currency || 'USD',
     description: input.description.trim(),
   };
   if (input.conceptId) payload.conceptId = input.conceptId;
   if (input.date) payload.date = `${input.date}T12:00:00.000Z`;
+  if (input.relatedConsultationId) {
+    payload.relatedConsultationId = input.relatedConsultationId;
+  } else if (input.patientId) {
+    payload.patientId = input.patientId;
+  }
 
   const result = await backendPost<unknown>('/api/finances/income', payload);
   if (!result.ok) {

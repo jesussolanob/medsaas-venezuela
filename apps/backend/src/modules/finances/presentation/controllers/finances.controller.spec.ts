@@ -12,6 +12,7 @@ import { CreateIncomeConceptUseCase } from '../../application/use-cases/finances
 import { UpdateIncomeConceptUseCase } from '../../application/use-cases/finances/update-income-concept.use-case';
 import { DeleteIncomeConceptUseCase } from '../../application/use-cases/finances/delete-income-concept.use-case';
 import { UpdateTransactionUseCase } from '../../application/use-cases/finances/update-transaction.use-case';
+import { ListIncomeTransactionsUseCase } from '../../application/use-cases/finances/list-income-transactions.use-case';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { Reflector } from '@nestjs/core';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
@@ -35,6 +36,7 @@ describe('FinancesController', () => {
   let mockUpdateConcept: jest.Mocked<UpdateIncomeConceptUseCase>;
   let mockDeleteConcept: jest.Mocked<DeleteIncomeConceptUseCase>;
   let mockUpdateTx: jest.Mocked<UpdateTransactionUseCase>;
+  let mockListIncomeTx: jest.Mocked<ListIncomeTransactionsUseCase>;
 
   beforeEach(async () => {
     mockSummary = { execute: jest.fn() } as unknown as jest.Mocked<GetFinancialSummaryUseCase>;
@@ -54,6 +56,9 @@ describe('FinancesController', () => {
       execute: jest.fn(),
     } as unknown as jest.Mocked<DeleteIncomeConceptUseCase>;
     mockUpdateTx = { execute: jest.fn() } as unknown as jest.Mocked<UpdateTransactionUseCase>;
+    mockListIncomeTx = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<ListIncomeTransactionsUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FinancesController],
@@ -70,6 +75,7 @@ describe('FinancesController', () => {
         { provide: UpdateIncomeConceptUseCase, useValue: mockUpdateConcept },
         { provide: DeleteIncomeConceptUseCase, useValue: mockDeleteConcept },
         { provide: UpdateTransactionUseCase, useValue: mockUpdateTx },
+        { provide: ListIncomeTransactionsUseCase, useValue: mockListIncomeTx },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -169,7 +175,10 @@ describe('FinancesController', () => {
   });
 
   describe('POST /finances/income', () => {
-    const makeIncomeResult = (conceptId: string | null = null) => ({
+    const makeIncomeResult = (
+      conceptId: string | null = null,
+      patientId: string | null = null,
+    ) => ({
       id: 'tx-id',
       doctorId: 'doctor-uuid-1',
       type: 'income' as const,
@@ -178,6 +187,7 @@ describe('FinancesController', () => {
       description: 'Fee',
       relatedConsultationId: null,
       conceptId,
+      patientId,
       date: new Date(),
       createdAt: new Date(),
     });
@@ -219,6 +229,31 @@ describe('FinancesController', () => {
 
       const callArg = mockIncome.execute.mock.calls[0]?.[0];
       expect(callArg?.conceptId).toBeNull();
+    });
+
+    it('propagates patientId to use-case when provided', async () => {
+      mockIncome.execute.mockResolvedValue(makeIncomeResult(null, 'patient-uuid-1'));
+
+      await controller.income(
+        { amount: 100, currency: 'USD', description: 'Fee', patientId: 'patient-uuid-1' },
+        mockUser,
+      );
+
+      expect(mockIncome.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ patientId: 'patient-uuid-1' }),
+      );
+    });
+
+    it('sends patientId as null when not provided in DTO', async () => {
+      mockIncome.execute.mockResolvedValue(makeIncomeResult());
+
+      await controller.income(
+        { amount: 100, currency: 'USD', description: 'No patient' },
+        mockUser,
+      );
+
+      const callArg = mockIncome.execute.mock.calls[0]?.[0];
+      expect(callArg?.patientId).toBeNull();
     });
   });
 
@@ -374,20 +409,23 @@ describe('FinancesController', () => {
   });
 
   describe('PUT /finances/transactions/:id', () => {
+    const makeUpdateOutput = (overrides: Record<string, unknown> = {}) => ({
+      id: 'tx-1',
+      doctorId: 'doctor-uuid-1',
+      type: 'income' as const,
+      amount: 200,
+      currency: 'USD' as const,
+      description: 'Updated',
+      relatedConsultationId: null,
+      conceptId: null,
+      patientId: null,
+      date: new Date(),
+      createdAt: new Date(),
+      ...overrides,
+    });
+
     it('updates a transaction and returns it', async () => {
-      const output = {
-        id: 'tx-1',
-        doctorId: 'doctor-uuid-1',
-        type: 'income' as const,
-        amount: 200,
-        currency: 'USD' as const,
-        description: 'Updated',
-        relatedConsultationId: null,
-        conceptId: null,
-        date: new Date(),
-        createdAt: new Date(),
-      };
-      mockUpdateTx.execute.mockResolvedValue(output);
+      mockUpdateTx.execute.mockResolvedValue(makeUpdateOutput());
 
       const result = await controller.updateTransactionHandler(
         'tx-1',
@@ -408,23 +446,77 @@ describe('FinancesController', () => {
     });
 
     it('always uses user.sub as doctorId (anti-IDOR)', async () => {
-      mockUpdateTx.execute.mockResolvedValue({
-        id: 'tx-1',
-        doctorId: 'doctor-uuid-1',
-        type: 'income' as const,
-        amount: 100,
-        currency: 'USD' as const,
-        description: 'Fee',
-        relatedConsultationId: null,
-        conceptId: null,
-        date: new Date(),
-        createdAt: new Date(),
-      });
+      mockUpdateTx.execute.mockResolvedValue(makeUpdateOutput({ description: 'Fee', amount: 100 }));
 
       await controller.updateTransactionHandler('tx-1', { description: 'Fee' }, mockUser);
 
       const callArg = mockUpdateTx.execute.mock.calls[0]?.[0];
       expect(callArg?.doctorId).toBe('doctor-uuid-1');
+    });
+
+    it('propagates patientId to use-case when provided', async () => {
+      mockUpdateTx.execute.mockResolvedValue(makeUpdateOutput({ patientId: 'patient-uuid-1' }));
+
+      await controller.updateTransactionHandler(
+        'tx-1',
+        { description: 'Fee', patientId: 'patient-uuid-1' },
+        mockUser,
+      );
+
+      expect(mockUpdateTx.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ patientId: 'patient-uuid-1' }),
+      );
+    });
+  });
+
+  describe('GET /finances/income-transactions', () => {
+    it('returns income transactions for the doctor', async () => {
+      const items = [
+        {
+          id: 'tx-1',
+          amount: 100,
+          currency: 'USD',
+          description: 'Consulta',
+          date: new Date('2026-06-01T10:00:00Z'),
+          conceptId: null,
+          patientId: 'p-1',
+          patientName: 'Juan Perez',
+        },
+      ];
+      mockListIncomeTx.execute.mockResolvedValue(items);
+
+      const result = await controller.incomeTransactions(mockUser, '2026-06');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.patientName).toBe('Juan Perez');
+      expect(mockListIncomeTx.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ doctorId: 'doctor-uuid-1', month: '2026-06' }),
+      );
+    });
+
+    it('uses user.sub as doctorId (anti-IDOR)', async () => {
+      mockListIncomeTx.execute.mockResolvedValue([]);
+
+      await controller.incomeTransactions(mockUser);
+
+      const callArg = mockListIncomeTx.execute.mock.calls[0]?.[0];
+      expect(callArg?.doctorId).toBe('doctor-uuid-1');
+    });
+
+    it('returns empty array when no income transactions exist', async () => {
+      mockListIncomeTx.execute.mockResolvedValue([]);
+
+      const result = await controller.incomeTransactions(mockUser, '2026-01');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+    });
+
+    it('throws BadRequestException for invalid month format', async () => {
+      await expect(controller.incomeTransactions(mockUser, 'badformat')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

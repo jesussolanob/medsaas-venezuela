@@ -9,18 +9,21 @@ import { useState, useEffect, useMemo } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
 import { getPayments } from './payments-actions';
+import { getPatients, getDoctorId, type Patient } from '../patients/actions';
 import {
   getExpenses,
   addExpense,
   getConsultationsForReports,
   getIncomeConcepts,
   addIncome,
+  getManualIncomes,
   createIncomeConcept,
   updateIncomeConcept,
   deleteIncomeConcept,
   editTransaction,
   type BackendConsultationRow,
   type IncomeConcept,
+  type IncomeTransactionItem,
 } from './actions';
 import {
   DollarSign,
@@ -89,6 +92,8 @@ type ManualIncome = {
   currency: string;
   conceptId: string | null;
   date: string;
+  patientId: string | null;
+  patientName: string | null;
 };
 
 // ConsultationRow — re-exported from actions.ts (backend-aligned shape).
@@ -160,6 +165,9 @@ export default function FinancesPage() {
     amount: '',
     conceptId: '',
     date: new Date().toISOString().split('T')[0],
+    // Asociación opcional — se envía uno o ninguno al backend:
+    relatedConsultationId: '', // si se elige una consulta
+    patientId: '', // si se elige un paciente directamente
   });
 
   // #7 — Editar transacción (gasto o ingreso manual)
@@ -174,22 +182,29 @@ export default function FinancesPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
-  // Ingresos manuales (financial_transactions type='income')
-  // Pendiente endpoint /api/finances/transactions?type=income (Fase 5)
-  const [, setManualIncomes] = useState<ManualIncome[]>([]);
+  // Ingresos manuales (financial_transactions type='income') — cargados desde
+  // GET /api/finances/income-transactions en loadData.
+  const [manualIncomes, setManualIncomes] = useState<ManualIncome[]>([]);
+
+  // Lista de pacientes del doctor para el IncomeModal (se carga junto a los datos).
+  const [patientsList, setPatientsList] = useState<Patient[]>([]);
 
   // ETAPA 1: loadData migrado al backend. Supabase eliminado.
   const loadData = async () => {
     setLoading(true);
     try {
       // Pagos APROBADOS (ingresos reales) + PENDIENTES (cuentas por cobrar) vía backend (BFF).
-      // Adicionalmente cargamos: gastos, conceptos de ingreso y consultas en paralelo.
-      const [paid, pending, exp, concepts, cons] = await Promise.all([
+      // Adicionalmente cargamos: gastos, conceptos de ingreso, consultas, ingresos manuales
+      // y lista de pacientes en paralelo.
+      const doctorId = await getDoctorId();
+      const [paid, pending, exp, concepts, cons, manualRaw, patients] = await Promise.all([
         getPayments({ status: 'approved' }),
         getPayments({ status: 'pending' }),
         getExpenses(),
         getIncomeConcepts(),
         getConsultationsForReports(200),
+        getManualIncomes(),
+        doctorId ? getPatients(doctorId) : Promise.resolve([]),
       ]);
 
       const toIncome = (p: Awaited<ReturnType<typeof getPayments>>[number]): Income => ({
@@ -222,9 +237,23 @@ export default function FinancesPage() {
         })),
       );
 
-      // Ingresos manuales: pendiente endpoint /api/finances/transactions?type=income (Fase 5)
-      setManualIncomes([]);
+      // Ingresos manuales (financial_transactions type='income') — endpoint nuevo MVP 7.9
+      setManualIncomes(
+        manualRaw.map(
+          (m: IncomeTransactionItem): ManualIncome => ({
+            id: m.id,
+            description: m.description,
+            amount: m.amount,
+            currency: m.currency,
+            conceptId: m.conceptId,
+            date: m.date,
+            patientId: m.patientId,
+            patientName: m.patientName,
+          }),
+        ),
+      );
 
+      setPatientsList(patients);
       setConsultationsRows(cons);
     } catch (err) {
       reportError('doctor/finances', 'loadData', err);
@@ -261,8 +290,12 @@ export default function FinancesPage() {
     const filteredIncomes = incomes.filter((i) => filterByDate(i.date));
     const filteredExpenses = expenses.filter((e) => filterByDate(e.due_date));
     const filteredPending = pendingIncomes.filter((i) => filterByDate(i.date));
+    // manualIncomes son ADICIONALES a incomes (no se solapan — fuentes distintas).
+    const filteredManual = manualIncomes.filter((m) => filterByDate(m.date));
 
-    const totalIncome = filteredIncomes.reduce((sum, i) => sum + (i.amount_usd || 0), 0);
+    const totalIncome =
+      filteredIncomes.reduce((sum, i) => sum + (i.amount_usd || 0), 0) +
+      filteredManual.reduce((sum, m) => sum + (m.amount || 0), 0);
     const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const pendingTotal = filteredPending.reduce((sum, i) => sum + (i.amount_usd || 0), 0);
     const balance = totalIncome - totalExpenses;
@@ -271,12 +304,13 @@ export default function FinancesPage() {
       filteredIncomes,
       filteredExpenses,
       filteredPending,
+      filteredManual,
       totalIncome,
       totalExpenses,
       pendingTotal,
       balance,
     };
-  }, [incomes, pendingIncomes, expenses, viewMode, currentDate]);
+  }, [incomes, pendingIncomes, expenses, manualIncomes, viewMode, currentDate]);
 
   // Chart data — last 6 periods
   const chartData = useMemo(() => {
@@ -291,13 +325,19 @@ export default function FinancesPage() {
           const id = new Date(inc.date);
           return id.getMonth() === d.getMonth() && id.getFullYear() === d.getFullYear();
         });
+        const monthManual = manualIncomes.filter((m) => {
+          const md = new Date(m.date);
+          return md.getMonth() === d.getMonth() && md.getFullYear() === d.getFullYear();
+        });
         const monthExpenses = expenses.filter((exp) => {
           const ed = new Date(exp.due_date);
           return ed.getMonth() === d.getMonth() && ed.getFullYear() === d.getFullYear();
         });
         periods.push({
           label,
-          income: monthIncomes.reduce((s, x) => s + (x.amount_usd || 0), 0),
+          income:
+            monthIncomes.reduce((s, x) => s + (x.amount_usd || 0), 0) +
+            monthManual.reduce((s, x) => s + (x.amount || 0), 0),
           expenses: monthExpenses.reduce((s, x) => s + (x.amount || 0), 0),
         });
       } else if (viewMode === 'week') {
@@ -311,13 +351,19 @@ export default function FinancesPage() {
           const id = new Date(inc.date);
           return id >= start && id <= end;
         });
+        const weekManual = manualIncomes.filter((m) => {
+          const md = new Date(m.date);
+          return md >= start && md <= end;
+        });
         const weekExpenses = expenses.filter((exp) => {
           const ed = new Date(exp.due_date);
           return ed >= start && ed <= end;
         });
         periods.push({
           label,
-          income: weekIncomes.reduce((s, x) => s + (x.amount_usd || 0), 0),
+          income:
+            weekIncomes.reduce((s, x) => s + (x.amount_usd || 0), 0) +
+            weekManual.reduce((s, x) => s + (x.amount || 0), 0),
           expenses: weekExpenses.reduce((s, x) => s + (x.amount || 0), 0),
         });
       } else {
@@ -326,18 +372,23 @@ export default function FinancesPage() {
         const dayIncomes = incomes.filter(
           (inc) => new Date(inc.date).toDateString() === d.toDateString(),
         );
+        const dayManual = manualIncomes.filter(
+          (m) => new Date(m.date).toDateString() === d.toDateString(),
+        );
         const dayExpenses = expenses.filter(
           (exp) => new Date(exp.due_date).toDateString() === d.toDateString(),
         );
         periods.push({
           label,
-          income: dayIncomes.reduce((s, x) => s + (x.amount_usd || 0), 0),
+          income:
+            dayIncomes.reduce((s, x) => s + (x.amount_usd || 0), 0) +
+            dayManual.reduce((s, x) => s + (x.amount || 0), 0),
           expenses: dayExpenses.reduce((s, x) => s + (x.amount || 0), 0),
         });
       }
     }
     return periods;
-  }, [incomes, expenses, viewMode, currentDate]);
+  }, [incomes, manualIncomes, expenses, viewMode, currentDate]);
 
   const maxChartVal = Math.max(...chartData.map((p) => Math.max(p.income, p.expenses)), 1);
 
@@ -413,12 +464,19 @@ export default function FinancesPage() {
       const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1);
       const yy = d.getFullYear();
       const mm = d.getMonth();
-      const ingresos = incomes
+      const ingresosConsultas = incomes
         .filter((inc) => {
           const id = new Date(inc.date);
           return id.getFullYear() === yy && id.getMonth() === mm;
         })
         .reduce((s, x) => s + (x.amount_usd || 0), 0);
+      // Ingresos manuales son aditivos — fuente distinta (financial_transactions type='income')
+      const ingresosManuales = manualIncomes
+        .filter((m) => {
+          const md = new Date(m.date);
+          return md.getFullYear() === yy && md.getMonth() === mm;
+        })
+        .reduce((s, x) => s + (x.amount || 0), 0);
       const egresos = expenses
         .filter((exp) => {
           const ed = new Date(exp.due_date);
@@ -427,12 +485,12 @@ export default function FinancesPage() {
         .reduce((s, x) => s + (x.amount || 0), 0);
       months.push({
         label: `${MONTHS[mm]} ${String(yy).slice(2)}`,
-        ingresos: parseFloat(ingresos.toFixed(2)),
+        ingresos: parseFloat((ingresosConsultas + ingresosManuales).toFixed(2)),
         egresos: parseFloat(egresos.toFixed(2)),
       });
     }
     return months;
-  }, [incomes, expenses, reportMonth]);
+  }, [incomes, manualIncomes, expenses, reportMonth]);
 
   // L7 (2026-04-29): consultas filtradas por `reportMonth` para el CSV.
   const reportConsultations = useMemo(() => {
@@ -565,6 +623,9 @@ export default function FinancesPage() {
       csv = 'Tipo,Descripción,Detalle,Monto USD,Método/Categoría,Fecha,Estado\n';
       const incRows = tab === 'income' ? incomes : filteredData.filteredIncomes;
       const expRows = tab === 'expenses' ? expenses : filteredData.filteredExpenses;
+      // manualRows: filteredManual viene del período activo; en tab 'income' usamos
+      // todos los manuales sin filtro de período (mismo criterio que incRows para 'income').
+      const manualRows = tab === 'income' ? manualIncomes : filteredData.filteredManual;
       // Combine and sort by date
       const allMovements: {
         type: string;
@@ -586,6 +647,18 @@ export default function FinancesPage() {
           status: 'Cobrado',
         });
       });
+      // Ingresos manuales — aditivos, fuente distinta a los pagos de consulta.
+      manualRows.forEach((m) => {
+        allMovements.push({
+          type: 'Ingreso manual',
+          desc: m.patientName ?? m.description,
+          detail: m.description,
+          amount: m.amount,
+          method: m.currency,
+          date: m.date,
+          status: 'Registrado',
+        });
+      });
       expRows.forEach((e) => {
         allMovements.push({
           type: 'Egreso',
@@ -601,8 +674,10 @@ export default function FinancesPage() {
       allMovements.forEach((m) => {
         csv += `"${m.type}","${m.desc}","${m.detail}",${m.amount},"${m.method}","${new Date(m.date).toLocaleDateString('es-VE')}","${m.status}"\n`;
       });
-      // Add totals row
-      const totalInc = incRows.reduce((s, i) => s + (i.amount_usd || 0), 0);
+      // TOTAL INGRESOS coincide exactamente con filteredData.totalIncome (pagos + manuales).
+      const totalInc =
+        incRows.reduce((s, i) => s + (i.amount_usd || 0), 0) +
+        manualRows.reduce((s, m) => s + (m.amount || 0), 0);
       const totalExp = expRows.reduce((s, e) => s + (e.amount || 0), 0);
       csv += `\n"","","TOTAL INGRESOS",${totalInc},"","",""\n`;
       csv += `"","","TOTAL EGRESOS",-${totalExp},"","",""\n`;
@@ -612,6 +687,11 @@ export default function FinancesPage() {
       const rows = tab === 'income' ? incomes : filteredData.filteredIncomes;
       rows.forEach((i) => {
         csv += `"${i.patient_name}",${i.amount_usd},"${i.payment_method}","${new Date(i.date).toLocaleDateString('es-VE')}","${i.consultation_code || ''}"\n`;
+      });
+      // Ingresos manuales en el mismo CSV — para que el total del archivo coincida con el KPI.
+      const manualRows = tab === 'income' ? manualIncomes : filteredData.filteredManual;
+      manualRows.forEach((m) => {
+        csv += `"${m.patientName ?? m.description}",${m.amount},"${m.currency}","${new Date(m.date).toLocaleDateString('es-VE')}","Ingreso manual"\n`;
       });
     } else {
       csv = 'Proveedor,Concepto,Monto,Fecha,Pagado\n';
@@ -686,6 +766,9 @@ export default function FinancesPage() {
         currency: 'USD',
         conceptId: incomeForm.conceptId || undefined,
         date: incomeForm.date || undefined,
+        // Asociación: consulta toma precedencia sobre paciente (regla de negocio del backend)
+        relatedConsultationId: incomeForm.relatedConsultationId || null,
+        patientId: incomeForm.relatedConsultationId ? null : incomeForm.patientId || null,
       });
       if (!result.success) {
         setIncomeError(result.error);
@@ -695,6 +778,8 @@ export default function FinancesPage() {
           amount: '',
           conceptId: '',
           date: new Date().toISOString().split('T')[0],
+          relatedConsultationId: '',
+          patientId: '',
         });
         setShowIncomeModal(false);
         loadData();
@@ -863,6 +948,8 @@ export default function FinancesPage() {
             )}
             <p className="text-xs text-slate-400 mt-1">
               {filteredData.filteredIncomes.length} pagos aprobados
+              {filteredData.filteredManual.length > 0 &&
+                ` · ${filteredData.filteredManual.length} manuales`}
             </p>
           </div>
           {/* Por ingresar = cuentas por cobrar (pagos pendientes del período). */}
@@ -1406,12 +1493,11 @@ export default function FinancesPage() {
                         <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                           Monto Bs
                         </th>
-                        <th className="w-10"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {tableIncomes.map((inc) => (
-                        <tr key={inc.id} className="hover:bg-slate-50 transition-colors group">
+                        <tr key={inc.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-5 py-3 text-xs text-slate-600">
                             {new Date(inc.date).toLocaleDateString('es-VE')}
                           </td>
@@ -1427,26 +1513,6 @@ export default function FinancesPage() {
                           <td className="px-5 py-3 text-xs text-slate-400 text-right">
                             {bcvRate ? toBs(inc.amount_usd || 0) : '—'}
                           </td>
-                          {/* #7 — Editar ingreso (solo ingresos manuales; pagos de consulta no se editan aquí) */}
-                          <td className="px-2 py-3">
-                            <button
-                              onClick={() => {
-                                setEditError('');
-                                setEditingTx({
-                                  id: inc.id,
-                                  type: 'manual_income',
-                                  description: inc.patient_name,
-                                  amount: String(inc.amount_usd),
-                                  date: inc.date ? inc.date.slice(0, 10) : '',
-                                  conceptId: '',
-                                });
-                              }}
-                              className="p-1 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50 opacity-0 group-hover:opacity-100 transition-all"
-                              title="Editar ingreso"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1461,7 +1527,6 @@ export default function FinancesPage() {
                         <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">
                           {bcvRate ? toBs(tableTotal) : '—'}
                         </td>
-                        <td></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1475,6 +1540,8 @@ export default function FinancesPage() {
       {showIncomeModal && (
         <IncomeModal
           concepts={incomeConcepts}
+          consultations={consultationsRows}
+          patients={patientsList}
           form={incomeForm}
           saving={savingIncome}
           error={incomeError}
@@ -2117,6 +2184,10 @@ type IncomeForm = {
   amount: string;
   conceptId: string;
   date: string;
+  /** ID de consulta existente — si se elige, el paciente queda implícito */
+  relatedConsultationId: string;
+  /** ID de paciente directo — solo cuando no hay consulta asociada */
+  patientId: string;
 };
 
 type ConceptManagerResult =
@@ -2127,6 +2198,8 @@ type SimpleActionResult = { success: true } | { success: false; error: string };
 
 function IncomeModal({
   concepts,
+  consultations,
+  patients,
   form,
   saving,
   error,
@@ -2138,6 +2211,10 @@ function IncomeModal({
   onDeleteConcept,
 }: {
   concepts: IncomeConcept[];
+  /** Consultas del doctor para asociar el ingreso a una consulta existente */
+  consultations: ConsultationRow[];
+  /** Lista de pacientes del doctor para asociación directa */
+  patients: Patient[];
   form: IncomeForm;
   saving: boolean;
   error: string;
@@ -2263,6 +2340,77 @@ function IncomeModal({
               onChange={(e) => onChangeForm((f) => ({ ...f, date: e.target.value }))}
               className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
             />
+          </div>
+
+          {/* Asociación a consulta o paciente (opcional) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              Asociar a <span className="text-slate-400 font-normal">(opcional)</span>
+            </label>
+            {/* Si el doctor elige una consulta, el paciente queda implícito */}
+            {consultations.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">
+                  Consulta existente
+                </p>
+                <select
+                  value={form.relatedConsultationId}
+                  onChange={(e) =>
+                    onChangeForm((f) => ({
+                      ...f,
+                      relatedConsultationId: e.target.value,
+                      // Al elegir consulta, limpiar paciente directo
+                      patientId: '',
+                    }))
+                  }
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+                >
+                  <option value="">— Sin consulta —</option>
+                  {consultations
+                    .filter((c) => c.consultation_date)
+                    .slice(0, 50)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.consultation_code ? `[${c.consultation_code}] ` : ''}
+                        {c.patient_name}
+                        {c.consultation_date
+                          ? ` · ${new Date(c.consultation_date).toLocaleDateString('es-VE')}`
+                          : ''}
+                      </option>
+                    ))}
+                </select>
+                {form.relatedConsultationId && (
+                  <p className="text-[10px] text-teal-600 mt-1 font-medium">
+                    Paciente derivado de la consulta seleccionada
+                  </p>
+                )}
+              </div>
+            )}
+            {/* Si no hay consulta, permitir asociar a un paciente directamente */}
+            {!form.relatedConsultationId && patients.length > 0 && (
+              <div>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">
+                  Paciente directo
+                </p>
+                <select
+                  value={form.patientId}
+                  onChange={(e) => onChangeForm((f) => ({ ...f, patientId: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+                >
+                  <option value="">— Sin paciente —</option>
+                  {patients.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {consultations.length === 0 && patients.length === 0 && (
+              <p className="text-xs text-slate-400 italic">
+                Sin consultas ni pacientes registrados.
+              </p>
+            )}
           </div>
 
           {/* Concepto */}

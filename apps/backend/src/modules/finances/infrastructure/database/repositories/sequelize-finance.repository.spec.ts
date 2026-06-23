@@ -1,6 +1,7 @@
 import { SequelizeFinanceRepository } from './sequelize-finance.repository';
 import { FinancialTransaction } from '../../../domain/entities/financial-transaction.entity';
 import { Money } from '../../../domain/value-objects/money.vo';
+import type { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 
 describe('SequelizeFinanceRepository', () => {
   let repo: SequelizeFinanceRepository;
@@ -10,6 +11,7 @@ describe('SequelizeFinanceRepository', () => {
     findAndCountAll: jest.Mock;
   }>;
   let mockSequelize: jest.Mocked<{ query: jest.Mock }>;
+  let mockCrypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt' | 'hashForSearch'>>;
 
   const makeTx = (overrides: Partial<Parameters<typeof FinancialTransaction.create>[0]> = {}) =>
     FinancialTransaction.create({
@@ -21,6 +23,7 @@ describe('SequelizeFinanceRepository', () => {
       relatedConsultationId: null,
       date: new Date('2026-06-15T10:00:00Z'),
       createdAt: new Date('2026-06-15T10:00:00Z'),
+      patientId: null,
       ...overrides,
     });
 
@@ -34,6 +37,8 @@ describe('SequelizeFinanceRepository', () => {
     relatedConsultationId: null,
     transactionDate: new Date('2026-06-15T10:00:00Z'),
     createdAt: new Date('2026-06-15T10:00:00Z'),
+    conceptId: null,
+    patientId: null,
     ...overrides,
   });
 
@@ -46,9 +51,16 @@ describe('SequelizeFinanceRepository', () => {
 
     mockSequelize = { query: jest.fn() } as unknown as jest.Mocked<typeof mockSequelize>;
 
+    mockCrypto = {
+      encrypt: jest.fn((v: string) => `enc(${v})`),
+      decrypt: jest.fn((v: string) => v.replace(/^enc\(/, '').replace(/\)$/, '')),
+      hashForSearch: jest.fn((v: string) => `hash(${v})`),
+    };
+
     repo = new SequelizeFinanceRepository(
       mockTxModel as unknown as ConstructorParameters<typeof SequelizeFinanceRepository>[0],
       mockSequelize as unknown as ConstructorParameters<typeof SequelizeFinanceRepository>[1],
+      mockCrypto as unknown as CryptoService,
     );
   });
 
@@ -162,23 +174,141 @@ describe('SequelizeFinanceRepository', () => {
   });
 
   describe('monthBounds (via getConsultationSummary)', () => {
-    it('throws on malformed month string instead of silently using fallback', async () => {
-      // monthBounds is private but exercised through public methods
+    it('throws InvalidMonthFormatError on malformed month string', async () => {
+      // monthBounds is private but exercised through public methods.
+      // Fix 3: throws InvalidMonthFormatError (DomainError) — NOT the old plain Error.
+      const { InvalidMonthFormatError } =
+        await import('../../../domain/errors/invalid-month-format.error');
       await expect(repo.getConsultationSummary('doc-id-1', 'invalid')).rejects.toThrow(
-        'Invalid month format: "invalid"',
+        InvalidMonthFormatError,
       );
     });
 
-    it('throws on month with out-of-range monthNum', async () => {
+    it('throws InvalidMonthFormatError on month with out-of-range monthNum', async () => {
+      const { InvalidMonthFormatError } =
+        await import('../../../domain/errors/invalid-month-format.error');
       await expect(repo.getConsultationSummary('doc-id-1', '2026-13')).rejects.toThrow(
-        'Invalid month format',
+        InvalidMonthFormatError,
       );
     });
 
-    it('throws on month with zero monthNum', async () => {
+    it('throws InvalidMonthFormatError on month with zero monthNum', async () => {
+      const { InvalidMonthFormatError } =
+        await import('../../../domain/errors/invalid-month-format.error');
       await expect(repo.getConsultationSummary('doc-id-1', '2026-00')).rejects.toThrow(
-        'Invalid month format',
+        InvalidMonthFormatError,
       );
+    });
+
+    it('does not include the received value in the error message (no PII leakage)', async () => {
+      try {
+        await repo.getConsultationSummary('doc-id-1', 'BAD-2026');
+        fail('Expected an error to be thrown');
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          expect(err.message).not.toContain('BAD-2026');
+        }
+      }
+    });
+  });
+
+  describe('listIncomeTransactions', () => {
+    it('returns income items with decrypted patientName', async () => {
+      const rawRows = [
+        {
+          id: 'tx-1',
+          amount: '150.00',
+          currency: 'USD',
+          description: 'Consulta',
+          transaction_date: new Date('2026-06-01T10:00:00Z'),
+          concept_id: null,
+          patient_id: 'p-1',
+          patient_full_name: 'enc(Juan Perez)',
+        },
+      ];
+      mockSequelize.query.mockResolvedValue(rawRows);
+
+      const result = await repo.listIncomeTransactions({ doctorId: 'doc-id-1' });
+
+      expect(mockSequelize.query).toHaveBeenCalledTimes(1);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.amount).toBe(150);
+      expect(result[0]?.patientId).toBe('p-1');
+      // Decryption is called on the ciphertext
+      expect(mockCrypto.decrypt).toHaveBeenCalledWith('enc(Juan Perez)');
+      expect(result[0]?.patientName).toBe('Juan Perez');
+    });
+
+    it('returns null patientName when patient_id is null', async () => {
+      const rawRows = [
+        {
+          id: 'tx-2',
+          amount: '50.00',
+          currency: 'USD',
+          description: 'Ingreso generico',
+          transaction_date: new Date('2026-06-01T10:00:00Z'),
+          concept_id: null,
+          patient_id: null,
+          patient_full_name: null,
+        },
+      ];
+      mockSequelize.query.mockResolvedValue(rawRows);
+
+      const result = await repo.listIncomeTransactions({ doctorId: 'doc-id-1' });
+
+      expect(result[0]?.patientId).toBeNull();
+      expect(result[0]?.patientName).toBeNull();
+      expect(mockCrypto.decrypt).not.toHaveBeenCalled();
+    });
+
+    it('passes month bounds to the query when month is specified', async () => {
+      mockSequelize.query.mockResolvedValue([]);
+
+      await repo.listIncomeTransactions({ doctorId: 'doc-id-1', month: '2026-06' });
+
+      expect(mockSequelize.query).toHaveBeenCalledWith(
+        expect.stringContaining('ft.transaction_date >= :start'),
+        expect.objectContaining({
+          replacements: expect.objectContaining({ doctorId: 'doc-id-1' }),
+        }),
+      );
+    });
+
+    it('returns empty array when no income rows exist', async () => {
+      mockSequelize.query.mockResolvedValue([]);
+
+      const result = await repo.listIncomeTransactions({ doctorId: 'doc-id-1', month: '2026-01' });
+
+      expect(result).toEqual([]);
+    });
+
+    it('degrades gracefully to patientName = null when decryption fails (Fix 1)', async () => {
+      // Arrange: decrypt throws (e.g. corrupted ciphertext)
+      mockCrypto.decrypt.mockImplementation(() => {
+        throw new Error('AES-GCM auth tag mismatch');
+      });
+      const rawRows = [
+        {
+          id: 'tx-bad',
+          amount: '75.00',
+          currency: 'USD',
+          description: 'Fee',
+          transaction_date: new Date('2026-06-01T10:00:00Z'),
+          concept_id: null,
+          patient_id: 'p-corrupt',
+          patient_full_name: 'corrupted-ciphertext',
+        },
+      ];
+      mockSequelize.query.mockResolvedValue(rawRows);
+
+      // Act: should NOT throw even though decrypt fails
+      const result = await repo.listIncomeTransactions({ doctorId: 'doc-id-1' });
+
+      // Assert: row is included with patientName = null
+      expect(result).toHaveLength(1);
+      expect(result[0]?.patientId).toBe('p-corrupt');
+      expect(result[0]?.patientName).toBeNull();
+      expect(result[0]?.amount).toBe(75);
     });
   });
 });

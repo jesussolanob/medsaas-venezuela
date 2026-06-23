@@ -30,6 +30,11 @@ export const UpdateTransactionDtoSchema = z
     transactionDate: z.string().datetime({ offset: true }).optional(),
     /** Only applies to income transactions. Pass null to unlink. */
     conceptId: z.string().uuid().nullable().optional(),
+    /**
+     * Only applies to income transactions. Pass null to unlink.
+     * The supplied value is validated against the doctor's own patients (anti-IDOR).
+     */
+    patientId: z.string().uuid().nullable().optional(),
   })
   .strict()
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field required' });

@@ -14,6 +14,13 @@ export const RecordFinanceEntryDtoSchema = z
     date: z.string().datetime({ offset: true }).optional(),
     /** Optional link to an income_concept (only for income entries). */
     conceptId: z.string().uuid().nullable().optional(),
+    /**
+     * Optional patient link (income entries only).
+     * When related_consultation_id is present, this value is ignored and the
+     * patient is derived from the consultation (anti-IDOR).
+     * When absent, the doctor may supply a patientId manually.
+     */
+    patientId: z.string().uuid().nullable().optional(),
   })
   .strict();
 

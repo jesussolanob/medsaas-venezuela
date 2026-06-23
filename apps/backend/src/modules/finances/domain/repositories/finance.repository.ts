@@ -9,6 +9,26 @@ export interface TransactionListFilters {
   limit: number;
 }
 
+export interface IncomeTransactionItem {
+  id: string;
+  amount: number;
+  currency: string;
+  description: string;
+  date: Date;
+  conceptId: string | null;
+  patientId: string | null;
+  /** Decrypted patient name; null when there is no linked patient. */
+  patientName: string | null;
+}
+
+export interface IncomeListFilters {
+  doctorId: string;
+  month?: string; // 'YYYY-MM'
+  /** If present, only return income rows with this conceptId. */
+  conceptId?: string | null;
+  limit?: number;
+}
+
 export interface TransactionListResult {
   items: FinancialTransaction[];
   total: number;
@@ -83,4 +103,11 @@ export interface IFinanceRepository {
    * No date filtering applied.
    */
   lifetimeIncome(doctorId: string): Promise<{ total: number; consultationCount: number }>;
+
+  /**
+   * Returns income-type transactions with decrypted patientName.
+   * Used for the finance chart on the doctor dashboard.
+   * Patient names are decrypted within the doctor's own scope — never logged as PII.
+   */
+  listIncomeTransactions(filters: IncomeListFilters): Promise<IncomeTransactionItem[]>;
 }

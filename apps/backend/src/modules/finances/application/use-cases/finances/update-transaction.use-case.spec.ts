@@ -1,13 +1,16 @@
 import { UpdateTransactionUseCase } from './update-transaction.use-case';
 import { FinancialTransaction } from '../../../domain/entities/financial-transaction.entity';
 import { IncomeConcept } from '../../../domain/entities/income-concept.entity';
+import { Patient } from '../../../../patients/domain/entities/patient.entity';
 import { Money } from '../../../domain/value-objects/money.vo';
 import { TransactionNotFoundError } from '../../../domain/errors/transaction-not-found.error';
 import { ForbiddenDomainError } from '../../../domain/errors/forbidden-domain.error';
 import { IncomeConceptNotFoundError } from '../../../domain/errors/income-concept-not-found.error';
 import { InvalidAmountError } from '../../../domain/errors/invalid-amount.error';
+import { PatientNotOwnedError } from '../../../domain/errors/patient-not-owned.error';
 import type { IFinanceRepository } from '../../../domain/repositories/finance.repository';
 import type { IIncomeConceptRepository } from '../../../domain/repositories/income-concept.repository';
+import type { IPatientRepository } from '../../../../patients/domain/repositories/patient.repository';
 
 const makeTx = (overrides: Partial<Parameters<typeof FinancialTransaction.create>[0]> = {}) =>
   FinancialTransaction.create({
@@ -20,6 +23,7 @@ const makeTx = (overrides: Partial<Parameters<typeof FinancialTransaction.create
     date: new Date('2026-06-01T10:00:00Z'),
     createdAt: new Date('2026-06-01T10:00:00Z'),
     conceptId: null,
+    patientId: null,
     ...overrides,
   });
 
@@ -35,10 +39,21 @@ const makeConcept = (overrides: Partial<Parameters<typeof IncomeConcept.create>[
     ...overrides,
   });
 
+const makePatient = (overrides: Partial<Parameters<typeof Patient.create>[0]> = {}) =>
+  Patient.create({
+    id: 'patient-1',
+    doctorId: 'doc-1',
+    fullName: 'Juan Perez',
+    createdAt: new Date('2026-06-01T10:00:00Z'),
+    updatedAt: new Date('2026-06-01T10:00:00Z'),
+    ...overrides,
+  });
+
 describe('UpdateTransactionUseCase', () => {
   let useCase: UpdateTransactionUseCase;
   let mockFinanceRepo: jest.Mocked<IFinanceRepository>;
   let mockConceptRepo: jest.Mocked<IIncomeConceptRepository>;
+  let mockPatientRepo: jest.Mocked<IPatientRepository>;
 
   beforeEach(() => {
     mockFinanceRepo = {
@@ -51,6 +66,7 @@ describe('UpdateTransactionUseCase', () => {
       delete: jest.fn(),
       lifetimeIncome: jest.fn(),
       updateTransaction: jest.fn(),
+      listIncomeTransactions: jest.fn(),
     };
     mockConceptRepo = {
       findActiveByDoctor: jest.fn(),
@@ -58,7 +74,18 @@ describe('UpdateTransactionUseCase', () => {
       save: jest.fn(),
       update: jest.fn(),
     };
-    useCase = new UpdateTransactionUseCase(mockFinanceRepo, mockConceptRepo);
+    mockPatientRepo = {
+      findById: jest.fn(),
+      findByCedulaHash: jest.fn(),
+      findByEmailHash: jest.fn(),
+      list: jest.fn(),
+      findAllByDoctor: jest.fn(),
+      save: jest.fn(),
+      update: jest.fn(),
+      softDelete: jest.fn(),
+      logReveal: jest.fn(),
+    };
+    useCase = new UpdateTransactionUseCase(mockFinanceRepo, mockConceptRepo, mockPatientRepo);
   });
 
   it('updates description and returns output DTO', async () => {
@@ -196,6 +223,88 @@ describe('UpdateTransactionUseCase', () => {
     });
   });
 
+  describe('patientId handling', () => {
+    it('validates patient ownership when patientId is provided on income transaction', async () => {
+      const tx = makeTx();
+      const patient = makePatient();
+      mockFinanceRepo.findById.mockResolvedValue(tx);
+      mockPatientRepo.findById.mockResolvedValue(patient);
+      mockFinanceRepo.updateTransaction.mockResolvedValue(tx.patch({ patientId: 'patient-1' }));
+
+      const result = await useCase.execute({
+        transactionId: 'tx-1',
+        doctorId: 'doc-1',
+        patientId: 'patient-1',
+      });
+
+      expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1', 'doc-1');
+      expect(result.patientId).toBe('patient-1');
+    });
+
+    it('throws PatientNotOwnedError when patient does not belong to the doctor', async () => {
+      mockFinanceRepo.findById.mockResolvedValue(makeTx());
+      mockPatientRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        useCase.execute({
+          transactionId: 'tx-1',
+          doctorId: 'doc-1',
+          patientId: 'foreign-patient-id',
+        }),
+      ).rejects.toThrow(PatientNotOwnedError);
+      expect(mockFinanceRepo.updateTransaction).not.toHaveBeenCalled();
+    });
+
+    it('allows unlinking patient by passing null', async () => {
+      const tx = makeTx({ patientId: 'patient-1' });
+      const updated = tx.patch({ patientId: null });
+      mockFinanceRepo.findById.mockResolvedValue(tx);
+      mockFinanceRepo.updateTransaction.mockResolvedValue(updated);
+
+      const result = await useCase.execute({
+        transactionId: 'tx-1',
+        doctorId: 'doc-1',
+        patientId: null,
+      });
+
+      expect(result.patientId).toBeNull();
+      expect(mockPatientRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('silently ignores patientId on expense transactions', async () => {
+      const tx = makeTx({ type: 'expense' });
+      const updated = tx.patch({});
+      mockFinanceRepo.findById.mockResolvedValue(tx);
+      mockFinanceRepo.updateTransaction.mockResolvedValue(updated);
+
+      await useCase.execute({
+        transactionId: 'tx-1',
+        doctorId: 'doc-1',
+        patientId: 'some-patient-id',
+      });
+
+      // Patient repo should NOT be queried for expense transactions.
+      expect(mockPatientRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('keeps existing patientId when not provided in input', async () => {
+      const tx = makeTx({ patientId: 'patient-1' });
+      // patch with no patientId = keep existing
+      const updated = tx.patch({ description: 'New desc' });
+      mockFinanceRepo.findById.mockResolvedValue(tx);
+      mockFinanceRepo.updateTransaction.mockResolvedValue(updated);
+
+      await useCase.execute({
+        transactionId: 'tx-1',
+        doctorId: 'doc-1',
+        description: 'New desc',
+      });
+
+      // patientId undefined in input → patient repo NOT called.
+      expect(mockPatientRepo.findById).not.toHaveBeenCalled();
+    });
+  });
+
   it('includes all expected output fields', async () => {
     const tx = makeTx();
     const updated = tx.patch({ description: 'New desc' });
@@ -215,6 +324,7 @@ describe('UpdateTransactionUseCase', () => {
       currency: 'USD',
       relatedConsultationId: null,
       conceptId: null,
+      patientId: null,
     });
     expect(result.createdAt).toBeDefined();
     expect(result.date).toBeDefined();

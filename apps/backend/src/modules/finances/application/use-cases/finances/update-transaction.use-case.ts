@@ -7,11 +7,16 @@ import {
   INCOME_CONCEPT_REPOSITORY,
   type IIncomeConceptRepository,
 } from '../../../domain/repositories/income-concept.repository';
+import {
+  PATIENT_REPOSITORY,
+  type IPatientRepository,
+} from '../../../../patients/domain/repositories/patient.repository';
 import { Money, type Currency } from '../../../domain/value-objects/money.vo';
 import { TransactionNotFoundError } from '../../../domain/errors/transaction-not-found.error';
 import { ForbiddenDomainError } from '../../../domain/errors/forbidden-domain.error';
 import { IncomeConceptNotFoundError } from '../../../domain/errors/income-concept-not-found.error';
 import { InvalidAmountError } from '../../../domain/errors/invalid-amount.error';
+import { PatientNotOwnedError } from '../../../domain/errors/patient-not-owned.error';
 
 export interface UpdateTransactionInput {
   transactionId: string;
@@ -22,6 +27,11 @@ export interface UpdateTransactionInput {
   transactionDate?: Date;
   /** Only for income transactions. Pass null to unlink. Undefined = keep existing. */
   conceptId?: string | null;
+  /**
+   * Only for income transactions. Pass null to unlink. Undefined = keep existing.
+   * Validated for ownership when a non-null value is supplied.
+   */
+  patientId?: string | null;
 }
 
 export interface UpdateTransactionOutput {
@@ -33,6 +43,7 @@ export interface UpdateTransactionOutput {
   description: string;
   relatedConsultationId: string | null;
   conceptId: string | null;
+  patientId: string | null;
   date: Date;
   createdAt: Date;
 }
@@ -41,13 +52,14 @@ export interface UpdateTransactionOutput {
  * Edits an existing financial transaction (income or expense).
  *
  * Immutable fields: type, doctorId, relatedConsultationId.
- * conceptId is only accepted on income-type transactions.
+ * conceptId and patientId are only accepted on income-type transactions.
  *
  * SECURITY:
  *   - doctorId is taken from the authenticated user (anti-IDOR).
  *   - Throws TransactionNotFoundError (404) if transaction is absent.
  *   - Throws ForbiddenDomainError (403) if it belongs to another doctor.
  *   - If conceptId is provided, validates it exists and belongs to the same doctor.
+ *   - If patientId is provided, validates the patient belongs to the same doctor.
  */
 @Injectable()
 export class UpdateTransactionUseCase {
@@ -56,6 +68,8 @@ export class UpdateTransactionUseCase {
     private readonly financeRepo: IFinanceRepository,
     @Inject(INCOME_CONCEPT_REPOSITORY)
     private readonly conceptRepo: IIncomeConceptRepository,
+    @Inject(PATIENT_REPOSITORY)
+    private readonly patientRepo: IPatientRepository,
   ) {}
 
   async execute(input: UpdateTransactionInput): Promise<UpdateTransactionOutput> {
@@ -92,11 +106,27 @@ export class UpdateTransactionUseCase {
       }
     }
 
+    // Resolve patientId only for income transactions.
+    let resolvedPatientId: string | null | undefined = undefined;
+    if (input.patientId !== undefined) {
+      if (transaction.type !== 'income') {
+        // Silently ignore patientId on expense transactions.
+        resolvedPatientId = undefined;
+      } else if (input.patientId === null) {
+        resolvedPatientId = null;
+      } else {
+        const patient = await this.patientRepo.findById(input.patientId, input.doctorId);
+        if (!patient) throw new PatientNotOwnedError();
+        resolvedPatientId = patient.id;
+      }
+    }
+
     const patched = transaction.patch({
       amount: money,
       description: input.description,
       date: input.transactionDate,
       conceptId: resolvedConceptId,
+      patientId: resolvedPatientId,
     });
 
     const saved = await this.financeRepo.updateTransaction(patched, input.doctorId);
@@ -110,6 +140,7 @@ export class UpdateTransactionUseCase {
       description: saved.description,
       relatedConsultationId: saved.relatedConsultationId,
       conceptId: saved.conceptId,
+      patientId: saved.patientId,
       date: saved.date,
       createdAt: saved.createdAt,
     };

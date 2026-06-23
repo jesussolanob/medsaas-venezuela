@@ -9,10 +9,15 @@ import type {
   TransactionListFilters,
   TransactionListResult,
   ConsultationSummary,
+  IncomeListFilters,
+  IncomeTransactionItem,
 } from '../../../domain/repositories/finance.repository';
 import { FinancialTransactionModel } from '../models/financial-transaction.model';
 import { TransactionNotFoundError } from '../../../domain/errors/transaction-not-found.error';
 import { ForbiddenDomainError } from '../../../domain/errors/forbidden-domain.error';
+import { InvalidMonthFormatError } from '../../../domain/errors/invalid-month-format.error';
+import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
+import { INCOME_TX_DEFAULT_LIMIT } from '../../../application/constants/income-transactions.constants';
 
 /** Raw row returned by the consultation aggregation query. */
 interface ConsultationAggRow {
@@ -25,6 +30,19 @@ interface ConsultationAggRow {
 interface SumAggRow {
   total: string | null;
   count: string | null;
+}
+
+/** Raw row for the listIncomeTransactions join query. */
+interface IncomeWithPatientRow {
+  id: string;
+  amount: string;
+  currency: string;
+  description: string | null;
+  transaction_date: Date;
+  concept_id: string | null;
+  patient_id: string | null;
+  /** AES-256-GCM ciphertext of the patient name; null when patient_id is null. */
+  patient_full_name: string | null;
 }
 
 /**
@@ -42,6 +60,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
     @InjectModel(FinancialTransactionModel)
     private readonly txModel: typeof FinancialTransactionModel,
     private readonly sequelize: Sequelize,
+    private readonly crypto: CryptoService,
   ) {}
 
   async save(transaction: FinancialTransaction): Promise<FinancialTransaction> {
@@ -55,6 +74,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
       relatedConsultationId: transaction.relatedConsultationId,
       transactionDate: transaction.date,
       conceptId: transaction.conceptId ?? null,
+      patientId: transaction.patientId ?? null,
     });
     return this.toDomain(row);
   }
@@ -143,6 +163,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         description: transaction.description,
         transactionDate: transaction.date,
         conceptId: transaction.conceptId,
+        patientId: transaction.patientId,
       },
       // doctorId in WHERE is a second ownership gate (defense in depth).
       { where: { id: transaction.id, doctorId } as WhereOptions },
@@ -210,6 +231,97 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
     };
   }
 
+  async listIncomeTransactions(filters: IncomeListFilters): Promise<IncomeTransactionItem[]> {
+    const { start, end } = filters.month
+      ? this.monthBounds(filters.month)
+      : { start: null, end: null };
+
+    const limit = filters.limit ?? INCOME_TX_DEFAULT_LIMIT;
+
+    // Build WHERE clauses dynamically to avoid SQL injection via raw params.
+    const conditions: string[] = ['ft.doctor_id = :doctorId', "ft.type = 'income'"];
+    const replacements: Record<string, unknown> = { doctorId: filters.doctorId, limit };
+
+    if (start && end) {
+      conditions.push('ft.transaction_date >= :start AND ft.transaction_date < :end');
+      replacements.start = start.toISOString();
+      replacements.end = end.toISOString();
+    }
+
+    if (filters.conceptId !== undefined) {
+      if (filters.conceptId === null) {
+        conditions.push('ft.concept_id IS NULL');
+      } else {
+        conditions.push('ft.concept_id = :conceptId');
+        replacements.conceptId = filters.conceptId;
+      }
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    /**
+     * LEFT JOIN patients so that income rows without a patient still appear.
+     * We only select patients.full_name (ciphertext) — decrypted in the app layer.
+     *
+     * SECURITY — defense in depth on the JOIN:
+     *   - `p.doctor_id = ft.doctor_id` ensures we never surface a patient row
+     *     belonging to a different doctor, even if a patient_id FK was written
+     *     incorrectly in the DB.
+     *   - `p.deleted_at IS NULL` excludes soft-deleted patients.
+     *
+     * No PII is logged here.
+     */
+    const rows = await this.sequelize.query<IncomeWithPatientRow>(
+      `SELECT
+         ft.id,
+         ft.amount,
+         ft.currency,
+         ft.description,
+         ft.transaction_date,
+         ft.concept_id,
+         ft.patient_id,
+         p.full_name AS patient_full_name
+       FROM financial_transactions ft
+       LEFT JOIN patients p
+         ON p.id        = ft.patient_id
+        AND p.doctor_id = ft.doctor_id
+        AND p.deleted_at IS NULL
+       WHERE ${whereClause}
+       ORDER BY ft.transaction_date DESC
+       LIMIT :limit`,
+      { replacements, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((row) => {
+      // Fix 1: DecryptionError isolation — a corrupted ciphertext on one row
+      // must not propagate as a 500 for the entire list. Degrade gracefully to
+      // patientName = null and log only the transaction id (never the ciphertext).
+      let patientName: string | null = null;
+      if (row.patient_full_name) {
+        try {
+          patientName = this.crypto.decrypt(row.patient_full_name);
+        } catch {
+          // Log tx id only — no PII in logs.
+          // Logger is intentionally not injected here to avoid circular deps;
+          // use console.warn which is filtered by the global log pipeline in prod.
+          // eslint-disable-next-line no-console
+          console.warn(`[FinanceRepo] Failed to decrypt patient name for tx ${row.id}`);
+        }
+      }
+
+      return {
+        id: row.id,
+        amount: parseFloat(row.amount),
+        currency: row.currency,
+        description: row.description ?? '',
+        date: row.transaction_date,
+        conceptId: row.concept_id,
+        patientId: row.patient_id,
+        patientName,
+      };
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
@@ -254,7 +366,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
     // here ensures that any bypass produces a clear error rather than silently
     // querying January 2026 (which was the old fallback behaviour).
     if (isNaN(year) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
-      throw new Error(`Invalid month format: "${month}" — expected YYYY-MM`);
+      throw new InvalidMonthFormatError();
     }
 
     const start = new Date(Date.UTC(year, monthNum - 1, 1));
@@ -274,6 +386,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
       date: row.transactionDate,
       createdAt: row.createdAt,
       conceptId: row.conceptId ?? null,
+      patientId: row.patientId ?? null,
     });
   }
 }

@@ -34,6 +34,7 @@ import { CreateIncomeConceptUseCase } from './application/use-cases/finances/cre
 import { UpdateIncomeConceptUseCase } from './application/use-cases/finances/update-income-concept.use-case';
 import { DeleteIncomeConceptUseCase } from './application/use-cases/finances/delete-income-concept.use-case';
 import { UpdateTransactionUseCase } from './application/use-cases/finances/update-transaction.use-case';
+import { ListIncomeTransactionsUseCase } from './application/use-cases/finances/list-income-transactions.use-case';
 
 // Use cases — payments
 import { ListPaymentsUseCase } from './application/use-cases/payments/list-payments.use-case';
@@ -60,6 +61,11 @@ import { RolesGuard } from '../../presentation/guards/roles.guard';
 // initialises the table mapping for this module's connection scope).
 import { AppointmentModel } from '../appointments/infrastructure/database/models/appointment.model';
 
+// ConsultationsModule exports CONSULTATION_REPOSITORY (for RecordIncomeUseCase).
+// PatientsModule exports PATIENT_REPOSITORY (for RecordIncomeUseCase + UpdateTransactionUseCase).
+import { ConsultationsModule } from '../consultations/consultations.module';
+import { PatientsModule } from '../patients/patients.module';
+
 @Module({
   imports: [
     SequelizeModule.forFeature([
@@ -70,6 +76,8 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
       AppointmentModel,
       IncomeConceptModel,
     ]),
+    ConsultationsModule,
+    PatientsModule,
   ],
   controllers: [
     FinancesController,
@@ -128,6 +136,7 @@ import { AppointmentModel } from '../appointments/infrastructure/database/models
     UpdateIncomeConceptUseCase,
     DeleteIncomeConceptUseCase,
     UpdateTransactionUseCase,
+    ListIncomeTransactionsUseCase,
 
     // Use cases — payments
     ListPaymentsUseCase,

@@ -65,6 +65,14 @@ import {
   UpdateTransactionUseCase,
   type UpdateTransactionOutput,
 } from '../../application/use-cases/finances/update-transaction.use-case';
+import {
+  ListIncomeTransactionsUseCase,
+  type IncomeTransactionOutput,
+} from '../../application/use-cases/finances/list-income-transactions.use-case';
+import {
+  INCOME_TX_DEFAULT_LIMIT,
+  INCOME_TX_MAX_LIMIT,
+} from '../../application/constants/income-transactions.constants';
 
 interface SuccessResponse<T> {
   success: true;
@@ -115,6 +123,7 @@ export class FinancesController {
     private readonly updateIncomeConcept: UpdateIncomeConceptUseCase,
     private readonly deleteIncomeConcept: DeleteIncomeConceptUseCase,
     private readonly updateTransaction: UpdateTransactionUseCase,
+    private readonly listIncomeTransactions: ListIncomeTransactionsUseCase,
   ) {}
 
   /**
@@ -170,6 +179,32 @@ export class FinancesController {
       relatedConsultationId: dto.related_consultation_id ?? null,
       date: dto.date ? new Date(dto.date) : undefined,
       conceptId: dto.conceptId ?? null,
+      patientId: dto.patientId ?? null,
+    });
+    return { success: true, data: result };
+  }
+
+  /**
+   * GET /api/finances/income-transactions
+   * GET /api/finances/income-transactions?month=YYYY-MM&limit=100
+   *
+   * Returns manual income entries with decrypted patient name for the finance chart.
+   * SECURITY: doctorId from authenticated token (anti-IDOR). No PII is logged.
+   */
+  @Get('income-transactions')
+  async incomeTransactions(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('month') month?: string,
+    @Query('limit') limit = String(INCOME_TX_DEFAULT_LIMIT),
+  ): Promise<SuccessResponse<IncomeTransactionOutput[]>> {
+    const validatedMonth = parseOptionalMonth(month, 'month');
+    const result = await this.listIncomeTransactions.execute({
+      doctorId: user.sub,
+      month: validatedMonth,
+      limit: Math.min(
+        INCOME_TX_MAX_LIMIT,
+        Math.max(1, parseInt(limit, 10) || INCOME_TX_DEFAULT_LIMIT),
+      ),
     });
     return { success: true, data: result };
   }
@@ -309,6 +344,7 @@ export class FinancesController {
       currency: dto.currency,
       transactionDate: dto.transactionDate ? new Date(dto.transactionDate) : undefined,
       conceptId: dto.conceptId,
+      patientId: dto.patientId,
     });
     return { success: true, data: result };
   }

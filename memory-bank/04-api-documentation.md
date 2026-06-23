@@ -90,14 +90,15 @@
 
 ### Finances (módulo ✅)
 
-| Endpoint                              | Método | Auth                         | Notas                                                                                                            |
-| ------------------------------------- | ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `/api/finances/summary?month=YYYY-MM` | GET    | doctor                       | Resumen del mes (consultas aprobadas + transacciones). `net` con signo (puede ser negativo). month inválido→400. |
-| `/api/finances/transactions`          | GET    | doctor                       | Lista paginada de ingresos/gastos.                                                                               |
-| `/api/finances/income`                | POST   | doctor                       | Registrar ingreso manual (amount>0).                                                                             |
-| `/api/finances/expense`               | POST   | doctor                       | Registrar gasto.                                                                                                 |
-| `/api/settings/usdt-rate`             | GET    | **Pública**                  | Tasa USDT/Bs (Redis TTL 600s + fallback app_settings; null si no seteada).                                       |
-| `/api/admin/settings/usdt-rate`       | POST   | **super_admin** (RolesGuard) | Actualiza tasa + invalida Redis. doctor→403.                                                                     |
+| Endpoint                                                    | Método | Auth                         | Notas                                                                                                                                                                                          |
+| ----------------------------------------------------------- | ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/finances/summary?month=YYYY-MM`                       | GET    | doctor                       | Resumen del mes (consultas aprobadas + transacciones). `net` con signo (puede ser negativo). month inválido→400.                                                                               |
+| `/api/finances/transactions`                                | GET    | doctor                       | Lista paginada de ingresos/gastos.                                                                                                                                                             |
+| `/api/finances/income-transactions?month=YYYY-MM&limit=200` | GET    | doctor                       | (7.9) Ingresos manuales con `patientName` descifrado (owner-scoped; null si corrupto). Máx 200. Para gráficas fieles.                                                                          |
+| `/api/finances/income`                                      | POST   | doctor                       | Registrar ingreso manual (amount>0). (7.9) Acepta `patientId?` y `relatedConsultationId?`: si viene consulta, el paciente se deriva de ella (anti-IDOR, ignora patientId); consulta ajena→404. |
+| `/api/finances/expense`                                     | POST   | doctor                       | Registrar gasto.                                                                                                                                                                               |
+| `/api/settings/usdt-rate`                                   | GET    | **Pública**                  | Tasa USDT/Bs (Redis TTL 600s + fallback app_settings; null si no seteada).                                                                                                                     |
+| `/api/admin/settings/usdt-rate`                             | POST   | **super_admin** (RolesGuard) | Actualiza tasa + invalida Redis. doctor→403.                                                                                                                                                   |
 
 ### Doctor settings (módulo ✅)
 

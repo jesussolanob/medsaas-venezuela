@@ -21,6 +21,13 @@ export class FinancialTransaction {
     public readonly createdAt: Date,
     /** Nullable FK to income_concepts (income transactions only). */
     public readonly conceptId: string | null = null,
+    /**
+     * Nullable FK to patients.
+     * Income + consultation link: derived from the consultation's patient_id.
+     * Income without consultation: optionally supplied by the doctor (validated).
+     * Expense: always null.
+     */
+    public readonly patientId: string | null = null,
   ) {}
 
   /** Factory for constructing a new (unpersisted) transaction. */
@@ -34,6 +41,7 @@ export class FinancialTransaction {
     date: Date;
     createdAt: Date;
     conceptId?: string | null;
+    patientId?: string | null;
   }): FinancialTransaction {
     return new FinancialTransaction(
       params.id,
@@ -45,6 +53,7 @@ export class FinancialTransaction {
       params.date,
       params.createdAt,
       params.conceptId ?? null,
+      params.patientId ?? null,
     );
   }
 
@@ -62,6 +71,8 @@ export class FinancialTransaction {
     description?: string;
     date?: Date;
     conceptId?: string | null;
+    /** Pass undefined to keep existing patientId; null to unlink. */
+    patientId?: string | null;
   }): FinancialTransaction {
     return new FinancialTransaction(
       this.id,
@@ -73,6 +84,7 @@ export class FinancialTransaction {
       fields.date ?? this.date,
       this.createdAt,
       fields.conceptId !== undefined ? fields.conceptId : this.conceptId,
+      fields.patientId !== undefined ? fields.patientId : this.patientId,
     );
   }
 }

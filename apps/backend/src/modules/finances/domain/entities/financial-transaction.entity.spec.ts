@@ -61,6 +61,18 @@ describe('FinancialTransaction', () => {
     });
   });
 
+  describe('patientId', () => {
+    it('defaults patientId to null when not provided', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      expect(tx.patientId).toBeNull();
+    });
+
+    it('carries patientId when provided', () => {
+      const tx = FinancialTransaction.create({ ...baseParams, patientId: 'patient-uuid-1' });
+      expect(tx.patientId).toBe('patient-uuid-1');
+    });
+  });
+
   describe('patch()', () => {
     it('returns a new transaction with updated description (immutable)', () => {
       const tx = FinancialTransaction.create(baseParams);
@@ -99,6 +111,24 @@ describe('FinancialTransaction', () => {
       const tx = FinancialTransaction.create({ ...baseParams, conceptId: 'concept-uuid-1' });
       const patched = tx.patch({ description: 'Changed' });
       expect(patched.conceptId).toBe('concept-uuid-1');
+    });
+
+    it('sets patientId when provided', () => {
+      const tx = FinancialTransaction.create(baseParams);
+      const patched = tx.patch({ patientId: 'patient-uuid-1' });
+      expect(patched.patientId).toBe('patient-uuid-1');
+    });
+
+    it('sets patientId to null when explicitly passed null', () => {
+      const tx = FinancialTransaction.create({ ...baseParams, patientId: 'patient-uuid-1' });
+      const patched = tx.patch({ patientId: null });
+      expect(patched.patientId).toBeNull();
+    });
+
+    it('preserves existing patientId when not specified in patch', () => {
+      const tx = FinancialTransaction.create({ ...baseParams, patientId: 'patient-uuid-1' });
+      const patched = tx.patch({ description: 'Changed' });
+      expect(patched.patientId).toBe('patient-uuid-1');
     });
 
     it('does not change type or doctorId', () => {

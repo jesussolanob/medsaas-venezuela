@@ -16,6 +16,7 @@ import {
  * migration 20260602000004-finances.cjs
  * Extended by: 20260617000002-income-concepts.cjs (concept_id)
  *              20260617000003-financial-transactions-updated-at.cjs (updated_at)
+ *              20260623000000-financial-transactions-patient-id.cjs (patient_id)
  *
  * No business logic here — pure ORM mapping. All domain logic lives in
  * FinancialTransaction entity and use cases.
@@ -55,6 +56,14 @@ export class FinancialTransactionModel extends Model {
   /** Nullable FK to income_concepts — set only for income-type rows. */
   @Column({ type: DataType.UUID, allowNull: true, field: 'concept_id' })
   declare conceptId: string | null;
+
+  /**
+   * Nullable FK to patients — set only for income-type rows.
+   * Derived from the linked consultation when relatedConsultationId is present;
+   * otherwise supplied by the doctor (validated for ownership before persist).
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'patient_id' })
+  declare patientId: string | null;
 
   @CreatedAt
   @Column({ field: 'created_at' })

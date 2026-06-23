@@ -30,6 +30,7 @@ describe('ListTransactionsUseCase', () => {
       delete: jest.fn(),
       lifetimeIncome: jest.fn(),
       updateTransaction: jest.fn(),
+      listIncomeTransactions: jest.fn(),
     };
     useCase = new ListTransactionsUseCase(mockRepo);
   });
