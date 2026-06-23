@@ -35,7 +35,11 @@ const clientId = requireEnv('AUTH0_CLIENT_ID');
 const clientSecret = requireEnv('AUTH0_CLIENT_SECRET');
 const secret = requireEnv('AUTH0_SECRET');
 // AUTH0_BASE_URL takes precedence; fall back to APP_BASE_URL for flexibility.
-const appBaseUrl = process.env.AUTH0_BASE_URL ?? process.env.APP_BASE_URL ?? 'http://localhost:3000';
+const appBaseUrl =
+  process.env.AUTH0_BASE_URL ?? process.env.APP_BASE_URL ?? 'http://localhost:3000';
+
+/** Session lifetime: 8 hours absolute, after which the user must log in again. */
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
 export const auth0 = new Auth0Client({
   domain,
@@ -45,5 +49,10 @@ export const auth0 = new Auth0Client({
   appBaseUrl,
   authorizationParameters: {
     scope: 'openid profile email',
+  },
+  // Cap the session at 8h (absolute). rolling=false → it does not extend on activity.
+  session: {
+    rolling: false,
+    absoluteDuration: SESSION_MAX_AGE_SECONDS,
   },
 });

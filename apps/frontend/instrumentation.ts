@@ -82,7 +82,16 @@ export const onRequestError = async (
 function installBackendAuthInterceptor(): void {
   const audience = process.env.BACKEND_IAM_AUDIENCE;
   const backendBase = process.env.BACKEND_INTERNAL_URL;
-  if (!audience || !backendBase) return;
+  if (!backendBase) return;
+
+  // Two independent reasons to patch fetch:
+  //   - needsIamToken: GCP IAM-protected backend (Cloud Run) → Authorization Bearer.
+  //   - needsUserToken: AUTH_MODE=auth0 → forward the end-user's Auth0 ID token.
+  // Locally (auth0 mode, no GCP IAM) only the user token applies — this is what
+  // keeps local behavior identical to prod. In dev-stub mode neither applies → inert.
+  const needsIamToken = Boolean(audience);
+  const needsUserToken = (process.env.AUTH_MODE ?? 'dev') === 'auth0';
+  if (!needsIamToken && !needsUserToken) return;
 
   const METADATA_URL =
     'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity';
@@ -132,16 +141,20 @@ function installBackendAuthInterceptor(): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.startsWith(backendBase)) {
-      const token = await idToken();
       const headers = new Headers(
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
-      headers.set('Authorization', `Bearer ${token}`);
+      // GCP IAM Bearer — only when running against an IAM-protected backend (prod).
+      if (needsIamToken) {
+        headers.set('Authorization', `Bearer ${await idToken()}`);
+      }
       // Etapa 2: forward the end-user's Auth0 ID token so the backend's
-      // Auth0Guard can validate it and resolve the caller's profile. Absent in
-      // dev mode or for unauthenticated requests — those proceed without it.
-      const userToken = await userAuth0Token();
-      if (userToken) headers.set('x-auth0-token', userToken);
+      // Auth0Guard can validate it and resolve the caller's profile. Absent for
+      // unauthenticated requests — those proceed without it.
+      if (needsUserToken) {
+        const userToken = await userAuth0Token();
+        if (userToken) headers.set('x-auth0-token', userToken);
+      }
       return originalFetch(input, { ...init, headers });
     }
     return originalFetch(input, init);

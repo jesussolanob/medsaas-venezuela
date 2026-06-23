@@ -108,7 +108,13 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
   }, [router, isPublicRoute]);
 
   function handleLogout() {
-    // ETAPA 1: limpiar cookies del dev-stub. Fase 4: signOut de Auth0.
+    // En Auth0, delegar al SDK logout (limpia la sesión httpOnly + /v2/logout).
+    // Sin esto, borrar las cookies dev-stub no cerraba la sesión real.
+    if (process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0') {
+      window.location.href = '/auth/logout';
+      return;
+    }
+    // Dev-stub: limpiar cookies y volver al login.
     document.cookie = 'dev_user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     document.cookie = 'dev_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     router.push('/login');
