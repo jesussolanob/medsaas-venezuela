@@ -168,7 +168,6 @@ Calendario visual de tus citas. (Requiere plan Base o Plus.)
   - **Confirmar cita** (cuando esta Agendada): pasa la cita a Confirmada.
   - **Cancelar cita** (cuando esta Agendada o Confirmada): pide una razon opcional; si la cita usaba un paquete prepagado, la sesion se restituye.
   - **Ir a consulta**: abre la consulta de esa cita. El estado de la consulta (atendida / no asistio) y el pago se gestionan DENTRO de la consulta, no desde la agenda.
-  - **Ver Cita 360°** (/doctor/cita-360): vista integral de la cita (auditoria completa).
   - Para citas online con Google Meet: boton **Abrir Meet**.
 
 Estados de una cita: Agendada (recien creada), Confirmada (la confirmaste), Atendida/completada (el paciente asistio), No asistio, Cancelada/rechazada. Todo cambio de estado queda auditado automaticamente.
@@ -281,7 +280,6 @@ Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear,
 ### 6.14 Otras pantallas
 
 - **Sugerencias** — /doctor/suggestions: envia comentarios o ideas al equipo Delta y ve el historial con el estado (Nuevo, En progreso, Resuelto, Rechazado) y la respuesta del administrador.
-- **Cita 360** — /doctor/cita-360: vista integral de una cita (paciente, consulta, pagos en un solo lugar).
 - **Historia clinica (EHR)** — /doctor/ehr: diagnosticos y planes de tratamiento cifrados por paciente.
 - **Facturacion** — /doctor/billing: documentos fiscales (factura, recibo, comprobante) con IVA e IGTF.
 - **Reportes** — /doctor/reports y **CRM de leads** — /doctor/crm y **Mensajes** — /doctor/messages: funciones complementarias, algunas en desarrollo. No todas aparecen en el menu lateral.

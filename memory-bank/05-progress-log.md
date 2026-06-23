@@ -2,6 +2,14 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-23 — Eliminada la feature "Cita 360°" (decisión del usuario)
+
+- **Cita 360° ELIMINADA por completo** (no va, decisión del usuario). Era la vista integral/auditoría de una cita.
+  - **Frontend:** borrado `apps/frontend/app/doctor/cita-360/` (page, `[id]`, `Cita360List`, `Cita360Client`) + quitado el link "Ver Cita 360°" del modal de detalle de agenda (`agenda/page.tsx`).
+  - **Backend:** borrado el use-case `get-appointment-360.use-case.ts` (+spec) y el mapper `appointment-360.mapper.ts`; removido el endpoint **`GET /api/appointments/:id/detail`** y el método del controller; sacado `GetAppointment360UseCase` de los providers. Removidos los métodos de repo `findRescheduleChain`/`findChangeLogs` (+ `ChangeLogEntry`) y los imports cross-módulo de `AppointmentsModule` que solo usaba el 360 (**ConsultationsModule, FinancesModule, PatientsModule, DoctorSettingsModule** — grep confirmó cero consumidores no-360). Limpiadas las menciones en la guía del asistente de ayuda. **Se conservaron** exports usados por otros módulos (CONSULTATION_REPOSITORY → document-sharing; DOCTOR_PROFILE_REPOSITORY → help/document-sharing/ai-transcription).
+  - **Cambio de DI:** AppointmentsModule imports 6→4 (quedan Sequelize + Offices + Integrations), providers 6→5, controller constructor 6→5. **Boot-safety verificada estáticamente** por el lead: cero referencias a los tokens removidos dentro de `appointments/`. build EXIT 0, tests 99/99 + booking 102/102. **Boot real del dist pendiente para la ventana de QA** (lección 06-22: build+unit no atrapan DI de bootstrap).
+  - El `appointment_code` (código legible de la cita) **sigue visible** en agenda/cobros — decisión del usuario ("no pasa nada"). Esto cierra la parte "ocultar ID de cita" de 7.12 (DESCARTADA).
+
 ## 2026-06-23 — MVP 7.10: cobro por WhatsApp
 
 - **7.10 ✅ (backend + frontend):** botón "Cobrar por WhatsApp" en `/doctor/cobros` (drawer de detalle, solo pagos `pending`). Abre `wa.me` del paciente con un mensaje pre-formateado: saludo + **monto USD + Bs** (tasa BCV) + referencia (`plan_name`/`appointment_code`) + **datos de pago del doctor** (Pago Móvil/transferencia/Zelle/Binance/POS formateados desde `paymentDetails`). **NO hay pasarela ni link de pago** (aclaración del usuario): el paciente paga manual. Reusa el helper `lib/phone-utils.ts` (`waLink`).

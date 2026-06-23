@@ -15,7 +15,8 @@ approvals/aprobaciones. (Algunas marcadas para eliminar en beta — ver CLAUDE.m
 
 dashboard, agenda, patients, consultations, ehr, finances, billing, cobros,
 reports, crm, reminders, messages, services, plans, offices, templates,
-cita-360, suggestions, settings (+ settings/consultation-blocks).
+suggestions, settings (+ settings/consultation-blocks).
+(cita-360 ELIMINADO el 2026-06-23 — ver 05-progress-log.)
 
 ### `/patient`
 
@@ -204,7 +205,7 @@ Editor admin de planes (`/admin/plans`) · `/doctor/upgrade` (tarjetas + upsell,
 onboarding obligatorio (`OnboardingForm` + `SpecialtyCombobox` + `CedulaInput` V/E/P; render full-screen sin
 sidebar) · panel `/admin/verifications` (+ estado MPPS) · `BookingQrCode` (QR descargable del link público) ·
 `TelemetryProvider` (captura low-touch cliente) · `NewAppointmentFlow` (consultorio → modalidad → planes) ·
-loader full-screen al redirigir a Auth0 en login. Se quitó WhatsApp y Cita 360 del área doctor.
+loader full-screen al redirigir a Auth0 en login. Se quitó WhatsApp del área doctor. **Cita 360° ELIMINADA por completo (2026-06-23)** — frontend (`app/doctor/cita-360/`), endpoint `GET /api/appointments/:id/detail`, use-case `get-appointment-360`, mapper, métodos de repo `findRescheduleChain`/`findChangeLogs`, e imports cross-módulo de AppointmentsModule (Consultations/Finances/Patients/DoctorSettings). Decisión del usuario: la feature no va. El `appointment_code` sigue visible en agenda/cobros (sin problema, por decisión del usuario).
 
 **PDF (7.8 + 7.3, 2026-06-23):** `components/pdf/` con `@react-pdf/renderer@4.5.1`. `PdfDownloadButton.tsx` = botón **genérico** (`document: ReactElement`). Documentos: `MedicalDocumentPdf.tsx` (Informe/Receta/Indicaciones del doctor con plantilla `doctor_templates` + matrícula) y `SpecialistsReportPdf.tsx` (reporte tabular de especialistas para admin). **Patrón SSR obligatorio:** el `dynamic ssr:false` rodea la COMPOSICIÓN — módulos wrapper `'use client'` (`SpecialistsPdfButton`, `ConsultationInformePdfButton`, `RecetaPdfButton`) que importan estáticamente button+documento y se cargan vía `dynamic ssr:false` en la página. NUNCA envolver el componente-documento en `next/dynamic` (react-pdf no resuelve lazy → PDF vacío).
 

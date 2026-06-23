@@ -62,8 +62,6 @@ function makeAppointmentRepo(
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn(),
     findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue([]),
-    findRescheduleChain: jest.fn(),
-    findChangeLogs: jest.fn(),
     findByIdForDoctor: jest.fn(),
     updateMeetLink: jest.fn(),
     updateGoogleEventId: jest.fn().mockResolvedValue(undefined),

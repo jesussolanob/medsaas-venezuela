@@ -42,8 +42,6 @@ import { PatientsModule } from '../patients/patients.module';
     ListConsultationsUseCase,
     ListConsultationsWithPatientUseCase,
   ],
-  // Export CONSULTATION_REPOSITORY so AppointmentsModule can inject it
-  // for the cita-360 detail view (findByAppointmentId).
   exports: [CONSULTATION_REPOSITORY],
 })
 export class ConsultationsModule {}

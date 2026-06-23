@@ -86,7 +86,7 @@ location.reload();
 ## Qué se puede probar (admin + doctor)
 
 Admin: dashboard, finanzas, suscripciones, planes, roles, recordatorios, doctores, settings, pacientes (solo stats).
-Doctor: agenda, cita-360, consultas, pacientes, finanzas, cobros, settings, plantillas, mensajes, recordatorios, offices, dashboard.
+Doctor: agenda, consultas, pacientes, finanzas, cobros, settings, plantillas, mensajes, recordatorios, offices, dashboard.
 
 ## Estado de integraciones (al 2026-06-12)
 

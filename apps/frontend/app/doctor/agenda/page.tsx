@@ -2208,13 +2208,6 @@ export default function AgendaPage() {
                   Cerrar
                 </button>
               </div>
-              {/* Cita 360° — auditoría completa de la cita en 4 pasos */}
-              <a
-                href={`/doctor/cita-360/${detailAppt.appointment_id || detailAppt.id}`}
-                className="mt-3 flex items-center justify-center gap-2 py-2 border border-cyan-200 bg-cyan-50 hover:bg-cyan-100 rounded-lg text-sm font-semibold text-cyan-700"
-              >
-                🔍 Ver Cita 360° (auditoría completa)
-              </a>
             </div>
           </div>
         )}
