@@ -206,7 +206,7 @@ sidebar) · panel `/admin/verifications` (+ estado MPPS) · `BookingQrCode` (QR 
 `TelemetryProvider` (captura low-touch cliente) · `NewAppointmentFlow` (consultorio → modalidad → planes) ·
 loader full-screen al redirigir a Auth0 en login. Se quitó WhatsApp y Cita 360 del área doctor.
 
-**PDF de documentos (7.8, 2026-06-23):** `components/pdf/MedicalDocumentPdf.tsx` (reutilizable, `@react-pdf/renderer@4.5.1`) + `PdfDownloadButton.tsx` + `TemplatePdfPreview.tsx`. Render de Informe/Receta/Indicaciones con la plantilla del doctor (`doctor_templates`) + matrícula. SIEMPRE vía `dynamic(...,{ssr:false})` (sensible a SSR). Es la base del export que reutiliza 7.3.
+**PDF (7.8 + 7.3, 2026-06-23):** `components/pdf/` con `@react-pdf/renderer@4.5.1`. `PdfDownloadButton.tsx` = botón **genérico** (`document: ReactElement`). Documentos: `MedicalDocumentPdf.tsx` (Informe/Receta/Indicaciones del doctor con plantilla `doctor_templates` + matrícula) y `SpecialistsReportPdf.tsx` (reporte tabular de especialistas para admin). **Patrón SSR obligatorio:** el `dynamic ssr:false` rodea la COMPOSICIÓN — módulos wrapper `'use client'` (`SpecialistsPdfButton`, `ConsultationInformePdfButton`, `RecetaPdfButton`) que importan estáticamente button+documento y se cargan vía `dynamic ssr:false` en la página. NUNCA envolver el componente-documento en `next/dynamic` (react-pdf no resuelve lazy → PDF vacío).
 
 **Infraestructura transversal:** `infrastructure/crypto/` (CryptoModule @Global: encrypt/decrypt
 AES-256-GCM + HMAC search hash, lee llaves de ConfigService, guard de llaves triviales);

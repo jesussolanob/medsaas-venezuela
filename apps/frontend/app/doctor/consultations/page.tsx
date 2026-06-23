@@ -4,10 +4,10 @@ import { useState, useEffect, useTransition, useRef, useCallback, Suspense } fro
 import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 
-// Botón de descarga PDF client-side (react-pdf requiere ssr:false).
-const PdfDownloadButton = dynamic(
-  () =>
-    import('@/components/pdf/PdfDownloadButton').then((m) => ({ default: m.PdfDownloadButton })),
+// RecetaPdfButton importa estáticamente PdfDownloadButton + MedicalDocumentPdf.
+// El dynamic ssr:false aquí excluye TODO el código de @react-pdf/renderer del bundle SSR.
+const RecetaPdfButton = dynamic(
+  () => import('./RecetaPdfButton').then((m) => ({ default: m.RecetaPdfButton })),
   { ssr: false, loading: () => null },
 );
 // L7 (2026-04-29): se eliminan los iconos del cronómetro manual (Play, Square)
@@ -2581,47 +2581,44 @@ function ConsultationsPage() {
                         <Printer className="w-4 h-4" /> Imprimir
                       </button>
                       {pdfTemplateConfig && recipe.medications.length > 0 && (
-                        <PdfDownloadButton
+                        <RecetaPdfButton
                           fileName={`receta-${selected.consultation_code}.pdf`}
-                          docProps={{
-                            docType: 'recipe',
-                            templateConfig: pdfTemplateConfig,
-                            doctor: {
-                              fullName: doctorName || '',
-                              specialty: doctorSpecialty,
-                              licenseNumber: doctorLicense,
-                            },
-                            patient: {
-                              fullName: selected.patient_name || '—',
-                              cedula:
-                                patients.find((p) => p.id === selected.patient_id)?.cedula ?? null,
-                            },
-                            docDate: selected.consultation_date,
-                            consultationCode: selected.consultation_code,
-                            content: [
-                              {
-                                key: 'medications',
-                                label: 'Medicamentos',
-                                value: recipe.medications.map(
-                                  (m) =>
-                                    `${m.name}${m.dose ? ' — ' + m.dose : ''}${m.frequency ? ' — ' + m.frequency : ''}${m.duration ? ' — ' + m.duration : ''}${m.indications ? ' (' + m.indications + ')' : ''}`,
-                                ),
-                              },
-                              ...(report.treatment
-                                ? [
-                                    {
-                                      key: 'indications',
-                                      label: 'Indicaciones',
-                                      value: report.treatment.replace(/<[^>]+>/g, ''),
-                                    },
-                                  ]
-                                : []),
-                            ],
+                          templateConfig={pdfTemplateConfig}
+                          doctor={{
+                            fullName: doctorName || '',
+                            specialty: doctorSpecialty,
+                            licenseNumber: doctorLicense,
                           }}
+                          patient={{
+                            fullName: selected.patient_name || '—',
+                            cedula:
+                              patients.find((p) => p.id === selected.patient_id)?.cedula ?? null,
+                          }}
+                          docDate={selected.consultation_date}
+                          consultationCode={selected.consultation_code}
+                          content={[
+                            {
+                              key: 'medications',
+                              label: 'Medicamentos',
+                              value: recipe.medications.map(
+                                (m) =>
+                                  `${m.name}${m.dose ? ' — ' + m.dose : ''}${m.frequency ? ' — ' + m.frequency : ''}${m.duration ? ' — ' + m.duration : ''}${m.indications ? ' (' + m.indications + ')' : ''}`,
+                              ),
+                            },
+                            ...(report.treatment
+                              ? [
+                                  {
+                                    key: 'indications',
+                                    label: 'Indicaciones',
+                                    value: report.treatment.replace(/<[^>]+>/g, ''),
+                                  },
+                                ]
+                              : []),
+                          ]}
                           className="flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
                         >
                           Descargar PDF
-                        </PdfDownloadButton>
+                        </RecetaPdfButton>
                       )}
                     </div>
                   </div>

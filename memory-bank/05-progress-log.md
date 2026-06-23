@@ -2,6 +2,15 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-23 — MVP 7.3: export PDF de especialistas (admin) + patrón PDF reutilizable
+
+- **7.3 ✅ (frontend):** estados Activo/Frío/Inactivo y export **CSV** ya existían. Se agregó: **export PDF tabular** del listado de especialistas (`/admin/doctors`) + **badge visual de vencimiento**.
+  - `PdfDownloadButton` se hizo **genérico** (prop `document: React.ReactElement` en vez de atado a `MedicalDocumentPdf`) → reutilizable por 7.8 (documento médico) y 7.3 (reporte tabular). Pedido del usuario: "el mismo export reutilizable".
+  - Nuevo `apps/frontend/components/pdf/SpecialistsReportPdf.tsx` (A4 landscape, marca teal, resumen de conteos, 9 columnas = mismas que el CSV, header repetido, semáforo de actividad, null-safe). Botón "Descargar PDF" junto al CSV en `UsersPanel.tsx`. Exporta el conjunto **filtrado** que ve el usuario (documentado inline).
+  - **Badge de vencimiento** (`ExpiryBadge`): rojo si venció o ≤7d, ámbar ≤30d, normal si lejos, "—" si null. En desktop + mobile.
+  - ⚠️ **LECCIÓN react-pdf + Next App Router (bug que el build NO atrapa):** NO pasar un componente-documento envuelto en `next/dynamic` como `document` de `PDFDownloadLink` — el reconciler de `@react-pdf` no resuelve `lazy`/`Suspense` → PDF vacío. **Patrón correcto:** el límite `dynamic ssr:false` rodea la COMPOSICIÓN completa (un módulo `'use client'` wrapper que importa ESTÁTICAMENTE `PdfDownloadButton` + el componente-documento y arma `<PdfDownloadButton document={<DocReal/>}/>`), y la página importa ESE wrapper con `dynamic ssr:false`. Wrappers: `SpecialistsPdfButton`, `ConsultationInformePdfButton`, `RecetaPdfButton`. **Esto también arregló el preview de plantillas de 7.8** (`TemplatePdfPreview`), que tenía el mismo bug y nunca renderizó bien. La verificación de runtime (descarga real con datos) queda para la ventana de QA visual del usuario.
+  - tsc EXIT 0, nx build frontend EXIT 0.
+
 ## 2026-06-23 — MVP 7.8: render + export de PDF de documentos del doctor
 
 - **7.8 ✅ (frontend, equipo de agentes):** El backend YA existía (tabla `doctor_templates` mig `20260605000001`, módulo `doctor-templates` con `GET /api/doctor/templates` + `PUT /api/doctor/templates/:type`, UI de config en `/doctor/templates`, `/api/storage/upload` MinIO/GCS). Lo que faltaba era el **render del PDF y el export** (el "preview" era un stub de JSON; sin botón de descarga). Decisión del usuario: **`@react-pdf/renderer` en el FRONTEND** (no el pdf-lib del backend, que queda para document-sharing/paciente).

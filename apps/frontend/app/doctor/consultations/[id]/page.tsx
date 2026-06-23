@@ -29,10 +29,13 @@ import type {
   ContentBlock,
 } from '@/components/pdf/MedicalDocumentPdf';
 
-// PdfDownloadButton solo en cliente (react-pdf no soporta SSR).
-const PdfDownloadButton = dynamic(
+// ConsultationInformePdfButton importa estáticamente PdfDownloadButton + MedicalDocumentPdf.
+// El dynamic ssr:false aquí excluye TODO el código de @react-pdf/renderer del bundle SSR.
+const ConsultationInformePdfButton = dynamic(
   () =>
-    import('@/components/pdf/PdfDownloadButton').then((m) => ({ default: m.PdfDownloadButton })),
+    import('../ConsultationInformePdfButton').then((m) => ({
+      default: m.ConsultationInformePdfButton,
+    })),
   { ssr: false, loading: () => null },
 );
 
@@ -330,24 +333,21 @@ export default function ConsultationDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             {templateConfig && doctorInfo && (
-              <PdfDownloadButton
+              <ConsultationInformePdfButton
                 fileName={`informe-${consultation.consultation_code}.pdf`}
-                docProps={{
-                  docType: 'informe',
-                  templateConfig,
-                  doctor: doctorInfo,
-                  patient: {
-                    fullName: patient?.full_name || '—',
-                    cedula: patient?.cedula || null,
-                  },
-                  docDate: consultation.consultation_date,
-                  consultationCode: consultation.consultation_code,
-                  content: buildPdfContent(),
+                templateConfig={templateConfig}
+                doctor={doctorInfo}
+                patient={{
+                  fullName: patient?.full_name || '—',
+                  cedula: patient?.cedula || null,
                 }}
+                docDate={consultation.consultation_date}
+                consultationCode={consultation.consultation_code}
+                content={buildPdfContent()}
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
               >
                 Descargar informe
-              </PdfDownloadButton>
+              </ConsultationInformePdfButton>
             )}
             <ShareDocumentsModal consultationId={consultation.id} />
           </div>

@@ -3,9 +3,11 @@
 /**
  * /admin/doctors — Especialistas
  * 2026-05-02: rediseño según handoff Delta Health Tech.
+ * 2026-06-23: export PDF tabular + badge de vencimiento.
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Search,
   MoreHorizontal,
@@ -23,6 +25,15 @@ import DoctorDetailDrawer from './DoctorDetailDrawer';
 import { PageHead, Btn, StatCard, Card, StatusPill } from '@/components/dh';
 import { clsx } from 'clsx';
 
+// SpecialistsPdfButton importa estáticamente PdfDownloadButton + SpecialistsReportPdf
+// (componentes react-pdf reales). El dynamic ssr:false aquí excluye TODO el código de
+// @react-pdf/renderer del bundle SSR. Nunca pasar un next/dynamic como `document` a
+// react-pdf — su reconciler no resuelve lazy/Suspense.
+const SpecialistsPdfButton = dynamic(
+  () => import('./SpecialistsPdfButton').then((m) => ({ default: m.SpecialistsPdfButton })),
+  { ssr: false, loading: () => null },
+);
+
 interface Doctor {
   id: string;
   full_name: string;
@@ -39,6 +50,59 @@ interface Doctor {
 function daysSince(dateStr?: string | null): number {
   if (!dateStr) return 999;
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Calcula los días hasta el vencimiento de la suscripción.
+ * Negativo = ya venció. null = sin fecha.
+ */
+function daysUntilExpiry(expiresAt?: string | null): number | null {
+  if (!expiresAt) return null;
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+interface ExpiryBadgeProps {
+  expiresAt?: string | null;
+  dateText: string;
+}
+
+function ExpiryBadge({ expiresAt, dateText }: ExpiryBadgeProps) {
+  const days = daysUntilExpiry(expiresAt);
+
+  if (days === null) {
+    return <span style={{ color: 'var(--dh-gray-400)' }}>—</span>;
+  }
+
+  // Vencido o vence en ≤7 días → rojo
+  // Vence en ≤30 días → amarillo/ámbar
+  // Más de 30 días → gris normal
+  const isExpired = days <= 0;
+  const isUrgent = days > 0 && days <= 7;
+  const isWarning = days > 7 && days <= 30;
+
+  if (!isExpired && !isUrgent && !isWarning) {
+    return (
+      <span style={{ fontFamily: 'var(--dh-font-mono)', color: 'var(--dh-gray-600)' }}>
+        {dateText}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex flex-col gap-0.5" style={{ fontFamily: 'var(--dh-font-mono)' }}>
+      <span style={{ color: isExpired || isUrgent ? '#b91c1c' : '#92400e' }}>{dateText}</span>
+      <span
+        className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
+        style={{
+          background: isExpired || isUrgent ? '#fee2e2' : '#fef3c7',
+          color: isExpired || isUrgent ? '#b91c1c' : '#92400e',
+        }}
+      >
+        {isExpired ? `Venció hace ${Math.abs(days)}d` : `Vence en ${days}d`}
+      </span>
+    </span>
+  );
 }
 
 // Colores avatar deterministicos (hash sobre id)
@@ -157,8 +221,19 @@ export default function UsersPanel() {
               icon={<Download className="w-4 h-4" />}
               onClick={exportDoctors}
             >
-              Exportar
+              CSV
             </Btn>
+            {/*
+             * PDF export: exporta filteredDoctors — la lista que el usuario está
+             * viendo (filtrada por búsqueda activa en la UI). Sin filtro activo
+             * coincide con la lista completa. Para exportar todo, borrar el filtro.
+             * SpecialistsPdfButton importa react-pdf estáticamente; el dynamic
+             * ssr:false arriba garantiza que no llega al bundle del servidor.
+             */}
+            <SpecialistsPdfButton
+              rows={filteredDoctors}
+              fileName={`especialistas-${new Date().toISOString().split('T')[0]}.pdf`}
+            />
             <NewDoctorModal />
           </>
         }
@@ -292,7 +367,7 @@ export default function UsersPanel() {
                 filteredDoctors.map((d, i) => {
                   const days = daysSince(d.last_sign_in_at || d.created_at);
                   const status = subscriptionPillStatus(d.subscription_status);
-                  const vence = d.subscription_expires_at
+                  const venceText = d.subscription_expires_at
                     ? new Date(d.subscription_expires_at).toLocaleDateString('es-VE', {
                         day: '2-digit',
                         month: 'short',
@@ -359,14 +434,8 @@ export default function UsersPanel() {
                           <StatusPill status={status} size="sm" />
                         </div>
                       </td>
-                      <td
-                        style={{
-                          padding: '16px 20px',
-                          fontFamily: 'var(--dh-font-mono)',
-                          color: 'var(--dh-gray-600)',
-                        }}
-                      >
-                        {vence}
+                      <td style={{ padding: '16px 20px' }}>
+                        <ExpiryBadge expiresAt={d.subscription_expires_at} dateText={venceText} />
                       </td>
                       <td style={{ padding: '16px 20px' }}>
                         <span
@@ -439,6 +508,13 @@ export default function UsersPanel() {
           ) : (
             filteredDoctors.map((d) => {
               const status = subscriptionPillStatus(d.subscription_status);
+              const venceText = d.subscription_expires_at
+                ? new Date(d.subscription_expires_at).toLocaleDateString('es-VE', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  })
+                : '—';
               return (
                 <button
                   key={d.id}
@@ -464,6 +540,10 @@ export default function UsersPanel() {
                     </div>
                     <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)' }}>
                       {d.specialty ?? d.email}
+                    </div>
+                    {/* Badge de vencimiento en mobile */}
+                    <div className="mt-1">
+                      <ExpiryBadge expiresAt={d.subscription_expires_at} dateText={venceText} />
                     </div>
                   </div>
                   <StatusPill status={status} size="sm" />

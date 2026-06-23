@@ -13,8 +13,13 @@
 import dynamic from 'next/dynamic';
 import { Loader2, Download, FileText } from 'lucide-react';
 import type { TemplateConfigPdf, DoctorInfoPdf, ContentBlock } from './MedicalDocumentPdf';
+// MedicalDocumentPdf se importa estáticamente: este módulo ya es client-only
+// (cargado vía dynamic ssr:false desde la página), así que react-pdf recibe un
+// elemento real — no un lazy/Suspense que su reconciler no puede resolver.
+import { MedicalDocumentPdf } from './MedicalDocumentPdf';
 
-// Importaciones dinámicas: @react-pdf/renderer requiere ssr:false sin excepción.
+// PDFViewer y PDFDownloadLink sí usan dynamic para diferir la carga inicial
+// (son pesados); el documento que se les pasa es siempre un elemento real.
 const PDFViewer = dynamic(() => import('@react-pdf/renderer').then((mod) => mod.PDFViewer), {
   ssr: false,
   loading: () => <PdfLoadingPlaceholder />,
@@ -22,11 +27,6 @@ const PDFViewer = dynamic(() => import('@react-pdf/renderer').then((mod) => mod.
 
 const PDFDownloadLink = dynamic(
   () => import('@react-pdf/renderer').then((mod) => mod.PDFDownloadLink),
-  { ssr: false, loading: () => null },
-);
-
-const MedicalDocumentPdfDynamic = dynamic(
-  () => import('./MedicalDocumentPdf').then((mod) => ({ default: mod.MedicalDocumentPdf })),
   { ssr: false, loading: () => null },
 );
 
@@ -219,7 +219,7 @@ export function TemplatePdfPreview({
 
         {/* Botón de descarga */}
         <PDFDownloadLink
-          document={<MedicalDocumentPdfDynamic {...docProps} />}
+          document={<MedicalDocumentPdf {...docProps} />}
           fileName={fileName}
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-500 text-white hover:bg-teal-600 transition-colors"
         >
@@ -248,7 +248,7 @@ export function TemplatePdfPreview({
       {/* Viewer embebido */}
       <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
         <PDFViewer width="100%" height={520} showToolbar={false}>
-          <MedicalDocumentPdfDynamic {...docProps} />
+          <MedicalDocumentPdf {...docProps} />
         </PDFViewer>
       </div>
     </div>
