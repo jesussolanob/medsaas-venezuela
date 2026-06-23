@@ -1243,6 +1243,14 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
 <!-- ============================================================
      NAV
      ============================================================ -->
+<!-- 7.1 (MVP): se OCULTAN temporalmente las CTA y la seccion "Para Pacientes".
+     No se eliminan del DOM — el portal del paciente se desarrollara despues.
+     Para reactivar, borrar este bloque <style>. -->
+<style id="hide-patient-mvp">
+  a[href="#pacientes"],
+  a[href="/patient/register"],
+  #pacientes { display: none !important; }
+</style>
 <nav class="nav" id="nav">
   <div class="nav-inner">
     <a href="/" class="nav-logo">
