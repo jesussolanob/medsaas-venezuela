@@ -54,7 +54,7 @@ function buildContextText(planLabel: string, available: string[], unavailable: s
   return [
     `Plan actual del usuario: ${planLabel}.`,
     `Módulos DISPONIBLES en su plan: ${availableList}.`,
-    `Módulos NO disponibles en su plan (requieren mejorar el plan en /doctor/upgrade): ${unavailableList}.`,
+    `Módulos NO disponibles en su plan (requieren mejorar el plan): ${unavailableList}.`,
   ].join('\n');
 }
 

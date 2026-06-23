@@ -77,7 +77,12 @@ describe('buildHelpPrompt', () => {
   it('should include the plan-awareness rule text', () => {
     const prompt = buildHelpPrompt(SAMPLE_GUIDE, singleUserMessage);
     expect(prompt).toContain('Respeta el plan del usuario');
-    expect(prompt).toContain('/doctor/upgrade');
+    expect(prompt).toContain('opción Mejorar');
+  });
+
+  it('should instruct the model not to expose technical routes/URLs', () => {
+    const prompt = buildHelpPrompt(SAMPLE_GUIDE, singleUserMessage);
+    expect(prompt).toContain('NUNCA menciones rutas ni URLs técnicas');
   });
 
   it('should end with a prompt asking for the assistant reply', () => {
