@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
+
+// Botón de descarga PDF client-side (react-pdf requiere ssr:false).
+const PdfDownloadButton = dynamic(
+  () =>
+    import('@/components/pdf/PdfDownloadButton').then((m) => ({ default: m.PdfDownloadButton })),
+  { ssr: false, loading: () => null },
+);
 // L7 (2026-04-29): se eliminan los iconos del cronómetro manual (Play, Square)
 // pero mantenemos Timer para mostrar la duración calculada automáticamente.
 import {
@@ -65,6 +73,8 @@ import {
 //   - applyAIResult → updateConsultation (actions.ts)
 //   - reposo autoSave → PATCH /api/doctor/consultations (existing BFF route)
 import { getDoctorId as getDevDoctorId, getDoctorProfile, getDoctorServices } from '../actions';
+import { loadTemplateConfigs } from '@/app/doctor/templates/actions';
+import type { TemplateConfigPdf } from '@/components/pdf/MedicalDocumentPdf';
 import {
   listConsultations,
   getPatientConsultations,
@@ -395,6 +405,9 @@ function ConsultationsPage() {
   const [doctorLogo, setDoctorLogo] = useState<string | null>(null);
   const [doctorSignature, setDoctorSignature] = useState<string | null>(null);
   const [doctorLicense, setDoctorLicense] = useState<string | null>(null);
+  // Config de plantilla lista para el componente PdfDownloadButton (recipe y prescripciones)
+  const [pdfTemplateConfig, setPdfTemplateConfig] = useState<TemplateConfigPdf | null>(null);
+  const [doctorSpecialty, setDoctorSpecialty] = useState<string | null>(null);
   const [shareTemplate, setShareTemplate] = useState(
     'Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}',
   );
@@ -531,18 +544,41 @@ function ConsultationsPage() {
     getDevDoctorId().then(async (doctorId) => {
       if (!doctorId) return;
       try {
-        // Doctor profile → GET /api/doctor/profile
-        getDoctorProfile().then((profileData) => {
-          if (profileData) {
-            setDoctorName(
-              `${profileData.professionalTitle || ''} ${profileData.fullName || ''}`.trim(),
-            );
-            if (profileData.paymentMethods && Array.isArray(profileData.paymentMethods)) {
-              setDoctorPaymentMethods(profileData.paymentMethods);
+        // Doctor profile → GET /api/doctor/profile (+ template config for PDF)
+        Promise.all([getDoctorProfile(), loadTemplateConfigs()]).then(
+          ([profileData, templates]) => {
+            if (profileData) {
+              const fullName =
+                `${profileData.professionalTitle || ''} ${profileData.fullName || ''}`.trim();
+              setDoctorName(fullName);
+              if (profileData.paymentMethods && Array.isArray(profileData.paymentMethods)) {
+                setDoctorPaymentMethods(profileData.paymentMethods);
+              }
+              setDoctorSpecialty(profileData.specialty || null);
+              setDoctorLogo(profileData.logoUrl ?? null);
+              setDoctorSignature(profileData.signatureUrl ?? null);
+              setDoctorLicense(profileData.licenseNumber ?? null);
+
+              // Construir pdfTemplateConfig con la plantilla de receta si existe, si no fallback.
+              // Logo/firma: plantilla tiene precedencia; fallback a profile.
+              const recipeTemplate =
+                templates['recipe'] ??
+                templates['prescripciones'] ??
+                templates[Object.keys(templates)[0] ?? ''] ??
+                null;
+              setPdfTemplateConfig({
+                header_text: recipeTemplate?.header_text || fullName || '',
+                footer_text: recipeTemplate?.footer_text || '',
+                primary_color: recipeTemplate?.primary_color || '#0891b2',
+                font_family: recipeTemplate?.font_family || 'Helvetica',
+                logo_url: recipeTemplate?.logo_url ?? profileData.logoUrl ?? null,
+                signature_url: recipeTemplate?.signature_url ?? profileData.signatureUrl ?? null,
+                show_logo: recipeTemplate?.show_logo !== false,
+                show_signature: recipeTemplate?.show_signature !== false,
+              });
             }
-            // logo_url, signature_url, license_number not in Etapa-1 profile schema → stays null
-          }
-        });
+          },
+        );
 
         // MIGRATED: patients → GET /api/patients (NestJS backend)
         const ehrPatients = await getEhrPatients();
@@ -2542,8 +2578,51 @@ function ConsultationsPage() {
                         }}
                         className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50"
                       >
-                        <Printer className="w-4 h-4" /> PDF
+                        <Printer className="w-4 h-4" /> Imprimir
                       </button>
+                      {pdfTemplateConfig && recipe.medications.length > 0 && (
+                        <PdfDownloadButton
+                          fileName={`receta-${selected.consultation_code}.pdf`}
+                          docProps={{
+                            docType: 'recipe',
+                            templateConfig: pdfTemplateConfig,
+                            doctor: {
+                              fullName: doctorName || '',
+                              specialty: doctorSpecialty,
+                              licenseNumber: doctorLicense,
+                            },
+                            patient: {
+                              fullName: selected.patient_name || '—',
+                              cedula:
+                                patients.find((p) => p.id === selected.patient_id)?.cedula ?? null,
+                            },
+                            docDate: selected.consultation_date,
+                            consultationCode: selected.consultation_code,
+                            content: [
+                              {
+                                key: 'medications',
+                                label: 'Medicamentos',
+                                value: recipe.medications.map(
+                                  (m) =>
+                                    `${m.name}${m.dose ? ' — ' + m.dose : ''}${m.frequency ? ' — ' + m.frequency : ''}${m.duration ? ' — ' + m.duration : ''}${m.indications ? ' (' + m.indications + ')' : ''}`,
+                                ),
+                              },
+                              ...(report.treatment
+                                ? [
+                                    {
+                                      key: 'indications',
+                                      label: 'Indicaciones',
+                                      value: report.treatment.replace(/<[^>]+>/g, ''),
+                                    },
+                                  ]
+                                : []),
+                            ],
+                          }}
+                          className="flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
+                        >
+                          Descargar PDF
+                        </PdfDownloadButton>
+                      )}
                     </div>
                   </div>
                 )}

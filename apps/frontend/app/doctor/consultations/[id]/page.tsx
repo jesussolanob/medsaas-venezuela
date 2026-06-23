@@ -13,13 +13,28 @@
 // PLACEHOLDER: patient name loaded from /api/patients/:id via client fetch (masked).
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, User, Lock } from 'lucide-react';
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks';
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
 import { getConsultation, updateConsultation, approveConsultationPayment } from '../actions';
+import { getDoctorProfile } from '@/app/doctor/actions';
+import { loadTemplateConfigs } from '@/app/doctor/templates/actions';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import ShareDocumentsModal from './ShareDocumentsModal';
+import type {
+  TemplateConfigPdf,
+  DoctorInfoPdf,
+  ContentBlock,
+} from '@/components/pdf/MedicalDocumentPdf';
+
+// PdfDownloadButton solo en cliente (react-pdf no soporta SSR).
+const PdfDownloadButton = dynamic(
+  () =>
+    import('@/components/pdf/PdfDownloadButton').then((m) => ({ default: m.PdfDownloadButton })),
+  { ssr: false, loading: () => null },
+);
 
 type Consultation = {
   id: string;
@@ -56,6 +71,8 @@ export default function ConsultationDetailPage() {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [blocksData, setBlocksData] = useState<Record<string, unknown>>({});
   const [blocksSnapshot, setBlocksSnapshot] = useState<SnapshotBlock[] | null>(null);
+  const [templateConfig, setTemplateConfig] = useState<TemplateConfigPdf | null>(null);
+  const [doctorInfo, setDoctorInfo] = useState<DoctorInfoPdf | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -146,10 +163,72 @@ export default function ConsultationDetailPage() {
           });
       }
 
+      // 3. Load doctor profile + template config for PDF generation (non-blocking)
+      Promise.all([getDoctorProfile(), loadTemplateConfigs()])
+        .then(([profile, templates]) => {
+          if (profile) {
+            setDoctorInfo({
+              fullName: profile.fullName || '',
+              specialty: profile.specialty || null,
+              licenseNumber: profile.licenseNumber ?? null,
+            });
+            // Try to load the 'informe' template (most common for consultation details).
+            // Logo/firma: prefer the template's own assets; fall back to profile-level assets.
+            const tmpl = templates['informe'] ?? templates[Object.keys(templates)[0] ?? ''] ?? null;
+            if (tmpl) {
+              setTemplateConfig({
+                header_text: tmpl.header_text || profile.fullName || '',
+                footer_text: tmpl.footer_text || '',
+                primary_color: tmpl.primary_color || '#0891b2',
+                font_family: tmpl.font_family || 'Helvetica',
+                logo_url: tmpl.logo_url ?? profile.logoUrl ?? null,
+                signature_url: tmpl.signature_url ?? profile.signatureUrl ?? null,
+                show_logo: tmpl.show_logo !== false,
+                show_signature: tmpl.show_signature !== false,
+              });
+            } else {
+              // Fallback: minimal config sourced entirely from profile
+              setTemplateConfig({
+                header_text: profile.fullName || '',
+                footer_text: '',
+                primary_color: '#0891b2',
+                font_family: 'Helvetica',
+                logo_url: profile.logoUrl ?? null,
+                signature_url: profile.signatureUrl ?? null,
+                show_logo: true,
+                show_signature: true,
+              });
+            }
+          }
+        })
+        .catch(() => {
+          /* non-blocking: PDF button simply won't render */
+        });
+
       setLoading(false);
     }
     load();
   }, [params.id]);
+
+  /** Convierte blocksSnapshot + blocksData al formato ContentBlock[] para el PDF. */
+  function buildPdfContent(): ContentBlock[] {
+    const snapshot = blocksSnapshot ?? consultation?.blocks_snapshot ?? [];
+    if (!snapshot) return [];
+    return snapshot
+      .filter((b) => b.printable !== false)
+      .map((b) => {
+        const raw = blocksData[b.key];
+        let value: string | string[] | null = null;
+        if (typeof raw === 'string') value = raw.trim() || null;
+        else if (Array.isArray(raw)) value = (raw as string[]).filter(Boolean);
+        else if (raw != null) value = String(raw);
+        return { key: b.key, label: b.label, value };
+      })
+      .filter(
+        (b) =>
+          b.value !== null && b.value !== '' && (!Array.isArray(b.value) || b.value.length > 0),
+      );
+  }
 
   // Detecta si los bloques tienen contenido real (no vacíos)
   function hasRealContent(data: Record<string, unknown>): boolean {
@@ -244,12 +323,34 @@ export default function ConsultationDetailPage() {
             </p>
           </div>
         </div>
-        <div className="mt-3 pt-3 border-t border-white/20 flex items-center justify-between gap-2">
+        <div className="mt-3 pt-3 border-t border-white/20 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <User className="w-4 h-4 text-white/60" />
             <span className="text-sm">{patient?.full_name || '—'}</span>
           </div>
-          <ShareDocumentsModal consultationId={consultation.id} />
+          <div className="flex items-center gap-2">
+            {templateConfig && doctorInfo && (
+              <PdfDownloadButton
+                fileName={`informe-${consultation.consultation_code}.pdf`}
+                docProps={{
+                  docType: 'informe',
+                  templateConfig,
+                  doctor: doctorInfo,
+                  patient: {
+                    fullName: patient?.full_name || '—',
+                    cedula: patient?.cedula || null,
+                  },
+                  docDate: consultation.consultation_date,
+                  consultationCode: consultation.consultation_code,
+                  content: buildPdfContent(),
+                }}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/20 hover:bg-white/30 text-white transition-colors border border-white/30"
+              >
+                Descargar informe
+              </PdfDownloadButton>
+            )}
+            <ShareDocumentsModal consultationId={consultation.id} />
+          </div>
         </div>
       </div>
 

@@ -2,6 +2,16 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-23 — MVP 7.8: render + export de PDF de documentos del doctor
+
+- **7.8 ✅ (frontend, equipo de agentes):** El backend YA existía (tabla `doctor_templates` mig `20260605000001`, módulo `doctor-templates` con `GET /api/doctor/templates` + `PUT /api/doctor/templates/:type`, UI de config en `/doctor/templates`, `/api/storage/upload` MinIO/GCS). Lo que faltaba era el **render del PDF y el export** (el "preview" era un stub de JSON; sin botón de descarga). Decisión del usuario: **`@react-pdf/renderer` en el FRONTEND** (no el pdf-lib del backend, que queda para document-sharing/paciente).
+  - **`@react-pdf/renderer@4.5.1`** (compat React 19). SIEMPRE en cliente vía `dynamic(..., {ssr:false})` — es sensible a SSR, importarlo en server component rompe el build.
+  - Componente reutilizable **`apps/frontend/components/pdf/MedicalDocumentPdf.tsx`** (+ `PdfDownloadButton.tsx` wrapper, `TemplatePdfPreview.tsx` preview). Consume config de plantilla (header/footer/color/font/logo/firma) + perfil del doctor (matrícula `licenseNumber`) + datos del documento. **Este componente es el que reutiliza 7.3.**
+  - Preview visual real (reemplaza el JSON stub) en `/doctor/templates` + botones "Descargar PDF" en informe de consulta (`consultations/[id]`) y receta (`consultations/page.tsx`).
+  - **Gotcha resuelto:** la matrícula M.P.P.S. se leía en snake_case (`license_number`) pero `/api/doctor/profile` serializa en **camelCase** (`licenseNumber`) → quedaba siempre null. Se agregó `licenseNumber/logoUrl/signatureUrl` al tipo `BackendProfile`. Logo/firma del PDF salen de la **plantilla** (fallback a perfil).
+  - Verificado: tsc EXIT 0, **next build EXIT 0 (132 páginas)**, code-review 0 CRIT/HIGH (buena calidad de diseño). El flujo legacy "Imprimir" (HTML + window.open) convive sin romperse.
+  - **Follow-up opcional (fuera del pedido):** `sello` (stamp_url) y `font_size` (requieren columna + upload nuevos); migrar tabs `reposo`/`prescripciones(exámenes)` al botón nuevo; `PDFViewer` embebido no anda en Safari mobile (la descarga sí).
+
 ## 2026-06-23 — Retoma MVP 7.x: 7.1 Landing + 7.9 Finanzas cerradas
 
 - **7.9 Finanzas ✅ (backend + frontend, equipo de agentes):** dos cosas: (a) **ingresos asociados a paciente** y (b) **gráfica fiel**.

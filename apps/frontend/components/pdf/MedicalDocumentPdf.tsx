@@ -1,0 +1,444 @@
+/**
+ * components/pdf/MedicalDocumentPdf.tsx
+ *
+ * Componente PDF reutilizable para los documentos médicos del doctor.
+ * Genera documentos de tipo: informe, receta, indicaciones, reposo, y cualquier
+ * bloque printable (el docType es flexible — coincide con el template_type del doctor).
+ *
+ * SIEMPRE se debe importar con dynamic({ ssr: false }) desde un client component.
+ * @react-pdf/renderer no soporta SSR; importarlo en un server component rompe el build.
+ *
+ * Props:
+ *  - docType          : tipo de documento ('informe' | 'receta' | 'indicaciones' | string)
+ *  - templateConfig   : config de plantilla del doctor (colores, logo, firma, textos)
+ *  - doctor           : nombre, especialidad, matrícula (del perfil, no de la plantilla)
+ *  - patient          : nombre y cédula del paciente
+ *  - docDate          : fecha del documento (default: hoy)
+ *  - consultationCode : código de la consulta (opcional)
+ *  - content          : bloques de contenido del documento (clave → texto o lista)
+ */
+
+import { Document, Page, View, Text, Image, StyleSheet, Font } from '@react-pdf/renderer';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface TemplateConfigPdf {
+  header_text: string;
+  footer_text: string;
+  primary_color: string;
+  font_family: string;
+  logo_url: string | null;
+  signature_url: string | null;
+  show_logo: boolean;
+  show_signature: boolean;
+}
+
+export interface DoctorInfoPdf {
+  fullName: string;
+  specialty: string | null;
+  licenseNumber: string | null;
+}
+
+export interface PatientInfoPdf {
+  fullName: string;
+  cedula: string | null;
+}
+
+/** Un bloque de contenido del documento. value puede ser texto libre, array de ítems, o null. */
+export interface ContentBlock {
+  key: string;
+  label: string;
+  value: string | string[] | null;
+}
+
+export interface MedicalDocumentPdfProps {
+  docType: string;
+  templateConfig: TemplateConfigPdf;
+  doctor: DoctorInfoPdf;
+  patient: PatientInfoPdf;
+  docDate?: string;
+  consultationCode?: string | null;
+  content: ContentBlock[];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Mapeo de tipos de documento a etiquetas en español venezolano. */
+const DOC_TYPE_LABELS: Record<string, string> = {
+  informe: 'Informe Médico',
+  recipe: 'Recipe Médico',
+  receta: 'Receta Médica',
+  prescripciones: 'Prescripción Médica',
+  indicaciones: 'Indicaciones Médicas',
+  reposo: 'Constancia de Reposo Médico',
+  nutrition_plan: 'Plan Nutricional',
+  exercises: 'Plan de Ejercicios',
+  tasks: 'Tareas / Indicaciones',
+  requested_exams: 'Exámenes Solicitados',
+  rest: 'Constancia de Reposo Médico',
+  recommendations: 'Recomendaciones Médicas',
+  diagnosis: 'Diagnóstico',
+  treatment: 'Tratamiento',
+};
+
+function getDocLabel(docType: string): string {
+  return DOC_TYPE_LABELS[docType] ?? docType.charAt(0).toUpperCase() + docType.slice(1);
+}
+
+function formatDateVE(dateStr?: string): string {
+  const d = dateStr ? new Date(dateStr) : new Date();
+  return new Intl.DateTimeFormat('es-VE', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(d);
+}
+
+// ---------------------------------------------------------------------------
+// Styles factory — recibe el color primario dinámicamente
+// ---------------------------------------------------------------------------
+
+function makeStyles(primaryColor: string) {
+  return StyleSheet.create({
+    page: {
+      fontFamily: 'Helvetica',
+      backgroundColor: '#ffffff',
+      paddingTop: 40,
+      paddingBottom: 60,
+      paddingHorizontal: 44,
+    },
+
+    // -- Header --
+    header: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      paddingBottom: 14,
+      borderBottomWidth: 3,
+      borderBottomColor: primaryColor,
+      marginBottom: 18,
+      gap: 16,
+    },
+    headerLeft: {
+      flex: 1,
+    },
+    headerRight: {
+      alignItems: 'flex-end',
+      flexShrink: 0,
+    },
+    logo: {
+      width: 72,
+      height: 40,
+      objectFit: 'contain',
+      marginBottom: 6,
+    },
+    headerTitle: {
+      fontSize: 15,
+      fontFamily: 'Helvetica-Bold',
+      color: primaryColor,
+      marginBottom: 2,
+    },
+    headerSubtitle: {
+      fontSize: 8.5,
+      color: '#64748b',
+      marginBottom: 1,
+    },
+    docTypeLabel: {
+      fontSize: 9,
+      fontFamily: 'Helvetica-Bold',
+      color: primaryColor,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginTop: 4,
+    },
+
+    // -- Meta row (paciente / fecha / código) --
+    metaRow: {
+      flexDirection: 'row',
+      gap: 24,
+      backgroundColor: '#f8fafc',
+      borderRadius: 6,
+      padding: 10,
+      marginBottom: 20,
+    },
+    metaItem: {
+      flex: 1,
+    },
+    metaLabel: {
+      fontSize: 7,
+      fontFamily: 'Helvetica-Bold',
+      color: '#94a3b8',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: 2,
+    },
+    metaValue: {
+      fontSize: 9.5,
+      fontFamily: 'Helvetica-Bold',
+      color: '#1e293b',
+    },
+    metaValueMono: {
+      fontSize: 9,
+      fontFamily: 'Courier',
+      color: '#475569',
+    },
+
+    // -- Content blocks --
+    section: {
+      marginBottom: 16,
+    },
+    sectionTitle: {
+      fontSize: 8,
+      fontFamily: 'Helvetica-Bold',
+      color: primaryColor,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginBottom: 6,
+      paddingBottom: 3,
+      borderBottomWidth: 1,
+      borderBottomColor: primaryColor,
+      borderBottomStyle: 'solid',
+    },
+    sectionBody: {
+      fontSize: 10,
+      color: '#334155',
+      lineHeight: 1.55,
+    },
+    listItem: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 5,
+      alignItems: 'flex-start',
+    },
+    listBullet: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: primaryColor,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    listBulletText: {
+      fontSize: 7,
+      fontFamily: 'Helvetica-Bold',
+      color: '#ffffff',
+    },
+    listItemText: {
+      fontSize: 9.5,
+      color: '#334155',
+      lineHeight: 1.45,
+      flex: 1,
+    },
+
+    // -- Signature area --
+    signatureArea: {
+      marginTop: 28,
+      borderTopWidth: 1,
+      borderTopColor: '#e2e8f0',
+      paddingTop: 16,
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'flex-end',
+    },
+    signatureBlock: {
+      alignItems: 'center',
+      minWidth: 160,
+    },
+    signatureImage: {
+      width: 120,
+      height: 50,
+      objectFit: 'contain',
+      marginBottom: 6,
+    },
+    signatureLine: {
+      width: 140,
+      height: 1.5,
+      backgroundColor: '#94a3b8',
+      marginBottom: 5,
+    },
+    signatureName: {
+      fontSize: 9,
+      fontFamily: 'Helvetica-Bold',
+      color: '#1e293b',
+      textAlign: 'center',
+    },
+    signatureSpecialty: {
+      fontSize: 8,
+      color: '#64748b',
+      textAlign: 'center',
+      marginTop: 1,
+    },
+    signatureLicense: {
+      fontSize: 7.5,
+      color: '#94a3b8',
+      textAlign: 'center',
+      marginTop: 1,
+    },
+
+    // -- Footer --
+    footer: {
+      position: 'absolute',
+      bottom: 24,
+      left: 44,
+      right: 44,
+      borderTopWidth: 1,
+      borderTopColor: '#e2e8f0',
+      paddingTop: 8,
+    },
+    footerText: {
+      fontSize: 7.5,
+      color: '#94a3b8',
+      textAlign: 'center',
+    },
+    pageNumber: {
+      fontSize: 7,
+      color: '#cbd5e1',
+      textAlign: 'right',
+      marginTop: 3,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function MedicalDocumentPdf({
+  docType,
+  templateConfig,
+  doctor,
+  patient,
+  docDate,
+  consultationCode,
+  content,
+}: MedicalDocumentPdfProps) {
+  const primaryColor = templateConfig.primary_color || '#0891b2';
+  const styles = makeStyles(primaryColor);
+  const headerTitle = templateConfig.header_text || doctor.fullName || 'Delta Medical';
+  const docLabel = getDocLabel(docType);
+  const formattedDate = formatDateVE(docDate);
+
+  // Filtrar bloques con contenido real
+  const visibleBlocks = content.filter((b) => {
+    if (!b.value) return false;
+    if (typeof b.value === 'string') return b.value.trim().length > 0;
+    if (Array.isArray(b.value)) return b.value.length > 0;
+    return true;
+  });
+
+  return (
+    <Document
+      title={`${docLabel} — ${patient.fullName}`}
+      author={doctor.fullName}
+      subject={docLabel}
+      creator="Delta Medical CRM"
+    >
+      <Page size="A4" style={styles.page}>
+        {/* ── HEADER ── */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            {templateConfig.show_logo && templateConfig.logo_url ? (
+              <Image src={templateConfig.logo_url} style={styles.logo} />
+            ) : null}
+            <Text style={styles.headerTitle}>{headerTitle}</Text>
+            {doctor.specialty ? (
+              <Text style={styles.headerSubtitle}>{doctor.specialty}</Text>
+            ) : null}
+            {doctor.licenseNumber ? (
+              <Text style={styles.headerSubtitle}>M.P.P.S. {doctor.licenseNumber}</Text>
+            ) : null}
+          </View>
+          <View style={styles.headerRight}>
+            <Text style={styles.docTypeLabel}>{docLabel}</Text>
+          </View>
+        </View>
+
+        {/* ── META ROW ── */}
+        <View style={styles.metaRow}>
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>Paciente</Text>
+            <Text style={styles.metaValue}>{patient.fullName}</Text>
+            {patient.cedula ? (
+              <Text
+                style={[styles.metaValue, { fontSize: 8, fontFamily: 'Helvetica', marginTop: 1 }]}
+              >
+                C.I. {patient.cedula}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>Fecha</Text>
+            <Text style={styles.metaValue}>{formattedDate}</Text>
+          </View>
+          {consultationCode ? (
+            <View style={styles.metaItem}>
+              <Text style={styles.metaLabel}>N° Consulta</Text>
+              <Text style={styles.metaValueMono}>{consultationCode}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── CONTENT BLOCKS ── */}
+        {visibleBlocks.length === 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionBody}>—</Text>
+          </View>
+        ) : (
+          visibleBlocks.map((block) => (
+            <View key={block.key} style={styles.section}>
+              <Text style={styles.sectionTitle}>{block.label}</Text>
+              {Array.isArray(block.value) ? (
+                block.value.map((item, idx) => (
+                  <View key={idx} style={styles.listItem}>
+                    <View style={styles.listBullet}>
+                      <Text style={styles.listBulletText}>{idx + 1}</Text>
+                    </View>
+                    <Text style={styles.listItemText}>{item}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.sectionBody}>{block.value}</Text>
+              )}
+            </View>
+          ))
+        )}
+
+        {/* ── FIRMA ── */}
+        {templateConfig.show_signature ? (
+          <View style={styles.signatureArea}>
+            <View style={styles.signatureBlock}>
+              {templateConfig.signature_url ? (
+                <Image src={templateConfig.signature_url} style={styles.signatureImage} />
+              ) : (
+                <View style={styles.signatureLine} />
+              )}
+              <Text style={styles.signatureName}>{doctor.fullName}</Text>
+              {doctor.specialty ? (
+                <Text style={styles.signatureSpecialty}>{doctor.specialty}</Text>
+              ) : null}
+              {doctor.licenseNumber ? (
+                <Text style={styles.signatureLicense}>M.P.P.S. {doctor.licenseNumber}</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {/* ── FOOTER ── */}
+        <View style={styles.footer} fixed>
+          {templateConfig.footer_text ? (
+            <Text style={styles.footerText}>{templateConfig.footer_text}</Text>
+          ) : null}
+          <Text
+            style={styles.pageNumber}
+            render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
+          />
+        </View>
+      </Page>
+    </Document>
+  );
+}

@@ -67,6 +67,12 @@ interface BackendProfile {
   paymentDetails: Record<string, unknown> | null;
   plan: string | null;
   subscriptionStatus: string | null;
+  /** M.P.P.S. registration number. Returned by NestJS in camelCase. */
+  licenseNumber: string | null;
+  /** Logo image URL stored in GCS/MinIO (set from /doctor/settings). */
+  logoUrl: string | null;
+  /** Signature image URL stored in GCS/MinIO (set from /doctor/settings). */
+  signatureUrl: string | null;
   /**
    * Explicit server-side flag set to true once the doctor completes the
    * onboarding form. Preferred over the specialty-presence heuristic.

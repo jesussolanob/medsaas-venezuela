@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { getDoctorProfile } from '@/app/doctor/actions';
 import {
   loadTemplateConfigs,
@@ -10,8 +11,6 @@ import {
 } from './actions';
 import {
   FileEdit,
-  Upload,
-  X,
   Save,
   Loader2,
   CheckCircle,
@@ -20,11 +19,20 @@ import {
   ClipboardList,
   Bed,
   Eye,
+  EyeOff,
   Type,
   Image as ImageIcon,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
 import { showToast } from '@/components/ui/Toaster';
+
+// El preview PDF se carga solo en cliente (react-pdf no soporta SSR).
+const TemplatePdfPreview = dynamic(
+  () =>
+    import('@/components/pdf/TemplatePdfPreview').then((m) => ({ default: m.TemplatePdfPreview })),
+  { ssr: false, loading: () => null },
+);
 
 // ── TIPOS DINÁMICOS ─────────────────────────────────────────────────────
 // Ahora TemplateType es cualquier block_key que el doctor tenga activo.
@@ -33,7 +41,9 @@ import { showToast } from '@/components/ui/Toaster';
 // entre las secciones del formulario de consulta y los PDFs generables.
 type TemplateType = string;
 
-type TemplateTab = { key: string; label: string; icon: any; description: string };
+type TemplateTab = { key: string; label: string; icon: LucideIcon; description: string };
+/** TemplateTab with a transient sort_order used during tab construction (stripped before storing). */
+type TemplateSortableTab = TemplateTab & { order: number };
 
 type TemplateConfig = {
   logo_url: string | null;
@@ -58,7 +68,7 @@ const DEFAULT_CONFIG: TemplateConfig = {
 };
 
 // Mapa de iconos por block_key canónico; fallback a FileText si no está mapeado
-const ICON_MAP: Record<string, any> = {
+const ICON_MAP: Record<string, LucideIcon> = {
   prescription: Pill,
   recipe: Pill,
   nutrition_plan: FileText,
@@ -133,6 +143,7 @@ export default function TemplatesPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [doctorName, setDoctorName] = useState('');
   const [doctorSpecialty, setDoctorSpecialty] = useState('');
+  const [doctorLicense, setDoctorLicense] = useState<string | null>(null);
   // RONDA 17: source of truth = profile (logo y firma SOLO se cargan desde Settings/Perfil)
   const [profileLogoUrl, setProfileLogoUrl] = useState<string | null>(null);
   const [profileSignatureUrl, setProfileSignatureUrl] = useState<string | null>(null);
@@ -146,13 +157,14 @@ export default function TemplatesPage() {
   }, []);
 
   async function loadTemplates() {
-    // ── 1) Cargar perfil del doctor (nombre, especialidad, logo y firma globales — RONDA 17 source of truth)
+    // ── 1) Cargar perfil del doctor (nombre, especialidad, logo, firma, matrícula — RONDA 17 source of truth)
     const profile = await getDoctorProfile();
     if (profile) {
       setDoctorName(profile.fullName || '');
       setDoctorSpecialty(profile.specialty || '');
-      setProfileLogoUrl((profile as any).logo_url || null);
-      setProfileSignatureUrl((profile as any).signature_url || null);
+      setDoctorLicense(profile.licenseNumber ?? null);
+      setProfileLogoUrl(profile.logoUrl ?? null);
+      setProfileSignatureUrl(profile.signatureUrl ?? null);
     }
 
     // ── 2) Cargar bloques del doctor vía API para resolver la cascada
@@ -161,20 +173,41 @@ export default function TemplatesPage() {
     try {
       const r = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' });
       const j = await r.json();
-      const catalog: any[] = j.catalog || [];
-      const doctorCfg: any[] = j.doctor_config || [];
-      const specialtyDef: any[] = j.specialty_defaults || [];
-      const doctorMap = new Map(doctorCfg.map((c: any) => [c.block_key, c]));
-      const specialtyMap = new Map(specialtyDef.map((s: any) => [s.block_key, s]));
+
+      // The API returns loosely typed JSON; narrow inline with type guards below.
+      type RawBlock = {
+        key: string;
+        default_label?: string;
+        default_printable?: boolean;
+        description?: string;
+      };
+      type RawDoctorCfg = {
+        block_key: string;
+        enabled?: boolean;
+        printable?: boolean;
+        custom_label?: string;
+        sort_order?: number;
+      };
+      type RawSpecialtyDef = { block_key: string; enabled?: boolean; sort_order?: number };
+
+      const catalog: RawBlock[] = Array.isArray(j.catalog) ? (j.catalog as RawBlock[]) : [];
+      const doctorCfg: RawDoctorCfg[] = Array.isArray(j.doctor_config)
+        ? (j.doctor_config as RawDoctorCfg[])
+        : [];
+      const specialtyDef: RawSpecialtyDef[] = Array.isArray(j.specialty_defaults)
+        ? (j.specialty_defaults as RawSpecialtyDef[])
+        : [];
+      const doctorMap = new Map(doctorCfg.map((c) => [c.block_key, c]));
+      const specialtyMap = new Map(specialtyDef.map((s) => [s.block_key, s]));
 
       // Un bloque aparece como tab de plantilla PDF si:
       //   - Está enabled (en doctor_config o specialty_default)
       //   - Es printable (default true según catalog o override doctor)
       //   - NO es un bloque de texto interno (internal_notes)
-      const result: TemplateTab[] = [];
+      const result: TemplateSortableTab[] = [];
       for (const cat of catalog) {
-        const doctorEntry: any = doctorMap.get(cat.key);
-        const specialtyEntry: any = specialtyMap.get(cat.key);
+        const doctorEntry = doctorMap.get(cat.key);
+        const specialtyEntry = specialtyMap.get(cat.key);
         const enabled = doctorEntry
           ? doctorEntry.enabled
           : specialtyEntry
@@ -182,25 +215,23 @@ export default function TemplatesPage() {
             : false;
         if (!enabled) continue;
 
-        const printable = doctorEntry?.printable ?? (cat as any).default_printable;
+        const printable = doctorEntry?.printable ?? cat.default_printable;
         if (printable === false) continue;
         if (cat.key === 'internal_notes') continue;
 
-        const label = doctorEntry?.custom_label || cat.default_label;
+        const label = doctorEntry?.custom_label || cat.default_label || cat.key;
         const order = doctorEntry?.sort_order ?? specialtyEntry?.sort_order ?? 99;
         result.push({
           key: cat.key,
           label,
-          icon: ICON_MAP[cat.key] || FileText,
-          description: (cat as any).description || `Plantilla PDF: ${label}`,
-          // @ts-ignore - order es interno para sort
+          icon: ICON_MAP[cat.key] ?? FileText,
+          description: cat.description ?? `Plantilla PDF: ${label}`,
           order,
         });
       }
       // Si el doctor no tiene ningún bloque configurado, usamos FALLBACK
       if (result.length > 0) {
-        // @ts-ignore
-        result.sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+        result.sort((a, b) => a.order - b.order);
         dynamicTabs = result.map(({ key, label, icon, description }) => ({
           key,
           label,
@@ -242,7 +273,7 @@ export default function TemplatesPage() {
     setLoading(false);
   }
 
-  function updateConfig(field: keyof TemplateConfig, value: any) {
+  function updateConfig(field: keyof TemplateConfig, value: TemplateConfig[typeof field]) {
     setConfigs((prev) => ({
       ...prev,
       [activeTab]: { ...prev[activeTab], [field]: value },
@@ -652,237 +683,50 @@ export default function TemplatesPage() {
             </div>
           </div>
 
-          {/* Right: Live Preview */}
+          {/* Right: PDF Preview real con @react-pdf/renderer */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-700">Vista previa</p>
+              <p className="text-sm font-bold text-slate-700">Vista previa PDF</p>
               <button
                 onClick={() => setShowPreview(!showPreview)}
                 aria-expanded={showPreview}
                 className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
               >
-                <Eye className="w-3.5 h-3.5" />
-                {showPreview ? 'Ocultar PDF' : 'Mostrar PDF'}
+                {showPreview ? (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5" />
+                    Ocultar
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5" />
+                    Mostrar PDF
+                  </>
+                )}
               </button>
             </div>
 
-            {/* RONDA 18: preview animado + condicional + lee assets de PROFILE (no de config legacy)
-                + carga Google Font de la tipografia seleccionada para que el preview muestre exactamente
-                lo que se generara en el PDF final */}
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=${(config.font_family || 'Inter').replace(/ /g, '+')}:wght@400;600;700&display=swap');`}</style>
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-out ${
-                showPreview ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
-              }`}
-            >
-              <div
-                className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"
-                style={{ fontFamily: `'${config.font_family || 'Inter'}', sans-serif` }}
-              >
-                {/* Preview Header */}
-                <div className="p-6 border-b-[3px]" style={{ borderColor: config.primary_color }}>
-                  <div className="flex items-start justify-between gap-4">
-                    {config.show_logo && profileLogoUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={profileLogoUrl}
-                        alt="Logo"
-                        className="h-12 object-contain"
-                        crossOrigin="anonymous"
-                      />
-                    )}
-                    <div
-                      className={`${config.show_logo && profileLogoUrl ? 'text-right' : ''} flex-1`}
-                    >
-                      <p className="text-base font-bold" style={{ color: config.primary_color }}>
-                        {config.header_text || doctorName || 'Delta Medical'}
-                      </p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{tabInfo.label}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Preview Body */}
-                <div className="p-6 space-y-4">
-                  <div className="flex gap-8 text-[10px] text-slate-500">
-                    <div>
-                      <span className="uppercase tracking-wider font-bold text-slate-400 block">
-                        Paciente
-                      </span>
-                      <span className="font-semibold text-slate-700">Juan Pérez</span>
-                    </div>
-                    <div>
-                      <span className="uppercase tracking-wider font-bold text-slate-400 block">
-                        Fecha
-                      </span>
-                      <span className="font-semibold text-slate-700">
-                        {new Date().toLocaleDateString('es-VE')}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="uppercase tracking-wider font-bold text-slate-400 block">
-                        Código
-                      </span>
-                      <span className="font-mono text-slate-700">CONS-001</span>
-                    </div>
-                  </div>
-
-                  {/* Template-specific content */}
-                  {activeTab === 'informe' && (
-                    <div className="space-y-3">
-                      <div>
-                        <p
-                          className="text-[10px] uppercase tracking-wider font-bold mb-1"
-                          style={{ color: config.primary_color }}
-                        >
-                          Motivo de consulta
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          Dolor abdominal recurrente desde hace 2 semanas...
-                        </p>
-                      </div>
-                      <div>
-                        <p
-                          className="text-[10px] uppercase tracking-wider font-bold mb-1"
-                          style={{ color: config.primary_color }}
-                        >
-                          Diagnóstico
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          Gastritis crónica con componente funcional
-                        </p>
-                      </div>
-                      <div>
-                        <p
-                          className="text-[10px] uppercase tracking-wider font-bold mb-1"
-                          style={{ color: config.primary_color }}
-                        >
-                          Tratamiento
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          Omeprazol 20mg cada 12h por 14 días...
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'recipe' && (
-                    <div className="space-y-3">
-                      <p
-                        className="text-[10px] uppercase tracking-wider font-bold mb-2"
-                        style={{ color: config.primary_color }}
-                      >
-                        Medicamentos
-                      </p>
-                      <div className="space-y-2">
-                        {[
-                          'Omeprazol 20mg — 1 cada 12h — 14 días',
-                          'Metoclopramida 10mg — 1 antes de cada comida — 7 días',
-                        ].map((med, i) => (
-                          <div
-                            key={i}
-                            className="text-xs text-slate-600 pl-3 border-l-2"
-                            style={{ borderColor: config.primary_color }}
-                          >
-                            {i + 1}. {med}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-3">
-                        <p
-                          className="text-[10px] uppercase tracking-wider font-bold mb-1"
-                          style={{ color: config.primary_color }}
-                        >
-                          Indicaciones
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          Tomar con agua. Evitar alimentos irritantes.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'prescripciones' && (
-                    <div className="space-y-3">
-                      <p
-                        className="text-[10px] uppercase tracking-wider font-bold mb-2"
-                        style={{ color: config.primary_color }}
-                      >
-                        Exámenes solicitados
-                      </p>
-                      <div className="space-y-2">
-                        {[
-                          'Hematología completa',
-                          'Perfil hepático',
-                          'Ecografía abdominal superior',
-                        ].map((exam, i) => (
-                          <div key={i} className="text-xs text-slate-600 flex items-center gap-2">
-                            <span
-                              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                              style={{ backgroundColor: config.primary_color }}
-                            >
-                              {i + 1}
-                            </span>
-                            {exam}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'reposo' && (
-                    <div className="space-y-3">
-                      <p className="text-xs text-slate-600">
-                        Quien suscribe, <strong>{doctorName || 'Dr. Nombre'}</strong>,{' '}
-                        {doctorSpecialty || 'Especialidad'}, hace constar que el/la paciente{' '}
-                        <strong>Juan Pérez</strong>, titular de la cédula de identidad V-12.345.678,
-                        amerita reposo médico por un período de <strong>3 días</strong>, desde el{' '}
-                        {new Date().toLocaleDateString('es-VE')} hasta el{' '}
-                        {new Date(Date.now() + 3 * 86400000).toLocaleDateString('es-VE')}.
-                      </p>
-                      <p className="text-xs text-slate-600">
-                        Diagnóstico: <strong>Gastritis aguda</strong>
-                      </p>
-                      <p className="text-xs text-slate-400 mt-4">
-                        Constancia que se expide a solicitud de la parte interesada.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Preview Signature — usa firma del PERFIL (RONDA 18) */}
-                {config.show_signature && (
-                  <div className="px-6 pb-4">
-                    <div className="border-t border-slate-100 pt-4 flex flex-col items-center gap-1">
-                      {profileSignatureUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={profileSignatureUrl}
-                          alt="Firma"
-                          className="h-12 object-contain"
-                          crossOrigin="anonymous"
-                        />
-                      ) : (
-                        <div className="h-12 w-32 border-b-2 border-slate-300" />
-                      )}
-                      <p className="text-[10px] font-semibold text-slate-700">
-                        {doctorName || 'Dr. Nombre'}
-                      </p>
-                      <p className="text-[9px] text-slate-400">
-                        {doctorSpecialty || 'Especialidad'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Preview Footer */}
-                {config.footer_text && (
-                  <div className="px-6 py-3 border-t border-slate-100 bg-slate-50">
-                    <p className="text-[9px] text-slate-400 text-center">{config.footer_text}</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            {showPreview && (
+              <TemplatePdfPreview
+                docType={activeTab}
+                docTypeLabel={tabInfo.label}
+                templateConfig={{
+                  header_text: config.header_text,
+                  footer_text: config.footer_text,
+                  primary_color: config.primary_color,
+                  font_family: config.font_family,
+                  logo_url: profileLogoUrl,
+                  signature_url: profileSignatureUrl,
+                  show_logo: config.show_logo,
+                  show_signature: config.show_signature,
+                }}
+                doctor={{
+                  fullName: doctorName || 'Dr. Nombre Apellido',
+                  specialty: doctorSpecialty || null,
+                  licenseNumber: doctorLicense,
+                }}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -206,6 +206,8 @@ sidebar) · panel `/admin/verifications` (+ estado MPPS) · `BookingQrCode` (QR 
 `TelemetryProvider` (captura low-touch cliente) · `NewAppointmentFlow` (consultorio → modalidad → planes) ·
 loader full-screen al redirigir a Auth0 en login. Se quitó WhatsApp y Cita 360 del área doctor.
 
+**PDF de documentos (7.8, 2026-06-23):** `components/pdf/MedicalDocumentPdf.tsx` (reutilizable, `@react-pdf/renderer@4.5.1`) + `PdfDownloadButton.tsx` + `TemplatePdfPreview.tsx`. Render de Informe/Receta/Indicaciones con la plantilla del doctor (`doctor_templates`) + matrícula. SIEMPRE vía `dynamic(...,{ssr:false})` (sensible a SSR). Es la base del export que reutiliza 7.3.
+
 **Infraestructura transversal:** `infrastructure/crypto/` (CryptoModule @Global: encrypt/decrypt
 AES-256-GCM + HMAC search hash, lee llaves de ConfigService, guard de llaves triviales);
 `infrastructure/cache/` (RedisModule ioredis); `infrastructure/auth/` (DevAuthGuard);
