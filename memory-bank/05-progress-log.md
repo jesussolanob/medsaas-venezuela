@@ -2,6 +2,17 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-23 — 7.12 limpieza BD: auditoría hecha, DROP pendiente de decisión (PAUSA)
+
+> Sesión pausada acá ("guarda todo y continuamos luego"). RETOMAR desde este punto.
+
+- **7.12 mitad 1 ("ocultar ID de cita") = DESCARTADA** (usuario: dejar `appointment_code` visible).
+- **7.12 mitad 2 ("eliminar campos marcados"):** se hizo **auditoría READ-ONLY** del esquema (agente general-purpose, análisis estático: migraciones vs modelos/SQL/frontend, grep snake+camelCase). Hallazgo: **el esquema está muy bien cableado**; los comentarios "legacy/redundant" del initial-schema son **falsos positivos** (esas columnas están vivas: `profiles.plan/subscription_status/subscription_expires_at` = lazy-downgrade; `patients.age` = CRUD; `*_search_hash` = búsqueda HMAC; `blocks_snapshot`, snapshots de cédula = "do not remove"). **NO dropear esas.**
+- **Candidatos REALES a DROP (de 2 features nunca construidos), pendientes de QA window (migración destructiva, NO auto-deploy):**
+  - 🟢 BAJO riesgo (cero refs en todo el repo): **tabla `active_sessions` completa** (sesión única era-Supabase, reemplazada por Auth0; sin modelo/repo/query → DROP TABLE) + **`doctor_invitations.max_uses` / `uses_count` / `expires_at`** (límite de usos del link de invitación, nunca implementado; la tabla y el resto de columnas se quedan).
+  - 🟡 MEDIO = **decisión de producto pendiente del usuario:** `profiles.clinic_id` + `clinic_role`. Es el feature **multi-clínica** latente (una clínica/centro agrupa varios médicos, con un "admin de clínica"; plan "Clinic" $100 desactivado; tabla `clinics` NUNCA creada; campos solo plumbing model→entity→repo→DTO→zod, siempre `null`, cero lógica). **Pregunta abierta al usuario:** ¿Delta venderá a clínicas con varios médicos algún día, o es siempre por-médico individual? Si puede existir → conservar (cuestan nada). Si es definitivamente por-médico → dropear + limpiar la cadena DDD. **Recomendación del lead: conservar** (riesgo nulo; "Centro de Salud"/"Clínica General" ya son especialidades → cliente-clínica no descartado). El usuario quedó por responder esto antes de accionar la migración.
+- **PRÓXIMO PASO al retomar:** (1) que el usuario resuelva multi-clínica (conservar vs dropear clinic_id/clinic_role); (2) escribir la migración `.cjs` de limpieza con lo aprobado (mínimo: active_sessions + 3 cols de doctor_invitations); (3) correrla en ventana de QA con Docker (destructiva). Detalle de la auditoría: agente afdb6129da8277e56.
+
 ## 2026-06-23 — Eliminada la feature "Cita 360°" (decisión del usuario)
 
 - **Cita 360° ELIMINADA por completo** (no va, decisión del usuario). Era la vista integral/auditoría de una cita.
