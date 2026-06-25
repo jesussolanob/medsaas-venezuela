@@ -2,6 +2,12 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-06-24 — Lote MVP 7.x + cita-360: PUSHEADO y DESPLEGADO a prod ✅
+
+- Los 7 commits del lote (7.1/7.9/7.8/7.3/7.10 + baja de cita-360 + docs) se **pushearon a `feature/migracion-backend`** (`595f778..89b8078`). La CI auto-deployó a Cloud Run (**run 28129239141, success**): aplicó la migración `20260623000000` (patient_id en financial_transactions) y el **backend booteó limpio** → el riesgo de DI (imports agregados en `finances.module.ts` por 7.9 + quitados de `appointments.module.ts` por cita-360) quedó **descartado en prod**. Frontend desplegado también.
+- **Pendiente = solo QA visual** (no bloqueante, ya está vivo): descargas PDF (7.8/7.3), ingreso con/sin consulta + gráficas (7.9), cobro WhatsApp (7.10), landing sin paciente (7.1).
+- **Sigue abierto:** 7.12 (decisión multi-clínica del usuario + migración de limpieza) — ver entrada siguiente.
+
 ## 2026-06-23 — 7.12 limpieza BD: auditoría hecha, DROP pendiente de decisión (PAUSA)
 
 > Sesión pausada acá ("guarda todo y continuamos luego"). RETOMAR desde este punto.
