@@ -8,6 +8,50 @@ import type { Appointment } from '../../domain/entities/appointment.entity';
  * capa de presentación, nunca el repositorio."
  */
 
+/**
+ * Converts an Appointment domain entity to a plain serialisable object.
+ *
+ * This guarantees every field — including `consultationId` — is present in the
+ * API JSON response regardless of how the runtime serialises class instances.
+ * Using a plain object avoids any NestJS / class-transformer filtering.
+ */
+export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
+  return {
+    id: appt.id,
+    doctorId: appt.doctorId,
+    patientId: appt.patientId,
+    authUserId: appt.authUserId,
+    consultationId: appt.consultationId,
+    patientName: appt.patientName,
+    patientPhone: appt.patientPhone,
+    patientEmail: appt.patientEmail,
+    patientCedula: appt.patientCedula,
+    scheduledAt: appt.scheduledAt,
+    status: appt.status,
+    appointmentMode: appt.appointmentMode,
+    source: appt.source,
+    planName: appt.planName,
+    planPrice: appt.planPrice,
+    paymentMethod: appt.paymentMethod,
+    paymentReference: appt.paymentReference,
+    paymentReceiptUrl: appt.paymentReceiptUrl,
+    insuranceName: appt.insuranceName,
+    bcvRate: appt.bcvRate,
+    amountBs: appt.amountBs,
+    packageId: appt.packageId,
+    sessionNumber: appt.sessionNumber,
+    chiefComplaint: appt.chiefComplaint,
+    appointmentCode: appt.appointmentCode,
+    paymentId: appt.paymentId,
+    meetLink: appt.meetLink,
+    officeId: appt.officeId,
+    googleCalendarEventId: appt.googleCalendarEventId,
+    durationMinutes: appt.durationMinutes,
+    createdAt: appt.createdAt,
+    updatedAt: appt.updatedAt,
+  };
+}
+
 /** Returns a copy of the appointment with PII fields masked for list responses. */
 export function maskAppointmentPii(appt: Appointment): Appointment {
   return Object.assign(Object.create(Object.getPrototypeOf(appt) as object), appt, {

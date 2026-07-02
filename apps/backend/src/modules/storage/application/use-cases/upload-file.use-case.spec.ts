@@ -106,15 +106,16 @@ describe('buildStoragePath', () => {
 // PRIVATE_KINDS constant
 // ---------------------------------------------------------------------------
 describe('PRIVATE_KINDS', () => {
-  it('contains receipt, document, signature', () => {
+  it('contains receipt and document', () => {
     expect(PRIVATE_KINDS.has('receipt')).toBe(true);
     expect(PRIVATE_KINDS.has('document')).toBe(true);
-    expect(PRIVATE_KINDS.has('signature')).toBe(true);
   });
 
-  it('does not contain public kinds avatar and logo', () => {
+  it('does not contain public kinds avatar, logo, and signature', () => {
     expect(PRIVATE_KINDS.has('avatar')).toBe(false);
     expect(PRIVATE_KINDS.has('logo')).toBe(false);
+    // signature is public so its URL persists stably in profiles.signature_url
+    expect(PRIVATE_KINDS.has('signature')).toBe(false);
   });
 });
 
@@ -159,9 +160,16 @@ describe('UploadFileUseCase', () => {
     it.each(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'])(
       'accepts allowed MIME type "%s"',
       async (mimetype) => {
-        mockFileTypeFromBuffer.mockResolvedValue({ mime: mimetype as Parameters<typeof mockFileTypeFromBuffer>[0] extends Buffer ? never : never, ext: 'bin' } as Awaited<ReturnType<typeof mockFileTypeFromBuffer>>);
+        mockFileTypeFromBuffer.mockResolvedValue({
+          mime: mimetype as Parameters<typeof mockFileTypeFromBuffer>[0] extends Buffer
+            ? never
+            : never,
+          ext: 'bin',
+        } as Awaited<ReturnType<typeof mockFileTypeFromBuffer>>);
         // Re-setup mock to return the correct mime for each type
-        mockFileTypeFromBuffer.mockResolvedValue({ mime: mimetype, ext: 'bin' } as NonNullable<Awaited<ReturnType<typeof mockFileTypeFromBuffer>>>);
+        mockFileTypeFromBuffer.mockResolvedValue({ mime: mimetype, ext: 'bin' } as NonNullable<
+          Awaited<ReturnType<typeof mockFileTypeFromBuffer>>
+        >);
         const uc = makeUseCase();
         await expect(uc.execute({ ...validPrivateInput, mimetype })).resolves.toBeDefined();
       },
@@ -169,9 +177,9 @@ describe('UploadFileUseCase', () => {
 
     it('rejects image/svg+xml (XSS vector)', async () => {
       const uc = makeUseCase();
-      await expect(
-        uc.execute({ ...validPrivateInput, mimetype: 'image/svg+xml' }),
-      ).rejects.toThrow(StorageValidationError);
+      await expect(uc.execute({ ...validPrivateInput, mimetype: 'image/svg+xml' })).rejects.toThrow(
+        StorageValidationError,
+      );
     });
 
     it('throws StorageValidationError for disallowed MIME type', async () => {
@@ -183,9 +191,9 @@ describe('UploadFileUseCase', () => {
 
     it('throws StorageValidationError for video MIME type', async () => {
       const uc = makeUseCase();
-      await expect(
-        uc.execute({ ...validPrivateInput, mimetype: 'video/mp4' }),
-      ).rejects.toThrow(StorageValidationError);
+      await expect(uc.execute({ ...validPrivateInput, mimetype: 'video/mp4' })).rejects.toThrow(
+        StorageValidationError,
+      );
     });
   });
 
@@ -201,9 +209,9 @@ describe('UploadFileUseCase', () => {
       // file-type detects no recognised binary signature.
       mockFileTypeFromBuffer.mockResolvedValue(undefined);
       const uc = makeUseCase();
-      await expect(
-        uc.execute({ ...validPublicInput, mimetype: 'image/png' }),
-      ).rejects.toThrow(StorageValidationError);
+      await expect(uc.execute({ ...validPublicInput, mimetype: 'image/png' })).rejects.toThrow(
+        StorageValidationError,
+      );
     });
 
     it('rejects file when detected mime is disallowed (e.g. application/x-msdownload)', async () => {
@@ -212,17 +220,17 @@ describe('UploadFileUseCase', () => {
         ext: 'exe',
       });
       const uc = makeUseCase();
-      await expect(uc.execute({ ...validPrivateInput, mimetype: 'application/pdf' })).rejects.toThrow(
-        StorageValidationError,
-      );
+      await expect(
+        uc.execute({ ...validPrivateInput, mimetype: 'application/pdf' }),
+      ).rejects.toThrow(StorageValidationError);
     });
 
     it('rejects SVG masquerading as JPEG (detected as image/svg+xml)', async () => {
       mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/svg+xml', ext: 'svg' });
       const uc = makeUseCase();
-      await expect(
-        uc.execute({ ...validPublicInput, mimetype: 'image/jpeg' }),
-      ).rejects.toThrow(StorageValidationError);
+      await expect(uc.execute({ ...validPublicInput, mimetype: 'image/jpeg' })).rejects.toThrow(
+        StorageValidationError,
+      );
     });
 
     it('rejects when fileTypeFromBuffer returns undefined for a binary mime', async () => {
@@ -236,7 +244,10 @@ describe('UploadFileUseCase', () => {
 
   describe('public vs private kind selection (HIGH-2)', () => {
     it('calls storage.upload with isPrivate=true for kind "receipt"', async () => {
-      mockStorage.upload.mockResolvedValue({ url: 'https://signed.url/receipt?sig=abc', path: 'receipt/user-123/1-r.pdf' });
+      mockStorage.upload.mockResolvedValue({
+        url: 'https://signed.url/receipt?sig=abc',
+        path: 'receipt/user-123/1-r.pdf',
+      });
       const uc = makeUseCase();
       await uc.execute({ ...validPrivateInput, kind: 'receipt' });
 
@@ -245,7 +256,10 @@ describe('UploadFileUseCase', () => {
     });
 
     it('calls storage.upload with isPrivate=true for kind "document"', async () => {
-      mockStorage.upload.mockResolvedValue({ url: 'https://signed.url/doc?sig=xyz', path: 'document/user-123/1-d.pdf' });
+      mockStorage.upload.mockResolvedValue({
+        url: 'https://signed.url/doc?sig=xyz',
+        path: 'document/user-123/1-d.pdf',
+      });
       const uc = makeUseCase();
       await uc.execute({ ...validPrivateInput, kind: 'document' });
 
@@ -253,19 +267,25 @@ describe('UploadFileUseCase', () => {
       expect(call.isPrivate).toBe(true);
     });
 
-    it('calls storage.upload with isPrivate=true for kind "signature"', async () => {
+    it('calls storage.upload with isPrivate=false for kind "signature" (public — URL persists in profiles)', async () => {
       mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
-      mockStorage.upload.mockResolvedValue({ url: 'https://signed.url/sig?sig=zzz', path: 'signature/user-123/1-s.png' });
+      mockStorage.upload.mockResolvedValue({
+        url: 'http://minio/delta-uploads/signature/user-123/1-s.png',
+        path: 'signature/user-123/1-s.png',
+      });
       const uc = makeUseCase();
       await uc.execute({ ...validPublicInput, kind: 'signature' });
 
       const call = mockStorage.upload.mock.calls[0]![0]!;
-      expect(call.isPrivate).toBe(true);
+      expect(call.isPrivate).toBe(false);
     });
 
     it('calls storage.upload with isPrivate=false for kind "avatar"', async () => {
       mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
-      mockStorage.upload.mockResolvedValue({ url: 'http://minio/delta-uploads/avatar/user-456/1-avatar.png', path: 'avatar/user-456/1-avatar.png' });
+      mockStorage.upload.mockResolvedValue({
+        url: 'http://minio/delta-uploads/avatar/user-456/1-avatar.png',
+        path: 'avatar/user-456/1-avatar.png',
+      });
       const uc = makeUseCase();
       await uc.execute({ ...validPublicInput, kind: 'avatar' });
 
@@ -275,7 +295,10 @@ describe('UploadFileUseCase', () => {
 
     it('calls storage.upload with isPrivate=false for kind "logo"', async () => {
       mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
-      mockStorage.upload.mockResolvedValue({ url: 'http://minio/delta-uploads/logo/user-456/1-logo.png', path: 'logo/user-456/1-logo.png' });
+      mockStorage.upload.mockResolvedValue({
+        url: 'http://minio/delta-uploads/logo/user-456/1-logo.png',
+        path: 'logo/user-456/1-logo.png',
+      });
       const uc = makeUseCase();
       await uc.execute({ ...validPublicInput, kind: 'logo' });
 
@@ -284,7 +307,8 @@ describe('UploadFileUseCase', () => {
     });
 
     it('returns signed URL from adapter for private kind', async () => {
-      const signedUrl = 'https://minio:9000/delta-uploads/receipt/user-123/1-r.pdf?X-Amz-Signature=abc123&X-Amz-Expires=3600';
+      const signedUrl =
+        'https://minio:9000/delta-uploads/receipt/user-123/1-r.pdf?X-Amz-Signature=abc123&X-Amz-Expires=3600';
       mockStorage.upload.mockResolvedValue({ url: signedUrl, path: 'receipt/user-123/1-r.pdf' });
       const uc = makeUseCase();
       const result = await uc.execute({ ...validPrivateInput, kind: 'receipt' });
@@ -295,7 +319,10 @@ describe('UploadFileUseCase', () => {
     it('returns public URL from adapter for public kind', async () => {
       mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
       const publicUrl = 'http://localhost:9000/delta-uploads/avatar/user-456/1-avatar.png';
-      mockStorage.upload.mockResolvedValue({ url: publicUrl, path: 'avatar/user-456/1-avatar.png' });
+      mockStorage.upload.mockResolvedValue({
+        url: publicUrl,
+        path: 'avatar/user-456/1-avatar.png',
+      });
       const uc = makeUseCase();
       const result = await uc.execute({ ...validPublicInput, kind: 'avatar' });
 

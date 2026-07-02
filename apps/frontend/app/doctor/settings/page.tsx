@@ -403,9 +403,8 @@ function SettingsPageInner() {
 
   async function saveProfile() {
     // Persist fields supported by PUT /api/doctor/profile.
-    // full_name, share_message_template are NOT in UpdateDoctorProfileDto
-    // (backend schema is strict — they are silently omitted here).
     const result = await saveSettingsProfile({
+      full_name: profile.full_name,
       specialty: profile.specialty,
       professional_title: profile.professional_title,
       allows_online: profile.allows_online,
@@ -865,7 +864,7 @@ function SettingsPageInner() {
                       <input
                         ref={signatureInputRef}
                         type="file"
-                        accept="image/png,image/jpeg,image/svg+xml"
+                        accept="image/png,image/jpeg"
                         onChange={uploadSignature}
                         className="hidden"
                       />

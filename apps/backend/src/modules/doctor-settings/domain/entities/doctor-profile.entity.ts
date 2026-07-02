@@ -41,6 +41,8 @@ export interface DoctorProfileCreateParams {
 }
 
 export interface DoctorProfileUpdateParams {
+  /** Editable display name (full_name column). Optional — omit to keep current value. */
+  fullName?: string;
   specialty?: string | null;
   professionalTitle?: string | null;
   paymentMethods?: string[];

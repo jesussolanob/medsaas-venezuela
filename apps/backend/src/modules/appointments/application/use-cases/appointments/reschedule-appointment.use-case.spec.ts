@@ -67,6 +67,11 @@ function makeRepo(
     incrementPackageSessions: jest.fn(),
     logStatusChange: jest.fn().mockResolvedValue(undefined),
     findActiveByDoctorAndDateRange: jest.fn().mockResolvedValue([]),
+    findByIdForDoctor: jest.fn(),
+    updateMeetLink: jest.fn().mockResolvedValue(undefined),
+    updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
+    updateConsultationId: jest.fn().mockResolvedValue(undefined),
+    deleteById: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }

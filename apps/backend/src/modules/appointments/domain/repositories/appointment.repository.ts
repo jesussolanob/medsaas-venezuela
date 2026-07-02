@@ -62,7 +62,8 @@ export interface AuditLogEntry {
   appointmentId: string;
   actorId: string;
   oldStatus: AppointmentStatus | null;
-  newStatus: AppointmentStatus;
+  /** `'deleted'` is used by DeleteAppointmentUseCase to log hard-delete events. */
+  newStatus: AppointmentStatus | 'deleted';
 }
 
 export interface IAppointmentRepository {
@@ -142,4 +143,18 @@ export interface IAppointmentRepository {
    * Only called when eventId is a non-empty string.
    */
   updateGoogleEventId(id: string, eventId: string): Promise<void>;
+
+  /**
+   * Links a consultation to an appointment by persisting the consultation_id FK.
+   * Called after a consultation is auto-created on appointment confirmation.
+   * Returns the updated appointment entity.
+   */
+  updateConsultationId(id: string, consultationId: string): Promise<Appointment>;
+
+  /**
+   * Hard-deletes an appointment row by primary key.
+   * The caller is responsible for deleting linked consultations first and
+   * writing an audit log entry before calling this method.
+   */
+  deleteById(id: string): Promise<void>;
 }

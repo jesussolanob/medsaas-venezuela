@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
@@ -7,9 +20,10 @@ import {
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import {
   CreateAppointmentDtoSchema,
-  UpdateAppointmentStatusDtoSchema,
+  UpdateAppointmentStatusBodyDtoSchema,
   RescheduleAppointmentDtoSchema,
   type CreateAppointmentDto,
+  type UpdateAppointmentStatusBodyDto,
   type UpdateAppointmentStatusDto,
   type RescheduleAppointmentDto,
   type AppointmentStatus,
@@ -19,7 +33,8 @@ import { UpdateAppointmentStatusUseCase } from '../../application/use-cases/appo
 import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
-import { maskAppointmentPii } from '../mappers/appointment.mapper';
+import { DeleteAppointmentUseCase } from '../../application/use-cases/appointments/delete-appointment.use-case';
+import { maskAppointmentPii, toPlainAppointment } from '../mappers/appointment.mapper';
 
 interface SuccessResponse<T> {
   success: true;
@@ -48,6 +63,7 @@ export class AppointmentsController {
     private readonly getDoctorAgenda: GetDoctorAgendaUseCase,
     private readonly getById: GetAppointmentByIdUseCase,
     private readonly reschedule: RescheduleAppointmentUseCase,
+    private readonly deleteAppointment: DeleteAppointmentUseCase,
   ) {}
 
   /** GET /api/appointments — paginated list with PII masking applied by the mapper. */
@@ -70,11 +86,13 @@ export class AppointmentsController {
     });
 
     // PII masking is applied here at the presentation boundary — never in the repo or use case.
+    // toPlainAppointment converts to a plain object so consultationId and all fields are
+    // guaranteed present in the JSON response regardless of class serialisation behaviour.
     const masked = result.items.map(maskAppointmentPii);
 
     return {
       success: true,
-      data: masked,
+      data: masked.map(toPlainAppointment),
       meta: { total: result.total, page: result.page, limit: result.limit },
     };
   }
@@ -89,7 +107,8 @@ export class AppointmentsController {
       appointmentId: id,
       doctorId: user.sub,
     });
-    return { success: true, data: appointment };
+    // Convert to plain object so consultationId is explicit in the JSON response.
+    return { success: true, data: toPlainAppointment(appointment) };
   }
 
   /**
@@ -104,10 +123,11 @@ export class AppointmentsController {
     @Body(new ZodValidationPipe(CreateAppointmentDtoSchema)) dto: CreateAppointmentDto,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<unknown>> {
-    const appointment = await this.createAppointment.execute({
-      ...dto,
-      doctor_id: user.sub,
-    });
+    // Pass actorRole so the use case can apply the auto-confirm rule (Bug 5).
+    const appointment = await this.createAppointment.execute(
+      { ...dto, doctor_id: user.sub },
+      user.role,
+    );
     return { success: true, data: appointment };
   }
 
@@ -132,21 +152,42 @@ export class AppointmentsController {
     return { success: true, data: updated };
   }
 
-  /** PUT /api/appointments/:id/status — update appointment status. */
+  /**
+   * PUT /api/appointments/:id/status — update appointment status.
+   *
+   * The frontend only sends { status, reason } in the body.
+   * `id` is taken from the URL path and `actor_id` from the authenticated user
+   * so that neither can be spoofed via the request body (anti-IDOR / anti-audit-log-tampering).
+   */
   @Put(':id/status')
   async updateAppointmentStatus(
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(UpdateAppointmentStatusDtoSchema))
-    dto: UpdateAppointmentStatusDto,
+    @Body(new ZodValidationPipe(UpdateAppointmentStatusBodyDtoSchema))
+    body: UpdateAppointmentStatusBodyDto,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<unknown>> {
-    // id from path and actor_id from the authenticated user both override the body values.
-    const updatedDto: UpdateAppointmentStatusDto = {
-      ...dto,
+    const dto: UpdateAppointmentStatusDto = {
       id,
+      status: body.status,
       actor_id: user.sub,
+      reason: body.reason ?? null,
     };
-    const appointment = await this.updateStatus.execute(updatedDto);
+    const appointment = await this.updateStatus.execute(dto);
     return { success: true, data: appointment };
+  }
+
+  /**
+   * DELETE /api/appointments/:id — hard-delete an appointment and its linked consultation.
+   *
+   * SECURITY: ownership is verified inside DeleteAppointmentUseCase (anti-IDOR).
+   * Returns 204 No Content on success.
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAppointmentHandler(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<void> {
+    await this.deleteAppointment.execute({ appointmentId: id, actorId: user.sub });
   }
 }

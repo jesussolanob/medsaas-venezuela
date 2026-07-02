@@ -1,25 +1,31 @@
 /**
  * app/api/doctor/appointments/route.ts
  *
- * ETAPA 2 — DELETE not implemented.
- * The DELETE handler requires a coordinating backend endpoint that handles:
- *   1. Cascade delete of consultations + EHR + prescriptions
- *   2. Package session restore (restore_package_session RPC)
- *   3. Google Calendar event deletion (OAuth2 refresh token flow)
- *
- * None of these are available as a single backend endpoint in Etapa 1.
- * Deferred to the NestJS integrations module (Etapa 2).
+ * DELETE — proxies to the backend `DELETE /api/appointments/:id`, which deletes
+ * the appointment and cascades to its linked consultation. Ownership is enforced
+ * server-side (anti-IDOR); the backend returns 403/404 for a non-owned id.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { backendDelete } from '@/lib/api-client.server';
 
 export const dynamic = 'force-dynamic';
 
-export async function DELETE(_req: NextRequest): Promise<NextResponse> {
-  return NextResponse.json(
-    {
-      error: 'Eliminación de citas disponible próximamente',
-      code: 'NOT_IMPLEMENTED',
-    },
-    { status: 501 },
-  );
+export async function DELETE(req: NextRequest): Promise<NextResponse> {
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id) {
+    return NextResponse.json(
+      { error: 'Falta el parámetro id', code: 'BAD_REQUEST' },
+      { status: 400 },
+    );
+  }
+
+  const result = await backendDelete<unknown>(`/api/appointments/${id}`);
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message, code: result.error.code },
+      { status: result.error.status ?? 502 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

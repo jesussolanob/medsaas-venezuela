@@ -115,6 +115,7 @@ export class DoctorController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<DoctorProfile>> {
     const result = await this.updateProfile.execute(user.sub, {
+      fullName: dto.full_name,
       specialty: dto.specialty,
       professionalTitle: dto.professional_title,
       paymentMethods: dto.payment_methods,

@@ -109,6 +109,18 @@ describe('UpdateDoctorProfileUseCase', () => {
     expect(updated.birthDate).toBeNull();
   });
 
+  it('updates fullName when full_name is provided', async () => {
+    const existing = makeProfile({ fullName: 'Dr. Viejo Nombre' });
+    const updated = makeProfile({ fullName: 'Dr. Nuevo Nombre' });
+    mockRepo.findByDoctorId.mockResolvedValue(existing);
+    mockRepo.update.mockResolvedValue(updated);
+
+    const result = await useCase.execute(DOCTOR_ID, { fullName: 'Dr. Nuevo Nombre' });
+
+    expect(result.fullName).toBe('Dr. Nuevo Nombre');
+    expect(mockRepo.update).toHaveBeenCalledWith(DOCTOR_ID, { fullName: 'Dr. Nuevo Nombre' });
+  });
+
   it('does not allow cedula to be passed in update params', async () => {
     // cedula is read-only — it is not a key of DoctorProfileUpdateParams.
     // This test confirms the type contract: the object below must not include cedula.

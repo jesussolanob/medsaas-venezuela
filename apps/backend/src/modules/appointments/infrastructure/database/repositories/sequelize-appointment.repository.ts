@@ -134,6 +134,16 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     await this.appointmentModel.update({ googleCalendarEventId: eventId }, { where: { id } });
   }
 
+  async updateConsultationId(id: string, consultationId: string): Promise<Appointment> {
+    await this.appointmentModel.update({ consultationId }, { where: { id } });
+    const updated = await this.appointmentModel.findByPk(id);
+    return this.toDomain(updated as AppointmentModel);
+  }
+
+  async deleteById(id: string): Promise<void> {
+    await this.appointmentModel.destroy({ where: { id } });
+  }
+
   async updateStatus(id: string, status: AppointmentStatus): Promise<Appointment> {
     await this.appointmentModel.update({ status }, { where: { id } });
     const updated = await this.appointmentModel.findByPk(id);

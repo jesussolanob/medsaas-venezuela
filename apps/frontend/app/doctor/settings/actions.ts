@@ -183,6 +183,7 @@ export async function loadSettingsProfile(): Promise<SettingsProfileView | null>
  *           allows_online, share_message_template }).eq('id', user.id)
  */
 export async function saveSettingsProfile(input: {
+  full_name?: string;
   specialty: string;
   professional_title: string;
   allows_online: boolean;
@@ -196,6 +197,12 @@ export async function saveSettingsProfile(input: {
     professional_title: input.professional_title || null,
     allows_online: input.allows_online,
   };
+
+  // full_name is optional in the backend DTO; only send it when provided and
+  // non-empty (the Zod schema requires min length 1 and rejects unknown keys).
+  if (input.full_name !== undefined && input.full_name.trim() !== '') {
+    body.full_name = input.full_name.trim();
+  }
 
   if (input.phone !== undefined) {
     body.phone = input.phone || null;

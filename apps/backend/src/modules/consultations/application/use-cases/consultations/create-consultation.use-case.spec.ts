@@ -36,6 +36,7 @@ describe('CreateConsultationUseCase', () => {
       list: jest.fn(),
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),
+      deleteById: jest.fn().mockResolvedValue(undefined),
     };
     useCase = new CreateConsultationUseCase(mockRepo);
   });

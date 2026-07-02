@@ -121,6 +121,8 @@ describe('CreateBookingUseCase', () => {
       findByIdForDoctor: jest.fn(),
       updateMeetLink: jest.fn().mockResolvedValue(undefined),
       updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
+      updateConsultationId: jest.fn().mockResolvedValue(undefined),
+      deleteById: jest.fn().mockResolvedValue(undefined),
     };
 
     mockPatientRepo = {

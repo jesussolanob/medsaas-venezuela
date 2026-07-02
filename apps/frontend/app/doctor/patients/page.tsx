@@ -49,6 +49,7 @@ import {
   addPatient,
   updatePatient,
   getDoctorId,
+  getPatientDetail,
   getConsultations,
   createConsultation,
   updateConsultationStatus,
@@ -387,6 +388,19 @@ export default function PatientsPage() {
     setAiSummary('');
     setAiError('');
     setSharedFiles([]);
+    // The list item only carries minimal fields. Load the FULL detail so every
+    // edit form is pre-filled with the real clinical data — otherwise saving
+    // would overwrite blood_type/allergies/birth_date/etc. with null (PII loss).
+    getPatientDetail(p.id)
+      .then((detail) => {
+        if (detail) {
+          setSelected(detail);
+          setPatients((prev) => prev.map((x) => (x.id === detail.id ? detail : x)));
+        }
+      })
+      .catch(() => {
+        // Keep the minimal `selected`; the edit form guards below still block a wipe.
+      });
     getConsultations(p.id).then((list) => {
       setConsultations(list);
       // Auto-select la mas reciente (primera del array, ordenada DESC en getConsultations)

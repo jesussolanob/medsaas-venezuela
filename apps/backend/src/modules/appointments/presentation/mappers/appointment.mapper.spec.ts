@@ -1,4 +1,4 @@
-import { maskAppointmentPii } from './appointment.mapper';
+import { maskAppointmentPii, toPlainAppointment } from './appointment.mapper';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -38,6 +38,36 @@ function makeAppointment(overrides: Partial<AppointmentCreateParams> = {}): Appo
     ...overrides,
   });
 }
+
+describe('toPlainAppointment', () => {
+  it('returns a plain object (not an Appointment instance)', () => {
+    const appt = makeAppointment();
+    const plain = toPlainAppointment(appt);
+    expect(plain).not.toBeInstanceOf(Object.getPrototypeOf(appt).constructor);
+    expect(Object.getPrototypeOf(plain)).toBe(Object.prototype);
+  });
+
+  it('includes consultationId in the output (null when not linked)', () => {
+    const plain = toPlainAppointment(makeAppointment({ consultationId: null }));
+    expect(Object.prototype.hasOwnProperty.call(plain, 'consultationId')).toBe(true);
+    expect(plain.consultationId).toBeNull();
+  });
+
+  it('includes consultationId when a consultation is linked', () => {
+    const plain = toPlainAppointment(makeAppointment({ consultationId: 'cons-uuid-1' }));
+    expect(plain.consultationId).toBe('cons-uuid-1');
+  });
+
+  it('includes all non-PII appointment fields', () => {
+    const appt = makeAppointment();
+    const plain = toPlainAppointment(appt);
+    expect(plain.id).toBe(appt.id);
+    expect(plain.doctorId).toBe(appt.doctorId);
+    expect(plain.status).toBe(appt.status);
+    expect(plain.scheduledAt).toBe(appt.scheduledAt);
+    expect(plain.appointmentMode).toBe(appt.appointmentMode);
+  });
+});
 
 describe('maskAppointmentPii', () => {
   it('masks patient name to first name + last-name initial', () => {

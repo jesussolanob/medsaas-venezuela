@@ -98,4 +98,11 @@ export interface IConsultationRepository {
    * Returns null when no consultation is linked to that appointment.
    */
   findByAppointmentId(appointmentId: string, doctorId: string): Promise<Consultation | null>;
+
+  /**
+   * Hard-deletes a consultation by primary key.
+   * Used by DeleteAppointmentUseCase to cascade-delete the linked consultation
+   * before removing the parent appointment row.
+   */
+  deleteById(id: string): Promise<void>;
 }

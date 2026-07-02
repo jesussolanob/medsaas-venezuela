@@ -275,6 +275,10 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     return this.toDomain(row);
   }
 
+  async deleteById(id: string): Promise<void> {
+    await this.consultationModel.destroy({ where: { id } as WhereOptions });
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------

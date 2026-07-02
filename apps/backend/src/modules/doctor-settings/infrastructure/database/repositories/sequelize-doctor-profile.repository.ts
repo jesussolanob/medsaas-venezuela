@@ -29,6 +29,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
     if (!row) throw new DoctorProfileNotFoundError(doctorId);
 
     await row.update({
+      ...(params.fullName !== undefined && { fullName: params.fullName }),
       ...(params.specialty !== undefined && { specialty: params.specialty }),
       ...(params.professionalTitle !== undefined && {
         professionalTitle: params.professionalTitle,

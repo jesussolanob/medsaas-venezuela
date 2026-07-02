@@ -110,6 +110,30 @@ interface BackendPatientListItem {
   createdAt: string;
 }
 
+// NestJS patients detail mapper (GET /:id) returns camelCase with all clinical fields
+interface BackendPatientDetail {
+  id: string;
+  doctorId: string;
+  authUserId: string | null;
+  fullName: string;
+  cedula: string | null;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  birthDate: string | null;
+  age: number | null;
+  sex: string | null;
+  bloodType: string | null;
+  allergies: string | null;
+  chronicConditions: string | null;
+  address: string | null;
+  city: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
 // NestJS consultations mapper returns snake_case
 interface BackendConsultation {
   id: string;
@@ -142,6 +166,33 @@ function mapListItemToPatient(item: BackendPatientListItem): Patient {
     notes: null,
     source: item.source,
     auth_user_id: null,
+    created_at: item.createdAt,
+  };
+}
+
+// Maps the full detail shape (camelCase) → UI Patient (snake_case), preserving
+// every clinical field so the edit form is pre-filled and never wipes data on save.
+function mapDetailToPatient(item: BackendPatientDetail): Patient {
+  return {
+    id: item.id,
+    doctor_id: item.doctorId,
+    full_name: item.fullName,
+    age: item.age,
+    phone: item.phone,
+    cedula: item.cedula,
+    email: item.email,
+    sex: item.sex,
+    notes: item.notes,
+    source: item.source,
+    auth_user_id: item.authUserId,
+    birth_date: item.birthDate,
+    address: item.address,
+    city: item.city,
+    blood_type: item.bloodType,
+    allergies: item.allergies,
+    chronic_conditions: item.chronicConditions,
+    emergency_contact_name: item.emergencyContactName,
+    emergency_contact_phone: item.emergencyContactPhone,
     created_at: item.createdAt,
   };
 }
@@ -211,6 +262,27 @@ export async function getPatients(_doctorId: string): Promise<Patient[]> {
 
   const items = Array.isArray(result.value) ? result.value : [];
   return items.map(mapListItemToPatient);
+}
+
+/**
+ * Fetch the FULL detail of a single patient (all clinical fields, plaintext PII
+ * for the owning doctor). The list endpoint only returns minimal fields, so the
+ * edit form must call this before pre-filling — otherwise saving would overwrite
+ * every clinical field with null (silent PII loss). Ownership + audit are enforced
+ * server-side (GET /:id writes an access_audit_log row).
+ */
+export async function getPatientDetail(patientId: string): Promise<Patient | null> {
+  const result = await backendGet<BackendPatientDetail>(`/api/patients/${patientId}`);
+
+  if (!result.ok) {
+    log.error('[getPatientDetail] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return null;
+  }
+
+  return mapDetailToPatient(result.value);
 }
 
 export type AddPatientInput = {

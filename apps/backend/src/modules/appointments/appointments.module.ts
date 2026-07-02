@@ -11,6 +11,7 @@ import { UpdateAppointmentStatusUseCase } from './application/use-cases/appointm
 import { GetDoctorAgendaUseCase } from './application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from './application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from './application/use-cases/appointments/reschedule-appointment.use-case';
+import { DeleteAppointmentUseCase } from './application/use-cases/appointments/delete-appointment.use-case';
 
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
 
@@ -19,6 +20,10 @@ import { OfficesModule } from '../offices/offices.module';
 // Required by UpdateAppointmentStatusUseCase to cancel Google Calendar events on cancellation.
 // No circular dependency: IntegrationsModule does NOT import AppointmentsModule.
 import { IntegrationsModule } from '../integrations/integrations.module';
+// Required by CreateAppointmentUseCase and UpdateAppointmentStatusUseCase to
+// auto-create a consultation when an appointment is confirmed.
+// No circular dependency: ConsultationsModule does NOT import AppointmentsModule.
+import { ConsultationsModule } from '../consultations/consultations.module';
 
 @Module({
   imports: [
@@ -28,6 +33,9 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     // Exports CancelCalendarEventUseCase for cancelling Google Calendar events
     // when an appointment is cancelled via UpdateAppointmentStatusUseCase.
     IntegrationsModule,
+    // Exports CONSULTATION_REPOSITORY and CreateConsultationUseCase for
+    // auto-creating consultations on appointment confirmation.
+    ConsultationsModule,
   ],
   controllers: [AppointmentsController],
   providers: [
@@ -42,6 +50,7 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     GetDoctorAgendaUseCase,
     GetAppointmentByIdUseCase,
     RescheduleAppointmentUseCase,
+    DeleteAppointmentUseCase,
   ],
   exports: [APPOINTMENT_REPOSITORY],
 })

@@ -13,6 +13,8 @@ const isoDateString = z
 
 export const UpdateDoctorProfileDtoSchema = z
   .object({
+    /** Doctor's display name. Optional update — leave undefined to keep current value. */
+    full_name: z.string().min(1).max(200).optional(),
     specialty: z.string().nullable().optional(),
     professional_title: z.string().nullable().optional(),
     payment_methods: z.array(z.string()).optional(),

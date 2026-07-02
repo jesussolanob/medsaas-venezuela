@@ -42,6 +42,6 @@ import { PatientsModule } from '../patients/patients.module';
     ListConsultationsUseCase,
     ListConsultationsWithPatientUseCase,
   ],
-  exports: [CONSULTATION_REPOSITORY],
+  exports: [CONSULTATION_REPOSITORY, CreateConsultationUseCase],
 })
 export class ConsultationsModule {}

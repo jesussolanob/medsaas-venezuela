@@ -44,9 +44,9 @@ describe('GetSignedUrlUseCase — ownership validation (anti-IDOR)', () => {
 
   it('throws StorageValidationError when path owner segment is empty', async () => {
     const uc = makeUseCase();
-    await expect(
-      uc.execute({ path: 'receipt/', userId: 'doctor-001' }),
-    ).rejects.toThrow(StorageValidationError);
+    await expect(uc.execute({ path: 'receipt/', userId: 'doctor-001' })).rejects.toThrow(
+      StorageValidationError,
+    );
   });
 
   it('rejects attempt to access another user path by supplying extra slashes', async () => {
@@ -66,17 +66,14 @@ describe('GetSignedUrlUseCase — ownership validation (anti-IDOR)', () => {
 // Kind validation (only private kinds allowed)
 // ---------------------------------------------------------------------------
 describe('GetSignedUrlUseCase — private kind enforcement', () => {
-  it.each(['receipt', 'document', 'signature'])(
-    'accepts private kind "%s"',
-    async (kind) => {
-      const uc = makeUseCase();
-      const result = await uc.execute({
-        path: `${kind}/doctor-001/file.pdf`,
-        userId: 'doctor-001',
-      });
-      expect(result.url).toBe(SIGNED_URL);
-    },
-  );
+  it.each(['receipt', 'document'])('accepts private kind "%s"', async (kind) => {
+    const uc = makeUseCase();
+    const result = await uc.execute({
+      path: `${kind}/doctor-001/file.pdf`,
+      userId: 'doctor-001',
+    });
+    expect(result.url).toBe(SIGNED_URL);
+  });
 
   it('throws StorageValidationError for public kind "avatar"', async () => {
     const uc = makeUseCase();
@@ -132,7 +129,7 @@ describe('GetSignedUrlUseCase — storage port delegation', () => {
     mockStorage.getSignedUrl.mockRejectedValue('network failure');
     const uc = makeUseCase();
     await expect(
-      uc.execute({ path: 'signature/doctor-001/1-s.png', userId: 'doctor-001' }),
+      uc.execute({ path: 'document/doctor-001/1-d.pdf', userId: 'doctor-001' }),
     ).rejects.toThrow(StorageUploadError);
   });
 });

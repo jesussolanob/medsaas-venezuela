@@ -1,13 +1,6 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import {
-  IStoragePort,
-  StorageUploadResult,
-  STORAGE_PORT,
-} from '../ports/storage.port';
-import {
-  StorageValidationError,
-  StorageUploadError,
-} from '../../domain/errors/storage.error';
+import { IStoragePort, StorageUploadResult, STORAGE_PORT } from '../ports/storage.port';
+import { StorageValidationError, StorageUploadError } from '../../domain/errors/storage.error';
 
 /** Allowed `kind` values that scope the storage path. */
 export type UploadKind = 'avatar' | 'receipt' | 'document' | 'logo' | 'signature';
@@ -23,13 +16,15 @@ const ALLOWED_KINDS: ReadonlySet<string> = new Set<UploadKind>([
 /**
  * Kinds that must be stored privately.
  * Uploads return a time-limited signed URL (TTL: 1 hour).
- * Public kinds (avatar, logo) return a permanent public URL.
+ * Public kinds (avatar, logo, signature) return a permanent public URL.
+ *
+ * `signature` was previously private but its URL is persisted in `profiles.signature_url`
+ * and rendered on generated PDFs/prescriptions — it must remain stable across requests.
+ * Medical signatures are not PII under the system's threat model (they are static images
+ * of a handwritten mark, equivalent to a logo, and do not contain health data).
+ * SVG uploads remain BLOCKED at the MIME type layer (XSS vector) regardless of kind.
  */
-export const PRIVATE_KINDS: ReadonlySet<string> = new Set<UploadKind>([
-  'receipt',
-  'document',
-  'signature',
-]);
+export const PRIVATE_KINDS: ReadonlySet<string> = new Set<UploadKind>(['receipt', 'document']);
 
 /** Max file size: 10 MB */
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -164,7 +159,7 @@ export class UploadFileUseCase {
     if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
       throw new StorageValidationError(
         `File content does not match a supported type. ` +
-        `Declared: ${declaredMime}, detected: ${detected?.mime ?? 'unknown'}`,
+          `Declared: ${declaredMime}, detected: ${detected?.mime ?? 'unknown'}`,
       );
     }
   }

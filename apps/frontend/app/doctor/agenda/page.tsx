@@ -122,6 +122,7 @@ type AvailabilitySlot = {
 type CalendarAppointment = {
   id: string; // cuando source='consultation' este es consultations.id, NO appointments.id
   appointment_id?: string | null; // el ID real de la fila en appointments (para RPCs)
+  consultation_id?: string | null; // FK a la consulta vinculada (para "Ir a consulta")
   patient_name: string;
   date: string; // YYYY-MM-DD
   isoDate: string; // full ISO
@@ -596,6 +597,7 @@ export default function AgendaPage() {
       .map((a) => ({
         id: a.id,
         appointment_id: a.appointment_id,
+        consultation_id: a.consultation_id,
         patient_name: a.patient_name,
         date: a.date,
         isoDate: a.isoDate,
@@ -942,17 +944,13 @@ export default function AgendaPage() {
   async function deleteAppointmentCascade(appt: CalendarAppointment) {
     setDeletingAppt(appt.id);
     try {
-      if (appt.source === 'consultation') {
-        // Delete via consultation endpoint (cascades to appointment, EHR, prescriptions, GCal)
-        const res = await fetch(`/api/doctor/consultations?id=${appt.id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Error al eliminar');
-      } else {
-        // Delete via appointment endpoint (cascades to consultations, EHR, prescriptions, GCal)
-        const res = await fetch(`/api/doctor/appointments?id=${appt.id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Error al eliminar');
-      }
+      // The backend DELETE /api/appointments/:id cascades to the linked consultation,
+      // so we always delete by the appointment row id (appointment_id). For a pure
+      // appointment row, id === appointment_id.
+      const apptId = appt.appointment_id ?? appt.id;
+      const res = await fetch(`/api/doctor/appointments?id=${apptId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al eliminar');
 
       // Remove from local state
       setAllAppointments((prev) => prev.filter((a) => a.id !== appt.id));
@@ -2187,7 +2185,18 @@ export default function AgendaPage() {
               <div className="flex gap-2 pt-4">
                 <button
                   onClick={() => {
-                    router.push(`/doctor/consultations?open=${detailAppt.id}`);
+                    // Open the linked consultation. For consultation-source rows the id
+                    // is already the consultation id; for appointment-source use the
+                    // consultation_id FK (present once the appointment is confirmed).
+                    const consultaId =
+                      detailAppt.consultation_id ??
+                      (detailAppt.source === 'consultation' ? detailAppt.id : null);
+                    if (consultaId) {
+                      router.push(`/doctor/consultations?open=${consultaId}`);
+                    } else {
+                      toast('Confirma la cita para generar su consulta.', { icon: '💡' });
+                      router.push('/doctor/consultations');
+                    }
                     setDetailAppt(null);
                   }}
                   className="flex-1 py-2 g-bg rounded-lg text-sm font-bold text-white hover:opacity-90 flex items-center justify-center gap-2"

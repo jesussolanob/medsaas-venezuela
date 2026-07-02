@@ -59,11 +59,12 @@ import { log } from '@/lib/logger';
 export type AgendaAppointment = {
   id: string;
   appointment_id: string | null;
+  consultation_id: string | null;
   patient_name: string;
-  date: string;       // YYYY-MM-DD (timezone Caracas)
-  isoDate: string;    // ISO completo para ordenar y mostrar
-  time: string;       // HH:MM
-  endTime: string;    // HH:MM (calculado con slotDuration)
+  date: string; // YYYY-MM-DD (timezone Caracas)
+  isoDate: string; // ISO completo para ordenar y mostrar
+  time: string; // HH:MM
+  endTime: string; // HH:MM (calculado con slotDuration)
   chief_complaint: string | undefined;
   status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
   source: 'appointment';
@@ -175,6 +176,7 @@ function toAgendaAppointment(raw: BackendAppointment, slotDuration: number): Age
   return {
     id: raw.id,
     appointment_id: raw.id, // en citas puras el appointment_id ES el id
+    consultation_id: raw.consultationId ?? null,
     patient_name: raw.patientName ?? 'Paciente',
     date: isoToCaracasYMD(raw.scheduledAt),
     isoDate: raw.scheduledAt,
@@ -255,9 +257,7 @@ export async function listAgendaAppointments(
 
   // El backend devuelve { success: true, data: [...], meta: {...} }
   // backendFetch ya extrae .data del envelope → result.value es el array directamente
-  const raw = Array.isArray(result.value)
-    ? (result.value as unknown as BackendAppointment[])
-    : [];
+  const raw = Array.isArray(result.value) ? (result.value as unknown as BackendAppointment[]) : [];
 
   return raw.map((r) => toAgendaAppointment(r, slotDuration));
 }
@@ -278,9 +278,7 @@ export async function listPendingAppointments(
     limit: '100',
   });
 
-  const result = await backendGet<BackendAppointment[]>(
-    `/api/appointments?${qs.toString()}`,
-  );
+  const result = await backendGet<BackendAppointment[]>(`/api/appointments?${qs.toString()}`);
 
   if (!result.ok) {
     log.error('[listPendingAppointments] backend error', {
@@ -291,9 +289,7 @@ export async function listPendingAppointments(
     return [];
   }
 
-  const raw = Array.isArray(result.value)
-    ? (result.value as unknown as BackendAppointment[])
-    : [];
+  const raw = Array.isArray(result.value) ? (result.value as unknown as BackendAppointment[]) : [];
 
   void slotDuration; // no se usa en pending, pero se conserva en firma para futura extensión
   return raw.map(toPendingAppointment);
@@ -373,9 +369,7 @@ export async function getAppointmentDetailStatus(
 ): Promise<AppointmentDetailStatus> {
   const fallback: AppointmentDetailStatus = { consulta: null, pago: null };
 
-  const result = await backendGet<BackendDetail360>(
-    `/api/appointments/${appointmentId}/detail`,
-  );
+  const result = await backendGet<BackendDetail360>(`/api/appointments/${appointmentId}/detail`);
 
   if (!result.ok) {
     log.error('[getAppointmentDetailStatus] backend error', {

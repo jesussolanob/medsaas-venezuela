@@ -5,6 +5,7 @@ import { UpdateAppointmentStatusUseCase } from '../../application/use-cases/appo
 import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments/get-doctor-agenda.use-case';
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
+import { DeleteAppointmentUseCase } from '../../application/use-cases/appointments/delete-appointment.use-case';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -63,6 +64,7 @@ describe('AppointmentsController', () => {
   const mockGetAgendaUseCase = { execute: jest.fn() };
   const mockGetByIdUseCase = { execute: jest.fn() };
   const mockRescheduleUseCase = { execute: jest.fn() };
+  const mockDeleteUseCase = { execute: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -75,6 +77,7 @@ describe('AppointmentsController', () => {
         { provide: GetDoctorAgendaUseCase, useValue: mockGetAgendaUseCase },
         { provide: GetAppointmentByIdUseCase, useValue: mockGetByIdUseCase },
         { provide: RescheduleAppointmentUseCase, useValue: mockRescheduleUseCase },
+        { provide: DeleteAppointmentUseCase, useValue: mockDeleteUseCase },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -102,12 +105,15 @@ describe('AppointmentsController', () => {
       expect(response.meta).toEqual({ total: 1, page: 1, limit: 20 });
 
       // PII masking assertions — maskName keeps first name + last-name initial
-      const item = response.data[0] as Appointment;
-      expect(item.patientName).not.toBe('Juan Pérez García');
-      expect(item.patientName).toBe('Juan G.');
-      expect(item.patientPhone).toContain('***');
-      expect(item.patientEmail).toContain('***');
-      expect(item.patientCedula).toContain('***');
+      // data is a plain object (toPlainAppointment applied after masking)
+      const item = response.data[0] as Record<string, unknown>;
+      expect(item['patientName']).not.toBe('Juan Pérez García');
+      expect(item['patientName']).toBe('Juan G.');
+      expect(item['patientPhone']).toContain('***');
+      expect(item['patientEmail']).toContain('***');
+      expect(item['patientCedula']).toContain('***');
+      // consultationId must be present in the response (Bug 4)
+      expect(Object.prototype.hasOwnProperty.call(item, 'consultationId')).toBe(true);
     });
 
     it('passes filters to the use case', async () => {
@@ -147,14 +153,18 @@ describe('AppointmentsController', () => {
   });
 
   describe('GET /api/appointments/:id (findOne)', () => {
-    it('returns the appointment when found', async () => {
-      const appt = makeAppointment();
+    it('returns the appointment when found as a plain object with consultationId', async () => {
+      const appt = makeAppointment({ consultationId: 'cons-uuid-99' });
       mockGetByIdUseCase.execute.mockResolvedValue(appt);
 
       const response = await controller.findOne(APPT_ID, mockUser);
 
       expect(response.success).toBe(true);
-      expect(response.data).toBe(appt);
+      // data is a plain object (toPlainAppointment applied for explicit field serialisation)
+      const data = response.data as Record<string, unknown>;
+      expect(data['id']).toBe(APPT_ID);
+      expect(data['doctorId']).toBe(DOCTOR_ID);
+      expect(data['consultationId']).toBe('cons-uuid-99');
       expect(mockGetByIdUseCase.execute).toHaveBeenCalledWith({
         appointmentId: APPT_ID,
         doctorId: DOCTOR_ID,
@@ -191,10 +201,31 @@ describe('AppointmentsController', () => {
       // doctor_id must be the authenticated user, not the one from the body
       expect(mockCreateUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ doctor_id: DOCTOR_ID }),
+        mockUser.role,
       );
       expect(mockCreateUseCase.execute).not.toHaveBeenCalledWith(
         expect.objectContaining({ doctor_id: 'malicious-other-doctor' }),
+        expect.anything(),
       );
+    });
+
+    it('passes user.role as second argument for auto-confirm logic (Bug 5)', async () => {
+      const appt = makeAppointment();
+      mockCreateUseCase.execute.mockResolvedValue(appt);
+
+      const dto = {
+        doctor_id: DOCTOR_ID,
+        patient_name: 'Ana G.',
+        scheduled_at: new Date().toISOString(),
+        appointment_mode: 'presencial' as const,
+        plan_name: 'Consulta',
+        plan_price: 30,
+      };
+
+      await controller.create(dto as never, mockUser);
+
+      // The second argument to execute must be the actor's role
+      expect(mockCreateUseCase.execute).toHaveBeenCalledWith(expect.anything(), 'doctor');
     });
   });
 
@@ -246,20 +277,83 @@ describe('AppointmentsController', () => {
   });
 
   describe('PUT /api/appointments/:id/status (updateAppointmentStatus)', () => {
-    it('overrides dto.id with path param and actor_id with authenticated user', async () => {
+    it('builds DTO from path param + body + authenticated user (not from raw body fields)', async () => {
       const appt = makeAppointment({ status: 'confirmed' });
       mockUpdateStatusUseCase.execute.mockResolvedValue(appt);
 
-      const dto = {
-        id: 'some-other-id', // should be overridden by path param
-        status: 'confirmed' as const,
-        actor_id: 'wrong-actor', // should be overridden by authenticated user
-      };
+      // The frontend sends only { status } — id and actor_id must NOT come from the body
+      const body = { status: 'confirmed' as const };
 
-      await controller.updateAppointmentStatus(APPT_ID, dto, mockUser);
+      await controller.updateAppointmentStatus(APPT_ID, body, mockUser);
 
       expect(mockUpdateStatusUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ id: APPT_ID, actor_id: DOCTOR_ID }),
+        expect.objectContaining({ id: APPT_ID, actor_id: DOCTOR_ID, status: 'confirmed' }),
+      );
+    });
+
+    it('passes reason from body when provided', async () => {
+      const appt = makeAppointment({ status: 'cancelled' });
+      mockUpdateStatusUseCase.execute.mockResolvedValue(appt);
+
+      const body = { status: 'cancelled' as const, reason: 'Patient request' };
+
+      await controller.updateAppointmentStatus(APPT_ID, body, mockUser);
+
+      expect(mockUpdateStatusUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: APPT_ID,
+          actor_id: DOCTOR_ID,
+          status: 'cancelled',
+          reason: 'Patient request',
+        }),
+      );
+    });
+
+    it('coerces absent reason to null', async () => {
+      const appt = makeAppointment({ status: 'confirmed' });
+      mockUpdateStatusUseCase.execute.mockResolvedValue(appt);
+
+      await controller.updateAppointmentStatus(APPT_ID, { status: 'confirmed' as const }, mockUser);
+
+      expect(mockUpdateStatusUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: null }),
+      );
+    });
+  });
+
+  describe('DELETE /api/appointments/:id (deleteAppointmentHandler)', () => {
+    it('delegates to DeleteAppointmentUseCase with appointmentId and actorId', async () => {
+      mockDeleteUseCase.execute.mockResolvedValue(undefined);
+
+      const result = await controller.deleteAppointmentHandler(APPT_ID, mockUser);
+
+      expect(result).toBeUndefined(); // 204 No Content
+      expect(mockDeleteUseCase.execute).toHaveBeenCalledWith({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+      });
+    });
+
+    it('propagates AppointmentNotFoundError (IDOR / not found)', async () => {
+      mockDeleteUseCase.execute.mockRejectedValue(new AppointmentNotFoundError(APPT_ID));
+
+      await expect(controller.deleteAppointmentHandler(APPT_ID, mockUser)).rejects.toBeInstanceOf(
+        AppointmentNotFoundError,
+      );
+    });
+
+    it('uses authenticated user id (not a body param) as actorId', async () => {
+      mockDeleteUseCase.execute.mockResolvedValue(undefined);
+
+      const adminUser: CurrentUserPayload = {
+        sub: 'admin-uuid',
+        role: 'super_admin',
+        email: 'admin@dev.local',
+      };
+      await controller.deleteAppointmentHandler(APPT_ID, adminUser);
+
+      expect(mockDeleteUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ actorId: 'admin-uuid' }),
       );
     });
   });
