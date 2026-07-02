@@ -1,15 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, UniqueConstraintError } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
 import { Identity } from '../../../domain/entities/identity.entity';
 import type {
   IIdentityRepository,
   IdentityCreateData,
 } from '../../../domain/repositories/identity.repository';
 import { AuthProfileModel } from '../models/auth-profile.model';
+import { AdminSubscriptionModel } from '../../../../admin/infrastructure/database/models/subscription.model';
+import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
+
+/**
+ * Plan and status assigned to every new doctor at registration.
+ * delta_free is the permanent free plan (is_permanent=true in plan_configs).
+ */
+const DOCTOR_INITIAL_PLAN: SubscriptionPlan = 'delta_free';
+const DOCTOR_INITIAL_STATUS: SubscriptionStatus = 'active';
+
+/**
+ * Returns a Date 100 years after `from`.
+ * Used as the subscription period end for the permanent free plan —
+ * effectively "no expiry" without relying on magic NULL values.
+ */
+function permanentPeriodEnd(from: Date): Date {
+  return new Date(from.getFullYear() + 100, from.getMonth(), from.getDate());
+}
 
 /**
  * Sequelize implementation of IIdentityRepository.
+ *
+ * Doctor registration is atomic — profile + subscription are created in a single
+ * transaction so a doctor is never left without their subscription row.
  *
  * Email lookups are case-insensitive via ILIKE (Postgres).
  * The email column already has a unique index (idx_profiles_email) from
@@ -20,6 +42,9 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
   constructor(
     @InjectModel(AuthProfileModel)
     private readonly model: typeof AuthProfileModel,
+    @InjectModel(AdminSubscriptionModel)
+    private readonly subscriptionModel: typeof AdminSubscriptionModel,
+    private readonly sequelize: Sequelize,
   ) {}
 
   async findByEmail(email: string): Promise<Identity | null> {
@@ -33,6 +58,25 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
   }
 
   async create(data: IdentityCreateData): Promise<Identity> {
+    if (data.role !== 'doctor') {
+      return this.createProfileOnly(data);
+    }
+    return this.createDoctorWithSubscription(data);
+  }
+
+  async updateAuth0Sub(id: string, auth0Sub: string): Promise<void> {
+    await this.model.update({ auth0Sub }, { where: { id } });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Creates a non-doctor profile only (no subscription needed for patients, etc.).
+   * Preserves the original concurrent first-login race handling.
+   */
+  private async createProfileOnly(data: IdentityCreateData): Promise<Identity> {
     try {
       const row = await this.model.create({
         id: data.id,
@@ -44,9 +88,6 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
       });
       return this.toDomain(row);
     } catch (err) {
-      // Race condition on concurrent first-login: two requests both passed findByEmail
-      // and now clash against the UNIQUE index on `email`. The winner already wrote the
-      // row — read it back and return it instead of propagating a 500.
       if (err instanceof UniqueConstraintError) {
         const existing = await this.model.findOne({
           where: { email: { [Op.iLike]: data.email } },
@@ -59,8 +100,90 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
     }
   }
 
-  async updateAuth0Sub(id: string, auth0Sub: string): Promise<void> {
-    await this.model.update({ auth0Sub }, { where: { id } });
+  /**
+   * Creates a doctor profile + subscription row atomically.
+   *
+   * - profile.plan and profile.subscription_status are set to delta_free/active
+   *   so the profiles snapshot is consistent with the subscriptions table from day one.
+   * - subscriptions row is created via findOrCreate (doctor_id UNIQUE) so the
+   *   concurrent first-login race cannot produce duplicate subscription rows.
+   * - On UniqueConstraintError (Postgres aborts the transaction), we rollback,
+   *   read back the winner's profile, and defensively ensure the subscription
+   *   exists (findOrCreate outside the transaction).
+   */
+  private async createDoctorWithSubscription(data: IdentityCreateData): Promise<Identity> {
+    const t = await this.sequelize.transaction();
+
+    try {
+      const row = await this.model.create(
+        {
+          id: data.id,
+          fullName: data.fullName,
+          email: data.email,
+          role: data.role,
+          auth0Sub: data.auth0Sub,
+          isActive: true,
+          plan: DOCTOR_INITIAL_PLAN,
+          subscriptionStatus: DOCTOR_INITIAL_STATUS,
+        },
+        { transaction: t },
+      );
+
+      const now = new Date();
+      await this.subscriptionModel.findOrCreate({
+        where: { doctorId: row.id },
+        defaults: {
+          doctorId: row.id,
+          plan: DOCTOR_INITIAL_PLAN,
+          status: DOCTOR_INITIAL_STATUS,
+          priceUsd: 0,
+          billingCycle: null,
+          currentPeriodStart: now,
+          currentPeriodEnd: permanentPeriodEnd(now),
+          trialEndsAt: null,
+          cancelledAt: null,
+          notes: null,
+        },
+        transaction: t,
+      });
+
+      await t.commit();
+      return this.toDomain(row);
+    } catch (err) {
+      await t.rollback();
+
+      if (err instanceof UniqueConstraintError) {
+        // Race: another concurrent request won the profile creation.
+        // Read back what the winner wrote.
+        const existing = await this.model.findOne({
+          where: { email: { [Op.iLike]: data.email } },
+        });
+        if (existing) {
+          // Defensive: the winner should have created the subscription too, but
+          // guard here in case it crashed after the profile INSERT and before the
+          // subscription findOrCreate. doctor_id UNIQUE prevents duplicates.
+          const now = new Date();
+          await this.subscriptionModel.findOrCreate({
+            where: { doctorId: existing.id },
+            defaults: {
+              doctorId: existing.id,
+              plan: DOCTOR_INITIAL_PLAN,
+              status: DOCTOR_INITIAL_STATUS,
+              priceUsd: 0,
+              billingCycle: null,
+              currentPeriodStart: now,
+              currentPeriodEnd: permanentPeriodEnd(now),
+              trialEndsAt: null,
+              cancelledAt: null,
+              notes: null,
+            },
+          });
+          return this.toDomain(existing);
+        }
+      }
+
+      throw err;
+    }
   }
 
   private toDomain(row: AuthProfileModel): Identity {

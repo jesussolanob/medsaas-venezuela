@@ -15,6 +15,8 @@ function makeRow(
     role: string;
     auth0Sub: string | null;
     isActive: boolean;
+    plan: string | null;
+    subscriptionStatus: string | null;
     createdAt: Date;
   }> = {},
 ) {
@@ -25,6 +27,8 @@ function makeRow(
     role: overrides.role ?? 'doctor',
     auth0Sub: overrides.auth0Sub ?? null,
     isActive: overrides.isActive ?? true,
+    plan: overrides.plan ?? null,
+    subscriptionStatus: overrides.subscriptionStatus ?? null,
     createdAt: overrides.createdAt ?? new Date('2024-01-01T00:00:00.000Z'),
   };
 }
@@ -41,6 +45,31 @@ function makeCreateData(overrides: Partial<IdentityCreateData> = {}): IdentityCr
 }
 
 // ---------------------------------------------------------------------------
+// Mock factories
+// ---------------------------------------------------------------------------
+
+function makeTransactionMock() {
+  return {
+    commit: jest.fn().mockResolvedValue(undefined),
+    rollback: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeSubscriptionModelMock() {
+  return {
+    findOrCreate: jest.fn().mockResolvedValue([{ id: 'sub-uuid-1' }, true]),
+  };
+}
+
+function makeSequelizeMock(txMock?: ReturnType<typeof makeTransactionMock>) {
+  const tx = txMock ?? makeTransactionMock();
+  return {
+    _tx: tx,
+    transaction: jest.fn().mockResolvedValue(tx),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -50,6 +79,8 @@ describe('SequelizeIdentityRepository', () => {
     create: jest.Mock;
     update: jest.Mock;
   };
+  let subscriptionModelMock: { findOrCreate: jest.Mock };
+  let sequelizeMock: ReturnType<typeof makeSequelizeMock>;
   let repo: SequelizeIdentityRepository;
 
   beforeEach(() => {
@@ -59,7 +90,14 @@ describe('SequelizeIdentityRepository', () => {
       update: jest.fn(),
     };
 
-    repo = new SequelizeIdentityRepository(modelMock as never);
+    subscriptionModelMock = makeSubscriptionModelMock();
+    sequelizeMock = makeSequelizeMock();
+
+    repo = new SequelizeIdentityRepository(
+      modelMock as never,
+      subscriptionModelMock as never,
+      sequelizeMock as never,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -87,67 +125,199 @@ describe('SequelizeIdentityRepository', () => {
   });
 
   // -------------------------------------------------------------------------
-  // create — happy path
+  // create — doctor (atomic: profile + subscription in transaction)
   // -------------------------------------------------------------------------
 
-  describe('create', () => {
-    it('persists a new row and returns the mapped Identity', async () => {
-      const data = makeCreateData();
-      const row = makeRow({ id: data.id, email: data.email, fullName: data.fullName });
+  describe('create (doctor role)', () => {
+    it('persists profile and subscription in a transaction, returns Identity', async () => {
+      const data = makeCreateData({ role: 'doctor' });
+      const row = makeRow({
+        id: data.id,
+        email: data.email,
+        fullName: data.fullName,
+        role: 'doctor',
+        plan: 'delta_free',
+        subscriptionStatus: 'active',
+      });
       modelMock.create.mockResolvedValue(row);
+      subscriptionModelMock.findOrCreate.mockResolvedValue([{ id: 'sub-1' }, true]);
 
       const result = await repo.create(data);
 
+      // Transaction opened
+      expect(sequelizeMock.transaction).toHaveBeenCalledTimes(1);
+
+      // Profile created with snapshot fields
       expect(modelMock.create).toHaveBeenCalledWith(
         expect.objectContaining({
           id: data.id,
           email: data.email,
           fullName: data.fullName,
-          role: data.role,
+          role: 'doctor',
           auth0Sub: null,
           isActive: true,
+          plan: 'delta_free',
+          subscriptionStatus: 'active',
+        }),
+        expect.objectContaining({ transaction: sequelizeMock._tx }),
+      );
+
+      // Subscription created via findOrCreate
+      expect(subscriptionModelMock.findOrCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { doctorId: data.id },
+          defaults: expect.objectContaining({
+            doctorId: data.id,
+            plan: 'delta_free',
+            status: 'active',
+            priceUsd: 0,
+          }),
+          transaction: sequelizeMock._tx,
         }),
       );
+
+      // Transaction committed
+      expect(sequelizeMock._tx.commit).toHaveBeenCalledTimes(1);
+      expect(sequelizeMock._tx.rollback).not.toHaveBeenCalled();
+
       expect(result).toBeInstanceOf(Identity);
       expect(result.id).toBe(data.id);
     });
 
+    it('rolls back and re-throws on non-UniqueConstraintError', async () => {
+      const data = makeCreateData({ role: 'doctor' });
+      const dbError = new Error('connection refused');
+      modelMock.create.mockRejectedValue(dbError);
+
+      await expect(repo.create(data)).rejects.toThrow('connection refused');
+
+      expect(sequelizeMock._tx.rollback).toHaveBeenCalledTimes(1);
+      expect(sequelizeMock._tx.commit).not.toHaveBeenCalled();
+      // No subscription attempt after non-race error
+      expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
+    });
+
     // -----------------------------------------------------------------------
-    // Race condition — FIX 2
+    // Concurrent first-login race (UniqueConstraintError)
     // -----------------------------------------------------------------------
 
-    it('handles concurrent first-login race: returns existing profile when UniqueConstraintError is thrown', async () => {
-      const data = makeCreateData({ email: 'concurrent@example.com' });
-      const winnerRow = makeRow({ id: 'uuid-winner', email: 'concurrent@example.com' });
+    it('handles concurrent doctor first-login: reads winner profile and ensures subscription', async () => {
+      const data = makeCreateData({ role: 'doctor', email: 'concurrent@example.com' });
+      const winnerRow = makeRow({
+        id: 'uuid-winner',
+        email: 'concurrent@example.com',
+        role: 'doctor',
+        plan: 'delta_free',
+        subscriptionStatus: 'active',
+      });
 
-      // Simulate the UNIQUE index violation
       const uniqueError = new UniqueConstraintError({ errors: [] });
       modelMock.create.mockRejectedValue(uniqueError);
-
       // The winner's row is readable after the clash
       modelMock.findOne.mockResolvedValue(winnerRow);
+      subscriptionModelMock.findOrCreate.mockResolvedValue([{ id: 'sub-winner' }, false]);
 
       const result = await repo.create(data);
+
+      // Rollback called (Postgres aborted the transaction)
+      expect(sequelizeMock._tx.rollback).toHaveBeenCalledTimes(1);
+      expect(sequelizeMock._tx.commit).not.toHaveBeenCalled();
+
+      // Defensive subscription check outside transaction
+      expect(subscriptionModelMock.findOrCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { doctorId: 'uuid-winner' },
+          defaults: expect.objectContaining({
+            doctorId: 'uuid-winner',
+            plan: 'delta_free',
+            status: 'active',
+            priceUsd: 0,
+          }),
+        }),
+      );
 
       expect(result).toBeInstanceOf(Identity);
       expect(result.id).toBe('uuid-winner');
       expect(result.email).toBe('concurrent@example.com');
     });
 
-    it('re-throws UniqueConstraintError when the row cannot be found after the clash', async () => {
-      const data = makeCreateData({ email: 'ghost@example.com' });
+    it('re-throws UniqueConstraintError when winner row cannot be read back', async () => {
+      const data = makeCreateData({ role: 'doctor', email: 'ghost@example.com' });
 
       const uniqueError = new UniqueConstraintError({ errors: [] });
       modelMock.create.mockRejectedValue(uniqueError);
+      // Row disappears — unusual but must not swallow the error
+      modelMock.findOne.mockResolvedValue(null);
 
-      // Row not findable (unusual but must not silently swallow the error)
+      await expect(repo.create(data)).rejects.toBeInstanceOf(UniqueConstraintError);
+
+      expect(sequelizeMock._tx.rollback).toHaveBeenCalledTimes(1);
+      // No subscription created since profile not found
+      expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // create — non-doctor (no subscription, no transaction)
+  // -------------------------------------------------------------------------
+
+  describe('create (non-doctor role)', () => {
+    it('creates patient profile without opening a transaction or subscription', async () => {
+      const data = makeCreateData({ role: 'patient', email: 'patient@example.com' });
+      const row = makeRow({ id: data.id, email: data.email, role: 'patient' });
+      modelMock.create.mockResolvedValue(row);
+
+      const result = await repo.create(data);
+
+      // No transaction for non-doctor
+      expect(sequelizeMock.transaction).not.toHaveBeenCalled();
+      expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
+
+      expect(modelMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: data.id,
+          email: data.email,
+          role: 'patient',
+          isActive: true,
+        }),
+      );
+
+      expect(result).toBeInstanceOf(Identity);
+      expect(result.id).toBe(data.id);
+    });
+
+    it('handles concurrent non-doctor race: returns winner profile', async () => {
+      const data = makeCreateData({ role: 'patient', email: 'concurrent@example.com' });
+      const winnerRow = makeRow({
+        id: 'uuid-winner',
+        email: 'concurrent@example.com',
+        role: 'patient',
+      });
+
+      const uniqueError = new UniqueConstraintError({ errors: [] });
+      modelMock.create.mockRejectedValue(uniqueError);
+      modelMock.findOne.mockResolvedValue(winnerRow);
+
+      const result = await repo.create(data);
+
+      expect(result).toBeInstanceOf(Identity);
+      expect(result.id).toBe('uuid-winner');
+      expect(sequelizeMock.transaction).not.toHaveBeenCalled();
+      expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
+    });
+
+    it('re-throws UniqueConstraintError for non-doctor when row cannot be read back', async () => {
+      const data = makeCreateData({ role: 'patient', email: 'ghost@example.com' });
+
+      const uniqueError = new UniqueConstraintError({ errors: [] });
+      modelMock.create.mockRejectedValue(uniqueError);
       modelMock.findOne.mockResolvedValue(null);
 
       await expect(repo.create(data)).rejects.toBeInstanceOf(UniqueConstraintError);
     });
 
     it('re-throws non-UniqueConstraintError errors unchanged', async () => {
-      const data = makeCreateData();
+      const data = makeCreateData({ role: 'patient' });
       const dbError = new Error('connection refused');
       modelMock.create.mockRejectedValue(dbError);
 

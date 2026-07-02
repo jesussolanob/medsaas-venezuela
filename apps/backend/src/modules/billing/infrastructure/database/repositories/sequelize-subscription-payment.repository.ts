@@ -23,6 +23,7 @@ import { SubscriptionPaymentModel } from '../models/subscription-payment.model';
 import { SubscriptionChangeLogModel } from '../models/subscription-change-log.model';
 import { ProfileAdminModel } from '../../../../admin/infrastructure/database/models/profile.model';
 import { AdminSubscriptionModel } from '../../../../admin/infrastructure/database/models/subscription.model';
+import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 
 /**
  * Sequelize implementation of ISubscriptionPaymentRepository.
@@ -119,15 +120,32 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
       const doctorId = payment?.doctorId;
 
       if (doctorId) {
-        // 3. Extend subscriptions.current_period_end
-        await this.subscriptionModel.update(
-          {
-            status: 'active',
+        // 3. Ensure subscription row exists, then extend current_period_end.
+        // findOrCreate guards against legacy doctors whose subscription row was
+        // never created (no-op for doctors already having one, since doctor_id is UNIQUE).
+        const [, subCreated] = await this.subscriptionModel.findOrCreate({
+          where: { doctorId },
+          defaults: {
+            doctorId,
+            plan: 'delta_free' as SubscriptionPlan,
+            status: 'active' as SubscriptionStatus,
+            priceUsd: 0,
+            currentPeriodStart: now,
             currentPeriodEnd: params.newExpiresAt,
-            updatedAt: now,
           },
-          { where: { doctorId }, transaction: t },
-        );
+          transaction: t,
+        });
+
+        if (!subCreated) {
+          await this.subscriptionModel.update(
+            {
+              status: 'active',
+              currentPeriodEnd: params.newExpiresAt,
+              updatedAt: now,
+            },
+            { where: { doctorId }, transaction: t },
+          );
+        }
 
         // 4. Sync profiles snapshot
         await this.profileModel.update(
@@ -189,15 +207,30 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
         { transaction: t },
       );
 
-      // 2. Extend subscriptions.current_period_end.
-      await this.subscriptionModel.update(
-        {
-          status: 'active',
+      // 2. Ensure subscription row exists, then extend current_period_end.
+      const [, subCreated] = await this.subscriptionModel.findOrCreate({
+        where: { doctorId: params.doctorId },
+        defaults: {
+          doctorId: params.doctorId,
+          plan: 'delta_free' as SubscriptionPlan,
+          status: 'active' as SubscriptionStatus,
+          priceUsd: 0,
+          currentPeriodStart: now,
           currentPeriodEnd: params.newExpiresAt,
-          updatedAt: now,
         },
-        { where: { doctorId: params.doctorId }, transaction: t },
-      );
+        transaction: t,
+      });
+
+      if (!subCreated) {
+        await this.subscriptionModel.update(
+          {
+            status: 'active',
+            currentPeriodEnd: params.newExpiresAt,
+            updatedAt: now,
+          },
+          { where: { doctorId: params.doctorId }, transaction: t },
+        );
+      }
 
       // 3. Sync profiles snapshot.
       await this.profileModel.update(

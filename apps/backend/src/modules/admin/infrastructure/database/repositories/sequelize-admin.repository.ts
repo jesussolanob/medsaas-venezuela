@@ -381,16 +381,36 @@ export class SequelizeAdminRepository implements IAdminRepository {
 
   async updateDoctorSubscription(params: UpdateSubscriptionParams): Promise<void> {
     const now = new Date();
-    await this.subscriptionModel.update(
-      {
+
+    // findOrCreate ensures the subscriptions row always exists before updating.
+    // doctor_id is UNIQUE, so the INSERT half of findOrCreate is a no-op if the
+    // row is already present. If the row was missing (legacy doctor), it is
+    // created with the requested values and no second UPDATE is needed.
+    const [, created] = await this.subscriptionModel.findOrCreate({
+      where: { doctorId: params.doctorId },
+      defaults: {
+        doctorId: params.doctorId,
         plan: params.plan,
         status: params.status,
+        priceUsd: 0,
+        currentPeriodStart: now,
         currentPeriodEnd: params.expiresAt,
         notes: params.notes ?? null,
-        updatedAt: now,
       },
-      { where: { doctorId: params.doctorId } },
-    );
+    });
+
+    if (!created) {
+      await this.subscriptionModel.update(
+        {
+          plan: params.plan,
+          status: params.status,
+          currentPeriodEnd: params.expiresAt,
+          notes: params.notes ?? null,
+          updatedAt: now,
+        },
+        { where: { doctorId: params.doctorId } },
+      );
+    }
 
     // Keep the profiles snapshot in sync
     await this.profileModel.update(
@@ -421,7 +441,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
 
   /**
    * Applies a manual subscription change (extend/suspend/reactivate) atomically:
-   *   1. Update the subscriptions row (if present — 0 rows is harmless).
+   *   1. Upsert the subscriptions row (findOrCreate + targeted UPDATE when exists).
    *   2. Sync the profiles snapshot.
    *   3. Append an immutable subscription_changes_log entry.
    * Mirrors the billing approveAndExtend transaction (same tables / log shape).
@@ -431,13 +451,31 @@ export class SequelizeAdminRepository implements IAdminRepository {
     try {
       const now = new Date();
 
-      const subUpdate: Record<string, unknown> = { status: params.newStatus, updatedAt: now };
-      if (params.newExpiresAt) subUpdate.currentPeriodEnd = params.newExpiresAt;
-      if (params.newPlan) subUpdate.plan = params.newPlan;
-      await this.subscriptionModel.update(subUpdate, {
+      // Upsert: if the subscription row is missing (legacy doctor not yet
+      // backfilled), create it; otherwise fall through to the targeted UPDATE.
+      const [, subCreated] = await this.subscriptionModel.findOrCreate({
         where: { doctorId: params.doctorId },
+        defaults: {
+          doctorId: params.doctorId,
+          plan: (params.newPlan ?? 'delta_free') as SubscriptionPlan,
+          status: params.newStatus,
+          priceUsd: 0,
+          currentPeriodStart: now,
+          currentPeriodEnd: params.newExpiresAt ?? now,
+          notes: null,
+        },
         transaction: t,
       });
+
+      if (!subCreated) {
+        const subUpdate: Record<string, unknown> = { status: params.newStatus, updatedAt: now };
+        if (params.newExpiresAt) subUpdate.currentPeriodEnd = params.newExpiresAt;
+        if (params.newPlan) subUpdate.plan = params.newPlan;
+        await this.subscriptionModel.update(subUpdate, {
+          where: { doctorId: params.doctorId },
+          transaction: t,
+        });
+      }
 
       const profileUpdate: Record<string, unknown> = {
         subscriptionStatus: params.newStatus,

@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 
-// Model
+// Models
 import { AuthProfileModel } from './infrastructure/database/models/auth-profile.model';
+// Re-registered from admin module — same class object, same DB table.
+// Required here so SequelizeIdentityRepository can inject it via @InjectModel.
+import { AdminSubscriptionModel } from '../admin/infrastructure/database/models/subscription.model';
 
 // Repository bindings
 import { IDENTITY_REPOSITORY } from './domain/repositories/identity.repository';
@@ -39,7 +42,7 @@ import { AuthController } from './presentation/controllers/auth.controller';
  * no additional forFeature() registration needed for its queries.
  */
 @Module({
-  imports: [SequelizeModule.forFeature([AuthProfileModel])],
+  imports: [SequelizeModule.forFeature([AuthProfileModel, AdminSubscriptionModel])],
   controllers: [AuthController],
   providers: [
     {

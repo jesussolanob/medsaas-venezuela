@@ -38,6 +38,17 @@ export class AuthProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'auth0_sub' })
   declare auth0Sub: string | null;
 
+  /**
+   * Subscription snapshot columns — written by the auth/register flow and kept in
+   * sync by admin / billing flows. Declared here so the identity repository can set
+   * them on initial doctor creation without needing the full ProfileAdminModel.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare plan: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'subscription_status' })
+  declare subscriptionStatus: string | null;
+
   /** Timestamp of the most recent login touch — added by migration 20260612000002. */
   @Column({ type: DataType.DATE, allowNull: true, field: 'last_sign_in_at' })
   declare lastSignInAt: Date | null;

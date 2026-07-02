@@ -1,8 +1,9 @@
 import { Global, Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 
-// Model needed by the identity repository
+// Models needed by the identity repository
 import { AuthProfileModel } from '../../modules/auth/infrastructure/database/models/auth-profile.model';
+import { AdminSubscriptionModel } from '../../modules/admin/infrastructure/database/models/subscription.model';
 
 // Repository binding (reuses the one from AuthModule — same token/impl)
 import { IDENTITY_REPOSITORY } from '../../modules/auth/domain/repositories/identity.repository';
@@ -38,7 +39,7 @@ import { AppAuthGuard } from './app-auth.guard';
  */
 @Global()
 @Module({
-  imports: [SequelizeModule.forFeature([AuthProfileModel])],
+  imports: [SequelizeModule.forFeature([AuthProfileModel, AdminSubscriptionModel])],
   providers: [
     {
       provide: IDENTITY_REPOSITORY,
