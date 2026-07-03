@@ -28,6 +28,9 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     blocks_snapshot: consultation.blocksSnapshot ?? null,
     created_at: consultation.createdAt.toISOString(),
     updated_at: consultation.updatedAt.toISOString(),
+    /** Enriched read-side fields — null when not populated by a JOIN query. */
+    patient_name: consultation.patientName,
+    appointment_status: consultation.appointmentStatus,
   };
 }
 

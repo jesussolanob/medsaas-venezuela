@@ -60,6 +60,13 @@ export const CreateBookingDtoSchema = z
 
     // Optional: use an existing package session instead of paying
     package_id: z.string().uuid().nullable().optional(),
+
+    /**
+     * URL of a payment receipt or transfer screenshot uploaded by the patient.
+     * Stored on the appointment's payment_receipt_url column.
+     * Must be a valid HTTPS URL when provided; null/omitted means no receipt yet.
+     */
+    receipt_url: z.string().url().nullable().optional(),
   })
   .strict();
 

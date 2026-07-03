@@ -80,6 +80,32 @@ describe('toConsultationResponse', () => {
   });
 });
 
+describe('toConsultationResponse — enrichment fields', () => {
+  it('exposes patient_name when populated from a JOIN query', () => {
+    const consultation = makeConsultation({ patientName: 'María Rodríguez' });
+    const result = toConsultationResponse(consultation);
+    expect(result.patient_name).toBe('María Rodríguez');
+  });
+
+  it('exposes patient_name as null when not populated', () => {
+    const consultation = makeConsultation({ patientName: null });
+    const result = toConsultationResponse(consultation);
+    expect(result.patient_name).toBeNull();
+  });
+
+  it('exposes appointment_status when populated from a JOIN query', () => {
+    const consultation = makeConsultation({ appointmentStatus: 'confirmed' });
+    const result = toConsultationResponse(consultation);
+    expect(result.appointment_status).toBe('confirmed');
+  });
+
+  it('exposes appointment_status as null when no appointment is linked', () => {
+    const consultation = makeConsultation({ appointmentStatus: null });
+    const result = toConsultationResponse(consultation);
+    expect(result.appointment_status).toBeNull();
+  });
+});
+
 describe('toConsultationListItem', () => {
   it('delegates to toConsultationResponse and includes blocks_snapshot', () => {
     const snapshot = { presion: '110/70' };
@@ -88,5 +114,15 @@ describe('toConsultationListItem', () => {
     const result = toConsultationListItem(consultation);
 
     expect(result.blocks_snapshot).toEqual(snapshot);
+  });
+
+  it('includes patient_name and appointment_status in list items', () => {
+    const consultation = makeConsultation({
+      patientName: 'Carlos González',
+      appointmentStatus: 'scheduled',
+    });
+    const result = toConsultationListItem(consultation);
+    expect(result.patient_name).toBe('Carlos González');
+    expect(result.appointment_status).toBe('scheduled');
   });
 });

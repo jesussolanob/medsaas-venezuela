@@ -218,7 +218,7 @@ export class CreateBookingUseCase {
       planPrice: dto.plan_price,
       paymentMethod: dto.package_id ? 'package' : (dto.payment_method ?? null),
       paymentReference: dto.payment_reference ?? null,
-      paymentReceiptUrl: null,
+      paymentReceiptUrl: dto.receipt_url ?? null,
       insuranceName: null,
       bcvRate: dto.bcv_rate ?? null,
       amountBs: null,

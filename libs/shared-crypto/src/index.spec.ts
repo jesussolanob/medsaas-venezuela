@@ -63,6 +63,18 @@ describe('encrypt / decrypt', () => {
     const value = 'V-12345678 José Ángel 😀';
     expect(decrypt(encrypt(value, key), key)).toBe(value);
   });
+
+  it('round-trips strings with 4-byte emoji sequences correctly', () => {
+    // Emoji characters are encoded as 4-byte UTF-8 sequences (U+1F600 etc.).
+    // The Buffer.concat approach in decrypt guarantees no multibyte split.
+    const emojis = '🎉🔬💊📋✅';
+    expect(decrypt(encrypt(emojis, key), key)).toBe(emojis);
+  });
+
+  it('round-trips a long string with mixed multibyte content', () => {
+    const value = '😀 Médico: Dr. García — Diagnóstico: Hipertensión arterial 🫀';
+    expect(decrypt(encrypt(value, key), key)).toBe(value);
+  });
 });
 
 describe('hashForSearch', () => {

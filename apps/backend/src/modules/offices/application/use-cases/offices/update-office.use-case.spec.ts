@@ -3,6 +3,7 @@ import type { IOfficeRepository } from '../../../domain/repositories/office.repo
 import { Office } from '../../../domain/entities/office.entity';
 import { OfficeNotFoundError } from '../../../domain/errors/office-not-found.error';
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
+import { OfficeScheduleConflictError } from '../../../domain/errors/office-schedule-conflict.error';
 import type { UpdateOfficeDto } from '@delta/shared-types';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
@@ -139,5 +140,69 @@ describe('UpdateOfficeUseCase', () => {
 
     const savedOffice = mockRepo.save.mock.calls[0]![0] as Office;
     expect(savedOffice.name).toBe(existing.name); // unchanged
+  });
+
+  describe('schedule conflict detection on update', () => {
+    const makeConflictingOffice = (): Office =>
+      Office.create({
+        id: 'other-office-002',
+        doctorId: DOCTOR_ID,
+        name: 'Another Office',
+        address: 'Av. Other',
+        city: 'Valencia',
+        phone: '+58 241 000 0000',
+        schedule: [{ day: 2, enabled: true, start: '08:00', end: '14:00' }],
+        slotDuration: 30,
+        bufferMinutes: 5,
+        isActive: true,
+        modality: 'in_person',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+    it('throws OfficeScheduleConflictError when updated schedule overlaps another active office', async () => {
+      const existing = makeExistingOffice();
+      const conflicting = makeConflictingOffice();
+      mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+      mockRepo.findActiveByDoctor.mockResolvedValue([existing, conflicting]);
+
+      const dto: UpdateOfficeDto = {
+        schedule: [{ day: 2, enabled: true, start: '10:00', end: '16:00' }],
+      };
+
+      await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).rejects.toBeInstanceOf(
+        OfficeScheduleConflictError,
+      );
+      expect(mockRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when the only overlap is with the office being updated (self-exclusion)', async () => {
+      const existing = makeExistingOffice({
+        schedule: [{ day: 2, enabled: true, start: '08:00', end: '14:00' }],
+      });
+      // Only active office is the one being updated (excluded via excludeId)
+      mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+      mockRepo.findActiveByDoctor.mockResolvedValue([existing]);
+      mockRepo.save.mockResolvedValue(existing);
+
+      // Same day, overlapping times — but the office IS the one being updated
+      const dto: UpdateOfficeDto = {
+        schedule: [{ day: 2, enabled: true, start: '09:00', end: '17:00' }],
+      };
+
+      await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).resolves.toBeDefined();
+    });
+
+    it('does not check for conflict when schedule is not part of the DTO', async () => {
+      const existing = makeExistingOffice();
+      mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+      mockRepo.save.mockResolvedValue(existing);
+
+      // dto has no schedule → conflict check is skipped
+      const dto: UpdateOfficeDto = { name: 'Updated Without Schedule' };
+
+      await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).resolves.toBeDefined();
+      expect(mockRepo.findActiveByDoctor).not.toHaveBeenCalled();
+    });
   });
 });

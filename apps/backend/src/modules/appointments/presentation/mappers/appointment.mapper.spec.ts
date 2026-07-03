@@ -67,6 +67,22 @@ describe('toPlainAppointment', () => {
     expect(plain.scheduledAt).toBe(appt.scheduledAt);
     expect(plain.appointmentMode).toBe(appt.appointmentMode);
   });
+
+  it('includes paymentStatus as null when no consultation is linked', () => {
+    const plain = toPlainAppointment(makeAppointment({ paymentStatus: null }));
+    expect(Object.prototype.hasOwnProperty.call(plain, 'paymentStatus')).toBe(true);
+    expect(plain.paymentStatus).toBeNull();
+  });
+
+  it('includes paymentStatus from the linked consultation when available', () => {
+    const plain = toPlainAppointment(makeAppointment({ paymentStatus: 'pending' }));
+    expect(plain.paymentStatus).toBe('pending');
+  });
+
+  it('includes paymentStatus = approved when the linked consultation was paid', () => {
+    const plain = toPlainAppointment(makeAppointment({ paymentStatus: 'approved' }));
+    expect(plain.paymentStatus).toBe('approved');
+  });
 });
 
 describe('maskAppointmentPii', () => {

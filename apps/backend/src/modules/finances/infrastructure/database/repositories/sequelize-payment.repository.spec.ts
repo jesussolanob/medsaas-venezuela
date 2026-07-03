@@ -383,6 +383,65 @@ describe('SequelizePaymentRepository', () => {
 
       expect(results).toEqual([]);
     });
+
+    it('includes UNION clause in SQL when status filter is pending', async () => {
+      mockSequelize.query.mockResolvedValue([]);
+
+      await repo.listForDoctor({ doctorId: 'doc-001', status: 'pending' });
+
+      const [sql] = mockSequelize.query.mock.calls[0] as [string, unknown];
+      expect(sql).toContain('UNION ALL');
+      expect(sql).toContain("c.payment_status = 'pending'");
+      expect(sql).toContain('NOT EXISTS');
+    });
+
+    it('includes UNION clause in SQL when no status filter is set (all)', async () => {
+      mockSequelize.query.mockResolvedValue([]);
+
+      await repo.listForDoctor({ doctorId: 'doc-001' });
+
+      const [sql] = mockSequelize.query.mock.calls[0] as [string, unknown];
+      expect(sql).toContain('UNION ALL');
+    });
+
+    it('does NOT include UNION clause in SQL when status filter is approved', async () => {
+      mockSequelize.query.mockResolvedValue([]);
+
+      await repo.listForDoctor({ doctorId: 'doc-001', status: 'approved' });
+
+      const [sql] = mockSequelize.query.mock.calls[0] as [string, unknown];
+      expect(sql).not.toContain('UNION ALL');
+    });
+
+    it('maps a consultation UNION row (synthetic c: id) to PaymentWithRelations', async () => {
+      const consultRow = {
+        ...makeListRow({ appt_id: null }),
+        id: 'c:cons-abc',
+        payment_code: 'DLT-202606-0001',
+        amount_usd: '50.00',
+        status: 'pending',
+        consultation_id: 'cons-abc',
+        consultation_code: 'DLT-202606-0001',
+        appointment_code: null,
+        scheduled_at: null,
+        patient_name: null,
+        patient_phone: null,
+        plan_name: null,
+        payment_receipt_url: null,
+      };
+      mockSequelize.query.mockResolvedValue([consultRow]);
+
+      const results = await repo.listForDoctor({ doctorId: 'doc-001', status: 'pending' });
+      const first = results[0];
+
+      expect(first).toBeDefined();
+      expect(first?.id).toBe('c:cons-abc');
+      expect(first?.status).toBe('pending');
+      expect(first?.paymentCode).toBe('DLT-202606-0001');
+      expect(first?.amountUsd).toBe(50);
+      expect(first?.appointment).toBeNull();
+      expect(first?.consultation?.consultationCode).toBe('DLT-202606-0001');
+    });
   });
 
   // ---------------------------------------------------------------------------

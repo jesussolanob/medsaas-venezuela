@@ -224,8 +224,33 @@ describe('SequelizeConsultationRepository (integration)', () => {
 
 // ---------------------------------------------------------------------------
 // Unit tests for safeDecrypt — no DB required
+// findById now uses raw SQL (sequelize.query), so the mock provides a raw enriched row.
 // ---------------------------------------------------------------------------
 describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
+  /** Build a minimal enriched raw SQL row (snake_case, as QueryTypes.SELECT returns). */
+  const makeRawRow = (overrides: Record<string, unknown> = {}) => ({
+    id: randomUUID(),
+    doctor_id: 'f0000000-0000-0000-0000-000000000001',
+    patient_id: 'f0000000-0000-0000-0000-000000000002',
+    appointment_id: null,
+    consultation_code: 'DLT-202606-9999',
+    consultation_date: new Date().toISOString(),
+    chief_complaint: null,
+    diagnosis: null,
+    treatment: null,
+    notes: null,
+    payment_status: 'pending',
+    payment_method: null,
+    amount: null,
+    payment_date: null,
+    blocks_snapshot: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    patient_full_name_enc: null,
+    appointment_status: null,
+    ...overrides,
+  });
+
   it('throws DecryptionError when crypto.decrypt fails', async () => {
     const failingCrypto = {
       encrypt: (v: string) => v,
@@ -235,42 +260,21 @@ describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
       hashForSearch: (v: string) => v,
     };
 
-    // Build a minimal ConsultationModel stub that toDomain() can iterate
-    const stubModel = {
-      id: randomUUID(),
-      doctorId: 'f0000000-0000-0000-0000-000000000001',
-      patientId: 'f0000000-0000-0000-0000-000000000002',
-      appointmentId: null,
-      consultationCode: 'DLT-202606-9999',
-      consultationDate: new Date(),
-      chiefComplaint: 'corrupted-ciphertext',
-      diagnosis: null,
-      treatment: null,
-      notes: null,
-      paymentStatus: 'pending',
-      paymentMethod: null,
-      amount: null,
-      paymentDate: null,
-      blocksSnapshot: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    const rawRow = makeRawRow({ chief_complaint: 'corrupted-ciphertext' });
 
-    const stubConsultationModel = {
-      findOne: jest.fn().mockResolvedValue(stubModel),
-      findAndCountAll: jest.fn(),
-      count: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
+    // findById uses this.sequelize.query() — mock it to return the raw row
+    const mockSequelize = {
+      query: jest.fn().mockResolvedValue([rawRow]),
+      transaction: jest.fn(),
     };
 
     const repo = new SequelizeConsultationRepository(
-      stubConsultationModel as never,
+      {} as never, // consultationModel not used by findById (raw SQL path)
       failingCrypto as never,
-      {} as never, // sequelize not needed for findById unit test
+      mockSequelize as never,
     );
 
-    await expect(repo.findById(stubModel.id, stubModel.doctorId)).rejects.toThrow(DecryptionError);
+    await expect(repo.findById(rawRow.id, rawRow.doctor_id)).rejects.toThrow(DecryptionError);
   });
 
   it('returns null for a null encrypted field without calling decrypt', async () => {
@@ -280,37 +284,22 @@ describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
       hashForSearch: jest.fn(),
     };
 
-    const stubModel = {
-      id: randomUUID(),
-      doctorId: 'f0000000-0000-0000-0000-000000000001',
-      patientId: 'f0000000-0000-0000-0000-000000000002',
-      appointmentId: null,
-      consultationCode: 'DLT-202606-8888',
-      consultationDate: new Date(),
-      chiefComplaint: null, // null — safeDecrypt should short-circuit
-      diagnosis: null,
-      treatment: null,
-      notes: null,
-      paymentStatus: 'pending',
-      paymentMethod: null,
-      amount: null,
-      paymentDate: null,
-      blocksSnapshot: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    const rawRow = makeRawRow({
+      chief_complaint: null, // null — safeDecrypt should short-circuit
+    });
 
-    const stubConsultationModel = {
-      findOne: jest.fn().mockResolvedValue(stubModel),
+    const mockSequelize = {
+      query: jest.fn().mockResolvedValue([rawRow]),
+      transaction: jest.fn(),
     };
 
     const repo = new SequelizeConsultationRepository(
-      stubConsultationModel as never,
+      {} as never,
       cryptoSpy as never,
-      {} as never, // sequelize not needed for findById unit test
+      mockSequelize as never,
     );
 
-    const result = await repo.findById(stubModel.id, stubModel.doctorId);
+    const result = await repo.findById(rawRow.id, rawRow.doctor_id);
     expect(result?.chiefComplaint).toBeNull();
     expect(cryptoSpy.decrypt).not.toHaveBeenCalled();
   });

@@ -49,6 +49,8 @@ export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
     durationMinutes: appt.durationMinutes,
     createdAt: appt.createdAt,
     updatedAt: appt.updatedAt,
+    /** Enriched from linked consultation. Null when no consultation is linked. */
+    paymentStatus: appt.paymentStatus,
   };
 }
 

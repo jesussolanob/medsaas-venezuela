@@ -1,7 +1,12 @@
-import { CreateOfficeUseCase } from './create-office.use-case';
+import {
+  CreateOfficeUseCase,
+  timesOverlap,
+  assertNoScheduleConflict,
+} from './create-office.use-case';
 import type { IOfficeRepository } from '../../../domain/repositories/office.repository';
 import { Office } from '../../../domain/entities/office.entity';
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
+import { OfficeScheduleConflictError } from '../../../domain/errors/office-schedule-conflict.error';
 import type { CreateOfficeDto } from '@delta/shared-types';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
@@ -59,6 +64,7 @@ describe('CreateOfficeUseCase', () => {
   it('creates an office with valid data', async () => {
     const dto = makeDto();
     const saved = savedOffice(dto);
+    mockRepo.findActiveByDoctor.mockResolvedValue([]);
     mockRepo.create.mockResolvedValue(saved);
 
     const result = await useCase.execute(dto, DOCTOR_ID);
@@ -74,6 +80,7 @@ describe('CreateOfficeUseCase', () => {
 
   it('always assigns doctorId from the actor, not the DTO', async () => {
     const dto = makeDto();
+    mockRepo.findActiveByDoctor.mockResolvedValue([]);
     mockRepo.create.mockResolvedValue(savedOffice(dto));
 
     await useCase.execute(dto, DOCTOR_ID);
@@ -84,6 +91,7 @@ describe('CreateOfficeUseCase', () => {
 
   it('always sets isActive=true on creation', async () => {
     const dto = makeDto();
+    mockRepo.findActiveByDoctor.mockResolvedValue([]);
     mockRepo.create.mockResolvedValue(savedOffice(dto));
 
     await useCase.execute(dto, DOCTOR_ID);
@@ -95,6 +103,7 @@ describe('CreateOfficeUseCase', () => {
   it('creates an office with an empty schedule', async () => {
     const dto = makeDto({ schedule: [] });
     const saved = savedOffice(dto);
+    mockRepo.findActiveByDoctor.mockResolvedValue([]);
     mockRepo.create.mockResolvedValue(saved);
 
     const result = await useCase.execute(dto, DOCTOR_ID);
@@ -128,6 +137,7 @@ describe('CreateOfficeUseCase', () => {
     const dto = makeDto({
       schedule: [{ day: 0, enabled: false, start: '17:00', end: '08:00' }],
     });
+    mockRepo.findActiveByDoctor.mockResolvedValue([]);
     mockRepo.create.mockResolvedValue(savedOffice(dto));
 
     // DaySchedule.hasValidWindow() returns true for disabled days
@@ -136,6 +146,7 @@ describe('CreateOfficeUseCase', () => {
 
   it('generates a unique id for each office', async () => {
     const dto = makeDto();
+    mockRepo.findActiveByDoctor.mockResolvedValue([]);
     mockRepo.create.mockResolvedValue(savedOffice(dto));
 
     await useCase.execute(dto, DOCTOR_ID);
@@ -145,5 +156,179 @@ describe('CreateOfficeUseCase', () => {
 
     const id2 = (mockRepo.create.mock.calls[1]![0] as Office).id;
     expect(id1).not.toBe(id2);
+  });
+
+  describe('schedule conflict detection', () => {
+    const makeActiveOffice = (schedule: Office['schedule']): Office =>
+      Office.create({
+        id: 'existing-office-001',
+        doctorId: DOCTOR_ID,
+        name: 'Existing Office',
+        address: 'Av. Old 999',
+        city: 'Caracas',
+        phone: '+58 212 999 9999',
+        schedule,
+        slotDuration: 30,
+        bufferMinutes: 5,
+        isActive: true,
+        modality: 'in_person',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+    it('throws OfficeScheduleConflictError when schedule overlaps with an active office', async () => {
+      const existingOffice = makeActiveOffice([
+        { day: 1, enabled: true, start: '09:00', end: '17:00' },
+      ]);
+      mockRepo.findActiveByDoctor.mockResolvedValue([existingOffice]);
+
+      // New office also schedules Tuesday 10:00-15:00 — fully within existing
+      const dto = makeDto({
+        schedule: [{ day: 1, enabled: true, start: '10:00', end: '15:00' }],
+      });
+
+      await expect(useCase.execute(dto, DOCTOR_ID)).rejects.toBeInstanceOf(
+        OfficeScheduleConflictError,
+      );
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when the conflicting day is disabled in the new schedule', async () => {
+      const existingOffice = makeActiveOffice([
+        { day: 1, enabled: true, start: '09:00', end: '17:00' },
+      ]);
+      mockRepo.findActiveByDoctor.mockResolvedValue([existingOffice]);
+
+      // Same day but disabled — no conflict
+      const dto = makeDto({
+        schedule: [{ day: 1, enabled: false, start: '09:00', end: '17:00' }],
+      });
+      mockRepo.create.mockResolvedValue(savedOffice(dto));
+
+      await expect(useCase.execute(dto, DOCTOR_ID)).resolves.toBeDefined();
+    });
+
+    it('does not throw when schedules are on different days', async () => {
+      const existingOffice = makeActiveOffice([
+        { day: 1, enabled: true, start: '09:00', end: '17:00' },
+      ]);
+      mockRepo.findActiveByDoctor.mockResolvedValue([existingOffice]);
+
+      // New office schedules Wednesday (day 2) — no overlap
+      const dto = makeDto({
+        schedule: [{ day: 2, enabled: true, start: '09:00', end: '17:00' }],
+      });
+      mockRepo.create.mockResolvedValue(savedOffice(dto));
+
+      await expect(useCase.execute(dto, DOCTOR_ID)).resolves.toBeDefined();
+    });
+
+    it('does not throw when schedules are adjacent (touching but not overlapping)', async () => {
+      const existingOffice = makeActiveOffice([
+        { day: 0, enabled: true, start: '08:00', end: '12:00' },
+      ]);
+      mockRepo.findActiveByDoctor.mockResolvedValue([existingOffice]);
+
+      // New schedule starts exactly when existing ends — half-open [12:00, 17:00)
+      const dto = makeDto({
+        schedule: [{ day: 0, enabled: true, start: '12:00', end: '17:00' }],
+      });
+      mockRepo.create.mockResolvedValue(savedOffice(dto));
+
+      await expect(useCase.execute(dto, DOCTOR_ID)).resolves.toBeDefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// timesOverlap — unit tests for the pure helper
+// ---------------------------------------------------------------------------
+
+describe('timesOverlap()', () => {
+  it('returns true when A fully contains B', () => {
+    expect(timesOverlap('08:00', '18:00', '10:00', '12:00')).toBe(true);
+  });
+
+  it('returns true when B fully contains A', () => {
+    expect(timesOverlap('10:00', '12:00', '08:00', '18:00')).toBe(true);
+  });
+
+  it('returns true when A starts before B ends (partial overlap)', () => {
+    expect(timesOverlap('08:00', '13:00', '12:00', '17:00')).toBe(true);
+  });
+
+  it('returns true when B starts before A ends (partial overlap)', () => {
+    expect(timesOverlap('12:00', '17:00', '08:00', '13:00')).toBe(true);
+  });
+
+  it('returns false when A ends exactly where B starts (adjacent — no overlap)', () => {
+    expect(timesOverlap('08:00', '12:00', '12:00', '17:00')).toBe(false);
+  });
+
+  it('returns false when B ends exactly where A starts (adjacent — no overlap)', () => {
+    expect(timesOverlap('12:00', '17:00', '08:00', '12:00')).toBe(false);
+  });
+
+  it('returns false when A is entirely before B', () => {
+    expect(timesOverlap('07:00', '09:00', '10:00', '12:00')).toBe(false);
+  });
+
+  it('returns false when B is entirely before A', () => {
+    expect(timesOverlap('14:00', '18:00', '08:00', '12:00')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assertNoScheduleConflict — unit tests
+// ---------------------------------------------------------------------------
+
+describe('assertNoScheduleConflict()', () => {
+  const makeOfficeWith = (id: string, schedule: Office['schedule']): Office =>
+    Office.create({
+      id,
+      doctorId: DOCTOR_ID,
+      name: 'Office',
+      address: '',
+      city: '',
+      phone: '',
+      schedule,
+      slotDuration: 30,
+      bufferMinutes: 5,
+      isActive: true,
+      modality: 'in_person',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+  it('does not throw when there are no existing active offices', () => {
+    const proposed = [{ day: 0, enabled: true, start: '08:00', end: '17:00' }];
+    expect(() => assertNoScheduleConflict(proposed, [])).not.toThrow();
+  });
+
+  it('throws OfficeScheduleConflictError when schedules overlap on the same day', () => {
+    const existing = makeOfficeWith('o1', [
+      { day: 0, enabled: true, start: '08:00', end: '17:00' },
+    ]);
+    const proposed = [{ day: 0, enabled: true, start: '12:00', end: '18:00' }];
+    expect(() => assertNoScheduleConflict(proposed, [existing])).toThrow(
+      OfficeScheduleConflictError,
+    );
+  });
+
+  it('does not throw when excludeId matches the conflicting office', () => {
+    const existing = makeOfficeWith('o-to-update', [
+      { day: 0, enabled: true, start: '08:00', end: '17:00' },
+    ]);
+    const proposed = [{ day: 0, enabled: true, start: '12:00', end: '18:00' }];
+    // Excluding 'o-to-update' → no conflict left → no throw
+    expect(() => assertNoScheduleConflict(proposed, [existing], 'o-to-update')).not.toThrow();
+  });
+
+  it('does not throw when disabled slot on new schedule matches an existing enabled slot', () => {
+    const existing = makeOfficeWith('o1', [
+      { day: 0, enabled: true, start: '08:00', end: '17:00' },
+    ]);
+    const proposed = [{ day: 0, enabled: false, start: '09:00', end: '16:00' }];
+    expect(() => assertNoScheduleConflict(proposed, [existing])).not.toThrow();
   });
 });

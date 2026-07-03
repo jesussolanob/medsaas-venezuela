@@ -58,8 +58,10 @@ export function decrypt(payload: string, key: Buffer): string {
   const decipher = createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
 
-  // This will throw if the authTag does not match (tampered ciphertext or wrong key)
-  return decipher.update(ciphertext) + decipher.final('utf8');
+  // Buffer.concat + toString('utf8') is the correct way to handle multibyte sequences
+  // (e.g. emojis) that might otherwise be corrupted by implicit Buffer→string coercion.
+  // decipher.final() without an encoding arg returns a Buffer, guaranteeing no split.
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
 /**

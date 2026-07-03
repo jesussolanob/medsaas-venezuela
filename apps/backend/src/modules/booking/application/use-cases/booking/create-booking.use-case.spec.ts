@@ -217,6 +217,38 @@ describe('CreateBookingUseCase', () => {
       });
     });
 
+    it('persists receipt_url as paymentReceiptUrl when provided', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockImplementation(async (a) => a);
+
+      await useCase.execute(makeDto({ receipt_url: 'https://example.com/receipt.pdf' }));
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paymentReceiptUrl: 'https://example.com/receipt.pdf',
+        }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('persists paymentReceiptUrl as null when receipt_url is omitted', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockImplementation(async (a) => a);
+
+      await useCase.execute(makeDto());
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentReceiptUrl: null }),
+        FAKE_TRANSACTION,
+      );
+    });
+
     it('sets payment_method to "package" when using a package', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
       mockAppointmentRepo.hasOverlap.mockResolvedValue(false);

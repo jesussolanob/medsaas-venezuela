@@ -18,6 +18,14 @@ export interface ConsultationCreateParams {
   blocksSnapshot?: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Enrichment fields — populated by the list/findById queries via JOIN.
+   * Null when the consultation was constructed without JOIN enrichment
+   * (e.g. after create/update operations).
+   * Not a domain invariant; purely for read-side presentation.
+   */
+  patientName?: string | null;
+  appointmentStatus?: string | null;
 }
 
 /**
@@ -48,6 +56,10 @@ export class Consultation {
   readonly blocksSnapshot: Record<string, unknown> | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** Decrypted patient full name — populated by the enriched list/findById query. */
+  readonly patientName: string | null;
+  /** Status of the linked appointment — populated by the enriched list/findById query. */
+  readonly appointmentStatus: string | null;
 
   constructor(params: ConsultationCreateParams) {
     this.id = params.id;
@@ -67,6 +79,8 @@ export class Consultation {
     this.blocksSnapshot = params.blocksSnapshot ?? null;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
+    this.patientName = params.patientName ?? null;
+    this.appointmentStatus = params.appointmentStatus ?? null;
   }
 
   /**

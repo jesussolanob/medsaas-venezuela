@@ -87,13 +87,70 @@ export class SequelizePaymentRepository implements IPaymentRepository {
 
     const where = conditions.join(' AND ');
 
+    /**
+     * UNION with consultations that have payment_status='pending' but no payment record.
+     *
+     * These are consultations created directly by the doctor (not via the booking flow),
+     * which therefore have no entry in the payments table. They must appear in the
+     * "Pendientes" tab (status=pending) and in the "Todos" tab (status=all or undefined).
+     *
+     * Deduplication: a consultation is only included here when NOT EXISTS a payment linked
+     * to it via appointments.payment_id. This prevents double-counting of consultations
+     * that DO have a corresponding payment record.
+     *
+     * The synthetic id prefix 'c:' ensures the frontend can distinguish these rows
+     * from real payment records if it needs to render them differently.
+     */
+    const includePendingConsults =
+      !filters.status || filters.status === 'all' || filters.status === 'pending';
+
+    // Date filters for the consultation UNION branch
+    const consultDateClauses: string[] = [];
+    if (filters.fromDate) consultDateClauses.push('c.created_at >= :fromDate::timestamptz');
+    if (filters.toDate) consultDateClauses.push('c.created_at <= :toDate::timestamptz');
+    const consultDateWhere =
+      consultDateClauses.length > 0 ? ' AND ' + consultDateClauses.join(' AND ') : '';
+
+    const unionSql = includePendingConsults
+      ? `
+         UNION ALL
+         SELECT
+           'c:' || c.id            AS id,
+           c.consultation_code     AS payment_code,
+           COALESCE(c.amount, 0)   AS amount_usd,
+           NULL::numeric           AS amount_bs,
+           'pending'               AS status,
+           NULL::timestamptz       AS paid_at,
+           c.payment_method        AS method_snapshot,
+           c.created_at,
+           a.id                    AS appt_id,
+           a.appointment_code,
+           a.scheduled_at,
+           a.patient_name,
+           a.patient_phone,
+           a.plan_name,
+           a.payment_receipt_url,
+           c.id                    AS consultation_id,
+           c.consultation_code
+         FROM consultations c
+         LEFT JOIN appointments a ON a.id = c.appointment_id
+         WHERE c.doctor_id = :doctorId
+           AND c.payment_status = 'pending'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM appointments ap
+             INNER JOIN payments pp ON pp.id = ap.payment_id
+             WHERE ap.consultation_id = c.id
+           )${consultDateWhere}`
+      : '';
+
     const rows = await this.sequelize.query<PaymentListRow>(
       `SELECT
-         p.id,
+         p.id::text      AS id,
          p.payment_code,
          p.amount_usd,
          p.amount_bs,
-         p.status,
+         p.status::text  AS status,
          p.paid_at,
          p.method_snapshot,
          p.created_at,
@@ -110,7 +167,8 @@ export class SequelizePaymentRepository implements IPaymentRepository {
        LEFT JOIN appointments a ON a.payment_id = p.id
        LEFT JOIN consultations c ON c.id = a.consultation_id
        WHERE ${where}
-       ORDER BY p.created_at DESC`,
+       ${unionSql}
+       ORDER BY created_at DESC`,
       { replacements, type: QueryTypes.SELECT },
     );
 

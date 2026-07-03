@@ -47,33 +47,130 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
   }
 
   async list(filters: AppointmentListFilters): Promise<AppointmentListResult> {
-    const where: WhereOptions<AppointmentModel['_attributes']> = {
-      doctorId: filters.doctorId,
-    };
+    // Build WHERE conditions dynamically for raw SQL (needed for the LEFT JOIN enrichment)
+    const conditions: string[] = ['a.doctor_id = :doctorId'];
+    const replacements: Record<string, unknown> = { doctorId: filters.doctorId };
 
     if (filters.status) {
-      where.status = filters.status;
+      conditions.push('a.status = :status');
+      replacements['status'] = filters.status;
+    }
+    if (filters.dateFrom) {
+      conditions.push('a.scheduled_at >= :dateFrom');
+      replacements['dateFrom'] = filters.dateFrom;
+    }
+    if (filters.dateTo) {
+      conditions.push('a.scheduled_at <= :dateTo');
+      replacements['dateTo'] = filters.dateTo;
     }
 
-    if (filters.dateFrom ?? filters.dateTo) {
-      where.scheduledAt = {
-        ...(filters.dateFrom ? { [Op.gte]: filters.dateFrom } : {}),
-        ...(filters.dateTo ? { [Op.lte]: filters.dateTo } : {}),
-      };
-    }
-
+    const where = conditions.join(' AND ');
     const offset = (filters.page - 1) * filters.limit;
 
-    const { count, rows } = await this.appointmentModel.findAndCountAll({
-      where,
-      limit: filters.limit,
-      offset,
-      order: [['scheduledAt', 'ASC']],
-    });
+    // COUNT (no JOIN needed — avoids inflating count via LEFT JOIN)
+    const countRows = await this.sequelize.query<{ cnt: string }>(
+      `SELECT COUNT(*) AS cnt FROM appointments a WHERE ${where}`,
+      { replacements, type: QueryTypes.SELECT },
+    );
+    const total = parseInt(countRows[0]?.cnt ?? '0', 10);
+
+    // LIST with LEFT JOIN to consultations to expose consultation payment_status
+    interface AppointmentEnrichedRow {
+      id: string;
+      doctor_id: string;
+      patient_id: string | null;
+      auth_user_id: string | null;
+      consultation_id: string | null;
+      patient_name: string | null;
+      patient_phone: string | null;
+      patient_email: string | null;
+      patient_cedula: string | null;
+      scheduled_at: string;
+      status: string;
+      appointment_mode: string;
+      source: string | null;
+      plan_name: string | null;
+      plan_price: string | null;
+      payment_method: string | null;
+      payment_reference: string | null;
+      payment_receipt_url: string | null;
+      insurance_name: string | null;
+      bcv_rate: string | null;
+      amount_bs: string | null;
+      package_id: string | null;
+      session_number: number | null;
+      chief_complaint: string | null;
+      appointment_code: string | null;
+      payment_id: string | null;
+      meet_link: string | null;
+      office_id: string | null;
+      google_calendar_event_id: string | null;
+      duration_minutes: number | null;
+      created_at: string;
+      updated_at: string;
+      consultation_payment_status: string | null;
+    }
+
+    const rows = await this.sequelize.query<AppointmentEnrichedRow>(
+      `SELECT
+         a.id, a.doctor_id, a.patient_id, a.auth_user_id, a.consultation_id,
+         a.patient_name, a.patient_phone, a.patient_email, a.patient_cedula,
+         a.scheduled_at, a.status, a.appointment_mode, a.source,
+         a.plan_name, a.plan_price, a.payment_method, a.payment_reference, a.payment_receipt_url,
+         a.insurance_name, a.bcv_rate, a.amount_bs, a.package_id, a.session_number,
+         a.chief_complaint, a.appointment_code, a.payment_id, a.meet_link, a.office_id,
+         a.google_calendar_event_id, a.duration_minutes, a.created_at, a.updated_at,
+         c.payment_status AS consultation_payment_status
+       FROM appointments a
+       LEFT JOIN consultations c ON c.id = a.consultation_id
+       WHERE ${where}
+       ORDER BY a.scheduled_at ASC
+       LIMIT :limit OFFSET :offset`,
+      {
+        replacements: { ...replacements, limit: filters.limit, offset },
+        type: QueryTypes.SELECT,
+      },
+    );
 
     return {
-      items: rows.map((r) => this.toDomain(r)),
-      total: count,
+      items: rows.map((r) =>
+        Appointment.create({
+          id: r.id,
+          doctorId: r.doctor_id,
+          patientId: r.patient_id,
+          authUserId: r.auth_user_id,
+          consultationId: r.consultation_id,
+          patientName: r.patient_name,
+          patientPhone: r.patient_phone,
+          patientEmail: r.patient_email,
+          patientCedula: r.patient_cedula,
+          scheduledAt: new Date(r.scheduled_at),
+          status: r.status as import('@delta/shared-types').AppointmentStatus,
+          appointmentMode: r.appointment_mode as import('@delta/shared-types').AppointmentMode,
+          source: r.source,
+          planName: r.plan_name,
+          planPrice: r.plan_price !== null ? Number(r.plan_price) : null,
+          paymentMethod: r.payment_method,
+          paymentReference: r.payment_reference,
+          paymentReceiptUrl: r.payment_receipt_url,
+          insuranceName: r.insurance_name,
+          bcvRate: r.bcv_rate !== null ? Number(r.bcv_rate) : null,
+          amountBs: r.amount_bs !== null ? Number(r.amount_bs) : null,
+          packageId: r.package_id,
+          sessionNumber: r.session_number,
+          chiefComplaint: r.chief_complaint,
+          appointmentCode: r.appointment_code,
+          paymentId: r.payment_id,
+          meetLink: r.meet_link,
+          officeId: r.office_id,
+          googleCalendarEventId: r.google_calendar_event_id,
+          durationMinutes: r.duration_minutes,
+          createdAt: new Date(r.created_at),
+          updatedAt: new Date(r.updated_at),
+          paymentStatus: r.consultation_payment_status ?? null,
+        }),
+      ),
+      total,
       page: filters.page,
       limit: filters.limit,
     };

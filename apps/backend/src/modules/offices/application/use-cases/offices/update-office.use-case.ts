@@ -7,6 +7,7 @@ import { Office } from '../../../domain/entities/office.entity';
 import { DaySchedule } from '../../../domain/value-objects/day-schedule.vo';
 import { OfficeNotFoundError } from '../../../domain/errors/office-not-found.error';
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
+import { assertNoScheduleConflict } from './create-office.use-case';
 import type { UpdateOfficeDto } from '@delta/shared-types';
 
 @Injectable()
@@ -35,7 +36,13 @@ export class UpdateOfficeUseCase {
       }
     }
 
-    // 3. Merge updates into the existing office (immutable)
+    // 3. Check for schedule overlap with other active offices (exclude the one being updated)
+    if (dto.schedule) {
+      const activeOffices = await this.officeRepo.findActiveByDoctor(existing.doctorId);
+      assertNoScheduleConflict(newSchedule, activeOffices, officeId);
+    }
+
+    // 4. Merge updates into the existing office (immutable)
     const updated = Office.create({
       id: existing.id,
       doctorId: existing.doctorId,

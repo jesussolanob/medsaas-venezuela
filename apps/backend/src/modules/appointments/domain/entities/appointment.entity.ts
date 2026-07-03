@@ -69,6 +69,13 @@ export class Appointment {
     public readonly durationMinutes: number | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    /**
+     * Payment status from the linked consultation (payment_status column).
+     * Populated by enriched list/findById queries via LEFT JOIN to consultations.
+     * Null when no consultation is linked yet.
+     * Read-side enrichment only — not a domain invariant.
+     */
+    public readonly paymentStatus: string | null = null,
   ) {}
 
   /**
@@ -126,6 +133,7 @@ export class Appointment {
       params.durationMinutes ?? null,
       params.createdAt,
       params.updatedAt,
+      params.paymentStatus ?? null,
     );
   }
 }
@@ -184,4 +192,10 @@ export interface AppointmentCreateParams {
   durationMinutes?: number | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Payment status from the linked consultation's payment_status column.
+   * Populated by enriched list/findById queries. Null when no consultation exists.
+   * Read-side enrichment only — not persisted on the appointments table.
+   */
+  paymentStatus?: string | null;
 }

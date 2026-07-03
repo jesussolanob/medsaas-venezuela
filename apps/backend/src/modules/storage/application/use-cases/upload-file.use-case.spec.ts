@@ -2,24 +2,12 @@ import {
   UploadFileUseCase,
   sanitizeFilename,
   buildStoragePath,
+  detectMimeFromBuffer,
   PRIVATE_KINDS,
   type UploadFileInput,
 } from './upload-file.use-case';
 import { StorageValidationError, StorageUploadError } from '../../domain/errors/storage.error';
 import type { IStoragePort } from '../ports/storage.port';
-
-// ---------------------------------------------------------------------------
-// file-type mock — must be set up before any import that might use it, but
-// Jest module mocking is hoisted so we declare the factory here.
-// ---------------------------------------------------------------------------
-jest.mock('file-type', () => ({
-  fileTypeFromBuffer: jest.fn(),
-}));
-
-import * as fileTypeModule from 'file-type';
-const mockFileTypeFromBuffer = fileTypeModule.fileTypeFromBuffer as jest.MockedFunction<
-  typeof fileTypeModule.fileTypeFromBuffer
->;
 
 // ---------------------------------------------------------------------------
 // Storage port mock
@@ -31,9 +19,36 @@ const mockStorage: jest.Mocked<IStoragePort> = {
 
 const makeUseCase = () => new UploadFileUseCase(mockStorage);
 
+// ---------------------------------------------------------------------------
+// Real magic-byte buffers — used to test the integrated detectMimeFromBuffer
+// without mocking file-type (which was ESM-only and is no longer used).
+// ---------------------------------------------------------------------------
+const JPEG_BUF = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+const PNG_BUF = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+const WEBP_BUF = Buffer.from([
+  0x52,
+  0x49,
+  0x46,
+  0x46, // RIFF
+  0x24,
+  0x00,
+  0x00,
+  0x00, // file size (little-endian)
+  0x57,
+  0x45,
+  0x42,
+  0x50, // WEBP
+  0x56,
+  0x50,
+  0x38, // ...
+]);
+const GIF_BUF = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]); // GIF89a
+const PDF_BUF = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
+const UNKNOWN_BUF = Buffer.from([0x00, 0x01, 0x02, 0x03]);
+
 /** Valid input for a private kind (document). */
 const validPrivateInput: UploadFileInput = {
-  buffer: Buffer.from('data'),
+  buffer: PDF_BUF,
   originalname: 'report.pdf',
   mimetype: 'application/pdf',
   size: 1024,
@@ -43,7 +58,7 @@ const validPrivateInput: UploadFileInput = {
 
 /** Valid input for a public kind (avatar). */
 const validPublicInput: UploadFileInput = {
-  buffer: Buffer.from('png-data'),
+  buffer: PNG_BUF,
   originalname: 'avatar.png',
   mimetype: 'image/png',
   size: 512,
@@ -54,12 +69,48 @@ const validPublicInput: UploadFileInput = {
 beforeEach(() => {
   jest.clearAllMocks();
 
-  // Default: file-type detects application/pdf for binary buffer
-  mockFileTypeFromBuffer.mockResolvedValue({ mime: 'application/pdf', ext: 'pdf' });
-
   mockStorage.upload.mockResolvedValue({
     url: 'http://localhost:9000/delta-uploads/document/user-123/1234-report.pdf',
     path: 'document/user-123/1234-report.pdf',
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectMimeFromBuffer — pure function, no mocking needed
+// ---------------------------------------------------------------------------
+describe('detectMimeFromBuffer', () => {
+  it('detects image/jpeg from FF D8 FF header', () => {
+    expect(detectMimeFromBuffer(JPEG_BUF)).toBe('image/jpeg');
+  });
+
+  it('detects image/png from 89 50 4E 47 ... header', () => {
+    expect(detectMimeFromBuffer(PNG_BUF)).toBe('image/png');
+  });
+
+  it('detects image/webp from RIFF????WEBP header', () => {
+    expect(detectMimeFromBuffer(WEBP_BUF)).toBe('image/webp');
+  });
+
+  it('detects image/gif from GIF8 header', () => {
+    expect(detectMimeFromBuffer(GIF_BUF)).toBe('image/gif');
+  });
+
+  it('detects application/pdf from %PDF header', () => {
+    expect(detectMimeFromBuffer(PDF_BUF)).toBe('application/pdf');
+  });
+
+  it('returns null for unknown/unrecognised buffer', () => {
+    expect(detectMimeFromBuffer(UNKNOWN_BUF)).toBeNull();
+  });
+
+  it('returns null for buffer shorter than 4 bytes', () => {
+    expect(detectMimeFromBuffer(Buffer.from([0xff, 0xd8]))).toBeNull();
+  });
+
+  it('does not detect SVG (no entry in signature table — XSS vector)', () => {
+    // SVG is XML text; no binary magic bytes → detectMimeFromBuffer returns null
+    const svgBuf = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+    expect(detectMimeFromBuffer(svgBuf)).toBeNull();
   });
 });
 
@@ -128,7 +179,12 @@ describe('UploadFileUseCase', () => {
       'accepts valid kind "%s"',
       async (kind) => {
         const uc = makeUseCase();
-        await expect(uc.execute({ ...validPrivateInput, kind })).resolves.toBeDefined();
+        // Use a buffer matching the declared MIME (pdf for document/receipt, png for others)
+        const buf = ['document', 'receipt'].includes(kind) ? PDF_BUF : PNG_BUF;
+        const mime = ['document', 'receipt'].includes(kind) ? 'application/pdf' : 'image/png';
+        await expect(
+          uc.execute({ ...validPrivateInput, kind, buffer: buf, mimetype: mime }),
+        ).resolves.toBeDefined();
       },
     );
 
@@ -157,23 +213,18 @@ describe('UploadFileUseCase', () => {
   });
 
   describe('content-type validation', () => {
-    it.each(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'])(
-      'accepts allowed MIME type "%s"',
-      async (mimetype) => {
-        mockFileTypeFromBuffer.mockResolvedValue({
-          mime: mimetype as Parameters<typeof mockFileTypeFromBuffer>[0] extends Buffer
-            ? never
-            : never,
-          ext: 'bin',
-        } as Awaited<ReturnType<typeof mockFileTypeFromBuffer>>);
-        // Re-setup mock to return the correct mime for each type
-        mockFileTypeFromBuffer.mockResolvedValue({ mime: mimetype, ext: 'bin' } as NonNullable<
-          Awaited<ReturnType<typeof mockFileTypeFromBuffer>>
-        >);
-        const uc = makeUseCase();
-        await expect(uc.execute({ ...validPrivateInput, mimetype })).resolves.toBeDefined();
-      },
-    );
+    it.each([
+      ['image/jpeg', JPEG_BUF],
+      ['image/png', PNG_BUF],
+      ['image/webp', WEBP_BUF],
+      ['image/gif', GIF_BUF],
+      ['application/pdf', PDF_BUF],
+    ] as [string, Buffer][])('accepts allowed MIME type "%s"', async (mimetype, buf) => {
+      const uc = makeUseCase();
+      await expect(
+        uc.execute({ ...validPrivateInput, mimetype, buffer: buf }),
+      ).resolves.toBeDefined();
+    });
 
     it('rejects image/svg+xml (XSS vector)', async () => {
       const uc = makeUseCase();
@@ -197,52 +248,45 @@ describe('UploadFileUseCase', () => {
     });
   });
 
-  describe('magic bytes validation (HIGH-3)', () => {
-    it('accepts file when detected mime matches declared mime', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue({ mime: 'application/pdf', ext: 'pdf' });
+  describe('magic bytes validation', () => {
+    it('accepts file when detected mime matches declared mime (PDF)', async () => {
       const uc = makeUseCase();
       await expect(uc.execute(validPrivateInput)).resolves.toBeDefined();
     });
 
-    it('rejects file when detected mime does not match (HTML disguised as PNG)', async () => {
-      // Simulate an HTML file with a spoofed image/png Content-Type header.
-      // file-type detects no recognised binary signature.
-      mockFileTypeFromBuffer.mockResolvedValue(undefined);
-      const uc = makeUseCase();
-      await expect(uc.execute({ ...validPublicInput, mimetype: 'image/png' })).rejects.toThrow(
-        StorageValidationError,
-      );
-    });
-
-    it('rejects file when detected mime is disallowed (e.g. application/x-msdownload)', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue({
-        mime: 'application/x-msdownload',
-        ext: 'exe',
-      });
+    it('rejects file when detected mime does not match — HTML disguised as PNG', async () => {
+      const htmlBuf = Buffer.from('<html><body>xss</body></html>');
       const uc = makeUseCase();
       await expect(
-        uc.execute({ ...validPrivateInput, mimetype: 'application/pdf' }),
+        uc.execute({ ...validPublicInput, mimetype: 'image/png', buffer: htmlBuf }),
       ).rejects.toThrow(StorageValidationError);
     });
 
-    it('rejects SVG masquerading as JPEG (detected as image/svg+xml)', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/svg+xml', ext: 'svg' });
+    it('rejects file when detected mime is not in allowed set — random binary', async () => {
+      const exeBuf = Buffer.from([0x4d, 0x5a, 0x90, 0x00]); // MZ header (Windows PE)
       const uc = makeUseCase();
-      await expect(uc.execute({ ...validPublicInput, mimetype: 'image/jpeg' })).rejects.toThrow(
-        StorageValidationError,
-      );
+      await expect(
+        uc.execute({ ...validPrivateInput, mimetype: 'application/pdf', buffer: exeBuf }),
+      ).rejects.toThrow(StorageValidationError);
     });
 
-    it('rejects when fileTypeFromBuffer returns undefined for a binary mime', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue(undefined);
+    it('rejects SVG masquerading as JPEG (no JPEG magic bytes)', async () => {
+      const svgBuf = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>');
       const uc = makeUseCase();
-      await expect(uc.execute({ ...validPrivateInput, mimetype: 'image/jpeg' })).rejects.toThrow(
-        StorageValidationError,
-      );
+      await expect(
+        uc.execute({ ...validPublicInput, mimetype: 'image/jpeg', buffer: svgBuf }),
+      ).rejects.toThrow(StorageValidationError);
+    });
+
+    it('rejects when buffer has no recognised binary signature for a binary mime', async () => {
+      const uc = makeUseCase();
+      await expect(
+        uc.execute({ ...validPrivateInput, mimetype: 'image/jpeg', buffer: UNKNOWN_BUF }),
+      ).rejects.toThrow(StorageValidationError);
     });
   });
 
-  describe('public vs private kind selection (HIGH-2)', () => {
+  describe('public vs private kind selection', () => {
     it('calls storage.upload with isPrivate=true for kind "receipt"', async () => {
       mockStorage.upload.mockResolvedValue({
         url: 'https://signed.url/receipt?sig=abc',
@@ -267,8 +311,7 @@ describe('UploadFileUseCase', () => {
       expect(call.isPrivate).toBe(true);
     });
 
-    it('calls storage.upload with isPrivate=false for kind "signature" (public — URL persists in profiles)', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
+    it('calls storage.upload with isPrivate=false for kind "signature"', async () => {
       mockStorage.upload.mockResolvedValue({
         url: 'http://minio/delta-uploads/signature/user-123/1-s.png',
         path: 'signature/user-123/1-s.png',
@@ -281,7 +324,6 @@ describe('UploadFileUseCase', () => {
     });
 
     it('calls storage.upload with isPrivate=false for kind "avatar"', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
       mockStorage.upload.mockResolvedValue({
         url: 'http://minio/delta-uploads/avatar/user-456/1-avatar.png',
         path: 'avatar/user-456/1-avatar.png',
@@ -294,7 +336,6 @@ describe('UploadFileUseCase', () => {
     });
 
     it('calls storage.upload with isPrivate=false for kind "logo"', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
       mockStorage.upload.mockResolvedValue({
         url: 'http://minio/delta-uploads/logo/user-456/1-logo.png',
         path: 'logo/user-456/1-logo.png',
@@ -304,30 +345,6 @@ describe('UploadFileUseCase', () => {
 
       const call = mockStorage.upload.mock.calls[0]![0]!;
       expect(call.isPrivate).toBe(false);
-    });
-
-    it('returns signed URL from adapter for private kind', async () => {
-      const signedUrl =
-        'https://minio:9000/delta-uploads/receipt/user-123/1-r.pdf?X-Amz-Signature=abc123&X-Amz-Expires=3600';
-      mockStorage.upload.mockResolvedValue({ url: signedUrl, path: 'receipt/user-123/1-r.pdf' });
-      const uc = makeUseCase();
-      const result = await uc.execute({ ...validPrivateInput, kind: 'receipt' });
-
-      expect(result.url).toContain('X-Amz-Signature');
-    });
-
-    it('returns public URL from adapter for public kind', async () => {
-      mockFileTypeFromBuffer.mockResolvedValue({ mime: 'image/png', ext: 'png' });
-      const publicUrl = 'http://localhost:9000/delta-uploads/avatar/user-456/1-avatar.png';
-      mockStorage.upload.mockResolvedValue({
-        url: publicUrl,
-        path: 'avatar/user-456/1-avatar.png',
-      });
-      const uc = makeUseCase();
-      const result = await uc.execute({ ...validPublicInput, kind: 'avatar' });
-
-      expect(result.url).not.toContain('Signature');
-      expect(result.url).toContain('avatar');
     });
   });
 
@@ -340,7 +357,7 @@ describe('UploadFileUseCase', () => {
       const call = mockStorage.upload.mock.calls[0]![0]!;
       expect(call.contentType).toBe('application/pdf');
       expect(call.path).toMatch(/^document\/user-123\/\d+-report\.pdf$/);
-      expect(call.buffer).toEqual(Buffer.from('data'));
+      expect(call.buffer).toEqual(PDF_BUF);
     });
 
     it('returns url and path from storage adapter', async () => {
