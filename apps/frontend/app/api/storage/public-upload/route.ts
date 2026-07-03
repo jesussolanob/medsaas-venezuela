@@ -34,12 +34,6 @@ const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf'];
 // to prevent abuse on a public endpoint.
 const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
-// Fixed guest identity used when forwarding to the backend in Etapa 1.
-// DevAuthGuard reads these headers and sets req.user without a DB lookup
-// in dev mode. Etapa 2 replaces this with a signed service token.
-const GUEST_USER_ID = 'public-booking-guest';
-const GUEST_USER_ROLE = 'patient';
-
 function isMimeAllowed(mime: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
 }
@@ -146,21 +140,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // Build the outgoing FormData to forward to the backend.
+  // The backend PUBLIC endpoint hardcodes kind='receipt' and needs no auth.
   const outgoing = new FormData();
   outgoing.append('file', file, file instanceof File ? file.name : 'comprobante');
-  outgoing.append('kind', 'receipt');
 
   let backendRes: Response;
   try {
-    backendRes = await fetch(`${BACKEND_URL}/api/storage/upload`, {
+    backendRes = await fetch(`${BACKEND_URL}/api/storage/public-upload`, {
       method: 'POST',
-      headers: {
-        // Guest identity for DevAuthGuard (Etapa 1 only).
-        // Do NOT set Content-Type — fetch sets it with the correct
-        // multipart boundary automatically when body is FormData.
-        'x-dev-user-id': GUEST_USER_ID,
-        'x-dev-user-role': GUEST_USER_ROLE,
-      },
+      // No auth headers — this backend route is intentionally public.
+      // Do NOT set Content-Type — fetch sets the multipart boundary for FormData.
       body: outgoing,
     });
   } catch (networkErr: unknown) {

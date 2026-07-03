@@ -52,6 +52,7 @@ import SubscriptionPanel from '@/components/doctor/SubscriptionPanel';
 import BookingQrCode from '@/components/doctor/BookingQrCode';
 import { reportError } from '@/lib/report-error';
 import { showToast } from '@/components/ui/Toaster';
+import PhoneInput from '@/components/shared/PhoneInput';
 
 type PricingPlan = {
   id: string;
@@ -973,11 +974,9 @@ function SettingsPageInner() {
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">
                         Teléfono
                       </label>
-                      <input
+                      <PhoneInput
                         value={profile.phone}
-                        onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
-                        placeholder="+58 412 000 0000"
-                        className={fi}
+                        onChange={(v) => setProfile((p) => ({ ...p, phone: v }))}
                       />
                     </div>
                   </div>

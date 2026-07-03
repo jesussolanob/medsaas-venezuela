@@ -75,7 +75,8 @@ export type AgendaAppointment = {
   patient_email: string | null;
   patient_cedula: string | null;
   meet_link: string | null;
-  payment_status: null; // no expuesto en lista — siempre null
+  /** Estado de pago de la consulta vinculada. Puede ser null cuando no hay consulta. */
+  payment_status: 'pending' | 'approved' | null;
 };
 
 /**
@@ -127,6 +128,8 @@ interface BackendAppointment {
   chiefComplaint: string | null;
   appointmentCode: string | null;
   paymentId: string | null;
+  /** Estado de pago de la consulta vinculada (expuesto desde el backend en el listado). */
+  paymentStatus?: 'pending' | 'approved' | null;
   // meet_link no está en el entity actual — Fase 5
 }
 
@@ -192,7 +195,7 @@ function toAgendaAppointment(raw: BackendAppointment, slotDuration: number): Age
     patient_email: raw.patientEmail ?? null,
     patient_cedula: raw.patientCedula ?? null,
     meet_link: null, // meet_link no está en entity v1 — FASE 5
-    payment_status: null,
+    payment_status: (raw.paymentStatus as AgendaAppointment['payment_status']) ?? null,
   };
 }
 

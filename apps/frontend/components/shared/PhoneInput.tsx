@@ -1,49 +1,102 @@
-'use client'
+'use client';
 
-// L6 (2026-04-29): componente reutilizable de telefono venezolano.
-//
-// Almacena el valor en formato canonico '584XXXXXXXXX' (12 digitos).
-// El parent recibe el canonico via onChange, listo para wa.me/api.whatsapp.com.
-//
-// Display: prefijo +58 fijo a la izquierda + input para los 10 digitos restantes.
-// Si el value externo viene en otro formato (ej '0414-1234567'), se parsea.
+/**
+ * PhoneInput — input de teléfono con selector de prefijo de país.
+ *
+ * Reemplaza el prefijo fijo '+58' por CountryCodeSelect, que permite
+ * elegir cualquier país de Latinoamérica o ingresar un código personalizado.
+ * El default sigue siendo Venezuela (+58).
+ *
+ * Formato canónico de salida (onChange):
+ *   - Venezuela (+58): '58' + 10 dígitos que empiezan con 4 → '584141234567'
+ *     Solo se emite cuando el número está completo y bien formado (backward-compat).
+ *   - Otros países: código (sin '+') + dígitos locales, e.g. '571234567890'
+ *     Se emite en cuanto hay al menos un dígito en el campo local.
+ *   - Incompleto / vacío: '' (el padre sabe que no hay número válido).
+ *
+ * Parsing del valor entrante (value prop):
+ *   1. Intenta normalizePhoneVE → detecta formatos VE legados ('04141234567', etc.)
+ *   2. Intenta match contra códigos conocidos (orden: más largo primero)
+ *   3. Fallback: +58 con los dígitos como local
+ *
+ * Nota sobre waLink/formatPhoneVE: esas utilidades solo manejan VE canonical.
+ * Para números de otros países, el enlace wa.me se construye con el valor
+ * tal cual (código + local, sin '+'). Los helpers se actualizarán en Fase 5.
+ */
 
-import { useEffect, useState } from 'react'
-import { Phone } from 'lucide-react'
-import { normalizePhoneVE } from '@/lib/phone-utils'
+import { useEffect, useState } from 'react';
+import { normalizePhoneVE } from '@/lib/phone-utils';
+import CountryCodeSelect, { LATAM_COUNTRIES } from '@/components/ui/CountryCodeSelect';
+
+// ---------------------------------------------------------------------------
+// Parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Códigos ordenados de mayor a menor longitud para evitar que '+59' (si existiera)
+ * consuma el inicio de '+593' (Ecuador). El match más largo gana.
+ */
+const SORTED_CODES = [...LATAM_COUNTRIES]
+  .sort((a, b) => b.code.replace('+', '').length - a.code.replace('+', '').length)
+  .map((c) => c.code);
+
+/**
+ * Divide un valor de teléfono almacenado en { code, local }.
+ *
+ * Ejemplos:
+ *   '584141234567'  → { code: '+58', local: '4141234567' }
+ *   '04141234567'   → { code: '+58', local: '4141234567' } (VE legado)
+ *   '571234567890'  → { code: '+57', local: '1234567890' }
+ *   '5931234567890' → { code: '+593', local: '1234567890' }
+ *   ''              → { code: '+58', local: '' }
+ */
+function parsePhoneValue(raw: string | null | undefined): { code: string; local: string } {
+  // Paso 1: intentar normalización VE para manejar formatos legados
+  const veCanonical = normalizePhoneVE(raw);
+  if (veCanonical) {
+    return { code: '+58', local: veCanonical.slice(2) };
+  }
+
+  const digits = (raw ?? '').replace(/\D/g, '');
+  if (!digits) return { code: '+58', local: '' };
+
+  // Paso 2: match contra códigos conocidos (más largo primero)
+  for (const code of SORTED_CODES) {
+    const codeDigits = code.replace('+', '');
+    if (digits.startsWith(codeDigits)) {
+      return { code, local: digits.slice(codeDigits.length) };
+    }
+  }
+
+  // Paso 3: fallback — mostrar los dígitos en el campo local con +58
+  return { code: '+58', local: digits };
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 type Props = {
-  /** Valor canonico '584141234567' (12 digitos). Tambien acepta legacy. */
-  value: string | null | undefined
-  /** Callback con el canonico de 12 digitos. Si esta incompleto, devuelve '' */
-  onChange: (canonical: string) => void
-  /** Mensaje de error externo (validacion del padre) */
-  error?: string
-  /** Marca el input como required (HTML) */
-  required?: boolean
-  /** Placeholder del input local */
-  placeholder?: string
-  /** Clase del wrapper */
-  className?: string
-  /** Deshabilita el input */
-  disabled?: boolean
-  /** AutoFocus */
-  autoFocus?: boolean
-  /** Nombre del input */
-  name?: string
-}
+  /** Valor canónico: '584141234567' (VE) / 'CCXXXXXXXXX' (otros). También acepta formatos legados. */
+  value: string | null | undefined;
+  /** Callback con el canónico. '' cuando el número está incompleto / inválido. */
+  onChange: (canonical: string) => void;
+  /** Mensaje de error externo (validación del padre). */
+  error?: string;
+  /** Marca el input de dígitos como required (HTML). */
+  required?: boolean;
+  /** Placeholder del campo de dígitos locales. */
+  placeholder?: string;
+  /** Clase extra para el wrapper externo. */
+  className?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  name?: string;
+};
 
-/** Extrae los 10 digitos locales (sin '58') a partir de cualquier formato. */
-function parseLocal(raw: string | null | undefined): string {
-  const canonical = normalizePhoneVE(raw)
-  if (canonical) return canonical.slice(2) // quita '58'
-  // Si no se pudo normalizar, intenta extraer hasta 10 digitos crudos
-  const digits = (raw ?? '').toString().replace(/\D/g, '')
-  // Si arranca con 58 incompleto, lo quitamos para que el usuario edite el local
-  if (digits.startsWith('58')) return digits.slice(2, 12)
-  if (digits.startsWith('0')) return digits.slice(1, 11)
-  return digits.slice(0, 10)
-}
+// ---------------------------------------------------------------------------
+// Componente
+// ---------------------------------------------------------------------------
 
 export default function PhoneInput({
   value,
@@ -56,58 +109,94 @@ export default function PhoneInput({
   autoFocus,
   name,
 }: Props) {
-  const [local, setLocal] = useState<string>(() => parseLocal(value))
+  const initial = parsePhoneValue(value);
+  const [countryCode, setCountryCode] = useState<string>(initial.code);
+  const [localDigits, setLocalDigits] = useState<string>(initial.local);
 
-  // Sync con value externo
+  // Sincronizar cuando el padre actualiza el value externamente
   useEffect(() => {
-    setLocal(parseLocal(value))
+    const p = parsePhoneValue(value);
+    setCountryCode(p.code);
+    setLocalDigits(p.local);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value])
+  }, [value]);
 
-  // Validacion: 10 digitos, arrancando con 4 (operadores VE: 412, 414, 416, 424, 426)
-  const localOk = local.length === 0 || (local.length === 10 && local.startsWith('4'))
-  const showError =
-    error ||
-    (local.length > 0 && local.length < 10 ? 'Teléfono debe tener 10 dígitos' : '') ||
-    (local.length === 10 && !local.startsWith('4') ? 'Teléfono móvil debe iniciar con 4' : '')
+  // ── Validación ──────────────────────────────────────────────────────────
 
-  function handleChange(raw: string) {
-    const digits = raw.replace(/\D/g, '').slice(0, 10)
-    setLocal(digits)
-    // Solo emite canonico cuando el numero esta completo y bien formado
-    if (digits.length === 10 && digits.startsWith('4')) {
-      onChange('58' + digits)
+  const isVenezuela = countryCode === '+58';
+
+  const veValidationError: string | null = (() => {
+    if (!isVenezuela || localDigits.length === 0) return null;
+    if (localDigits.length < 10) return 'Teléfono debe tener 10 dígitos';
+    if (!localDigits.startsWith('4')) return 'Teléfono móvil debe iniciar con 4';
+    return null;
+  })();
+
+  const displayError = error ?? veValidationError ?? null;
+
+  // ── Emisión del valor canónico ───────────────────────────────────────────
+
+  function emitCanonical(code: string, local: string) {
+    if (!local) {
+      onChange('');
+      return;
+    }
+    if (code === '+58') {
+      // VE: solo emitir cuando está completo y bien formado (backward-compat)
+      if (local.length === 10 && local.startsWith('4')) {
+        onChange('58' + local);
+      } else {
+        onChange('');
+      }
     } else {
-      // Numero incompleto: parent recibe '' (asi sabe que no esta listo)
-      onChange('')
+      // Otros países: emitir en cuanto haya dígitos
+      onChange(code.replace('+', '') + local);
     }
   }
 
+  // ── Handlers ────────────────────────────────────────────────────────────
+
+  function handleCountryChange(code: string) {
+    setCountryCode(code);
+    emitCanonical(code, localDigits);
+  }
+
+  function handleLocalChange(raw: string) {
+    const digits = raw.replace(/\D/g, '').slice(0, 15);
+    setLocalDigits(digits);
+    emitCanonical(countryCode, digits);
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
+  const borderCls = displayError
+    ? 'border-red-300 focus-within:border-red-400 focus-within:ring-2 focus-within:ring-red-500/10'
+    : 'border-slate-200 focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-500/10';
+
   return (
     <div className={className}>
-      <div className={`flex items-stretch border rounded-lg bg-white transition-colors overflow-hidden ${
-        showError ? 'border-red-300 focus-within:border-red-400 focus-within:ring-2 focus-within:ring-red-500/10'
-                  : 'border-slate-200 focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-500/10'
-      } ${disabled ? 'bg-slate-50 opacity-60' : ''}`}>
-        <div className="flex items-center gap-1 px-2.5 bg-slate-50 border-r border-slate-200 text-sm font-semibold text-slate-700">
-          <Phone className="w-3.5 h-3.5 text-slate-400" />
-          <span>+58</span>
-        </div>
+      <div
+        className={`flex items-center border rounded-lg bg-white transition-colors overflow-hidden ${borderCls} ${disabled ? 'opacity-60' : ''}`}
+      >
+        {/* Selector de código de país — renderiza como Fragment (select + optional input) */}
+        <CountryCodeSelect value={countryCode} onChange={handleCountryChange} disabled={disabled} />
+
+        {/* Campo de dígitos locales */}
         <input
           type="tel"
           inputMode="numeric"
           pattern="[0-9]*"
           name={name}
-          value={local}
-          onChange={e => handleChange(e.target.value)}
+          value={localDigits}
+          onChange={(e) => handleLocalChange(e.target.value)}
           required={required}
-          placeholder={placeholder}
+          placeholder={isVenezuela ? placeholder : '…'}
           disabled={disabled}
           autoFocus={autoFocus}
           className="flex-1 px-2 py-2 text-sm bg-transparent outline-none disabled:cursor-not-allowed"
         />
       </div>
-      {showError && <p className="text-[11px] text-red-600 mt-1">{showError}</p>}
+      {displayError && <p className="text-[11px] text-red-600 mt-1">{displayError}</p>}
     </div>
-  )
+  );
 }
