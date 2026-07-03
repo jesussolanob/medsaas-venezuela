@@ -36,6 +36,39 @@ Commits en `feature/migracion-backend` (auto-deploy Cloud Run):
 - Deuda: rate-limit propio del endpoint backend public-upload (hoy lo cubre el BFF + ingress interno);
   wa.me solo formatea VE (los demás países no arman link).
 
+### PARA RETOMAR (próxima sesión) — arrancar Fase 3
+
+**Prompt sugerido:** "Seguí con Fase 3 del lote QA delta; lee `memory-bank/08-qa-lote-delta-2026-07.md`
+(secciones FASE 3 y PARA RETOMAR)."
+
+**Cómo ejecutar (patrón que funcionó todo el lote):**
+
+1. Lead escribe spec preciso → delega a `backend-agent`/`frontend-agent` (NO Docker durante edición) →
+   verifica en disco (build+lint+test) + **boot-test del dist** (los cambios de DI/mapper rompieron el
+   boot 3 veces y build/unit NO lo atrapan) + curl real → code-review + security-agent si toca
+   PII/auth/portal público → commit por bloques → push (auto-deploy).
+2. Empezar por **investigación/diseño** (los 2 agentes que se cancelaron): mapear `NewAppointmentFlow`
+   y estudiar el módulo `document-sharing` para modelar `patient-requests`. Luego implementar.
+3. Sub-dividir para no chocar archivos y checkpointear por bloque desplegable (no acumular 30 cambios).
+
+**Reutilizables ya creados en este lote (para Fase 3):**
+
+- `POST /api/storage/public-upload` (backend, sin auth, kind=receipt) + BFF
+  `app/api/storage/public-upload/route.ts` (con rate-limit por IP) → usar para los adjuntos del portal.
+- `components/ui/CountryCodeSelect.tsx` + `components/shared/PhoneInput.tsx`.
+- Patrón del portal público con código por correo: módulo `document-sharing` (backend + portal).
+
+**Estado del entorno local (al cerrar 2026-07-03):**
+
+- `apps/frontend/.env` = `AUTH_MODE=auth0` (restaurado; para QA con cookies volver a `dev` y restaurar).
+- Backend dev quedó corriendo en `:3001`; Docker (postgres/redis/minio) arriba. Migraciones al día
+  (incl. 20260701 backfill-subscriptions y 20260703000001 parentesco).
+- Usuarios de prueba LOCAL: FREE `doctor@test.com`, BASE `dev@delta.local` (default), PLUS
+  `smokedocv2@dev.local`, ADMIN `admin@smoketest.local`. Impersonar por cookies `dev_user_id`/`dev_user_role`.
+- **Prod:** `marcoviajes11@gmail.com` = doctor en `delta_base` (profiles + subscriptions consistentes).
+  Cloud SQL `sodium-shard-499116-r3:us-east1:delta-db`, IP pública 34.139.94.60, redes autorizadas en
+  `0.0.0.0/0` (⚠️ cerrar a tu IP y rotar el password `delta` tras el QA — quedaron expuestos en chat).
+
 ## Clasificación: 🐛 bug · ✨ feature · 🎨 decisión de producto · ♻️ posible ya-arreglado
 
 ### MÓDULO INICIO
