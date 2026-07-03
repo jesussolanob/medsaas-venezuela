@@ -107,10 +107,12 @@ export default function PatientForm({
   }));
   const [error, setError] = useState('');
 
-  // Auto-calcular edad cuando cambia birth_date
+  // Auto-calcular edad cuando cambia birth_date.
+  // Se agrega 'T12:00:00' para evitar el offset UTC que haría que una fecha
+  // como '1990-03-15' se interprete como '1990-03-14T21:00:00' en zonas UTC-3.
   useEffect(() => {
     if (!data.birth_date) return;
-    const birth = new Date(data.birth_date);
+    const birth = new Date(data.birth_date + 'T12:00:00');
     if (isNaN(birth.getTime())) return;
     const now = new Date();
     let age = now.getFullYear() - birth.getFullYear();

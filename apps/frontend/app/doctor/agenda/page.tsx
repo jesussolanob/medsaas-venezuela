@@ -27,7 +27,7 @@ import {
   ChevronDown,
   CalendarX,
 } from 'lucide-react';
-import AvailabilityBlocks from '@/components/agenda/AvailabilityBlocks';
+import AvailabilityBlocks, { type AvailabilityBlock } from '@/components/agenda/AvailabilityBlocks';
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
 import {
   listAgendaAppointments,
@@ -315,7 +315,11 @@ export default function AgendaPage() {
   const [config, setConfig] = useState<ScheduleConfig>(DEFAULT_CONFIG);
   const [availSlots, setAvailSlots] = useState<AvailabilitySlot[]>(DEFAULT_SLOTS);
   const [bookingHorizonWeeks, setBookingHorizonWeeks] = useState<number>(8);
+  // Bug 3 fix: local string state so the user can clear the field without NaN lock
+  const [horizonStr, setHorizonStr] = useState<string>('8');
   const [savingHorizon, setSavingHorizon] = useState(false);
+  // Bug 4: availability blocks loaded from backend, used in day-view to mark blocked slots
+  const [calendarBlocks, setCalendarBlocks] = useState<AvailabilityBlock[]>([]);
   const [showAvailabilityPanel, setShowAvailabilityPanel] = useState(false);
 
   // Calendar data (real from DB)
@@ -631,6 +635,31 @@ export default function AgendaPage() {
     }));
 
     setPendingAppointments(pendingList);
+
+    // Bug 4 fix: load availability blocks so the day-view can mark blocked slots.
+    // Uses the same route handler (GET /api/doctor/availability-blocks) that
+    // AvailabilityBlocks.tsx uses, so no new backend endpoint is needed.
+    try {
+      const blocksFrom = new Date();
+      blocksFrom.setDate(blocksFrom.getDate() - 7);
+      const blocksTo = new Date();
+      blocksTo.setDate(blocksTo.getDate() + 90);
+      const blocksQs = new URLSearchParams({
+        from: blocksFrom.toISOString(),
+        to: blocksTo.toISOString(),
+      });
+      const blocksRes = await fetch(`/api/doctor/availability-blocks?${blocksQs.toString()}`);
+      if (blocksRes.ok) {
+        const blocksJson = await blocksRes.json();
+        const blocksData: AvailabilityBlock[] = Array.isArray(blocksJson?.data)
+          ? (blocksJson.data as AvailabilityBlock[])
+          : [];
+        setCalendarBlocks(blocksData);
+      }
+    } catch {
+      /* calendarBlocks stays empty — all slots appear available in day view */
+    }
+
     setLoading(false);
     // RONDA 32: deps vacias para que loadData NO se recree.
     // Antes la dep [config.slot_duration] causaba bucle infinito porque dentro
@@ -648,6 +677,12 @@ export default function AgendaPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Bug 3 fix: sync horizonStr when bookingHorizonWeeks is updated by loadData()
+  // (runs only on mount and when backend returns a different horizon value).
+  useEffect(() => {
+    setHorizonStr(String(bookingHorizonWeeks));
+  }, [bookingHorizonWeeks]);
 
   // REALTIME ELIMINADO (Etapa 1 → FASE 5):
   // Supabase Realtime (postgres_changes en appointments/consultations/payments)
@@ -804,6 +839,9 @@ export default function AgendaPage() {
       setPendingAppointments((prev) => prev.filter((a) => a.id !== appt.id));
       const newAppt: CalendarAppointment = {
         id: result.consultation?.id || appt.id,
+        // Bug 1 fix: DELETE cascades by appointment_id, not by the consultation id
+        // stored in `id`. Without this, deleting a freshly-accepted cita gave 404.
+        appointment_id: appt.id,
         patient_name: appt.patient_name,
         date: dateToYMD(apptDate),
         isoDate: appt.scheduled_at,
@@ -1738,6 +1776,22 @@ export default function AgendaPage() {
                           const isPast =
                             new Date(`${dateToYMD(selectedDate)}T${slot.time}`) < new Date();
 
+                          // Bug 4 fix: check if this slot overlaps any availability block.
+                          // Overlap: slotStart < blockEnd AND slotEnd > blockStart.
+                          // Both endpoints converted to Caracas (UTC-4) timestamps for
+                          // exact comparison — same convention used throughout the file.
+                          const slotStartMs = new Date(
+                            `${dateToYMD(selectedDate)}T${slot.time}:00-04:00`,
+                          ).getTime();
+                          const slotEndMs = new Date(
+                            `${dateToYMD(selectedDate)}T${slot.endTime}:00-04:00`,
+                          ).getTime();
+                          const isBlocked = calendarBlocks.some((b) => {
+                            const bStart = new Date(b.starts_at).getTime();
+                            const bEnd = new Date(b.ends_at).getTime();
+                            return slotStartMs < bEnd && slotEndMs > bStart;
+                          });
+
                           return (
                             <div
                               key={slot.time}
@@ -1778,6 +1832,14 @@ export default function AgendaPage() {
                                         </button>
                                       );
                                     })()
+                                  ) : isBlocked ? (
+                                    // Bug 4 fix: show blocked indicator instead of "Disponible"
+                                    <div className="w-full h-12 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center gap-2">
+                                      <CalendarX className="w-3.5 h-3.5 text-slate-400" />
+                                      <span className="text-xs text-slate-400 font-medium">
+                                        Bloqueado
+                                      </span>
+                                    </div>
                                   ) : (
                                     <button
                                       onClick={() =>
@@ -1896,10 +1958,16 @@ export default function AgendaPage() {
                       type="number"
                       min={1}
                       max={52}
-                      value={bookingHorizonWeeks}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (!isNaN(v)) setBookingHorizonWeeks(v);
+                      value={horizonStr}
+                      onChange={(e) => setHorizonStr(e.target.value)}
+                      onBlur={() => {
+                        const v = parseInt(horizonStr, 10);
+                        if (!isNaN(v) && v >= 1 && v <= 52) {
+                          setBookingHorizonWeeks(v);
+                        } else {
+                          // Reset to the last valid value (or default) on invalid input
+                          setHorizonStr(String(bookingHorizonWeeks));
+                        }
                       }}
                       className="w-16 text-center text-sm font-semibold text-slate-800 bg-transparent outline-none border-none"
                     />
@@ -2093,9 +2161,8 @@ export default function AgendaPage() {
                     </span>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500 italic mt-2">
-                  💡 Para auditar estados completos y modificar pago, abre{' '}
-                  <strong>Cita 360°</strong> abajo.
+                <p className="text-[11px] text-slate-500 mt-2">
+                  Usa el botón «Ir a consulta» para ver el detalle completo y gestionar el pago.
                 </p>
 
                 {/* Google Meet link */}
@@ -2194,7 +2261,7 @@ export default function AgendaPage() {
                     if (consultaId) {
                       router.push(`/doctor/consultations?open=${consultaId}`);
                     } else {
-                      toast('Confirma la cita para generar su consulta.', { icon: '💡' });
+                      toast.success('Confirma la cita para generar su consulta.');
                       router.push('/doctor/consultations');
                     }
                     setDetailAppt(null);

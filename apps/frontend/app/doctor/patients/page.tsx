@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   Plus,
@@ -142,12 +143,16 @@ type View = 'list' | 'detail' | 'new-consultation';
 type DetailTab = 'consultas' | 'historial' | 'seguimiento';
 
 export default function PatientsPage() {
+  const router = useRouter();
   const [doctorId, setDoctorId] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<View>('list');
   const [selected, setSelected] = useState<Patient | null>(null);
+  // Bug 2: detailLoaded impide que el médico abra el formulario de edición antes de
+  // que getPatientDetail resuelva (race condition que borraba datos clínicos).
+  const [detailLoaded, setDetailLoaded] = useState(false);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [filterSource, setFilterSource] = useState<string>('all');
@@ -155,9 +160,8 @@ export default function PatientsPage() {
   const [isPending, startTransition] = useTransition();
   // Historial Médico — consulta seleccionada en sidebar (default: la más reciente)
   const [selectedConsultaId, setSelectedConsultaId] = useState<string | null>(null);
-  // Resumen IA del paciente (Gemini)
+  // Resumen IA del paciente — display-only (no se genera en delta_base; se ofrece upgrade).
   const [aiSummary, setAiSummary] = useState<string>('');
-  const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   // RONDA 40: Seguimiento tab — no backend endpoint in Etapa 1; always empty.
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
@@ -217,10 +221,12 @@ export default function PatientsPage() {
     source: '',
   });
 
-  // Auto-calculate age from birth_date
+  // Auto-calculate age from birth_date.
+  // Bug 1: se agrega 'T12:00:00' para evitar el offset UTC que hace que una
+  // fecha 'YYYY-MM-DD' se interprete un día antes en zonas con UTC negativo.
   const calcAgeFromBirthDate = (dateStr: string): string => {
     if (!dateStr) return '';
-    const birth = new Date(dateStr);
+    const birth = new Date(dateStr + 'T12:00:00');
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     const m = today.getMonth() - birth.getMonth();
@@ -388,6 +394,9 @@ export default function PatientsPage() {
     setAiSummary('');
     setAiError('');
     setSharedFiles([]);
+    // Bug 2: resetear detailLoaded para bloquear el formulario de edición
+    // hasta que el detalle completo haya cargado desde el backend.
+    setDetailLoaded(false);
     // The list item only carries minimal fields. Load the FULL detail so every
     // edit form is pre-filled with the real clinical data — otherwise saving
     // would overwrite blood_type/allergies/birth_date/etc. with null (PII loss).
@@ -400,6 +409,10 @@ export default function PatientsPage() {
       })
       .catch(() => {
         // Keep the minimal `selected`; the edit form guards below still block a wipe.
+      })
+      .finally(() => {
+        // Habilitar edición solo después de que el detalle haya resuelto (éxito o error).
+        setDetailLoaded(true);
       });
     getConsultations(p.id).then((list) => {
       setConsultations(list);
@@ -976,6 +989,7 @@ export default function PatientsPage() {
               icon={<UserCheck className="w-4 h-4 text-slate-600" />}
               title="Datos personales"
               defaultOpen
+              disabled={!detailLoaded}
               hasData={!!(selected.birth_date || selected.sex || selected.address || selected.city)}
               onEdit={() => {
                 setPatientFormInitial({
@@ -1004,7 +1018,7 @@ export default function PatientsPage() {
                   label="Fecha de nacimiento"
                   value={
                     selected.birth_date
-                      ? new Date(selected.birth_date).toLocaleDateString('es-VE', {
+                      ? new Date(selected.birth_date + 'T12:00:00').toLocaleDateString('es-VE', {
                           day: 'numeric',
                           month: 'long',
                           year: 'numeric',
@@ -1039,6 +1053,7 @@ export default function PatientsPage() {
             <PatientCollapsibleSection
               icon={<Heart className="w-4 h-4 text-red-500" />}
               title="Datos médicos"
+              disabled={!detailLoaded}
               hasData={!!(selected.blood_type || selected.allergies || selected.chronic_conditions)}
               onEdit={() => {
                 setPatientFormInitial({
@@ -1085,6 +1100,7 @@ export default function PatientsPage() {
             <PatientCollapsibleSection
               icon={<AlertCircle className="w-4 h-4 text-orange-500" />}
               title="Contacto de emergencia"
+              disabled={!detailLoaded}
               hasData={!!(selected.emergency_contact_name || selected.emergency_contact_phone)}
               onEdit={() => {
                 setPatientFormInitial({
@@ -1124,6 +1140,7 @@ export default function PatientsPage() {
                 icon={<ClipboardList className="w-4 h-4 text-slate-500" />}
                 title="Notas internas"
                 hasData={true}
+                disabled={!detailLoaded}
                 onEdit={() => {
                   setPatientFormInitial({
                     id: selected.id,
@@ -1314,45 +1331,13 @@ export default function PatientsPage() {
                           </div>
                         )}
                       </div>
+                      {/* Bug 3: en delta_base no hay IA; el botón lleva a /doctor/upgrade
+                          donde el médico puede ver los planes que incluyen IA. */}
                       <button
-                        onClick={async () => {
-                          if (!selected) return;
-                          setAiLoading(true);
-                          setAiError('');
-                          setAiSummary('');
-                          try {
-                            // Etapa 1: Supabase auth removed. /api/doctor/ai uses
-                            // x-dev-user headers injected server-side; no Bearer needed.
-                            // Endpoint may return 501 until AI module is wired in Fase 5.
-                            const res = await fetch('/api/doctor/ai', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                action: 'patient_history',
-                                patientId: selected.id,
-                              }),
-                            });
-                            const data = await res.json();
-                            if (!res.ok) {
-                              setAiError(data.error || 'Función de IA no disponible aún');
-                            } else setAiSummary(data.result || 'Sin respuesta');
-                          } catch (e: unknown) {
-                            setAiError(e instanceof Error ? e.message : 'Error');
-                          }
-                          setAiLoading(false);
-                        }}
-                        disabled={aiLoading}
-                        className="px-3 py-2 bg-gradient-to-r from-violet-500 to-teal-500 hover:from-violet-600 hover:to-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 flex-shrink-0"
+                        onClick={() => router.push('/doctor/upgrade')}
+                        className="px-3 py-2 bg-gradient-to-r from-violet-500 to-teal-500 hover:from-violet-600 hover:to-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 flex-shrink-0"
                       >
-                        {aiLoading ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Analizando…
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-3.5 h-3.5" /> Generar resumen
-                          </>
-                        )}
+                        <Sparkles className="w-3.5 h-3.5" /> Ver planes
                       </button>
                     </div>
                   </div>
@@ -1368,28 +1353,40 @@ export default function PatientsPage() {
                         {consultations.map((c) => {
                           const isActive = selectedConsultaId === c.id;
                           return (
-                            <button
+                            // Bug 4: se separa la selección del item de la navegación
+                            // a la página de detalle de consulta.
+                            <div
                               key={c.id}
-                              onClick={() => setSelectedConsultaId(c.id)}
-                              className={`w-full text-left px-4 py-3 transition-colors text-sm border-l-2 ${
+                              className={`px-4 py-3 transition-colors text-sm border-l-2 ${
                                 isActive
                                   ? 'bg-teal-50 border-l-teal-500'
                                   : 'border-l-transparent hover:bg-slate-50'
                               }`}
                             >
-                              <p
-                                className={`font-semibold text-xs ${isActive ? 'text-teal-700' : 'text-slate-700'}`}
+                              <button
+                                onClick={() => setSelectedConsultaId(c.id)}
+                                className="w-full text-left"
                               >
-                                {new Date(c.consultation_date).toLocaleDateString('es-VE', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  year: '2-digit',
-                                })}
-                              </p>
-                              <p className="text-xs text-slate-500 mt-0.5 truncate">
-                                {c.chief_complaint || 'Consulta'}
-                              </p>
-                            </button>
+                                <p
+                                  className={`font-semibold text-xs ${isActive ? 'text-teal-700' : 'text-slate-700'}`}
+                                >
+                                  {new Date(c.consultation_date).toLocaleDateString('es-VE', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: '2-digit',
+                                  })}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-0.5 truncate">
+                                  {c.chief_complaint || 'Consulta'}
+                                </p>
+                              </button>
+                              <button
+                                onClick={() => router.push('/doctor/consultations?open=' + c.id)}
+                                className="mt-1 text-[10px] font-semibold text-teal-600 hover:text-teal-700 flex items-center gap-0.5"
+                              >
+                                Abrir consulta <ChevronRight className="w-3 h-3" />
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -2693,10 +2690,12 @@ const fi =
 // Pacientes registrados sin la columna `age` (o con valor stale) muestran "No
 // registrado" si solo confiábamos en la columna — ahora calculamos al vuelo
 // cuando tenemos birth_date.
+// Bug 1 fix: se agrega 'T12:00:00' para evitar el offset UTC en zonas negativas
+// (ej: UTC-4 Venezuela) que haría que '1990-03-15' → '1990-03-14 20:00'.
 function getDisplayAge(p: { age?: number | null; birth_date?: string | null }): number | null {
   if (p.age != null && p.age >= 0) return p.age;
   if (!p.birth_date) return null;
-  const birth = new Date(p.birth_date);
+  const birth = new Date(p.birth_date + 'T12:00:00');
   if (isNaN(birth.getTime())) return null;
   const now = new Date();
   let years = now.getFullYear() - birth.getFullYear();
@@ -2715,6 +2714,7 @@ function PatientCollapsibleSection({
   title,
   hasData,
   defaultOpen = false,
+  disabled = false,
   onEdit,
   children,
 }: {
@@ -2722,6 +2722,9 @@ function PatientCollapsibleSection({
   title: string;
   hasData: boolean;
   defaultOpen?: boolean;
+  /** Cuando true, el botón editar muestra un spinner y no dispara onEdit.
+   *  Se usa para bloquear la edición hasta que el detalle del paciente haya cargado. */
+  disabled?: boolean;
   onEdit: () => void;
   children: React.ReactNode;
 }) {
@@ -2746,25 +2749,36 @@ function PatientCollapsibleSection({
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
+          {disabled ? (
+            // Spinner mientras carga el detalle del paciente (Bug 2 fix)
+            <span
+              className="p-1.5 rounded-md text-slate-300"
+              title="Cargando datos del paciente…"
+              aria-label="Cargando"
+            >
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            </span>
+          ) : (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
                 e.stopPropagation();
                 onEdit();
-              }
-            }}
-            className="p-1.5 rounded-md text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors cursor-pointer"
-            title="Editar"
-            aria-label="Editar sección"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </span>
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  onEdit();
+                }
+              }}
+              className="p-1.5 rounded-md text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors cursor-pointer"
+              title="Editar"
+              aria-label="Editar sección"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </span>
+          )}
           <ChevronDown
             className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
           />
@@ -2777,8 +2791,9 @@ function PatientCollapsibleSection({
             children
           ) : (
             <button
-              onClick={onEdit}
-              className="w-full mt-3 py-3 px-4 rounded-lg border-2 border-dashed border-slate-200 text-xs font-semibold text-slate-500 hover:border-teal-300 hover:text-teal-600 hover:bg-teal-50/30 transition-colors flex items-center justify-center gap-1.5"
+              onClick={disabled ? undefined : onEdit}
+              disabled={disabled}
+              className="w-full mt-3 py-3 px-4 rounded-lg border-2 border-dashed border-slate-200 text-xs font-semibold text-slate-500 hover:border-teal-300 hover:text-teal-600 hover:bg-teal-50/30 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Pencil className="w-3.5 h-3.5" /> Agregar información
             </button>

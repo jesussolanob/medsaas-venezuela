@@ -65,6 +65,9 @@ export type Consultation = {
   duration_minutes: number | null;
   created_at: string;
   updated_at: string;
+  /** Enriched by the backend list/detail endpoints (JOIN patients / appointments). */
+  patient_name?: string | null;
+  appointment_status?: string | null;
 };
 
 export type ConsultationActionResult = { success: true } | { success: false; error: string };

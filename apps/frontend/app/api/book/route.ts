@@ -61,7 +61,25 @@ export async function POST(req: NextRequest) {
       appointmentMode,
       packageId,
       officeId,
-    } = body;
+      receiptUrl,
+    } = body as {
+      doctorId?: string;
+      patientId?: string;
+      patientName?: string;
+      patientEmail?: string;
+      patientCedula?: string;
+      patientPhone?: string;
+      scheduledAt?: string;
+      chiefComplaint?: string;
+      planName?: string;
+      planPrice?: number;
+      paymentMethod?: string;
+      paymentReference?: string;
+      appointmentMode?: string;
+      packageId?: string;
+      officeId?: string;
+      receiptUrl?: string | null;
+    };
 
     // Basic required field validation
     if (!doctorId || !scheduledAt) {
@@ -102,9 +120,11 @@ export async function POST(req: NextRequest) {
     const bookingPayload: Record<string, unknown> = {
       cf_turnstile_token: ETAPA1_TURNSTILE_TOKEN,
       doctor_id: doctorId,
-      // Opción B: si viene patient_id, el backend usa ese paciente existente
-      // (sin re-crear). Si no, crea/matchea con name/cedula/email.
-      patient_id: patientId ?? null,
+      // Bug 6 fix: omit patient_id entirely when absent (backend DTO uses
+      // z.string().uuid().optional() — it does NOT accept null).
+      // When patientId is present the backend uses the existing patient record;
+      // when absent it creates/matches via name/cedula/email.
+      ...(patientId ? { patient_id: patientId } : {}),
       patient_name: patientName ?? null,
       patient_email: patientEmail || null,
       patient_cedula: patientCedula ?? null,
@@ -119,6 +139,9 @@ export async function POST(req: NextRequest) {
       bcv_rate: bcvRate,
       package_id: packageId || null,
       office_id: officeId || null,
+      // Bug 7: forward receipt_url uploaded via /api/storage/public-upload.
+      // Conditional so this is a no-op if the backend DTO doesn't accept it yet.
+      ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
     };
 
     // Forward to the backend booking endpoint (no auth headers — it's public)

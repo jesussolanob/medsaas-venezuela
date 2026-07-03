@@ -115,6 +115,17 @@ const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', '
 
 type ViewMode = 'month' | 'week' | 'day';
 
+/**
+ * Parses the date portion of an ISO datetime or bare "YYYY-MM-DD" string as a
+ * local calendar date, avoiding the UTC midnight offset bug where
+ * new Date("2026-07-01") in UTC-4 (Venezuela) becomes June 30 at 20:00 local.
+ */
+function parseDateLocal(dateStr: string): Date {
+  const part = dateStr.split('T')[0]; // keep only "YYYY-MM-DD"
+  const [y, m, d] = part.split('-').map(Number);
+  return new Date(y, m - 1, d); // constructed in local time
+}
+
 export default function FinancesPage() {
   const { rate: bcvRate, toBs } = useBcvRate();
   const [incomes, setIncomes] = useState<Income[]>([]);
@@ -271,19 +282,28 @@ export default function FinancesPage() {
   // Filter data by current period
   const filteredData = useMemo(() => {
     const filterByDate = (dateStr: string) => {
-      const d = new Date(dateStr);
+      // Parse as local calendar date to avoid UTC midnight offset bug (Venezuela = UTC-4).
+      const part = dateStr.split('T')[0];
+      const [y, m, d] = part.split('-').map(Number);
       if (viewMode === 'day') {
-        return d.toDateString() === currentDate.toDateString();
+        return (
+          y === currentDate.getFullYear() &&
+          m - 1 === currentDate.getMonth() &&
+          d === currentDate.getDate()
+        );
       } else if (viewMode === 'week') {
-        const start = new Date(currentDate);
+        const local = new Date(y, m - 1, d);
+        const start = new Date(
+          currentDate.getFullYear(),
+          currentDate.getMonth(),
+          currentDate.getDate(),
+        );
         start.setDate(start.getDate() - start.getDay());
         const end = new Date(start);
         end.setDate(end.getDate() + 6);
-        return d >= start && d <= end;
+        return local >= start && local <= end;
       } else {
-        return (
-          d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear()
-        );
+        return y === currentDate.getFullYear() && m - 1 === currentDate.getMonth();
       }
     };
 
@@ -326,12 +346,12 @@ export default function FinancesPage() {
           return id.getMonth() === d.getMonth() && id.getFullYear() === d.getFullYear();
         });
         const monthManual = manualIncomes.filter((m) => {
-          const md = new Date(m.date);
-          return md.getMonth() === d.getMonth() && md.getFullYear() === d.getFullYear();
+          const md = parseDateLocal(m.date);
+          return md.getFullYear() === d.getFullYear() && md.getMonth() === d.getMonth();
         });
         const monthExpenses = expenses.filter((exp) => {
-          const ed = new Date(exp.due_date);
-          return ed.getMonth() === d.getMonth() && ed.getFullYear() === d.getFullYear();
+          const ed = parseDateLocal(exp.due_date);
+          return ed.getFullYear() === d.getFullYear() && ed.getMonth() === d.getMonth();
         });
         periods.push({
           label,
@@ -352,11 +372,11 @@ export default function FinancesPage() {
           return id >= start && id <= end;
         });
         const weekManual = manualIncomes.filter((m) => {
-          const md = new Date(m.date);
+          const md = parseDateLocal(m.date);
           return md >= start && md <= end;
         });
         const weekExpenses = expenses.filter((exp) => {
-          const ed = new Date(exp.due_date);
+          const ed = parseDateLocal(exp.due_date);
           return ed >= start && ed <= end;
         });
         periods.push({
@@ -373,10 +393,10 @@ export default function FinancesPage() {
           (inc) => new Date(inc.date).toDateString() === d.toDateString(),
         );
         const dayManual = manualIncomes.filter(
-          (m) => new Date(m.date).toDateString() === d.toDateString(),
+          (m) => parseDateLocal(m.date).toDateString() === d.toDateString(),
         );
         const dayExpenses = expenses.filter(
-          (exp) => new Date(exp.due_date).toDateString() === d.toDateString(),
+          (exp) => parseDateLocal(exp.due_date).toDateString() === d.toDateString(),
         );
         periods.push({
           label,
@@ -424,11 +444,11 @@ export default function FinancesPage() {
 
     const currentMonth = consultationsRows.filter((r) => {
       if (!r.consultation_date) return false;
-      return inMonth(new Date(r.consultation_date), year, month);
+      return inMonth(parseDateLocal(r.consultation_date), year, month);
     });
     const prevMonthRows = consultationsRows.filter((r) => {
       if (!r.consultation_date) return false;
-      return inMonth(new Date(r.consultation_date), prevYear, prevMonth);
+      return inMonth(parseDateLocal(r.consultation_date), prevYear, prevMonth);
     });
 
     const consultasMes = currentMonth.length;
@@ -473,13 +493,13 @@ export default function FinancesPage() {
       // Ingresos manuales son aditivos — fuente distinta (financial_transactions type='income')
       const ingresosManuales = manualIncomes
         .filter((m) => {
-          const md = new Date(m.date);
+          const md = parseDateLocal(m.date);
           return md.getFullYear() === yy && md.getMonth() === mm;
         })
         .reduce((s, x) => s + (x.amount || 0), 0);
       const egresos = expenses
         .filter((exp) => {
-          const ed = new Date(exp.due_date);
+          const ed = parseDateLocal(exp.due_date);
           return ed.getFullYear() === yy && ed.getMonth() === mm;
         })
         .reduce((s, x) => s + (x.amount || 0), 0);
@@ -499,8 +519,8 @@ export default function FinancesPage() {
     const month = parseInt(mStr, 10) - 1;
     return consultationsRows.filter((r) => {
       if (!r.consultation_date) return false;
-      const d = new Date(r.consultation_date);
-      return d.getFullYear() === year && d.getMonth() === month;
+      const cd = parseDateLocal(r.consultation_date);
+      return cd.getFullYear() === year && cd.getMonth() === month;
     });
   }, [consultationsRows, reportMonth]);
 
@@ -1247,25 +1267,31 @@ export default function FinancesPage() {
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
               Ingresos vs Egresos · últimos 6 meses
             </p>
-            <div className="w-full">
-              <ResponsiveContainer width="100%" height={256}>
-                <BarChart
-                  data={reportChartData}
-                  margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                  <RTooltip
-                    formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
-                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {reportChartData.every((p) => p.ingresos === 0 && p.egresos === 0) ? (
+              <div className="flex items-center justify-center h-64 rounded-xl border border-dashed border-slate-200 text-sm text-slate-300">
+                Sin datos para el período seleccionado
+              </div>
+            ) : (
+              <div className="w-full h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={reportChartData}
+                    margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <RTooltip
+                      formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
+                      contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
 
           {/* L7 cuadro descargable de consultas */}
@@ -1437,36 +1463,47 @@ export default function FinancesPage() {
                     <Download className="w-4 h-4" />
                   </button>
                 </div>
-                {tab === 'income' && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (necesita >=16px); text-xs sólo en sm+ */}
-                    <input
-                      type="date"
-                      value={incomeDateFrom}
-                      onChange={(e) => setIncomeDateFrom(e.target.value)}
-                      className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
-                    />
-                    <span className="text-xs text-slate-400">a</span>
-                    <input
-                      type="date"
-                      value={incomeDateTo}
-                      onChange={(e) => setIncomeDateTo(e.target.value)}
-                      className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
-                    />
-                    {(incomeDateFrom || incomeDateTo) && (
-                      <button
-                        onClick={() => {
-                          setIncomeDateFrom('');
-                          setIncomeDateTo('');
-                        }}
-                        className="text-xs text-teal-600 hover:text-teal-700 font-medium"
-                      >
-                        Limpiar
-                      </button>
-                    )}
-                  </div>
-                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {tab === 'income' && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (necesita >=16px); text-xs sólo en sm+ */}
+                      <input
+                        type="date"
+                        value={incomeDateFrom}
+                        onChange={(e) => setIncomeDateFrom(e.target.value)}
+                        className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
+                      />
+                      <span className="text-xs text-slate-400">a</span>
+                      <input
+                        type="date"
+                        value={incomeDateTo}
+                        onChange={(e) => setIncomeDateTo(e.target.value)}
+                        className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
+                      />
+                      {(incomeDateFrom || incomeDateTo) && (
+                        <button
+                          onClick={() => {
+                            setIncomeDateFrom('');
+                            setIncomeDateTo('');
+                          }}
+                          className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                        >
+                          Limpiar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setIncomeError('');
+                      setShowIncomeModal(true);
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar ingreso
+                  </button>
+                </div>
               </div>
 
               {tableIncomes.length === 0 ? (

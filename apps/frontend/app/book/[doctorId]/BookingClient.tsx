@@ -625,7 +625,14 @@ export default function BookingClient({
           const fd = new FormData();
           fd.append('file', paymentFile);
           fd.append('kind', 'receipt');
-          const uploadRes = await fetch('/api/storage/upload', { method: 'POST', body: fd });
+          // Bug 7 fix: public patients have no Auth0/dev session, so we can't
+          // use /api/storage/upload (which calls resolveIdentity()). Use the
+          // dedicated public endpoint that accepts unauthenticated uploads with
+          // kind='receipt' and validates MIME + size server-side.
+          const uploadRes = await fetch('/api/storage/public-upload', {
+            method: 'POST',
+            body: fd,
+          });
           const uploadJson = await uploadRes.json();
           if (!uploadRes.ok || !uploadJson?.data?.url) {
             throw new Error(uploadJson?.error?.message ?? 'Error al subir comprobante');

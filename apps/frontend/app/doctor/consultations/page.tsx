@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 // RecetaPdfButton importa estáticamente PdfDownloadButton + MedicalDocumentPdf.
 // El dynamic ssr:false aquí excluye TODO el código de @react-pdf/renderer del bundle SSR.
@@ -113,6 +113,8 @@ type Consultation = {
   patient_id: string;
   patient_name: string;
   patient_phone: string | null;
+  /** Bug 6: populado en openConsultation tras fetch a /api/doctor/patients/:id */
+  patient_email?: string | null;
   started_at: string | null;
   ended_at: string | null;
   duration_minutes: number | null;
@@ -128,6 +130,17 @@ type Consultation = {
   // AUDIT FIX 2026-04-28 (C-5): contador para optimistic locking del autosave.
   version?: number | null;
 };
+
+// Maps the linked appointment status (scheduled/confirmed/completed/no_show)
+// to the consultation status shown in this view. "Atendida" (completed) and
+// "No asistió" (no_show) persist across reloads instead of resetting to pending.
+function mapAppointmentStatusToConsulta(
+  apptStatus: string | null | undefined,
+): Consultation['status'] {
+  if (apptStatus === 'completed') return 'completed';
+  if (apptStatus === 'no_show') return 'no_show';
+  return 'pending';
+}
 
 // Estados de CONSULTA
 const CONSULTA_STATUS: Record<string, { label: string; color: string; dot: string }> = {
@@ -223,6 +236,7 @@ export default function ConsultationsPageWrapper() {
 function ConsultationsPage() {
   const searchParams = useSearchParams();
   const openId = searchParams.get('open');
+  const router = useRouter();
   const { rate: bcvRate, toBs } = useBcvRate();
   const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
 
@@ -279,9 +293,8 @@ function ConsultationsPage() {
 
   // New consultation modal
   const [showNewConsultation, setShowNewConsultation] = useState(false);
-  // Estado del select de pago (ronda 14: autosave + spinner + toast)
+  // Estado del select de pago
   const [pagoSaving, setPagoSaving] = useState(false);
-  const [pagoToast, setPagoToast] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [pricingPlans, setPricingPlans] = useState<
     { id: string; name: string; price_usd: number; duration_minutes: number }[]
@@ -688,11 +701,11 @@ function ConsultationsPage() {
           notes: c.notes,
           diagnosis: c.diagnosis,
           treatment: c.treatment,
-          status: 'pending' as Consultation['status'], // backend Etapa 1 doesn't expose status field
+          status: mapAppointmentStatusToConsulta(c.appointment_status),
           payment_status: c.payment_status,
           appointment_id: c.appointment_id,
           patient_id: c.patient_id,
-          patient_name: 'Paciente', // not in backend response — fetch separately if needed
+          patient_name: c.patient_name || 'Paciente',
           patient_phone: null,
           started_at: c.started_at,
           ended_at: c.ended_at,
@@ -758,8 +771,21 @@ function ConsultationsPage() {
       if (!result.success) {
         // Non-fatal: optimistic update stays, show a non-blocking warning.
         console.warn('[updateConsultaStatus] appointment sync failed:', result.error);
+        showToast({
+          type: 'error',
+          message: 'El estado se actualizó localmente pero falló la sincronización con la cita',
+        });
+        return;
       }
     }
+
+    // Bug 7: feedback visual al doctor después de cambiar el estado de la consulta.
+    const labels: Partial<Record<Consultation['status'], string>> = {
+      completed: 'Consulta marcada como atendida',
+      no_show: 'Paciente marcado como no asistió',
+    };
+    const msg = labels[newStatus];
+    if (msg) showToast({ type: 'success', message: msg });
   }
 
   async function updatePagoStatus(
@@ -773,8 +799,7 @@ function ConsultationsPage() {
         // Call backend payment approval via action (amount 0 if not known — Fase 5)
         const result = await approveConsultationPayment(consultationId, 0, 'manual');
         if (!result.success) {
-          setPagoToast('Error al aprobar el pago');
-          setTimeout(() => setPagoToast(null), 3500);
+          showToast({ type: 'error', message: 'Error al aprobar el pago' });
           setPagoSaving(false);
           return;
         }
@@ -785,12 +810,11 @@ function ConsultationsPage() {
       setConsultations((prev) =>
         prev.map((x) => (x.id === consultationId ? { ...x, payment_status: newStatus } : x)),
       );
-      setPagoToast('Estado de pago actualizado correctamente');
-      setTimeout(() => setPagoToast(null), 3000);
+      // Bug 7: migrar a showToast global para consistencia
+      showToast({ type: 'success', message: 'Estado de pago actualizado correctamente' });
     } catch (err: unknown) {
-      reportError('doctor/consultations', 'updateConsultaStatus', err);
-      setPagoToast('Error al actualizar el pago');
-      setTimeout(() => setPagoToast(null), 3500);
+      reportError('doctor/consultations', 'updatePagoStatus', err);
+      showToast({ type: 'error', message: 'Error al actualizar el pago' });
     } finally {
       setPagoSaving(false);
     }
@@ -809,11 +833,11 @@ function ConsultationsPage() {
           notes: fresh_raw.notes,
           diagnosis: fresh_raw.diagnosis,
           treatment: fresh_raw.treatment,
-          status: 'pending' as Consultation['status'], // status not in Etapa-1 schema
+          status: mapAppointmentStatusToConsulta(fresh_raw.appointment_status),
           payment_status: fresh_raw.payment_status,
           appointment_id: fresh_raw.appointment_id ?? null,
           patient_id: fresh_raw.patient_id,
-          patient_name: c.patient_name, // not in response — keep cached
+          patient_name: fresh_raw.patient_name || c.patient_name,
           patient_phone: c.patient_phone,
           started_at: fresh_raw.started_at,
           ended_at: fresh_raw.ended_at,
@@ -867,6 +891,48 @@ function ConsultationsPage() {
       });
       setAppointmentData(null);
     }
+
+    // Bug 6: Fetch patient detail to populate patient_name, patient_phone and
+    // patient_email — the list shape only carries null/placeholder values for these.
+    // Non-blocking: if it fails the view still opens with partial info.
+    // Also fixes "Paciente" literal shown as patient name in the opened consultation.
+    fetch(`/api/doctor/patients/${c.patient_id}`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const j: unknown = await r.json();
+        const p = (j as { data?: Record<string, unknown> })?.data ?? (j as Record<string, unknown>);
+        if (!p || typeof p !== 'object') return;
+        const pd = p as Record<string, unknown>;
+        const fullName = (pd.fullName ?? pd.full_name) as string | undefined;
+        const phone = pd.phone as string | null | undefined;
+        const email = pd.email as string | null | undefined;
+        setSelected((prev) =>
+          prev && prev.id === c.id
+            ? {
+                ...prev,
+                patient_name: fullName ?? prev.patient_name,
+                patient_phone: phone ?? prev.patient_phone,
+                patient_email: email ?? null,
+              }
+            : prev,
+        );
+        // Also update the patients list so the email button (patients.find) works too
+        setPatients((prev) =>
+          prev.map((pt) =>
+            pt.id === c.patient_id
+              ? {
+                  ...pt,
+                  full_name: fullName ?? pt.full_name,
+                  phone: phone ?? pt.phone,
+                  email: email ?? pt.email,
+                }
+              : pt,
+          ),
+        );
+      })
+      .catch(() => {
+        /* patient detail is optional — view still opens */
+      });
 
     // PLACEHOLDER: blocks_data.reposo — blocks_data not in Etapa-1 schema.
     // Reposo fields reset to default. Fase 5: load from blocks_data.
@@ -1026,11 +1092,11 @@ function ConsultationsPage() {
           notes: c.notes,
           diagnosis: c.diagnosis,
           treatment: c.treatment,
-          status: 'pending' as Consultation['status'],
+          status: mapAppointmentStatusToConsulta(c.appointment_status),
           payment_status: c.payment_status,
           appointment_id: c.appointment_id,
           patient_id: c.patient_id,
-          patient_name: 'Paciente',
+          patient_name: c.patient_name || 'Paciente',
           patient_phone: null,
           started_at: c.started_at,
           ended_at: c.ended_at,
@@ -1642,18 +1708,7 @@ function ConsultationsPage() {
       <>
         <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.safari-tab { border-radius: 8px 8px 0 0; padding: 8px 16px; } .safari-tab.active { background: white; border: 1px solid #e2e8f0; border-bottom: none; box-shadow: 0 -2px 8px rgba(0,0,0,0.03); }@keyframes toastSlide { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
 
-        {/* === TOAST de feedback (ronda 14) === */}
-        {pagoToast && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="fixed top-6 left-1/2 z-[100] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg border bg-emerald-50 border-emerald-200 text-emerald-800 text-sm font-semibold"
-            style={{ animation: 'toastSlide 0.25s ease-out', transform: 'translateX(-50%)' }}
-          >
-            <CheckCircle className="w-4 h-4" />
-            {pagoToast}
-          </div>
-        )}
+        {/* Bug 7: pagoToast eliminado — ahora se usa showToast() global */}
 
         <div className="flex flex-col lg:flex-row gap-5">
           {/* Main Content (Left ~65%) */}
@@ -1728,38 +1783,13 @@ function ConsultationsPage() {
                 <div className="flex items-center gap-1.5">
                   {/* L1 (2026-04-29): botón "Eliminar" removido del header.
                       El endpoint DELETE sigue intacto en /api/doctor/consultations. */}
-                  {/* L1 (2026-04-29) + FIX 2026-04-29: botón "Generar informe" más
-                    visible (color teal sólido, label siempre, no oculto en mobile)
-                    para que no se confunda con los otros 2 botones grises del header. */}
+                  {/* Bug 5: "Generar informe" navegaba al modal que llamaba POST /api/doctor/share-pdf
+                      (stub 501 permanente). Ahora navega a la página de detalle
+                      /doctor/consultations/[id] donde react-pdf genera el PDF funcional. */}
                   <button
                     type="button"
                     onClick={() => {
-                      console.log('[generar-informe] click START', { selected: !!selected });
-                      if (!selected) {
-                        showToast({ type: 'error', message: 'Abre primero una consulta' });
-                        return;
-                      }
-                      try {
-                        const effective = getEffectiveBlocks(selected);
-                        const printable = effective.filter((b) => b.printable);
-                        console.log('[generar-informe] blocks resolved', {
-                          effectiveCount: effective.length,
-                          printableCount: printable.length,
-                          printableKeys: printable.map((b) => b.key),
-                        });
-                        setReportSelectedKeys(new Set(printable.map((b) => b.key)));
-                        setGeneratedReportUrl(null);
-                        setShowGenerateReport(true);
-                        console.log('[generar-informe] setState called → showGenerateReport=true');
-                      } catch (err) {
-                        reportError('doctor/consultations', 'openGenerateReportModal', err);
-                        showToast({
-                          type: 'error',
-                          message:
-                            'Error abriendo el modal: ' +
-                            (err instanceof Error ? err.message : 'desconocido'),
-                        });
-                      }
+                      if (selected) router.push('/doctor/consultations/' + selected.id);
                     }}
                     title="Generar informe"
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
@@ -1965,9 +1995,11 @@ function ConsultationsPage() {
                                     .replace('{documentos}', docs.join(', '))
                                     .replace('{doctor}', doctorName)
                                     .replace('{codigo}', selected.consultation_code || '');
-                                  const patientEmail = patients.find(
-                                    (p) => p.id === selected.patient_id,
-                                  )?.email;
+                                  // Bug 6: patient_email se puebla en openConsultation;
+                                  // fallback a patients array (actualizado también en Bug 6).
+                                  const patientEmail =
+                                    selected.patient_email ??
+                                    patients.find((p) => p.id === selected.patient_id)?.email;
                                   if (patientEmail)
                                     window.open(
                                       `mailto:${patientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,

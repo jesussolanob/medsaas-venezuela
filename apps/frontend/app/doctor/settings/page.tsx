@@ -801,7 +801,7 @@ function SettingsPageInner() {
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     onChange={uploadLogo}
                     className="hidden"
                   />
@@ -813,9 +813,7 @@ function SettingsPageInner() {
                     <ImageIcon className="w-3.5 h-3.5" />
                     {uploadingLogo ? 'Subiendo…' : logoUrl ? 'Cambiar logo' : 'Subir logo'}
                   </button>
-                  <p className="text-[10px] text-slate-400">
-                    PNG o SVG con fondo transparente · Máx. 2MB
-                  </p>
+                  <p className="text-[10px] text-slate-400">JPG, PNG o WEBP · Máx. 2MB</p>
                 </div>
               </div>
               {logoError && (
