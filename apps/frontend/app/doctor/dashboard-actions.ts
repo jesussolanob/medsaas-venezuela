@@ -218,3 +218,48 @@ export async function getDashboardAllTimeStats(): Promise<DashboardAllTimeStats>
 
   return { totalPatients, totalConsultations, totalIncomeCurrentMonth };
 }
+
+// ---------------------------------------------------------------------------
+// Scheduled appointments (widget "Por confirmar")
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape for the dashboard "Por confirmar" widget.
+ * Only the fields needed to display the card and fire the confirm action.
+ */
+export type ScheduledAppointment = {
+  id: string;
+  patientName: string | null;
+  scheduledAt: string;
+};
+
+/**
+ * Fetch appointments with status=scheduled (pending doctor confirmation).
+ * Returns up to 5, ordered ascending by scheduledAt.
+ * Used by the "Por confirmar" widget on the dashboard.
+ */
+export async function getScheduledAppointments(): Promise<ScheduledAppointment[]> {
+  const result = await backendGet<BackendAppointmentItem[]>(
+    '/api/appointments?status=scheduled&page=1&limit=5',
+  );
+
+  if (!result.ok) {
+    log.error('[getScheduledAppointments] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+
+  const items = Array.isArray(result.value) ? result.value : [];
+
+  return [...items]
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+    .map(
+      (a): ScheduledAppointment => ({
+        id: a.id,
+        patientName: a.patientName ?? null,
+        scheduledAt: a.scheduledAt,
+      }),
+    );
+}

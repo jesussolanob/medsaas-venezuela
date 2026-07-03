@@ -70,6 +70,7 @@ export type Patient = {
   chronic_conditions?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
   avatar_url?: string | null;
   created_at: string;
 };
@@ -130,6 +131,7 @@ interface BackendPatientDetail {
   city: string | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
+  emergencyContactRelationship: string | null;
   notes: string | null;
   createdAt: string;
 }
@@ -193,6 +195,7 @@ function mapDetailToPatient(item: BackendPatientDetail): Patient {
     chronic_conditions: item.chronicConditions,
     emergency_contact_name: item.emergencyContactName,
     emergency_contact_phone: item.emergencyContactPhone,
+    emergency_contact_relationship: item.emergencyContactRelationship,
     created_at: item.createdAt,
   };
 }
@@ -302,6 +305,7 @@ export type AddPatientInput = {
   chronic_conditions?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
 };
 
 /**
@@ -355,11 +359,16 @@ export async function addPatient(
     city: normalizeStr(input.city),
     emergency_contact_name: normalizeStr(input.emergency_contact_name),
     emergency_contact_phone: normalizeStr(input.emergency_contact_phone),
+    emergency_contact_relationship: normalizeStr(input.emergency_contact_relationship),
     notes: normalizeStr(input.notes),
   };
 
   const result = await backendPost<BackendPatientListItem>('/api/patients', body);
   if (!result.ok) {
+    // Surface a specific, user-friendly message for duplicate cédula (409).
+    if (result.error.status === 409 || result.error.code === 'PATIENT_DUPLICATE') {
+      return { success: false, error: 'Ya existe un paciente con esa cédula.' };
+    }
     return { success: false, error: appErrorToString(result.error) };
   }
 
@@ -485,6 +494,7 @@ export type UpdatePatientInput = {
   chronic_conditions?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
   address?: string | null;
   city?: string | null;
   source?: string | null;
@@ -517,6 +527,8 @@ export async function updatePatient(
     body.emergency_contact_name = input.emergency_contact_name;
   if (input.emergency_contact_phone !== undefined)
     body.emergency_contact_phone = input.emergency_contact_phone;
+  if (input.emergency_contact_relationship !== undefined)
+    body.emergency_contact_relationship = input.emergency_contact_relationship;
   if (input.address !== undefined) body.address = input.address;
   if (input.city !== undefined) body.city = input.city;
   if (input.source !== undefined) body.source = input.source;

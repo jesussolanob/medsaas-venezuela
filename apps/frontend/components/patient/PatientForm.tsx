@@ -52,6 +52,7 @@ export type PatientFormData = {
   chronic_conditions?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
   source?: string | null;
   notes?: string | null;
 };
@@ -101,6 +102,7 @@ export default function PatientForm({
     chronic_conditions: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
+    emergency_contact_relationship: '',
     source: 'manual',
     notes: '',
     ...(initialData ?? {}),
@@ -160,6 +162,7 @@ export default function PatientForm({
           'chronic_conditions',
           'emergency_contact_name',
           'emergency_contact_phone',
+          'emergency_contact_relationship',
         ] as const
       ).forEach((k) => {
         if (cleaned[k] === '') (cleaned as any)[k] = null;
@@ -370,19 +373,28 @@ export default function PatientForm({
               value={data.emergency_contact_name ?? ''}
               onChange={(e) => set('emergency_contact_name', e.target.value)}
               className={fi}
-              placeholder="Maria Pérez (madre)"
+              placeholder="Maria Pérez"
             />
           </div>
           <div>
-            <label className={lbl}>
-              <Phone className="w-3 h-3" /> Teléfono
-            </label>
-            {/* L6 (2026-04-29): canonico para contacto de emergencia tambien */}
-            <PhoneInput
-              value={data.emergency_contact_phone ?? ''}
-              onChange={(v) => set('emergency_contact_phone', v)}
+            <label className={lbl}>Parentesco</label>
+            <input
+              value={data.emergency_contact_relationship ?? ''}
+              onChange={(e) => set('emergency_contact_relationship', e.target.value)}
+              className={fi}
+              placeholder="Madre, Padre, Cónyuge…"
             />
           </div>
+        </div>
+        <div>
+          <label className={lbl}>
+            <Phone className="w-3 h-3" /> Teléfono
+          </label>
+          {/* L6 (2026-04-29): canonico para contacto de emergencia tambien */}
+          <PhoneInput
+            value={data.emergency_contact_phone ?? ''}
+            onChange={(v) => set('emergency_contact_phone', v)}
+          />
         </div>
       </section>
 

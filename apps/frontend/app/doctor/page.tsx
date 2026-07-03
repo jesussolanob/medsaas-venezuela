@@ -24,6 +24,7 @@ import {
   Wallet,
   X,
   Loader2,
+  Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -33,7 +34,7 @@ import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
 import { addPatient } from '@/app/doctor/patients/actions';
-import { addExpense } from '@/app/doctor/finances/actions';
+import { addExpense, addIncome } from '@/app/doctor/finances/actions';
 import {
   getPayments,
   updatePaymentStatus as updatePaymentStatusAction,
@@ -46,6 +47,8 @@ import {
   getTodayAppointments,
   getDashboardFinanceSummary,
   getDashboardAllTimeStats,
+  getScheduledAppointments,
+  type ScheduledAppointment,
 } from '@/app/doctor/dashboard-actions';
 
 type Profile = {
@@ -134,6 +137,15 @@ export default function DoctorDashboard() {
   const [loadingPendingPayments, setLoadingPendingPayments] = useState(false);
   const [approvingPaymentId, setApprovingPaymentId] = useState<string | null>(null);
 
+  // "Por confirmar" widget — citas con status=scheduled pendientes de confirmación.
+  const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointment[]>([]);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  // "Registrar ingreso" modal — ingreso manual extraordinario via addIncome.
+  const [showIncomeModal, setShowIncomeModal] = useState(false);
+  const [incomeSaving, setIncomeSaving] = useState(false);
+  const [incomeForm, setIncomeForm] = useState({ description: '', amount: '', date: todayStr });
+
   // Month filter state (year-month)
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState({
@@ -180,11 +192,12 @@ export default function DoctorDashboard() {
         const monthStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}`;
 
         // Fetch all independent data in parallel for performance.
-        const [prof, appts, financeSummary, allTimeData] = await Promise.all([
+        const [prof, appts, financeSummary, allTimeData, scheduled] = await Promise.all([
           getDoctorProfile(),
           getTodayAppointments(),
           getDashboardFinanceSummary(monthStr),
           getDashboardAllTimeStats(),
+          getScheduledAppointments(),
         ]);
 
         // Map profile — DoctorProfile uses camelCase (NestJS wire format).
@@ -229,6 +242,9 @@ export default function DoctorDashboard() {
           total_patients: allTimeData.totalPatients,
           patients_attended: allTimeData.totalConsultations,
         });
+
+        // Citas pendientes de confirmación para el widget "Por confirmar".
+        setScheduledAppointments(scheduled);
       } catch (error: unknown) {
         // Non-fatal — dashboard shows zeros on error; user can refresh.
         reportError('doctor/page', 'fetchData', error);
@@ -407,6 +423,62 @@ export default function DoctorDashboard() {
       router.push('/doctor/agenda');
     }
   };
+
+  // Confirma una cita individual desde el widget "Por confirmar".
+  // Reutiliza el route handler /api/doctor/appointment-status que usa la agenda.
+  async function handleConfirmAppointment(id: string) {
+    setConfirmingId(id);
+    try {
+      const res = await fetch('/api/doctor/appointment-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointment_id: id, new_status: 'confirmed' }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        showToast({ type: 'error', message: err?.error ?? 'Error al confirmar la cita' });
+        return;
+      }
+      showToast({ type: 'success', message: 'Cita confirmada exitosamente' });
+      // Optimistic: quitar la cita de la lista sin recargar todo.
+      setScheduledAppointments((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión al confirmar la cita' });
+    } finally {
+      setConfirmingId(null);
+    }
+  }
+
+  // Registra un ingreso manual extraordinario desde el modal de inicio.
+  // Reutiliza addIncome de finances/actions (misma acción que usa /doctor/finances).
+  async function handleSaveIncome(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(incomeForm.amount);
+    if (!incomeForm.description.trim() || !isFinite(amount) || amount <= 0) {
+      showToast({ type: 'error', message: 'Completa descripción y monto válido' });
+      return;
+    }
+    setIncomeSaving(true);
+    try {
+      const res = await addIncome({
+        description: incomeForm.description.trim(),
+        amount,
+        currency: 'USD',
+        date: incomeForm.date,
+      });
+      if (!res.success) throw new Error(res.error);
+      showToast({ type: 'success', message: 'Ingreso registrado' });
+      setShowIncomeModal(false);
+      setIncomeForm({ description: '', amount: '', date: todayStr });
+    } catch (err: unknown) {
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al registrar el ingreso',
+      });
+    } finally {
+      setIncomeSaving(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -631,6 +703,90 @@ export default function DoctorDashboard() {
           </button>
         )}
 
+        {/* ── Por confirmar: citas con status=scheduled pendientes de acción ── */}
+        {scheduledAppointments.length > 0 && (
+          <div
+            className="p-4 sm:p-5"
+            style={{
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: 'var(--dh-r-xl)',
+            }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Bell className="w-4 h-4" style={{ color: '#b45309' }} />
+              <h2 className="text-sm font-bold" style={{ color: '#92400e' }}>
+                Por confirmar
+              </h2>
+              <span
+                className="ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
+                style={{
+                  background: '#fef3c7',
+                  color: '#b45309',
+                  fontFamily: 'var(--dh-font-mono)',
+                }}
+              >
+                {scheduledAppointments.length}
+              </span>
+              <Link
+                href="/doctor/agenda"
+                className="ml-auto text-xs font-semibold flex items-center gap-1"
+                style={{ color: '#92400e' }}
+              >
+                Ver agenda
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <div className="space-y-2">
+              {scheduledAppointments.map((apt) => {
+                const isConfirming = confirmingId === apt.id;
+                const dateStr = new Intl.DateTimeFormat('es-VE', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                }).format(new Date(apt.scheduledAt));
+                const timeStr = new Intl.DateTimeFormat('es-VE', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: true,
+                }).format(new Date(apt.scheduledAt));
+
+                return (
+                  <div
+                    key={apt.id}
+                    className="flex items-center gap-3 p-3 rounded-xl"
+                    style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid #fde68a' }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: '#92400e' }}>
+                        {apt.patientName ?? 'Paciente'}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: '#b45309' }}>
+                        {dateStr} · {timeStr}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => void handleConfirmAppointment(apt.id)}
+                      disabled={isConfirming || confirmingId !== null}
+                      className="shrink-0 flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ background: 'var(--dh-turquoise)' }}
+                      aria-label={`Confirmar cita de ${apt.patientName ?? 'paciente'}`}
+                    >
+                      {isConfirming ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      )}
+                      {isConfirming ? 'Confirmando...' : 'Confirmar'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ── 3 KPI Cards: ingresos, pacientes, atendidos ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           <StatCard
@@ -807,29 +963,41 @@ export default function DoctorDashboard() {
 
               {/* Por ingresar = cuentas por cobrar (consultas con pago pendiente). */}
               <div
-                className="flex items-center justify-between p-3"
+                className="p-3"
                 style={{
                   background: 'var(--dh-amber-50, #fffbeb)',
                   border: '1px solid var(--dh-amber-100, #fde68a)',
                   borderRadius: 'var(--dh-r-md)',
                 }}
               >
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" style={{ color: '#b45309' }} />
-                  <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
-                    Por ingresar
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold" style={{ color: '#92400e' }}>
-                    {formatUsd(financialData.pending_amount)}
-                  </p>
-                  {bcvRate && financialData.pending_amount > 0 && (
-                    <p className="text-[11px]" style={{ color: '#b45309' }}>
-                      {toBs(financialData.pending_amount)}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4" style={{ color: '#b45309' }} />
+                    <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                      Por ingresar
                     </p>
-                  )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold" style={{ color: '#92400e' }}>
+                      {formatUsd(financialData.pending_amount)}
+                    </p>
+                    {bcvRate && financialData.pending_amount > 0 && (
+                      <p className="text-[11px]" style={{ color: '#b45309' }}>
+                        {toBs(financialData.pending_amount)}
+                      </p>
+                    )}
+                  </div>
                 </div>
+                {financialData.pending_amount > 0 && (
+                  <Link
+                    href="/doctor/cobros"
+                    className="mt-2 flex items-center gap-1 text-[11px] font-semibold"
+                    style={{ color: '#b45309' }}
+                  >
+                    Ver consultas pendientes de cobro
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -889,18 +1057,30 @@ export default function DoctorDashboard() {
               </div>
 
               {/* Acciones rápidas de finanzas */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-3 gap-2 pt-1">
                 <button
-                  onClick={handleOpenPaymentModal}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                  onClick={() => setShowIncomeModal(true)}
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
                   style={{ background: 'var(--dh-turquoise)' }}
                 >
+                  <Plus className="w-3.5 h-3.5" />
+                  Ingreso
+                </button>
+                <button
+                  onClick={handleOpenPaymentModal}
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                  style={{
+                    background: 'var(--dh-turquoise-50)',
+                    border: '1px solid var(--dh-turquoise-100)',
+                    color: 'var(--dh-turquoise-700)',
+                  }}
+                >
                   <Wallet className="w-3.5 h-3.5" />
-                  Registrar pago
+                  Cobros
                 </button>
                 <button
                   onClick={() => setShowExpenseModal(true)}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-colors"
+                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
                   style={{
                     background: 'var(--dh-gray-50)',
                     border: '1px solid var(--dh-gray-200)',
@@ -908,7 +1088,7 @@ export default function DoctorDashboard() {
                   }}
                 >
                   <Receipt className="w-3.5 h-3.5" />
-                  Registrar gasto
+                  Gasto
                 </button>
               </div>
 
@@ -1138,6 +1318,92 @@ export default function DoctorDashboard() {
                 </Link>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Registrar ingreso manual (reutiliza addIncome de finances/actions) */}
+      {showIncomeModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Registrar ingreso</h2>
+                  <p className="text-xs text-slate-400">Ingreso extraordinario o manual</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowIncomeModal(false)}
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <form onSubmit={(e) => void handleSaveIncome(e)} className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Descripción</label>
+                <input
+                  value={incomeForm.description}
+                  onChange={(e) => setIncomeForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Ej. Honorarios consulta privada"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Monto (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={incomeForm.amount}
+                    onChange={(e) => setIncomeForm((f) => ({ ...f, amount: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Fecha</label>
+                  <input
+                    type="date"
+                    value={incomeForm.date}
+                    onChange={(e) => setIncomeForm((f) => ({ ...f, date: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1">
+                Para ingresos vinculados a consultas, usa el módulo{' '}
+                <Link
+                  href="/doctor/finances"
+                  className="text-teal-600 underline"
+                  onClick={() => setShowIncomeModal(false)}
+                >
+                  Finanzas
+                </Link>
+                .
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowIncomeModal(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={incomeSaving}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-teal-500 text-white text-sm font-bold hover:bg-teal-600 disabled:opacity-50"
+                >
+                  {incomeSaving ? 'Guardando...' : 'Registrar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

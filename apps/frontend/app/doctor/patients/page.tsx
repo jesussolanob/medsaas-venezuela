@@ -184,6 +184,15 @@ export default function PatientsPage() {
   const [patientFormOpen, setPatientFormOpen] = useState(false);
   const [patientFormInitial, setPatientFormInitial] = useState<PatientFormData | null>(null);
   const [patientFormSaving, setPatientFormSaving] = useState(false);
+  // Modal post-creación de paciente: ofrece crear consulta de inmediato.
+  const [postCreateModal, setPostCreateModal] = useState<{
+    patientId: string;
+    patientName: string;
+  } | null>(null);
+  // Cuando el flujo de cita/consulta se abre desde el modal post-creación,
+  // usamos este id en vez de selected?.id para no requerir que el paciente
+  // esté seleccionado en la vista de detalle.
+  const [appointmentFlowPatientId, setAppointmentFlowPatientId] = useState<string | null>(null);
 
   // Edit patient
   const [editing, setEditing] = useState(false);
@@ -458,6 +467,7 @@ export default function PatientsPage() {
           chronic_conditions: formData.chronic_conditions ?? null,
           emergency_contact_name: formData.emergency_contact_name ?? null,
           emergency_contact_phone: formData.emergency_contact_phone ?? null,
+          emergency_contact_relationship: formData.emergency_contact_relationship ?? null,
           address: formData.address ?? null,
           city: formData.city ?? null,
         });
@@ -467,6 +477,8 @@ export default function PatientsPage() {
           prev.map((p) => (p.id === formData.id ? ({ ...p, ...formData } as Patient) : p)),
         );
         if (selected?.id === formData.id) setSelected({ ...selected, ...formData } as Patient);
+        setPatientFormOpen(false);
+        setPatientFormInitial(null);
       } else {
         // CREATE — INSERT
         const res = await addPatient(doctorId, {
@@ -483,16 +495,18 @@ export default function PatientsPage() {
           chronic_conditions: formData.chronic_conditions ?? undefined,
           emergency_contact_name: formData.emergency_contact_name ?? undefined,
           emergency_contact_phone: formData.emergency_contact_phone ?? undefined,
+          emergency_contact_relationship: formData.emergency_contact_relationship ?? undefined,
           address: formData.address ?? undefined,
           city: formData.city ?? undefined,
           source: 'manual',
         });
         if (!res.success) throw new Error(res.error || 'Error al crear');
-        // Recargar lista
+        // Recargar lista y mostrar modal para crear consulta inmediatamente.
         getPatients(doctorId).then(setPatients);
+        setPatientFormOpen(false);
+        setPatientFormInitial(null);
+        setPostCreateModal({ patientId: res.patient_id, patientName: formData.full_name });
       }
-      setPatientFormOpen(false);
-      setPatientFormInitial(null);
     } catch (err: any) {
       // Re-throw para que PatientForm lo muestre como error
       throw err;
@@ -914,6 +928,8 @@ export default function PatientsPage() {
                           chronic_conditions: selected.chronic_conditions || '',
                           emergency_contact_name: selected.emergency_contact_name || '',
                           emergency_contact_phone: selected.emergency_contact_phone || '',
+                          emergency_contact_relationship:
+                            selected.emergency_contact_relationship || '',
                           notes: selected.notes || '',
                         });
                         setPatientFormOpen(true);
@@ -1008,6 +1024,7 @@ export default function PatientsPage() {
                   chronic_conditions: selected.chronic_conditions || '',
                   emergency_contact_name: selected.emergency_contact_name || '',
                   emergency_contact_phone: selected.emergency_contact_phone || '',
+                  emergency_contact_relationship: selected.emergency_contact_relationship || '',
                   notes: selected.notes || '',
                 });
                 setPatientFormOpen(true);
@@ -1072,6 +1089,7 @@ export default function PatientsPage() {
                   chronic_conditions: selected.chronic_conditions || '',
                   emergency_contact_name: selected.emergency_contact_name || '',
                   emergency_contact_phone: selected.emergency_contact_phone || '',
+                  emergency_contact_relationship: selected.emergency_contact_relationship || '',
                   notes: selected.notes || '',
                 });
                 setPatientFormOpen(true);
@@ -1101,7 +1119,13 @@ export default function PatientsPage() {
               icon={<AlertCircle className="w-4 h-4 text-orange-500" />}
               title="Contacto de emergencia"
               disabled={!detailLoaded}
-              hasData={!!(selected.emergency_contact_name || selected.emergency_contact_phone)}
+              hasData={
+                !!(
+                  selected.emergency_contact_name ||
+                  selected.emergency_contact_phone ||
+                  selected.emergency_contact_relationship
+                )
+              }
               onEdit={() => {
                 setPatientFormInitial({
                   id: selected.id,
@@ -1119,6 +1143,7 @@ export default function PatientsPage() {
                   chronic_conditions: selected.chronic_conditions || '',
                   emergency_contact_name: selected.emergency_contact_name || '',
                   emergency_contact_phone: selected.emergency_contact_phone || '',
+                  emergency_contact_relationship: selected.emergency_contact_relationship || '',
                   notes: selected.notes || '',
                 });
                 setPatientFormOpen(true);
@@ -1126,10 +1151,12 @@ export default function PatientsPage() {
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <PatientField label="Nombre del contacto" value={selected.emergency_contact_name} />
+                <PatientField label="Parentesco" value={selected.emergency_contact_relationship} />
                 <PatientField
                   label="Teléfono"
                   value={selected.emergency_contact_phone}
                   icon={<Phone className="w-3 h-3" />}
+                  fullWidth
                 />
               </div>
             </PatientCollapsibleSection>
@@ -1158,6 +1185,7 @@ export default function PatientsPage() {
                     chronic_conditions: selected.chronic_conditions || '',
                     emergency_contact_name: selected.emergency_contact_name || '',
                     emergency_contact_phone: selected.emergency_contact_phone || '',
+                    emergency_contact_relationship: selected.emergency_contact_relationship || '',
                     notes: selected.notes || '',
                   });
                   setPatientFormOpen(true);
@@ -2621,20 +2649,62 @@ export default function PatientsPage() {
 
       {/* === Modal Nueva Consulta UNIFICADO ===
           Mismo NewAppointmentFlow que /agenda y /consultations.
-          Pre-rellena el paciente seleccionado, no se puede editar. */}
+          Pre-rellena el paciente seleccionado (o el recién creado), no se puede editar. */}
       <NewAppointmentFlow
         open={showNewAppointmentFlow}
-        onClose={() => setShowNewAppointmentFlow(false)}
+        onClose={() => {
+          setShowNewAppointmentFlow(false);
+          setAppointmentFlowPatientId(null);
+        }}
         onSuccess={() => {
           setShowNewAppointmentFlow(false);
-          // Refrescar consultas del paciente
+          setAppointmentFlowPatientId(null);
+          // Refrescar consultas del paciente si estamos en vista de detalle.
           if (selected) getConsultations(selected.id).then(setConsultations);
         }}
         initialContext={{
-          patientId: selected?.id,
+          patientId: appointmentFlowPatientId ?? selected?.id,
           origin: 'patient_sheet',
         }}
       />
+
+      {/* === Modal post-creación — ofrece crear consulta de inmediato ===
+          Se muestra tras crear un paciente nuevo. El botón principal abre
+          NewAppointmentFlow con el id del paciente recién creado.
+          El botón "Más tarde" descarta el modal sin acción adicional. */}
+      {postCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div className="w-14 h-14 rounded-2xl g-bg flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-7 h-7 text-white" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">¡Paciente registrado!</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              <span className="font-semibold text-slate-700">{postCreateModal.patientName}</span>{' '}
+              fue agregado a tu lista. ¿Deseas crear una consulta ahora?
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => {
+                  const { patientId } = postCreateModal;
+                  setPostCreateModal(null);
+                  setAppointmentFlowPatientId(patientId);
+                  setShowNewAppointmentFlow(true);
+                }}
+                className="flex-1 g-bg text-white py-2.5 px-4 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+              >
+                Crear consulta
+              </button>
+              <button
+                onClick={() => setPostCreateModal(null)}
+                className="flex-1 border border-slate-200 text-slate-600 py-2.5 px-4 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors"
+              >
+                Más tarde
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* === Modal UNIFICADO de PatientForm — crear y editar (RONDA 19b) ===
           Reemplaza los 2 modales viejos: handleAddPatient y handleSaveEdit. */}
