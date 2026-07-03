@@ -5,6 +5,37 @@
 > Ojo: algunos pueden estar YA resueltos por el deploy del lote anterior (commits
 > 6fa58aa + 29a9cc6) — verificar antes de re-arreglar.
 
+## ESTADO (2026-07-03) — Fases 1 y 2 DESPLEGADAS ✅
+
+Commits en `feature/migracion-backend` (auto-deploy Cloud Run):
+
+- **Fase 1** (6ac951d + 41e6cd9): ~22 bugs. Consulta (nombre real, estado persiste, generar
+  informe, compartir email/wa, toasts), Pacientes (fecha -1d, race que borraba datos, Ver planes,
+  abrir consulta), Agenda (borrar, copy Cita360, input semanas, slots bloqueados), Cobros
+  pendientes (+fix UNION uuid/text), Finanzas (gráfico, timezone, +ingreso), Marketing (emojis),
+  Link público (confirmar cita), **uploads arreglados en 3 módulos (causa: file-type ESM→magic bytes)**.
+- **Fase 2** (2abba24 + 36d3e80 + 6564ea0): upload público real (guest, cierra 401 prod),
+  parentesco (+migración 20260703000001), duplicado paciente 409, dropdown país LatAm (PhoneInput),
+  costura filtro de pago agenda, widget "Por confirmar" en Inicio, registrar ingreso/cobros en Inicio,
+  crear paciente (parentesco en form, datos no-demográficos opcionales, mensaje duplicado, pop-up
+  "crear consulta" que no existía). Same-day auto-confirm VERIFICADO (ya cubierto).
+
+### FASE 3 — PENDIENTE (arrancar en sesión fresca; es lo más grande)
+
+1. **Rediseño "Nueva consulta"** (`NewAppointmentFlow`): reordenar pasos a paciente → consultorio →
+   consulta (tipos filtrados por el consultorio) → horario → método de pago; pago con botón "pagar
+   después" y mostrar solo los métodos activados por el médico con sus datos; logo actual.
+2. **"Solicitud al paciente" / Seguimiento con archivos** (feature nueva): modelar sobre
+   document-sharing → el doctor crea una solicitud, al paciente le llega un código por correo, entra a
+   un portal público, valida el código y sube adjuntos / responde. Módulo backend nuevo +
+   emails + portal público + uploads (usar el patrón public-upload ya creado).
+
+### DIFERIDO (no en Fase 3)
+
+- Consultorio: múltiples bloques horarios por día (#8, cambio de schema + migración).
+- Deuda: rate-limit propio del endpoint backend public-upload (hoy lo cubre el BFF + ingress interno);
+  wa.me solo formatea VE (los demás países no arman link).
+
 ## Clasificación: 🐛 bug · ✨ feature · 🎨 decisión de producto · ♻️ posible ya-arreglado
 
 ### MÓDULO INICIO
