@@ -68,6 +68,7 @@ export interface PatientDetail {
   city: string | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
+  emergencyContactRelationship: string | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -94,6 +95,7 @@ export function toPatientDetail(patient: Patient): PatientDetail {
     city: patient.city,
     emergencyContactName: patient.emergencyContactName,
     emergencyContactPhone: patient.emergencyContactPhone,
+    emergencyContactRelationship: patient.emergencyContactRelationship,
     notes: patient.notes,
     createdAt: patient.createdAt,
     updatedAt: patient.updatedAt,

@@ -57,6 +57,16 @@ describe('Patient entity', () => {
       const patient = new Patient(buildParams());
       expect(patient.authUserId).toBeNull();
     });
+
+    it('defaults emergencyContactRelationship to null when not provided', () => {
+      const patient = new Patient(buildParams());
+      expect(patient.emergencyContactRelationship).toBeNull();
+    });
+
+    it('stores emergencyContactRelationship when provided', () => {
+      const patient = new Patient(buildParams({ emergencyContactRelationship: 'Madre' }));
+      expect(patient.emergencyContactRelationship).toBe('Madre');
+    });
   });
 
   describe('Patient.create factory', () => {

@@ -37,6 +37,7 @@ export interface PatientCreateParams {
   city?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
+  emergencyContactRelationship?: string | null;
   notes?: string | null;
   deletedAt?: Date | null;
   createdAt: Date;
@@ -64,6 +65,7 @@ export class Patient {
   readonly city: string | null;
   readonly emergencyContactName: string | null;
   readonly emergencyContactPhone: string | null;
+  readonly emergencyContactRelationship: string | null;
   readonly notes: string | null;
   readonly deletedAt: Date | null;
   readonly createdAt: Date;
@@ -89,6 +91,7 @@ export class Patient {
     this.city = params.city ?? null;
     this.emergencyContactName = params.emergencyContactName ?? null;
     this.emergencyContactPhone = params.emergencyContactPhone ?? null;
+    this.emergencyContactRelationship = params.emergencyContactRelationship ?? null;
     this.notes = params.notes ?? null;
     this.deletedAt = params.deletedAt ?? null;
     this.createdAt = params.createdAt;

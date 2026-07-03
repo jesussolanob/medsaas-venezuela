@@ -105,6 +105,7 @@ describe('UpdatePatientUseCase', () => {
       city: 'Caracas',
       emergencyContactName: 'María',
       emergencyContactPhone: '+584140000000',
+      emergencyContactRelationship: 'Esposa',
       notes: 'Updated notes',
     });
 
@@ -127,9 +128,61 @@ describe('UpdatePatientUseCase', () => {
         city: 'Caracas',
         emergencyContactName: 'María',
         emergencyContactPhone: '+584140000000',
+        emergencyContactRelationship: 'Esposa',
         notes: 'Updated notes',
       }),
     );
+  });
+
+  it('passes emergencyContactRelationship to the repository when provided', async () => {
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+    repo.update.mockResolvedValue(patient);
+
+    await useCase.execute({
+      patientId: PATIENT_ID,
+      doctorId: DOCTOR_ID,
+      emergencyContactRelationship: 'Madre',
+    });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      PATIENT_ID,
+      DOCTOR_ID,
+      expect.objectContaining({ emergencyContactRelationship: 'Madre' }),
+    );
+  });
+
+  it('allows clearing emergencyContactRelationship to null', async () => {
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+    repo.update.mockResolvedValue(patient);
+
+    await useCase.execute({
+      patientId: PATIENT_ID,
+      doctorId: DOCTOR_ID,
+      emergencyContactRelationship: null,
+    });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      PATIENT_ID,
+      DOCTOR_ID,
+      expect.objectContaining({ emergencyContactRelationship: null }),
+    );
+  });
+
+  it('does NOT include emergencyContactRelationship in the update payload when omitted', async () => {
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+    repo.update.mockResolvedValue(patient);
+
+    await useCase.execute({
+      patientId: PATIENT_ID,
+      doctorId: DOCTOR_ID,
+      fullName: 'Solo Nombre',
+    });
+
+    const payload = repo.update.mock.calls[0]?.[2] ?? {};
+    expect(payload).not.toHaveProperty('emergencyContactRelationship');
   });
 
   it('only sends fields that were explicitly provided — omits undefined keys', async () => {

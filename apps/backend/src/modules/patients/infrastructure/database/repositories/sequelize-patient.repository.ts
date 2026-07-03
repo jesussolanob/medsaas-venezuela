@@ -145,6 +145,7 @@ export class SequelizePatientRepository implements IPatientRepository {
       city: patient.city,
       emergencyContactName: patient.emergencyContactName,
       emergencyContactPhone: patient.emergencyContactPhone,
+      emergencyContactRelationship: patient.emergencyContactRelationship,
       notes: patient.notes,
     });
 
@@ -183,6 +184,7 @@ export class SequelizePatientRepository implements IPatientRepository {
       'city',
       'emergencyContactName',
       'emergencyContactPhone',
+      'emergencyContactRelationship',
       'notes',
     ];
     for (const key of plainFields) {
@@ -263,6 +265,7 @@ export class SequelizePatientRepository implements IPatientRepository {
       city: row.city,
       emergencyContactName: row.emergencyContactName,
       emergencyContactPhone: row.emergencyContactPhone,
+      emergencyContactRelationship: row.emergencyContactRelationship,
       notes: row.notes,
       deletedAt: row.deletedAt,
       createdAt: row.createdAt,

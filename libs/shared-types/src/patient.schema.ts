@@ -33,6 +33,7 @@ export const PatientSchema = z.object({
   city: z.string().nullable().optional(),
   emergency_contact_name: z.string().nullable().optional(),
   emergency_contact_phone: z.string().nullable().optional(),
+  emergency_contact_relationship: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   created_at: z.string().datetime({ offset: true }).optional(),
   updated_at: z.string().datetime({ offset: true }).optional(),

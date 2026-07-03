@@ -204,6 +204,7 @@ export class PatientsController {
       city: dto.city,
       emergencyContactName: dto.emergency_contact_name,
       emergencyContactPhone: dto.emergency_contact_phone,
+      emergencyContactRelationship: dto.emergency_contact_relationship,
       notes: dto.notes,
     });
     // PUT returns detail shape (includes clinical fields the caller just sent)

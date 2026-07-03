@@ -25,6 +25,7 @@ export interface UpdatePatientInput {
   city?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
+  emergencyContactRelationship?: string | null;
   notes?: string | null;
 }
 
@@ -70,6 +71,9 @@ export class UpdatePatientUseCase {
       }),
       ...(input.emergencyContactPhone !== undefined && {
         emergencyContactPhone: input.emergencyContactPhone,
+      }),
+      ...(input.emergencyContactRelationship !== undefined && {
+        emergencyContactRelationship: input.emergencyContactRelationship,
       }),
       ...(input.notes !== undefined && { notes: input.notes }),
     });

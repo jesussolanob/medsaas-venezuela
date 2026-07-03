@@ -98,6 +98,9 @@ export class PatientModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'emergency_contact_phone' })
   declare emergencyContactPhone: string | null;
 
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'emergency_contact_relationship' })
+  declare emergencyContactRelationship: string | null;
+
   @Column({ type: DataType.TEXT, allowNull: true })
   declare notes: string | null;
 

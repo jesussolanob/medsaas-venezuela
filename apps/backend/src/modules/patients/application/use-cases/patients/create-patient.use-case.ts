@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Patient, type PatientSource } from '../../../domain/entities/patient.entity';
-import { PatientAlreadyExistsError } from '../../../domain/errors/patient-already-exists.error';
+import { DuplicatePatientError } from '../../../domain/errors/duplicate-patient.error';
 import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
@@ -26,6 +26,7 @@ export interface CreatePatientInput {
   city?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
+  emergencyContactRelationship?: string | null;
   notes?: string | null;
   authUserId?: string | null;
 }
@@ -45,7 +46,7 @@ export class CreatePatientUseCase {
       const cedulaHash = this.crypto.hashForSearch(input.cedula);
       const existing = await this.patientRepo.findByCedulaHash(cedulaHash, input.doctorId);
       if (existing) {
-        throw new PatientAlreadyExistsError(input.cedula);
+        throw new DuplicatePatientError(input.cedula);
       }
     }
 
@@ -73,6 +74,7 @@ export class CreatePatientUseCase {
       city: input.city ?? null,
       emergencyContactName: input.emergencyContactName ?? null,
       emergencyContactPhone: input.emergencyContactPhone ?? null,
+      emergencyContactRelationship: input.emergencyContactRelationship ?? null,
       notes: input.notes ?? null,
       createdAt: now,
       updatedAt: now,

@@ -25,6 +25,7 @@ export const UpdatePatientDtoSchema = z.object({
   city: z.string().nullable().optional(),
   emergency_contact_name: z.string().nullable().optional(),
   emergency_contact_phone: z.string().nullable().optional(),
+  emergency_contact_relationship: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
 });
 

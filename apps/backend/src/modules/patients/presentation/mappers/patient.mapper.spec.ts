@@ -120,5 +120,16 @@ describe('patient.mapper', () => {
       expect(detail.createdAt).toBe(patient.createdAt);
       expect(detail.updatedAt).toBe(patient.updatedAt);
     });
+
+    it('includes emergencyContactRelationship when set', () => {
+      const patient = makePatient({ emergencyContactRelationship: 'Madre' });
+      const detail = toPatientDetail(patient);
+      expect(detail.emergencyContactRelationship).toBe('Madre');
+    });
+
+    it('returns null for emergencyContactRelationship when not set', () => {
+      const detail = toPatientDetail(makePatient());
+      expect(detail.emergencyContactRelationship).toBeNull();
+    });
   });
 });

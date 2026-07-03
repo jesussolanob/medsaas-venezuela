@@ -4,7 +4,9 @@ import { STORAGE_PORT } from './application/ports/storage.port';
 import { createStorageAdapter } from './infrastructure/adapters/storage-adapter.factory';
 import { UploadFileUseCase } from './application/use-cases/upload-file.use-case';
 import { GetSignedUrlUseCase } from './application/use-cases/get-signed-url.use-case';
+import { PublicUploadReceiptUseCase } from './application/use-cases/public-upload-receipt.use-case';
 import { StorageController } from './presentation/controllers/storage.controller';
+import { PublicStorageController } from './presentation/controllers/public-storage.controller';
 
 /**
  * StorageModule — file upload API backed by MinIO (dev) or GCS (prod).
@@ -18,9 +20,12 @@ import { StorageController } from './presentation/controllers/storage.controller
  *
  * IMPORTANT: Never add Sequelize or database providers here — this module
  * is intentionally infrastructure-light (no DB dependency).
+ *
+ * PublicStorageController is intentionally unguarded — it provides the
+ * public-upload endpoint for booking payment receipts (unauthenticated callers).
  */
 @Module({
-  controllers: [StorageController],
+  controllers: [StorageController, PublicStorageController],
   providers: [
     {
       provide: STORAGE_PORT,
@@ -29,6 +34,7 @@ import { StorageController } from './presentation/controllers/storage.controller
     },
     UploadFileUseCase,
     GetSignedUrlUseCase,
+    PublicUploadReceiptUseCase,
   ],
   exports: [STORAGE_PORT],
 })
