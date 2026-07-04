@@ -163,13 +163,22 @@ export class PatientRequestsController {
     @Param('token') token: string,
     @Body(new ZodValidationPipe(VerifyPatientRequestCodeDtoSchema))
     dto: VerifyPatientRequestCodeDto,
-  ): Promise<SuccessResponse<{ sessionToken: string; expiresAt: string }>> {
+  ): Promise<
+    SuccessResponse<{
+      sessionToken: string;
+      expiresAt: string;
+      title: string;
+      description: string | null;
+    }>
+  > {
     const result = await this.verifyCode.execute({ token, code: dto.code, cedula: dto.cedula });
     return {
       success: true,
       data: {
         sessionToken: result.sessionToken,
         expiresAt: result.expiresAt.toISOString(),
+        title: result.title,
+        description: result.description,
       },
     };
   }

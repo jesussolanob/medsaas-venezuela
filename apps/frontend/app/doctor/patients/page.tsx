@@ -37,6 +37,7 @@ import {
   Pencil,
   Trash2,
   ClipboardList,
+  FileUp,
 } from 'lucide-react';
 // Etapa 1: Supabase removed.
 // - pricing_plans → GET /api/doctor/services  (getDoctorServices)
@@ -71,6 +72,7 @@ import MarkdownText from '@/components/shared/MarkdownText';
 // AUDIT FIX 2026-04-28 (C-9): sanitizer para HTML rich-text (defense-in-depth).
 import { sanitizeHtml } from '@/lib/sanitize-html';
 import { showToast } from '@/components/ui/Toaster';
+import NewRequestModal from '@/components/patient-requests/NewRequestModal';
 
 // Inline type (mirrors @/lib/shared-files.SharedFile) — no Supabase dependency.
 // Fase 5: replace with backend endpoint and remove this local type.
@@ -193,6 +195,8 @@ export default function PatientsPage() {
   // usamos este id en vez de selected?.id para no requerir que el paciente
   // esté seleccionado en la vista de detalle.
   const [appointmentFlowPatientId, setAppointmentFlowPatientId] = useState<string | null>(null);
+  // Modal de solicitud de documentos al paciente
+  const [showRequestModal, setShowRequestModal] = useState(false);
 
   // Edit patient
   const [editing, setEditing] = useState(false);
@@ -949,6 +953,14 @@ export default function PatientsPage() {
                     className="g-bg flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 sm:whitespace-nowrap"
                   >
                     <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
+                  </button>
+                  <button
+                    onClick={() => setShowRequestModal(true)}
+                    className="flex items-center justify-center sm:justify-start gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors"
+                    title="Solicitar documentos al paciente"
+                  >
+                    <FileUp className="w-4 h-4" />
+                    <span className="hidden sm:inline">Solicitar docs</span>
                   </button>
                 </div>
               </div>
@@ -2748,6 +2760,23 @@ export default function PatientsPage() {
             />
           </div>
         </div>
+      )}
+
+      {/* Modal: solicitar documentos al paciente */}
+      {showRequestModal && selected && (
+        <NewRequestModal
+          open={showRequestModal}
+          onClose={() => setShowRequestModal(false)}
+          onSuccess={() => {
+            setShowRequestModal(false);
+            showToast({
+              type: 'success',
+              message: 'Solicitud enviada. El paciente recibirá un email.',
+            });
+          }}
+          patients={patients.map((p) => ({ id: p.id, full_name: p.full_name ?? '' }))}
+          defaultPatient={{ id: selected.id, name: selected.full_name ?? '' }}
+        />
       )}
     </>
   );

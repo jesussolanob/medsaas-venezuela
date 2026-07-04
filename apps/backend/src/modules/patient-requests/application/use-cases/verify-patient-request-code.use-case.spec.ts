@@ -117,6 +117,9 @@ describe('VerifyPatientRequestCodeUseCase', () => {
 
     expect(result.sessionToken).toBe('mocked-session-token');
     expect(result.expiresAt).toBeInstanceOf(Date);
+    // Metadata revelada tras el 2FA para que el paciente sepa qué se le pide.
+    expect(result.title).toBe('Análisis de sangre');
+    expect(result.description).toBeNull();
     expect(mockCodeRepo.markUsed).toHaveBeenCalledWith('code-1', expect.any(Date));
   });
 

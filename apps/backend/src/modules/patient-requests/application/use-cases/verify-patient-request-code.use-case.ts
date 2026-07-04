@@ -26,6 +26,10 @@ export interface VerifyPatientRequestCodeInput {
 export interface VerifyPatientRequestCodeOutput {
   sessionToken: string;
   expiresAt: Date;
+  // Metadata de la solicitud — seguro de revelar tras superar el 2FA
+  // (código + cédula): el paciente necesita ver QUÉ le pide el doctor.
+  title: string;
+  description: string | null;
 }
 
 /**
@@ -116,7 +120,12 @@ export class VerifyPatientRequestCodeUseCase {
     const exp = new Date(now.getTime() + PatientRequestSessionService.SESSION_TTL_MS);
     const sessionToken = this.sessionService.sign(request.id, request.token, exp);
 
-    return { sessionToken, expiresAt: exp };
+    return {
+      sessionToken,
+      expiresAt: exp,
+      title: request.title,
+      description: request.description,
+    };
   }
 }
 
