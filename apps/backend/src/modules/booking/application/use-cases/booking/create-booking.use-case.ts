@@ -227,6 +227,9 @@ export class CreateBookingUseCase {
       chiefComplaint: dto.chief_complaint ?? null,
       appointmentCode,
       durationMinutes: officeDuration,
+      // Link the appointment to the selected office. Previously dropped here, so
+      // office_id was always null even when the caller supplied office_id.
+      officeId: dto.office_id ?? null,
       createdAt: now,
       updatedAt: now,
     });

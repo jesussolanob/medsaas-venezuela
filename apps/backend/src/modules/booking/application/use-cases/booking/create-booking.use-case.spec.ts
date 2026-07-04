@@ -249,6 +249,21 @@ describe('CreateBookingUseCase', () => {
       );
     });
 
+    it('persists officeId on the appointment when office_id is provided', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockImplementation(async (a) => a);
+
+      await useCase.execute(makeDto({ office_id: 'office-xyz' }));
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ officeId: 'office-xyz' }),
+        FAKE_TRANSACTION,
+      );
+    });
+
     it('sets payment_method to "package" when using a package', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
       mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
