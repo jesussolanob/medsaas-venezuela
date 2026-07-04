@@ -20,15 +20,37 @@ Commits en `feature/migracion-backend` (auto-deploy Cloud Run):
   crear paciente (parentesco en form, datos no-demográficos opcionales, mensaje duplicado, pop-up
   "crear consulta" que no existía). Same-day auto-confirm VERIFICADO (ya cubierto).
 
-### FASE 3 — PENDIENTE (arrancar en sesión fresca; es lo más grande)
+### FASE 3 — EN CURSO
 
-1. **Rediseño "Nueva consulta"** (`NewAppointmentFlow`): reordenar pasos a paciente → consultorio →
-   consulta (tipos filtrados por el consultorio) → horario → método de pago; pago con botón "pagar
-   después" y mostrar solo los métodos activados por el médico con sus datos; logo actual.
-2. **"Solicitud al paciente" / Seguimiento con archivos** (feature nueva): modelar sobre
-   document-sharing → el doctor crea una solicitud, al paciente le llega un código por correo, entra a
-   un portal público, valida el código y sube adjuntos / responde. Módulo backend nuevo +
-   emails + portal público + uploads (usar el patrón public-upload ya creado).
+1. **Rediseño "Nueva consulta"** (`NewAppointmentFlow`) — ✅ HECHO (commit `63a3449`, sin pushear aún;
+   queda a criterio del usuario desplegar tras QA visual). Monolito de 1363 líneas extraído a
+   `useAppointmentFlow` + `steps/` + `appointment-flow.utils`. Nuevo orden paciente → consultorio →
+   tipo (motivo opcional) → horario (slots reales del schedule + deshabilita ocupados/bloqueados) →
+   pago (solo métodos activos del médico con sus datos + "Pagar después" = paymentMethod null →
+   pago pending; wire real del comprobante). Firma de props y payload a `/api/book` sin cambios.
+   **Bug pre-existente arreglado:** el submit enviaba `office_id` (snake) pero el BFF `/api/book`
+   espera `officeId` (camel) → el consultorio NUNCA se vinculaba a la cita. Fixes de timezone
+   (offset -04:00 explícito) y de gating (paquete = pago resuelto). Build verde; lint sin errores
+   nuevos (el proyecto ya trae ~147 errores endémicos `react-hooks/set-state-in-effect`).
+2. **"Solicitud al paciente" / Seguimiento con archivos** (feature nueva) — ✅ HECHO (commits
+   `66b100b` backend + `01f0c1f` frontend; SIN pushear aún). Módulo NestJS DDD `patient-requests`
+   (3 tablas, migración `20260703000002`, 7 use-cases, 7 rutas, template email `patient_request_code`,
+   114 tests). El doctor crea una solicitud (título+descripción) para un paciente → email con código
+   de 6 dígitos → portal público `/patient-requests/[token]` valida cédula+código (2FA oracle-safe) →
+   sube adjuntos (storage PRIVADO + signed URLs; NO público) y/o responde → doctor ve respuesta +
+   adjuntos. UI doctor en `/doctor/patient-requests` + botón "Solicitar docs" desde ficha del paciente.
+   Verificado: build+lint+114 tests + **boot-test del dist** (DI OK, rutas mapeadas) + **migración
+   corrida en la BD local** (3 tablas, template seed, CHECK/FK/índices OK). Review code+security
+   aplicada (5 HIGH: oracle 404→422, audit log PHI, status 500/502, N+1). ⚠️ El backend dev en :3001
+   está STALE (código viejo sin el módulo): reiniciarlo para QA visual local.
+
+### PENDIENTE Fase 3 (deploy + QA)
+
+- **Push/deploy**: los 3 commits (`63a3449`, `66b100b`, `01f0c1f`) NO se han pusheado. Al hacer push,
+  la rama auto-deploya a Cloud Run y corre la migración `20260703000002` contra Cloud SQL. Decisión
+  del usuario tras QA visual.
+- **QA visual del usuario**: flujo Nueva consulta (nuevo orden + pagar después + métodos del médico) y
+  flujo patient-requests (crear solicitud → email → portal → subir → ver como doctor).
 
 ### DIFERIDO (no en Fase 3)
 
