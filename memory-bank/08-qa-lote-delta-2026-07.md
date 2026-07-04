@@ -44,13 +44,42 @@ Commits en `feature/migracion-backend` (auto-deploy Cloud Run):
    aplicada (5 HIGH: oracle 404→422, audit log PHI, status 500/502, N+1). ⚠️ El backend dev en :3001
    está STALE (código viejo sin el módulo): reiniciarlo para QA visual local.
 
+### QA LOCAL (Playwright + BD real) — HECHO ✅ (2026-07-03 noche)
+
+Ciclo completo con navegador (dev-stub, doctor `dev@delta.local`) contra BD local:
+
+- **patient-requests end-to-end VERIFICADO**: doctor crea solicitud → lista/toast →
+  portal público valida cédula+código (código leído de BD, email stub) → muestra título+descripción
+  (fix de metadata OK) → sube PDF (multipart + X-Session-Token) → submit → estado `Respondida` →
+  doctor ve respuesta + adjunto con **signed URL** (X-Amz-Expires=3600). Seguridad probada: URL firmada
+  200; **sin firma → 403** (privado). Estado en BD: fulfilled, content_type=application/pdf (detected).
+- **Nueva consulta VERIFICADO**: nuevo orden (paciente→consultorio→tipo+motivo→horario→pago),
+  tipos filtrados por consultorio, **slots reales del schedule** (días sin horario deshabilitados,
+  franja 08:00–11:30 del consultorio, no los genéricos), "Pagar después" (paymentMethod null),
+  y la cita **queda ligada al consultorio** (office_id) — verificado en BD.
+
+**3 bugs encontrados y arreglados en el QA (commit `137f4b3`), que los unit tests no atrapaban:**
+
+1. `office_id` NULL en la cita: el frontend mandaba `officeId` (fix previo del BFF) pero
+   `CreateBookingUseCase` no lo pasaba a `Appointment.create()` → cableado + test de regresión.
+2. `access_audit_log` de patient-requests fallaba en silencio: `field_revealed='patient_request_detail'`
+   no estaba en el CHECK `access_audit_log_field_check` → migración `20260703000003` extiende el allowlist.
+3. (menor) El create-patient por API exige `doctor_id` en el body aunque el backend lo sobreescribe
+   del auth — observación, no bloqueante (el form real ya lo maneja).
+
+**Nota de gating:** `/api/book` (endpoint interno y público) exige el feature `booking` del plan. El
+`delta_base` LOCAL no lo tenía → 403 "Online booking is not available". En prod marcoviajes11 (delta_base)
+sí crea citas, así que es artefacto del seed local (se habilitó temporalmente para el QA y se revirtió).
+⚠️ Si en prod el alta interna de citas da 403 para delta_base, habilitar `booking` en ese plan.
+
 ### PENDIENTE Fase 3 (deploy + QA)
 
-- **Push/deploy**: los 3 commits (`63a3449`, `66b100b`, `01f0c1f`) NO se han pusheado. Al hacer push,
-  la rama auto-deploya a Cloud Run y corre la migración `20260703000002` contra Cloud SQL. Decisión
-  del usuario tras QA visual.
-- **QA visual del usuario**: flujo Nueva consulta (nuevo orden + pagar después + métodos del médico) y
-  flujo patient-requests (crear solicitud → email → portal → subir → ver como doctor).
+- **Push/deploy (ÚNICO pendiente)**: 6 commits sin pushear (`63a3449`, `66b100b`, `01f0c1f`, `137f4b3`
+  - 2 de docs). Al hacer push, la rama auto-deploya a Cloud Run y corre las migraciones
+    `20260703000002` (patient-requests) y `20260703000003` (audit-log allowlist) contra Cloud SQL.
+    QA local ya PASÓ; queda la decisión del usuario de desplegar.
+- Entorno local: servers apagados, `AUTH_MODE=auth0` restaurado, toggle local de `booking` revertido.
+  Para re-QA local: `AUTH_MODE=dev` en ambos .env + reiniciar backend (dist nuevo) y `nx dev frontend`.
 
 ### DIFERIDO (no en Fase 3)
 
