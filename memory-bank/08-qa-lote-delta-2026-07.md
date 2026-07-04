@@ -107,9 +107,9 @@ Commits en `feature/migracion-backend` (auto-deploy Cloud Run):
 - [ ] 🐛 Bloque de semana: no deja el input en blanco para escribir un número completo
 - [ ] ♻️ No permite borrar la consulta (delete ya implementado; VERIFICAR path)
 - [ ] 🐛 Detalle de consulta redirige a "Cita 360" (feature eliminada)
-- [ ] 🎨 Nueva consulta: logo nuevo + reorden (paciente → consultorio → consulta asociada al consultorio → horario → método de pago)
-- [ ] 🎨 Método de pago: botón "pagar después" + mostrar solo métodos activados por el médico con sus datos
-- [ ] 🐛 No debe mostrar horarios bloqueados
+- [x] 🎨 Nueva consulta: reorden (paciente → consultorio → consulta asociada al consultorio → horario → método de pago) — commit 63a3449 (logo actual)
+- [x] 🎨 Método de pago: botón "pagar después" + mostrar solo métodos activados por el médico con sus datos — 63a3449
+- [x] 🐛 No debe mostrar horarios bloqueados — 63a3449 (slots reales del schedule, deshabilita ocupados/bloqueados)
 - [ ] 🐛 Filtros (agendadas/confirmadas, pagado/pendiente) no actualizan el calendario
 
 ### MÓDULO PACIENTES
@@ -118,7 +118,7 @@ Commits en `feature/migracion-backend` (auto-deploy Cloud Run):
 - [ ] 🐛♻️ No guarda dirección / datos médicos / contacto de emergencia (VERIFICAR vs fix de edición del lote previo — puede ser el flujo de CREAR)
 - [ ] 🐛 Desde historial de consulta: poder iniciar la consulta o abrir el detalle
 - [ ] 🐛 Historial médico: cambiar botón "Generar resumen" → "Ver planes"
-- [ ] ✨ Seguimiento "pedir algo al paciente" + cargar archivos (Fase 5) → feature nueva (portal + código por correo)
+- [x] ✨ Seguimiento "pedir algo al paciente" + cargar archivos → feature nueva patient-requests (portal + código por correo) — commits 66b100b + 01f0c1f
 
 ### MÓDULO CONSULTA
 
