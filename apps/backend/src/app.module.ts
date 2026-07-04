@@ -45,6 +45,7 @@ import { CredentialVerificationModule } from './modules/credential-verification/
 import { AiTranscriptionModule } from './modules/ai-transcription/ai-transcription.module';
 import { DocumentSharingModule } from './modules/document-sharing/document-sharing.module';
 import { HelpAssistantModule } from './modules/help-assistant/help-assistant.module';
+import { PatientRequestsModule } from './modules/patient-requests/patient-requests.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -100,6 +101,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     AiTranscriptionModule,
     DocumentSharingModule,
     HelpAssistantModule,
+    PatientRequestsModule,
   ],
   controllers: [HealthController],
   providers: [
