@@ -62,11 +62,29 @@ WHERE id=<doctorId>`. Planes activos: `delta_free`, `delta_base`, `delta_plus` (
   chat de ayuda, **generar informe PDF** (PDF válido, era el bug de "próximamente"), **compartir
   documentos** (enlace + email), botón "Grabar consulta" (transcripción) desbloqueado.
 
+### ✅ RESUELTO — "inconsistencia" de emails = bug determinista (2026-07-06, commit `6da5c0d`, deploy `28823079100`)
+
+La "inconsistencia" NO era Resend caprichoso. Eran **dos fenómenos distintos**:
+
+1. **Confirmación de cita NUNCA se enviaba** (bug real, arreglado). `appointment-notification.service.ts`
+   pedía las plantillas `appointment_confirmation_online` / `_inperson`, pero en la BD solo existía
+   `appointment_confirmed` (y con placeholders camelCase que tampoco coincidían). `MailerService.findByName`
+   lanzaba `EmailTemplateNotFoundError` **antes** de escribir en `email_send_log`, y un `catch {}` ciego en
+   `sendNotification` lo tragaba → ni correo ni rastro. Esta ruta **nunca funcionó**. **Fix**: migración
+   `20260706000000` siembra ambas plantillas con placeholders snake_case correctos (`patient_name`,
+   `doctor_name`, `appointment_date`, `appointment_time`, `meet_link` / `office_name`+`office_address`);
+   el `catch` ahora loguea el error real; `MailerService` registra un `email_send_log` failed con
+   `errorDetail='template_not_found'` cuando falta una plantilla (visibilidad futura). Migración corrida en
+   prod (`migrated 0.227s`). ⚠️ Nota: el `ics_content` que pasa el código NO se adjunta (el adapter de
+   Resend no soporta adjuntos hoy) — mejora futura si se quiere invitación .ics real.
+2. **Latencia 3min–1h en los correos que SÍ existen** (solicitud/código/factura): eso es entrega
+   async Resend→Gmail (cola + reputación de dominio/greylisting). Externo; "lento pero llega" es correcto.
+   Monitorear en el dashboard de Resend; no es bug de código.
+
 ### ⚠️ ABIERTO / no verificado (para el usuario o próxima sesión)
 
-- **Emails de prod LENTOS/inconsistentes (Resend)**: crear-solicitud ~3 min; reenvío de código tardó
-  ~1h; **email de confirmación de cita no se vio llegar** (¿lentitud o no se envía en alta interna?).
-  → Revisar config/cola de Resend. Es el hallazgo más importante pendiente antes de lanzar.
+- **Verificar en vivo la confirmación de cita** (post-fix): crear una cita con paciente que tenga email y
+  confirmar que llega el correo (plantilla online/presencial según modalidad).
 - **Transcripción de audio E2E**: botón desbloqueado + backend vivo, pero subir audio real no es
   automatizable por el micrófono de Playwright. Prueba manual del usuario.
 - **Evento en Google Calendar end-to-end** tras crear cita: no verificado (Calendar conectado sí).
