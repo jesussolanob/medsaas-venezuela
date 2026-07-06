@@ -5,6 +5,76 @@
 > Ojo: algunos pueden estar YA resueltos por el deploy del lote anterior (commits
 > 6fa58aa + 29a9cc6) — verificar antes de re-arreglar.
 
+## QA EN PRODUCCIÓN — HECHO ✅ (2026-07-06, cuenta lucas@deltasalud.app)
+
+QA exhaustivo en **prod real** (Cloud Run) con Playwright + Gmail (`lucas@deltasalud.app`) +
+conexión directa a Cloud SQL (cloud-sql-proxy). URL prod: `https://delta-frontend-knliodnwza-ue.a.run.app`.
+Se encontraron y arreglaron **6 bugs de prod** (2 redeploys, ambos success: runs `28802121774` y
+`28810055164`). Commits de fix: `05bd709`, `090dd96` (+ los de Fase 3 previos).
+
+### 🔴 Bugs de prod encontrados → arreglados → desplegados → VERIFICADOS en vivo
+
+1. **Storage privado roto** (adjuntos pacientes/recibos): faltaba permiso `iam.serviceAccounts.signBlob`
+   para firmar V4 signed URLs en Cloud Run. **Fix por IAM** (NO código): se dio rol
+   `roles/iam.serviceAccountTokenCreator` al SA `delta-backend-sa` sobre sí mismo. Ya vivo.
+2. **Storage público roto** (avatar/logo): el bucket `delta-files-*` tiene **Uniform Bucket-Level
+   Access (UBLA)** → rechaza ACL por objeto (`public:true`), crasheaba TODAS las subidas públicas con
+   error `[object Object]`. **Fix en código** (`gcs-storage.adapter.ts`): sin ACL; público y privado se
+   sirven por signed URL v4 (privado 1h, público 7d). No se puede hacer el bucket público (guarda PII).
+3. **`GET /api/patients/:id` → 404**: faltaba el route handler BFF `app/api/patients/[id]/route.ts`
+   (solo existía el de lista). Rompía "Nueva consulta" con paciente pre-seleccionado (wizard atascado
+   en paso 1). Fix en código.
+4. **Doctor no podía crear consultas si el plan no incluye `booking`** (Free): el flujo interno
+   "Nueva consulta" posteaba al endpoint de booking PÚBLICO (gateado). **Fix (decouple)**: nuevo
+   `DoctorBookingController` `POST /api/doctor/appointments` autenticado (AppAuthGuard, anti-IDOR
+   doctor_id=user.sub) que llama `CreateBookingUseCase(dto, { skipBookingFeatureGate:true })`.
+   `useAppointmentFlow` postea ahí; el booking público (`/api/book`) sigue gateado (premium).
+5. Log de storage `[object Object]` → extrae `err.message` real.
+6. _(FALSA ALARMA)_ Finanzas "registrar ingreso" — SÍ persiste (balance sumó $50+$75=$125). El chequeo
+   inicial fue un falso positivo. Nota UX: los ingresos manuales cuentan en el Balance pero la lista
+   "Ingresos (Pagos aprobados)" muestra solo pagos de consultas (conceptos separados).
+
+### 💳 MODELO DE PLANES (aprendido — CRÍTICO para futuros cambios)
+
+El plan efectivo lo determinan **`profiles.plan` + `profiles.subscription_status`** (columnas en
+`profiles`). La tabla `subscriptions` es **legacy/ignorada** por el gating. Con `subscription_status`
+= NULL, la lógica de **downgrade perezoso** (`get-doctor-features-v2.use-case.ts`) baja a `delta_free`.
+Para cambiar el plan de un doctor: `UPDATE profiles SET plan='delta_plus', subscription_status='active'
+WHERE id=<doctorId>`. Planes activos: `delta_free`, `delta_base`, `delta_plus` (clinic inactivo).
+`plan_features` por plan; gating = role_capabilities ∩ plan_features. Cache Redis DESHABILITADO en prod
+(REDIS_DISABLED=true) → el cambio se refleja sin reiniciar.
+
+- Cloud SQL: `sodium-shard-499116-r3:us-east1:delta-db`, db `deltamedical`, user `delta`, pass en Secret
+  Manager `DB_PASSWORD`. Conectar con cloud-sql-proxy `--token $(gcloud auth print-access-token)`
+  (la ADC del proxy da `invalid_rapt`; el token del CLI sí sirve).
+
+### ✅ Verificado funcionando en prod (por plan)
+
+- **Free**: login SSO, crear paciente (cédula V/E/P + parentesco + país + opcionales), pop-up post-alta
+  "Crear consulta", ficha, **patient-requests** (solicitud + email real con link de PROD + portal 2FA +
+  **subida de adjunto a storage privado end-to-end**: fulfilled, signed URL 1h sirve 200, sin firma 403),
+  **Nueva consulta completa** (consultorio, slots reales, solo-métodos-activados + datos de cuenta,
+  "pagar después", **crea la cita con office_id** vía el endpoint desacoplado), guardar métodos de pago
+  (emojis OK), **subir avatar** (signed URL 7d sirve 200), crear Servicio, registrar ingreso, Cobros,
+  Google Calendar CONECTADO (OAuth).
+- **Base**: gating correcto (todo menos IA).
+- **Plus**: badge + IA desbloqueada y **funcional** — asistente/resumen de historial (Gemini responde),
+  chat de ayuda, **generar informe PDF** (PDF válido, era el bug de "próximamente"), **compartir
+  documentos** (enlace + email), botón "Grabar consulta" (transcripción) desbloqueado.
+
+### ⚠️ ABIERTO / no verificado (para el usuario o próxima sesión)
+
+- **Emails de prod LENTOS/inconsistentes (Resend)**: crear-solicitud ~3 min; reenvío de código tardó
+  ~1h; **email de confirmación de cita no se vio llegar** (¿lentitud o no se envía en alta interna?).
+  → Revisar config/cola de Resend. Es el hallazgo más importante pendiente antes de lanzar.
+- **Transcripción de audio E2E**: botón desbloqueado + backend vivo, pero subir audio real no es
+  automatizable por el micrófono de Playwright. Prueba manual del usuario.
+- **Evento en Google Calendar end-to-end** tras crear cita: no verificado (Calendar conectado sí).
+- **Plan Clinic**: su plan_config está inactivo; no probado.
+- **Datos de prueba creados en prod** (borrables): paciente "QA Prod Paciente", solicitudes de
+  documentos, 1 cita (8 jul), 2 ingresos ($125), servicio "Consulta QA Prod", avatar, método Pago Móvil.
+- Cuenta lucas **restaurada a Free** (profiles.plan=NULL, subscription_status=NULL) al cerrar.
+
 ## ESTADO (2026-07-03) — Fases 1 y 2 DESPLEGADAS ✅
 
 Commits en `feature/migracion-backend` (auto-deploy Cloud Run):
