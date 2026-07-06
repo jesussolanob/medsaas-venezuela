@@ -93,10 +93,15 @@ sigue siendo entrega async Resend→Gmail (externo, "lento pero llega").
 
 ### ⚠️ ABIERTO / no verificado (para el usuario o próxima sesión)
 
-- **`POST /api/patients` → 500 consistente** (crear paciente desde wizard "Nueva consulta"): descubierto en
-  este QA, NO relacionado al fix de email. Respuesta genérica `INTERNAL_ERROR`. El alta de cita usa el upsert
-  propio del módulo booking (otro path) y SÍ funciona; pero crear paciente por el wizard/`/api/patients` está
-  roto. Investigar (revisar Sentry + logs del use-case de creación de paciente).
+- ✅ **RESUELTO — `POST /api/patients` → 500 con email duplicado** (era el "unexpected error" del modal que
+  reportó el usuario). Causa: la tabla tiene UNIQUE `(doctor_id, email_search_hash)` pero `CreatePatientUseCase`
+  solo validaba **cédula** duplicada, no email → el email repetido violaba el constraint → `SequelizeUniqueConstraintError`
+  → `GlobalExceptionFilter` → 500 genérico. **Fix** (commits `209e3e6` back + `afccf88` front, ambos desplegados
+  y VERIFICADOS en vivo): (a) guard de email en el use-case (mismo `hashForSearch` que el repo); (b) `save()` del
+  repo traduce `SequelizeUniqueConstraintError` a `DuplicatePatientError` (409), detectando email vs cédula por el
+  índice, sin loguear PII (cubre carreras); (c) `DuplicatePatientError` acepta `field:'cedula'|'email'` con mensaje
+  distinto; (d) el server action `doctor/patients/actions.ts` ya NO hardcodea "esa cédula" — surfacea el mensaje
+  real del backend. Verificado en el modal: sale "Ya existe un paciente con ese correo electrónico en tu listado".
 - **Hora en el email de confirmación sale en UTC** (mostró 8:30 p.m. para una cita de 16:30 VE): el template
   usa `new Date(iso).toLocaleTimeString('es-VE')` sin `timeZone:'America/Caracas'` → usa la TZ del server
   (UTC). Cosmético; corregir el formateo de `appointment_time`/`appointment_date` en la notificación.
