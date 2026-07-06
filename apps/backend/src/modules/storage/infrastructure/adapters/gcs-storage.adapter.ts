@@ -1,7 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Storage } from '@google-cloud/storage';
-import type { IStoragePort, StorageUploadInput, StorageUploadResult } from '../../application/ports/storage.port';
+import type {
+  IStoragePort,
+  StorageUploadInput,
+  StorageUploadResult,
+} from '../../application/ports/storage.port';
 
 /**
  * GcsStorageAdapter — storage adapter for production (Google Cloud Storage).
@@ -46,7 +50,7 @@ export class GcsStorageAdapter implements IStoragePort, OnModuleInit {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
         `GCS not available at startup (${msg}). ` +
-        'Ensure GOOGLE_APPLICATION_CREDENTIALS and GCS_BUCKET are set correctly.',
+          'Ensure GOOGLE_APPLICATION_CREDENTIALS and GCS_BUCKET are set correctly.',
       );
     }
   }
@@ -54,41 +58,35 @@ export class GcsStorageAdapter implements IStoragePort, OnModuleInit {
   async upload(input: StorageUploadInput): Promise<StorageUploadResult> {
     const file = this.storage.bucket(this.bucket).file(input.path);
 
-    if (input.isPrivate) {
-      // Store privately — do NOT call makePublic().
-      await file.save(input.buffer, {
-        contentType: input.contentType,
-        public: false,
-      });
-
-      // Return a time-limited signed URL (v4, read, TTL: 1 hour).
-      const url = await this.getSignedUrl(input.path);
-      return { url, path: input.path };
-    }
-
-    // Public kinds: store with public-read access and return a permanent URL.
+    // NOTE: the bucket has Uniform Bucket-Level Access (UBLA) enabled, so
+    // per-object ACLs (`public: true`) are rejected by GCS (this crashed all
+    // avatar/logo uploads). We never set object ACLs. Public kinds are served
+    // via a long-lived signed URL instead of a permanent public URL — the
+    // bucket can't be made public because it also holds private patient docs.
     await file.save(input.buffer, {
       contentType: input.contentType,
-      public: true,
     });
 
-    const url = `https://storage.googleapis.com/${this.bucket}/${input.path}`;
+    // Private kinds (receipt, document, signature) get a short-lived link;
+    // public kinds (avatar, logo) get a long-lived one (V4 max is 7 days).
+    const ttlMs = input.isPrivate ? 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    const url = await this.getSignedUrl(input.path, ttlMs);
     return { url, path: input.path };
   }
 
   /**
-   * Returns a v4 signed URL valid for 1 hour.
-   * Used for private objects (receipt, document, signature) and for the
-   * GET /api/storage/signed-url endpoint.
+   * Returns a v4 signed URL. Default TTL 1 hour; callers may request longer
+   * (up to the V4 maximum of 7 days) for public assets.
+   * Used for private objects and for the GET /api/storage/signed-url endpoint.
    */
-  async getSignedUrl(path: string): Promise<string> {
+  async getSignedUrl(path: string, ttlMs = 60 * 60 * 1000): Promise<string> {
     const [url] = await this.storage
       .bucket(this.bucket)
       .file(path)
       .getSignedUrl({
         version: 'v4',
         action: 'read',
-        expires: Date.now() + 60 * 60 * 1000, // 1 hour
+        expires: Date.now() + ttlMs,
       });
     return url;
   }

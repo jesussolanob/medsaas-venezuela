@@ -171,7 +171,14 @@ export class UploadFileUseCase {
         isPrivate,
       });
     } catch (err: unknown) {
-      const cause = err instanceof Error ? err.message : String(err);
+      // GCS errors are sometimes plain objects (not Error instances), which
+      // stringified to the useless "[object Object]". Extract a real message.
+      const cause =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null
+            ? ((err as { message?: string }).message ?? JSON.stringify(err))
+            : String(err);
       this.logger.error(`Storage upload failed: ${cause}`);
       throw new StorageUploadError(cause);
     }
