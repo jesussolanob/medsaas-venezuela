@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { CreateCalendarEventUseCase } from '../use-cases/integrations/create-calendar-event.use-case';
 import { GoogleNotConnectedError } from '../../domain/errors/google-not-connected.error';
 import { generateIcsEvent } from '../../infrastructure/ics/ics-generator';
@@ -82,8 +82,14 @@ export class AppointmentNotificationService {
     /**
      * MailerService is optional to preserve backward compatibility with test
      * contexts that do not wire up the EmailModule.
+     *
+     * @Inject(MailerService) is REQUIRED: the param type is `MailerService | null`,
+     * and TypeScript emits `Object` as the design:paramtype for union types. Without
+     * an explicit token Nest cannot resolve the provider and @Optional() silently
+     * injects null — which previously suppressed ALL appointment confirmation emails.
      */
     @Optional()
+    @Inject(MailerService)
     private readonly mailer: MailerService | null = null,
   ) {}
 
