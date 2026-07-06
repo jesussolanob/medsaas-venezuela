@@ -72,12 +72,36 @@ Ciclo completo con navegador (dev-stub, doctor `dev@delta.local`) contra BD loca
 sí crea citas, así que es artefacto del seed local (se habilitó temporalmente para el QA y se revirtió).
 ⚠️ Si en prod el alta interna de citas da 403 para delta_base, habilitar `booking` en ese plan.
 
+### QA EXHAUSTIVO (cada botón + edge cases) — HECHO ✅ (2026-07-06)
+
+Segunda pasada a pedido del usuario ("probaste cada botón y cada subida?"). La primera pasada
+fue solo camino feliz; ésta ejercitó botones y bordes con Playwright + BD real. **Encontró 4 bugs
+más que los unit tests (repos mockeados) no atrapaban** — todos arreglados (commit `17fe28a`):
+
+1. Portal **"Quitar"** dejaba adjunto huérfano (subía al seleccionar; "Quitar" solo lo sacaba de la
+   lista). Refactor a **staging**: se sube al enviar → "Quitar" descarta de verdad; sin huérfanos.
+2. **Crear paciente inline** en Nueva consulta daba **400** (POST /api/patients sin `doctor_id`).
+3. **Slots ocupados** nunca se deshabilitaban: el BFF leía `result.value.appointments` pero
+   `backendGet` ya desempaqueta `data` (el array). +
+4. **Carrera** que borraba los ocupados: el efecto de modalidad limpiaba `unavailableTimes` en cada
+   cambio de sede, pisando lo recién cargado (la caché es por fecha y a nivel doctor).
+
+**Casos verificados OK (sin bug):** portal — código/cédula incorrectos oracle-safe (mismo 422),
+bloqueo a los 5 intentos, solicitar-nuevo-código + cooldown 60s (429), tipo inválido y >10MB
+rechazados client-side, multi-archivo, magic-bytes declarado≠detectado (422), rate-limit upload
+(5/60s→429), gating de envío; almacenamiento privado (signed URL 200 / sin firma 403); audit log PHI.
+Nueva consulta — "Solicitar docs" desde ficha con paciente pre-seleccionado, crear disabled sin
+título, 2 consultorios, modalidad oculta en sede solo-presencial, slots reales por schedule con
+09:00/10:30 ocupados deshabilitados, método con referencia obligatoria, **botón real "Crear consulta"
+end-to-end** con office_id + método + referencia persistidos, "Pagar después". Staged-upload happy
+path revalidado (0 adjuntos antes de enviar → 1 fulfilled después).
+
 ### PENDIENTE Fase 3 (deploy + QA)
 
-- **Push/deploy (ÚNICO pendiente)**: 6 commits sin pushear (`63a3449`, `66b100b`, `01f0c1f`, `137f4b3`
-  - 2 de docs). Al hacer push, la rama auto-deploya a Cloud Run y corre las migraciones
-    `20260703000002` (patient-requests) y `20260703000003` (audit-log allowlist) contra Cloud SQL.
-    QA local ya PASÓ; queda la decisión del usuario de desplegar.
+- **Push/deploy (ÚNICO pendiente)**: commits de código `63a3449`, `66b100b`, `01f0c1f`, `137f4b3`,
+  `17fe28a` (+ docs) sin pushear. Al hacer push, la rama auto-deploya a Cloud Run y corre las
+  migraciones `20260703000002` (patient-requests) y `20260703000003` (audit-log allowlist) contra
+  Cloud SQL. QA local (camino feliz + exhaustivo de botones/bordes) ya PASÓ; queda desplegar.
 - Entorno local: servers apagados, `AUTH_MODE=auth0` restaurado, toggle local de `booking` revertido.
   Para re-QA local: `AUTH_MODE=dev` en ambos .env + reiniciar backend (dist nuevo) y `nx dev frontend`.
 
