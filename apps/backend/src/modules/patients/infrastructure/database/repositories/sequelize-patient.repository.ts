@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import type { WhereOptions } from 'sequelize';
 import { Patient } from '../../../domain/entities/patient.entity';
+import { DuplicatePatientError } from '../../../domain/errors/duplicate-patient.error';
 import { PatientNotFoundError } from '../../../domain/errors/patient-not-found.error';
 import type {
   IPatientRepository,
@@ -40,6 +41,21 @@ function parseSource(raw: string | null): Patient['source'] {
   if (raw === null) return null;
   const found = VALID_SOURCE_VALUES.find((v) => v === raw);
   return found ?? null;
+}
+
+/**
+ * Narrows an unknown catch value to Sequelize's UniqueConstraintError shape.
+ * Avoids importing from 'sequelize' directly, which would leak infra into domain.
+ *
+ * The `fields` object uses DB column names (e.g. `email_search_hash`) because
+ * PatientModel is configured with `underscored: true`.
+ */
+function isSequelizeUniqueConstraintError(err: unknown): err is {
+  name: string;
+  fields?: Record<string, unknown>;
+  parent?: { constraint?: string };
+} {
+  return err instanceof Error && err.name === 'SequelizeUniqueConstraintError';
 }
 
 /**
@@ -122,34 +138,47 @@ export class SequelizePatientRepository implements IPatientRepository {
   async save(patient: Patient): Promise<Patient> {
     const encrypted = this.encryptFields(patient);
 
-    const row = await this.patientModel.create({
-      id: patient.id,
-      doctorId: patient.doctorId,
-      authUserId: patient.authUserId,
-      fullName: encrypted.fullName,
-      fullNameSearchHash: encrypted.fullNameSearchHash,
-      cedula: encrypted.cedula,
-      cedulaSearchHash: encrypted.cedulaSearchHash,
-      phone: encrypted.phone,
-      email: encrypted.email,
-      emailSearchHash: encrypted.emailSearchHash,
-      identityId: patient.identityId,
-      source: patient.source,
-      birthDate: patient.birthDate,
-      age: patient.age,
-      sex: patient.sex,
-      bloodType: patient.bloodType,
-      allergies: patient.allergies,
-      chronicConditions: patient.chronicConditions,
-      address: patient.address,
-      city: patient.city,
-      emergencyContactName: patient.emergencyContactName,
-      emergencyContactPhone: patient.emergencyContactPhone,
-      emergencyContactRelationship: patient.emergencyContactRelationship,
-      notes: patient.notes,
-    });
+    try {
+      const row = await this.patientModel.create({
+        id: patient.id,
+        doctorId: patient.doctorId,
+        authUserId: patient.authUserId,
+        fullName: encrypted.fullName,
+        fullNameSearchHash: encrypted.fullNameSearchHash,
+        cedula: encrypted.cedula,
+        cedulaSearchHash: encrypted.cedulaSearchHash,
+        phone: encrypted.phone,
+        email: encrypted.email,
+        emailSearchHash: encrypted.emailSearchHash,
+        identityId: patient.identityId,
+        source: patient.source,
+        birthDate: patient.birthDate,
+        age: patient.age,
+        sex: patient.sex,
+        bloodType: patient.bloodType,
+        allergies: patient.allergies,
+        chronicConditions: patient.chronicConditions,
+        address: patient.address,
+        city: patient.city,
+        emergencyContactName: patient.emergencyContactName,
+        emergencyContactPhone: patient.emergencyContactPhone,
+        emergencyContactRelationship: patient.emergencyContactRelationship,
+        notes: patient.notes,
+      });
 
-    return this.toDomain(row);
+      return this.toDomain(row);
+    } catch (err: unknown) {
+      if (isSequelizeUniqueConstraintError(err)) {
+        // Determine which UNIQUE constraint fired from the index name or field list.
+        // DB column for email hash is `email_search_hash` (PatientModel underscored: true).
+        const isEmailConstraint =
+          err.parent?.constraint === 'patients_doctor_email_uq' ||
+          (err.fields != null && 'email_search_hash' in err.fields);
+        // Never log PII — do not include field values in the error or log output.
+        throw new DuplicatePatientError(isEmailConstraint ? 'email' : 'cedula');
+      }
+      throw err;
+    }
   }
 
   async update(id: string, doctorId: string, fields: Partial<Patient>): Promise<Patient> {

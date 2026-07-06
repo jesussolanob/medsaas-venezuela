@@ -46,7 +46,16 @@ export class CreatePatientUseCase {
       const cedulaHash = this.crypto.hashForSearch(input.cedula);
       const existing = await this.patientRepo.findByCedulaHash(cedulaHash, input.doctorId);
       if (existing) {
-        throw new DuplicatePatientError(input.cedula);
+        throw new DuplicatePatientError('cedula', input.cedula);
+      }
+    }
+
+    // Guard: prevent duplicate email per doctor
+    if (input.email) {
+      const emailHash = this.crypto.hashForSearch(input.email);
+      const existingByEmail = await this.patientRepo.findByEmailHash(emailHash, input.doctorId);
+      if (existingByEmail) {
+        throw new DuplicatePatientError('email');
       }
     }
 
