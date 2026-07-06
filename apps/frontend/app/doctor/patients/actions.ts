@@ -365,9 +365,15 @@ export async function addPatient(
 
   const result = await backendPost<BackendPatientListItem>('/api/patients', body);
   if (!result.ok) {
-    // Surface a specific, user-friendly message for duplicate cédula (409).
+    // Duplicate patient (409): surface the backend's specific message, which
+    // distinguishes whether the cédula OR the email already exists. Fall back to
+    // a generic message if the backend did not provide one.
     if (result.error.status === 409 || result.error.code === 'PATIENT_DUPLICATE') {
-      return { success: false, error: 'Ya existe un paciente con esa cédula.' };
+      const backendMessage =
+        typeof result.error.message === 'string' && result.error.message.trim().length > 0
+          ? result.error.message
+          : 'Ya existe un paciente con esa cédula o correo en tu listado.';
+      return { success: false, error: backendMessage };
     }
     return { success: false, error: appErrorToString(result.error) };
   }
