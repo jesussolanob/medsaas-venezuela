@@ -125,7 +125,10 @@ export class CreateBookingUseCase {
     private readonly featureChecker: IBookingFeatureChecker | null = null,
   ) {}
 
-  async execute(dto: CreateBookingDto): Promise<CreateBookingResult> {
+  async execute(
+    dto: CreateBookingDto,
+    options?: { skipBookingFeatureGate?: boolean },
+  ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
     // TODO(etapa-2): POST to https://challenges.cloudflare.com/turnstile/v0/siteverify
     //   with secret key and dto.cf_turnstile_token. Throw TurnstileInvalidError if !success.
@@ -140,7 +143,10 @@ export class CreateBookingUseCase {
     // --- Step 2a: Verify booking feature is enabled for this doctor's plan ---
     // Defence in depth: the frontend hides the booking link/QR when bookingEnabled=false,
     // but a direct POST must still be rejected if the plan does not include booking.
-    if (this.featureChecker) {
+    //
+    // Exception: when skipBookingFeatureGate=true (authenticated doctor-initiated flow),
+    // the gate is bypassed — agendar is a core action available on every plan.
+    if (this.featureChecker && !options?.skipBookingFeatureGate) {
       const bookingEnabled = await this.featureChecker.isBookingEnabled(dto.doctor_id);
       if (!bookingEnabled) {
         throw new BookingNotEnabledError();

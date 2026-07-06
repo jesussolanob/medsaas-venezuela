@@ -22,8 +22,9 @@ import { GetBookingPackagesUseCase } from './application/use-cases/booking/get-b
 import { GetAvailableSlotsUseCase } from './application/use-cases/booking/get-available-slots.use-case';
 import { GetBookingOfficesUseCase } from './application/use-cases/booking/get-booking-offices.use-case';
 
-// Controller
+// Controllers
 import { BookingController } from './presentation/controllers/booking.controller';
+import { DoctorBookingController } from './presentation/controllers/doctor-booking.controller';
 
 // PackagesModule exports PACKAGE_REPOSITORY, PRICING_PLAN_REPOSITORY, ConsumePackageSessionUseCase.
 // PatientsModule exports PATIENT_REPOSITORY.
@@ -84,7 +85,7 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
     // AvailabilityBlocksModule exports AVAILABILITY_BLOCK_REPOSITORY for slot filtering.
     AvailabilityBlocksModule,
   ],
-  controllers: [BookingController],
+  controllers: [BookingController, DoctorBookingController],
   providers: [
     // Doctor loader (read-only profile lookup for public booking)
     {

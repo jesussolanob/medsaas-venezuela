@@ -726,6 +726,72 @@ describe('CreateBookingUseCase', () => {
     });
   });
 
+  describe('skipBookingFeatureGate option', () => {
+    let mockFeatureChecker: jest.Mocked<IBookingFeatureChecker>;
+
+    beforeEach(() => {
+      mockFeatureChecker = { isBookingEnabled: jest.fn() };
+    });
+
+    function makeUseCaseWithChecker(checker: IBookingFeatureChecker) {
+      return new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null,
+        mockResolveIdentity,
+        null,
+        null,
+        checker,
+      );
+    }
+
+    it('bypasses feature checker when skipBookingFeatureGate is true, even if booking is disabled', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(false);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+
+      const ucWithChecker = makeUseCaseWithChecker(mockFeatureChecker);
+
+      // Should NOT throw BookingNotEnabledError — gate is bypassed
+      const result = await ucWithChecker.execute(makeDto(), { skipBookingFeatureGate: true });
+
+      expect(result.appointment).toBeDefined();
+      // Feature checker must NOT be consulted when the gate is explicitly skipped
+      expect(mockFeatureChecker.isBookingEnabled).not.toHaveBeenCalled();
+    });
+
+    it('still applies feature gate when skipBookingFeatureGate is false', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(false);
+
+      const ucWithChecker = makeUseCaseWithChecker(mockFeatureChecker);
+
+      await expect(
+        ucWithChecker.execute(makeDto(), { skipBookingFeatureGate: false }),
+      ).rejects.toThrow(BookingNotEnabledError);
+      expect(mockFeatureChecker.isBookingEnabled).toHaveBeenCalledWith('doc-001');
+    });
+
+    it('still applies feature gate when options are not passed (default public path)', async () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(false);
+
+      const ucWithChecker = makeUseCaseWithChecker(mockFeatureChecker);
+
+      await expect(ucWithChecker.execute(makeDto())).rejects.toThrow(BookingNotEnabledError);
+      expect(mockFeatureChecker.isBookingEnabled).toHaveBeenCalledWith('doc-001');
+    });
+  });
+
   describe('CreateBookingDtoSchema — patient_email validation', () => {
     const basePayload = {
       cf_turnstile_token: 'tok',
