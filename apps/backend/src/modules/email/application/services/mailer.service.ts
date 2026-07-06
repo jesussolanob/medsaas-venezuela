@@ -71,9 +71,28 @@ export class MailerService {
     data: Record<string, unknown>,
     recipient?: EmailRecipientRef,
   ): Promise<EmailSendResult> {
+    // Resolve context variables first so they are available for the not-found
+    // log entry as well as the normal send path.
+    const recipientType = recipient?.type ?? 'system';
+    const recipientId = recipient?.id ?? null;
+    const provider = this.config.get<string>('EMAIL_DRIVER') ?? 'noop';
+
     const template = await this.templateRepo.findByName(name);
 
     if (!template) {
+      // Record the missing-template event so it is visible in email_send_log
+      // and does not silently disappear.
+      await this.safeRecord(
+        EmailSendLog.failed({
+          id: randomUUID(),
+          recipientType,
+          recipientId,
+          templateName: name,
+          provider,
+          errorDetail: 'template_not_found',
+          createdAt: new Date(),
+        }),
+      );
       throw new EmailTemplateNotFoundError(name);
     }
 
@@ -84,10 +103,6 @@ export class MailerService {
     this.logger.debug(
       `[mailer] sending template='${name}' to=${Array.isArray(to) ? to.length : 1} recipient(s)`,
     );
-
-    const recipientType = recipient?.type ?? 'system';
-    const recipientId = recipient?.id ?? null;
-    const provider = this.config.get<string>('EMAIL_DRIVER') ?? 'noop';
 
     let result: EmailSendResult;
     try {

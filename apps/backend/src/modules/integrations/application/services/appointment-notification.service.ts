@@ -218,9 +218,11 @@ export class AppointmentNotificationService {
           `[notify] MailerService not injected — skipping email for appointment ${input.appointmentId}`,
         );
       }
-    } catch {
+    } catch (err) {
       // Best-effort: never let notification failures break the booking flow
-      this.logger.warn('[notify] notification delivery failed (non-fatal)');
+      this.logger.warn(
+        `[notify] notification delivery failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

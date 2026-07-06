@@ -89,6 +89,30 @@ describe('MailerService', () => {
     expect(templateRepo.findByName).toHaveBeenCalledWith('reminder');
   });
 
+  it('records a failed log entry with template_not_found when template does not exist', async () => {
+    templateRepo.findByName.mockResolvedValue(null);
+
+    await expect(service.sendTemplate('missing_tpl', 'doc@example.com', {})).rejects.toThrow(
+      EmailTemplateNotFoundError,
+    );
+
+    expect(sendLogRepo.record).toHaveBeenCalledTimes(1);
+    const entry = sendLogRepo.record.mock.calls[0]![0]!;
+    expect(entry.status).toBe('failed');
+    expect(entry.templateName).toBe('missing_tpl');
+    expect(entry.errorDetail).toBe('template_not_found');
+    expect(entry.providerMessageId).toBeNull();
+  });
+
+  it('still throws EmailTemplateNotFoundError when log write fails on missing template', async () => {
+    templateRepo.findByName.mockResolvedValue(null);
+    sendLogRepo.record.mockRejectedValue(new Error('DB write failed'));
+
+    await expect(service.sendTemplate('missing_tpl', 'doc@example.com', {})).rejects.toThrow(
+      EmailTemplateNotFoundError,
+    );
+  });
+
   // ---------------------------------------------------------------------------
   // Placeholder replacement
   // ---------------------------------------------------------------------------
