@@ -336,12 +336,12 @@ export function useAppointmentFlow(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOffice]);
 
-  // ── Ajustar modalidad + invalidar slots ocupados según consultorio ──────
+  // ── Ajustar modalidad según consultorio ──────────────────────────────────
   useEffect(() => {
-    // La caché de horarios no disponibles se indexa por fecha, pero los
-    // availability-blocks y los slots dependen del consultorio. Al cambiar de
-    // sede hay que recalcular: limpiar la caché para que se vuelva a poblar.
-    setUnavailableTimes(new Map());
+    // NO se limpia unavailableTimes aquí: la caché de ocupados/bloqueados es
+    // por fecha y a nivel del DOCTOR (independiente del consultorio), y la lista
+    // de slots por sede se computa aparte en StepSchedule. Limpiarla aquí
+    // provocaba una carrera que borraba los ocupados recién cargados.
     if (!selectedOffice?.modality) return;
     if (selectedOffice.modality === 'in_person') setMode('presencial');
     else if (selectedOffice.modality === 'online') setMode('online');
@@ -495,6 +495,9 @@ export function useAppointmentFlow(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // doctor_id lo exige CreatePatientDtoSchema; el backend lo sobreescribe
+          // con la identidad autenticada (anti-IDOR). Sin este campo el POST daba 400.
+          doctor_id: doctorId || FALLBACK_DEV_DOCTOR_UUID,
           full_name: newPatient.full_name || undefined,
           cedula: newPatient.cedula || undefined,
           email: newPatient.email || undefined,

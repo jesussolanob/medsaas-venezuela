@@ -24,11 +24,6 @@ interface BackendAppointment {
   status: string;
 }
 
-interface BackendAppointmentListData {
-  appointments: BackendAppointment[];
-  meta: { total: number; page: number; limit: number };
-}
-
 export const dynamic = 'force-dynamic';
 
 // ---------------------------------------------------------------------------
@@ -51,7 +46,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const dateTo = encodeURIComponent(`${date}T23:59:59-04:00`);
   const qs = `date_from=${dateFrom}&date_to=${dateTo}&page=1&limit=100`;
 
-  const result = await backendGet<BackendAppointmentListData>(`/api/appointments?${qs}`);
+  // El backend GET /api/appointments devuelve el envelope { success, data: [...], meta };
+  // backendGet ya desempaqueta `data`, así que result.value ES el array de citas.
+  const result = await backendGet<BackendAppointment[]>(`/api/appointments?${qs}`);
   if (!result.ok) {
     return NextResponse.json(
       { error: result.error.message, code: result.error.code },
@@ -59,7 +56,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const appointments = result.value?.appointments ?? [];
+  const appointments = Array.isArray(result.value) ? result.value : [];
   const bookedAt = appointments.filter((a) => a.status !== 'cancelled').map((a) => a.scheduledAt);
 
   return NextResponse.json({ success: true, data: { bookedAt } });

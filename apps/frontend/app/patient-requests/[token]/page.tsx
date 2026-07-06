@@ -35,9 +35,9 @@ import {
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
-interface UploadedFile {
+interface StagedFile {
   id: string;
-  fileName: string;
+  file: File;
 }
 
 type PageState = 'input' | 'verified' | 'blocked' | 'submitted';
@@ -86,8 +86,10 @@ export default function PatientRequestPage() {
   const [requestSuccess, setRequestSuccess] = useState(false);
 
   // Etapa verified — upload + respuesta
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [uploading, setUploading] = useState(false);
+  // Archivos preparados localmente; se suben recién al enviar (así "Quitar"
+  // realmente los descarta y no quedan adjuntos huérfanos si el paciente
+  // abandona la sesión sin enviar).
+  const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [responseText, setResponseText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -186,7 +188,7 @@ export default function PatientRequestPage() {
 
   // ── Subida de archivos ─────────────────────────────────────────────────────
 
-  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = ''; // reset para permitir re-selección del mismo archivo
     if (files.length === 0) return;
@@ -199,39 +201,12 @@ export default function PatientRequestPage() {
       }
     }
 
+    // Solo se preparan localmente; la subida ocurre al enviar.
     setUploadError(null);
-    setUploading(true);
-
-    for (const file of files) {
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const res = await fetch(`/api/patient-requests/${token}/upload`, {
-          method: 'POST',
-          headers: { 'X-Session-Token': sessionToken ?? '' },
-          body: formData,
-        });
-
-        const json = (await res.json()) as
-          | { success: true; data: { id: string; fileName: string } }
-          | { error: string };
-
-        if (!res.ok || !('success' in json)) {
-          setUploadError('error' in json ? json.error : 'Error al subir el archivo.');
-          setUploading(false);
-          return;
-        }
-
-        setUploadedFiles((prev) => [...prev, { id: json.data.id, fileName: json.data.fileName }]);
-      } catch {
-        setUploadError('No se pudo subir el archivo. Verifica tu conexión e intenta de nuevo.');
-        setUploading(false);
-        return;
-      }
-    }
-
-    setUploading(false);
+    setStagedFiles((prev) => [
+      ...prev,
+      ...files.map((file) => ({ id: crypto.randomUUID(), file })),
+    ]);
   }
 
   // ── Envío ──────────────────────────────────────────────────────────────────
@@ -242,6 +217,28 @@ export default function PatientRequestPage() {
     setSubmitError(null);
 
     try {
+      // 1. Subir los adjuntos preparados (recién ahora, para que "Quitar" descarte
+      //    de verdad y no queden huérfanos si el paciente abandona sin enviar).
+      for (const staged of stagedFiles) {
+        const formData = new FormData();
+        formData.append('file', staged.file);
+        const up = await fetch(`/api/patient-requests/${token}/upload`, {
+          method: 'POST',
+          headers: { 'X-Session-Token': sessionToken },
+          body: formData,
+        });
+        const upJson = (await up.json()) as { success?: true } | { error: string };
+        if (!up.ok || !('success' in upJson)) {
+          setSubmitError(
+            'error' in upJson
+              ? `No se pudo subir "${staged.file.name}": ${upJson.error}`
+              : `No se pudo subir "${staged.file.name}".`,
+          );
+          return;
+        }
+      }
+
+      // 2. Enviar la respuesta y marcar la solicitud como cumplida.
       const res = await fetch(`/api/patient-requests/${token}/submit`, {
         method: 'POST',
         headers: {
@@ -442,25 +439,16 @@ export default function PatientRequestPage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
+                    disabled={submitting}
                     className="w-full flex flex-col items-center gap-2 px-4 py-6 border-2 border-dashed border-slate-200 rounded-xl hover:border-teal-300 hover:bg-teal-50/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {uploading ? (
-                      <>
-                        <Loader2 className="w-6 h-6 text-teal-500 animate-spin" />
-                        <span className="text-sm text-slate-500">Subiendo...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-6 h-6 text-slate-400" />
-                        <span className="text-sm font-medium text-slate-600">
-                          Toca para seleccionar archivos
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          JPEG, PNG, WebP o PDF · máx. {MAX_SIZE_MB} MB
-                        </span>
-                      </>
-                    )}
+                    <Upload className="w-6 h-6 text-slate-400" />
+                    <span className="text-sm font-medium text-slate-600">
+                      Toca para seleccionar archivos
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      JPEG, PNG, WebP o PDF · máx. {MAX_SIZE_MB} MB
+                    </span>
                   </button>
 
                   <input
@@ -473,24 +461,25 @@ export default function PatientRequestPage() {
                     onChange={(e) => void handleFileSelect(e)}
                   />
 
-                  {uploadedFiles.length > 0 && (
+                  {stagedFiles.length > 0 && (
                     <ul className="space-y-2">
-                      {uploadedFiles.map((f) => (
+                      {stagedFiles.map((f) => (
                         <li
                           key={f.id}
                           className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
                         >
                           <FileText className="w-4 h-4 text-teal-600 shrink-0" />
                           <span className="text-sm text-slate-700 flex-1 truncate min-w-0">
-                            {f.fileName}
+                            {f.file.name}
                           </span>
                           <button
                             type="button"
+                            disabled={submitting}
                             onClick={() =>
-                              setUploadedFiles((prev) => prev.filter((x) => x.id !== f.id))
+                              setStagedFiles((prev) => prev.filter((x) => x.id !== f.id))
                             }
-                            className="shrink-0 text-slate-400 hover:text-red-500 transition-colors"
-                            aria-label={`Quitar ${f.fileName}`}
+                            className="shrink-0 text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                            aria-label={`Quitar ${f.file.name}`}
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -542,9 +531,7 @@ export default function PatientRequestPage() {
                 <button
                   onClick={() => void handleSubmit()}
                   disabled={
-                    submitting ||
-                    uploading ||
-                    (uploadedFiles.length === 0 && responseText.trim().length === 0)
+                    submitting || (stagedFiles.length === 0 && responseText.trim().length === 0)
                   }
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold bg-teal-500 hover:bg-teal-600 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
@@ -642,12 +629,12 @@ export default function PatientRequestPage() {
                 <p className="text-sm text-slate-600">
                   La información fue enviada correctamente. Tu médico la revisará a la brevedad.
                 </p>
-                {uploadedFiles.length > 0 && (
+                {stagedFiles.length > 0 && (
                   <p className="text-sm text-slate-500">
-                    {uploadedFiles.length} archivo
-                    {uploadedFiles.length !== 1 ? 's' : ''} adjunto
-                    {uploadedFiles.length !== 1 ? 's' : ''} enviado
-                    {uploadedFiles.length !== 1 ? 's' : ''}.
+                    {stagedFiles.length} archivo
+                    {stagedFiles.length !== 1 ? 's' : ''} adjunto
+                    {stagedFiles.length !== 1 ? 's' : ''} enviado
+                    {stagedFiles.length !== 1 ? 's' : ''}.
                   </p>
                 )}
               </div>
