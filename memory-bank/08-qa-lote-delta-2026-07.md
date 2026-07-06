@@ -62,29 +62,48 @@ WHERE id=<doctorId>`. Planes activos: `delta_free`, `delta_base`, `delta_plus` (
   chat de ayuda, **generar informe PDF** (PDF válido, era el bug de "próximamente"), **compartir
   documentos** (enlace + email), botón "Grabar consulta" (transcripción) desbloqueado.
 
-### ✅ RESUELTO — "inconsistencia" de emails = bug determinista (2026-07-06, commit `6da5c0d`, deploy `28823079100`)
+### ✅ RESUELTO + VERIFICADO EN VIVO — "inconsistencia" de emails = DOS bugs encadenados (2026-07-06)
 
-La "inconsistencia" NO era Resend caprichoso. Eran **dos fenómenos distintos**:
+La "inconsistencia" NO era Resend caprichoso. El correo de **confirmación de cita NUNCA se enviaba** por
+**dos bugs encadenados** (el 2º solo visible en runtime — el fix del 1º era necesario pero insuficiente):
 
-1. **Confirmación de cita NUNCA se enviaba** (bug real, arreglado). `appointment-notification.service.ts`
-   pedía las plantillas `appointment_confirmation_online` / `_inperson`, pero en la BD solo existía
-   `appointment_confirmed` (y con placeholders camelCase que tampoco coincidían). `MailerService.findByName`
-   lanzaba `EmailTemplateNotFoundError` **antes** de escribir en `email_send_log`, y un `catch {}` ciego en
-   `sendNotification` lo tragaba → ni correo ni rastro. Esta ruta **nunca funcionó**. **Fix**: migración
-   `20260706000000` siembra ambas plantillas con placeholders snake_case correctos (`patient_name`,
-   `doctor_name`, `appointment_date`, `appointment_time`, `meet_link` / `office_name`+`office_address`);
-   el `catch` ahora loguea el error real; `MailerService` registra un `email_send_log` failed con
-   `errorDetail='template_not_found'` cuando falta una plantilla (visibilidad futura). Migración corrida en
-   prod (`migrated 0.227s`). ⚠️ Nota: el `ics_content` que pasa el código NO se adjunta (el adapter de
-   Resend no soporta adjuntos hoy) — mejora futura si se quiere invitación .ics real.
-2. **Latencia 3min–1h en los correos que SÍ existen** (solicitud/código/factura): eso es entrega
-   async Resend→Gmail (cola + reputación de dominio/greylisting). Externo; "lento pero llega" es correcto.
-   Monitorear en el dashboard de Resend; no es bug de código.
+1. **Plantilla faltante** (commit `6da5c0d`, deploy `28823079100`). `appointment-notification.service.ts`
+   pedía `appointment_confirmation_online` / `_inperson`, pero en la BD solo existía `appointment_confirmed`
+   (y con placeholders camelCase que tampoco coincidían). `MailerService.findByName` lanzaba
+   `EmailTemplateNotFoundError` **antes** de loguear, y un `catch {}` ciego en `sendNotification` lo tragaba.
+   **Fix**: migración `20260706000000` siembra ambas plantillas (placeholders snake_case correctos:
+   `patient_name`, `doctor_name`, `appointment_date`, `appointment_time`, `meet_link`/`office_name`+`office_address`);
+   el `catch` ahora loguea el error real; `MailerService` registra `email_send_log` failed con
+   `errorDetail='template_not_found'` (visibilidad).
+2. **`MailerService` inyectado como `null`** (commit `7c4e3a4`, deploy `28827179134`) — el bug de fondo.
+   En `AppointmentNotificationService` el parámetro estaba tipado `mailer: MailerService | null` con solo
+   `@Optional()`. **Gotcha NestJS**: TypeScript emite `Object` como `design:paramtype` para tipos UNIÓN, así
+   que Nest no resuelve el provider y `@Optional()` lo deja en `null` → log runtime `[notify] MailerService
+not injected — skipping email`. **Fix**: `@Inject(MailerService)` explícito para forzar la resolución por
+   token de clase (el mismo patrón que ya usaba `APPOINTMENT_NOTIFICATION_SERVICE` por idéntica razón).
+   ⚠️ LECCIÓN: cualquier dependencia opcional tipada `X | null` en un constructor NestJS necesita
+   `@Inject(X)` explícito, o entra como null en silencio.
+
+**VERIFICADO END-TO-END EN PROD** (Playwright + Gmail + logs Cloud Run, 2026-07-06 ~18:28 VE): cita creada
+vía `POST /api/doctor/appointments` → logs `mailer sending template='appointment_confirmation_inperson'` →
+`[email:resend] sent id=39741b15-…` → **correo recibido en Gmail** (`noreply@deltasalud.app`, asunto "Cita
+confirmada con Lucas Rivas — 9/7/2026", cuerpo con todos los campos, `hasRawTokens:false`). Antes del fix #2
+el mismo flujo logueaba "MailerService not injected". La latencia 3min–1h de otros correos (solicitud/código)
+sigue siendo entrega async Resend→Gmail (externo, "lento pero llega").
 
 ### ⚠️ ABIERTO / no verificado (para el usuario o próxima sesión)
 
-- **Verificar en vivo la confirmación de cita** (post-fix): crear una cita con paciente que tenga email y
-  confirmar que llega el correo (plantilla online/presencial según modalidad).
+- **`POST /api/patients` → 500 consistente** (crear paciente desde wizard "Nueva consulta"): descubierto en
+  este QA, NO relacionado al fix de email. Respuesta genérica `INTERNAL_ERROR`. El alta de cita usa el upsert
+  propio del módulo booking (otro path) y SÍ funciona; pero crear paciente por el wizard/`/api/patients` está
+  roto. Investigar (revisar Sentry + logs del use-case de creación de paciente).
+- **Hora en el email de confirmación sale en UTC** (mostró 8:30 p.m. para una cita de 16:30 VE): el template
+  usa `new Date(iso).toLocaleTimeString('es-VE')` sin `timeZone:'America/Caracas'` → usa la TZ del server
+  (UTC). Cosmético; corregir el formateo de `appointment_time`/`appointment_date` en la notificación.
+- **Datos de prueba de este QA en prod** (borrables): pacientes "QA Email Confirmacion" (céd 30778812) y
+  "QA Email Confirmacion 2" (30778813) + 2 citas del 9 jul (BK-…-5E7F y BK-…-0295).
+- **Modalidad online**: solo se probó presencial (`appointment_confirmation_inperson`). La plantilla online
+  quedó sembrada e inyección igual; falta una prueba con `appointmentMode:'online'` (usa `meet_link`).
 - **Transcripción de audio E2E**: botón desbloqueado + backend vivo, pero subir audio real no es
   automatizable por el micrófono de Playwright. Prueba manual del usuario.
 - **Evento en Google Calendar end-to-end** tras crear cita: no verificado (Calendar conectado sí).
