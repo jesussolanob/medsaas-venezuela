@@ -25,12 +25,14 @@ Config viaja por `POST /api/doctor/schedule` (mismo endpoint que el horizonte); 
 mapea los 2 campos en ambas direcciones. Booking público recibe `requireReason`+`minLeadDays` vía `GetBookingDoctorInfo`.
 
 **VERIFICACIÓN**: build backend (123 tests del área, incluye lead-time + require-reason + skip-interno) y build
-frontend VERDES; migración corrió en prod; los 3 controles RENDERIZAN bien en prod (/doctor/agenda). ⚠️ PENDIENTE
-de verificar EN VIVO (bloqueado por entorno, NO por código): (a) persistencia round-trip y (b) efecto en booking
-público — el **ID token de Auth0 de la sesión Playwright venció** (~1h; el back rechaza con `AUTH0_TOKEN_INVALID`
-401 → el guardado no persistió en la prueba), y (c) lucas es plan **Free** → su booking público está gated
-("Reservas en línea no disponibles"). Para cerrar el live check: re-login Auth0 fresco + probar con un doctor con
-plan que incluya `booking` (o subir lucas a Base/Plus en la BD).
+frontend VERDES; migración corrió en prod; los 3 controles RENDERIZAN bien en prod (/doctor/agenda). ✅ **Persistencia
+round-trip VERIFICADA EN VIVO** (2026-07-07, tras re-login Auth0): `POST /api/doctor/schedule` con lead=3 + motivo
+ON → 200 → re-GET devuelve `booking_min_lead_days:3` + `booking_require_reason:true` (horizonte preservado); el GET
+config ya incluye ambas claves. Config de lucas restaurada a defaults (0/false) al terminar. ⚠️ Falta solo el efecto
+VISUAL en el booking PÚBLICO (lead time ocultando fechas + motivo obligatorio en el calendario del paciente):
+bloqueado porque lucas es plan **Free** → su booking público está gated ("Reservas en línea no disponibles"). Para
+verlo: subir lucas a Base/Plus en la BD (cloud-sql-proxy) o probar con un doctor con plan que incluya `booking`. La
+lógica de enforcement está cubierta por unit tests (slots vacíos dentro del lead time; errores 400 en create-booking).
 
 ## QA EN PRODUCCIÓN — HECHO ✅ (2026-07-06, cuenta lucas@deltasalud.app)
 
