@@ -15,6 +15,17 @@ export const UpdateDoctorScheduleDtoSchema = z
     break_end: TimeStringSchema.nullable().optional(),
     /** How many weeks ahead booking should show slots. Range 1–52, default 8. */
     booking_horizon_weeks: z.number().int().min(1).max(52).default(8).optional(),
+    /**
+     * When true the public booking form must collect a chief complaint
+     * (motivo de consulta) before the patient can submit.
+     * Default false (motivo is optional).
+     */
+    booking_require_reason: z.boolean().default(false).optional(),
+    /**
+     * Minimum number of calendar days in advance that a public booking can
+     * be placed.  0 = no restriction.  Range 0–90.
+     */
+    booking_min_lead_days: z.number().int().min(0).max(90).default(0).optional(),
   })
   .strict();
 

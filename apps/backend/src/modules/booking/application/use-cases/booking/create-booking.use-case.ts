@@ -25,6 +25,8 @@ import {
   type IBookingFeatureChecker,
 } from '../../../domain/repositories/booking-feature-checker.repository';
 import { BookingNotEnabledError } from '../../../domain/errors/booking-not-enabled.error';
+import { ChiefComplaintRequiredError } from '../../../domain/errors/chief-complaint-required.error';
+import { BookingTooSoonError } from '../../../domain/errors/booking-too-soon.error';
 import {
   PAYMENT_REPOSITORY,
   type IPaymentRepository,
@@ -39,6 +41,10 @@ import {
   AppointmentNotificationService,
   APPOINTMENT_NOTIFICATION_SERVICE,
 } from '../../../../integrations/application/services/appointment-notification.service';
+import {
+  DOCTOR_SCHEDULE_REPOSITORY,
+  type IDoctorScheduleRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -123,11 +129,24 @@ export class CreateBookingUseCase {
     @Optional()
     @Inject(BOOKING_FEATURE_CHECKER)
     private readonly featureChecker: IBookingFeatureChecker | null = null,
+    /**
+     * Doctor schedule repository — optional for backward compatibility with
+     * existing tests that do not inject it. When present, validates patient
+     * booking rules: require_reason and min_lead_days.
+     *
+     * Rules are skipped when `skipPatientBookingRules=true` (doctor-initiated
+     * internal flow from DoctorBookingController).
+     *
+     * TODO(cleanup): make required once all test suites are updated.
+     */
+    @Optional()
+    @Inject(DOCTOR_SCHEDULE_REPOSITORY)
+    private readonly scheduleRepo: IDoctorScheduleRepository | null = null,
   ) {}
 
   async execute(
     dto: CreateBookingDto,
-    options?: { skipBookingFeatureGate?: boolean },
+    options?: { skipBookingFeatureGate?: boolean; skipPatientBookingRules?: boolean },
   ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
     // TODO(etapa-2): POST to https://challenges.cloudflare.com/turnstile/v0/siteverify
@@ -170,8 +189,54 @@ export class CreateBookingUseCase {
       }
     }
 
-    // --- Step 3: Verify slot availability (overlap detection) ---
+    // scheduledAt is computed here so that step 2c (lead-time validation) and
+    // step 3 (overlap detection) can share the same parsed Date instance.
     const scheduledAt = new Date(dto.scheduled_at);
+
+    // --- Step 2c: Validate patient booking rules (require_reason + lead_time) ---
+    // These restrictions apply to public bookings only. When the doctor schedules
+    // an appointment internally (DoctorBookingController) the flag
+    // `skipPatientBookingRules=true` bypasses this block entirely.
+    if (!options?.skipPatientBookingRules && this.scheduleRepo) {
+      const schedule = await this.scheduleRepo.findByDoctorId(dto.doctor_id);
+
+      // Validate chief complaint requirement
+      if (schedule?.bookingRequireReason === true && !dto.chief_complaint?.trim()) {
+        throw new ChiefComplaintRequiredError();
+      }
+
+      // Validate minimum lead time
+      const minLeadDays = schedule?.bookingMinLeadDays ?? 0;
+      if (minLeadDays > 0) {
+        const CARACAS_OFFSET = '-04:00';
+        const nowCaracasDateStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Caracas',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date());
+        const todayCaracas = new Date(`${nowCaracasDateStr}T00:00:00.000${CARACAS_OFFSET}`);
+        const minBookableDate = new Date(todayCaracas);
+        minBookableDate.setDate(minBookableDate.getDate() + minLeadDays);
+
+        // Compare at day granularity in Caracas local time
+        const scheduledCaracasDateStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Caracas',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(scheduledAt);
+        const scheduledDateCaracas = new Date(
+          `${scheduledCaracasDateStr}T00:00:00.000${CARACAS_OFFSET}`,
+        );
+
+        if (scheduledDateCaracas < minBookableDate) {
+          throw new BookingTooSoonError(minLeadDays);
+        }
+      }
+    }
+
+    // --- Step 3: Verify slot availability (overlap detection) ---
     const hasConflict = await this.appointmentRepo.hasOverlap({
       doctorId: dto.doctor_id,
       scheduledAt,

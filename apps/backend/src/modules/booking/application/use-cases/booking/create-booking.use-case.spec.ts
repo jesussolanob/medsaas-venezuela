@@ -4,7 +4,11 @@ import {
   PatientNotFoundError,
 } from './create-booking.use-case';
 import { BookingNotEnabledError } from '../../../domain/errors/booking-not-enabled.error';
+import { ChiefComplaintRequiredError } from '../../../domain/errors/chief-complaint-required.error';
+import { BookingTooSoonError } from '../../../domain/errors/booking-too-soon.error';
 import { CreateBookingDtoSchema } from '@delta/shared-types';
+import type { IDoctorScheduleRepository } from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
+import type { DoctorScheduleParams } from '../../../../doctor-settings/domain/value-objects/doctor-schedule.vo';
 import type {
   IBookingDoctorLoader,
   DoctorPublicInfo,
@@ -789,6 +793,135 @@ describe('CreateBookingUseCase', () => {
 
       await expect(ucWithChecker.execute(makeDto())).rejects.toThrow(BookingNotEnabledError);
       expect(mockFeatureChecker.isBookingEnabled).toHaveBeenCalledWith('doc-001');
+    });
+  });
+
+  describe('patient booking rules — require_reason and lead_time', () => {
+    function makeScheduleParams(
+      overrides: Partial<DoctorScheduleParams> = {},
+    ): DoctorScheduleParams {
+      return {
+        workDays: [1, 2, 3, 4, 5],
+        startTime: '08:00',
+        endTime: '17:00',
+        slotDurationMinutes: 30,
+        breakStart: null,
+        breakEnd: null,
+        bookingRequireReason: false,
+        bookingMinLeadDays: 0,
+        ...overrides,
+      };
+    }
+
+    function makeUseCaseWithSchedule(scheduleParams: DoctorScheduleParams | null) {
+      const scheduleRepo: jest.Mocked<IDoctorScheduleRepository> = {
+        findByDoctorId: jest.fn().mockResolvedValue(scheduleParams),
+        upsert: jest.fn(),
+      };
+      return new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null, // paymentRepo
+        mockResolveIdentity,
+        null, // officeRepo
+        null, // notificationService
+        null, // featureChecker
+        scheduleRepo,
+      );
+    }
+
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+    });
+
+    it('throws ChiefComplaintRequiredError when bookingRequireReason=true and chief_complaint is absent', async () => {
+      const uc = makeUseCaseWithSchedule(makeScheduleParams({ bookingRequireReason: true }));
+
+      await expect(uc.execute(makeDto({ chief_complaint: undefined }))).rejects.toBeInstanceOf(
+        ChiefComplaintRequiredError,
+      );
+    });
+
+    it('throws ChiefComplaintRequiredError when bookingRequireReason=true and chief_complaint is whitespace', async () => {
+      const uc = makeUseCaseWithSchedule(makeScheduleParams({ bookingRequireReason: true }));
+
+      await expect(uc.execute(makeDto({ chief_complaint: '   ' }))).rejects.toBeInstanceOf(
+        ChiefComplaintRequiredError,
+      );
+    });
+
+    it('proceeds when bookingRequireReason=true and chief_complaint is provided', async () => {
+      const uc = makeUseCaseWithSchedule(makeScheduleParams({ bookingRequireReason: true }));
+
+      await expect(
+        uc.execute(makeDto({ chief_complaint: 'Dolor de cabeza' })),
+      ).resolves.toBeDefined();
+    });
+
+    it('ChiefComplaintRequiredError carries httpStatus 400 and stable code', () => {
+      const err = new ChiefComplaintRequiredError();
+      expect(err.httpStatus).toBe(400);
+      expect(err.code).toBe('CHIEF_COMPLAINT_REQUIRED');
+    });
+
+    it('throws BookingTooSoonError when scheduled date violates the lead-time rule', async () => {
+      // bookingMinLeadDays=90 means any date within 90 days of today is blocked.
+      // makeDto uses scheduled_at='2026-07-01T10:00:00Z' (past date as of 2026-07-06)
+      // → July 1 < today + 90 days → must throw.
+      const uc = makeUseCaseWithSchedule(makeScheduleParams({ bookingMinLeadDays: 90 }));
+
+      await expect(uc.execute(makeDto())).rejects.toBeInstanceOf(BookingTooSoonError);
+    });
+
+    it('does not throw BookingTooSoonError when scheduled date satisfies the lead-time rule', async () => {
+      // bookingMinLeadDays=1, scheduled far into the future (2099-01-01).
+      const uc = makeUseCaseWithSchedule(makeScheduleParams({ bookingMinLeadDays: 1 }));
+
+      await expect(
+        uc.execute(makeDto({ scheduled_at: '2099-01-01T10:00:00Z' })),
+      ).resolves.toBeDefined();
+    });
+
+    it('BookingTooSoonError carries httpStatus 400 and stable code', () => {
+      const err = new BookingTooSoonError(3);
+      expect(err.httpStatus).toBe(400);
+      expect(err.code).toBe('BOOKING_TOO_SOON');
+      expect(err.message).toContain('3');
+    });
+
+    it('skips both rules when skipPatientBookingRules=true (doctor internal flow)', async () => {
+      // Both rules would fire: no chief_complaint + date within 90-day restriction.
+      const uc = makeUseCaseWithSchedule(
+        makeScheduleParams({ bookingRequireReason: true, bookingMinLeadDays: 90 }),
+      );
+
+      // Should succeed because the doctor flag bypasses patient-facing restrictions.
+      await expect(
+        uc.execute(makeDto({ chief_complaint: undefined }), { skipPatientBookingRules: true }),
+      ).resolves.toBeDefined();
+    });
+
+    it('still applies rules when scheduleRepo is null (no schedule repo injected)', async () => {
+      // When scheduleRepo is null (backward-compat), rules are silently skipped.
+      // useCase in the outer beforeEach has no scheduleRepo → no throw.
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(null);
+      mockPatientRepo.findByCedulaHash.mockResolvedValue(null);
+      mockPatientRepo.save.mockImplementation(async (p) => p);
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+
+      // useCase constructed in outer beforeEach has no scheduleRepo (null)
+      await expect(useCase.execute(makeDto({ chief_complaint: undefined }))).resolves.toBeDefined();
     });
   });
 

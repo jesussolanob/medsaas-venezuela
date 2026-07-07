@@ -52,6 +52,14 @@ export class DoctorScheduleModel extends Model {
   @Column({ type: DataType.INTEGER, allowNull: false, field: 'booking_horizon_weeks' })
   declare bookingHorizonWeeks: number;
 
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'booking_require_reason' })
+  declare bookingRequireReason: boolean;
+
+  @Default(0)
+  @Column({ type: DataType.INTEGER, allowNull: false, field: 'booking_min_lead_days' })
+  declare bookingMinLeadDays: number;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

@@ -27,6 +27,8 @@ export class SequelizeDoctorScheduleRepository implements IDoctorScheduleReposit
       breakStart: params.breakStart,
       breakEnd: params.breakEnd,
       bookingHorizonWeeks: params.bookingHorizonWeeks ?? 8,
+      bookingRequireReason: params.bookingRequireReason ?? false,
+      bookingMinLeadDays: params.bookingMinLeadDays ?? 0,
     });
     return this.toDomain(row);
   }
@@ -40,6 +42,8 @@ export class SequelizeDoctorScheduleRepository implements IDoctorScheduleReposit
       breakStart: row.breakStart,
       breakEnd: row.breakEnd,
       bookingHorizonWeeks: row.bookingHorizonWeeks ?? 8,
+      bookingRequireReason: row.bookingRequireReason ?? false,
+      bookingMinLeadDays: row.bookingMinLeadDays ?? 0,
     };
   }
 }

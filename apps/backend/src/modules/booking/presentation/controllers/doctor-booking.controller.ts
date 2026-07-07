@@ -55,6 +55,9 @@ export class DoctorBookingController {
 
     const result = await this.createBooking.execute(internalDto, {
       skipBookingFeatureGate: true,
+      // Doctor-initiated bookings bypass patient-facing rules (require_reason,
+      // min_lead_days) — the doctor can always schedule regardless of those.
+      skipPatientBookingRules: true,
     });
 
     return {

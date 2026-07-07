@@ -158,6 +158,8 @@ export class DoctorController {
       breakStart: dto.break_start ?? null,
       breakEnd: dto.break_end ?? null,
       bookingHorizonWeeks: dto.booking_horizon_weeks ?? 8,
+      bookingRequireReason: dto.booking_require_reason ?? false,
+      bookingMinLeadDays: dto.booking_min_lead_days ?? 0,
     });
     return { success: true, data: result };
   }

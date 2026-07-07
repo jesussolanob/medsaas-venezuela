@@ -149,7 +149,10 @@ function makeBlockRepo(
   } as jest.Mocked<IAvailabilityBlockRepository>;
 }
 
-function makeScheduleRepo(horizonWeeks = 8): jest.Mocked<IDoctorScheduleRepository> {
+function makeScheduleRepo(
+  horizonWeeks = 8,
+  minLeadDays = 0,
+): jest.Mocked<IDoctorScheduleRepository> {
   const params: DoctorScheduleParams = {
     workDays: [1, 2, 3, 4, 5],
     startTime: '08:00',
@@ -158,6 +161,8 @@ function makeScheduleRepo(horizonWeeks = 8): jest.Mocked<IDoctorScheduleReposito
     breakStart: null,
     breakEnd: null,
     bookingHorizonWeeks: horizonWeeks,
+    bookingMinLeadDays: minLeadDays,
+    bookingRequireReason: false,
   };
   return {
     findByDoctorId: jest.fn().mockResolvedValue(params),
@@ -630,6 +635,45 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
       const result = await useCase.execute(DOCTOR_ID, '2026-08-04');
 
       expect(result.slots).toHaveLength(0);
+    });
+  });
+
+  // ─── Lead-time enforcement (bookingMinLeadDays) ───────────────────────────
+
+  describe('lead-time enforcement (bookingMinLeadDays)', () => {
+    // FIXED_TODAY = 2026-06-08 (Monday).
+    // All tests in this group use fake timers inherited from the outer beforeAll.
+
+    it('returns empty slots when date falls within the minimum lead-time window', async () => {
+      // minLeadDays=8 → earliest bookable = 2026-06-08 + 8 = 2026-06-16.
+      // 2026-06-15 (Monday, 7 days ahead) is inside the window → must be empty.
+      scheduleRepo = makeScheduleRepo(8, 8);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, '2026-06-15');
+
+      expect(result.slots).toHaveLength(0);
+    });
+
+    it('returns slots when date is beyond the minimum lead-time window', async () => {
+      // minLeadDays=3 → earliest bookable = 2026-06-08 + 3 = 2026-06-11.
+      // 2026-06-15 (Monday, 7 days ahead) is beyond that → office has Monday slots.
+      scheduleRepo = makeScheduleRepo(8, 3);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, '2026-06-15');
+
+      expect(result.slots.length).toBeGreaterThan(0);
+    });
+
+    it('returns slots normally for today when minLeadDays is 0 (no restriction)', async () => {
+      // DATE_STR = 2026-06-08 (today); minLeadDays=0 → same lower bound as before.
+      scheduleRepo = makeScheduleRepo(8, 0);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      expect(result.slots.length).toBeGreaterThan(0);
     });
   });
 

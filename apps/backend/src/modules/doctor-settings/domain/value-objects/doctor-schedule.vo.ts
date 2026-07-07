@@ -21,6 +21,17 @@ export interface DoctorScheduleParams {
   breakEnd: string | null; // HH:MM or null
   /** How many weeks ahead to show available slots in the booking widget. Range 1–52. */
   bookingHorizonWeeks?: number; // default 8
+  /**
+   * When true the booking form must collect a chief complaint (motivo de
+   * consulta) from the patient before the booking can be submitted.
+   * Default false (motivo is optional).
+   */
+  bookingRequireReason?: boolean;
+  /**
+   * Minimum number of calendar days in advance that a public booking can be
+   * placed.  0 = no restriction.  Range 0–90.
+   */
+  bookingMinLeadDays?: number;
 }
 
 /** Default schedule returned when no schedule is configured: Mon–Fri, 08:00–17:00, 30 min. */
@@ -32,6 +43,8 @@ export const DEFAULT_SCHEDULE: DoctorScheduleParams = {
   breakStart: null,
   breakEnd: null,
   bookingHorizonWeeks: 8,
+  bookingRequireReason: false,
+  bookingMinLeadDays: 0,
 };
 
 /** Parse "HH:MM" into total minutes from midnight. */
@@ -57,6 +70,10 @@ export class DoctorSchedule {
   readonly breakStart: string | null;
   readonly breakEnd: string | null;
   readonly bookingHorizonWeeks: number;
+  /** Whether the booking form must collect a chief complaint. Default false. */
+  readonly bookingRequireReason: boolean;
+  /** Minimum calendar days ahead required for public bookings. Default 0. */
+  readonly bookingMinLeadDays: number;
 
   constructor(params: DoctorScheduleParams) {
     this.workDays = params.workDays;
@@ -66,6 +83,8 @@ export class DoctorSchedule {
     this.breakStart = params.breakStart ?? null;
     this.breakEnd = params.breakEnd ?? null;
     this.bookingHorizonWeeks = params.bookingHorizonWeeks ?? 8;
+    this.bookingRequireReason = params.bookingRequireReason ?? false;
+    this.bookingMinLeadDays = params.bookingMinLeadDays ?? 0;
   }
 
   /**

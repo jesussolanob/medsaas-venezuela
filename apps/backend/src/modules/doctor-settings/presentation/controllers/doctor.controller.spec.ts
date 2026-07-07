@@ -323,6 +323,8 @@ describe('DoctorController', () => {
         breakStart: null,
         breakEnd: null,
         bookingHorizonWeeks: 8,
+        bookingRequireReason: false,
+        bookingMinLeadDays: 0,
       });
     });
   });

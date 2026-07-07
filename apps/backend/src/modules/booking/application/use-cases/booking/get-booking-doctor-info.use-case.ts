@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   BOOKING_DOCTOR_LOADER,
   type IBookingDoctorLoader,
@@ -9,10 +9,18 @@ import {
   type IBookingFeatureChecker,
 } from '../../../domain/repositories/booking-feature-checker.repository';
 import { DoctorNotFoundError } from './create-booking.use-case';
+import {
+  DOCTOR_SCHEDULE_REPOSITORY,
+  type IDoctorScheduleRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
 
 export interface DoctorPublicInfoWithBooking extends DoctorPublicInfo {
   /** Whether the doctor's effective subscription plan includes online booking. */
   bookingEnabled: boolean;
+  /** Whether the booking form must collect a chief complaint (motivo de consulta). */
+  requireReason: boolean;
+  /** Minimum calendar days ahead required for public bookings (0 = no restriction). */
+  minLeadDays: number;
 }
 
 /**
@@ -32,6 +40,14 @@ export class GetBookingDoctorInfoUseCase {
     private readonly doctorLoader: IBookingDoctorLoader,
     @Inject(BOOKING_FEATURE_CHECKER)
     private readonly featureChecker: IBookingFeatureChecker,
+    /**
+     * Schedule repository — optional for backward compatibility with existing
+     * tests that do not inject it. When absent, requireReason and minLeadDays
+     * default to false / 0 (no restrictions).
+     */
+    @Optional()
+    @Inject(DOCTOR_SCHEDULE_REPOSITORY)
+    private readonly scheduleRepo: IDoctorScheduleRepository | null = null,
   ) {}
 
   async execute(doctorId: string): Promise<DoctorPublicInfoWithBooking> {
@@ -40,8 +56,17 @@ export class GetBookingDoctorInfoUseCase {
       throw new DoctorNotFoundError();
     }
 
-    const bookingEnabled = await this.featureChecker.isBookingEnabled(doctorId);
+    // Load feature flag and schedule in parallel — both are independent reads.
+    const [bookingEnabled, schedule] = await Promise.all([
+      this.featureChecker.isBookingEnabled(doctorId),
+      this.scheduleRepo ? this.scheduleRepo.findByDoctorId(doctorId) : Promise.resolve(null),
+    ]);
 
-    return { ...info, bookingEnabled };
+    return {
+      ...info,
+      bookingEnabled,
+      requireReason: schedule?.bookingRequireReason ?? false,
+      minLeadDays: schedule?.bookingMinLeadDays ?? 0,
+    };
   }
 }

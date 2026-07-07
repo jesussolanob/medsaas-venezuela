@@ -97,11 +97,12 @@ export class GetAvailableSlotsUseCase {
       throw new DoctorNotFoundError();
     }
 
-    // 2. Load booking horizon for this doctor (default 8 weeks)
+    // 2. Load booking horizon and minimum lead time for this doctor
     const schedule = await this.scheduleRepo.findByDoctorId(doctorId);
     const horizonWeeks = schedule?.bookingHorizonWeeks ?? 8;
+    const minLeadDays = schedule?.bookingMinLeadDays ?? 0;
 
-    // 3. Horizon check — date must be today or later, and within the horizon window.
+    // 3. Horizon + lead-time check.
     //    Boundaries are expressed as Caracas midnight (offset -04:00) so that the
     //    "current Caracas day" is used for comparison, not the UTC calendar day.
     const requestedDate = new Date(`${dateStr}T00:00:00.000${CARACAS_OFFSET}`);
@@ -119,7 +120,12 @@ export class GetAvailableSlotsUseCase {
     const horizonEnd = new Date(todayCaracas);
     horizonEnd.setDate(horizonEnd.getDate() + horizonWeeks * 7);
 
-    if (requestedDate < todayCaracas || requestedDate >= horizonEnd) {
+    // Earliest bookable date = today + minLeadDays.
+    // When minLeadDays=0 this equals todayCaracas (same behavior as before).
+    const minBookableDate = new Date(todayCaracas);
+    minBookableDate.setDate(minBookableDate.getDate() + minLeadDays);
+
+    if (requestedDate < minBookableDate || requestedDate >= horizonEnd) {
       return { date: dateStr, slots: [] };
     }
 
