@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useTransition, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Users,
   Plus,
@@ -54,7 +54,6 @@ import {
   getPatientDetail,
   getConsultations,
   createConsultation,
-  updateConsultationStatus,
   updateConsultationNotes,
   getAllActivePackages,
   type Patient,
@@ -73,6 +72,7 @@ import MarkdownText from '@/components/shared/MarkdownText';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 import { showToast } from '@/components/ui/Toaster';
 import NewRequestModal from '@/components/patient-requests/NewRequestModal';
+import RequestDetailModal from '@/app/doctor/patient-requests/RequestDetailModal';
 
 // Inline type (mirrors @/lib/shared-files.SharedFile) — no Supabase dependency.
 // Fase 5: replace with backend endpoint and remove this local type.
@@ -88,6 +88,38 @@ type SharedFile = {
   file_size_bytes: number | null;
   created_at: string;
 };
+
+// Solicitudes de documentos al paciente (módulo patient-requests, ya cableado al
+// backend). En la ficha se listan las solicitudes de ESTE paciente y se abre el
+// detalle (adjuntos descargables) reusando RequestDetailModal.
+interface PatientRequestItem {
+  id: string;
+  patientId: string;
+  patientName: string;
+  title: string;
+  description: string | null;
+  status: 'pending' | 'fulfilled' | 'revoked';
+  attachmentCount: number;
+  createdAt: string;
+  fulfilledAt: string | null;
+}
+
+const REQUEST_STATUS_LABEL: Record<PatientRequestItem['status'], { label: string; cls: string }> = {
+  pending: { label: 'Pendiente', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  fulfilled: {
+    label: 'Respondida',
+    cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  },
+  revoked: { label: 'Revocada', cls: 'bg-slate-100 text-slate-500 border border-slate-200' },
+};
+
+function formatRequestDate(iso: string): string {
+  return new Intl.DateTimeFormat('es-VE', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(iso));
+}
 
 // PatientPackageInfo imported from ./actions (same shape as the previous local interface).
 
@@ -146,6 +178,11 @@ type DetailTab = 'consultas' | 'historial' | 'seguimiento';
 
 export default function PatientsPage() {
   const router = useRouter();
+  // Deep-link: /doctor/patients?open=<patientId> abre directo la ficha del paciente
+  // (usado desde el módulo de consultas). Se resuelve al cargar la lista.
+  const searchParams = useSearchParams();
+  const openPatientParam = searchParams.get('open');
+  const deepLinkHandledRef = useRef(false);
   const [doctorId, setDoctorId] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,6 +234,10 @@ export default function PatientsPage() {
   const [appointmentFlowPatientId, setAppointmentFlowPatientId] = useState<string | null>(null);
   // Modal de solicitud de documentos al paciente
   const [showRequestModal, setShowRequestModal] = useState(false);
+  // Solicitudes de documentos de ESTE paciente (feed en la tab Seguimiento).
+  const [patientRequests, setPatientRequests] = useState<PatientRequestItem[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [detailRequestId, setDetailRequestId] = useState<string | null>(null);
 
   // Edit patient
   const [editing, setEditing] = useState(false);
@@ -292,6 +333,14 @@ export default function PatientsPage() {
       getPatients(id).then((p) => {
         setPatients(p);
         setLoading(false);
+        // Deep-link: si viene ?open=<patientId> y existe, abrir su ficha directo.
+        if (openPatientParam && !deepLinkHandledRef.current) {
+          const match = p.find((x) => x.id === openPatientParam);
+          if (match) {
+            deepLinkHandledRef.current = true;
+            openPatient(match);
+          }
+        }
       });
 
       // Load package info — GET /api/packages/doctor?status=active
@@ -434,6 +483,30 @@ export default function PatientsPage() {
     });
     // RONDA 40: cargar shared_files del paciente
     loadSharedFiles(p.id);
+    // Solicitudes de documentos de este paciente (feed en la tab Seguimiento).
+    void loadPatientRequests(p.id);
+  }
+
+  // Carga las solicitudes de documentos del médico y filtra las de este paciente.
+  // El backend (/api/doctor/patient-requests) devuelve todas las del médico con su
+  // patientId; aquí filtramos en cliente (la lista por médico es acotada).
+  async function loadPatientRequests(patientId: string) {
+    setRequestsLoading(true);
+    try {
+      const res = await fetch('/api/doctor/patient-requests');
+      const json = (await res.json()) as
+        | { success: true; data: { items: PatientRequestItem[] } }
+        | { error: string };
+      if (res.ok && 'success' in json) {
+        setPatientRequests((json.data.items ?? []).filter((r) => r.patientId === patientId));
+      } else {
+        setPatientRequests([]);
+      }
+    } catch {
+      setPatientRequests([]);
+    } finally {
+      setRequestsLoading(false);
+    }
   }
 
   // RONDA 40: shared_files — no backend endpoint in Etapa 1.
@@ -633,13 +706,6 @@ export default function PatientsPage() {
       setConsultError(err?.message || 'Error al crear consulta');
     }
     setUploadingReceipt(false);
-  }
-
-  function handleStatusChange(consultId: string, status: 'pending' | 'approved') {
-    startTransition(async () => {
-      await updateConsultationStatus(consultId, status);
-      if (selected) getConsultations(selected.id).then(setConsultations);
-    });
   }
 
   const filtered = patients.filter((p) => {
@@ -962,6 +1028,27 @@ export default function PatientsPage() {
                     <FileUp className="w-4 h-4" />
                     <span className="hidden sm:inline">Solicitar docs</span>
                   </button>
+                  {/* Acceso directo a los documentos que el paciente subió: abre el modal
+                      de la solicitud (prioriza la que tenga adjuntos). Solo visible si hay
+                      solicitudes. El listado completo vive en la tab Seguimiento y en
+                      /doctor/patient-requests. */}
+                  {patientRequests.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const target =
+                          patientRequests.find((r) => r.attachmentCount > 0) ?? patientRequests[0];
+                        setDetailRequestId(target.id);
+                      }}
+                      className="flex items-center justify-center sm:justify-start gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-teal-700 border border-teal-200 bg-teal-50 hover:bg-teal-100 transition-colors"
+                      title="Ver documentos del paciente"
+                    >
+                      <FolderHeart className="w-4 h-4" />
+                      <span className="hidden sm:inline">
+                        Documentos ({patientRequests.length})
+                      </span>
+                      <span className="sm:hidden">{patientRequests.length}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1315,23 +1402,14 @@ export default function PatientsPage() {
                               )}
                             </div>
                             <div className="shrink-0 flex flex-col items-end gap-2">
+                              {/* Estado de pago: SOLO lectura aquí. La aprobación del pago se
+                                  gestiona en Cobros o en el detalle de la consulta (flujo dedicado
+                                  approve-payment, que es one-way pending→aprobado). */}
                               <span
                                 className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${st.color}`}
                               >
                                 {st.icon} {st.label}
                               </span>
-                              {/* Estado de pago — solo 2 estados. Un pago no se cancela. */}
-                              <select
-                                value={c.payment_status === 'approved' ? 'approved' : 'pending'}
-                                onChange={(e) =>
-                                  handleStatusChange(c.id, e.target.value as 'pending' | 'approved')
-                                }
-                                disabled={isPending}
-                                className="text-xs border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-teal-400 text-slate-600 cursor-pointer"
-                              >
-                                <option value="pending">Pendiente</option>
-                                <option value="approved">Aprobado</option>
-                              </select>
                             </div>
                           </div>
                         </div>
@@ -1569,6 +1647,75 @@ export default function PatientsPage() {
                   </div>
                 )}
 
+                {/* Solicitudes de documentos (patient-requests, backend real) */}
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileUp className="w-4 h-4 text-teal-600 shrink-0" />
+                      <h3 className="text-sm font-bold text-slate-900 truncate">
+                        Solicitudes de documentos ({patientRequests.length})
+                      </h3>
+                      {requestsLoading && (
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-400 shrink-0" />
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setShowRequestModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-teal-600 border border-teal-200 hover:bg-teal-50 transition-colors shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Nueva
+                    </button>
+                  </div>
+                  {patientRequests.length === 0 ? (
+                    <div className="text-center py-8 px-4">
+                      <p className="text-sm text-slate-500 font-medium">Sin solicitudes aún</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Pídele al paciente que adjunte un examen o documento. Cuando responda, los
+                        archivos aparecerán aquí.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {patientRequests.map((r) => {
+                        const st = REQUEST_STATUS_LABEL[r.status];
+                        return (
+                          <button
+                            key={r.id}
+                            onClick={() => setDetailRequestId(r.id)}
+                            className="w-full flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-slate-50 transition-colors text-left"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-semibold text-slate-800 truncate">
+                                  {r.title}
+                                </p>
+                                <span
+                                  className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.cls}`}
+                                >
+                                  {st.label}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-0.5">
+                                <span className="text-xs text-slate-400 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {formatRequestDate(r.createdAt)}
+                                </span>
+                                {r.attachmentCount > 0 && (
+                                  <span className="flex items-center gap-1 text-xs text-teal-600 font-medium">
+                                    <FileText className="w-3 h-3" />
+                                    {r.attachmentCount} adjunto{r.attachmentCount !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* Crear instruccion / tarea para el paciente */}
                 <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-4 sm:p-5">
                   <div className="flex items-start gap-3 mb-3">
@@ -1607,8 +1754,7 @@ export default function PatientsPage() {
                           try {
                             showToast({
                               type: 'info',
-                              message:
-                                'Función de seguimiento no disponible aún. Disponible en Fase 5.',
+                              message: 'Esta función estará disponible próximamente.',
                             });
                             setNewInstructionTitle('');
                             setNewInstructionDesc('');
@@ -1780,8 +1926,7 @@ export default function PatientsPage() {
                                       // Etapa 1: no backend endpoint for shared_files. No-op.
                                       showToast({
                                         type: 'info',
-                                        message:
-                                          'Función de seguimiento no disponible aún. Disponible en Fase 5.',
+                                        message: 'Esta función estará disponible próximamente.',
                                       });
                                     }}
                                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -1861,7 +2006,7 @@ export default function PatientsPage() {
                   // Fase 5: wire POST /api/shared-files/comment here.
                   showToast({
                     type: 'info',
-                    message: 'Función de seguimiento no disponible aún. Disponible en Fase 5.',
+                    message: 'Esta función estará disponible próximamente.',
                   });
                 }}
                 disabled={!doctorUploadDesc.trim()}
@@ -1880,7 +2025,7 @@ export default function PatientsPage() {
                 onUpload={async (_file) => {
                   // Etapa 1: shared_files upload has no backend endpoint. No-op stub.
                   // Fase 5: wire storage upload + POST /api/shared-files here.
-                  throw new Error('Carga de archivos de seguimiento no disponible aún (Fase 5)');
+                  throw new Error('Carga de archivos de seguimiento disponible próximamente');
                 }}
                 label="Suelta o selecciona el archivo"
               />
@@ -1943,7 +2088,7 @@ export default function PatientsPage() {
                       // Fase 5: wire PATCH /api/shared-files/:id here.
                       showToast({
                         type: 'info',
-                        message: 'Edición de archivos de seguimiento no disponible aún (Fase 5).',
+                        message: 'Edición de archivos de seguimiento disponible próximamente.',
                       });
                       setEditingFile(null);
                     } finally {
@@ -1974,7 +2119,7 @@ export default function PatientsPage() {
                     onUpload={async (_file) => {
                       // Etapa 1: no backend endpoint for shared_files. No-op stub.
                       // Fase 5: wire PATCH /api/shared-files/:id/attach here.
-                      throw new Error('Adjuntar archivo de seguimiento no disponible aún (Fase 5)');
+                      throw new Error('Adjuntar archivo de seguimiento disponible próximamente');
                     }}
                     label="Adjuntar archivo a esta tarea"
                     helperText="PDF, JPG o PNG. Máximo 20MB."
@@ -2002,9 +2147,7 @@ export default function PatientsPage() {
                     onUpload={async (_file) => {
                       // Etapa 1: no backend endpoint for shared_files. No-op stub.
                       // Fase 5: wire PATCH /api/shared-files/:id/attach here.
-                      throw new Error(
-                        'Reemplazar archivo de seguimiento no disponible aún (Fase 5)',
-                      );
+                      throw new Error('Reemplazar archivo de seguimiento disponible próximamente');
                     }}
                     label="Reemplazar archivo"
                     helperText="Sube un nuevo archivo para reemplazar el actual."
@@ -2773,10 +2916,17 @@ export default function PatientsPage() {
               type: 'success',
               message: 'Solicitud enviada. El paciente recibirá un email.',
             });
+            // Refrescar el feed de solicitudes de la ficha.
+            if (selected) void loadPatientRequests(selected.id);
           }}
           patients={patients.map((p) => ({ id: p.id, full_name: p.full_name ?? '' }))}
           defaultPatient={{ id: selected.id, name: selected.full_name ?? '' }}
         />
+      )}
+
+      {/* Modal: detalle de solicitud de documentos (adjuntos descargables) */}
+      {detailRequestId !== null && (
+        <RequestDetailModal requestId={detailRequestId} onClose={() => setDetailRequestId(null)} />
       )}
     </>
   );

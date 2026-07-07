@@ -34,6 +34,7 @@ import {
   Megaphone,
   CheckCircle,
   Lock,
+  FileUp,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
@@ -75,6 +76,9 @@ const navSections: NavSection[] = [
       },
       { name: 'Consultorios', href: '/doctor/offices', icon: Building2 },
       { name: 'Plantillas', href: '/doctor/templates', icon: FileEdit },
+      // Solicitudes de documentos al paciente. Sin moduleKey → siempre visible
+      // (no está gateado por plan/capacidad, igual que Consultorios/Plantillas).
+      { name: 'Solicitudes', href: '/doctor/patient-requests', icon: FileUp },
     ],
   },
   {
@@ -98,6 +102,36 @@ const navSections: NavSection[] = [
 ];
 
 const allNavItems: NavItem[] = [...topItems, ...navSections.flatMap((s) => s.items)];
+
+// Route → plan feature key para el guard de ACCESO por plan.
+// El sidebar oculta/pone candado a los items bloqueados, pero eso es SOLO visual:
+// sin este guard, entrar por URL directa o por un enlace desde otro módulo
+// (dashboard, flujo de cita, etc.) saltaba el candado. Aquí se valida el módulo
+// de la ruta actual contra el plan efectivo del doctor. Rutas sin entrada en este
+// mapa son siempre accesibles (Consultorios/Plantillas/Sugerencias/Upgrade, etc.),
+// coherente con la semántica de planUnlocks() para items sin moduleKey.
+const PLAN_GATED_ROUTES: ReadonlyArray<{ prefix: string; moduleKey: string }> = [
+  { prefix: '/doctor/agenda', moduleKey: 'agenda' },
+  { prefix: '/doctor/finances', moduleKey: 'finances' },
+  { prefix: '/doctor/cobros', moduleKey: 'finances' },
+  { prefix: '/doctor/billing', moduleKey: 'billing' },
+  { prefix: '/doctor/services', moduleKey: 'services' },
+  { prefix: '/doctor/reminders', moduleKey: 'reminders' },
+  { prefix: '/doctor/crm', moduleKey: 'crm' },
+  { prefix: '/doctor/ehr', moduleKey: 'ehr' },
+  { prefix: '/doctor/messages', moduleKey: 'messages' },
+  { prefix: '/doctor/reports', moduleKey: 'reports' },
+  { prefix: '/doctor/patients', moduleKey: 'patients' },
+  { prefix: '/doctor/consultations', moduleKey: 'consultations' },
+];
+
+/** Resuelve la feature key de plan que gatea una ruta del doctor, o null si es libre. */
+function resolveGatedModuleKey(pathname: string): string | null {
+  const match = PLAN_GATED_ROUTES.filter(
+    (r) => pathname === r.prefix || pathname.startsWith(r.prefix + '/'),
+  ).sort((a, b) => b.prefix.length - a.prefix.length)[0];
+  return match?.moduleKey ?? null;
+}
 
 function isPathActive(pathname: string, href: string) {
   if (href === '/doctor') return pathname === '/doctor';
@@ -135,6 +169,42 @@ function formatPlanLabel(planKey: string | undefined): string {
       .split('_')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ')
+  );
+}
+
+/**
+ * Interstitial que reemplaza el contenido de un módulo bloqueado por el plan.
+ * Se muestra cuando el doctor llega (por URL directa o enlace) a una sección que
+ * su plan efectivo no habilita, en vez de dejar que la página cargue igual.
+ */
+function PlanLockedNotice({ onUpgrade }: { onUpgrade: () => void }) {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <div className="bg-white border border-slate-200 rounded-xl p-8 max-w-md w-full text-center shadow-sm">
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
+          style={{ background: 'var(--dh-turquoise-50)' }}
+        >
+          <Lock className="w-7 h-7" style={{ color: 'var(--dh-turquoise-700)' }} />
+        </div>
+        <h1
+          className="text-xl font-bold mb-2"
+          style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
+        >
+          Sección no disponible en tu plan
+        </h1>
+        <p className="text-sm mb-6" style={{ color: 'var(--dh-gray-500)' }}>
+          Esta funcionalidad requiere un plan superior. Mejora tu plan para desbloquear el acceso.
+        </p>
+        <button
+          onClick={onUpgrade}
+          className="w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
+          style={{ background: 'var(--dh-turquoise)' }}
+        >
+          Mejorar mi plan
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -264,6 +334,13 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     // ETAPA 2: will call Auth0 /v2/logout instead.
     await logoutAction();
   }
+
+  // Guard de acceso por plan: si la ruta actual pertenece a un módulo que el plan
+  // efectivo NO habilita, se bloquea el contenido (no solo el item del sidebar).
+  // Mientras planFeatures carga (null), no se bloquea para evitar flash-of-locked.
+  const gatedModuleKey = resolveGatedModuleKey(pathname);
+  const moduleLockedByPlan =
+    gatedModuleKey !== null && planFeatures !== null && !planUnlocks(planFeatures, gatedModuleKey);
 
   const activeTitle =
     allNavItems.find((i) => isPathActive(pathname, i.href))?.name ??
@@ -739,7 +816,13 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </header>
 
           <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 w-full">
-            <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">{children}</div>
+            <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">
+              {moduleLockedByPlan ? (
+                <PlanLockedNotice onUpgrade={() => router.push('/doctor/upgrade')} />
+              ) : (
+                children
+              )}
+            </div>
           </main>
         </div>
         <DoctorNotificationToast />

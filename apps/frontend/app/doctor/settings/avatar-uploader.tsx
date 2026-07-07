@@ -19,6 +19,8 @@ export default function AvatarUploader({ doctorId, currentUrl, onUploaded }: Pro
   const [sourceImg, setSourceImg] = useState<HTMLImageElement | null>(null);
   const [sourceDataUrl, setSourceDataUrl] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  // minZoom is computed per-image so the slider lower bound = "contain" (full image visible).
+  const [minZoom, setMinZoom] = useState(0.1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0, ox: 0, oy: 0 });
@@ -41,9 +43,11 @@ export default function AvatarUploader({ doctorId, currentUrl, onUploaded }: Pro
       img.onload = () => {
         setSourceImg(img);
         setSourceDataUrl(dataUrl);
-        // Initial zoom to cover the box
-        const minScale = Math.max(BOX / img.width, BOX / img.height);
-        setZoom(minScale * 1.05);
+        // Start at "contain" (fit-to-frame) so the full image is visible by default.
+        // The user can zoom in as desired. This prevents the overly-zoomed initial state.
+        const fitScale = Math.min(BOX / img.width, BOX / img.height);
+        setMinZoom(fitScale);
+        setZoom(fitScale);
         setOffset({ x: 0, y: 0 });
       };
       img.src = dataUrl;
@@ -127,11 +131,14 @@ export default function AvatarUploader({ doctorId, currentUrl, onUploaded }: Pro
         throw new Error(uploadJson?.error?.message ?? 'Error al subir avatar');
       }
 
-      const finalUrl = uploadJson.data.url + '?t=' + Date.now();
+      // Do NOT append ?t= — it breaks GCS signed URLs (second ? invalidates the signature).
+      // Each upload produces a unique GCS path (timestamp in path), so no caching issue.
+      const finalUrl = uploadJson.data.url;
       onUploaded(finalUrl);
       setSourceImg(null);
       setSourceDataUrl(null);
       setZoom(1);
+      setMinZoom(0.1);
       setOffset({ x: 0, y: 0 });
     } catch (e: any) {
       setError('No se pudo subir: ' + (e?.message ?? 'error desconocido'));
@@ -144,6 +151,7 @@ export default function AvatarUploader({ doctorId, currentUrl, onUploaded }: Pro
     setSourceImg(null);
     setSourceDataUrl(null);
     setZoom(1);
+    setMinZoom(0.1);
     setOffset({ x: 0, y: 0 });
     setError('');
     if (fileRef.current) fileRef.current.value = '';
@@ -218,7 +226,7 @@ export default function AvatarUploader({ doctorId, currentUrl, onUploaded }: Pro
                   </label>
                   <input
                     type="range"
-                    min="0.3"
+                    min={minZoom}
                     max="4"
                     step="0.01"
                     value={zoom}

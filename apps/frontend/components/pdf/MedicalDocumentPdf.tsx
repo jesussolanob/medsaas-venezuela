@@ -89,6 +89,26 @@ function getDocLabel(docType: string): string {
   return DOC_TYPE_LABELS[docType] ?? docType.charAt(0).toUpperCase() + docType.slice(1);
 }
 
+/**
+ * Wraps GCS signed/storage URLs through the BFF image proxy so that
+ * @react-pdf/renderer can fetch them without CORS restrictions.
+ *
+ * Background: react-pdf uses fetch() in the browser to load images.
+ * GCS signed URLs require the bucket to have CORS configured for the
+ * frontend origin; without that configuration, the browser fetch fails
+ * silently and the image is omitted from the PDF. The BFF proxy fetches
+ * the image server-side (no CORS restriction) and returns the binary.
+ *
+ * Non-GCS URLs are returned as-is (e.g. data: URLs or other CDNs).
+ */
+function proxyGcsUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('https://storage.googleapis.com/')) {
+    return `/api/storage/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 function formatDateVE(dateStr?: string): string {
   const d = dateStr ? new Date(dateStr) : new Date();
   return new Intl.DateTimeFormat('es-VE', {
@@ -343,7 +363,10 @@ export function MedicalDocumentPdf({
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             {templateConfig.show_logo && templateConfig.logo_url ? (
-              <Image src={templateConfig.logo_url} style={styles.logo} />
+              <Image
+                src={proxyGcsUrl(templateConfig.logo_url) ?? templateConfig.logo_url}
+                style={styles.logo}
+              />
             ) : null}
             <Text style={styles.headerTitle}>{headerTitle}</Text>
             {doctor.specialty ? (
@@ -413,7 +436,10 @@ export function MedicalDocumentPdf({
           <View style={styles.signatureArea}>
             <View style={styles.signatureBlock}>
               {templateConfig.signature_url ? (
-                <Image src={templateConfig.signature_url} style={styles.signatureImage} />
+                <Image
+                  src={proxyGcsUrl(templateConfig.signature_url) ?? templateConfig.signature_url}
+                  style={styles.signatureImage}
+                />
               ) : (
                 <View style={styles.signatureLine} />
               )}

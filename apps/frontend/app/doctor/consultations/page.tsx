@@ -2,12 +2,20 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 // RecetaPdfButton importa estáticamente PdfDownloadButton + MedicalDocumentPdf.
 // El dynamic ssr:false aquí excluye TODO el código de @react-pdf/renderer del bundle SSR.
 const RecetaPdfButton = dynamic(
   () => import('./RecetaPdfButton').then((m) => ({ default: m.RecetaPdfButton })),
+  { ssr: false, loading: () => null },
+);
+// ConsultationInformePdfButton: mismo patrón que RecetaPdfButton.
+const ConsultationInformePdfButton = dynamic(
+  () =>
+    import('./ConsultationInformePdfButton').then((m) => ({
+      default: m.ConsultationInformePdfButton,
+    })),
   { ssr: false, loading: () => null },
 );
 // L7 (2026-04-29): se eliminan los iconos del cronómetro manual (Play, Square)
@@ -42,9 +50,6 @@ import {
   History,
   Copy,
   Loader2,
-  Share2,
-  Mail,
-  MessageCircle,
   ChevronDown,
   ChevronUp,
   Trash2,
@@ -74,7 +79,7 @@ import {
 //   - reposo autoSave → PATCH /api/doctor/consultations (existing BFF route)
 import { getDoctorId as getDevDoctorId, getDoctorProfile, getDoctorServices } from '../actions';
 import { loadTemplateConfigs } from '@/app/doctor/templates/actions';
-import type { TemplateConfigPdf } from '@/components/pdf/MedicalDocumentPdf';
+import type { TemplateConfigPdf, ContentBlock } from '@/components/pdf/MedicalDocumentPdf';
 import {
   listConsultations,
   getPatientConsultations,
@@ -93,11 +98,10 @@ import ConsultationRecorder from '@/components/consultation/ConsultationRecorder
 import MarkdownText from '@/components/shared/MarkdownText';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import { log } from '@/lib/logger';
-// L6 (2026-04-29): normaliza telefonos para wa.me (acepta legacy free-text)
-import { normalizePhoneVE } from '@/lib/phone-utils';
 import { reportError } from '@/lib/report-error';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import { showToast } from '@/components/ui/Toaster';
+import ShareDocumentsModal from './ShareDocumentsModal';
 
 type Consultation = {
   id: string;
@@ -236,7 +240,6 @@ export default function ConsultationsPageWrapper() {
 function ConsultationsPage() {
   const searchParams = useSearchParams();
   const openId = searchParams.get('open');
-  const router = useRouter();
   const { rate: bcvRate, toBs } = useBcvRate();
   const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
 
@@ -271,6 +274,27 @@ function ConsultationsPage() {
     },
     [doctorActiveBlocks],
   );
+
+  /** Construye ContentBlock[] para react-pdf a partir del snapshot/config viva y de
+   *  blocks_data (valores JSONB guardados en la consulta). Misma lógica que [id]/page.tsx. */
+  function buildPdfContent(c: Consultation): ContentBlock[] {
+    const blocks = getEffectiveBlocks(c);
+    const bd = (c.blocks_data ?? {}) as Record<string, unknown>;
+    return blocks
+      .filter((b) => b.printable !== false)
+      .map((b) => {
+        const raw = bd[b.key];
+        let value: string | string[] | null = null;
+        if (typeof raw === 'string') value = raw.trim() || null;
+        else if (Array.isArray(raw)) value = (raw as string[]).filter(Boolean);
+        else if (raw != null) value = String(raw);
+        return { key: b.key, label: b.label, value };
+      })
+      .filter(
+        (b) =>
+          b.value !== null && b.value !== '' && (!Array.isArray(b.value) || b.value.length > 0),
+      );
+  }
 
   // Report fields (editable during consultation)
   const [report, setReport] = useState({
@@ -378,12 +402,6 @@ function ConsultationsPage() {
   // Appointment data (for payment receipt, method, price)
   const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null);
 
-  // Share menu state
-  // L1 (2026-04-29): los checkboxes ahora son dinámicos — uno por cada bloque
-  // printable del snapshot/config viva. shareKeys guarda las keys seleccionadas.
-  const [showShare, setShowShare] = useState(false);
-  const [shareKeys, setShareKeys] = useState<Set<string>>(new Set());
-
   // L1 (2026-04-29): Modal "Generar informe" — mismo concepto que share pero
   // sin el split WhatsApp/Email; solo genera URL y la abre en otra pestaña.
   const [showGenerateReport, setShowGenerateReport] = useState(false);
@@ -420,10 +438,11 @@ function ConsultationsPage() {
   const [doctorLicense, setDoctorLicense] = useState<string | null>(null);
   // Config de plantilla lista para el componente PdfDownloadButton (recipe y prescripciones)
   const [pdfTemplateConfig, setPdfTemplateConfig] = useState<TemplateConfigPdf | null>(null);
-  const [doctorSpecialty, setDoctorSpecialty] = useState<string | null>(null);
-  const [shareTemplate, setShareTemplate] = useState(
-    'Hola {paciente}, te envío los documentos de tu consulta del {fecha}: {documentos}. Cualquier duda quedo a tu orden. {doctor}',
+  // Config específica para el informe de consulta (usa plantilla 'informe' si existe)
+  const [informeTemplateConfig, setInformeTemplateConfig] = useState<TemplateConfigPdf | null>(
+    null,
   );
+  const [doctorSpecialty, setDoctorSpecialty] = useState<string | null>(null);
 
   // Doctor's active payment methods from settings
   const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([]);
@@ -588,6 +607,21 @@ function ConsultationsPage() {
                 signature_url: recipeTemplate?.signature_url ?? profileData.signatureUrl ?? null,
                 show_logo: recipeTemplate?.show_logo !== false,
                 show_signature: recipeTemplate?.show_signature !== false,
+              });
+
+              // Plantilla específica para el informe: 'informe' tiene precedencia; fallback a
+              // la misma que receta (ya tiene logo/firma del perfil correctamente resueltos).
+              const informeTmpl =
+                templates['informe'] ?? templates[Object.keys(templates)[0] ?? ''] ?? null;
+              setInformeTemplateConfig({
+                header_text: informeTmpl?.header_text || fullName || '',
+                footer_text: informeTmpl?.footer_text || '',
+                primary_color: informeTmpl?.primary_color || '#0891b2',
+                font_family: informeTmpl?.font_family || 'Helvetica',
+                logo_url: informeTmpl?.logo_url ?? profileData.logoUrl ?? null,
+                signature_url: informeTmpl?.signature_url ?? profileData.signatureUrl ?? null,
+                show_logo: informeTmpl?.show_logo !== false,
+                show_signature: informeTmpl?.show_signature !== false,
               });
             }
           },
@@ -1779,248 +1813,40 @@ function ConsultationsPage() {
                       "Configuracion de la consulta" (ronda 14). Aqui solo se ven los badges. */}
                 </div>
 
-                {/* Grupo derecho: acciones de archivo (compactas, solo iconos en sm) */}
+                {/* Grupo derecho: acciones de archivo */}
                 <div className="flex items-center gap-1.5">
-                  {/* L1 (2026-04-29): botón "Eliminar" removido del header.
-                      El endpoint DELETE sigue intacto en /api/doctor/consultations. */}
-                  {/* Bug 5: "Generar informe" navegaba al modal que llamaba POST /api/doctor/share-pdf
-                      (stub 501 permanente). Ahora navega a la página de detalle
-                      /doctor/consultations/[id] donde react-pdf genera el PDF funcional. */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selected) router.push('/doctor/consultations/' + selected.id);
-                    }}
-                    title="Generar informe"
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5" /> Generar informe
-                  </button>
-                  {/* Share Button */}
-                  <div className="relative">
-                    <button
-                      onClick={() => {
-                        if (!showShare && selected) {
-                          const effective = getEffectiveBlocks(selected);
-                          const printable = effective.filter((b) => b.printable);
-                          // Por default, marcamos solo el bloque "informe" o "notes" si existe;
-                          // si no, marcamos el primer printable.
-                          const informeBlock = printable.find(
-                            (b) => b.key === 'informe' || b.key === 'notes',
-                          );
-                          const initial = informeBlock
-                            ? new Set([informeBlock.key])
-                            : printable[0]
-                              ? new Set([printable[0].key])
-                              : new Set<string>();
-                          setShareKeys(initial as Set<string>);
-                        }
-                        setShowShare(!showShare);
-                      }}
-                      title="Compartir"
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />{' '}
-                      <span className="hidden sm:inline">Compartir</span>
-                    </button>
-                    {/* L1 (2026-04-29): checkboxes 100% dinámicos — uno por bloque
-                      printable del snapshot/config viva. Antes solo había 4 hardcoded
-                      (informe/receta/prescripciones/reposo). */}
-                    {showShare &&
-                      selected &&
-                      (() => {
-                        const effective = getEffectiveBlocks(selected);
-                        const printable = effective.filter((b) => b.printable);
-                        return (
-                          <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-                            <p className="text-sm font-bold text-slate-800">
-                              ¿Qué deseas compartir?
-                            </p>
-                            <div className="space-y-2">
-                              {printable.length === 0 && (
-                                <p className="text-xs text-slate-400 italic">
-                                  No hay bloques compartibles en esta consulta.
-                                </p>
-                              )}
-                              {printable.map((b) => (
-                                <label
-                                  key={b.key}
-                                  className="flex items-center gap-2.5 cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={shareKeys.has(b.key)}
-                                    onChange={(e) => {
-                                      setShareKeys((prev) => {
-                                        const next = new Set(prev);
-                                        if (e.target.checked) next.add(b.key);
-                                        else next.delete(b.key);
-                                        return next;
-                                      });
-                                    }}
-                                    className="w-4 h-4 rounded border-slate-300 accent-teal-500"
-                                  />
-                                  <span className="text-sm text-slate-700">{b.label}</span>
-                                </label>
-                              ))}
-                            </div>
-                            <div className="flex gap-2 pt-2">
-                              <button
-                                onClick={async () => {
-                                  const docs: string[] = [];
-                                  const docLinks: string[] = [];
-                                  const dateStr = new Date(
-                                    selected.consultation_date,
-                                  ).toLocaleDateString('es-VE', {
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric',
-                                  });
-
-                                  const uploadDoc = async (
-                                    templateType: string,
-                                    title: string,
-                                    bodyContent: string,
-                                  ) => {
-                                    try {
-                                      const html = buildPdfHtml(
-                                        templateType,
-                                        title,
-                                        bodyContent,
-                                        selected.patient_name,
-                                        selected.consultation_code,
-                                        dateStr,
-                                      );
-                                      const res = await fetch('/api/doctor/share-pdf', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                          htmlContent: html,
-                                          fileName: `${templateType}-${selected.consultation_code}`,
-                                          consultationCode: selected.consultation_code,
-                                        }),
-                                      });
-                                      const data = await res.json();
-                                      if (data.url) return data.url;
-                                    } catch (err) {
-                                      reportError('doctor/consultations', 'uploadSharedFile', err);
-                                    }
-                                    return null;
-                                  };
-
-                                  // L1 (2026-04-29): un PDF por cada bloque seleccionado.
-                                  // generateBlockHtml respeta la plantilla del doctor (logos, firma, fonts).
-                                  for (const b of printable) {
-                                    if (!shareKeys.has(b.key)) continue;
-                                    // Caso especial: si el bloque seleccionado es "informe" o "notes",
-                                    // generateInformeHtml decide si concatena todo o solo ese bloque.
-                                    const body =
-                                      b.key === 'informe' || b.key === 'notes'
-                                        ? generateInformeHtml()
-                                        : generateBlockHtml(b.key, b.label);
-                                    if (!body) continue;
-                                    docs.push(b.label.toLowerCase());
-                                    const url = await uploadDoc(b.key, b.label, body);
-                                    if (url) docLinks.push(url);
-                                  }
-
-                                  if (docs.length === 0) {
-                                    showToast({
-                                      type: 'error',
-                                      message: 'Selecciona al menos un documento con contenido',
-                                    });
-                                    return;
-                                  }
-
-                                  let message = shareTemplate
-                                    .replace('{paciente}', selected.patient_name)
-                                    .replace(
-                                      '{fecha}',
-                                      new Date(selected.consultation_date).toLocaleDateString(
-                                        'es-VE',
-                                      ),
-                                    )
-                                    .replace('{documentos}', docs.join(', '))
-                                    .replace('{doctor}', doctorName)
-                                    .replace('{codigo}', selected.consultation_code || '');
-
-                                  if (docLinks.length > 0) {
-                                    message +=
-                                      '\n\n' +
-                                      docLinks
-                                        .map((url, i) => `${docs[i] || 'Documento'}: ${url}`)
-                                        .join('\n');
-                                  }
-
-                                  // L6 (2026-04-29): normaliza VE → 58XXXXXXXXXX para wa.me
-                                  const phone = normalizePhoneVE(selected.patient_phone);
-                                  if (phone)
-                                    window.open(
-                                      `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
-                                      '_blank',
-                                    );
-                                  else
-                                    showToast({
-                                      type: 'error',
-                                      message: 'Este paciente no tiene teléfono válido registrado',
-                                    });
-                                  setShowShare(false);
-                                }}
-                                className="flex-1 flex items-center justify-center gap-2 bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-green-600 transition-colors"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                              </button>
-                              <button
-                                onClick={() => {
-                                  // L1 (2026-04-29): ahora dinámico — usa los labels de los bloques seleccionados.
-                                  const docs: string[] = printable
-                                    .filter((b) => shareKeys.has(b.key))
-                                    .map((b) => b.label);
-                                  if (docs.length === 0) {
-                                    showToast({
-                                      type: 'error',
-                                      message: 'Selecciona al menos un documento',
-                                    });
-                                    return;
-                                  }
-                                  const subject = `Documentos médicos - Consulta ${selected.consultation_code}`;
-                                  const body = shareTemplate
-                                    .replace('{paciente}', selected.patient_name)
-                                    .replace(
-                                      '{fecha}',
-                                      new Date(selected.consultation_date).toLocaleDateString(
-                                        'es-VE',
-                                      ),
-                                    )
-                                    .replace('{documentos}', docs.join(', '))
-                                    .replace('{doctor}', doctorName)
-                                    .replace('{codigo}', selected.consultation_code || '');
-                                  // Bug 6: patient_email se puebla en openConsultation;
-                                  // fallback a patients array (actualizado también en Bug 6).
-                                  const patientEmail =
-                                    selected.patient_email ??
-                                    patients.find((p) => p.id === selected.patient_id)?.email;
-                                  if (patientEmail)
-                                    window.open(
-                                      `mailto:${patientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
-                                      '_blank',
-                                    );
-                                  else
-                                    showToast({
-                                      type: 'error',
-                                      message: 'Este paciente no tiene email registrado',
-                                    });
-                                  setShowShare(false);
-                                }}
-                                className="flex-1 flex items-center justify-center gap-2 bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors"
-                              >
-                                <Mail className="w-3.5 h-3.5" /> Correo
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                  </div>
+                  {(() => {
+                    const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
+                    if (!tmplCfg || !doctorName) return null;
+                    return (
+                      <ConsultationInformePdfButton
+                        fileName={`informe-${selected.consultation_code}.pdf`}
+                        templateConfig={tmplCfg}
+                        doctor={{
+                          fullName: doctorName,
+                          specialty: doctorSpecialty,
+                          licenseNumber: doctorLicense,
+                        }}
+                        patient={{
+                          fullName: selected.patient_name,
+                          cedula:
+                            patients.find((p) => p.id === selected.patient_id)?.cedula ?? null,
+                        }}
+                        docDate={selected.consultation_date}
+                        consultationCode={selected.consultation_code}
+                        content={buildPdfContent(selected)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
+                      >
+                        <FileText className="w-3.5 h-3.5" /> Generar informe
+                      </ConsultationInformePdfButton>
+                    );
+                  })()}
+                  <ShareDocumentsModal
+                    consultationId={selected.id}
+                    patientPhone={selected.patient_phone}
+                    patientName={selected.patient_name}
+                    doctorName={doctorName}
+                  />
                 </div>
               </div>
             </div>
@@ -3346,6 +3172,14 @@ function ConsultationsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-slate-900">{selected.patient_name}</p>
                     <p className="text-xs text-slate-400 font-mono">{selected.consultation_code}</p>
+                    {selected.patient_id && (
+                      <a
+                        href={`/doctor/patients?open=${selected.patient_id}`}
+                        className="inline-flex items-center gap-0.5 mt-1 text-xs font-semibold text-teal-600 hover:text-teal-700"
+                      >
+                        Ver ficha del paciente <ChevronRight className="w-3 h-3" />
+                      </a>
+                    )}
                   </div>
                   <button
                     onClick={() => setShowRightSidebar(false)}

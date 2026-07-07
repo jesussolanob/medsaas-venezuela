@@ -334,6 +334,7 @@ export default function TemplatesPage() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+      showToast({ type: 'success', message: `Plantilla "${tabInfo.label}" guardada.` });
     } finally {
       setSaving(false);
     }
@@ -376,6 +377,7 @@ export default function TemplatesPage() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+      showToast({ type: 'success', message: 'Configuración aplicada a todas las plantillas.' });
     } finally {
       setSaving(false);
     }

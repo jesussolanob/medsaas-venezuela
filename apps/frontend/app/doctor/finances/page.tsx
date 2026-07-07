@@ -2171,7 +2171,7 @@ function ConsultationDetailModal({
             Cerrar
           </button>
           <a
-            href={`/doctor/consultations/${row.id}`}
+            href={`/doctor/consultations?open=${row.id}`}
             className="px-4 py-2 text-sm font-bold text-white bg-teal-500 hover:bg-teal-600 rounded-lg flex items-center gap-1.5"
           >
             <FileText className="w-4 h-4" /> Abrir consulta completa

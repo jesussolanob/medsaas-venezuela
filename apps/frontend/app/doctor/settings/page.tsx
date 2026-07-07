@@ -233,7 +233,10 @@ type TabId =
 
 function SettingsPageInner() {
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get('tab') as TabId) || 'profile';
+  // 'notifications' tab is hidden (not functional in Etapa 1). Guard against
+  // direct URL navigation (?tab=notifications) so the state never lands there.
+  const rawTab = (searchParams.get('tab') as TabId) || 'profile';
+  const initialTab: TabId = rawTab === 'notifications' ? 'profile' : rawTab;
 
   // OAuth callback feedback — shown when redirected back from Google
   const googleCallbackResult = searchParams.get('google'); // 'connected'
@@ -414,13 +417,17 @@ function SettingsPageInner() {
     });
 
     if (!result.ok) {
-      // Errors are surfaced via the saved / error state below.
       reportError('doctor/settings', 'saveProfile', new Error(String(result.error)));
+      showToast({
+        type: 'error',
+        message: 'No se pudo guardar el perfil. ' + (result.error ?? ''),
+      });
       return;
     }
 
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    showToast({ type: 'success', message: 'Perfil guardado exitosamente.' });
   }
 
   /* ---------------- LOGO ---------------- */
@@ -445,7 +452,9 @@ function SettingsPageInner() {
       if (!saved.ok) {
         throw new Error(saved.error ?? 'Error al guardar logo en el perfil');
       }
-      setLogoUrl(uploadedUrl + '?t=' + Date.now());
+      // Do NOT append ?t= — it breaks GCS signed URLs (double-? invalidates the signature).
+      // Each upload already produces a unique GCS path (timestamp in path), so no cache issue.
+      setLogoUrl(uploadedUrl);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setLogoError('No se pudo subir el logo. ' + msg);
@@ -474,7 +483,8 @@ function SettingsPageInner() {
       if (!saved.ok) {
         throw new Error(saved.error ?? 'Error al guardar firma en el perfil');
       }
-      setSignatureUrl(uploadedUrl + '?t=' + Date.now());
+      // Do NOT append ?t= — it breaks GCS signed URLs. Path already unique per upload.
+      setSignatureUrl(uploadedUrl);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setSignatureError('No se pudo subir la firma. ' + msg);
@@ -504,10 +514,12 @@ function SettingsPageInner() {
     const result = await saveLicenseNumber(licenseNumber || null);
     if (!result.ok) {
       reportError('doctor/settings', 'saveLicense', new Error(String(result.error)));
+      showToast({ type: 'error', message: 'No se pudo guardar la matrícula.' });
       return;
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+    showToast({ type: 'success', message: 'Matrícula guardada.' });
   }
 
   /* ---------------- PLANS (tab removed — now at /doctor/services) ---------------- */
@@ -703,7 +715,9 @@ function SettingsPageInner() {
     // "Link público" (booking) solo si el plan habilita la feature `booking`.
     ...(bookingEnabled ? [{ id: 'booking' as TabId, label: 'Link público', icon: Link2 }] : []),
     { id: 'payment', label: 'Métodos de pago', icon: DollarSign },
-    { id: 'notifications', label: 'Notificaciones', icon: Bell },
+    // HIDDEN: Notificaciones — panel no funcional en Etapa 1 (sin backend de notificaciones).
+    // Descomentar cuando se implemente el módulo de notificaciones push/email.
+    // { id: 'notifications', label: 'Notificaciones', icon: Bell },
     { id: 'integrations', label: 'Integraciones', icon: ExternalLink },
   ];
 
@@ -1971,68 +1985,72 @@ function SettingsPageInner() {
               })()}
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-              <div className="flex items-start justify-between mb-2 flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                    <span className="text-emerald-600 text-sm font-bold">WA</span>
+            {/* HIDDEN: WhatsApp Business API — no implementada en Etapa 1. Descomentar
+                cuando el endpoint /api/doctor/integrations/whatsapp esté disponible. */}
+            {false && (
+              <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                <div className="flex items-start justify-between mb-2 flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                      <span className="text-emerald-600 text-sm font-bold">WA</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-900">WhatsApp Business API</p>
+                      <p className="text-xs text-slate-500">Envía confirmaciones y recordatorios</p>
+                    </div>
+                  </div>
+                  {whatsappToken ? (
+                    <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+                      Conectado
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                      No conectado
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Token de API de Meta
+                    </label>
+                    <input
+                      type="password"
+                      value={whatsappToken}
+                      onChange={(e) => setWhatsappToken(e.target.value)}
+                      placeholder="Obtén tu token en developers.facebook.com"
+                      className={fi}
+                    />
                   </div>
                   <div>
-                    <p className="font-semibold text-slate-900">WhatsApp Business API</p>
-                    <p className="text-xs text-slate-500">Envía confirmaciones y recordatorios</p>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      ID del Número de Teléfono
+                    </label>
+                    <input
+                      value={whatsappPhoneId}
+                      onChange={(e) => setWhatsappPhoneId(e.target.value)}
+                      placeholder="Ej: 123456789012345"
+                      className={fi}
+                    />
                   </div>
                 </div>
-                {whatsappToken ? (
-                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-                    Conectado
-                  </span>
-                ) : (
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                    No conectado
-                  </span>
-                )}
+                <button
+                  onClick={saveIntegrations}
+                  disabled={integrationsLoading}
+                  className="w-full px-4 py-2.5 g-bg text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {integrationsLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Guardando…
+                    </>
+                  ) : (
+                    <>
+                      <SaveIcon className="w-4 h-4" /> Guardar credenciales
+                    </>
+                  )}
+                </button>
               </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    Token de API de Meta
-                  </label>
-                  <input
-                    type="password"
-                    value={whatsappToken}
-                    onChange={(e) => setWhatsappToken(e.target.value)}
-                    placeholder="Obtén tu token en developers.facebook.com"
-                    className={fi}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    ID del Número de Teléfono
-                  </label>
-                  <input
-                    value={whatsappPhoneId}
-                    onChange={(e) => setWhatsappPhoneId(e.target.value)}
-                    placeholder="Ej: 123456789012345"
-                    className={fi}
-                  />
-                </div>
-              </div>
-              <button
-                onClick={saveIntegrations}
-                disabled={integrationsLoading}
-                className="w-full px-4 py-2.5 g-bg text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {integrationsLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Guardando…
-                  </>
-                ) : (
-                  <>
-                    <SaveIcon className="w-4 h-4" /> Guardar credenciales
-                  </>
-                )}
-              </button>
-            </div>
+            )}
           </div>
         )}
       </div>

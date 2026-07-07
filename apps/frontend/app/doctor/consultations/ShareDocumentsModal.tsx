@@ -11,7 +11,9 @@ import {
   FileText,
   Pill,
   ClipboardList,
+  MessageCircle,
 } from 'lucide-react';
+import { normalizePhoneVE } from '@/lib/phone-utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,12 @@ interface ShareResult {
 
 interface Props {
   consultationId: string;
+  /** Teléfono del paciente para ofrecer envío por WhatsApp (opcional). */
+  patientPhone?: string | null;
+  /** Nombre del paciente para personalizar el mensaje de WhatsApp (opcional). */
+  patientName?: string | null;
+  /** Nombre del doctor para firmar el mensaje de WhatsApp (opcional). */
+  doctorName?: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -42,7 +50,12 @@ function formatDate(iso: string): string {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ShareDocumentsModal({ consultationId }: Props) {
+export default function ShareDocumentsModal({
+  consultationId,
+  patientPhone,
+  patientName,
+  doctorName,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [sections, setSections] = useState<ShareSections>({
     report: true,
@@ -102,6 +115,25 @@ export default function ShareDocumentsModal({ consultationId }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  /**
+   * Abre WhatsApp con un mensaje que SÍ incluye el enlace y el código de acceso
+   * (el flujo viejo enviaba un mensaje sin enlace ni código). El teléfono se
+   * normaliza a formato 58XXXXXXXXXX para wa.me.
+   */
+  function shareViaWhatsApp() {
+    if (!result) return;
+    const phone = normalizePhoneVE(patientPhone);
+    const saludo = patientName ? `Hola ${patientName}, ` : 'Hola, ';
+    const firma = doctorName ? `\n\n${doctorName}` : '';
+    const message =
+      `${saludo}aquí están los documentos de tu consulta.\n\n` +
+      `Enlace: ${result.url}\n` +
+      `Código de acceso: ${result.code}\n\n` +
+      `El enlace vence el ${formatDate(result.expiresAt)}. Cualquier duda quedo a tu orden.${firma}`;
+    const base = phone ? `https://wa.me/${phone}` : 'https://wa.me/';
+    window.open(`${base}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   }
 
   async function copyToClipboard(text: string, kind: 'url' | 'code') {
@@ -289,6 +321,16 @@ export default function ShareDocumentsModal({ consultationId }: Props) {
                     </span>
                     . Pasada esa fecha el paciente deberá solicitar uno nuevo.
                   </p>
+
+                  {/* Enviar por WhatsApp — incluye enlace + código en el mensaje */}
+                  <button
+                    onClick={shareViaWhatsApp}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold text-white transition-colors"
+                    style={{ background: '#25D366' }}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    Enviar por WhatsApp
+                  </button>
 
                   {/* Close */}
                   <button

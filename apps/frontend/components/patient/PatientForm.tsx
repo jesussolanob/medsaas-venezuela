@@ -77,6 +77,9 @@ const SEX_OPTIONS = [
 
 const fi =
   'w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors';
+// Variante de solo-lectura: para campos derivados (ej. edad calculada desde la fecha de nacimiento).
+const fiReadOnly =
+  'w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none bg-slate-50 text-slate-500 cursor-not-allowed transition-colors';
 const lbl = 'flex items-center gap-1.5 text-xs font-semibold text-slate-600 mb-1.5';
 
 export default function PatientForm({
@@ -253,15 +256,18 @@ export default function PatientForm({
             />
           </div>
           <div className="flex flex-col">
-            <label className={lbl}>Edad</label>
+            <label className={lbl}>Edad (calculada)</label>
+            {/* La edad NO se ingresa a mano: siempre se deriva de la fecha de
+                nacimiento. La referencia de edad se persiste igual (útil para el
+                histórico de consultas). */}
             <input
               type="number"
-              min="0"
-              max="130"
               value={data.age ?? ''}
-              onChange={(e) => set('age', e.target.value === '' ? null : parseInt(e.target.value))}
-              className={fi}
-              placeholder="0"
+              className={fiReadOnly}
+              placeholder="—"
+              readOnly
+              aria-readonly="true"
+              title="Se calcula automáticamente desde la fecha de nacimiento"
             />
           </div>
           <div className="flex flex-col">
