@@ -255,10 +255,14 @@ export default function DoctorDashboard() {
           if (officesRes.ok) {
             const officesJson = (await officesRes.json()) as {
               success?: boolean;
-              data?: unknown[];
+              data?: Array<{ isActive?: boolean }>;
             };
             const officesList = Array.isArray(officesJson?.data) ? officesJson.data : [];
-            setHasOffices(officesList.length > 0);
+            // Only ACTIVE offices generate booking slots — a doctor whose offices
+            // are all inactive still cannot receive bookings, so the alert must
+            // treat that the same as having no offices at all.
+            const hasActiveOffice = officesList.some((o) => o?.isActive === true);
+            setHasOffices(hasActiveOffice);
           }
         } catch {
           // Silencioso: la alerta no se muestra si el fetch de consultorios falla.
