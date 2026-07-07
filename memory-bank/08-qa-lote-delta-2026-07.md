@@ -24,15 +24,26 @@ Tres mejoras pedidas por el usuario. Migración `20260706000001` (2 columnas en 
 Config viaja por `POST /api/doctor/schedule` (mismo endpoint que el horizonte); el BFF `api/doctor/schedule/route.ts`
 mapea los 2 campos en ambas direcciones. Booking público recibe `requireReason`+`minLeadDays` vía `GetBookingDoctorInfo`.
 
-**VERIFICACIÓN**: build backend (123 tests del área, incluye lead-time + require-reason + skip-interno) y build
-frontend VERDES; migración corrió en prod; los 3 controles RENDERIZAN bien en prod (/doctor/agenda). ✅ **Persistencia
-round-trip VERIFICADA EN VIVO** (2026-07-07, tras re-login Auth0): `POST /api/doctor/schedule` con lead=3 + motivo
-ON → 200 → re-GET devuelve `booking_min_lead_days:3` + `booking_require_reason:true` (horizonte preservado); el GET
-config ya incluye ambas claves. Config de lucas restaurada a defaults (0/false) al terminar. ⚠️ Falta solo el efecto
-VISUAL en el booking PÚBLICO (lead time ocultando fechas + motivo obligatorio en el calendario del paciente):
-bloqueado porque lucas es plan **Free** → su booking público está gated ("Reservas en línea no disponibles"). Para
-verlo: subir lucas a Base/Plus en la BD (cloud-sql-proxy) o probar con un doctor con plan que incluya `booking`. La
-lógica de enforcement está cubierta por unit tests (slots vacíos dentro del lead time; errores 400 en create-booking).
+**VERIFICACIÓN — TODO VERIFICADO EN VIVO EN PROD** (2026-07-07, tras re-login Auth0 + subir lucas a delta_base
+temporalmente vía cloud-sql-proxy, luego restaurado a Free):
+
+- Build backend (123 tests) + frontend VERDES; migración `20260706000001` corrió en prod.
+- **Persistencia**: `POST /api/doctor/schedule` (lead=3 + motivo ON) → 200 → re-GET devuelve ambos campos (horizonte
+  preservado). El GET config incluye `booking_min_lead_days` + `booking_require_reason`.
+- **Feature 3 lead time — VISUAL**: en el calendario público, con lead=3 la primera fecha ofrecida fue **9 jul**
+  (hoy Caracas 6 jul + 3) y la flecha "semana anterior" quedó deshabilitada (7 y 8 jul bloqueados). **Defensa
+  backend**: `POST /api/book` con fecha próxima → 400 "Las citas deben agendarse con al menos 3 día(s) de anticipación."
+- **Feature 1 motivo — enforcement**: `POST /api/book` SIN motivo (requireReason ON) → 400 "Debes indicar el motivo
+  de la consulta." (ChiefComplaintRequiredError).
+- **Feature 2 alerta — VISUAL**: con el consultorio de lucas puesto inactivo, el inicio mostró la tarjeta teal
+  "Configura tu consultorio para empezar a recibir consultas" + botón "Crear consultorio".
+- 🐛 **Bug encontrado y arreglado durante este QA** (commit `84b81a7`): la alerta contaba TODOS los consultorios;
+  un médico con consultorios solo **inactivos** no genera slots pero no veía la alerta. Fix: `page.tsx` cuenta solo
+  `isActive===true`. Verificado en vivo (alerta apareció con consultorio inactivo).
+- **Sin datos basura**: los `POST /api/book` de prueba fueron rechazados (400) → no crearon citas/pacientes; el
+  wizard público no se envió (se detuvo en pago). Cleanup: lucas restaurado a Free, config a defaults, consultorio
+  reactivado, proxy cerrado. ⚠️ Nota reutilizable: el ID token de Auth0 vence ~1h en la sesión Playwright → re-login
+  antes de pruebas autenticadas largas.
 
 ## QA EN PRODUCCIÓN — HECHO ✅ (2026-07-06, cuenta lucas@deltasalud.app)
 
