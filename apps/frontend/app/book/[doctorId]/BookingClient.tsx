@@ -151,13 +151,19 @@ function timesBetween(start: string, end: string, slotMin: number, bufferMin: nu
  *
  * Fase 5: `horizonDays` reemplaza el hardcode de 21 días.
  * El horizonte viene de `bookingHorizonWeeks * 7` (default 56 días = 8 semanas).
+ *
+ * `minLeadDays`: número mínimo de días de anticipación requeridos (0 = sin restricción).
+ * Días anteriores a `hoy + minLeadDays` no se incluyen en los resultados.
  */
-function generateSlots(offices: DoctorOffice[] = [], horizonDays = 56): Slot[] {
+function generateSlots(offices: DoctorOffice[] = [], horizonDays = 56, minLeadDays = 0): Slot[] {
   const slots: Slot[] = [];
   const today = new Date();
   const hasOffices = offices.length > 0;
+  // d=1 = mañana. minLeadDays=0 → sin restricción adicional (d comienza en 1).
+  // minLeadDays=2 → la primera fecha disponible es pasado mañana (d comienza en 2).
+  const startDay = Math.max(1, minLeadDays);
 
-  for (let d = 1; d <= horizonDays; d++) {
+  for (let d = startDay; d <= horizonDays; d++) {
     const date = new Date(today);
     date.setDate(today.getDate() + d);
     const jsDay = date.getDay(); // 0=dom, 1=lun..6=sab
@@ -309,6 +315,8 @@ export default function BookingClient({
   bookedSlots = [],
   bookingHorizonWeeks = 8,
   initialOffices = [],
+  requireReason = false,
+  minLeadDays = 0,
 }: {
   doctor: DoctorProfile;
   plans: PricingPlan[];
@@ -319,6 +327,10 @@ export default function BookingClient({
   bookingHorizonWeeks?: number;
   /** Consultorios del médico, cargados por el server component desde /api/booking/:id/offices. */
   initialOffices?: DoctorOffice[];
+  /** Si el doctor requiere que el paciente indique el motivo de consulta al agendar. */
+  requireReason?: boolean;
+  /** Mínimo de días de anticipación para agendar (0 = sin restricción). */
+  minLeadDays?: number;
 }) {
   // BCV rate for dual currency
   const { rate: bcvRate, toBs } = useBcvRate();
@@ -415,9 +427,11 @@ export default function BookingClient({
   // Slot generation uses the selected office (single-office or user-chosen),
   // or all offices together before an office is selected (shows union of schedules).
   // Fase 5: horizonDays = bookingHorizonWeeks * 7
+  // minLeadDays: filtra fechas demasiado próximas según la configuración del doctor.
   const horizonDays = Math.max(1, Math.min(52, bookingHorizonWeeks)) * 7;
   const officesForSlots = selectedOffice ? [selectedOffice] : doctorOffices;
-  const allSlots = generateSlots(officesForSlots, horizonDays);
+  const safeMinLeadDays = Math.max(0, Math.min(90, minLeadDays));
+  const allSlots = generateSlots(officesForSlots, horizonDays, safeMinLeadDays);
   const grouped = groupByDate(allSlots);
   const dates = Object.keys(grouped).sort();
   const weekDates = dates.slice(weekOffset * 5, weekOffset * 5 + 5);
@@ -2370,21 +2384,43 @@ export default function BookingClient({
               {/* Motivo */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Motivo de consulta (opcional)
+                  Motivo de consulta
+                  {requireReason ? (
+                    <span className="text-red-500 ml-0.5" aria-hidden="true">
+                      *
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 text-xs font-normal ml-1">(opcional)</span>
+                  )}
                 </label>
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
                   rows={2}
-                  placeholder="Describe brevemente tu motivo..."
-                  className={fi + ' resize-none'}
+                  placeholder={
+                    requireReason
+                      ? 'Indica el motivo de tu consulta...'
+                      : 'Describe brevemente tu motivo...'
+                  }
+                  className={
+                    fi +
+                    ' resize-none' +
+                    (requireReason && !form.notes.trim()
+                      ? ' border-red-300 focus:border-red-400 focus:ring-red-500/10'
+                      : '')
+                  }
                 />
+                {requireReason && !form.notes.trim() && (
+                  <p className="text-xs text-red-500 mt-1.5">
+                    Debes indicar el motivo de la consulta.
+                  </p>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting || previewModeBlocked}
+                disabled={submitting || previewModeBlocked || (requireReason && !form.notes.trim())}
                 className="w-full py-3.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all"
                 style={{ background: previewModeBlocked ? '#94a3b8' : BRAND.gradient }}
               >

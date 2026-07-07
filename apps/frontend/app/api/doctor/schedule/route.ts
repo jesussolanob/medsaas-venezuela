@@ -56,6 +56,8 @@ interface BackendSchedule {
   breakStart: string | null;
   breakEnd: string | null;
   bookingHorizonWeeks?: number | null;
+  bookingRequireReason?: boolean | null;
+  bookingMinLeadDays?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,8 @@ interface LegacyConfig {
   advance_booking_days: number;
   auto_approve: boolean;
   booking_horizon_weeks?: number | null;
+  booking_require_reason?: boolean | null;
+  booking_min_lead_days?: number | null;
 }
 
 interface LegacySlot {
@@ -102,6 +106,8 @@ function backendToLegacy(schedule: BackendSchedule): LegacyGetResponse {
     advance_booking_days: 30,
     auto_approve: false,
     booking_horizon_weeks: schedule.bookingHorizonWeeks ?? 8,
+    booking_require_reason: schedule.bookingRequireReason ?? false,
+    booking_min_lead_days: schedule.bookingMinLeadDays ?? 0,
   };
 
   const slots: LegacySlot[] = schedule.workDays.map((day) => ({
@@ -138,13 +144,26 @@ function legacyToBackend(config: LegacyConfig, slots: LegacySlot[]): Record<stri
       ? Math.max(1, Math.min(52, Math.round(config.booking_horizon_weeks)))
       : undefined;
 
+  const minLeadDays =
+    config.booking_min_lead_days != null
+      ? Math.max(0, Math.min(90, Math.round(config.booking_min_lead_days)))
+      : undefined;
+
+  const requireReason = config.booking_require_reason;
+
+  const extraBookingFields = {
+    ...(horizonWeeks !== undefined ? { booking_horizon_weeks: horizonWeeks } : {}),
+    ...(minLeadDays !== undefined ? { booking_min_lead_days: minLeadDays } : {}),
+    ...(requireReason !== undefined ? { booking_require_reason: requireReason } : {}),
+  };
+
   if (enabled.length === 0) {
     return {
       work_days: [1, 2, 3, 4, 5],
       start_time: '08:00',
       end_time: '17:00',
       slot_duration_minutes: config.slot_duration ?? 30,
-      ...(horizonWeeks !== undefined ? { booking_horizon_weeks: horizonWeeks } : {}),
+      ...extraBookingFields,
     };
   }
 
@@ -167,7 +186,7 @@ function legacyToBackend(config: LegacyConfig, slots: LegacySlot[]): Record<stri
     start_time: startTime,
     end_time: endTime,
     slot_duration_minutes: slotDuration,
-    ...(horizonWeeks !== undefined ? { booking_horizon_weeks: horizonWeeks } : {}),
+    ...extraBookingFields,
   };
 }
 

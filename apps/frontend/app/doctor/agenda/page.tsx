@@ -318,6 +318,11 @@ export default function AgendaPage() {
   // Bug 3 fix: local string state so the user can clear the field without NaN lock
   const [horizonStr, setHorizonStr] = useState<string>('8');
   const [savingHorizon, setSavingHorizon] = useState(false);
+  // Días de anticipación mínima para agendar (0 = sin restricción)
+  const [minLeadDays, setMinLeadDays] = useState<number>(0);
+  const [leadStr, setLeadStr] = useState<string>('0');
+  // Si el paciente debe indicar el motivo al agendar
+  const [requireReason, setRequireReason] = useState<boolean>(false);
   // Bug 4: availability blocks loaded from backend, used in day-view to mark blocked slots
   const [calendarBlocks, setCalendarBlocks] = useState<AvailabilityBlock[]>([]);
   const [showAvailabilityPanel, setShowAvailabilityPanel] = useState(false);
@@ -427,7 +432,17 @@ export default function AgendaPage() {
             sched.config.booking_horizon_weeks ?? sched.booking_horizon_weeks;
           if (hw != null && typeof hw === 'number' && hw >= 1) {
             setBookingHorizonWeeks(hw);
+            setHorizonStr(String(hw));
           }
+          // Días de anticipación mínima
+          const mld =
+            typeof sched.config.booking_min_lead_days === 'number'
+              ? sched.config.booking_min_lead_days
+              : 0;
+          setMinLeadDays(mld);
+          setLeadStr(String(mld));
+          // Requerir motivo
+          setRequireReason(sched.config.booking_require_reason === true);
         }
         if (sched.slots && sched.slots.length > 0) {
           setAvailSlots(
@@ -722,13 +737,19 @@ export default function AgendaPage() {
 
   async function saveBookingHorizon() {
     const clamped = Math.max(1, Math.min(52, Math.round(bookingHorizonWeeks)));
+    const clampedLead = Math.max(0, Math.min(90, Math.round(minLeadDays)));
     setSavingHorizon(true);
     try {
       const res = await fetch('/api/doctor/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, booking_horizon_weeks: clamped },
+          config: {
+            ...config,
+            booking_horizon_weeks: clamped,
+            booking_min_lead_days: clampedLead,
+            booking_require_reason: requireReason,
+          },
           slots: availSlots.map((s) => ({
             day_of_week: s.day_of_week,
             start_time: s.start_time,
@@ -737,12 +758,13 @@ export default function AgendaPage() {
           })),
         }),
       });
-      if (!res.ok) throw new Error('Error guardando horizonte');
+      if (!res.ok) throw new Error('Error guardando configuración');
       setBookingHorizonWeeks(clamped);
-      toast.success('Horizonte de booking actualizado');
+      setMinLeadDays(clampedLead);
+      toast.success('Configuración de booking actualizada');
     } catch (e) {
       reportError('doctor/agenda', 'saveBookingHorizon', e);
-      toast.error('Error al guardar horizonte');
+      toast.error('Error al guardar configuración');
     } finally {
       setSavingHorizon(false);
     }
@@ -1986,9 +2008,70 @@ export default function AgendaPage() {
                     ) : (
                       <Check className="w-3.5 h-3.5" />
                     )}
-                    {savingHorizon ? 'Guardando…' : 'Guardar'}
+                    {savingHorizon ? 'Guardando…' : 'Guardar todo'}
                   </button>
                 </div>
+              </div>
+
+              {/* Días de anticipación mínima */}
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">
+                    Días de anticipación mínima
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Los pacientes solo podrán agendar con al menos N día(s) de anticipación.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={90}
+                      value={leadStr}
+                      onChange={(e) => setLeadStr(e.target.value)}
+                      onBlur={() => {
+                        const v = parseInt(leadStr, 10);
+                        if (!isNaN(v) && v >= 0 && v <= 90) {
+                          setMinLeadDays(v);
+                        } else {
+                          setLeadStr(String(minLeadDays));
+                        }
+                      }}
+                      className="w-16 text-center text-sm font-semibold text-slate-800 bg-transparent outline-none border-none"
+                    />
+                    <span className="text-xs text-slate-500 whitespace-nowrap">día(s)</span>
+                  </div>
+                  <span className="text-xs text-slate-400">(0 = sin restricción · máx. 90)</span>
+                </div>
+              </div>
+
+              {/* Requerir motivo de consulta */}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">
+                    Requerir motivo de consulta
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Si está activo, el paciente deberá indicar el motivo al agendar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={requireReason}
+                  onClick={() => setRequireReason((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+                    requireReason ? 'bg-teal-500' : 'bg-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                      requireReason ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
 
               {/* Divisor */}

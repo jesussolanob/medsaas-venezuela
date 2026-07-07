@@ -112,6 +112,8 @@ export default function DoctorDashboard() {
     patients_attended: 0,
   });
   const [loading, setLoading] = useState(true);
+  // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
+  const [hasOffices, setHasOffices] = useState<boolean | null>(null);
   // Modal "Nueva consulta"
   const [showNewFlow, setShowNewFlow] = useState(false);
   // L3 (2026-04-29): estado del modal "Crear paciente" (quick action) +
@@ -245,6 +247,22 @@ export default function DoctorDashboard() {
 
         // Citas pendientes de confirmación para el widget "Por confirmar".
         setScheduledAppointments(scheduled);
+
+        // Verificar si el médico tiene consultorios configurados para mostrar alerta de onboarding.
+        // No crítico: si el fetch falla, no se muestra la alerta (degradar silenciosamente).
+        try {
+          const officesRes = await fetch('/api/doctor/offices');
+          if (officesRes.ok) {
+            const officesJson = (await officesRes.json()) as {
+              success?: boolean;
+              data?: unknown[];
+            };
+            const officesList = Array.isArray(officesJson?.data) ? officesJson.data : [];
+            setHasOffices(officesList.length > 0);
+          }
+        } catch {
+          // Silencioso: la alerta no se muestra si el fetch de consultorios falla.
+        }
       } catch (error: unknown) {
         // Non-fatal — dashboard shows zeros on error; user can refresh.
         reportError('doctor/page', 'fetchData', error);
@@ -576,6 +594,30 @@ export default function DoctorDashboard() {
         {/* Onboarding banner removed — access gate now lives in the layout.
             Doctors without a cedula are redirected to /doctor/onboarding before
             they ever reach this page. */}
+
+        {/* Alerta: sin consultorios configurados */}
+        {hasOffices === false && (
+          <div className="rounded-xl border-2 border-teal-200 bg-teal-50 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
+              <AlertCircle className="w-5 h-5 text-teal-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-bold text-teal-800">
+                Configura tu consultorio para empezar a recibir consultas
+              </h3>
+              <p className="text-xs text-teal-700 mt-1 leading-relaxed">
+                Sin un consultorio activo no se pueden generar horarios de disponibilidad ni recibir
+                citas en línea.
+              </p>
+            </div>
+            <Link
+              href="/doctor/offices"
+              className="shrink-0 px-4 py-2 bg-teal-500 text-white text-xs font-bold rounded-lg hover:bg-teal-600 transition-colors whitespace-nowrap"
+            >
+              Crear consultorio
+            </Link>
+          </div>
+        )}
 
         {/* Hero welcome card */}
         <div

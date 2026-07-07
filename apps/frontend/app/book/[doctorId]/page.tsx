@@ -45,6 +45,9 @@ interface DoctorInfo {
   // Gating por plan: el booking online solo está disponible si el plan del doctor
   // habilita la feature `booking` (Delta Base+). Delta Free → false.
   bookingEnabled?: boolean | null;
+  // Configuración de restricciones de booking
+  requireReason?: boolean | null;
+  minLeadDays?: number | null;
 }
 
 interface PricingPlan {
@@ -211,6 +214,8 @@ export default async function PublicBookingPage({
       bookedSlots={bookedSlots}
       bookingHorizonWeeks={bookingHorizonWeeks}
       initialOffices={offices}
+      requireReason={doctorInfo.requireReason ?? false}
+      minLeadDays={doctorInfo.minLeadDays ?? 0}
     />
   );
 }
