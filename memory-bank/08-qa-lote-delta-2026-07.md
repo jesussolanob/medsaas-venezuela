@@ -5,6 +5,33 @@
 > Ojo: algunos pueden estar YA resueltos por el deploy del lote anterior (commits
 > 6fa58aa + 29a9cc6) — verificar antes de re-arreglar.
 
+## MEJORAS DE BOOKING/AGENDA — DESPLEGADAS (2026-07-07, commits `06ca02c` back + `b00f8c7` front, deploy `28836385275`)
+
+Tres mejoras pedidas por el usuario. Migración `20260706000001` (2 columnas en `doctor_schedules`) corrió en prod OK.
+
+1. **Motivo de consulta opcional + toggle del médico** (default: opcional). Columna `booking_require_reason`.
+   Toggle "Requerir motivo de consulta" en /doctor/agenda (panel Disponibilidad). El booking público exige
+   el motivo solo si está activo. El doctor agendando internamente (`/api/doctor/appointments`) lo salta vía
+   `skipPatientBookingRules`. Error de dominio `ChiefComplaintRequiredError` (400).
+2. **Sin consultorio → exigir crearlos** (NO se hizo "online por defecto", decisión del usuario). Se mantiene
+   que el booking requiere consultorios; se agregó **alerta prominente en el inicio del doctor** (tarjeta teal
+   - CTA "Crear consultorio" → /doctor/offices) cuando no hay consultorios activos.
+3. **Anticipación mínima (lead time)**. Columna `booking_min_lead_days` (0–90, default 0). Campo "Días de
+   anticipación mínima" junto a "Semanas visibles" en /doctor/agenda. `get-available-slots` oculta fechas
+   antes de `hoy + N días` (día-granularidad Caracas); `create-booking` valida (error `BookingTooSoonError`,
+   400); el doctor interno lo salta. Frontend: `generateSlots` arranca en `max(1, minLeadDays)`.
+
+Config viaja por `POST /api/doctor/schedule` (mismo endpoint que el horizonte); el BFF `api/doctor/schedule/route.ts`
+mapea los 2 campos en ambas direcciones. Booking público recibe `requireReason`+`minLeadDays` vía `GetBookingDoctorInfo`.
+
+**VERIFICACIÓN**: build backend (123 tests del área, incluye lead-time + require-reason + skip-interno) y build
+frontend VERDES; migración corrió en prod; los 3 controles RENDERIZAN bien en prod (/doctor/agenda). ⚠️ PENDIENTE
+de verificar EN VIVO (bloqueado por entorno, NO por código): (a) persistencia round-trip y (b) efecto en booking
+público — el **ID token de Auth0 de la sesión Playwright venció** (~1h; el back rechaza con `AUTH0_TOKEN_INVALID`
+401 → el guardado no persistió en la prueba), y (c) lucas es plan **Free** → su booking público está gated
+("Reservas en línea no disponibles"). Para cerrar el live check: re-login Auth0 fresco + probar con un doctor con
+plan que incluya `booking` (o subir lucas a Base/Plus en la BD).
+
 ## QA EN PRODUCCIÓN — HECHO ✅ (2026-07-06, cuenta lucas@deltasalud.app)
 
 QA exhaustivo en **prod real** (Cloud Run) con Playwright + Gmail (`lucas@deltasalud.app`) +
