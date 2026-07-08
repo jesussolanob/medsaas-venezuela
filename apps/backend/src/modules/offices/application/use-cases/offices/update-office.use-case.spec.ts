@@ -5,6 +5,7 @@ import { OfficeNotFoundError } from '../../../domain/errors/office-not-found.err
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
 import { OfficeScheduleConflictError } from '../../../domain/errors/office-schedule-conflict.error';
 import type { UpdateOfficeDto } from '@delta/shared-types';
+import { assertNoSelfOverlap } from './create-office.use-case';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OTHER_DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000002';
@@ -204,5 +205,56 @@ describe('UpdateOfficeUseCase', () => {
       await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).resolves.toBeDefined();
       expect(mockRepo.findActiveByDoctor).not.toHaveBeenCalled();
     });
+
+    it('throws OfficeInvalidScheduleError when updated schedule has self-overlapping blocks', async () => {
+      const existing = makeExistingOffice();
+      mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+
+      const dto: UpdateOfficeDto = {
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '13:00' },
+          { day: 0, enabled: true, start: '12:00', end: '17:00' }, // overlaps with above
+        ],
+      };
+
+      await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).rejects.toBeInstanceOf(
+        OfficeInvalidScheduleError,
+      );
+      expect(mockRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('allows updating to multiple non-overlapping blocks on the same day (morning + afternoon)', async () => {
+      const existing = makeExistingOffice();
+      const updated = makeExistingOffice({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '12:00' },
+          { day: 0, enabled: true, start: '15:00', end: '18:00' },
+        ],
+      });
+      mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+      mockRepo.findActiveByDoctor.mockResolvedValue([existing]);
+      mockRepo.save.mockResolvedValue(updated);
+
+      const dto: UpdateOfficeDto = {
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '12:00' },
+          { day: 0, enabled: true, start: '15:00', end: '18:00' },
+        ],
+      };
+
+      await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).resolves.toBeDefined();
+      expect(mockRepo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assertNoSelfOverlap — exported helper used by both create and update
+// (smoke tests verifying export is accessible from update-office context)
+// ---------------------------------------------------------------------------
+
+describe('assertNoSelfOverlap() via update-office context', () => {
+  it('is exported from create-office.use-case and callable', () => {
+    expect(typeof assertNoSelfOverlap).toBe('function');
   });
 });

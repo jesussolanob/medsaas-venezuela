@@ -338,6 +338,75 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
       const sorted = [...times].sort();
       expect(times).toEqual(sorted);
     });
+
+    it('generates the union of slots from two blocks on the same day (morning + afternoon)', async () => {
+      // Single office with two Monday blocks: 08:00-10:00 and 15:00-17:00
+      const officeWithTwoBlocks = makeOffice({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '10:00' },
+          { day: 0, enabled: true, start: '15:00', end: '17:00' },
+        ],
+        slotDuration: 30,
+        bufferMinutes: 0,
+      });
+      officeRepo = makeOfficeRepo([officeWithTwoBlocks]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      // Morning: 08:00, 08:30, 09:00, 09:30 (4 slots)
+      // Afternoon: 15:00, 15:30, 16:00, 16:30 (4 slots)
+      expect(result.slots).toHaveLength(8);
+      const times = result.slots.map((s) => s.time);
+      expect(times).toContain('08:00');
+      expect(times).toContain('09:30');
+      expect(times).toContain('15:00');
+      expect(times).toContain('16:30');
+      // Verify no gap-time slots appear between blocks
+      expect(times).not.toContain('10:00');
+      expect(times).not.toContain('14:30');
+    });
+
+    it('deduplicates slots when two blocks on the same day produce identical times', async () => {
+      // Same office, same day, two identical blocks — deduplicated by Set<string>
+      const officeWithDuplicateBlocks = makeOffice({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '10:00' },
+          { day: 0, enabled: true, start: '08:00', end: '10:00' },
+        ],
+        slotDuration: 30,
+        bufferMinutes: 0,
+      });
+      officeRepo = makeOfficeRepo([officeWithDuplicateBlocks]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      const times = result.slots.map((s) => s.time);
+      expect(new Set(times).size).toBe(times.length); // no duplicates
+      expect(result.slots).toHaveLength(4); // 08:00, 08:30, 09:00, 09:30
+    });
+
+    it('skips a block where start >= end even when another block on the same day is valid', async () => {
+      // First block valid, second block has start=end (should be skipped)
+      const officeWithBadSecondBlock = makeOffice({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '10:00' },
+          { day: 0, enabled: true, start: '15:00', end: '15:00' }, // zero-length, skipped
+        ],
+        slotDuration: 30,
+        bufferMinutes: 0,
+      });
+      officeRepo = makeOfficeRepo([officeWithBadSecondBlock]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      // Only morning slots — bad block produces nothing
+      const times = result.slots.map((s) => s.time);
+      expect(times).toContain('08:00');
+      expect(times).not.toContain('15:00');
+    });
   });
 
   // ─── Weekday mapping ──────────────────────────────────────────────────────

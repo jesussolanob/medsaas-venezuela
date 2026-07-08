@@ -144,19 +144,23 @@ export class GetAvailableSlotsUseCase {
     const timeSet = new Set<string>();
 
     for (const office of activeOffices) {
-      const dayEntry = office.getEnabledScheduleForDay(officeDay);
-      if (!dayEntry) continue;
+      const dayEntries = office.getEnabledSchedulesForDay(officeDay);
+      if (dayEntries.length === 0) continue;
 
-      const startMin = this.parseMinutes(dayEntry.start);
-      const endMin = this.parseMinutes(dayEntry.end);
       const step = office.slotDuration + office.bufferMinutes;
+      if (step <= 0) continue;
 
-      if (startMin >= endMin || step <= 0) continue;
+      for (const dayEntry of dayEntries) {
+        const startMin = this.parseMinutes(dayEntry.start);
+        const endMin = this.parseMinutes(dayEntry.end);
 
-      let current = startMin;
-      while (current + office.slotDuration <= endMin) {
-        timeSet.add(formatMinutes(current));
-        current += step;
+        if (startMin >= endMin) continue;
+
+        let current = startMin;
+        while (current + office.slotDuration <= endMin) {
+          timeSet.add(formatMinutes(current));
+          current += step;
+        }
       }
     }
 

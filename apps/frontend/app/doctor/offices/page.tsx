@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   listOffices,
   createOffice,
@@ -20,11 +20,11 @@ import {
   Save,
   X,
   Loader2,
-  CheckCircle,
   ToggleLeft,
   ToggleRight,
   Video,
   Users,
+  AlertCircle,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showToast } from '@/components/ui/Toaster';
@@ -37,8 +37,8 @@ type Office = {
   phone: string;
   is_active: boolean;
   schedule: DaySchedule[];
-  slot_duration: number; // minutes per appointment
-  buffer_minutes: number; // minutes between appointments
+  slot_duration: number;
+  buffer_minutes: number;
   modality: OfficeModality;
 };
 
@@ -64,15 +64,101 @@ type DaySchedule = {
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const DAYS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
+/** Un bloque de horario por día de la semana (lun-vie activo por defecto). */
 const DEFAULT_SCHEDULE: DaySchedule[] = DAYS.map((_, i) => ({
   day: i,
-  enabled: i < 5, // Mon-Fri enabled by default
+  enabled: i < 5,
   start: '08:00',
   end: '17:00',
 }));
 
 const inp =
   'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white';
+
+// ---------------------------------------------------------------------------
+// Helpers de tiempo
+// ---------------------------------------------------------------------------
+
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+/**
+ * Dada la hora de fin del último bloque de un día, sugiere el inicio del
+ * siguiente (2 horas después, máx. 18:00).
+ */
+function suggestNextStart(lastEnd: string): string {
+  const mins = Math.min(timeToMinutes(lastEnd) + 120, 18 * 60);
+  const h = String(Math.floor(mins / 60)).padStart(2, '0');
+  const m = String(mins % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+function suggestNextEnd(nextStart: string): string {
+  const mins = Math.min(timeToMinutes(nextStart) + 240, 22 * 60);
+  const h = String(Math.floor(mins / 60)).padStart(2, '0');
+  const m = String(mins % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+// ---------------------------------------------------------------------------
+// Validación de solapamiento intra-día
+// ---------------------------------------------------------------------------
+
+type OverlapError = {
+  /** Índice en el array plano `schedule` del primer bloque en conflicto. */
+  a: number;
+  /** Índice en el array plano `schedule` del segundo bloque en conflicto. */
+  b: number;
+};
+
+function findOverlaps(schedule: DaySchedule[]): OverlapError[] {
+  const errors: OverlapError[] = [];
+  const enabledByDay = new Map<number, { idx: number; start: number; end: number }[]>();
+
+  schedule.forEach((block, idx) => {
+    if (!block.enabled) return;
+    const startMin = timeToMinutes(block.start);
+    const endMin = timeToMinutes(block.end);
+    if (startMin >= endMin) return; // inválido, no checkear solapamiento aquí
+    const existing = enabledByDay.get(block.day) ?? [];
+    for (const other of existing) {
+      if (startMin < other.end && endMin > other.start) {
+        errors.push({ a: other.idx, b: idx });
+      }
+    }
+    existing.push({ idx, start: startMin, end: endMin });
+    enabledByDay.set(block.day, existing);
+  });
+
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers de resumen para la tarjeta
+// ---------------------------------------------------------------------------
+
+type DaySummary = { day: number; blocks: { start: string; end: string }[] };
+
+function summarizeSchedule(schedule: DaySchedule[]): DaySummary[] {
+  const map = new Map<number, { start: string; end: string }[]>();
+  schedule
+    .filter((d) => d.enabled)
+    .forEach((d) => {
+      const existing = map.get(d.day) ?? [];
+      existing.push({ start: d.start, end: d.end });
+      map.set(d.day, existing);
+    });
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([day, blocks]) => ({ day, blocks }));
+}
+
+// ---------------------------------------------------------------------------
+// Componente principal
+// ---------------------------------------------------------------------------
 
 export default function OfficesPage() {
   const [offices, setOffices] = useState<Office[]>([]);
@@ -81,7 +167,6 @@ export default function OfficesPage() {
   const [editing, setEditing] = useState<Office | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  // AUDIT FIX 2026-04-28 (C-10): branded ConfirmDialog en lugar de confirm() nativo.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // Form state
@@ -93,6 +178,33 @@ export default function OfficesPage() {
   const [slotDuration, setSlotDuration] = useState(30);
   const [bufferMinutes, setBufferMinutes] = useState(10);
   const [modality, setModality] = useState<OfficeModality>('in_person');
+
+  // ---------------------------------------------------------------------------
+  // Validación reactiva de solapamientos
+  // ---------------------------------------------------------------------------
+  const overlaps = useMemo(() => findOverlaps(schedule), [schedule]);
+  const overlappingIndexes = useMemo(
+    () => new Set(overlaps.flatMap((e) => [e.a, e.b])),
+    [overlaps],
+  );
+  const hasOverlaps = overlaps.length > 0;
+
+  // ---------------------------------------------------------------------------
+  // Validación de bloques inválidos (start >= end)
+  // ---------------------------------------------------------------------------
+  const invalidIndexes = useMemo(
+    () =>
+      new Set(
+        schedule
+          .map((b, i) => ({ b, i }))
+          .filter(({ b }) => b.enabled && timeToMinutes(b.start) >= timeToMinutes(b.end))
+          .map(({ i }) => i),
+      ),
+    [schedule],
+  );
+  const hasInvalidBlocks = invalidIndexes.size > 0;
+
+  const canSave = !hasOverlaps && !hasInvalidBlocks;
 
   const fetchOffices = useCallback(async () => {
     const data = await listOffices();
@@ -111,6 +223,10 @@ export default function OfficesPage() {
   useEffect(() => {
     fetchOffices();
   }, [fetchOffices]);
+
+  // ---------------------------------------------------------------------------
+  // Abrir / cerrar formulario
+  // ---------------------------------------------------------------------------
 
   function openNew() {
     setEditing(null);
@@ -143,15 +259,70 @@ export default function OfficesPage() {
     setEditing(null);
   }
 
-  function updateDay(dayIndex: number, field: keyof DaySchedule, value: any) {
-    setSchedule((prev) => prev.map((d, i) => (i === dayIndex ? { ...d, [field]: value } : d)));
+  // ---------------------------------------------------------------------------
+  // Operaciones sobre bloques (inmutables)
+  // ---------------------------------------------------------------------------
+
+  /** Activa/desactiva un día completo. Activa = agrega un bloque inicial si no hay ninguno. */
+  function toggleDay(dayNum: number) {
+    const blocksForDay = schedule.filter((b) => b.day === dayNum);
+    const isEnabled = blocksForDay.some((b) => b.enabled);
+
+    if (isEnabled) {
+      // Desactivar: marcar todos los bloques de ese día como disabled
+      setSchedule((prev) => prev.map((b) => (b.day === dayNum ? { ...b, enabled: false } : b)));
+    } else {
+      // Activar: si hay bloques disabled, reactivarlos; si no hay ninguno, agregar uno
+      if (blocksForDay.length > 0) {
+        setSchedule((prev) => prev.map((b) => (b.day === dayNum ? { ...b, enabled: true } : b)));
+      } else {
+        setSchedule((prev) => [
+          ...prev,
+          { day: dayNum, enabled: true, start: '08:00', end: '17:00' },
+        ]);
+      }
+    }
   }
+
+  /** Actualiza un campo de un bloque puntual por su índice en el array plano. */
+  function updateBlock(blockIndex: number, field: 'start' | 'end', value: string) {
+    setSchedule((prev) => prev.map((b, i) => (i === blockIndex ? { ...b, [field]: value } : b)));
+  }
+
+  /** Elimina un bloque por su índice. Si era el único del día, deja el día sin bloques. */
+  function removeBlock(blockIndex: number) {
+    setSchedule((prev) => prev.filter((_, i) => i !== blockIndex));
+  }
+
+  /** Agrega un bloque nuevo al final de los bloques existentes de un día. */
+  function addBlock(dayNum: number) {
+    const blocksForDay = schedule.filter((b) => b.day === dayNum && b.enabled);
+    let start = '08:00';
+    let end = '12:00';
+
+    if (blocksForDay.length > 0) {
+      const lastEnd = blocksForDay[blocksForDay.length - 1]?.end ?? '12:00';
+      start = suggestNextStart(lastEnd);
+      end = suggestNextEnd(start);
+    }
+
+    setSchedule((prev) => [...prev, { day: dayNum, enabled: true, start, end }]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Guardar
+  // ---------------------------------------------------------------------------
 
   async function handleSave() {
     if (!name.trim() || !address.trim() || !city.trim()) {
       showToast({ type: 'error', message: 'Nombre, dirección y ciudad son obligatorios' });
       return;
     }
+    if (!canSave) {
+      showToast({ type: 'error', message: 'Corrige los bloques de horario antes de guardar' });
+      return;
+    }
+
     setSaving(true);
 
     const payload = {
@@ -165,16 +336,36 @@ export default function OfficesPage() {
       modality,
     };
 
+    let result;
     if (editing) {
-      await updateOffice(editing.id, payload);
+      result = await updateOffice(editing.id, payload);
     } else {
-      await createOffice(payload);
+      result = await createOffice(payload);
     }
 
     setSaving(false);
+
+    if (!result.ok) {
+      const isConflict =
+        result.error?.includes('OFFICE_SCHEDULE_CONFLICT') ||
+        result.error?.includes('conflict') ||
+        result.error?.includes('solapa');
+      showToast({
+        type: 'error',
+        message: isConflict
+          ? 'Ese horario se solapa con otro consultorio'
+          : (result.error ?? 'Ocurrió un error al guardar'),
+      });
+      return;
+    }
+
     closeForm();
     fetchOffices();
   }
+
+  // ---------------------------------------------------------------------------
+  // Eliminar / toggle
+  // ---------------------------------------------------------------------------
 
   function handleDelete(id: string) {
     setConfirmDelete(id);
@@ -192,6 +383,10 @@ export default function OfficesPage() {
     await toggleOffice(office.id);
     fetchOffices();
   }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   if (loading) {
     return (
@@ -245,130 +440,131 @@ export default function OfficesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {offices.map((office) => (
-            <div
-              key={office.id}
-              className={`bg-white border rounded-xl p-5 transition-all ${office.is_active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-sm font-bold text-slate-900">{office.name}</h3>
-                    {office.is_active ? (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
-                        Activo
+          {offices.map((office) => {
+            const summary = summarizeSchedule(office.schedule);
+            return (
+              <div
+                key={office.id}
+                className={`bg-white border rounded-xl p-5 transition-all ${office.is_active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-bold text-slate-900">{office.name}</h3>
+                      {office.is_active ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+                          Activo
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-slate-200">
+                          Inactivo
+                        </span>
+                      )}
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${MODALITY_BADGE[office.modality]}`}
+                      >
+                        {office.modality === 'in_person' && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-2.5 h-2.5 inline" />
+                            {MODALITY_LABELS[office.modality]}
+                          </span>
+                        )}
+                        {office.modality === 'online' && (
+                          <span className="flex items-center gap-1">
+                            <Video className="w-2.5 h-2.5 inline" />
+                            {MODALITY_LABELS[office.modality]}
+                          </span>
+                        )}
+                        {office.modality === 'both' && (
+                          <span className="flex items-center gap-1">
+                            <Users className="w-2.5 h-2.5 inline" />
+                            {MODALITY_LABELS[office.modality]}
+                          </span>
+                        )}
                       </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-slate-200">
-                        Inactivo
-                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500">
+                      <MapPin className="w-3 h-3" />
+                      {office.address}, {office.city}
+                    </div>
+                    {office.phone && (
+                      <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500">
+                        <Phone className="w-3 h-3" />
+                        {office.phone}
+                      </div>
                     )}
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${MODALITY_BADGE[office.modality]}`}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleActive(office)}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                      title={office.is_active ? 'Desactivar' : 'Activar'}
                     >
-                      {office.modality === 'in_person' && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-2.5 h-2.5 inline" />
-                          {MODALITY_LABELS[office.modality]}
-                        </span>
+                      {office.is_active ? (
+                        <ToggleRight className="w-5 h-5 text-teal-500" />
+                      ) : (
+                        <ToggleLeft className="w-5 h-5" />
                       )}
-                      {office.modality === 'online' && (
-                        <span className="flex items-center gap-1">
-                          <Video className="w-2.5 h-2.5 inline" />
-                          {MODALITY_LABELS[office.modality]}
-                        </span>
+                    </button>
+                    <button
+                      onClick={() => openEdit(office)}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(office.id)}
+                      disabled={deleting === office.id}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                    >
+                      {deleting === office.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
                       )}
-                      {office.modality === 'both' && (
-                        <span className="flex items-center gap-1">
-                          <Users className="w-2.5 h-2.5 inline" />
-                          {MODALITY_LABELS[office.modality]}
-                        </span>
-                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Slot config summary */}
+                <div className="mt-3 pt-3 border-t border-slate-100 flex gap-4 mb-2">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Clock className="w-3 h-3" />
+                    <span>
+                      <strong>{office.slot_duration} min</strong> por consulta
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500">
-                    <MapPin className="w-3 h-3" />
-                    {office.address}, {office.city}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <span>
+                      <strong>{office.buffer_minutes} min</strong> entre consultas
+                    </span>
                   </div>
-                  {office.phone && (
-                    <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500">
-                      <Phone className="w-3 h-3" />
-                      {office.phone}
-                    </div>
-                  )}
                 </div>
 
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => toggleActive(office)}
-                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                    title={office.is_active ? 'Desactivar' : 'Activar'}
-                  >
-                    {office.is_active ? (
-                      <ToggleRight className="w-5 h-5 text-teal-500" />
-                    ) : (
-                      <ToggleLeft className="w-5 h-5" />
+                {/* Schedule summary — agrupado por día */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Clock className="w-3 h-3 text-slate-400" />
+                    <span className="text-xs font-semibold text-slate-500">Horarios</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {summary.length === 0 && (
+                      <span className="text-[10px] text-slate-400">Sin horarios configurados</span>
                     )}
-                  </button>
-                  <button
-                    onClick={() => openEdit(office)}
-                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(office.id)}
-                    disabled={deleting === office.id}
-                    className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                  >
-                    {deleting === office.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Slot config summary */}
-              <div className="mt-3 pt-3 border-t border-slate-100 flex gap-4 mb-2">
-                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                  <Clock className="w-3 h-3" />
-                  <span>
-                    <strong>{office.slot_duration} min</strong> por consulta
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                  <span>
-                    <strong>{office.buffer_minutes} min</strong> entre consultas
-                  </span>
-                </div>
-              </div>
-
-              {/* Schedule summary */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Clock className="w-3 h-3 text-slate-400" />
-                  <span className="text-xs font-semibold text-slate-500">Horarios</span>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {office.schedule
-                    .filter((d) => d.enabled)
-                    .map((d) => (
+                    {summary.map(({ day, blocks }) => (
                       <span
-                        key={d.day}
+                        key={day}
                         className="text-[10px] font-medium bg-teal-50 text-teal-700 px-2 py-1 rounded-md border border-teal-100"
                       >
-                        {DAYS_SHORT[d.day]} {d.start}–{d.end}
+                        {DAYS_SHORT[day]} {blocks.map((b) => `${b.start}–${b.end}`).join(', ')}
                       </span>
                     ))}
-                  {office.schedule.filter((d) => d.enabled).length === 0 && (
-                    <span className="text-[10px] text-slate-400">Sin horarios configurados</span>
-                  )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -519,66 +715,159 @@ export default function OfficesPage() {
                 </div>
               </div>
 
-              {/* Schedule per day */}
+              {/* ----------------------------------------------------------------
+                  Horarios por día — múltiples bloques
+              ---------------------------------------------------------------- */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-2">
+                <label className="block text-xs font-medium text-slate-600 mb-3">
                   <Clock className="w-3 h-3 inline mr-1" />
                   Horarios de atención
                 </label>
-                <div className="space-y-2">
-                  {schedule.map((day, i) => (
-                    <div
-                      key={i}
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${day.enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50'}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => updateDay(i, 'enabled', !day.enabled)}
-                        aria-label={`${day.enabled ? 'Desactivar' : 'Activar'} ${DAYS[i]}`}
-                        aria-pressed={day.enabled}
-                        className="shrink-0 p-0.5 rounded-md hover:bg-slate-100 transition-colors"
+
+                {/* Alerta global de solapamiento */}
+                {hasOverlaps && (
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mb-3">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-600">
+                      Hay bloques de horario que se solapan en el mismo día. Corrige los conflictos
+                      para poder guardar.
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {DAYS.map((dayName, dayNum) => {
+                    const dayBlocks = schedule
+                      .map((b, globalIdx) => ({ block: b, globalIdx }))
+                      .filter(({ block }) => block.day === dayNum);
+
+                    const isDayActive = dayBlocks.some((e) => e.block.enabled);
+
+                    return (
+                      <div
+                        key={dayNum}
+                        className={`rounded-xl border transition-all ${
+                          isDayActive ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50'
+                        }`}
                       >
-                        {day.enabled ? (
-                          <ToggleRight className="w-5 h-5 text-teal-500" />
-                        ) : (
-                          <ToggleLeft className="w-5 h-5 text-slate-300" />
+                        {/* Cabecera del día */}
+                        <div className="flex items-center gap-3 px-3 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleDay(dayNum)}
+                            aria-label={`${isDayActive ? 'Desactivar' : 'Activar'} ${dayName}`}
+                            aria-pressed={isDayActive}
+                            className="shrink-0 p-0.5 rounded-md hover:bg-slate-100 transition-colors"
+                          >
+                            {isDayActive ? (
+                              <ToggleRight className="w-5 h-5 text-teal-500" />
+                            ) : (
+                              <ToggleLeft className="w-5 h-5 text-slate-300" />
+                            )}
+                          </button>
+                          <span
+                            className={`text-xs font-semibold w-16 ${isDayActive ? 'text-slate-700' : 'text-slate-400'}`}
+                          >
+                            {DAYS_SHORT[dayNum]}
+                          </span>
+                          {!isDayActive && (
+                            <span className="text-xs text-slate-400 italic">No disponible</span>
+                          )}
+                        </div>
+
+                        {/* Bloques del día (solo si activo) */}
+                        {isDayActive && (
+                          <div className="px-3 pb-3 space-y-2">
+                            {dayBlocks.length === 0 && (
+                              <p className="text-xs text-slate-400 italic py-1">
+                                Sin bloques. Agrega uno abajo.
+                              </p>
+                            )}
+
+                            {dayBlocks.map(({ block, globalIdx }) => {
+                              if (!block.enabled) return null;
+
+                              const isOverlap = overlappingIndexes.has(globalIdx);
+                              const isInvalid = invalidIndexes.has(globalIdx);
+                              const hasError = isOverlap || isInvalid;
+
+                              return (
+                                <div key={globalIdx} className="space-y-1">
+                                  <div
+                                    className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
+                                      hasError
+                                        ? 'border-red-300 bg-red-50'
+                                        : 'border-slate-100 bg-slate-50'
+                                    }`}
+                                  >
+                                    {/* Input inicio */}
+                                    <input
+                                      type="time"
+                                      value={block.start}
+                                      onChange={(e) =>
+                                        updateBlock(globalIdx, 'start', e.target.value)
+                                      }
+                                      aria-label={`Hora de inicio — ${dayName} bloque ${globalIdx + 1}`}
+                                      className={`flex-1 min-w-0 text-base sm:text-sm px-3 py-1.5 rounded-lg border transition-colors cursor-pointer focus:outline-none focus:ring-2 ${
+                                        hasError
+                                          ? 'border-red-300 bg-white text-red-700 focus:border-red-400 focus:ring-red-100'
+                                          : 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:ring-teal-200'
+                                      }`}
+                                    />
+                                    <span className="text-xs text-slate-400 shrink-0">–</span>
+                                    {/* Input fin */}
+                                    <input
+                                      type="time"
+                                      value={block.end}
+                                      onChange={(e) =>
+                                        updateBlock(globalIdx, 'end', e.target.value)
+                                      }
+                                      aria-label={`Hora de fin — ${dayName} bloque ${globalIdx + 1}`}
+                                      className={`flex-1 min-w-0 text-base sm:text-sm px-3 py-1.5 rounded-lg border transition-colors cursor-pointer focus:outline-none focus:ring-2 ${
+                                        hasError
+                                          ? 'border-red-300 bg-white text-red-700 focus:border-red-400 focus:ring-red-100'
+                                          : 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:ring-teal-200'
+                                      }`}
+                                    />
+                                    {/* Quitar bloque */}
+                                    <button
+                                      type="button"
+                                      onClick={() => removeBlock(globalIdx)}
+                                      aria-label={`Quitar bloque de ${dayName}`}
+                                      className="shrink-0 p-1 rounded-md hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+
+                                  {isInvalid && !isOverlap && (
+                                    <p className="text-[10px] text-red-500 pl-1">
+                                      La hora de fin debe ser posterior a la de inicio.
+                                    </p>
+                                  )}
+                                  {isOverlap && (
+                                    <p className="text-[10px] text-red-500 pl-1">
+                                      Este bloque se solapa con otro del mismo día.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* Botón agregar bloque */}
+                            <button
+                              type="button"
+                              onClick={() => addBlock(dayNum)}
+                              className="flex items-center gap-1.5 text-xs font-medium text-teal-600 hover:text-teal-700 transition-colors mt-1"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Agregar bloque
+                            </button>
+                          </div>
                         )}
-                      </button>
-                      <span
-                        className={`text-xs font-medium w-12 ${day.enabled ? 'text-slate-700' : 'text-slate-400'}`}
-                      >
-                        {DAYS_SHORT[i]}
-                      </span>
-                      <div className="flex items-center gap-2 flex-1">
-                        {/* text-base evita zoom-in en iOS Safari (input time necesita >=16px de font-size) */}
-                        <input
-                          type="time"
-                          value={day.start}
-                          disabled={!day.enabled}
-                          onChange={(e) => updateDay(i, 'start', e.target.value)}
-                          aria-label={`Hora de inicio — ${DAYS[i]}`}
-                          className={`flex-1 min-w-0 text-base sm:text-sm px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
-                            day.enabled
-                              ? 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200'
-                              : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
-                          }`}
-                        />
-                        <span className="text-xs text-slate-400 shrink-0">–</span>
-                        <input
-                          type="time"
-                          value={day.end}
-                          disabled={!day.enabled}
-                          onChange={(e) => updateDay(i, 'end', e.target.value)}
-                          aria-label={`Hora de fin — ${DAYS[i]}`}
-                          className={`flex-1 min-w-0 text-base sm:text-sm px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
-                            day.enabled
-                              ? 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200'
-                              : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
-                          }`}
-                        />
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -592,8 +881,9 @@ export default function OfficesPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+                disabled={saving || !canSave}
+                title={!canSave ? 'Corrige los bloques de horario antes de guardar' : undefined}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {saving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

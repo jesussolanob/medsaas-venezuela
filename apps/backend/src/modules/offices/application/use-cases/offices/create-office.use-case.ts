@@ -24,8 +24,42 @@ export function timesOverlap(startA: string, endA: string, startB: string, endB:
 }
 
 /**
+ * Validates that no two enabled blocks within the proposed schedule overlap on
+ * the same day (self-overlap). This guards against an office being created or
+ * updated with e.g. 08:00-12:00 and 10:00-14:00 on Monday.
+ *
+ * Throws OfficeInvalidScheduleError when a self-overlap is detected.
+ */
+export function assertNoSelfOverlap(proposedSchedule: DayScheduleParams[]): void {
+  const enabledByDay = new Map<number, DayScheduleParams[]>();
+  for (const slot of proposedSchedule) {
+    if (!slot.enabled) continue;
+    const list = enabledByDay.get(slot.day) ?? [];
+    list.push(slot);
+    enabledByDay.set(slot.day, list);
+  }
+
+  for (const [day, slots] of enabledByDay) {
+    for (let i = 0; i < slots.length; i++) {
+      for (let j = i + 1; j < slots.length; j++) {
+        const a = slots[i]!;
+        const b = slots[j]!;
+        if (timesOverlap(a.start, a.end, b.start, b.end)) {
+          throw new OfficeInvalidScheduleError(
+            `Los bloques del día ${day} se solapan entre sí (${a.start}-${a.end} y ${b.start}-${b.end})`,
+          );
+        }
+      }
+    }
+  }
+}
+
+/**
  * Checks whether the proposed schedule for a new office conflicts with any
- * enabled day-schedule in the existing active offices list.
+ * enabled day-schedule block in the existing active offices list.
+ *
+ * Supports multiple blocks per day: checks the proposed slot against ALL
+ * enabled blocks of that day in each existing office.
  *
  * Throws OfficeScheduleConflictError on the first overlapping day found.
  * Set excludeId to skip one specific office (used by UpdateOfficeUseCase).
@@ -42,11 +76,11 @@ export function assertNoScheduleConflict(
       if (excludeId && existing.id === excludeId) continue;
       if (!existing.isActive) continue;
 
-      const existingSlot = existing.schedule.find((s) => s.day === slot.day && s.enabled);
-      if (!existingSlot) continue;
-
-      if (timesOverlap(slot.start, slot.end, existingSlot.start, existingSlot.end)) {
-        throw new OfficeScheduleConflictError(slot.day);
+      const existingSlots = existing.getEnabledSchedulesForDay(slot.day);
+      for (const existingSlot of existingSlots) {
+        if (timesOverlap(slot.start, slot.end, existingSlot.start, existingSlot.end)) {
+          throw new OfficeScheduleConflictError(slot.day);
+        }
       }
     }
   }
@@ -71,7 +105,10 @@ export class CreateOfficeUseCase {
       }
     }
 
-    // Check for schedule overlap with existing active offices
+    // Check for self-overlap within the proposed schedule (same day, same office)
+    assertNoSelfOverlap(dto.schedule);
+
+    // Check for schedule overlap with existing active offices (cross-office)
     const activeOffices = await this.officeRepo.findActiveByDoctor(doctorId);
     assertNoScheduleConflict(dto.schedule, activeOffices);
 

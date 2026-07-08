@@ -61,8 +61,65 @@ describe('Office entity', () => {
     });
   });
 
-  describe('getEnabledScheduleForDay', () => {
-    it('returns the schedule entry for an enabled day', () => {
+  describe('getEnabledSchedulesForDay', () => {
+    it('returns all enabled entries for a day with a single block', () => {
+      const office = makeOffice();
+      const entries = office.getEnabledSchedulesForDay(0); // Monday
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.day).toBe(0);
+      expect(entries[0]?.start).toBe('08:00');
+    });
+
+    it('returns all enabled entries for a day with multiple blocks', () => {
+      const office = makeOffice({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '12:00' },
+          { day: 0, enabled: true, start: '15:00', end: '18:00' },
+        ],
+      });
+      const entries = office.getEnabledSchedulesForDay(0);
+
+      expect(entries).toHaveLength(2);
+      expect(entries[0]?.start).toBe('08:00');
+      expect(entries[1]?.start).toBe('15:00');
+    });
+
+    it('returns empty array for a day not in schedule', () => {
+      const office = makeOffice();
+      const entries = office.getEnabledSchedulesForDay(3); // Thursday not in schedule
+
+      expect(entries).toHaveLength(0);
+    });
+
+    it('returns empty array for a disabled day', () => {
+      const office = makeOffice();
+      const entries = office.getEnabledSchedulesForDay(5); // Saturday disabled
+
+      expect(entries).toHaveLength(0);
+    });
+
+    it('returns empty array for an empty schedule', () => {
+      const office = makeOffice({ schedule: [] });
+      expect(office.getEnabledSchedulesForDay(0)).toHaveLength(0);
+    });
+
+    it('only returns enabled blocks when day has mixed enabled/disabled entries', () => {
+      const office = makeOffice({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '12:00' },
+          { day: 0, enabled: false, start: '15:00', end: '18:00' },
+        ],
+      });
+      const entries = office.getEnabledSchedulesForDay(0);
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.start).toBe('08:00');
+    });
+  });
+
+  describe('getEnabledScheduleForDay (deprecated wrapper)', () => {
+    it('returns the first enabled entry for an enabled day', () => {
       const office = makeOffice();
       const entry = office.getEnabledScheduleForDay(0); // Monday
 

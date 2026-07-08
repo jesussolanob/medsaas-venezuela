@@ -2,6 +2,7 @@ import {
   CreateOfficeUseCase,
   timesOverlap,
   assertNoScheduleConflict,
+  assertNoSelfOverlap,
 } from './create-office.use-case';
 import type { IOfficeRepository } from '../../../domain/repositories/office.repository';
 import { Office } from '../../../domain/entities/office.entity';
@@ -237,6 +238,37 @@ describe('CreateOfficeUseCase', () => {
 
       await expect(useCase.execute(dto, DOCTOR_ID)).resolves.toBeDefined();
     });
+
+    it('throws OfficeInvalidScheduleError when proposed schedule has self-overlapping blocks (same day)', async () => {
+      // Two blocks on Monday that overlap — this is a self-overlap error before cross-office check
+      const dto = makeDto({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '13:00' },
+          { day: 0, enabled: true, start: '12:00', end: '17:00' },
+        ],
+      });
+      mockRepo.findActiveByDoctor.mockResolvedValue([]);
+
+      await expect(useCase.execute(dto, DOCTOR_ID)).rejects.toBeInstanceOf(
+        OfficeInvalidScheduleError,
+      );
+      // Cross-office repo should not be queried when self-overlap detected first
+      expect(mockRepo.findActiveByDoctor).not.toHaveBeenCalled();
+    });
+
+    it('creates office successfully with two non-overlapping blocks on the same day (morning + afternoon)', async () => {
+      const dto = makeDto({
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '12:00' },
+          { day: 0, enabled: true, start: '15:00', end: '18:00' },
+        ],
+      });
+      mockRepo.findActiveByDoctor.mockResolvedValue([]);
+      mockRepo.create.mockResolvedValue(savedOffice(dto));
+
+      await expect(useCase.execute(dto, DOCTOR_ID)).resolves.toBeDefined();
+      expect(mockRepo.create).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
@@ -330,5 +362,105 @@ describe('assertNoScheduleConflict()', () => {
     ]);
     const proposed = [{ day: 0, enabled: false, start: '09:00', end: '16:00' }];
     expect(() => assertNoScheduleConflict(proposed, [existing])).not.toThrow();
+  });
+
+  it('detects conflict against a second block on the same day in an existing office', () => {
+    // Existing office has morning + afternoon blocks on Monday
+    const existing = makeOfficeWith('o1', [
+      { day: 0, enabled: true, start: '08:00', end: '12:00' },
+      { day: 0, enabled: true, start: '15:00', end: '18:00' },
+    ]);
+    // Proposed slot overlaps the afternoon block
+    const proposed = [{ day: 0, enabled: true, start: '16:00', end: '19:00' }];
+    expect(() => assertNoScheduleConflict(proposed, [existing])).toThrow(
+      OfficeScheduleConflictError,
+    );
+  });
+
+  it('does not throw when proposed block fits between two existing blocks on the same day', () => {
+    // Existing office: 08:00-12:00 and 15:00-18:00 on Monday
+    const existing = makeOfficeWith('o1', [
+      { day: 0, enabled: true, start: '08:00', end: '12:00' },
+      { day: 0, enabled: true, start: '15:00', end: '18:00' },
+    ]);
+    // Proposed: 12:00-14:00 (fits in gap, adjacent to both — no overlap)
+    const proposed = [{ day: 0, enabled: true, start: '12:00', end: '14:00' }];
+    expect(() => assertNoScheduleConflict(proposed, [existing])).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assertNoSelfOverlap — unit tests
+// ---------------------------------------------------------------------------
+
+describe('assertNoSelfOverlap()', () => {
+  it('does not throw for a schedule with a single block per day', () => {
+    const schedule = [
+      { day: 0, enabled: true, start: '08:00', end: '12:00' },
+      { day: 1, enabled: true, start: '09:00', end: '17:00' },
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).not.toThrow();
+  });
+
+  it('does not throw for two non-overlapping blocks on the same day (morning + afternoon)', () => {
+    const schedule = [
+      { day: 0, enabled: true, start: '08:00', end: '12:00' },
+      { day: 0, enabled: true, start: '15:00', end: '18:00' },
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).not.toThrow();
+  });
+
+  it('does not throw for adjacent blocks on the same day (touching but not overlapping)', () => {
+    const schedule = [
+      { day: 0, enabled: true, start: '08:00', end: '12:00' },
+      { day: 0, enabled: true, start: '12:00', end: '17:00' },
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).not.toThrow();
+  });
+
+  it('throws OfficeInvalidScheduleError for two overlapping blocks on the same day', () => {
+    const schedule = [
+      { day: 0, enabled: true, start: '08:00', end: '13:00' },
+      { day: 0, enabled: true, start: '12:00', end: '17:00' }, // overlaps
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).toThrow(OfficeInvalidScheduleError);
+  });
+
+  it('throws when a block is fully contained within another on the same day', () => {
+    const schedule = [
+      { day: 0, enabled: true, start: '08:00', end: '18:00' },
+      { day: 0, enabled: true, start: '10:00', end: '14:00' }, // fully contained
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).toThrow(OfficeInvalidScheduleError);
+  });
+
+  it('does not throw when overlapping blocks are disabled', () => {
+    const schedule = [
+      { day: 0, enabled: false, start: '08:00', end: '13:00' },
+      { day: 0, enabled: false, start: '12:00', end: '17:00' },
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).not.toThrow();
+  });
+
+  it('does not throw for an empty schedule', () => {
+    expect(() => assertNoSelfOverlap([])).not.toThrow();
+  });
+
+  it('error message includes the overlapping day and times', () => {
+    const schedule = [
+      { day: 2, enabled: true, start: '09:00', end: '13:00' },
+      { day: 2, enabled: true, start: '12:00', end: '16:00' },
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).toThrow(
+      expect.objectContaining({ message: expect.stringContaining('09:00-13:00') }),
+    );
+  });
+
+  it('throws OfficeInvalidScheduleError (not OfficeScheduleConflictError) for self-overlap', () => {
+    const schedule = [
+      { day: 0, enabled: true, start: '08:00', end: '12:00' },
+      { day: 0, enabled: true, start: '10:00', end: '14:00' },
+    ];
+    expect(() => assertNoSelfOverlap(schedule)).toThrow(OfficeInvalidScheduleError);
   });
 });

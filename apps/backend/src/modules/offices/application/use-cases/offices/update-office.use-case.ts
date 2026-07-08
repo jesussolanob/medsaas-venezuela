@@ -7,7 +7,7 @@ import { Office } from '../../../domain/entities/office.entity';
 import { DaySchedule } from '../../../domain/value-objects/day-schedule.vo';
 import { OfficeNotFoundError } from '../../../domain/errors/office-not-found.error';
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
-import { assertNoScheduleConflict } from './create-office.use-case';
+import { assertNoScheduleConflict, assertNoSelfOverlap } from './create-office.use-case';
 import type { UpdateOfficeDto } from '@delta/shared-types';
 
 @Injectable()
@@ -36,8 +36,12 @@ export class UpdateOfficeUseCase {
       }
     }
 
-    // 3. Check for schedule overlap with other active offices (exclude the one being updated)
+    // 3. Check for schedule overlap when schedule is being updated
     if (dto.schedule) {
+      // 3a. Self-overlap: two enabled blocks on the same day within this office
+      assertNoSelfOverlap(newSchedule);
+
+      // 3b. Cross-office overlap: check against other active offices (exclude self)
       const activeOffices = await this.officeRepo.findActiveByDoctor(existing.doctorId);
       assertNoScheduleConflict(newSchedule, activeOffices, officeId);
     }

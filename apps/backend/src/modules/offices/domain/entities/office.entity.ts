@@ -89,12 +89,21 @@ export class Office {
   }
 
   /**
-   * Returns the DaySchedule entry for the given weekday (0=Mon … 6=Sun), or null.
-   * Only returns entries that are enabled.
+   * Returns ALL enabled DaySchedule entries for the given weekday (0=Mon … 6=Sun).
+   * Supports multiple time blocks per day (e.g., morning + afternoon).
+   * Returns an empty array when no enabled entries exist for that day.
+   */
+  getEnabledSchedulesForDay(day: number): DayScheduleParams[] {
+    return this.schedule.filter((s) => s.day === day && s.enabled);
+  }
+
+  /**
+   * Returns the first enabled DaySchedule entry for the given weekday, or null.
+   * @deprecated Use getEnabledSchedulesForDay() to support multiple blocks per day.
    */
   getEnabledScheduleForDay(day: number): DayScheduleParams | null {
-    const entry = this.schedule.find((s) => s.day === day && s.enabled);
-    return entry ?? null;
+    const entries = this.getEnabledSchedulesForDay(day);
+    return entries[0] ?? null;
   }
 
   /**
