@@ -46,6 +46,7 @@ import { AiTranscriptionModule } from './modules/ai-transcription/ai-transcripti
 import { DocumentSharingModule } from './modules/document-sharing/document-sharing.module';
 import { HelpAssistantModule } from './modules/help-assistant/help-assistant.module';
 import { PatientRequestsModule } from './modules/patient-requests/patient-requests.module';
+import { SharedFilesModule } from './modules/shared-files/shared-files.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -102,6 +103,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     DocumentSharingModule,
     HelpAssistantModule,
     PatientRequestsModule,
+    SharedFilesModule,
   ],
   controllers: [HealthController],
   providers: [
