@@ -74,19 +74,24 @@ import { showToast } from '@/components/ui/Toaster';
 import NewRequestModal from '@/components/patient-requests/NewRequestModal';
 import RequestDetailModal from '@/app/doctor/patient-requests/RequestDetailModal';
 
-// Inline type (mirrors @/lib/shared-files.SharedFile) — no Supabase dependency.
-// Fase 5: replace with backend endpoint and remove this local type.
+// Tipo alineado a la respuesta camelCase del backend shared-files.
 type SharedFile = {
   id: string;
+  doctorId: string;
+  patientId: string;
   title: string;
   description: string | null;
-  category: string;
-  status: string;
-  created_by: 'doctor' | 'patient';
-  file_url: string | null;
-  file_type: string | null;
-  file_size_bytes: number | null;
-  created_at: string;
+  fileUrl: string | null;
+  fileType: string | null;
+  fileSizeBytes: number | null;
+  category: 'instruction' | 'file' | 'recipe' | 'lab_result' | 'image' | 'other' | 'comment';
+  status: 'pending' | 'completed' | 'reviewed';
+  createdBy: 'doctor' | 'patient';
+  parentTaskId: string | null;
+  readByDoctor: boolean;
+  readByPatient: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 // Solicitudes de documentos al paciente (módulo patient-requests, ya cableado al
@@ -346,8 +351,8 @@ export default function PatientsPage() {
       // Load package info — GET /api/packages/doctor?status=active
       loadPackageInfo();
 
-      // RONDA 40: unread counts — placeholder (shared_files is Supabase-only in Etapa 1)
-      // loadUnreadCounts deferred to Fase 5
+      // Unread counts del módulo shared-files (backend real)
+      void loadUnreadCounts();
 
       // Load pricing plans → GET /api/doctor/services (backend)
       getDoctorServices().then((services) => {
@@ -481,8 +486,8 @@ export default function PatientsPage() {
       // Auto-select la mas reciente (primera del array, ordenada DESC en getConsultations)
       if (list.length > 0) setSelectedConsultaId(list[0].id);
     });
-    // RONDA 40: cargar shared_files del paciente
-    loadSharedFiles(p.id);
+    // Cargar shared_files del paciente (backend real)
+    void loadSharedFiles(p.id);
     // Solicitudes de documentos de este paciente (feed en la tab Seguimiento).
     void loadPatientRequests(p.id);
   }
@@ -509,18 +514,39 @@ export default function PatientsPage() {
     }
   }
 
-  // RONDA 40: shared_files — no backend endpoint in Etapa 1.
-  // loadSharedFiles and loadUnreadCounts are stubs; tab shows empty placeholder.
-  // Fase 5: wire /api/shared-files/:patientId endpoint here.
-  function loadSharedFiles(_patientId: string) {
+  // Carga los archivos/tareas compartidos del paciente desde el backend.
+  async function loadSharedFiles(patientId: string) {
     setSharedLoading(true);
-    setSharedFiles([]);
-    setSharedLoading(false);
+    try {
+      const res = await fetch(
+        `/api/doctor/shared-files?patientId=${encodeURIComponent(patientId)}`,
+      );
+      const json = (await res.json()) as { success: true; data: SharedFile[] } | { error: string };
+      if (res.ok && 'success' in json) {
+        setSharedFiles(json.data ?? []);
+      } else {
+        setSharedFiles([]);
+      }
+    } catch {
+      setSharedFiles([]);
+    } finally {
+      setSharedLoading(false);
+    }
   }
 
-  // Unread counts not available without shared_files backend; stays empty.
-  function loadUnreadCounts(_doctorId: string) {
-    setUnreadByPatient({});
+  // Carga el mapa { [patientId]: unreadCount } desde el backend.
+  async function loadUnreadCounts() {
+    try {
+      const res = await fetch('/api/doctor/shared-files/unread-counts');
+      const json = (await res.json()) as
+        | { success: true; data: Record<string, number> }
+        | { error: string };
+      if (res.ok && 'success' in json) {
+        setUnreadByPatient(json.data ?? {});
+      }
+    } catch {
+      // Sin unread counts disponibles — el badge simplemente no aparece
+    }
   }
 
   // RONDA 19b — handler UNICO para PatientForm. UPDATE si data.id existe, INSERT si no.
@@ -1328,10 +1354,14 @@ export default function PatientsPage() {
               <button
                 onClick={() => {
                   setDetailTab('seguimiento');
-                  // Etapa 1: markAllReadByDoctor is Supabase-only; no-op here.
-                  // Fase 5: call backend endpoint to mark files read.
+                  // Marcar como leídos por el doctor y limpiar badge local.
                   if (selected) {
                     setUnreadByPatient((prev) => ({ ...prev, [selected.id]: 0 }));
+                    void fetch('/api/doctor/shared-files/mark-read', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ patientId: selected.id }),
+                    });
                   }
                 }}
                 className={`relative px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap ${
@@ -1752,17 +1782,40 @@ export default function PatientsPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={async () => {
-                          if (!doctorId || !selected || !newInstructionTitle.trim()) return;
-                          // Etapa 1: shared_files has no backend endpoint. No-op stub.
-                          // Fase 5: wire POST /api/shared-files/instruction here.
+                          if (!selected || !newInstructionTitle.trim()) return;
                           setSavingInstruction(true);
                           try {
-                            showToast({
-                              type: 'info',
-                              message: 'Esta función estará disponible próximamente.',
+                            const res = await fetch('/api/doctor/shared-files', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                patientId: selected.id,
+                                title: newInstructionTitle.trim(),
+                                description: newInstructionDesc.trim() || null,
+                                category: 'instruction',
+                              }),
                             });
+                            const json = (await res.json()) as
+                              | { success: true }
+                              | { error: string };
+                            if (!res.ok || !('success' in json)) {
+                              showToast({
+                                type: 'error',
+                                message:
+                                  ('error' in json ? json.error : null) ??
+                                  'Error al enviar la tarea',
+                              });
+                              return;
+                            }
+                            showToast({ type: 'success', message: 'Tarea enviada al paciente' });
                             setNewInstructionTitle('');
                             setNewInstructionDesc('');
+                            void loadSharedFiles(selected.id);
+                          } catch {
+                            showToast({
+                              type: 'error',
+                              message: 'Error de conexión al enviar la tarea',
+                            });
                           } finally {
                             setSavingInstruction(false);
                           }
@@ -1813,9 +1866,8 @@ export default function PatientsPage() {
                     <div className="divide-y divide-slate-100">
                       {sharedFiles.map((f) => {
                         const isImage =
-                          f.file_type &&
-                          ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(f.file_type);
-                        // RONDA 42: tipos correctamente diferenciados
+                          f.fileType != null &&
+                          ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(f.fileType);
                         const isInstructionTask = f.category === 'instruction';
                         const isComment = f.category === 'comment';
                         const isPendingTask = isInstructionTask && f.status === 'pending';
@@ -1852,14 +1904,13 @@ export default function PatientsPage() {
                                 </p>
                                 <span
                                   className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                    f.created_by === 'doctor'
+                                    f.createdBy === 'doctor'
                                       ? 'bg-blue-100 text-blue-700'
                                       : 'bg-emerald-100 text-emerald-700'
                                   }`}
                                 >
-                                  {f.created_by === 'doctor' ? 'Tú' : 'Paciente'}
+                                  {f.createdBy === 'doctor' ? 'Tú' : 'Paciente'}
                                 </span>
-                                {/* RONDA 42: chip de estado correcto segun status */}
                                 {isPendingTask && (
                                   <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
                                     Pendiente
@@ -1882,22 +1933,22 @@ export default function PatientsPage() {
                                 </p>
                               )}
                               <p className="text-[10px] text-slate-400 mt-1">
-                                {new Date(f.created_at).toLocaleString('es-VE', {
+                                {new Date(f.createdAt).toLocaleString('es-VE', {
                                   day: 'numeric',
                                   month: 'short',
                                   year: 'numeric',
                                   hour: '2-digit',
                                   minute: '2-digit',
                                 })}
-                                {f.file_size_bytes && (
-                                  <> · {(f.file_size_bytes / 1024).toFixed(0)} KB</>
+                                {f.fileSizeBytes != null && (
+                                  <> · {(f.fileSizeBytes / 1024).toFixed(0)} KB</>
                                 )}
                               </p>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {f.file_url && (
+                              {f.fileUrl && (
                                 <a
-                                  href={f.file_url}
+                                  href={f.fileUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
@@ -1906,14 +1957,14 @@ export default function PatientsPage() {
                                   <ExternalLink className="w-4 h-4" />
                                 </a>
                               )}
-                              {/* RONDA 43: lapiz + papelera SOLO si el item es del doctor (created_by='doctor') */}
-                              {f.created_by === 'doctor' && (
+                              {/* Lapiz + papelera SOLO si el item es del doctor (createdBy='doctor') */}
+                              {f.createdBy === 'doctor' && (
                                 <>
                                   <button
                                     onClick={() => {
                                       setEditingFile(f);
                                       setEditTitle(f.title);
-                                      setEditDesc(f.description || '');
+                                      setEditDesc(f.description ?? '');
                                     }}
                                     className="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
                                     title="Editar"
@@ -1928,11 +1979,36 @@ export default function PatientsPage() {
                                         )
                                       )
                                         return;
-                                      // Etapa 1: no backend endpoint for shared_files. No-op.
-                                      showToast({
-                                        type: 'info',
-                                        message: 'Esta función estará disponible próximamente.',
-                                      });
+                                      try {
+                                        const res = await fetch(
+                                          `/api/doctor/shared-files/${f.id}`,
+                                          {
+                                            method: 'DELETE',
+                                          },
+                                        );
+                                        const json = (await res.json()) as
+                                          | { success: true }
+                                          | { error: string };
+                                        if (!res.ok || !('success' in json)) {
+                                          showToast({
+                                            type: 'error',
+                                            message:
+                                              ('error' in json ? json.error : null) ??
+                                              'Error al eliminar',
+                                          });
+                                          return;
+                                        }
+                                        showToast({
+                                          type: 'success',
+                                          message: 'Elemento eliminado',
+                                        });
+                                        if (selected) void loadSharedFiles(selected.id);
+                                      } catch {
+                                        showToast({
+                                          type: 'error',
+                                          message: 'Error de conexión al eliminar',
+                                        });
+                                      }
                                     }}
                                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     title="Eliminar"
@@ -2007,12 +2083,35 @@ export default function PatientsPage() {
                     });
                     return;
                   }
-                  // Etapa 1: shared_files has no backend endpoint. No-op stub.
-                  // Fase 5: wire POST /api/shared-files/comment here.
-                  showToast({
-                    type: 'info',
-                    message: 'Esta función estará disponible próximamente.',
-                  });
+                  if (!selected) return;
+                  try {
+                    const res = await fetch('/api/doctor/shared-files', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        patientId: selected.id,
+                        title: doctorUploadTitle.trim() || doctorUploadDesc.trim().slice(0, 60),
+                        description: doctorUploadDesc.trim(),
+                        category: 'comment',
+                      }),
+                    });
+                    const json = (await res.json()) as { success: true } | { error: string };
+                    if (!res.ok || !('success' in json)) {
+                      showToast({
+                        type: 'error',
+                        message:
+                          ('error' in json ? json.error : null) ?? 'Error al enviar comentario',
+                      });
+                      return;
+                    }
+                    showToast({ type: 'success', message: 'Comentario enviado' });
+                    setDoctorUploadModal(false);
+                    setDoctorUploadTitle('');
+                    setDoctorUploadDesc('');
+                    void loadSharedFiles(selected.id);
+                  } catch {
+                    showToast({ type: 'error', message: 'Error de conexión al enviar comentario' });
+                  }
                 }}
                 disabled={!doctorUploadDesc.trim()}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl disabled:opacity-50 transition-colors"
@@ -2027,10 +2126,61 @@ export default function PatientsPage() {
               </div>
 
               <UploadDropZone
-                onUpload={async (_file) => {
-                  // Etapa 1: shared_files upload has no backend endpoint. No-op stub.
-                  // Fase 5: wire storage upload + POST /api/shared-files here.
-                  throw new Error('Carga de archivos de seguimiento disponible próximamente');
+                onUpload={async (file: File) => {
+                  if (!selected) return;
+                  // 1. Subir archivo al storage
+                  const fd = new FormData();
+                  fd.append('file', file);
+                  fd.append('kind', 'document');
+                  const uploadRes = await fetch('/api/storage/upload', {
+                    method: 'POST',
+                    body: fd,
+                  });
+                  const uploadJson = (await uploadRes.json()) as
+                    | { success: true; data: { url: string; path: string } }
+                    | { success: false; error: { message: string } };
+                  if (!uploadRes.ok || !uploadJson.success) {
+                    const msg = !uploadJson.success
+                      ? uploadJson.error.message
+                      : 'Error al subir archivo';
+                    throw new Error(msg);
+                  }
+                  const { path: filePath } = uploadJson.data;
+                  // Detectar tipo de archivo y categoría apropiada
+                  const fileType = file.type.startsWith('image/')
+                    ? (file.type.split('/')[1] ?? 'image')
+                    : file.type === 'application/pdf'
+                      ? 'pdf'
+                      : (file.name.split('.').pop()?.toLowerCase() ?? 'unknown');
+                  const category = file.type.startsWith('image/')
+                    ? 'image'
+                    : file.type === 'application/pdf'
+                      ? 'lab_result'
+                      : 'other';
+                  // 2. Crear el shared-file con el path obtenido
+                  const postRes = await fetch('/api/doctor/shared-files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      patientId: selected.id,
+                      title: doctorUploadTitle.trim() || file.name,
+                      description: doctorUploadDesc.trim() || null,
+                      category,
+                      filePath,
+                      fileType,
+                      fileSizeBytes: file.size,
+                    }),
+                  });
+                  const postJson = (await postRes.json()) as { success: true } | { error: string };
+                  if (!postRes.ok || !('success' in postJson)) {
+                    const msg = 'error' in postJson ? postJson.error : 'Error al guardar archivo';
+                    throw new Error(msg);
+                  }
+                  showToast({ type: 'success', message: 'Archivo enviado al paciente' });
+                  setDoctorUploadModal(false);
+                  setDoctorUploadTitle('');
+                  setDoctorUploadDesc('');
+                  void loadSharedFiles(selected.id);
                 }}
                 label="Suelta o selecciona el archivo"
               />
@@ -2087,15 +2237,31 @@ export default function PatientsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={async () => {
+                    if (!editingFile || !editTitle.trim()) return;
                     setSavingEditFile(true);
                     try {
-                      // Etapa 1: shared_files has no backend endpoint. No-op stub.
-                      // Fase 5: wire PATCH /api/shared-files/:id here.
-                      showToast({
-                        type: 'info',
-                        message: 'Edición de archivos de seguimiento disponible próximamente.',
+                      const res = await fetch(`/api/doctor/shared-files/${editingFile.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          title: editTitle.trim(),
+                          description: editDesc.trim() || null,
+                        }),
                       });
+                      const json = (await res.json()) as { success: true } | { error: string };
+                      if (!res.ok || !('success' in json)) {
+                        showToast({
+                          type: 'error',
+                          message:
+                            ('error' in json ? json.error : null) ?? 'Error al guardar cambios',
+                        });
+                        return;
+                      }
+                      showToast({ type: 'success', message: 'Cambios guardados' });
                       setEditingFile(null);
+                      if (selected) void loadSharedFiles(selected.id);
+                    } catch {
+                      showToast({ type: 'error', message: 'Error de conexión al guardar' });
                     } finally {
                       setSavingEditFile(false);
                     }
@@ -2113,7 +2279,7 @@ export default function PatientsPage() {
               </div>
 
               {/* Si esta tarea NO tiene archivo aun, permitir adjuntar uno */}
-              {!editingFile.file_url && (
+              {!editingFile.fileUrl && (
                 <>
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <div className="flex-1 border-t border-slate-200"></div>
@@ -2121,10 +2287,50 @@ export default function PatientsPage() {
                     <div className="flex-1 border-t border-slate-200"></div>
                   </div>
                   <UploadDropZone
-                    onUpload={async (_file) => {
-                      // Etapa 1: no backend endpoint for shared_files. No-op stub.
-                      // Fase 5: wire PATCH /api/shared-files/:id/attach here.
-                      throw new Error('Adjuntar archivo de seguimiento disponible próximamente');
+                    onUpload={async (file: File) => {
+                      if (!editingFile) return;
+                      const fd = new FormData();
+                      fd.append('file', file);
+                      fd.append('kind', 'document');
+                      const uploadRes = await fetch('/api/storage/upload', {
+                        method: 'POST',
+                        body: fd,
+                      });
+                      const uploadJson = (await uploadRes.json()) as
+                        | { success: true; data: { url: string; path: string } }
+                        | { success: false; error: { message: string } };
+                      if (!uploadRes.ok || !uploadJson.success) {
+                        const msg = !uploadJson.success
+                          ? uploadJson.error.message
+                          : 'Error al subir archivo';
+                        throw new Error(msg);
+                      }
+                      const { path: filePath } = uploadJson.data;
+                      const fileType = file.type.startsWith('image/')
+                        ? (file.type.split('/')[1] ?? 'image')
+                        : file.type === 'application/pdf'
+                          ? 'pdf'
+                          : (file.name.split('.').pop()?.toLowerCase() ?? 'unknown');
+                      const patchRes = await fetch(`/api/doctor/shared-files/${editingFile.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          filePath,
+                          fileType,
+                          fileSizeBytes: file.size,
+                        }),
+                      });
+                      const patchJson = (await patchRes.json()) as
+                        | { success: true }
+                        | { error: string };
+                      if (!patchRes.ok || !('success' in patchJson)) {
+                        const msg =
+                          'error' in patchJson ? patchJson.error : 'Error al adjuntar archivo';
+                        throw new Error(msg);
+                      }
+                      showToast({ type: 'success', message: 'Archivo adjuntado' });
+                      setEditingFile(null);
+                      if (selected) void loadSharedFiles(selected.id);
                     }}
                     label="Adjuntar archivo a esta tarea"
                     helperText="PDF, JPG o PNG. Máximo 20MB."
@@ -2133,7 +2339,7 @@ export default function PatientsPage() {
               )}
 
               {/* Si YA tiene archivo, mostrar reemplazar */}
-              {editingFile.file_url && (
+              {editingFile.fileUrl && (
                 <>
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <div className="flex-1 border-t border-slate-200"></div>
@@ -2141,7 +2347,7 @@ export default function PatientsPage() {
                     <div className="flex-1 border-t border-slate-200"></div>
                   </div>
                   <a
-                    href={editingFile.file_url}
+                    href={editingFile.fileUrl ?? '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-semibold"
@@ -2149,10 +2355,50 @@ export default function PatientsPage() {
                     <ExternalLink className="w-4 h-4" /> Ver archivo adjunto
                   </a>
                   <UploadDropZone
-                    onUpload={async (_file) => {
-                      // Etapa 1: no backend endpoint for shared_files. No-op stub.
-                      // Fase 5: wire PATCH /api/shared-files/:id/attach here.
-                      throw new Error('Reemplazar archivo de seguimiento disponible próximamente');
+                    onUpload={async (file: File) => {
+                      if (!editingFile) return;
+                      const fd = new FormData();
+                      fd.append('file', file);
+                      fd.append('kind', 'document');
+                      const uploadRes = await fetch('/api/storage/upload', {
+                        method: 'POST',
+                        body: fd,
+                      });
+                      const uploadJson = (await uploadRes.json()) as
+                        | { success: true; data: { url: string; path: string } }
+                        | { success: false; error: { message: string } };
+                      if (!uploadRes.ok || !uploadJson.success) {
+                        const msg = !uploadJson.success
+                          ? uploadJson.error.message
+                          : 'Error al subir archivo';
+                        throw new Error(msg);
+                      }
+                      const { path: filePath } = uploadJson.data;
+                      const fileType = file.type.startsWith('image/')
+                        ? (file.type.split('/')[1] ?? 'image')
+                        : file.type === 'application/pdf'
+                          ? 'pdf'
+                          : (file.name.split('.').pop()?.toLowerCase() ?? 'unknown');
+                      const patchRes = await fetch(`/api/doctor/shared-files/${editingFile.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          filePath,
+                          fileType,
+                          fileSizeBytes: file.size,
+                        }),
+                      });
+                      const patchJson = (await patchRes.json()) as
+                        | { success: true }
+                        | { error: string };
+                      if (!patchRes.ok || !('success' in patchJson)) {
+                        const msg =
+                          'error' in patchJson ? patchJson.error : 'Error al reemplazar archivo';
+                        throw new Error(msg);
+                      }
+                      showToast({ type: 'success', message: 'Archivo reemplazado' });
+                      setEditingFile(null);
+                      if (selected) void loadSharedFiles(selected.id);
                     }}
                     label="Reemplazar archivo"
                     helperText="Sube un nuevo archivo para reemplazar el actual."
