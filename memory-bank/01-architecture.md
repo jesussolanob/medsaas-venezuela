@@ -154,8 +154,11 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   tiene CORS para `deltasalud.app` → logos/firmas no cargaban en el PDF. Se agrega el BFF `GET /api/storage/image-proxy`
   (fetch server-side, guard anti-SSRF `https://storage.googleapis.com/` + `redirect:'error'` + `nosniff`). **Bug de raíz
   relacionado:** concatenar `?t=Date.now()` a una signed URL v4 de GCS rompe la firma (doble `?`) → 403 (rompía el preview
-  de subida y guardaba URL rota en BD del avatar). **DEUDA INFRA:** configurar CORS del bucket
-  `delta-files-sodium-shard-499116-r3` y eliminar el proxy.
+  de subida y guardaba URL rota en BD del avatar). **✅ RESUELTO 2026-07-08:** se configuró **CORS en el bucket**
+  `delta-files-sodium-shard-499116-r3` (GET/HEAD desde deltasalud.app/www + Cloud Run; `gcloud storage buckets update
+--cors-file`) y `MedicalDocumentPdf.proxyGcsUrl()` ahora devuelve la **URL directa de GCS** (verificado en prod: react-pdf
+  baja logo+firma directo, 0 hits al proxy). El route `/api/storage/image-proxy` se **deja como fallback** (re-activable
+  descomentando en `proxyGcsUrl`).
 - **ADR-018 (2026-07-08):** **Horario de atención = N bloques por día por consultorio (no una ventana).** El horario NO vive en
   `doctor_schedules` (que solo aporta `bookingHorizonWeeks`/`bookingMinLeadDays`) sino en `doctor_offices.schedule` (JSONB
   `DayScheduleParams[]` = {day 0=Lun..6=Dom, enabled, start, end}). Se permite **varias entradas con el mismo `day`** = varios

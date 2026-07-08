@@ -28,8 +28,10 @@ Equipo de agentes (backend-agent + frontend-agent en paralelo; lead verificó en
   **409 cross-consultorio** del backend se surfacea como toast. tsc 0.
 - **QA prod (Playwright):** "Agregar bloque" en Lun → 2 bloques (12 inputs time); al solaparlos (08-17 ambos) → alerta
   "Hay bloques que se solapan en el mismo día" + ambos bloques en rojo + **"Crear consultorio" deshabilitado**. ✅
-- **Deuda relacionada (de ADR-016):** CORS del bucket GCS `delta-files-sodium-shard-499116-r3` para `deltasalud.app` (eliminar
-  el proxy `/api/storage/image-proxy` de los logos en PDF). Sigue abierta.
+- **✅ Deuda de ADR-016 CERRADA (2026-07-08, commit `f1ca146`):** se configuró **CORS en el bucket GCS**
+  `delta-files-sodium-shard-499116-r3` (GET/HEAD desde deltasalud.app/www + Cloud Run) y `MedicalDocumentPdf.proxyGcsUrl()`
+  devuelve la **URL directa** — react-pdf baja logo+firma directo de GCS (verificado en prod: 0 hits al proxy). El route
+  `/api/storage/image-proxy` queda como **fallback** (re-activable descomentando 3 líneas en `proxyGcsUrl`).
 
 ## 2026-07-07/08 — Lote QA (gating, ficha, consultas, compartir, imágenes/PDF): DESPLEGADO + VERIFICADO en prod ✅
 
