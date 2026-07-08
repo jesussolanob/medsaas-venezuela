@@ -90,22 +90,22 @@ function getDocLabel(docType: string): string {
 }
 
 /**
- * Wraps GCS signed/storage URLs through the BFF image proxy so that
- * @react-pdf/renderer can fetch them without CORS restrictions.
+ * Resuelve la URL de una imagen (logo/firma) para que @react-pdf/renderer la
+ * pueda cargar con fetch() en el navegador.
  *
- * Background: react-pdf uses fetch() in the browser to load images.
- * GCS signed URLs require the bucket to have CORS configured for the
- * frontend origin; without that configuration, the browser fetch fails
- * silently and the image is omitted from the PDF. The BFF proxy fetches
- * the image server-side (no CORS restriction) and returns the binary.
+ * 2026-07-08: se configuró **CORS en el bucket GCS** (`delta-files-...` permite
+ * GET/HEAD desde deltasalud.app + la URL de Cloud Run), así que react-pdf puede
+ * bajar la imagen **directo de GCS** — devolvemos la URL tal cual (sin salto extra).
  *
- * Non-GCS URLs are returned as-is (e.g. data: URLs or other CDNs).
+ * El proxy BFF `/api/storage/image-proxy` se DEJA en el repo como fallback: si el
+ * CORS del bucket llegara a fallar, re-habilitarlo es descomentar la línea de abajo.
  */
 function proxyGcsUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  if (url.startsWith('https://storage.googleapis.com/')) {
-    return `/api/storage/image-proxy?url=${encodeURIComponent(url)}`;
-  }
+  // Fallback (proxy): descomentar si se cae el CORS del bucket GCS.
+  // if (url.startsWith('https://storage.googleapis.com/')) {
+  //   return `/api/storage/image-proxy?url=${encodeURIComponent(url)}`;
+  // }
   return url;
 }
 
