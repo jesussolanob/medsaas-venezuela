@@ -2,6 +2,35 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-08 — MVP 7.x: múltiples bloques de horario por día por consultorio: DESPLEGADO + VERIFICADO en prod ✅
+
+Commit **`ce8a5d8`** en `feature/migracion-backend`. CI run **28958976502 = success**. **Verificado con Playwright en prod.**
+Equipo de agentes (backend-agent + frontend-agent en paralelo; lead verificó en disco: build/tests + tsc + lectura de lógica).
+
+- **Requisito (usuario):** el doctor puede agregar **N bloques de horario por día** (botón "+ bloque"), **distinto por día**, cada
+  bloque pertenece a un **consultorio**. **SIN solape en todo el horario del doctor**: ni dentro del mismo consultorio/día ni
+  entre consultorios distintos (una sola persona). Ej: Lun Consultorio A 08-11 + A 15-18 ✅; pero B 08-11 el mismo lunes ❌.
+- **HALLAZGO CLAVE (ahorró muchísimo):** el módulo `offices` YA tenía casi todo. El `schedule` vive en `doctor_offices`
+  (JSONB `DayScheduleParams[]` = {day 0=Lun..6=Dom, enabled, start, end}) + `slot_duration` + `buffer_minutes`. El booking
+  **ya genera slots desde los consultorios activos** (`get-available-slots.use-case`, NO desde `doctor_schedules` — este solo
+  aporta `bookingHorizonWeeks`/`bookingMinLeadDays`). El anti-solape **cross-consultorio ya existía** (`OfficeScheduleConflictError`
+  409). El JSONB y el DTO Zod (`z.array(DayScheduleSchema)`) **ya aceptaban varias entradas por día** — solo el código usaba
+  `.find()` (primera). → **CERO migración, CERO tabla/DTO nuevo.** Solo lógica + editor.
+- **Backend** (`offices` + `booking`): `office.entity.getEnabledSchedulesForDay(day)` = `.filter()` (todos los bloques del día;
+  el viejo `getEnabledScheduleForDay` queda `@deprecated`). `get-available-slots` itera TODOS los bloques del día por consultorio
+  (union por Set). `create/update-office`: nueva `assertNoSelfOverlap(schedule)` (dos bloques habilitados del mismo día se pisan →
+  `OfficeInvalidScheduleError`) + `assertNoScheduleConflict` ahora compara contra TODOS los bloques del día de otros consultorios
+  (antes solo el primero). **116 tests verdes** (office.entity/create/update/get-available-slots), build EXIT 0.
+- **Frontend** (`app/doctor/offices/page.tsx`): editor reestructurado — por día: toggle on/off + lista de bloques (inputs time
+  start/end + quitar) + **"+ Agregar bloque"**. Helpers: `toggleDay`/`addBlock`/`removeBlock`/`updateBlock`/`findOverlaps`/
+  `summarizeSchedule`/`suggestNextStart|End`. **Validación de solape intra-día EN VIVO** (borde rojo + mensaje + alerta global;
+  **Guardar deshabilitado** si `hasOverlaps||hasInvalidBlocks`). El resumen de la card agrupa por día ("Lun 08-11, 15-18"). El
+  **409 cross-consultorio** del backend se surfacea como toast. tsc 0.
+- **QA prod (Playwright):** "Agregar bloque" en Lun → 2 bloques (12 inputs time); al solaparlos (08-17 ambos) → alerta
+  "Hay bloques que se solapan en el mismo día" + ambos bloques en rojo + **"Crear consultorio" deshabilitado**. ✅
+- **Deuda relacionada (de ADR-016):** CORS del bucket GCS `delta-files-sodium-shard-499116-r3` para `deltasalud.app` (eliminar
+  el proxy `/api/storage/image-proxy` de los logos en PDF). Sigue abierta.
+
 ## 2026-07-07/08 — Lote QA (gating, ficha, consultas, compartir, imágenes/PDF): DESPLEGADO + VERIFICADO en prod ✅
 
 Commit **`77786bb`** en `feature/migracion-backend` (12 archivos, +620/−935). CI auto-deploy a Cloud Run

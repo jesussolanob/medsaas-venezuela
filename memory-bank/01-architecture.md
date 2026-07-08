@@ -156,6 +156,14 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   relacionado:** concatenar `?t=Date.now()` a una signed URL v4 de GCS rompe la firma (doble `?`) → 403 (rompía el preview
   de subida y guardaba URL rota en BD del avatar). **DEUDA INFRA:** configurar CORS del bucket
   `delta-files-sodium-shard-499116-r3` y eliminar el proxy.
+- **ADR-018 (2026-07-08):** **Horario de atención = N bloques por día por consultorio (no una ventana).** El horario NO vive en
+  `doctor_schedules` (que solo aporta `bookingHorizonWeeks`/`bookingMinLeadDays`) sino en `doctor_offices.schedule` (JSONB
+  `DayScheduleParams[]` = {day 0=Lun..6=Dom, enabled, start, end}). Se permite **varias entradas con el mismo `day`** = varios
+  bloques (mañana/tarde/…). `office.getEnabledSchedulesForDay()` usa `.filter()`; `get-available-slots` itera todos los bloques
+  del día por consultorio (union por Set). **Doble anti-solape:** `assertNoSelfOverlap` (dos bloques del mismo día+consultorio →
+  `OfficeInvalidScheduleError`) + `assertNoScheduleConflict` (solape con cualquier bloque del día de OTRO consultorio activo →
+  `OfficeScheduleConflictError` 409) — el doctor es una sola persona. **Sin migración** (el JSONB y el DTO `z.array(DayScheduleSchema)`
+  ya lo soportaban). Frontend: editor por día con "+ bloque" + validación de solape en vivo (Guardar deshabilitado).
 - **ADR-017 (2026-07-07):** **Consolidación del módulo consultas: se elimina la página de detalle `[id]`.** El editor
   de una consulta (bloques dinámicos, grabadora IA, estado, pago, compartir) vive **inline en la lista**
   (`consultations/page.tsx`, deep-link `?open=<id>`). La página `consultations/[id]/page.tsx` era redundante y sus botones

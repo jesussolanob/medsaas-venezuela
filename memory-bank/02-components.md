@@ -201,6 +201,11 @@ Estado (orden `migracion/modulos/`):
   (doctor), `GET /api/telemetry/sessions` (super_admin). Reemplaza `action_events`.
 - También tocados: booking/offices (modalidad)/appointments (meet_link+office_id)/doctor-settings (services
   por consultorio)/packages.
+- **offices — horario multi-bloque (2026-07-08, ADR-018):** el `schedule` de cada consultorio (`doctor_offices`, JSONB
+  `DayScheduleParams[]`) admite **varios bloques por día** (varias entradas con el mismo `day`). `getEnabledSchedulesForDay()`
+  (filter) + slots del booking iteran todos los bloques. Doble anti-solape (self → `OfficeInvalidScheduleError`; cross-consultorio
+  → `OfficeScheduleConflictError` 409). Editor en `app/doctor/offices/page.tsx`: por día toggle + lista de bloques + "+ Agregar
+  bloque" + validación de solape en vivo (Guardar deshabilitado). Sin migración (JSONB + DTO ya lo soportaban).
 
 ### Componentes frontend nuevos (sesión 2026-06)
 
