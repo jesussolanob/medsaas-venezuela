@@ -2,6 +2,56 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-07/08 — Lote QA (gating, ficha, consultas, compartir, imágenes/PDF): DESPLEGADO + VERIFICADO en prod ✅
+
+Commit **`77786bb`** en `feature/migracion-backend` (12 archivos, +620/−935). CI auto-deploy a Cloud Run
+**run 28905468108 = success**. **QA con Playwright contra prod (12 checks LIVE ✅).** Todo frontend (BFF).
+
+- **Gating de plan a nivel de PÁGINA** (`doctor/layout.tsx`): antes el candado era SOLO visual en el sidebar;
+  entrar por URL directa o enlace cross-módulo saltaba el gate. Nuevo `PLAN_GATED_ROUTES` (ruta→feature) +
+  `resolveGatedModuleKey()` + interstitial `PlanLockedNotice` que reemplaza el contenido si el plan efectivo
+  no habilita el módulo (mientras `planFeatures===null` no bloquea, evita flash). **Verificado:** `/doctor/agenda`
+  en Delta Free → "Sección no disponible en tu plan". Es enforcement de UX; el backend sigue siendo la puerta dura.
+- **Refactor módulo consultas:** ELIMINADA `app/doctor/consultations/[id]/page.tsx` (redundante; su editor ya vivía
+  inline en la lista). "Generar informe" **descarga el PDF directo** (`ConsultationInformePdfButton`, `<a>` blob) en
+  vez de navegar a `[id]` (donde el estado no persistía → causaba "se desmarca"). `ShareDocumentsModal` (compartir por
+  enlace+código, ADR-013) **movido a la carpeta padre y montado en la lista**, reemplazando el "Compartir" viejo que
+  posteaba a `/api/doctor/share-pdf` (**stub 501 permanente**). Enlace "Ver ficha del paciente" (→ `?open=<id>`),
+  enlace de Finanzas repunteado a `?open=id`. **Verificado 404 en `/doctor/consultations/[id]` + botones en prod.**
+- **Selector de pago roto** del historial de la ficha (tab Historial Médico): mandaba `payment_status` snake_case por el
+  update genérico (el backend espera camelCase y aprueba por `approve-payment` one-way) → se ignoraba. Era redundante con
+  el badge de al lado y permitía transición inválida (aprobado→pendiente). **QUITADO** (queda badge read-only).
+- **Ficha de paciente:** edad **siempre read-only** (`Edad (calculada)`, se deriva de `birth_date`; se sigue guardando
+  `age` para histórico) — **verificado readOnly=true, value=33**. Sección "Solicitudes de documentos" en tab Seguimiento +
+  **botón "Documentos (N)"** en el header que abre directo el `RequestDetailModal` con los adjuntos del paciente
+  (**verificado: abre modal con Dashboard1.jpeg + Ver/Descargar**). Mensajes stub "Fase 5" → "Próximamente".
+- **Compartir por WhatsApp:** `ShareDocumentsModal` gana botón "Enviar por WhatsApp" que arma el mensaje **CON enlace +
+  código** (antes el flujo viejo mandaba texto sin nada). Recibe `patientPhone`/`patientName`/`doctorName`, normaliza VE.
+- **Acceso a solicitudes:** ítem "Solicitudes" en el sidebar sección Consultorio (→ `/doctor/patient-requests`, sin
+  moduleKey = siempre visible). **Verificado en sidebar.**
+- **🖼️ Cluster de imágenes — CAUSAS RAÍZ (agente frontend, verificadas):**
+  - **Preview roto al subir**: se concatenaba `?t=Date.now()` a la **signed URL v4 de GCS** → doble `?` rompe la firma
+    → 403 → imagen rota. Peor: en avatar se **guardaba la URL rota en BD**. Fix: quitado el `?t=` (el path ya es único por
+    timestamp en el nombre). Ahora se ve a la primera.
+  - **Avatar muy acercado**: zoom inicial "cover" (`Math.max`) → cambiado a "contain" (`Math.min`) + `minZoom` dinámico.
+  - **Logos ausentes en PDF**: causa = **CORS del bucket GCS**. `@react-pdf` usa `fetch()` (con preflight CORS) mientras
+    un `<img>` no. Fix: **proxy BFF `GET /api/storage/image-proxy`** (server-side sin CORS, guard anti-SSRF: solo
+    `https://storage.googleapis.com/`, `redirect:'error'`, `nosniff`). **Verificado en prod: 200 + image/jpeg + nosniff;
+    URL no-GCS → 403.** ⚠️ **DEUDA INFRA:** la solución limpia es configurar **CORS en el bucket
+    `delta-files-sodium-shard-499116-r3`** para `https://deltasalud.app` (`gsutil cors set`) y quitar el proxy.
+- **Config:** toasts de guardado agregados (perfil/matrícula en settings + plantillas: guardar + aplicar a todos);
+  **ocultas** la pestaña "Notificaciones" y la subsección "WhatsApp Business API" (Integraciones). **Verificado en prod.**
+- **PENDIENTE:** **task 8 — múltiples bloques horarios**. `doctor_schedules` = 1 fila/doctor, 1 rango + 1 break (mismo para
+  todos los días). El ejemplo del usuario (7-11 + 3-6) YA es posible via break; bloques arbitrarios/por-día → necesita
+  cambio de modelo backend. Decisión del usuario pendiente: (a) exponer break como 2º bloque (UI) vs (b) rediseño backend.
+- **Nota QA:** la cuenta `lucas@deltasalud.app` es **super_admin** (sus caps ocultan Pacientes/Consultas al entrar a
+  `/doctor`) **y** Delta Free. Para QA con datos se usó otra cuenta **doctor** (con 3 pacientes). Token Auth0 de Playwright
+  vence ~1h → re-login.
+- **Seguimiento post-deploy:** (1) "Cambiar foto" en config "no hacía nada" = **caché del bundle** (hard-refresh lo
+  resolvió; el flujo avatar/logo/firma se verificó OK en prod con Playwright). (2) **Fix de layout del header de la ficha**
+  (commit aparte): con el botón nuevo "Documentos (N)" eran 4 botones en una fila `shrink-0` que ahogaban el nombre y lo
+  partían ("Paci/ente"); se reestructuró el header en **2 filas** (avatar+datos / acciones con `flex-wrap`).
+
 ## 2026-06-24 — Lote MVP 7.x + cita-360: PUSHEADO y DESPLEGADO a prod ✅
 
 - Los 7 commits del lote (7.1/7.9/7.8/7.3/7.10 + baja de cita-360 + docs) se **pushearon a `feature/migracion-backend`** (`595f778..89b8078`). La CI auto-deployó a Cloud Run (**run 28129239141, success**): aplicó la migración `20260623000000` (patient_id en financial_transactions) y el **backend booteó limpio** → el riesgo de DI (imports agregados en `finances.module.ts` por 7.9 + quitados de `appointments.module.ts` por cita-360) quedó **descartado en prod**. Frontend desplegado también.

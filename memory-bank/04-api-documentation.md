@@ -25,6 +25,17 @@
 | ------------- | ------ | ------- | ------------------------------------------------------------------------------------ |
 | `/api/health` | GET    | Pública | `{ status, timestamp, dependencies: { postgres, redis } }`. `ok` solo si ambos `up`. |
 
+### Storage image proxy (BFF — route handler Next, NO NestJS) — 2026-07-07
+
+> Excepción: NO vive en `apps/backend`. Es un route handler de `apps/frontend`
+> (`app/api/storage/image-proxy/route.ts`). Existe porque `@react-pdf/renderer`
+> carga imágenes con `fetch()` (preflight CORS) y el bucket GCS no tiene CORS para
+> `deltasalud.app` → los logos/firmas no cargaban en el PDF (un `<img>` sí, react-pdf no).
+
+| Endpoint                                | Método | Auth | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------- | ------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/storage/image-proxy?url=<gcsUrl>` | GET    | —    | Fetch server-side de la imagen y stream de vuelta (sin CORS). **Guard anti-SSRF:** solo `https://storage.googleapis.com/` (el `/` final bloquea `...com@`/`...com.evil`); `redirect:'error'`; `X-Content-Type-Options: nosniff`; `Cache-Control: max-age=3600`. Usado por `components/pdf/MedicalDocumentPdf.tsx` (`proxyGcsUrl()`). **DEUDA:** configurar CORS del bucket `delta-files-sodium-shard-499116-r3` y eliminar el proxy. |
+
 ### Appointments (módulo ✅)
 
 | Endpoint                       | Método | Notas                                                                                                                                                      |

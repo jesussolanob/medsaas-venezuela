@@ -144,6 +144,24 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   port `IAiTextGenerator` y los errores de dominio (`ai-feature-denied`/`ai-text-provider`/
   `patient-not-found-for-ai`); el cambio del BFF está **sin commitear**. Feature keys ya sembradas
   (`ai_assistant`/`ai_transcription`/`ai_reports`), desbloqueadas sólo en plan Plus.
+- **ADR-016 (2026-07-07):** **Gating de plan a nivel de PÁGINA (frontend) + proxy de imágenes para PDF.**
+  (1) **Gate por página:** el sidebar del doctor pintaba un candado SOLO visual; entrar por URL directa o enlace
+  cross-módulo saltaba el gate. Se agrega un guard centralizado en `doctor/layout.tsx` (`PLAN_GATED_ROUTES` ruta→feature +
+  `resolveGatedModuleKey()`) que reemplaza el contenido por un interstitial `PlanLockedNotice` → `/doctor/upgrade` si el
+  plan efectivo no habilita el módulo (no bloquea mientras `planFeatures===null`, evita flash). Es enforcement de **UX**;
+  el backend sigue siendo la puerta dura (deuda: chequeo de plan por módulo en backend, hoy solo en `booking`).
+  (2) **Proxy de imágenes GCS:** `@react-pdf/renderer` carga imágenes con `fetch()` (preflight CORS) y el bucket GCS no
+  tiene CORS para `deltasalud.app` → logos/firmas no cargaban en el PDF. Se agrega el BFF `GET /api/storage/image-proxy`
+  (fetch server-side, guard anti-SSRF `https://storage.googleapis.com/` + `redirect:'error'` + `nosniff`). **Bug de raíz
+  relacionado:** concatenar `?t=Date.now()` a una signed URL v4 de GCS rompe la firma (doble `?`) → 403 (rompía el preview
+  de subida y guardaba URL rota en BD del avatar). **DEUDA INFRA:** configurar CORS del bucket
+  `delta-files-sodium-shard-499116-r3` y eliminar el proxy.
+- **ADR-017 (2026-07-07):** **Consolidación del módulo consultas: se elimina la página de detalle `[id]`.** El editor
+  de una consulta (bloques dinámicos, grabadora IA, estado, pago, compartir) vive **inline en la lista**
+  (`consultations/page.tsx`, deep-link `?open=<id>`). La página `consultations/[id]/page.tsx` era redundante y sus botones
+  de estado eran **local-only** (no persistían → "se desmarca"). Se elimina; "Generar informe" descarga el PDF directo
+  (`ConsultationInformePdfButton`) y `ShareDocumentsModal` (compartir por enlace+código, ADR-013) se mueve a la carpeta
+  padre y se monta en la lista, reemplazando el "Compartir" viejo (posteaba a `/api/doctor/share-pdf`, **stub 501**).
 
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 

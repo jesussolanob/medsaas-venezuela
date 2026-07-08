@@ -15,8 +15,11 @@ approvals/aprobaciones. (Algunas marcadas para eliminar en beta — ver CLAUDE.m
 
 dashboard, agenda, patients, consultations, ehr, finances, billing, cobros,
 reports, crm, reminders, messages, services, plans, offices, templates,
-suggestions, settings (+ settings/consultation-blocks).
-(cita-360 ELIMINADO el 2026-06-23 — ver 05-progress-log.)
+suggestions, settings (+ settings/consultation-blocks), patient-requests.
+(cita-360 ELIMINADO el 2026-06-23; **`consultations/[id]` ELIMINADO el 2026-07-07** — el editor de consulta vive inline
+en la lista con deep-link `?open=<id>`; "Generar informe" descarga el PDF directo y `ShareDocumentsModal` (compartir
+enlace+código, ahora con botón WhatsApp) se montó en la lista. `patient-requests` (solicitudes de documentos al paciente)
+ahora es accesible desde el sidebar Consultorio y desde un botón "Documentos (N)" en la ficha. Ver 05-progress-log + ADR-016/017.)
 
 ### `/patient`
 
