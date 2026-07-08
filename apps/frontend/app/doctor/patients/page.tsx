@@ -912,68 +912,73 @@ export default function PatientsPage() {
           <div className="space-y-4">
             {/* Main patient header */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row items-start gap-4">
-                <div className="w-16 h-16 rounded-xl bg-teal-50 flex items-center justify-center shrink-0 overflow-hidden">
-                  {selected.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={selected.avatar_url}
-                      alt={selected.full_name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-teal-600 font-bold text-2xl">
-                      {selected.full_name.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-bold text-slate-900 break-words">
-                    {selected.full_name}
-                  </h2>
-                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4 mt-2 text-sm text-slate-500">
-                    {(() => {
-                      const a = getDisplayAge(selected);
-                      const sexo =
-                        selected.sex === 'female'
-                          ? 'Femenino'
-                          : selected.sex === 'male'
-                            ? 'Masculino'
-                            : '';
-                      if (a == null && !sexo) return null;
-                      return (
-                        <span className="flex items-center gap-1">
-                          <User className="w-3.5 h-3.5" />
-                          {a != null ? `${a} años` : ''}
-                          {a != null && sexo ? ' · ' : ''}
-                          {sexo}
-                        </span>
-                      );
-                    })()}
-                    {selected.phone && (
-                      <span className="flex items-center gap-1">
-                        <Phone className="w-3.5 h-3.5" />
-                        {selected.phone}
-                      </span>
-                    )}
-                    {selected.email && (
-                      <span className="flex items-center gap-1">
-                        <Mail className="w-3.5 h-3.5" />
-                        {selected.email}
-                      </span>
-                    )}
-                    {selected.cedula && (
-                      <span className="flex items-center gap-1">
-                        <Hash className="w-3.5 h-3.5" />
-                        {selected.cedula}
+              {/* Header en 2 filas: (1) avatar + datos del paciente, (2) acciones que
+                  envuelven. Antes eran una sola fila y los 4 botones (shrink-0)
+                  ahogaban el nombre hasta partirlo ("Paci/ente"). */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-16 rounded-xl bg-teal-50 flex items-center justify-center shrink-0 overflow-hidden">
+                    {selected.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={selected.avatar_url}
+                        alt={selected.full_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-teal-600 font-bold text-2xl">
+                        {selected.full_name.charAt(0).toUpperCase()}
                       </span>
                     )}
                   </div>
-                  {selected.notes && (
-                    <p className="text-sm text-slate-400 mt-2 italic">{selected.notes}</p>
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-lg font-bold text-slate-900 break-words">
+                      {selected.full_name}
+                    </h2>
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4 mt-2 text-sm text-slate-500">
+                      {(() => {
+                        const a = getDisplayAge(selected);
+                        const sexo =
+                          selected.sex === 'female'
+                            ? 'Femenino'
+                            : selected.sex === 'male'
+                              ? 'Masculino'
+                              : '';
+                        if (a == null && !sexo) return null;
+                        return (
+                          <span className="flex items-center gap-1">
+                            <User className="w-3.5 h-3.5" />
+                            {a != null ? `${a} años` : ''}
+                            {a != null && sexo ? ' · ' : ''}
+                            {sexo}
+                          </span>
+                        );
+                      })()}
+                      {selected.phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3.5 h-3.5" />
+                          {selected.phone}
+                        </span>
+                      )}
+                      {selected.email && (
+                        <span className="flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5" />
+                          {selected.email}
+                        </span>
+                      )}
+                      {selected.cedula && (
+                        <span className="flex items-center gap-1">
+                          <Hash className="w-3.5 h-3.5" />
+                          {selected.cedula}
+                        </span>
+                      )}
+                    </div>
+                    {selected.notes && (
+                      <p className="text-sm text-slate-400 mt-2 italic">{selected.notes}</p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2">
                   {selected.auth_user_id ? (
                     <span className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-200">
                       <UserCheck className="w-3.5 h-3.5" /> Sincronizado
