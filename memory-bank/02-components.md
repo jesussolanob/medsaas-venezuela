@@ -201,6 +201,12 @@ Estado (orden `migracion/modulos/`):
   (doctor), `GET /api/telemetry/sessions` (super_admin). Reemplaza `action_events`.
 - También tocados: booking/offices (modalidad)/appointments (meet_link+office_id)/doctor-settings (services
   por consultorio)/packages.
+- **shared-files — Seguimiento del Paciente (2026-07-08, ADR-019):** módulo backend NUEVO (`modules/shared-files/`) +
+  tabla `shared_files` (mig `20260708000001`). Tareas/comentarios/archivos doctor↔paciente; signed URL on read; anti-IDOR
+  doctor/paciente. Endpoints `/api/doctor/shared-files` + `/api/patient/shared-files` (ver 04). Frontend: tab **Seguimiento**
+  de la ficha (`patients/page.tsx`, cableado — enviar tarea/comentario/archivo, editar, eliminar, marcar leído, unread badges)
+  - portal **`patient/seguimiento/page.tsx`** (antes placeholder, ahora feed + responder). Reemplaza el ex-Supabase
+    `lib/shared-files.ts` (stub). Doctor verificado en prod; paciente desplegado (falta QA con cuenta de paciente).
 - **offices — horario multi-bloque (2026-07-08, ADR-018):** el `schedule` de cada consultorio (`doctor_offices`, JSONB
   `DayScheduleParams[]`) admite **varios bloques por día** (varias entradas con el mismo `day`). `getEnabledSchedulesForDay()`
   (filter) + slots del booking iteran todos los bloques. Doble anti-solape (self → `OfficeInvalidScheduleError`; cross-consultorio

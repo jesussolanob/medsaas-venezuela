@@ -36,6 +36,24 @@
 | --------------------------------------- | ------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/api/storage/image-proxy?url=<gcsUrl>` | GET    | —    | Fetch server-side de la imagen y stream de vuelta (sin CORS). **Guard anti-SSRF:** solo `https://storage.googleapis.com/` (el `/` final bloquea `...com@`/`...com.evil`); `redirect:'error'`; `X-Content-Type-Options: nosniff`; `Cache-Control: max-age=3600`. Usado por `components/pdf/MedicalDocumentPdf.tsx` (`proxyGcsUrl()`). **DEUDA:** configurar CORS del bucket `delta-files-sodium-shard-499116-r3` y eliminar el proxy. |
 
+### Shared Files — Seguimiento del Paciente (módulo ✅ — 2026-07-08)
+
+> Tareas/instrucciones/comentarios/archivos doctor↔paciente. Tabla `shared_files`. Archivos: subir a
+> `/api/storage/upload` (kind=document) → guardar el path → **signed URL fresca on read**. Anti-IDOR:
+> doctor por `doctor_id=user.sub`; paciente por `auth_user_id=user.sub`.
+
+| Endpoint                                 | Método | Auth    | Notas                                                                                                                      |
+| ---------------------------------------- | ------ | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/shared-files?patientId=`    | GET    | doctor  | Lista del paciente (fileUrl = signed URL fresca). Valida ownership del paciente.                                           |
+| `/api/doctor/shared-files`               | POST   | doctor  | Crear. Body `{patientId,title,description?,category,filePath?,fileType?,fileSizeBytes?,parentTaskId?}`. created_by=doctor. |
+| `/api/doctor/shared-files/:id`           | PATCH  | doctor  | Editar `{title?,description?,status?}` (scoped).                                                                           |
+| `/api/doctor/shared-files/:id`           | DELETE | doctor  | Borrar fila (limpieza objeto GCS diferida).                                                                                |
+| `/api/doctor/shared-files/mark-read`     | POST   | doctor  | `{patientId}` → read_by_doctor=true en los del paciente.                                                                   |
+| `/api/doctor/shared-files/unread-counts` | GET    | doctor  | `{ [patientId]: number }` (created_by=patient & !read_by_doctor) — badges.                                                 |
+| `/api/patient/shared-files`              | GET    | patient | Lista del paciente logueado (auth_user_id).                                                                                |
+| `/api/patient/shared-files`              | POST   | patient | Crear respuesta (created_by=patient); patient_id/doctor_id del propio registro.                                            |
+| `/api/patient/shared-files/mark-read`    | POST   | patient | read_by_patient=true en los del doctor.                                                                                    |
+
 ### Appointments (módulo ✅)
 
 | Endpoint                       | Método | Notas                                                                                                                                                      |

@@ -2,6 +2,37 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-08 — MVP 7.7: Seguimiento del Paciente (shared_files) DESPLEGADO + doctor VERIFICADO en prod ✅
+
+Módulo NUEVO completo (backend + doctor + portal paciente). Commits `238402d` (backend) + `406f6d4` (frontend).
+CI runs 28966713894 (backend, **boot-verify OK**) + 28967270879 (frontend), ambos success. Equipo de agentes
+(backend-agent + 2 frontend-agent en paralelo; lead verificó en disco + QA Playwright del lado doctor).
+
+- **Qué es:** "Seguimiento del Paciente" (Shared Health Space) — el doctor y el paciente intercambian
+  **tareas/instrucciones, comentarios y archivos**. Era Supabase (`lib/shared-files.ts` + tab stub), nunca migrado.
+- **Backend — módulo `shared-files` (DDD):** tabla `shared_files` (**migración `20260708000001`**, aplicada por CI:
+  doctor_id/patient_id/title/description/file_url[=path GCS]/file_type/file_size_bytes/category/status/created_by/
+  parent_task_id/read_by_doctor/read_by_patient; CHECK constraints en los 3 enums; FK self en parent_task_id).
+  9 use cases (doctor: create/list/update/delete/mark-read/unread-counts; paciente: create/list/mark-read).
+  Repo con **signed URL fresca on read** (`STORAGE_PORT.getSignedUrl(path)` — mismo patrón que patient-requests/
+  document-sharing; el archivo se sube antes a `/api/storage/upload` kind=document y se guarda el **path**).
+  **Anti-IDOR:** doctor por `doctor_id=user.sub` (`findByIdAndDoctor`); paciente por `auth_user_id=user.sub` vía
+  `patient-portal.findPatientsByAuthUserId`. Errores tipados (NotFound 404 anti-enumeración). **46 tests**, build OK,
+  boot-verify en prod OK. Endpoints: `/api/doctor/shared-files` (GET?patientId/POST/:id PATCH·DELETE/mark-read/
+  unread-counts) + `/api/patient/shared-files` (GET/POST/mark-read).
+- **Frontend doctor** (tab Seguimiento de `patients/page.tsx`): cableado el stub — enviar tarea/instrucción,
+  comentario, subir archivo (storage→filePath), editar, adjuntar/reemplazar, eliminar, marcar leído al abrir,
+  feed real + **unread counts** (badge por paciente). BFF routes bajo `app/api/doctor/shared-files/`.
+  **QA prod (Playwright): crear tarea → POST 200 → aparece en el feed con badges TÚ/PENDIENTE + editar/eliminar.** ✅
+- **Frontend paciente** (`app/patient/seguimiento/page.tsx`, antes placeholder): UI real — feed de tareas/archivos
+  del doctor, responder con comentario/archivo (upload storage), responder a una tarea (`parentTaskId`), marcar
+  leído al montar. BFF `app/api/patient/shared-files/`. tsc 0. **NO QA-eado en vivo** (requiere login de paciente).
+- **⚠️ Alcance / límites:** el **lado doctor funciona siempre** (registrar/enviar, independiente del paciente). El
+  **paciente solo ve/responde vía el portal** y **solo si tiene cuenta** (auth_user_id linkeado); si no, los ítems
+  quedan guardados hasta que se registre (el tab lo avisa). **NO hay notificación push/email** al paciente cuando el
+  doctor manda algo (lo ve al entrar al portal) → depende del cron/notificaciones (pendiente). Portal del paciente
+  sigue mayormente diferido; esta página quedó cableada.
+
 ## 2026-07-08 — MVP 7.x: múltiples bloques de horario por día por consultorio: DESPLEGADO + VERIFICADO en prod ✅
 
 Commit **`ce8a5d8`** en `feature/migracion-backend`. CI run **28958976502 = success**. **Verificado con Playwright en prod.**

@@ -159,6 +159,17 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
 --cors-file`) y `MedicalDocumentPdf.proxyGcsUrl()` ahora devuelve la **URL directa de GCS** (verificado en prod: react-pdf
   baja logo+firma directo, 0 hits al proxy). El route `/api/storage/image-proxy` se **deja como fallback** (re-activable
   descomentando en `proxyGcsUrl`).
+- **ADR-019 (2026-07-08):** **Seguimiento del Paciente = módulo `shared-files` (tareas/comentarios/archivos doctor↔paciente).**
+  Tabla `shared_files` (mig `20260708000001`): doctor_id, patient_id, title, description, `file_url` (**guarda el PATH de
+  GCS, no la signed URL**), file_type, file_size_bytes, category (instruction|file|recipe|lab_result|image|other|comment),
+  status (pending|completed|reviewed), created_by (doctor|patient), parent_task_id (FK self, threading), read_by_doctor,
+  read_by_patient. **Archivos:** se suben a `/api/storage/upload` (kind=document) → se guarda el path → **signed URL fresca
+  on read** (`STORAGE_PORT.getSignedUrl`, mismo patrón que patient-requests/document-sharing). **Auth/anti-IDOR:** doctor
+  scoped por `doctor_id=user.sub` (`findByIdAndDoctor`); paciente scoped por `auth_user_id=user.sub` (resuelto vía
+  `patient-portal.findPatientsByAuthUserId`) — nunca del body. Endpoints doctor (`/api/doctor/shared-files` + mark-read +
+  unread-counts) y paciente (`/api/patient/shared-files` + mark-read). **read-tracking bidireccional** → badges de no-leídos.
+  **Alcance:** el doctor lo usa siempre (registrar/enviar); el paciente ve/responde SOLO vía el portal y SOLO con cuenta
+  (auth_user_id); sin notificación push/email aún (lo ve al entrar al portal). Reemplaza el `lib/shared-files.ts` stub (ex-Supabase).
 - **ADR-018 (2026-07-08):** **Horario de atención = N bloques por día por consultorio (no una ventana).** El horario NO vive en
   `doctor_schedules` (que solo aporta `bookingHorizonWeeks`/`bookingMinLeadDays`) sino en `doctor_offices.schedule` (JSONB
   `DayScheduleParams[]` = {day 0=Lun..6=Dom, enabled, start, end}). Se permite **varias entradas con el mismo `day`** = varios
