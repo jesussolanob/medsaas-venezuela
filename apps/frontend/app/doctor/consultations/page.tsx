@@ -10,14 +10,13 @@ const RecetaPdfButton = dynamic(
   () => import('./RecetaPdfButton').then((m) => ({ default: m.RecetaPdfButton })),
   { ssr: false, loading: () => null },
 );
-// ConsultationInformePdfButton: mismo patrón que RecetaPdfButton.
-const ConsultationInformePdfButton = dynamic(
-  () =>
-    import('./ConsultationInformePdfButton').then((m) => ({
-      default: m.ConsultationInformePdfButton,
-    })),
-  { ssr: false, loading: () => null },
-);
+// GenerateDocumentModal: reemplaza ConsultationInformePdfButton.
+// Se importa con ssr:false para excluir @react-pdf del bundle de Node
+// (el PDF se genera on-demand dentro del modal, no al montarse).
+const GenerateDocumentModal = dynamic(() => import('./GenerateDocumentModal'), {
+  ssr: false,
+  loading: () => null,
+});
 // L7 (2026-04-29): se eliminan los iconos del cronómetro manual (Play, Square)
 // pero mantenemos Timer para mostrar la duración calculada automáticamente.
 import {
@@ -1822,26 +1821,23 @@ function ConsultationsPage() {
                     const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
                     if (!tmplCfg || !doctorName) return null;
                     return (
-                      <ConsultationInformePdfButton
-                        fileName={`informe-${selected.consultation_code}.pdf`}
+                      <GenerateDocumentModal
+                        consultationCode={selected.consultation_code}
+                        consultationDate={selected.consultation_date}
+                        patientId={selected.patient_id}
+                        patientName={selected.patient_name}
+                        patientCedula={
+                          patients.find((p) => p.id === selected.patient_id)?.cedula ?? null
+                        }
                         templateConfig={tmplCfg}
                         doctor={{
                           fullName: doctorName,
                           specialty: doctorSpecialty,
                           licenseNumber: doctorLicense,
                         }}
-                        patient={{
-                          fullName: selected.patient_name,
-                          cedula:
-                            patients.find((p) => p.id === selected.patient_id)?.cedula ?? null,
-                        }}
-                        docDate={selected.consultation_date}
-                        consultationCode={selected.consultation_code}
-                        content={buildPdfContent(selected)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
-                      >
-                        <FileText className="w-3.5 h-3.5" /> Generar informe
-                      </ConsultationInformePdfButton>
+                        informeContent={buildPdfContent(selected)}
+                        savedPrescriptions={savedPrescriptions}
+                      />
                     );
                   })()}
                   <ShareDocumentsModal
