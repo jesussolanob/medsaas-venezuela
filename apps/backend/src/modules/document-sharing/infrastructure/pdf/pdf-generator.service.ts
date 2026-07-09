@@ -13,6 +13,8 @@ import type { EhrRecord } from '../../../ehr/domain/entities/ehr-record.entity';
 export interface PdfDocumentData {
   doctorName: string;
   patientName: string;
+  /** Cédula del paciente (identificación) — se muestra en el encabezado del informe. */
+  patientCedula: string | null;
   consultationDate: Date;
   sections: DocumentSections;
   consultation: Consultation;
@@ -112,6 +114,7 @@ export class PdfGeneratorService {
     const infoLines = [
       `Médico: ${data.doctorName}`,
       `Paciente: ${data.patientName}`,
+      ...(data.patientCedula ? [`Cédula: ${data.patientCedula}`] : []),
       `Fecha de consulta: ${consultationDateStr}`,
       `Generado el: ${new Date().toLocaleDateString('es-VE')}`,
     ];

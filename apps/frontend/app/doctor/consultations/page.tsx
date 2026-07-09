@@ -670,20 +670,23 @@ function ConsultationsPage() {
               send_to_patient: boolean;
             }>;
             setDoctorActiveBlocks(resolved as SnapshotBlock[]);
+            // El backend serializa el catálogo en camelCase (defaultLabel, etc.).
+            // Leerlo en snake_case dejaba label=undefined → el modal "Agregar bloque"
+            // mostraba filas vacías (solo el "+"). Fix: leer camelCase.
             const catalog = (j.catalog || []) as Array<{
               key: string;
-              default_label: string;
-              default_content_type: string;
-              default_printable?: boolean;
-              default_send_to_patient?: boolean;
+              defaultLabel: string;
+              defaultContentType: string;
+              defaultPrintable?: boolean;
+              defaultSendToPatient?: boolean;
             }>;
             setBlockCatalog(
               catalog.map((c) => ({
                 key: c.key,
-                label: c.default_label,
-                content_type: c.default_content_type,
-                printable: c.default_printable ?? true,
-                send_to_patient: c.default_send_to_patient ?? true,
+                label: c.defaultLabel,
+                content_type: c.defaultContentType,
+                printable: c.defaultPrintable ?? true,
+                send_to_patient: c.defaultSendToPatient ?? true,
               })),
             );
           }

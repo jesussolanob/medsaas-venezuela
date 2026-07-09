@@ -120,6 +120,7 @@ export class DownloadDocumentUseCase {
     // 6. Fetch patient name and doctor name for PDF header
     const patient = await this.patientRepo.findById(link.patientId, link.doctorId);
     const patientName = patient?.fullName ?? 'Paciente';
+    const patientCedula = patient?.cedula ?? null;
 
     const doctorProfile = await this.doctorProfileRepo.findByDoctorId(link.doctorId);
     const doctorName = doctorProfile?.fullName ?? 'Dr./Dra.';
@@ -129,6 +130,7 @@ export class DownloadDocumentUseCase {
     const pdfBytes = await this.pdfGenerator.generate({
       doctorName,
       patientName,
+      patientCedula,
       consultationDate: consultation.consultationDate,
       sections: link.sections,
       consultation,
