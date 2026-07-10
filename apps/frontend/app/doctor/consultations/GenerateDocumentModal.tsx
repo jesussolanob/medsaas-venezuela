@@ -3,26 +3,38 @@
 /**
  * app/doctor/consultations/GenerateDocumentModal.tsx
  *
- * Modal "Generar Documento" — permite al doctor elegir qué secciones incluir
- * (Informe, Recetas, Historia clínica) y genera UN solo PDF consolidado on-demand
- * usando @react-pdf/renderer (import dinámico, jamás eager).
+ * Modal "Generar Documento" — permite al doctor elegir, bloque por bloque,
+ * qué secciones incluir en el PDF consolidado on-demand.
+ *
+ * Checkboxes de bloques:
+ *  - Un checkbox por cada bloque en `informeContent` (los que buildPdfContent
+ *    devuelve: printable + con contenido).
+ *  - Default marcado: TODOS excepto 'indications', 'paraclinical', 'prescription'
+ *    que arrancan desmarcados (el doctor los agrega si quiere).
+ *
+ * Toggles adicionales al final (ambos desmarcados por defecto):
+ *  - Recetas (recetario) — las savedPrescriptions del módulo de recetas.
+ *  - Historia clínica (EHR) — fetch on-demand /api/ehr/patient/:id.
  *
  * El PDF se genera SOLO cuando el doctor presiona "Generar", no al montar el
  * componente — esto resuelve el "loading fantasma" del PDFDownloadLink antiguo.
- *
- * Secciones:
- *  - Informe   → buildPdfContent(consultation) (bloques printables de la consulta)
- *  - Recetas   → prescriptions pasadas como prop (cargadas en openConsultation)
- *  - Historia clínica → se fetcha on-demand vía /api/ehr/patient/:id
  */
 
 import { useState, useCallback } from 'react';
-import { FileText, Pill, ClipboardList, X, AlertCircle, Loader2, Download } from 'lucide-react';
+import { FileText, X, AlertCircle, Loader2, Download } from 'lucide-react';
 import type {
   TemplateConfigPdf,
   ContentBlock,
   DoctorInfoPdf,
 } from '@/components/pdf/MedicalDocumentPdf';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/**
+ * Keys de bloque que arrancan desmarcados por defecto.
+ * El doctor los puede marcar si quiere incluirlos.
+ */
+const UNCHECKED_BY_DEFAULT = new Set(['indications', 'paraclinical', 'prescription']);
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -58,61 +70,6 @@ interface GenerateDocumentModalProps {
   savedPrescriptions: SavedPrescription[];
 }
 
-interface SelectedSections {
-  informe: boolean;
-  recetas: boolean;
-  historia: boolean;
-}
-
-// ─── Section Checkbox ─────────────────────────────────────────────────────────
-
-interface SectionCheckboxProps {
-  icon: React.ReactNode;
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: () => void;
-  disabled?: boolean;
-}
-
-function SectionCheckbox({
-  icon,
-  label,
-  description,
-  checked,
-  onChange,
-  disabled = false,
-}: SectionCheckboxProps) {
-  return (
-    <label
-      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-        disabled
-          ? 'opacity-40 cursor-not-allowed bg-white border-slate-100'
-          : checked
-            ? 'bg-teal-50 border-teal-200'
-            : 'bg-white border-slate-200 hover:bg-slate-50'
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        disabled={disabled}
-        className="mt-0.5 w-4 h-4 accent-teal-500 cursor-pointer"
-      />
-      <div className="flex items-start gap-2 min-w-0">
-        <span className="mt-0.5 shrink-0">{icon}</span>
-        <div className="min-w-0">
-          <p className={`text-sm font-semibold ${checked ? 'text-teal-800' : 'text-slate-700'}`}>
-            {label}
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">{description}</p>
-        </div>
-      </div>
-    </label>
-  );
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDateVE(dateStr: string): string {
@@ -125,8 +82,6 @@ function formatDateVE(dateStr: string): string {
 
 /**
  * Construye ContentBlock[] de recetas a partir de las prescripciones guardadas.
- * Cada prescripción se convierte en un bloque con el nombre del medicamento como
- * label y los detalles (dosis/frecuencia/duración/indicaciones) como value.
  */
 function buildRecetasContent(prescriptions: SavedPrescription[]): ContentBlock[] {
   return prescriptions
@@ -144,7 +99,7 @@ function buildRecetasContent(prescriptions: SavedPrescription[]): ContentBlock[]
         };
       }),
     )
-    .filter((b) => b.value !== null);
+    .filter((b): b is ContentBlock & { value: string } => b.value !== null);
 }
 
 /**
@@ -173,8 +128,6 @@ function buildEhrContent(records: EhrRecord[]): ContentBlock[] {
 
 /**
  * Inserta un bloque-título de sección (separador visual en el PDF).
- * Usa el estilo sectionTitle del MedicalDocumentPdf existente — el label
- * en MAYÚSCULAS actúa como encabezado de sección.
  */
 function sectionHeader(label: string): ContentBlock {
   return {
@@ -182,6 +135,81 @@ function sectionHeader(label: string): ContentBlock {
     label: `━━━  ${label}  ━━━`,
     value: ' ',
   };
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+interface BlockCheckboxProps {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+}
+
+function BlockCheckbox({ label, checked, onChange }: BlockCheckboxProps) {
+  return (
+    <label
+      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+        checked
+          ? 'bg-teal-50 border-teal-200 text-teal-800 font-medium'
+          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="w-3.5 h-3.5 accent-teal-500 cursor-pointer shrink-0"
+      />
+      <span className="truncate">{label}</span>
+    </label>
+  );
+}
+
+interface ExtraToggleProps {
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}
+
+function ExtraToggle({
+  icon,
+  label,
+  description,
+  checked,
+  onChange,
+  disabled = false,
+}: ExtraToggleProps) {
+  return (
+    <label
+      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+        disabled
+          ? 'opacity-40 cursor-not-allowed bg-white border-slate-100'
+          : checked
+            ? 'bg-teal-50 border-teal-200'
+            : 'bg-white border-slate-200 hover:bg-slate-50'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className="mt-0.5 w-4 h-4 accent-teal-500 cursor-pointer shrink-0"
+      />
+      <div className="flex items-start gap-2 min-w-0">
+        <span className="mt-0.5 shrink-0">{icon}</span>
+        <div className="min-w-0">
+          <p className={`text-sm font-semibold ${checked ? 'text-teal-800' : 'text-slate-700'}`}>
+            {label}
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">{description}</p>
+        </div>
+      </div>
+    </label>
+  );
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -198,21 +226,39 @@ export default function GenerateDocumentModal({
   savedPrescriptions,
 }: GenerateDocumentModalProps) {
   const [open, setOpen] = useState(false);
-  const [sections, setSections] = useState<SelectedSections>({
-    informe: true,
-    recetas: false,
-    historia: false,
-  });
+
+  /**
+   * Mapa de keys de bloque → marcado/desmarcado.
+   * Se inicializa cuando el modal se abre (para reflejar informeContent actual).
+   */
+  const [checkedBlocks, setCheckedBlocks] = useState<Map<string, boolean>>(new Map());
+
+  /** Toggles adicionales — ambos desmarcados por defecto */
+  const [includeRecetas, setIncludeRecetas] = useState(false);
+  const [includeHistoria, setIncludeHistoria] = useState(false);
+
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasSelection = sections.informe || sections.recetas || sections.historia;
   const hasRecetas = savedPrescriptions.length > 0;
 
+  /**
+   * Devuelve true si hay al menos un bloque o toggle seleccionado.
+   */
+  const hasSelection =
+    [...checkedBlocks.values()].some(Boolean) || includeRecetas || includeHistoria;
+
   function handleOpen() {
-    setOpen(true);
+    // Inicializar checkedBlocks según los bloques disponibles y las reglas de default
+    const initial = new Map<string, boolean>();
+    for (const block of informeContent) {
+      initial.set(block.key, !UNCHECKED_BY_DEFAULT.has(block.key));
+    }
+    setCheckedBlocks(initial);
+    setIncludeRecetas(false);
+    setIncludeHistoria(false);
     setError(null);
-    setSections({ informe: true, recetas: false, historia: false });
+    setOpen(true);
   }
 
   function handleClose() {
@@ -221,8 +267,12 @@ export default function GenerateDocumentModal({
     setError(null);
   }
 
-  function toggleSection(key: keyof SelectedSections) {
-    setSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  function toggleBlock(key: string) {
+    setCheckedBlocks((prev) => {
+      const next = new Map(prev);
+      next.set(key, !next.get(key));
+      return next;
+    });
   }
 
   const handleGenerate = useCallback(async () => {
@@ -231,28 +281,35 @@ export default function GenerateDocumentModal({
     setError(null);
 
     try {
-      // 1. Recoger datos de cada sección seleccionada
-      const allBlocks: ContentBlock[] = [];
-      const needsMultipleSections =
-        [sections.informe, sections.recetas, sections.historia].filter(Boolean).length > 1;
+      // 1. Armar los bloques de la consulta (solo los marcados)
+      const selectedInformeBlocks = informeContent.filter((b) => checkedBlocks.get(b.key) === true);
 
-      // Informe
-      if (sections.informe && informeContent.length > 0) {
-        if (needsMultipleSections) allBlocks.push(sectionHeader('Informe Médico'));
-        allBlocks.push(...informeContent);
+      const allBlocks: ContentBlock[] = [];
+
+      // Contar cuántas secciones de alto nivel hay para decidir si poner separadores
+      const sectionCount =
+        (selectedInformeBlocks.length > 0 ? 1 : 0) +
+        (includeRecetas ? 1 : 0) +
+        (includeHistoria ? 1 : 0);
+      const needsSeparators = sectionCount > 1;
+
+      // Bloques de la consulta
+      if (selectedInformeBlocks.length > 0) {
+        if (needsSeparators) allBlocks.push(sectionHeader('Informe Médico'));
+        allBlocks.push(...selectedInformeBlocks);
       }
 
       // Recetas
-      if (sections.recetas) {
+      if (includeRecetas) {
         const recetasBlocks = buildRecetasContent(savedPrescriptions);
         if (recetasBlocks.length > 0) {
-          if (needsMultipleSections) allBlocks.push(sectionHeader('Recetas'));
+          if (needsSeparators) allBlocks.push(sectionHeader('Recetas'));
           allBlocks.push(...recetasBlocks);
         }
       }
 
       // Historia clínica — fetch on-demand
-      if (sections.historia) {
+      if (includeHistoria) {
         const res = await fetch(`/api/ehr/patient/${patientId}`, { cache: 'no-store' });
         if (res.ok) {
           const json = (await res.json()) as
@@ -266,7 +323,7 @@ export default function GenerateDocumentModal({
               : [];
           const ehrBlocks = buildEhrContent(records);
           if (ehrBlocks.length > 0) {
-            if (needsMultipleSections) allBlocks.push(sectionHeader('Historia Clínica'));
+            if (needsSeparators) allBlocks.push(sectionHeader('Historia Clínica'));
             allBlocks.push(...ehrBlocks);
           }
         }
@@ -317,8 +374,10 @@ export default function GenerateDocumentModal({
   }, [
     hasSelection,
     generating,
-    sections,
     informeContent,
+    checkedBlocks,
+    includeRecetas,
+    includeHistoria,
     savedPrescriptions,
     patientId,
     templateConfig,
@@ -331,7 +390,7 @@ export default function GenerateDocumentModal({
 
   return (
     <>
-      {/* Trigger button — mismo estilo que el antiguo "Generar informe" */}
+      {/* Trigger button */}
       <button
         onClick={handleOpen}
         className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
@@ -348,9 +407,9 @@ export default function GenerateDocumentModal({
             if (e.target === e.currentTarget) handleClose();
           }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
                   <FileText className="w-4 h-4 text-teal-600" />
@@ -372,42 +431,94 @@ export default function GenerateDocumentModal({
               </button>
             </div>
 
-            {/* Body */}
-            <div className="px-5 py-5 space-y-5">
+            {/* Body — scrollable */}
+            <div className="px-5 py-5 space-y-5 overflow-y-auto flex-1">
               <p className="text-sm text-slate-500">
-                Selecciona las secciones a incluir. Se generará un único PDF consolidado con todo el
+                Selecciona los bloques a incluir. Se generará un único PDF consolidado con todo el
                 contenido seleccionado.
               </p>
 
-              {/* Section checkboxes */}
-              <div className="space-y-2.5">
-                <SectionCheckbox
-                  icon={<FileText className="w-4 h-4 text-teal-600" />}
-                  label="Informe de la consulta"
-                  description="Diagnóstico, motivo y bloques clínicos de esta consulta"
-                  checked={sections.informe}
-                  onChange={() => toggleSection('informe')}
-                />
-                <SectionCheckbox
-                  icon={<Pill className="w-4 h-4 text-violet-600" />}
-                  label="Recetas"
+              {/* Bloques individuales de la consulta */}
+              {informeContent.length > 0 ? (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Bloques de la consulta
+                  </p>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {informeContent.map((block) => (
+                      <BlockCheckbox
+                        key={block.key}
+                        label={block.label}
+                        checked={checkedBlocks.get(block.key) ?? false}
+                        onChange={() => toggleBlock(block.key)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400 italic">
+                  Esta consulta no tiene bloques con contenido para incluir en el informe.
+                </p>
+              )}
+
+              {/* Secciones adicionales */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  Secciones adicionales
+                </p>
+                <ExtraToggle
+                  icon={
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-violet-600"
+                    >
+                      <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11m0 0H5m4 0h10m-5-4v4m0 0H5m4 0h10" />
+                    </svg>
+                  }
+                  label="Recetas (recetario)"
                   description={
                     hasRecetas
                       ? `${savedPrescriptions.length} receta${savedPrescriptions.length !== 1 ? 's' : ''} guardada${savedPrescriptions.length !== 1 ? 's' : ''}`
                       : 'Sin recetas guardadas para este paciente'
                   }
-                  checked={sections.recetas}
+                  checked={includeRecetas}
                   onChange={() => {
-                    if (hasRecetas) toggleSection('recetas');
+                    if (hasRecetas) setIncludeRecetas((v) => !v);
                   }}
                   disabled={!hasRecetas}
                 />
-                <SectionCheckbox
-                  icon={<ClipboardList className="w-4 h-4 text-sky-600" />}
-                  label="Historia clínica / EHR"
+                <ExtraToggle
+                  icon={
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-sky-600"
+                    >
+                      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                      <rect x="9" y="3" width="6" height="4" rx="1" />
+                      <line x1="9" y1="12" x2="15" y2="12" />
+                      <line x1="9" y1="16" x2="13" y2="16" />
+                    </svg>
+                  }
+                  label="Historia clínica (EHR)"
                   description="Historial clínico electrónico registrado del paciente"
-                  checked={sections.historia}
-                  onChange={() => toggleSection('historia')}
+                  checked={includeHistoria}
+                  onChange={() => setIncludeHistoria((v) => !v)}
                 />
               </div>
 
@@ -415,7 +526,7 @@ export default function GenerateDocumentModal({
               {!hasSelection && (
                 <p className="text-xs text-amber-600 flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  Selecciona al menos una sección
+                  Selecciona al menos un bloque o sección
                 </p>
               )}
 
@@ -426,34 +537,34 @@ export default function GenerateDocumentModal({
                   <p className="text-sm text-red-700">{error}</p>
                 </div>
               )}
+            </div>
 
-              {/* Actions */}
-              <div className="flex gap-2.5">
-                <button
-                  onClick={handleClose}
-                  disabled={generating}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleGenerate}
-                  disabled={!hasSelection || generating}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold bg-teal-500 hover:bg-teal-600 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {generating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Generando&hellip;
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      Generar PDF
-                    </>
-                  )}
-                </button>
-              </div>
+            {/* Footer — acciones fijas */}
+            <div className="px-5 pb-5 pt-2 flex gap-2.5 shrink-0 border-t border-slate-100">
+              <button
+                onClick={handleClose}
+                disabled={generating}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={!hasSelection || generating}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold bg-teal-500 hover:bg-teal-600 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generando&hellip;
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Generar PDF
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

@@ -10,7 +10,21 @@ import {
   ChevronDown,
   GripVertical,
   ArrowLeft,
+  Lock,
 } from 'lucide-react';
+
+/**
+ * Bloques del catálogo estándar con nombre fijo (no renombrables por el doctor).
+ * El input de label queda readonly/disabled para estas keys.
+ */
+const LOCKED_BLOCK_KEYS = new Set([
+  'chief_complaint',
+  'history',
+  'diagnosis',
+  'prescription',
+  'indications',
+  'paraclinical',
+]);
 import Link from 'next/link';
 
 type CatalogEntry = {
@@ -265,25 +279,42 @@ export default function ConsultationBlocksConfigPage() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  {/* Nombre del bloque editable EN SITIO (el que se ve en negrilla).
-                      Muestra el valor efectivo (override del doctor o el default). */}
-                  <input
-                    type="text"
-                    value={r.custom_label || r.default_label}
-                    onChange={(e) => setLabel(r.block_key, e.target.value)}
-                    disabled={!r.enabled}
-                    title="Nombre del bloque (editable). Borralo para volver al nombre por defecto."
-                    className="flex-1 min-w-0 font-semibold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-teal-400 outline-none disabled:opacity-60 py-0.5"
-                  />
+                  {/* Nombre del bloque. Los bloques del catálogo estándar (LOCKED_BLOCK_KEYS)
+                      tienen nombre fijo y no pueden renombrarse. El resto es editable. */}
+                  {LOCKED_BLOCK_KEYS.has(r.block_key) ? (
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-900 truncate">
+                        {r.default_label}
+                      </span>
+                      <span
+                        title="Nombre fijo — este bloque no se puede renombrar"
+                        className="inline-flex items-center gap-1 text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded"
+                      >
+                        <Lock className="w-2.5 h-2.5" />
+                        Nombre fijo
+                      </span>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={r.custom_label || r.default_label}
+                      onChange={(e) => setLabel(r.block_key, e.target.value)}
+                      disabled={!r.enabled}
+                      title="Nombre del bloque (editable). Borralo para volver al nombre por defecto."
+                      className="flex-1 min-w-0 font-semibold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-teal-400 outline-none disabled:opacity-60 py-0.5"
+                    />
+                  )}
                   <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
                     {r.block_key}
                   </span>
                 </div>
-                {r.custom_label && r.custom_label !== r.default_label && (
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    Por defecto: {r.default_label}
-                  </p>
-                )}
+                {!LOCKED_BLOCK_KEYS.has(r.block_key) &&
+                  r.custom_label &&
+                  r.custom_label !== r.default_label && (
+                    <p className="mt-0.5 text-[11px] text-slate-400">
+                      Por defecto: {r.default_label}
+                    </p>
+                  )}
                 <textarea
                   rows={2}
                   placeholder={
