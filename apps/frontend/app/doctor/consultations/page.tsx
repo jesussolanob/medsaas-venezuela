@@ -198,6 +198,46 @@ function normalizePaymentStatus(s: string | null | undefined): 'pending' | 'appr
   return s === 'approved' ? 'approved' : 'pending';
 }
 
+/**
+ * Construye el `blocks_data` inicial del editor a partir de la respuesta del backend.
+ *
+ * Fuente de verdad: el JSONB `blocks_snapshot` (valores por block_key). Cuando un
+ * campo legacy (chief_complaint/diagnosis/treatment/notes) NO existe en el snapshot,
+ * se siembra desde la columna top-level correspondiente. Esto hace que el **motivo
+ * de la reserva** — que el backend copia en `consultations.chief_complaint` al
+ * confirmar la cita — aparezca en el bloque "Motivo de consulta" al abrir la consulta.
+ *
+ * Solo siembra cuando el snapshot no trae ya un string para esa clave (respeta un
+ * vaciado intencional del doctor: `''` es string y no se sobreescribe).
+ */
+function buildInitialBlocksData(raw: {
+  blocks_snapshot?: unknown;
+  chief_complaint?: string | null;
+  diagnosis?: string | null;
+  treatment?: string | null;
+  notes?: string | null;
+}): Record<string, unknown> | null {
+  const snap = raw.blocks_snapshot;
+  const snapshot: Record<string, unknown> =
+    snap && typeof snap === 'object' && !Array.isArray(snap)
+      ? { ...(snap as Record<string, unknown>) }
+      : {};
+
+  const legacySeed: Record<string, string | null | undefined> = {
+    chief_complaint: raw.chief_complaint,
+    diagnosis: raw.diagnosis,
+    treatment: raw.treatment,
+    notes: raw.notes,
+  };
+  for (const [key, value] of Object.entries(legacySeed)) {
+    if (typeof snapshot[key] !== 'string' && typeof value === 'string' && value.trim().length > 0) {
+      snapshot[key] = value;
+    }
+  }
+
+  return Object.keys(snapshot).length > 0 ? snapshot : null;
+}
+
 type ViewMode = 'list' | 'consultation';
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today';
 type ConsultationTab = string; // dinámico según blocks_snapshot del doctor
@@ -881,15 +921,7 @@ function ConsultationsPage() {
           blocks_snapshot: null, // structure resolved separately from the doctor's template
           // Backend persists the filled report VALUES in `blocks_snapshot` (JSONB record);
           // hydrate the editor so saved dynamic blocks survive a reload.
-          blocks_data:
-            (fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot &&
-            typeof (fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot === 'object' &&
-            !Array.isArray((fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot)
-              ? ((fresh_raw as { blocks_snapshot?: unknown }).blocks_snapshot as Record<
-                  string,
-                  unknown
-                >)
-              : null,
+          blocks_data: buildInitialBlocksData(fresh_raw),
           version: null,
         };
         setSelected(fresh);
