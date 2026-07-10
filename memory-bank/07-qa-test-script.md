@@ -14,6 +14,11 @@
 - Cubrir CADA acción del usuario por módulo y verificar persistencia real en BD.
 - Lo usa el **qa-agent** (semi-automático) y un humano (QA visual). No reemplaza tests
   unitarios; los complementa.
+- La **sección D-2026-07** (al final, tras el Checklist E) cubre la funcionalidad y los
+  fixes de las sesiones **2026-07-07 a 2026-07-10** (gating por plan, ficha de paciente,
+  módulo Consultas inline, Seguimiento/`shared_files`, compartir, horario multi-bloque,
+  imágenes/PDF, Nueva consulta, bloques de nombre fijo + Paraclínico, email de confirmación),
+  que las secciones C/D-regresión previas no cubrían.
 
 ## Cómo usarlo
 
@@ -561,6 +566,165 @@ SELECT count(*) AS planes_booking
 - [ ] QA visual del usuario cubrió cada módulo (marcar PASA/FALLA por módulo).
 - [ ] Toda corrida de QA usó los **2 agentes en paralelo** (front + verificador BD/logs) retroalimentándose.
 - [ ] Sentry sin nuevos errores tras el deploy (back + front).
+
+---
+
+## D-2026-07) Cobertura sesiones 2026-07-07..10 (funcionalidad + fixes recientes)
+
+> Casos NUEVOS de las sesiones **2026-07-07 → 2026-07-10** (commits `77786bb`, `ccb8a02`,
+> `ce8a5d8`, `f1ca146`, `238402d`/`406f6d4`, `664c135`, `7b35719`, `cf2df80`, `74e8c91`,
+> `70444b6`, `c87c98e`, `6ed43f4`). Reusan el entorno prod y el harness de BD de las
+> secciones **Entorno** y **B**; las tablas reales están en B ("Tablas reales"). No repetir
+> aquí el setup del proxy ni el password. Convención: `doctorId` de `user.sub`; PII de
+> paciente NUNCA en claro en logs (regla de B).
+
+### D1. Gating de plan por página (interstitial) — guard en `doctor/layout.tsx`
+
+> El sidebar ya pone candado visual, pero el guard de ACCESO (`PLAN_GATED_ROUTES` +
+> `PlanLockedNotice`) impide cargar el contenido cuando se entra por URL directa o por un
+> enlace cross-módulo. Módulos gateados: `agenda, finances, cobros, billing, services,
+reminders, crm, ehr, messages, reports, patients, consultations`. Free (`delta_free`)
+> habilita `dashboard, patients, consultations, settings` (según `plan_features`).
+
+| Caso    | Precondición             | Pasos front                                                                                                                           | Esperado UI                                                                                                          | Verificación BD                                                                                                                             | RBAC / seguridad                                       | Edge / errores                                                      |
+| ------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
+| GATE-01 | Doctor en **Delta Free** | Navegar por URL directa a `/doctor/agenda`                                                                                            | Interstitial "**Sección no disponible en tu plan**" (card con candado + botón "Mejorar mi plan"); NO carga la agenda | `SELECT plan, subscription_status FROM profiles WHERE id=:d` → `plan` NULL/`delta_free` (downgrade perezoso). `plan_features` sin `agenda`. | Gating client-side; el BFF además gatea server-side    | `/doctor/upgrade` (botón) → carga la página de planes               |
+| GATE-02 | Doctor Free              | URL directa a cada uno: `/doctor/finances`, `/cobros`, `/billing`, `/services`, `/reminders`, `/crm`, `/ehr`, `/messages`, `/reports` | Interstitial en TODOS; contenido del módulo NO se renderiza                                                          | `plan_features` del plan efectivo no incluye el `moduleKey` de la ruta.                                                                     | idem                                                   | ruta sin entrada en `PLAN_GATED_ROUTES` (offices/templates) → libre |
+| GATE-03 | Doctor Free              | Desde el **dashboard**, clickear un enlace cross-módulo (widget → agenda/cobros)                                                      | Igual bloqueado: interstitial, no salta el candado                                                                   | —                                                                                                                                           | el guard corre por `pathname`, no por origen del click | —                                                                   |
+| GATE-04 | Doctor Free              | Abrir `/doctor` (dashboard), `/doctor/patients`, `/doctor/consultations`, `/doctor/settings`                                          | Cargan normal (permitidos en Free)                                                                                   | `plan_features` incluye `dashboard/patients/consultations`; settings sin gate.                                                              | —                                                      | —                                                                   |
+| GATE-05 | Doctor **Base/Plus**     | URL directa a `/doctor/agenda`, `/finances`, etc.                                                                                     | Cargan (plan superior habilita los módulos)                                                                          | `plan='delta_base'/'delta_plus'`, `subscription_status='active'`; `plan_features` incluye los módulos.                                      | super_admin bypassa gating                             | —                                                                   |
+
+### D2. Ficha de paciente (`/doctor/patients` + deep-links)
+
+| Caso     | Precondición                                 | Pasos front                                               | Esperado UI                                                                                         | Verificación BD                                                                                                       | RBAC / seguridad                       | Edge / errores                             |
+| -------- | -------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------ |
+| FICHA-01 | Paciente con `birth_date`                    | Abrir ficha → tab datos                                   | Campo **Edad** es **read-only**, calculado de la fecha de nacimiento (no editable)                  | La edad NO se persiste; deriva de `patients.birth_date` (cifrada/decrypt al dueño). No se escribe columna `age`.      | ownership; PII decrypt solo dueño      | sin fecha de nacimiento → edad vacía/—     |
+| FICHA-02 | Paciente con adjuntos que subió (shared/req) | Header ficha → botón "**Documentos (N)**"                 | Abre modal con adjuntos del paciente; cada uno con **Ver/Descargar** (signed URLs GCS)              | `patientRequests.length` = N (fuente combinada patient-requests / shared-files); URLs firmadas 1h.                    | ownership; sin firma → 403             | N=0 → botón "Documentos (0)" / modal vacío |
+| FICHA-03 | Paciente del doctor                          | Tab **Seguimiento** → sección "Solicitudes de documentos" | Lista las solicitudes de documentos del paciente                                                    | filas de patient-requests del paciente; scope `doctor_id=:d`.                                                         | ownership                              | sin solicitudes → estado vacío             |
+| FICHA-04 | Consulta del paciente con pago pendiente     | Tab Historial → fila de consulta                          | El **selector Aprobado/Pendiente fue quitado**; queda solo un **badge read-only** de estado de pago | Aprobar NO ocurre acá; el estado se cambia en Cobros/detalle (`consultations.payment_status` no muta desde la ficha). | aprobación centralizada (anti-doble)   | —                                          |
+| FICHA-05 | Doctor con pacientes                         | Abrir `/doctor/patients?open=<patientId>`                 | Abre la ficha de ESE paciente directo (deep-link)                                                   | `searchParams.get('open')` resuelve al paciente si existe y es del doctor.                                            | anti-IDOR: solo abre si `doctor_id=:d` | `?open=<idAjeno>` → no abre / 404          |
+| FICHA-06 | Paciente con nombre largo                    | Abrir ficha                                               | Header en **2 filas**; el nombre largo NO se parte a media palabra                                  | — (solo layout)                                                                                                       | —                                      | nombre muy corto → sigue OK                |
+| FICHA-07 | Paciente con consultas                       | Tab **Historial Médico** → botón "**Abrir consulta**"     | Navega a `/doctor/consultations?open=<consultId>` (abre el editor inline de esa consulta)           | `consultId` corresponde a una consulta del doctor.                                                                    | anti-IDOR                              | consulta ajena → 404 al abrir              |
+
+### D3. Módulo Consultas (editor inline con `?open=`; página `[id]` eliminada)
+
+> La edición de consulta vive en `/doctor/consultations` con `?open=<consultId>` (deep-link).
+> `blocks_snapshot` (JSONB) es la columna real que guarda los bloques (el payload/IA lo llama
+> `blocks_data`). Campos clínicos cifrados: `chief_complaint, diagnosis, treatment, notes`.
+
+| Caso     | Precondición                    | Pasos front                                                                      | Esperado UI                                                                                                                                | Verificación BD                                                                                                                                                            | RBAC / seguridad              | Edge / errores                                                        |
+| -------- | ------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------------- |
+| CONS-D01 | —                               | Navegar a `/doctor/consultations/<uuid>` (ruta legacy)                           | **404** (la página `[id]` fue eliminada; el editor es inline)                                                                              | —                                                                                                                                                                          | —                             | —                                                                     |
+| CONS-D02 | Consulta abierta (`?open=`)     | Observar al abrir la consulta                                                    | Botón "**Generar Documento**" (antes "Generar informe"); **NO** se auto-genera nada al abrir (sin "loading fantasma")                      | Ninguna escritura al abrir; `blocks_snapshot` sin cambios por el mero open.                                                                                                | ownership                     | —                                                                     |
+| CONS-D03 | Consulta con bloques cargados   | Click "Generar Documento" → tildar secciones → Generar                           | Modal de secciones; genera **UN** PDF branded (logo/firma/matrícula + **cédula del paciente**), on-demand, solo con las secciones tildadas | El PDF se arma en cliente (react-pdf) con datos de la consulta; incluye `Cédula: <nro>`. Sin secciones tildadas → deshabilitado.                                           | ownership; PII solo del dueño | 0 secciones → no genera                                               |
+| CONS-D04 | Consulta abierta                | Click "Ver ficha del paciente"                                                   | Navega a `/doctor/patients?open=<patientId>`                                                                                               | resuelve el paciente de la consulta.                                                                                                                                       | anti-IDOR                     | —                                                                     |
+| CONS-D05 | Consulta pendiente              | Marcar **atendida** / **pagada**                                                 | El listado de consultas refleja el nuevo estado                                                                                            | `consultations.status`/`payment_status` actualizados; se ven en el GET de lista.                                                                                           | ownership                     | transición inválida → error de dominio                                |
+| CONS-D06 | Consulta con ≥2 bloques (A y B) | Escribir en bloque A → cambiar a bloque B → volver a A → cambiar de tab / cerrar | **Autoguardado / sin pérdida**: A conserva su texto al volver; al cambiar de tab o cerrar se guarda TODO                                   | `SELECT blocks_snapshot FROM consultations WHERE id=:c` → el JSONB contiene **TODOS** los bloques con contenido (no solo el último editado). Campos cifrados con len alta. | ownership                     | **REGRESIÓN** (commit `6ed43f4`): antes se perdía el bloque no-activo |
+| CONS-D07 | Doctor con catálogo de bloques  | Abrir modal "**Agregar bloque a esta consulta**"                                 | Muestra los **labels** de los bloques del catálogo (no filas vacías)                                                                       | labels leídos del catálogo en camelCase (fix `7b35719`); `consultation_block_catalog`.                                                                                     | ownership                     | catálogo vacío → sin opciones                                         |
+| CONS-D08 | Doctor B                        | Abrir `?open=<consultId de A>`                                                   | 404 / sin datos                                                                                                                            | Sin fuga de PHI de A.                                                                                                                                                      | Anti-IDOR                     | —                                                                     |
+
+### D4. Seguimiento del paciente — módulo `shared_files`
+
+> Backend DDD `shared-files` (migración `20260708000001`). Doctor: `@Controller('doctor/shared-files')`
+> (`GET /`, `POST /`, `PATCH /:id`, `DELETE /:id`, `POST /mark-read`, `GET /unread-counts`), scope
+> `doctor_id = user.sub`. Paciente: `@Controller('patient/shared-files')` (`GET /`, `POST /`,
+> `POST /mark-read`), scope por `patients.auth_user_id = user.sub`. Tabla `shared_files`
+> (`doctor_id, patient_id, category, status, created_by, file_url`=PATH GCS, `read_by_doctor`,
+> `read_by_patient`, `title`, `description`). CHECKs: `category IN (instruction,file,recipe,lab_result,image,other,comment)`,
+> `status IN (pending,completed,reviewed)`, `created_by IN (doctor,patient)`.
+
+| Caso   | Precondición                   | Pasos front                                                                        | Esperado UI                                                | Verificación BD                                                                                                                                                      | RBAC / seguridad                                             | Edge / errores                            |
+| ------ | ------------------------------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- | ------------------------------ |
+| SHF-01 | Doctor con paciente            | Ficha → tab Seguimiento → enviar **tarea/instrucción**                             | Aparece en el feed con badge **TÚ** + estado; toast        | `SELECT category,status,created_by FROM shared_files WHERE doctor_id=:d AND patient_id=:p ORDER BY created_at DESC LIMIT 1` → `created_by='doctor'`, status pending. | `doctor_id=user.sub`                                         | título vacío → validación                 |
+| SHF-02 | Doctor                         | Enviar **comentario** y **subir archivo** en Seguimiento                           | Comentario y archivo en el feed (Ver/Descargar signed URL) | filas `category='comment'` / `category='file'                                                                                                                        | 'image'`; `file_url` = PATH GCS (no URL firmada persistida). | ownership; storage privado (signed URL)   | tipo/tamaño inválido → rechazo |
+| SHF-03 | Ítem de seguimiento del doctor | Editar y luego eliminar                                                            | Cambios visibles; el ítem desaparece al eliminar           | `PATCH /:id` actualiza misma fila; `DELETE /:id` la borra; no duplica ni deja huérfano.                                                                              | ownership (`doctor_id=:d`)                                   | id ajeno → 404 (`SharedFileAccessDenied`) |
+| SHF-04 | Paciente con ítems del doctor  | Portal `/patient/seguimiento`                                                      | Ve tareas/archivos del doctor; badges de no-leído          | `GET /api/patient/shared-files` scope `auth_user_id=user.sub`.                                                                                                       | scope paciente                                               | sin ítems → estado vacío                  |
+| SHF-05 | Paciente                       | Responder con **comentario** + **archivo**; marcar leído                           | Respuesta en el feed; el no-leído se limpia                | filas `created_by='patient'`; `POST /mark-read` setea `read_by_patient=true`; en doctor `read_by_doctor` refleja lo suyo.                                            | scope `auth_user_id`                                         | —                                         |
+| SHF-06 | Doctor con varios pacientes    | Ficha/lista → observar badges de no-leído por paciente                             | Badge de no-leídos por paciente                            | `GET /doctor/shared-files/unread-counts` agrupa por `patient_id` los `read_by_doctor=false` creados por el paciente.                                                 | ownership                                                    | 0 no-leídos → sin badge                   |
+| SHF-07 | Doctor B / Paciente B          | Doctor B lista shared-files de paciente de A; Paciente B fuerza `patient_id` ajeno | 403/404; sin datos                                         | Sin fuga. Doctor por `doctor_id=user.sub`; paciente por `auth_user_id` (nunca del body).                                                                             | **Anti-IDOR** (doble: doctor y paciente)                     | —                                         |
+
+### D5. Compartir documentos (enlace + código + WhatsApp)
+
+> `ShareDocumentsModal`: genera enlace + código de 6 dígitos y ofrece "**Enviar por WhatsApp**"
+> cuyo mensaje incluye **enlace y código**. El PDF consolidado que descarga el paciente lleva
+> **"Cédula: <nro>"** en el encabezado. (Complementa el módulo 15 / DOC-\* de la sección C.)
+
+| Caso     | Precondición            | Pasos front                                                          | Esperado UI                                                                                | Verificación BD                                                                                           | RBAC / seguridad                     | Edge / errores                       |
+| -------- | ----------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------ |
+| SHARE-01 | Consulta del doctor     | Compartir → elegir secciones → Generar → click "Enviar por WhatsApp" | Abre WhatsApp (`wa.me`) con un mensaje que contiene **el enlace y el código de 6 dígitos** | `shared_document_links` + `document_access_codes` (1 código); el mensaje wa.me arma link+code en cliente. | doctor; ≥1 sección                   | paciente sin teléfono → botón oculto |
+| SHARE-02 | Enlace + código válidos | Paciente descarga el PDF consolidado                                 | El PDF incluye "**Cédula: <nro>**" en el encabezado                                        | cédula del paciente descifrada solo al armar el PDF; no se loguea en claro.                               | pública tras verificar cédula+código | —                                    |
+
+### D6. Horario multi-bloque por consultorio (`/doctor/offices`)
+
+> Cada día admite **N bloques** ("+ Agregar bloque"). `doctor_offices.schedule` (JSONB) puede
+> tener **varias entradas por `day`** (day 0=Lunes). Errores de dominio:
+> `OFFICE_INVALID_SCHEDULE` (422, solape dentro del mismo consultorio o start>=end) y
+> `OFFICE_SCHEDULE_CONFLICT` (409, solape contra otro consultorio ACTIVO del mismo doctor).
+
+| Caso     | Precondición                                              | Pasos front                                                              | Esperado UI                                                                   | Verificación BD                                                                                          | RBAC / seguridad | Edge / errores                              |
+| -------- | --------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------- |
+| SCHED-01 | Consultorio en edición                                    | En un día, "+ Agregar bloque" → definir 2 franjas NO solapadas → Guardar | Guarda OK; toast                                                              | `SELECT schedule FROM doctor_offices WHERE id=:o` → JSONB con **2 entradas** para ese `day` (start/end). | ownership        | —                                           |
+| SCHED-02 | Mismo día con 2 bloques que **se solapan**                | Definir 08-11 y 10-12 el mismo día                                       | **Validación en vivo**: alerta de solape + botón **Guardar deshabilitado**    | POST/PUT igual rechazado en backend → `OfficeInvalidScheduleError` (422). No persiste.                   | ownership        | start>=end → mismo 422                      |
+| SCHED-03 | Consultorio A ocupa lun 08-11; crear/editar Consultorio B | En B, poner lun 08-11 → Guardar                                          | **409** `OFFICE_SCHEDULE_CONFLICT` (toast "se solapa con otro consultorio")   | ninguna fila de B con ese solape; A intacto. Verifica contra offices `is_active=true` del doctor.        | ownership        | B en día distinto o A inactivo → sí permite |
+| SCHED-04 | Consultorio con varios bloques por día                    | Ver slots del booking de ese día                                         | Los slots del booking **unen todos los bloques** del día (no solo el primero) | `get-available-slots` deriva de todas las entradas del `day` en `schedule`.                              | público          | día sin entradas → sin slots                |
+
+### D7. Imágenes / PDF (preview, avatar, logos/firma en PDF, toasts)
+
+> Fix raíz: el `?t=` cache-buster sobre la **signed URL de GCS** rompía la firma → preview roto.
+> CORS del bucket GCS ya configurado (ADR-016) → react-pdf baja logos/firmas **directo de GCS**.
+
+| Caso   | Precondición                   | Pasos front                                         | Esperado UI                                                                     | Verificación BD                                                        | RBAC / seguridad                | Edge / errores                           |
+| ------ | ------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------- | ---------------------------------------- |
+| IMG-01 | Doctor                         | Subir foto en consultorio / avatar / logo / firma   | El **preview se ve a la primera** (NO roto). Sin `?t=` roto sobre la signed URL | la URL guardada es el PATH; el front pide signed URL sin mutarla.      | storage privado/público firmado | tipo/tamaño inválido → rechazo           |
+| IMG-02 | Doctor sube avatar             | Ver el avatar cargado                               | Se ve **completo** (zoom "contain") y se puede **alejar**                       | —                                                                      | —                               | —                                        |
+| IMG-03 | Doctor con logo/firma cargados | Generar/ver un PDF (visor) y descargarlo            | Logo y firma **aparecen** en el PDF, tanto en el visor como en la descarga      | react-pdf baja los assets directo de GCS (CORS OK); no rompe por CORS. | —                               | asset faltante → PDF sin logo (no crash) |
+| IMG-04 | Doctor en Configuración        | Guardar config; aplicar plantilla a todos + guardar | Aparece **toast** al Guardar y al aplicar/guardar plantillas                    | `app_settings`/`doctor_templates` persistidos.                         | ownership                       | —                                        |
+| IMG-05 | Doctor en Configuración        | Recorrer las secciones                              | **Notificaciones** y **WhatsApp Business API** están **ocultas**                | — (solo UI)                                                            | —                               | —                                        |
+
+### D8. Nueva consulta (`NewAppointmentFlow` / `useAppointmentFlow`)
+
+| Caso   | Precondición                        | Pasos front                                  | Esperado UI                                                                      | Verificación BD                                                                                      | RBAC / seguridad | Edge / errores                           |
+| ------ | ----------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------- |
+| NAF-01 | Doctor                              | Abrir "Nueva consulta"                       | Header con el **logo nuevo (DeltaMark)**                                         | — (UI)                                                                                               | —                | —                                        |
+| NAF-02 | Doctor con varios pacientes         | En el filtro de paciente, escribir un nombre | Filtra de verdad (llama `/api/patients/search?q=`; antes `?search=` traía todos) | request a `/api/patients/search?q=<txt>&limit=8`; devuelve solo matches (por hash/substring in-app). | ownership        | sin match → lista vacía                  |
+| NAF-03 | Doctor **con consultorios** creados | Avanzar al paso de consultorio               | NO aparece "Sin consultorio específico"; se **auto-selecciona el primero**       | la cita queda con `office_id` del consultorio (no NULL).                                             | ownership        | doctor sin consultorios → alerta "crear" |
+
+### D9. Bloques de consulta — 6 de nombre fijo + Paraclínico
+
+> Catálogo (`consultation_block_catalog`, seed + migración `20260710000000-paraclinico-block`).
+> 6 bloques de **nombre fijo (no renombrables)**: **Motivo de consulta** (`chief_complaint`),
+> **Antecedentes** (`history`), **Diagnóstico** (`diagnosis`), **Prescripción** (`prescription`),
+> **Indicaciones** (`indications`), **Paraclínico** (`paraclinical`, recién agregado).
+> En `/doctor/settings/consultation-blocks` esos 6 muestran badge "**Nombre fijo**" sin input editable.
+
+| Caso   | Precondición | Pasos front                                         | Esperado UI                                                                                           | Verificación BD                                                                                              | RBAC / seguridad | Edge / errores |
+| ------ | ------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------- | -------------- |
+| BLK-01 | Doctor       | `/doctor/settings/consultation-blocks`              | Los 6 bloques fijos muestran badge "**Nombre fijo**" y **no** tienen input de renombrado; el resto sí | catálogo incluye las 6 `block_key` (incl. `paraclinical`); esos 6 marcados como no-renombrables.             | ownership        | —              |
+| BLK-02 | Doctor       | Verificar que **Paraclínico** existe en el catálogo | Aparece "Paraclínico" seleccionable en consultas                                                      | `SELECT block_key FROM consultation_block_catalog WHERE block_key='paraclinical'` → existe (post-migración). | —                | —              |
+
+### D10. Email de confirmación de cita (timezone + branding)
+
+> Fix en `appointment-notification.service.ts` (commit `70444b6`) + migración
+> `20260710000001-email-branding-delta-salud`. Templates en `email_templates`
+> (`appointment_confirmation_online` / `_inperson`).
+
+| Caso    | Precondición                  | Pasos front                                         | Esperado UI                                                                                  | Verificación BD                                                                                                                | RBAC / seguridad           | Edge / errores                     |
+| ------- | ----------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ---------------------------------- |
+| MAIL-01 | Doctor con paciente con email | Agendar/confirmar una cita 09:20 → revisar el email | La **hora** sale en **America/Caracas**: la cita 09:20 dice **09:20** (NO 1:20 p.m. UTC)     | `email_send_log` con `sent` para `appointment_confirmation_*`; `appointment_time` formateado con `timeZone:'America/Caracas'`. | no PII de paciente en logs | modalidad online → usa `meet_link` |
+| MAIL-02 | Igual que MAIL-01             | Ver header/branding del email                       | El header dice "**Delta Salud**" (no "Delta Medical CRM"); color de marca **#0891b2** (teal) | `email_templates` (post migración branding) con el nuevo header/color.                                                         | —                          | —                                  |
+
+### Pendientes (verificar cuando se implementen)
+
+> Casos NO probados aún (funcionalidad no confirmada / pendiente). NO marcar como PASA hasta implementar.
+
+| Caso    | Qué verificar cuando se implemente                                                                                                                                                        |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PEND-01 | **Bloqueo de disponibilidad debe ocultar slots**: crear un bloqueo (`doctor_availability_blocks`) → `booking/slots` NO ofrece esos horarios en el link público.                           |
+| PEND-02 | **`booking_require_reason=off` debe quitar el motivo en el link público**: con el toggle apagado, el formulario público NO pide "motivo de consulta".                                     |
+| PEND-03 | **El motivo del booking debe poblar el bloque Motivo en la consulta**: el `chief_complaint` de la reserva aparece precargado en el bloque "Motivo de consulta" al abrir la consulta.      |
+| PEND-04 | **Compartir debe enviar el MISMO PDF branded que la descarga**: el PDF que recibe el paciente por compartir == el PDF consolidado branded (logo/firma/matrícula + cédula) de la descarga. |
+| PEND-05 | **Pago de consulta con referencia + comprobante opcionales y cambiar método**: registrar pago permitiendo referencia/comprobante opcionales y cambiar el método de pago.                  |
+| PEND-06 | **Link público con "pagar después" + datos de pago del doctor**: la reserva pública ofrece "pagar después" y muestra los datos de pago del doctor (métodos activos).                      |
 
 ---
 
