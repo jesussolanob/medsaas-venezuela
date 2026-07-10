@@ -281,7 +281,15 @@ export function useAppointmentFlow(
     setLoadingOffices(true);
     fetch('/api/doctor/offices', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((json) => setOffices(Array.isArray(json.data) ? (json.data as DoctorOffice[]) : []))
+      .then((json) => {
+        const list = Array.isArray(json.data) ? (json.data as DoctorOffice[]) : [];
+        setOffices(list);
+        // Si el doctor tiene consultorios, auto-seleccionar el primero (ya no existe
+        // la opción "Sin consultorio específico"). Solo si aún no hay uno elegido.
+        if (list.length > 0) {
+          setSelectedOffice((prev) => prev ?? list[0]);
+        }
+      })
       .catch(() => setOffices([]))
       .finally(() => setLoadingOffices(false));
   }, [open]);
@@ -369,7 +377,11 @@ export function useAppointmentFlow(
     setSearchingPatients(true);
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/patients?search=${encodeURIComponent(patientQuery)}&limit=8`);
+        // /api/patients (lista) IGNORA `search` → devolvía TODOS sin filtrar (bug: al
+        // escribir "marco" salía "Lucas Rivas"). El search real filtra por término.
+        const res = await fetch(
+          `/api/patients/search?q=${encodeURIComponent(patientQuery)}&limit=8`,
+        );
         const json = res.ok ? await res.json() : {};
         const raw: Record<string, unknown>[] =
           json?.data?.patients ?? json?.data ?? json?.patients ?? [];

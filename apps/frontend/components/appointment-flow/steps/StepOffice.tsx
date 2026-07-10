@@ -45,27 +45,8 @@ export default function StepOffice({
           </div>
         ) : (
           <div className="grid gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedOffice(null)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 transition-all text-left ${
-                !selectedOffice
-                  ? 'border-teal-400 bg-teal-50'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
-              }`}
-            >
-              <MapPin
-                className={`w-4 h-4 shrink-0 ${!selectedOffice ? 'text-teal-600' : 'text-slate-400'}`}
-              />
-              <div>
-                <p
-                  className={`text-sm font-semibold ${!selectedOffice ? 'text-teal-800' : 'text-slate-700'}`}
-                >
-                  Sin consultorio específico
-                </p>
-                <p className="text-xs text-slate-400">Cualquier modalidad disponible</p>
-              </div>
-            </button>
+            {/* "Sin consultorio específico" se quitó: si el doctor tiene consultorios,
+                debe elegir uno real (se auto-selecciona el primero en useAppointmentFlow). */}
             {offices.map((o) => (
               <button
                 key={o.id}

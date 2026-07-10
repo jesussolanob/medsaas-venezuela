@@ -15,6 +15,7 @@
 
 import { AlertCircle, Calendar, CreditCard, MapPin, Pill, User, X } from 'lucide-react';
 import AccordionSection from './AccordionSection';
+import { DeltaMark } from '@/components/dh';
 import { useAppointmentFlow } from './useAppointmentFlow';
 import StepPatient from './steps/StepPatient';
 import StepOffice from './steps/StepOffice';
@@ -82,22 +83,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
           style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891b2 50%, #0E7490 100%)' }}
         >
           <div className="flex items-center gap-3">
-            <svg width="28" height="28" viewBox="0 0 200 200" fill="none" aria-hidden="true">
-              <path
-                d="M125 40 C75 25, 25 65, 30 120 C35 165, 75 190, 120 175"
-                stroke="#ffffff"
-                strokeWidth="26"
-                strokeLinecap="round"
-                fill="none"
-              />
-              <path
-                d="M145 155 C170 120, 170 70, 140 45"
-                stroke="#FF8A65"
-                strokeWidth="26"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
+            <DeltaMark size={28} primary="white" />
             <div>
               <h2 className="text-lg font-bold">Nueva consulta</h2>
               <p className="text-xs text-white/80">Completa los pasos para agendar</p>
