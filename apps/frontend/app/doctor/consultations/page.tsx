@@ -893,11 +893,17 @@ function ConsultationsPage() {
           version: null,
         };
         setSelected(fresh);
+        // Reconciliar report con blocks_data: si blocks_data tiene valor para un campo
+        // legacy, usarlo como fuente de verdad (es más reciente que la columna top-level).
+        const bd = (fresh.blocks_data || {}) as Record<string, unknown>;
         setReport({
-          chief_complaint: fresh.chief_complaint ?? '',
-          notes: fresh.notes ?? '',
-          diagnosis: fresh.diagnosis ?? '',
-          treatment: fresh.treatment ?? '',
+          chief_complaint:
+            typeof bd.chief_complaint === 'string'
+              ? bd.chief_complaint
+              : (fresh.chief_complaint ?? ''),
+          notes: typeof bd.notes === 'string' ? bd.notes : (fresh.notes ?? ''),
+          diagnosis: typeof bd.diagnosis === 'string' ? bd.diagnosis : (fresh.diagnosis ?? ''),
+          treatment: typeof bd.treatment === 'string' ? bd.treatment : (fresh.treatment ?? ''),
           payment_status: fresh.payment_status,
         });
         setConsultations((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)));
@@ -1544,6 +1550,61 @@ function ConsultationsPage() {
   // Timer para auto-save de BLOQUES DINÁMICOS (block:xxx) — debounce 1.5s
   const blocksAutoSaveTimer = useRef<NodeJS.Timeout | null>(null);
 
+  /** Ejecuta el guardado pendiente de blocks_data de forma inmediata (sin esperar debounce).
+   *  Llamar antes de cambiar de tab o antes de cerrar la consulta. */
+  const flushBlocksSave = useCallback(() => {
+    if (!blocksAutoSaveTimer.current) return;
+    clearTimeout(blocksAutoSaveTimer.current);
+    blocksAutoSaveTimer.current = null;
+    const cur = selectedRef.current;
+    if (!cur) return;
+    const bd = cur.blocks_data;
+    if (!bd || Object.keys(bd).length === 0) return;
+    setAutoSaving(true);
+    fetch('/api/doctor/consultations', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: cur.id, blocks_data: bd }),
+    })
+      .then(() => {
+        setAutoSaving(false);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      })
+      .catch(() => {
+        setAutoSaving(false);
+      });
+    // Sync legacy columns for chief_complaint/diagnosis/treatment/notes
+    const legacyKeys = ['chief_complaint', 'diagnosis', 'treatment', 'notes'] as const;
+    const legacyUpdates: Record<string, string | null> = {};
+    let hasLegacy = false;
+    for (const k of legacyKeys) {
+      if (k in bd && typeof bd[k] === 'string') {
+        legacyUpdates[k] = (bd[k] as string) || null;
+        hasLegacy = true;
+      }
+    }
+    if (hasLegacy) {
+      updateConsultation(cur.id, legacyUpdates).catch(() => {});
+    }
+  }, []);
+
+  /** Cambia de tab flusheando el guardado pendiente antes de hacerlo. */
+  const handleTabChange = useCallback(
+    (newTab: string) => {
+      flushBlocksSave();
+      setConsultationTab(newTab);
+    },
+    [flushBlocksSave],
+  );
+
+  // Flush pendiente al desmontar (navegar fuera de la página de consulta)
+  useEffect(() => {
+    return () => {
+      flushBlocksSave();
+    };
+  }, [flushBlocksSave]);
+
   // Auto-save BLOQUE REPOSO en blocks_data — debounce 1.5s
   // Reposo NO tiene tabla propia, se persiste en consultations.blocks_data['reposo']
   const reposoSaveTimer = useRef<NodeJS.Timeout | null>(null);
@@ -1756,7 +1817,10 @@ function ConsultationsPage() {
               {/* Fila 1: navegación + badges en vivo */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <button
-                  onClick={() => setView('list')}
+                  onClick={() => {
+                    flushBlocksSave();
+                    setView('list');
+                  }}
                   className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" /> Volver a consultas
@@ -1960,7 +2024,7 @@ function ConsultationsPage() {
                   return dynamicTabs.map((t) => (
                     <button
                       key={t.key}
-                      onClick={() => setConsultationTab(t.key)}
+                      onClick={() => handleTabChange(t.key)}
                       className={`safari-tab text-sm font-semibold transition-all whitespace-nowrap ${
                         consultationTab === t.key
                           ? 'active border-t border-l border-r border-slate-200 text-slate-900'
@@ -2110,7 +2174,7 @@ function ConsultationsPage() {
                                         }
                                       }
                                       setShowAddBlockMenu(false);
-                                      setConsultationTab(`block:${c.key}`);
+                                      handleTabChange(`block:${c.key}`);
                                     } catch (err) {
                                       reportError('doctor/consultations', 'addBlock', err);
                                       showToast({
@@ -2199,47 +2263,78 @@ function ConsultationsPage() {
                         blocks={oneBlock}
                         values={data}
                         onChange={(key, value) => {
-                          const next = { ...data, [key]: value };
-                          (selected as Consultation).blocks_data = next;
-                          setSelected({ ...(selected as Consultation), blocks_data: next });
-                          // Autosave debounced — guarda blocks_data y, si es chief_complaint/diagnosis/treatment/notes,
-                          // tambien sincroniza la columna legacy correspondiente para retrocompat.
+                          // Inmutable: no mutar selected directamente.
+                          // Merge con el estado ACTUAL en el ref para no perder keys de otros bloques.
+                          const currentData =
+                            (selectedRef.current?.blocks_data as Record<string, unknown>) || {};
+                          const next = { ...currentData, [key]: value };
+                          setSelected((prev) => (prev ? { ...prev, blocks_data: next } : prev));
+                          // Sync estado legacy si aplica (para que report.* y blocks_data.* sean consistentes)
+                          if (
+                            key === 'chief_complaint' ||
+                            key === 'diagnosis' ||
+                            key === 'treatment' ||
+                            key === 'notes'
+                          ) {
+                            const legacyVal = typeof value === 'string' ? value : '';
+                            setReport((p) => ({ ...p, [key]: legacyVal }));
+                          }
+                          // Autosave debounced — lee blocks_data frescos del ref al disparar.
                           if (blocksAutoSaveTimer.current)
                             clearTimeout(blocksAutoSaveTimer.current);
+                          setAutoSaving(false);
                           blocksAutoSaveTimer.current = setTimeout(() => {
                             if (!selectedRef.current) return;
-                            // MIGRATED: blocks_data autosave via BFF PATCH route (non-blocking).
-                            // Legacy field sync via backend PUT endpoint.
+                            // Leer blocks_data ACTUAL (no el next capturado en el closure)
+                            const latestBd =
+                              (selectedRef.current.blocks_data as Record<string, unknown>) || {};
+                            setAutoSaving(true);
                             fetch('/api/doctor/consultations', {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 id: selectedRef.current.id,
-                                blocks_data: next,
+                                blocks_data: latestBd,
                               }),
-                            }).catch(() => {});
+                            })
+                              .then(() => {
+                                setAutoSaving(false);
+                                setSaved(true);
+                                setTimeout(() => setSaved(false), 2000);
+                              })
+                              .catch(() => setAutoSaving(false));
                             // Sync legacy columns
-                            if (
-                              key === 'chief_complaint' ||
-                              key === 'diagnosis' ||
-                              key === 'treatment' ||
-                              key === 'notes'
-                            ) {
-                              const legacyVal = typeof value === 'string' ? value : '';
-                              updateConsultation(selectedRef.current.id, {
-                                [key]: legacyVal,
-                              }).catch(() => {});
+                            const legacyKeys = [
+                              'chief_complaint',
+                              'diagnosis',
+                              'treatment',
+                              'notes',
+                            ] as const;
+                            const legacyUpdates: Record<string, string | null> = {};
+                            let hasLegacy = false;
+                            for (const k of legacyKeys) {
+                              if (k in latestBd && typeof latestBd[k] === 'string') {
+                                legacyUpdates[k] = (latestBd[k] as string) || null;
+                                hasLegacy = true;
+                              }
+                            }
+                            if (hasLegacy) {
+                              updateConsultation(selectedRef.current.id, legacyUpdates).catch(
+                                () => {},
+                              );
                             }
                           }, 1500);
                         }}
                         onSave={async () => {
-                          // MIGRATED: save blocks_data via BFF PATCH route
+                          // Guardado manual inmediato — usa selectedRef para datos frescos
+                          if (!selectedRef.current) return;
                           await fetch('/api/doctor/consultations', {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              id: selected!.id,
-                              blocks_data: (selected as Consultation).blocks_data || {},
+                              id: selectedRef.current.id,
+                              blocks_data:
+                                (selectedRef.current.blocks_data as Record<string, unknown>) || {},
                             }),
                           });
                           showToast({ type: 'success', message: 'Bloque guardado' });
@@ -2873,22 +2968,28 @@ function ConsultationsPage() {
                     </p>
                     <RichTextEditor
                       value={
-                        (((selected as Consultation).blocks_data || {}) as any).internal_notes || ''
+                        ((((selected as Consultation).blocks_data || {}) as Record<string, unknown>)
+                          .internal_notes as string | undefined) || ''
                       }
                       onChange={(html) => {
                         // RONDA 38: persistir en blocks_data.internal_notes (no en columna legacy diagnosis)
-                        const data = (selected as Consultation).blocks_data || {};
-                        const next = { ...data, internal_notes: html };
-                        (selected as Consultation).blocks_data = next;
-                        setSelected({ ...(selected as Consultation), blocks_data: next });
+                        // Inmutable: merge con estado actual del ref para no perder otros bloques.
+                        const currentData =
+                          (selectedRef.current?.blocks_data as Record<string, unknown>) || {};
+                        const next = { ...currentData, internal_notes: html };
+                        setSelected((prev) => (prev ? { ...prev, blocks_data: next } : prev));
                         if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current);
                         blocksAutoSaveTimer.current = setTimeout(() => {
                           if (!selectedRef.current) return;
-                          // MIGRATED: internal_notes blocks_data via BFF PATCH route
+                          const latestBd =
+                            (selectedRef.current.blocks_data as Record<string, unknown>) || {};
                           fetch('/api/doctor/consultations', {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: selectedRef.current.id, blocks_data: next }),
+                            body: JSON.stringify({
+                              id: selectedRef.current.id,
+                              blocks_data: latestBd,
+                            }),
                           }).catch(() => {});
                         }, 1500);
                       }}
