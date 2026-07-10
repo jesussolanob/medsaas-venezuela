@@ -1,5 +1,17 @@
 'use client';
 
+/**
+ * ShareDocumentsModal — v2 (2026-07)
+ *
+ * Reemplaza la selección de 3 secciones (report/prescriptions/ehr) por los
+ * mismos 5 tipos que usa GenerateDocumentModal:
+ *   recipe · paraclinical · history · rest · informe
+ *
+ * Al enviar, construye:
+ *   - doc_selection: { types, informeBlockKeys, restContent }  (nuevo — para PDF branded)
+ *   - sections: { report, prescriptions, ehr }                 (backward-compat)
+ */
+
 import { useState } from 'react';
 import {
   Share2,
@@ -8,20 +20,20 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  FileText,
-  Pill,
-  ClipboardList,
   MessageCircle,
+  ChevronDown,
 } from 'lucide-react';
 import { normalizePhoneVE } from '@/lib/phone-utils';
+import type { ContentBlock } from '@/components/pdf/MedicalDocumentPdf';
+import {
+  type DocumentTypeKey,
+  type SavedPrescription,
+  computeAvailableDocTypes,
+  INFORME_EXCLUDED_KEYS,
+  INFORME_CHECKED_BY_DEFAULT,
+} from './consultation-documents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-interface ShareSections {
-  report: boolean;
-  prescriptions: boolean;
-  ehr: boolean;
-}
 
 interface ShareResult {
   url: string;
@@ -37,6 +49,14 @@ interface Props {
   patientName?: string | null;
   /** Nombre del doctor para firmar el mensaje de WhatsApp (opcional). */
   doctorName?: string | null;
+  /** Bloques de contenido de la consulta (necesario para computar tipos disponibles). */
+  informeContent: ContentBlock[];
+  /** Recetas guardadas de la consulta. */
+  savedPrescriptions: SavedPrescription[];
+  /** Total de consultas del paciente (habilita Historia clínica si > 1). */
+  patientConsultationCount: number;
+  /** Texto del reposo médico de la consulta; null si no hay reposo. */
+  restContent: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -48,33 +68,149 @@ function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface DocTypeCardProps {
+  label: string;
+  description: string;
+  enabled: boolean;
+  checked: boolean;
+  onChange: () => void;
+  children?: React.ReactNode;
+}
+
+function DocTypeCard({
+  label,
+  description,
+  enabled,
+  checked,
+  onChange,
+  children,
+}: DocTypeCardProps) {
+  return (
+    <div
+      className={`rounded-xl border transition-colors ${
+        !enabled
+          ? 'opacity-45 bg-slate-50 border-slate-100 cursor-not-allowed'
+          : checked
+            ? 'bg-teal-50 border-teal-200'
+            : 'bg-white border-slate-200 hover:border-slate-300'
+      }`}
+    >
+      <label
+        className={`flex items-start gap-3 p-3.5 ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onChange}
+          disabled={!enabled}
+          className="mt-0.5 w-4 h-4 accent-teal-500 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <p
+            className={`text-sm font-semibold ${
+              !enabled ? 'text-slate-400' : checked ? 'text-teal-800' : 'text-slate-700'
+            }`}
+          >
+            {label}
+          </p>
+          <p className={`text-xs mt-0.5 ${!enabled ? 'text-slate-300' : 'text-slate-400'}`}>
+            {description}
+          </p>
+        </div>
+      </label>
+      {children}
+    </div>
+  );
+}
+
+interface BlockSubSelectorProps {
+  informeContent: ContentBlock[];
+  checkedKeys: Set<string>;
+  onToggle: (key: string) => void;
+}
+
+function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSelectorProps) {
+  const eligibleBlocks = informeContent.filter((b) => !INFORME_EXCLUDED_KEYS.has(b.key));
+  if (eligibleBlocks.length === 0) return null;
+
+  return (
+    <div className="px-3.5 pb-3.5 pt-0 border-t border-teal-100">
+      <div className="flex items-center gap-1.5 mt-2 mb-2">
+        <ChevronDown className="w-3 h-3 text-teal-500" />
+        <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide">
+          Bloques a incluir
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-1">
+        {eligibleBlocks.map((block) => (
+          <label
+            key={block.key}
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+              checkedKeys.has(block.key)
+                ? 'bg-teal-100 border-teal-200 text-teal-800 font-medium'
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checkedKeys.has(block.key)}
+              onChange={() => onToggle(block.key)}
+              className="w-3 h-3 accent-teal-500 shrink-0"
+            />
+            <span className="truncate">{block.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ShareDocumentsModal({
   consultationId,
   patientPhone,
   patientName,
   doctorName,
+  informeContent,
+  savedPrescriptions,
+  patientConsultationCount,
+  restContent,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [sections, setSections] = useState<ShareSections>({
-    report: true,
-    prescriptions: false,
-    ehr: false,
-  });
+  const [selectedTypes, setSelectedTypes] = useState<Set<DocumentTypeKey>>(new Set());
+  const [informeCheckedKeys, setInformeCheckedKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ShareResult | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
+  const availableTypes = computeAvailableDocTypes({
+    informeContent,
+    savedPrescriptions,
+    patientConsultationCount,
+    restContent,
+  });
+
   function handleOpen() {
     setOpen(true);
     setError(null);
     setResult(null);
-    setSections({ report: true, prescriptions: false, ehr: false });
     setCopiedUrl(false);
     setCopiedCode(false);
+
+    // Pre-seleccionar el primer tipo habilitado por defecto
+    const firstEnabled = availableTypes.find((t) => t.enabled);
+    setSelectedTypes(firstEnabled ? new Set([firstEnabled.key]) : new Set());
+
+    // Inicializar sub-selector de bloques con los defaults
+    const defaults = informeContent
+      .filter((b) => !INFORME_EXCLUDED_KEYS.has(b.key) && INFORME_CHECKED_BY_DEFAULT.has(b.key))
+      .map((b) => b.key);
+    setInformeCheckedKeys(new Set(defaults));
   }
 
   function handleClose() {
@@ -82,11 +218,25 @@ export default function ShareDocumentsModal({
     setOpen(false);
   }
 
-  function toggleSection(key: keyof ShareSections) {
-    setSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  function toggleType(key: DocumentTypeKey) {
+    setSelectedTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
-  const hasSelection = sections.report || sections.prescriptions || sections.ehr;
+  function toggleInformeBlock(key: string) {
+    setInformeCheckedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  const hasSelection = selectedTypes.size > 0;
 
   async function handleSubmit() {
     if (!hasSelection || loading) return;
@@ -94,11 +244,28 @@ export default function ShareDocumentsModal({
     setLoading(true);
     setError(null);
 
+    const types = Array.from(selectedTypes);
+    const informeBlockKeys = Array.from(informeCheckedKeys);
+
+    // doc_selection — para PDF branded (nuevo)
+    const doc_selection = {
+      types,
+      informeBlockKeys,
+      restContent: restContent ?? null,
+    };
+
+    // sections — backward-compat con el backend viejo
+    const sections = {
+      report: types.includes('informe'),
+      prescriptions: types.includes('recipe'),
+      ehr: types.includes('history'),
+    };
+
     try {
       const res = await fetch(`/api/consultations/${consultationId}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sections }),
+        body: JSON.stringify({ sections, doc_selection }),
       });
 
       const json = (await res.json()) as { success: true; data: ShareResult } | { error: string };
@@ -117,11 +284,6 @@ export default function ShareDocumentsModal({
     }
   }
 
-  /**
-   * Abre WhatsApp con un mensaje que SÍ incluye el enlace y el código de acceso
-   * (el flujo viejo enviaba un mensaje sin enlace ni código). El teléfono se
-   * normaliza a formato 58XXXXXXXXXX para wa.me.
-   */
   function shareViaWhatsApp() {
     if (!result) return;
     const phone = normalizePhoneVE(patientPhone);
@@ -170,9 +332,9 @@ export default function ShareDocumentsModal({
             if (e.target === e.currentTarget) handleClose();
           }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
                   <Share2 className="w-4 h-4 text-teal-600" />
@@ -189,44 +351,45 @@ export default function ShareDocumentsModal({
             </div>
 
             {/* Body */}
-            <div className="px-5 py-5 space-y-5">
+            <div className="px-5 py-5 space-y-5 overflow-y-auto">
               {!result ? (
                 <>
                   <p className="text-sm text-slate-500">
-                    Selecciona qué secciones quieres compartir. El paciente recibirá un enlace por
-                    email con un código de acceso de 6 dígitos.
+                    Selecciona qué documentos quieres compartir. El paciente recibirá un PDF branded
+                    con un enlace y código de acceso de 6 dígitos.
                   </p>
 
-                  {/* Section checkboxes */}
-                  <div className="space-y-2.5">
-                    <SectionCheckbox
-                      icon={<FileText className="w-4 h-4 text-teal-600" />}
-                      label="Informe de la consulta"
-                      description="Diagnóstico, motivo y notas clínicas"
-                      checked={sections.report}
-                      onChange={() => toggleSection('report')}
-                    />
-                    <SectionCheckbox
-                      icon={<Pill className="w-4 h-4 text-violet-600" />}
-                      label="Recetas"
-                      description="Medicamentos, dosis e indicaciones"
-                      checked={sections.prescriptions}
-                      onChange={() => toggleSection('prescriptions')}
-                    />
-                    <SectionCheckbox
-                      icon={<ClipboardList className="w-4 h-4 text-sky-600" />}
-                      label="Historia clínica / EHR"
-                      description="Historial clínico electrónico del paciente"
-                      checked={sections.ehr}
-                      onChange={() => toggleSection('ehr')}
-                    />
+                  {/* Doc type cards */}
+                  <div className="space-y-2">
+                    {availableTypes.map((dt) => (
+                      <DocTypeCard
+                        key={dt.key}
+                        label={dt.label}
+                        description={dt.description}
+                        enabled={dt.enabled}
+                        checked={selectedTypes.has(dt.key)}
+                        onChange={() => {
+                          if (!dt.enabled) return;
+                          toggleType(dt.key);
+                        }}
+                      >
+                        {/* Sub-selector de bloques para el tipo informe */}
+                        {dt.key === 'informe' && selectedTypes.has('informe') && dt.enabled ? (
+                          <BlockSubSelector
+                            informeContent={informeContent}
+                            checkedKeys={informeCheckedKeys}
+                            onToggle={toggleInformeBlock}
+                          />
+                        ) : null}
+                      </DocTypeCard>
+                    ))}
                   </div>
 
                   {/* Validation hint */}
                   {!hasSelection && (
                     <p className="text-xs text-amber-600 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Selecciona al menos una sección
+                      Selecciona al menos un tipo de documento
                     </p>
                   )}
 
@@ -322,7 +485,7 @@ export default function ShareDocumentsModal({
                     . Pasada esa fecha el paciente deberá solicitar uno nuevo.
                   </p>
 
-                  {/* Enviar por WhatsApp — incluye enlace + código en el mensaje */}
+                  {/* WhatsApp */}
                   <button
                     onClick={shareViaWhatsApp}
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold text-white transition-colors"
@@ -346,41 +509,5 @@ export default function ShareDocumentsModal({
         </div>
       )}
     </>
-  );
-}
-
-// ─── Section Checkbox ─────────────────────────────────────────────────────────
-
-interface SectionCheckboxProps {
-  icon: React.ReactNode;
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: () => void;
-}
-
-function SectionCheckbox({ icon, label, description, checked, onChange }: SectionCheckboxProps) {
-  return (
-    <label
-      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-        checked ? 'bg-teal-50 border-teal-200' : 'bg-white border-slate-200 hover:bg-slate-50'
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="mt-0.5 w-4 h-4 accent-teal-500 cursor-pointer"
-      />
-      <div className="flex items-start gap-2 min-w-0">
-        <span className="mt-0.5 shrink-0">{icon}</span>
-        <div className="min-w-0">
-          <p className={`text-sm font-semibold ${checked ? 'text-teal-800' : 'text-slate-700'}`}>
-            {label}
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">{description}</p>
-        </div>
-      </div>
-    </label>
   );
 }

@@ -138,7 +138,7 @@ export default function DocumentDownloadPage() {
 
     setDownloading(true);
     try {
-      const downloadUrl = `/api/documents/${token}/download?sessionToken=${encodeURIComponent(session.sessionToken)}`;
+      const downloadUrl = `/api/documents/${token}/pdf?sessionToken=${encodeURIComponent(session.sessionToken)}`;
 
       const res = await fetch(downloadUrl);
       if (!res.ok) {
@@ -221,7 +221,7 @@ export default function DocumentDownloadPage() {
         >
           <Stethoscope className="w-4 h-4 text-white" />
         </div>
-        <span className="text-sm font-bold text-slate-700">Delta Medical CRM</span>
+        <span className="text-sm font-bold text-slate-700">Delta Salud</span>
       </header>
 
       {/* Main content */}
@@ -486,9 +486,7 @@ export default function DocumentDownloadPage() {
 
       {/* Footer */}
       <footer className="py-4 text-center">
-        <p className="text-xs text-slate-400">
-          Delta Medical CRM · Plataforma médica para Venezuela
-        </p>
+        <p className="text-xs text-slate-400">Delta Salud · Plataforma médica para Venezuela</p>
       </footer>
     </div>
   );

@@ -1912,62 +1912,68 @@ function ConsultationsPage() {
                 </div>
 
                 {/* Grupo derecho: acciones de archivo */}
-                <div className="flex items-center gap-1.5">
-                  {(() => {
-                    const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
-                    if (!tmplCfg || !doctorName) return null;
+                {(() => {
+                  // Constantes compartidas por GenerateDocumentModal y ShareDocumentsModal
+                  const sharedInformeContent = buildPdfContent(selected);
 
-                    // Cantidad de consultas del mismo paciente (habilita Historia clínica)
-                    const patientConsultationCount = consultations.filter(
-                      (x) => x.patient_id === selected.patient_id,
-                    ).length;
+                  const sharedPatientConsultationCount = consultations.filter(
+                    (x) => x.patient_id === selected.patient_id,
+                  ).length;
 
-                    // Texto del reposo médico de la consulta actual
-                    const reposoContentStr =
-                      reposoDays > 0 || reposoDiagnosis || reposoFrom
-                        ? [
-                            `Reposo de ${reposoDays} día${reposoDays !== 1 ? 's' : ''}`,
-                            reposoFrom
-                              ? `desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                              : null,
-                            reposoTo
-                              ? `hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                              : null,
-                            reposoDiagnosis ? `Diagnóstico: ${reposoDiagnosis}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join('. ')
-                        : null;
+                  const sharedReposoContentStr =
+                    reposoDays > 0 || reposoDiagnosis || reposoFrom
+                      ? [
+                          `Reposo de ${reposoDays} día${reposoDays !== 1 ? 's' : ''}`,
+                          reposoFrom
+                            ? `desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                            : null,
+                          reposoTo
+                            ? `hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                            : null,
+                          reposoDiagnosis ? `Diagnóstico: ${reposoDiagnosis}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join('. ')
+                      : null;
 
-                    return (
-                      <GenerateDocumentModal
-                        consultationCode={selected.consultation_code}
-                        consultationDate={selected.consultation_date}
-                        patientId={selected.patient_id}
+                  const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
+
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      {tmplCfg && doctorName && (
+                        <GenerateDocumentModal
+                          consultationCode={selected.consultation_code}
+                          consultationDate={selected.consultation_date}
+                          patientId={selected.patient_id}
+                          patientName={selected.patient_name}
+                          patientCedula={
+                            patients.find((p) => p.id === selected.patient_id)?.cedula ?? null
+                          }
+                          templateConfig={tmplCfg}
+                          doctor={{
+                            fullName: doctorName,
+                            specialty: doctorSpecialty,
+                            licenseNumber: doctorLicense,
+                          }}
+                          informeContent={sharedInformeContent}
+                          savedPrescriptions={savedPrescriptions}
+                          patientConsultationCount={sharedPatientConsultationCount}
+                          restContent={sharedReposoContentStr}
+                        />
+                      )}
+                      <ShareDocumentsModal
+                        consultationId={selected.id}
+                        patientPhone={selected.patient_phone}
                         patientName={selected.patient_name}
-                        patientCedula={
-                          patients.find((p) => p.id === selected.patient_id)?.cedula ?? null
-                        }
-                        templateConfig={tmplCfg}
-                        doctor={{
-                          fullName: doctorName,
-                          specialty: doctorSpecialty,
-                          licenseNumber: doctorLicense,
-                        }}
-                        informeContent={buildPdfContent(selected)}
+                        doctorName={doctorName}
+                        informeContent={sharedInformeContent}
                         savedPrescriptions={savedPrescriptions}
-                        patientConsultationCount={patientConsultationCount}
-                        restContent={reposoContentStr}
+                        patientConsultationCount={sharedPatientConsultationCount}
+                        restContent={sharedReposoContentStr}
                       />
-                    );
-                  })()}
-                  <ShareDocumentsModal
-                    consultationId={selected.id}
-                    patientPhone={selected.patient_phone}
-                    patientName={selected.patient_name}
-                    doctorName={doctorName}
-                  />
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

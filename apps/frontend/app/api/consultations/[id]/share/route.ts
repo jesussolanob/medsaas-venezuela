@@ -21,6 +21,12 @@ interface ShareSections {
   ehr?: boolean;
 }
 
+interface DocSelection {
+  types: string[];
+  informeBlockKeys: string[];
+  restContent?: string | null;
+}
+
 interface ShareResult {
   url: string;
   code: string;
@@ -33,7 +39,7 @@ export async function POST(
 ): Promise<NextResponse> {
   const { id } = await params;
 
-  let body: { sections?: ShareSections };
+  let body: { sections?: ShareSections; doc_selection?: DocSelection };
   try {
     body = await req.json();
   } catch {
@@ -43,14 +49,20 @@ export async function POST(
   const sections = body?.sections ?? {};
   const hasAtLeastOne = sections.report || sections.prescriptions || sections.ehr;
 
-  if (!hasAtLeastOne) {
+  // También aceptar doc_selection sin sections (tipos que no mapean a las 3 secciones viejas)
+  const hasDocSelection = (body?.doc_selection?.types?.length ?? 0) > 0;
+
+  if (!hasAtLeastOne && !hasDocSelection) {
     return NextResponse.json(
       { error: 'Debes seleccionar al menos una sección para compartir' },
       { status: 400 },
     );
   }
 
-  const result = await backendPost<ShareResult>(`/api/consultations/${id}/share`, { sections });
+  const backendBody: { sections: ShareSections; doc_selection?: DocSelection } = { sections };
+  if (body?.doc_selection) backendBody.doc_selection = body.doc_selection;
+
+  const result = await backendPost<ShareResult>(`/api/consultations/${id}/share`, backendBody);
 
   if (!result.ok) {
     log.error('[share POST] backend error', {
