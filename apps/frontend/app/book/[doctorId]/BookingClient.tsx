@@ -380,6 +380,9 @@ export default function BookingClient({
   const [selectedInsurance, setSelectedInsurance] = useState('');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | ''>('');
   const [paymentFile, setPaymentFile] = useState<File | null>(null);
+  // "Pagar después": el paciente confirma la cita sin subir comprobante ahora.
+  // El pago queda pendiente y paga luego con los datos del especialista mostrados.
+  const [payLater, setPayLater] = useState(false);
 
   // Form — RONDA 33: ampliado con datos clinicos opcionales para zero-friction onboarding.
   // El paciente puede saltar los opcionales y completarlos despues en su perfil.
@@ -628,36 +631,38 @@ export default function BookingClient({
         selectedPaymentMethod &&
         requiresReceipt(selectedPaymentMethod as PaymentMethod)
       ) {
-        if (!paymentFile) {
+        if (!paymentFile && !payLater) {
           setError(
-            `Comprobante requerido para ${PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]}`,
+            `Comprobante requerido para ${PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]}, o elige "Pagar después"`,
           );
           setSubmitting(false);
           return;
         }
-        try {
-          const fd = new FormData();
-          fd.append('file', paymentFile);
-          fd.append('kind', 'receipt');
-          // Bug 7 fix: public patients have no Auth0/dev session, so we can't
-          // use /api/storage/upload (which calls resolveIdentity()). Use the
-          // dedicated public endpoint that accepts unauthenticated uploads with
-          // kind='receipt' and validates MIME + size server-side.
-          const uploadRes = await fetch('/api/storage/public-upload', {
-            method: 'POST',
-            body: fd,
-          });
-          const uploadJson = await uploadRes.json();
-          if (!uploadRes.ok || !uploadJson?.data?.url) {
-            throw new Error(uploadJson?.error?.message ?? 'Error al subir comprobante');
+        // Con "Pagar después" sin archivo, se omite la subida y receiptUrl queda null.
+        if (paymentFile)
+          try {
+            const fd = new FormData();
+            fd.append('file', paymentFile);
+            fd.append('kind', 'receipt');
+            // Bug 7 fix: public patients have no Auth0/dev session, so we can't
+            // use /api/storage/upload (which calls resolveIdentity()). Use the
+            // dedicated public endpoint that accepts unauthenticated uploads with
+            // kind='receipt' and validates MIME + size server-side.
+            const uploadRes = await fetch('/api/storage/public-upload', {
+              method: 'POST',
+              body: fd,
+            });
+            const uploadJson = await uploadRes.json();
+            if (!uploadRes.ok || !uploadJson?.data?.url) {
+              throw new Error(uploadJson?.error?.message ?? 'Error al subir comprobante');
+            }
+            receiptUrl = uploadJson.data.url;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Contacta al doctor.';
+            setError(`Error al subir comprobante: ${msg}`);
+            setSubmitting(false);
+            return;
           }
-          receiptUrl = uploadJson.data.url;
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Contacta al doctor.';
-          setError(`Error al subir comprobante: ${msg}`);
-          setSubmitting(false);
-          return;
-        }
       }
 
       // RONDA 28: forzar Caracas con offset explicito -04:00.
@@ -2222,7 +2227,12 @@ export default function BookingClient({
                         style={{ background: `${BRAND.coral}08` }}
                       >
                         <p className="text-sm font-medium text-slate-700">
-                          Comprobante de pago <span className="text-red-500">*</span>
+                          Comprobante de pago{' '}
+                          {payLater ? (
+                            <span className="font-normal text-slate-400">(opcional)</span>
+                          ) : (
+                            <span className="text-red-500">*</span>
+                          )}
                         </p>
                         <label
                           className="flex items-center justify-center border-2 border-dashed rounded-xl p-4 cursor-pointer hover:bg-white/50 transition-colors"
@@ -2247,6 +2257,25 @@ export default function BookingClient({
                         {paymentFile && (
                           <p className="text-xs text-slate-500">
                             {paymentFile.name} ({(paymentFile.size / 1024 / 1024).toFixed(2)} MB)
+                          </p>
+                        )}
+                        {/* Pagar después: confirma la cita sin comprobante ahora (pago pendiente) */}
+                        <button
+                          type="button"
+                          onClick={() => setPayLater((v) => !v)}
+                          className={`w-full rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                            payLater
+                              ? 'border-amber-300 bg-amber-50 text-amber-700'
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-amber-300'
+                          }`}
+                        >
+                          {payLater ? '✓ Pagaré después' : 'Pagar después'}
+                        </button>
+                        {payLater && (
+                          <p className="text-xs text-amber-700">
+                            Tu cita quedará <span className="font-semibold">pendiente de pago</span>
+                            . Podrás pagar con los datos de arriba y enviar el comprobante al
+                            doctor.
                           </p>
                         )}
                       </div>
