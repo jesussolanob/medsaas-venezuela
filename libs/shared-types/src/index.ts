@@ -20,6 +20,7 @@ export * from './dtos/update-appointment-status.dto';
 export * from './dtos/create-consultation-body.dto';
 export * from './dtos/update-consultation.dto';
 export * from './dtos/approve-payment.dto';
+export * from './dtos/update-payment-details.dto';
 export * from './dtos/update-patient.dto';
 export * from './dtos/create-ehr-record.dto';
 export * from './dtos/create-prescription.dto';

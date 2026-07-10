@@ -85,6 +85,7 @@ import {
   getConsultation,
   updateConsultation,
   approveConsultationPayment,
+  updateConsultationPaymentDetails,
   getQuickItems,
   updateAppointmentStatus,
 } from './actions';
@@ -112,6 +113,9 @@ type Consultation = {
   treatment: string | null;
   status: 'pending' | 'in_progress' | 'completed' | 'no_show'; // Estado de la CONSULTA (no del pago)
   payment_status: 'pending' | 'approved'; // Quitamos 'cancelled' — los pagos no se cancelan
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  payment_receipt_url?: string | null;
   appointment_id: string | null;
   patient_id: string;
   patient_name: string;
@@ -358,6 +362,12 @@ function ConsultationsPage() {
   const [showNewConsultation, setShowNewConsultation] = useState(false);
   // Estado del select de pago
   const [pagoSaving, setPagoSaving] = useState(false);
+  // Estado del panel de detalles de pago (método, referencia, comprobante)
+  const [pagoMethod, setPagoMethod] = useState<string>('');
+  const [pagoReference, setPagoReference] = useState<string>('');
+  const [pagoReceiptPath, setPagoReceiptPath] = useState<string | null>(null);
+  const [pagoReceiptUploading, setPagoReceiptUploading] = useState(false);
+  const [pagoDetailsSaving, setPagoDetailsSaving] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [pricingPlans, setPricingPlans] = useState<
     { id: string; name: string; price_usd: number; duration_minutes: number }[]
@@ -911,6 +921,9 @@ function ConsultationsPage() {
           treatment: fresh_raw.treatment,
           status: mapAppointmentStatusToConsulta(fresh_raw.appointment_status),
           payment_status: fresh_raw.payment_status,
+          payment_method: fresh_raw.payment_method ?? null,
+          payment_reference: fresh_raw.payment_reference ?? null,
+          payment_receipt_url: fresh_raw.payment_receipt_url ?? null,
           appointment_id: fresh_raw.appointment_id ?? null,
           patient_id: fresh_raw.patient_id,
           patient_name: fresh_raw.patient_name || c.patient_name,
@@ -938,6 +951,10 @@ function ConsultationsPage() {
           treatment: typeof bd.treatment === 'string' ? bd.treatment : (fresh.treatment ?? ''),
           payment_status: fresh.payment_status,
         });
+        // Inicializar estado del panel de detalles de pago
+        setPagoMethod(fresh.payment_method ?? '');
+        setPagoReference(fresh.payment_reference ?? '');
+        setPagoReceiptPath(fresh.payment_receipt_url ?? null);
         setConsultations((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)));
         // Appointment data for receipt — no backend endpoint in Etapa 1, stays null.
         setAppointmentData(null);
@@ -951,6 +968,9 @@ function ConsultationsPage() {
           treatment: c.treatment ?? '',
           payment_status: c.payment_status,
         });
+        setPagoMethod(c.payment_method ?? '');
+        setPagoReference(c.payment_reference ?? '');
+        setPagoReceiptPath(c.payment_receipt_url ?? null);
         setAppointmentData(null);
       }
     } catch {
@@ -963,6 +983,9 @@ function ConsultationsPage() {
         treatment: c.treatment ?? '',
         payment_status: c.payment_status,
       });
+      setPagoMethod(c.payment_method ?? '');
+      setPagoReference(c.payment_reference ?? '');
+      setPagoReceiptPath(c.payment_receipt_url ?? null);
       setAppointmentData(null);
     }
 
@@ -3476,9 +3499,7 @@ function ConsultationsPage() {
                   </button>
                   {showPaymentDetails && (
                     <div className="mt-3 space-y-2">
-                      {/* === SELECT con auto-save (ronda 14) ===
-                        onChange dispara updatePagoStatus que actualiza Supabase + payments table
-                        + sincroniza el badge informativo de la izquierda automaticamente */}
+                      {/* === Estado del pago (auto-save) === */}
                       <div>
                         <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                           Estado del pago
@@ -3504,7 +3525,6 @@ function ConsultationsPage() {
                               </option>
                             ))}
                           </select>
-                          {/* Spinner o chevron a la derecha */}
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                             {pagoSaving ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
@@ -3519,6 +3539,8 @@ function ConsultationsPage() {
                           </p>
                         )}
                       </div>
+
+                      {/* Datos de cita (read-only) */}
                       {appointmentData &&
                         (appointmentData.payment_method || appointmentData.plan_price) && (
                           <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
@@ -3555,16 +3577,209 @@ function ConsultationsPage() {
                             )}
                           </div>
                         )}
-                      {appointmentData?.payment_receipt_url && (
-                        <a
-                          href={appointmentData.payment_receipt_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 pt-1"
+
+                      {/* === Detalles del pago (editables) === */}
+                      <div className="pt-2 border-t border-slate-100 space-y-2">
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                          Detalles del pago
+                        </p>
+
+                        {/* Método de pago */}
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">
+                            Método de pago
+                          </label>
+                          <div className="relative">
+                            <select
+                              value={pagoMethod}
+                              disabled={pagoDetailsSaving}
+                              onChange={(e) => setPagoMethod(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-lg py-1.5 pl-2.5 pr-8 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all appearance-none bg-white text-slate-700 disabled:text-slate-400 disabled:cursor-wait"
+                            >
+                              <option value="">— Sin especificar —</option>
+                              {(doctorPaymentMethods.length > 0
+                                ? [
+                                    { value: 'efectivo', label: 'Efectivo USD' },
+                                    { value: 'efectivo_bs', label: 'Efectivo Bs' },
+                                    { value: 'pago_movil', label: 'Pago Móvil' },
+                                    { value: 'transferencia', label: 'Transferencia' },
+                                    { value: 'zelle', label: 'Zelle' },
+                                    { value: 'binance', label: 'Binance' },
+                                    { value: 'pos', label: 'POS / Punto de venta' },
+                                    { value: 'seguro', label: 'Seguro' },
+                                  ].filter((m) => doctorPaymentMethods.includes(m.value))
+                                : [
+                                    { value: 'efectivo', label: 'Efectivo USD' },
+                                    { value: 'efectivo_bs', label: 'Efectivo Bs' },
+                                    { value: 'pago_movil', label: 'Pago Móvil' },
+                                    { value: 'transferencia', label: 'Transferencia' },
+                                    { value: 'zelle', label: 'Zelle' },
+                                    { value: 'binance', label: 'Binance' },
+                                    { value: 'pos', label: 'POS / Punto de venta' },
+                                    { value: 'seguro', label: 'Seguro' },
+                                  ]
+                              ).map((m) => (
+                                <option key={m.value} value={m.value}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                              <ChevronDown className="w-3 h-3 text-slate-400" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Referencia */}
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">
+                            Referencia / Nro. comprobante
+                          </label>
+                          <input
+                            type="text"
+                            value={pagoReference}
+                            disabled={pagoDetailsSaving}
+                            onChange={(e) => setPagoReference(e.target.value)}
+                            placeholder="Ej: #12345, últimos 4 dígitos…"
+                            className="w-full text-xs border border-slate-200 rounded-lg py-1.5 px-2.5 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all bg-white text-slate-700 placeholder:text-slate-400 disabled:text-slate-400 disabled:cursor-wait"
+                          />
+                        </div>
+
+                        {/* Comprobante de pago */}
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">
+                            Comprobante{' '}
+                            <span className="text-slate-400 normal-case font-normal">
+                              (opcional)
+                            </span>
+                          </label>
+                          {pagoReceiptPath ? (
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={pagoReceiptPath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-teal-600 hover:text-teal-800 font-semibold flex items-center gap-1"
+                              >
+                                <FileText className="w-3 h-3" /> Ver comprobante
+                              </a>
+                              <button
+                                type="button"
+                                disabled={pagoDetailsSaving || pagoReceiptUploading}
+                                onClick={() => setPagoReceiptPath(null)}
+                                className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="flex items-center gap-2 border border-dashed border-slate-300 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
+                              {pagoReceiptUploading ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin text-teal-500" />
+                                  <span className="text-[10px] text-teal-600">Subiendo…</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="w-3 h-3 text-slate-400" />
+                                  <span className="text-[10px] text-slate-500">
+                                    Adjuntar comprobante
+                                  </span>
+                                </>
+                              )}
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                disabled={pagoReceiptUploading || pagoDetailsSaving}
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  setPagoReceiptUploading(true);
+                                  try {
+                                    const fd = new FormData();
+                                    fd.append('file', file);
+                                    fd.append('kind', 'receipt');
+                                    const uploadRes = await fetch('/api/storage/upload', {
+                                      method: 'POST',
+                                      body: fd,
+                                    });
+                                    const uploadJson: unknown = await uploadRes.json();
+                                    const urlData = uploadJson as {
+                                      data?: { url?: string; path?: string };
+                                    };
+                                    const path = urlData?.data?.path ?? urlData?.data?.url ?? null;
+                                    if (uploadRes.ok && path) {
+                                      setPagoReceiptPath(path);
+                                    } else {
+                                      showToast({
+                                        type: 'error',
+                                        message: 'No se pudo subir el comprobante',
+                                      });
+                                    }
+                                  } catch {
+                                    showToast({
+                                      type: 'error',
+                                      message: 'Error al subir el comprobante',
+                                    });
+                                  } finally {
+                                    setPagoReceiptUploading(false);
+                                    // Reset input so the same file can be re-selected
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        {/* Botón Guardar pago */}
+                        <button
+                          type="button"
+                          disabled={pagoDetailsSaving || pagoReceiptUploading}
+                          onClick={async () => {
+                            setPagoDetailsSaving(true);
+                            try {
+                              const result = await updateConsultationPaymentDetails(selected.id, {
+                                payment_method: pagoMethod || null,
+                                payment_reference: pagoReference || null,
+                                payment_receipt_url: pagoReceiptPath,
+                              });
+                              if (!result.success) {
+                                showToast({
+                                  type: 'error',
+                                  message: result.error ?? 'Error al guardar el pago',
+                                });
+                                return;
+                              }
+                              // Actualizar estado local de forma inmutable
+                              const updated = {
+                                payment_method: pagoMethod || null,
+                                payment_reference: pagoReference || null,
+                                payment_receipt_url: pagoReceiptPath,
+                              };
+                              setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
+                              setConsultations((prev) =>
+                                prev.map((x) => (x.id === selected.id ? { ...x, ...updated } : x)),
+                              );
+                              showToast({ type: 'success', message: 'Pago actualizado' });
+                            } finally {
+                              setPagoDetailsSaving(false);
+                            }
+                          }}
+                          className="w-full flex items-center justify-center gap-1.5 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-wait text-white text-xs font-semibold rounded-lg py-2 transition-colors"
                         >
-                          <FileText className="w-3 h-3" /> Ver comprobante
-                        </a>
-                      )}
+                          {pagoDetailsSaving ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" /> Guardando…
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-3 h-3" /> Guardar pago
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

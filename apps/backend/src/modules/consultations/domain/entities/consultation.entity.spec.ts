@@ -57,6 +57,8 @@ describe('Consultation', () => {
       expect(consultation.paymentMethod).toBeNull();
       expect(consultation.amount).toBeNull();
       expect(consultation.paymentDate).toBeNull();
+      expect(consultation.paymentReference).toBeNull();
+      expect(consultation.paymentReceiptUrl).toBeNull();
       expect(consultation.blocksSnapshot).toBeNull();
     });
 
@@ -75,6 +77,15 @@ describe('Consultation', () => {
       expect(consultation.notes).toBe('Follow-up in 2 weeks');
       expect(consultation.amount).toBe(50.0);
       expect(consultation.paymentMethod).toBe('zelle');
+    });
+
+    it('preserves paymentReference and paymentReceiptUrl when provided', () => {
+      const consultation = makeConsultation({
+        paymentReference: 'TXN-0099',
+        paymentReceiptUrl: 'https://example.com/receipt.pdf',
+      });
+      expect(consultation.paymentReference).toBe('TXN-0099');
+      expect(consultation.paymentReceiptUrl).toBe('https://example.com/receipt.pdf');
     });
   });
 

@@ -10,6 +10,7 @@ import { CONSULTATION_REPOSITORY } from './domain/repositories/consultation.repo
 import { CreateConsultationUseCase } from './application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from './application/use-cases/consultations/update-consultation.use-case';
 import { ApprovePaymentUseCase } from './application/use-cases/consultations/approve-payment.use-case';
+import { UpdatePaymentDetailsUseCase } from './application/use-cases/consultations/update-payment-details.use-case';
 import { GetConsultationByIdUseCase } from './application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from './application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from './application/use-cases/consultations/list-consultations.use-case';
@@ -37,6 +38,7 @@ import { PatientsModule } from '../patients/patients.module';
     CreateConsultationUseCase,
     UpdateConsultationUseCase,
     ApprovePaymentUseCase,
+    UpdatePaymentDetailsUseCase,
     GetConsultationByIdUseCase,
     GetPatientConsultationHistoryUseCase,
     ListConsultationsUseCase,

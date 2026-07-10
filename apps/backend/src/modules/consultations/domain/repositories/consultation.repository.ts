@@ -79,6 +79,30 @@ export interface IConsultationRepository {
     },
   ): Promise<Consultation>;
 
+  /**
+   * Partial update of payment detail fields: status, method, reference, receiptUrl, amount.
+   * Scoped to (id, doctorId). No PaymentAlreadyApproved guard — details are always editable.
+   *
+   * Undefined semantics:
+   *   - undefined → field not touched (omitted from the UPDATE)
+   *   - null      → field cleared (written as NULL in the DB)
+   *   - value     → field replaced with the provided value
+   *
+   * paymentDate auto-set: if paymentStatus is set to 'approved' and paymentDate is
+   * undefined, the implementation sets paymentDate to new Date() automatically.
+   */
+  updatePaymentDetails(
+    id: string,
+    doctorId: string,
+    patch: {
+      paymentStatus?: PaymentStatus;
+      paymentMethod?: string | null;
+      paymentReference?: string | null;
+      paymentReceiptUrl?: string | null;
+      amount?: number | null;
+    },
+  ): Promise<Consultation>;
+
   /** Paginated list filtered by doctorId and optional date/payment_status filters. */
   list(filters: ConsultationListFilters): Promise<ConsultationListResult>;
 

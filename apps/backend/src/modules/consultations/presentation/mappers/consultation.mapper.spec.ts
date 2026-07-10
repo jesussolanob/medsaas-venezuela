@@ -78,6 +78,32 @@ describe('toConsultationResponse', () => {
     expect(result.created_at).toBe(now.toISOString());
     expect(result.updated_at).toBe(now.toISOString());
   });
+
+  it('maps payment_reference when provided', () => {
+    const consultation = makeConsultation({ paymentReference: 'REF-0042' });
+    const result = toConsultationResponse(consultation);
+    expect(result.payment_reference).toBe('REF-0042');
+  });
+
+  it('maps payment_reference as null when absent', () => {
+    const consultation = makeConsultation();
+    const result = toConsultationResponse(consultation);
+    expect(result.payment_reference).toBeNull();
+  });
+
+  it('maps payment_receipt_url when provided', () => {
+    const consultation = makeConsultation({
+      paymentReceiptUrl: 'https://storage.example.com/receipts/abc.pdf',
+    });
+    const result = toConsultationResponse(consultation);
+    expect(result.payment_receipt_url).toBe('https://storage.example.com/receipts/abc.pdf');
+  });
+
+  it('maps payment_receipt_url as null when absent', () => {
+    const consultation = makeConsultation();
+    const result = toConsultationResponse(consultation);
+    expect(result.payment_receipt_url).toBeNull();
+  });
 });
 
 describe('toConsultationResponse — enrichment fields', () => {

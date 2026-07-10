@@ -15,6 +15,8 @@ export interface ConsultationCreateParams {
   paymentMethod?: string | null;
   amount?: number | null;
   paymentDate?: Date | null;
+  paymentReference?: string | null;
+  paymentReceiptUrl?: string | null;
   blocksSnapshot?: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +55,8 @@ export class Consultation {
   readonly paymentMethod: string | null;
   readonly amount: number | null;
   readonly paymentDate: Date | null;
+  readonly paymentReference: string | null;
+  readonly paymentReceiptUrl: string | null;
   readonly blocksSnapshot: Record<string, unknown> | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -76,6 +80,8 @@ export class Consultation {
     this.paymentMethod = params.paymentMethod ?? null;
     this.amount = params.amount ?? null;
     this.paymentDate = params.paymentDate ?? null;
+    this.paymentReference = params.paymentReference ?? null;
+    this.paymentReceiptUrl = params.paymentReceiptUrl ?? null;
     this.blocksSnapshot = params.blocksSnapshot ?? null;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;

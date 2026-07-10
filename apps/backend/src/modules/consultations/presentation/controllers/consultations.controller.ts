@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -19,15 +20,18 @@ import {
   CreateConsultationBodyDtoSchema,
   UpdateConsultationDtoSchema,
   ApprovePaymentDtoSchema,
+  UpdatePaymentDetailsDtoSchema,
   type CreateConsultationBodyDto,
   type UpdateConsultationDto,
   type ApprovePaymentDto,
+  type UpdatePaymentDetailsDto,
   type PaymentStatus,
 } from '@delta/shared-types';
 
 import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from '../../application/use-cases/consultations/update-consultation.use-case';
 import { ApprovePaymentUseCase } from '../../application/use-cases/consultations/approve-payment.use-case';
+import { UpdatePaymentDetailsUseCase } from '../../application/use-cases/consultations/update-payment-details.use-case';
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
@@ -91,6 +95,7 @@ export class ConsultationsController {
     private readonly createConsultation: CreateConsultationUseCase,
     private readonly updateConsultation: UpdateConsultationUseCase,
     private readonly approvePayment: ApprovePaymentUseCase,
+    private readonly updatePaymentDetailsUseCase: UpdatePaymentDetailsUseCase,
     private readonly getById: GetConsultationByIdUseCase,
     private readonly getHistory: GetPatientConsultationHistoryUseCase,
     private readonly listConsultations: ListConsultationsUseCase,
@@ -235,6 +240,32 @@ export class ConsultationsController {
       amount: dto.amount,
       paymentMethod: dto.payment_method,
       paymentDate: dto.payment_date ? new Date(dto.payment_date) : null,
+    });
+    return { success: true, data: toConsultationResponse(consultation) };
+  }
+
+  /**
+   * PATCH /api/consultations/:id/payment-details — edit payment details.
+   *
+   * Editable at any time, including when the payment is already approved.
+   * All fields are optional; only provided fields are updated.
+   *
+   * SECURITY: doctorId comes from user.sub (authenticated token) — never from the body.
+   */
+  @Patch(':id/payment-details')
+  async updatePaymentDetailsEndpoint(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(UpdatePaymentDetailsDtoSchema)) dto: UpdatePaymentDetailsDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<unknown>> {
+    const consultation = await this.updatePaymentDetailsUseCase.execute({
+      consultationId: id,
+      doctorId: user.sub,
+      paymentStatus: dto.payment_status,
+      paymentMethod: dto.payment_method,
+      paymentReference: dto.payment_reference,
+      paymentReceiptUrl: dto.payment_receipt_url,
+      amount: dto.amount,
     });
     return { success: true, data: toConsultationResponse(consultation) };
   }

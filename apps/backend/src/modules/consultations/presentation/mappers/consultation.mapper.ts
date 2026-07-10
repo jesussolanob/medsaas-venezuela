@@ -25,6 +25,8 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     payment_method: consultation.paymentMethod,
     amount: consultation.amount !== null ? Number(consultation.amount) : null,
     payment_date: consultation.paymentDate?.toISOString() ?? null,
+    payment_reference: consultation.paymentReference,
+    payment_receipt_url: consultation.paymentReceiptUrl,
     blocks_snapshot: consultation.blocksSnapshot ?? null,
     created_at: consultation.createdAt.toISOString(),
     updated_at: consultation.updatedAt.toISOString(),

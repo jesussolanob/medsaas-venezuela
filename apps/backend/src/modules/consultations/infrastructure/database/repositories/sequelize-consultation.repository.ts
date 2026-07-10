@@ -34,6 +34,8 @@ interface ConsultationEnrichedRow {
   payment_method: string | null;
   amount: string | null;
   payment_date: string | null;
+  payment_reference: string | null;
+  payment_receipt_url: string | null;
   blocks_snapshot: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -75,6 +77,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.id, c.doctor_id, c.patient_id, c.appointment_id, c.consultation_code,
          c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
          c.payment_status, c.payment_method, c.amount, c.payment_date,
+         c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status
@@ -137,6 +140,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         paymentMethod: consultation.paymentMethod,
         amount: consultation.amount,
         paymentDate: consultation.paymentDate,
+        paymentReference: consultation.paymentReference,
+        paymentReceiptUrl: consultation.paymentReceiptUrl,
         blocksSnapshot: consultation.blocksSnapshot,
       });
 
@@ -250,6 +255,70 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     });
   }
 
+  /**
+   * Partial update of payment detail fields (status, method, reference, receiptUrl, amount).
+   * No PaymentAlreadyApproved guard — these fields are always editable.
+   *
+   * Undefined semantics:
+   *   - undefined → not included in the UPDATE (field untouched)
+   *   - null      → written as NULL in the DB (field cleared)
+   *   - value     → replaced with the provided value
+   *
+   * paymentDate auto-set: if paymentStatus === 'approved' the method sets paymentDate
+   * to new Date() so the approval timestamp is always recorded.
+   * If the status transitions back to 'pending', paymentDate is left unchanged
+   * (preserving audit history).
+   */
+  async updatePaymentDetails(
+    id: string,
+    doctorId: string,
+    patch: {
+      paymentStatus?: PaymentStatus;
+      paymentMethod?: string | null;
+      paymentReference?: string | null;
+      paymentReceiptUrl?: string | null;
+      amount?: number | null;
+    },
+  ): Promise<Consultation> {
+    const updateData: Record<string, unknown> = {};
+
+    if (patch.paymentStatus !== undefined) {
+      updateData.paymentStatus = patch.paymentStatus;
+      // Auto-record approval timestamp when transitioning to approved.
+      if (patch.paymentStatus === 'approved') {
+        updateData.paymentDate = new Date();
+      }
+    }
+    if (patch.paymentMethod !== undefined) {
+      updateData.paymentMethod = patch.paymentMethod;
+    }
+    if (patch.paymentReference !== undefined) {
+      updateData.paymentReference = patch.paymentReference;
+    }
+    if (patch.paymentReceiptUrl !== undefined) {
+      updateData.paymentReceiptUrl = patch.paymentReceiptUrl;
+    }
+    if (patch.amount !== undefined) {
+      updateData.amount = patch.amount;
+    }
+
+    return this.sequelize.transaction(async (t) => {
+      await this.consultationModel.update(updateData, {
+        where: { id, doctorId } as WhereOptions,
+        transaction: t,
+      });
+
+      const updated = await this.consultationModel.findOne({
+        where: { id, doctorId } as WhereOptions,
+        transaction: t,
+      });
+      if (!updated) {
+        throw new ConsultationNotFoundError();
+      }
+      return this.toDomain(updated);
+    });
+  }
+
   async list(filters: ConsultationListFilters): Promise<ConsultationListResult> {
     // Build WHERE conditions dynamically
     const conditions: string[] = ['c.doctor_id = :doctorId'];
@@ -284,6 +353,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.id, c.doctor_id, c.patient_id, c.appointment_id, c.consultation_code,
          c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
          c.payment_status, c.payment_method, c.amount, c.payment_date,
+         c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status
@@ -380,6 +450,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       paymentMethod: row.paymentMethod,
       amount: row.amount !== null ? Number(row.amount) : null,
       paymentDate: row.paymentDate,
+      paymentReference: row.paymentReference,
+      paymentReceiptUrl: row.paymentReceiptUrl,
       blocksSnapshot: row.blocksSnapshot,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -426,6 +498,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       paymentMethod: row.payment_method,
       amount: row.amount !== null ? Number(row.amount) : null,
       paymentDate: row.payment_date ? new Date(row.payment_date) : null,
+      paymentReference: row.payment_reference,
+      paymentReceiptUrl: row.payment_receipt_url,
       blocksSnapshot: row.blocks_snapshot as Record<string, unknown> | null,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),

@@ -3,6 +3,7 @@ import { ConsultationsController } from './consultations.controller';
 import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from '../../application/use-cases/consultations/update-consultation.use-case';
 import { ApprovePaymentUseCase } from '../../application/use-cases/consultations/approve-payment.use-case';
+import { UpdatePaymentDetailsUseCase } from '../../application/use-cases/consultations/update-payment-details.use-case';
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
@@ -45,6 +46,7 @@ describe('ConsultationsController', () => {
   const mockCreate = { execute: jest.fn() };
   const mockUpdate = { execute: jest.fn() };
   const mockApprove = { execute: jest.fn() };
+  const mockUpdatePaymentDetails = { execute: jest.fn() };
   const mockGetById = { execute: jest.fn() };
   const mockGetHistory = { execute: jest.fn() };
   const mockList = { execute: jest.fn() };
@@ -59,6 +61,7 @@ describe('ConsultationsController', () => {
         { provide: CreateConsultationUseCase, useValue: mockCreate },
         { provide: UpdateConsultationUseCase, useValue: mockUpdate },
         { provide: ApprovePaymentUseCase, useValue: mockApprove },
+        { provide: UpdatePaymentDetailsUseCase, useValue: mockUpdatePaymentDetails },
         { provide: GetConsultationByIdUseCase, useValue: mockGetById },
         { provide: GetPatientConsultationHistoryUseCase, useValue: mockGetHistory },
         { provide: ListConsultationsUseCase, useValue: mockList },
@@ -273,6 +276,82 @@ describe('ConsultationsController', () => {
       expect(mockGetHistory.execute).toHaveBeenCalledWith(
         expect.objectContaining({ patientId: PATIENT_ID, doctorId: DOCTOR_ID }),
       );
+    });
+  });
+
+  describe('updatePaymentDetailsEndpoint', () => {
+    it('updates payment details and returns serialized consultation', async () => {
+      const consultation = makeConsultation({
+        paymentStatus: 'approved',
+        paymentMethod: 'zelle',
+        paymentReference: 'REF-001',
+        paymentReceiptUrl: 'https://storage.example.com/receipts/001.pdf',
+        amount: 75,
+      });
+      mockUpdatePaymentDetails.execute.mockResolvedValue(consultation);
+
+      const result = await controller.updatePaymentDetailsEndpoint(
+        CONSULTATION_ID,
+        {
+          payment_status: 'approved',
+          payment_method: 'zelle',
+          payment_reference: 'REF-001',
+          payment_receipt_url: 'https://storage.example.com/receipts/001.pdf',
+          amount: 75,
+        },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as Record<string, unknown>).payment_status).toBe('approved');
+      expect((result.data as Record<string, unknown>).payment_reference).toBe('REF-001');
+      expect((result.data as Record<string, unknown>).payment_receipt_url).toBe(
+        'https://storage.example.com/receipts/001.pdf',
+      );
+    });
+
+    it('uses doctorId from authenticated user — not from body', async () => {
+      const consultation = makeConsultation();
+      mockUpdatePaymentDetails.execute.mockResolvedValue(consultation);
+
+      await controller.updatePaymentDetailsEndpoint(
+        CONSULTATION_ID,
+        { payment_reference: 'REF-002' },
+        mockUser,
+      );
+
+      expect(mockUpdatePaymentDetails.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ doctorId: DOCTOR_ID, consultationId: CONSULTATION_ID }),
+      );
+    });
+
+    it('propagates ConsultationNotFoundError', async () => {
+      mockUpdatePaymentDetails.execute.mockRejectedValue(new ConsultationNotFoundError());
+
+      await expect(
+        controller.updatePaymentDetailsEndpoint(
+          CONSULTATION_ID,
+          { payment_reference: 'REF-003' },
+          mockUser,
+        ),
+      ).rejects.toThrow(ConsultationNotFoundError);
+    });
+
+    it('is editable even when payment is already approved', async () => {
+      const approvedConsultation = makeConsultation({
+        paymentStatus: 'approved',
+        paymentReference: 'REF-UPDATED',
+      });
+      mockUpdatePaymentDetails.execute.mockResolvedValue(approvedConsultation);
+
+      const result = await controller.updatePaymentDetailsEndpoint(
+        CONSULTATION_ID,
+        { payment_reference: 'REF-UPDATED' },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as Record<string, unknown>).payment_reference).toBe('REF-UPDATED');
     });
   });
 });

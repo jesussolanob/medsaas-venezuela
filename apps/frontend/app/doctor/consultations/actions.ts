@@ -36,6 +36,7 @@ import {
   backendGet,
   backendPost,
   backendPut,
+  backendPatch,
   backendDelete,
   type AppError,
 } from '@/lib/api-client.server';
@@ -57,6 +58,8 @@ export type Consultation = {
   treatment: string | null;
   payment_status: 'pending' | 'approved';
   payment_method: string | null;
+  payment_reference: string | null;
+  payment_receipt_url: string | null;
   amount: number | null;
   /** Dynamic clinical "report builder" values (JSONB). Persisted by the backend. */
   blocks_snapshot: Record<string, unknown> | null;
@@ -379,4 +382,51 @@ export async function approveConsultationPayment(
 
   revalidatePath('/doctor/consultations');
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Payment details
+// ---------------------------------------------------------------------------
+
+export type ConsultationPaymentPatch = {
+  payment_status?: 'pending' | 'approved';
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  payment_receipt_url?: string | null;
+  amount?: number | null;
+};
+
+/**
+ * Update editable payment details on a consultation.
+ *
+ * Calls PATCH /api/consultations/:id/payment-details.
+ * Only the keys present in `patch` are forwarded — absent keys are omitted
+ * from the request body so the backend leaves those fields unchanged.
+ *
+ * @param consultationId - UUID of the consultation to update.
+ * @param patch          - Partial payment fields to update.
+ */
+export async function updateConsultationPaymentDetails(
+  consultationId: string,
+  patch: ConsultationPaymentPatch,
+): Promise<ConsultationActionResult & { consultation?: Consultation }> {
+  // Build a body that only includes the keys explicitly set in patch (no undefineds).
+  const body: Record<string, unknown> = {};
+  if ('payment_status' in patch) body.payment_status = patch.payment_status;
+  if ('payment_method' in patch) body.payment_method = patch.payment_method;
+  if ('payment_reference' in patch) body.payment_reference = patch.payment_reference;
+  if ('payment_receipt_url' in patch) body.payment_receipt_url = patch.payment_receipt_url;
+  if ('amount' in patch) body.amount = patch.amount;
+
+  const result = await backendPatch<Consultation>(
+    `/api/consultations/${consultationId}/payment-details`,
+    body,
+  );
+
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+
+  revalidatePath('/doctor/consultations');
+  return { success: true, consultation: result.value };
 }

@@ -243,6 +243,8 @@ describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
     payment_method: null,
     amount: null,
     payment_date: null,
+    payment_reference: null,
+    payment_receipt_url: null,
     blocks_snapshot: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

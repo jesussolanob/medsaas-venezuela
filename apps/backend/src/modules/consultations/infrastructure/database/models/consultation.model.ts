@@ -76,6 +76,14 @@ export class ConsultationModel extends Model {
   @Column({ type: DataType.DATE, allowNull: true, field: 'payment_date' })
   declare paymentDate: Date | null;
 
+  // Added by migration 20260710000003
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'payment_reference' })
+  declare paymentReference: string | null;
+
+  // Added by migration 20260710000003
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'payment_receipt_url' })
+  declare paymentReceiptUrl: string | null;
+
   @Column({ type: DataType.JSONB, allowNull: true, field: 'blocks_snapshot' })
   declare blocksSnapshot: Record<string, unknown> | null;
 
