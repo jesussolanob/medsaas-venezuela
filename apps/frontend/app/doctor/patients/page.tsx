@@ -1445,6 +1445,14 @@ export default function PatientsPage() {
                               >
                                 {st.icon} {st.label}
                               </span>
+                              {/* Abrir el detalle de la consulta (deep-link ?open=). Antes el
+                                  ítem del historial médico no era clickeable → no abría nada. */}
+                              <button
+                                onClick={() => router.push('/doctor/consultations?open=' + c.id)}
+                                className="text-[11px] font-semibold text-teal-600 hover:text-teal-700 flex items-center gap-0.5"
+                              >
+                                Abrir consulta <ChevronRight className="w-3 h-3" />
+                              </button>
                             </div>
                           </div>
                         </div>
