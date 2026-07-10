@@ -2,6 +2,9 @@ import { ConfigService } from '@nestjs/config';
 import { GetDocumentRenderDataUseCase } from './get-document-render-data.use-case';
 import { VerifyCodeUseCase } from './verify-code.use-case';
 import { SessionTokenValidatorService } from '../../../application/services/session-token-validator.service';
+import { GetConsultationBlocksUseCase } from '../../../../consultation-blocks/application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
+import type { GetConsultationBlocksOutput } from '../../../../consultation-blocks/application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
+import { ConsultationBlock } from '../../../../consultation-blocks/domain/entities/consultation-block.entity';
 import type { ISharedDocumentLinkRepository } from '../../../domain/repositories/shared-document-link.repository';
 import type { IConsultationRepository } from '../../../../consultations/domain/repositories/consultation.repository';
 import type { IPrescriptionRepository } from '../../../../prescriptions/domain/repositories/prescription.repository';
@@ -142,9 +145,34 @@ const mockStorage: jest.Mocked<IStoragePort> = {
   getSignedUrl: jest.fn(),
 };
 
+const mockGetConsultationBlocks = {
+  execute: jest.fn(),
+} as unknown as jest.Mocked<GetConsultationBlocksUseCase>;
+
 // ---------------------------------------------------------------------------
 // Entity factories
 // ---------------------------------------------------------------------------
+
+const makeBlock = (key: string, label: string): ConsultationBlock =>
+  new ConsultationBlock({
+    key,
+    label,
+    contentType: 'rich_text',
+    enabled: true,
+    sortOrder: 1,
+    printable: true,
+    sendToPatient: false,
+    description: null,
+    customDescription: null,
+  });
+
+const makeBlocksOutput = (blocks: ConsultationBlock[]): GetConsultationBlocksOutput => ({
+  catalog: [],
+  doctor_config: [],
+  resolved: blocks,
+  specialty_defaults: [],
+  doctor_specialty: null,
+});
 
 const makeActiveLink = (): SharedDocumentLink =>
   SharedDocumentLink.create({
@@ -245,6 +273,7 @@ describe('GetDocumentRenderDataUseCase', () => {
       mockDoctorTemplateRepo,
       mockStorage,
       makeValidator(mockConfig),
+      mockGetConsultationBlocks,
     );
 
     // Default happy-path mocks
@@ -272,6 +301,13 @@ describe('GetDocumentRenderDataUseCase', () => {
     mockDoctorTemplateRepo.findByDoctorAndType.mockResolvedValue(makeTemplate());
     mockPatientRepo.logReveal.mockResolvedValue();
     mockStorage.getSignedUrl.mockResolvedValue('https://storage.example.com/signed?token=abc');
+    // Default: two resolved blocks
+    mockGetConsultationBlocks.execute.mockResolvedValue(
+      makeBlocksOutput([
+        makeBlock('diagnosis', 'Diagnóstico'),
+        makeBlock('treatment', 'Tratamiento'),
+      ]),
+    );
   });
 
   // -----------------------------------------------------------------------
@@ -512,6 +548,7 @@ describe('GetDocumentRenderDataUseCase', () => {
       mockDoctorTemplateRepo,
       mockStorage,
       makeValidator(mockConfigNoSecret),
+      mockGetConsultationBlocks,
     );
     const exp = new Date(Date.now() + 60_000);
     const sessionToken = signToken('link-1', 'the-link-token', exp);
@@ -549,6 +586,97 @@ describe('GetDocumentRenderDataUseCase', () => {
     expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1', 'doctor-1');
     expect(mockDoctorProfileRepo.findByDoctorId).toHaveBeenCalledWith('doctor-1');
     expect(mockDoctorTemplateRepo.findByDoctorAndType).toHaveBeenCalledWith('doctor-1', 'informe');
+  });
+
+  // -----------------------------------------------------------------------
+  // consultationBlocks (Ajuste 1)
+  // -----------------------------------------------------------------------
+
+  it('returns resolved consultation blocks mapped to key/label/printable/sortOrder', async () => {
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.consultationBlocks).toHaveLength(2);
+    expect(result.consultationBlocks[0]).toEqual({
+      key: 'diagnosis',
+      label: 'Diagnóstico',
+      printable: true,
+      sortOrder: 1,
+    });
+    expect(result.consultationBlocks[1]).toEqual({
+      key: 'treatment',
+      label: 'Tratamiento',
+      printable: true,
+      sortOrder: 1,
+    });
+    // Blocks are fetched with the link's doctorId (anti-IDOR)
+    expect(mockGetConsultationBlocks.execute).toHaveBeenCalledWith('doctor-1');
+  });
+
+  it('returns empty consultationBlocks array when doctor has no resolved blocks', async () => {
+    mockGetConsultationBlocks.execute.mockResolvedValue(makeBlocksOutput([]));
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.consultationBlocks).toEqual([]);
+  });
+
+  // -----------------------------------------------------------------------
+  // docSelection.restContent (Ajuste 2)
+  // -----------------------------------------------------------------------
+
+  it('returns docSelection with restContent when link was shared with rest text', async () => {
+    mockLinkRepo.findByToken.mockResolvedValue(
+      SharedDocumentLink.create({
+        id: 'link-1',
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        patientId: 'patient-1',
+        token: 'the-link-token',
+        sections: { report: false, prescriptions: false, ehr: false },
+        docSelection: {
+          types: ['rest'],
+          informeBlockKeys: [],
+          restContent: 'Reposo médico por 3 días',
+        },
+        status: 'active',
+        failedAttempts: 0,
+        lastCodeRequestedAt: null,
+        createdAt: new Date(),
+      }),
+    );
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.docSelection).not.toBeNull();
+    expect(result.docSelection?.types).toEqual(['rest']);
+    expect(result.docSelection?.restContent).toBe('Reposo médico por 3 días');
+  });
+
+  it('returns docSelection with restContent as null when not provided', async () => {
+    mockLinkRepo.findByToken.mockResolvedValue(
+      SharedDocumentLink.create({
+        id: 'link-1',
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        patientId: 'patient-1',
+        token: 'the-link-token',
+        sections: { report: true, prescriptions: false, ehr: false },
+        docSelection: {
+          types: ['informe'],
+          informeBlockKeys: ['diagnosis'],
+          restContent: null,
+        },
+        status: 'active',
+        failedAttempts: 0,
+        lastCodeRequestedAt: null,
+        createdAt: new Date(),
+      }),
+    );
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.docSelection?.restContent).toBeNull();
   });
 
   // -----------------------------------------------------------------------

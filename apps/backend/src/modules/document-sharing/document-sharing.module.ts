@@ -28,6 +28,7 @@ import { EmailModule } from '../email/email.module';
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 import { DoctorTemplatesModule } from '../doctor-templates/doctor-templates.module';
 import { StorageModule } from '../storage/storage.module';
+import { ConsultationBlocksModule } from '../consultation-blocks/consultation-blocks.module';
 
 /**
  * DocumentSharingModule — allows doctors to share consultation documents
@@ -58,6 +59,7 @@ import { StorageModule } from '../storage/storage.module';
     DoctorSettingsModule,
     DoctorTemplatesModule,
     StorageModule,
+    ConsultationBlocksModule,
   ],
   controllers: [DocumentSharingController],
   providers: [

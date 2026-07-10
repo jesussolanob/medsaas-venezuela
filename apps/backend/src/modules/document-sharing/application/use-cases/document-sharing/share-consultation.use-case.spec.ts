@@ -255,6 +255,7 @@ describe('ShareConsultationUseCase', () => {
     expect(savedLink.docSelection).toEqual({
       types: ['recipe', 'informe'],
       informeBlockKeys: ['diagnosis', 'treatment'],
+      restContent: null,
     });
   });
 
@@ -268,6 +269,29 @@ describe('ShareConsultationUseCase', () => {
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
     expect(savedLink.docSelection).toBeNull();
+  });
+
+  it('persists docSelection with restContent when rest type is shared', async () => {
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: {
+        sections: { report: false, prescriptions: false, ehr: true },
+        doc_selection: {
+          types: ['rest'],
+          informeBlockKeys: [],
+          restContent: 'Reposo médico por 5 días',
+        },
+      },
+      doctorName: 'Dr. Test',
+    });
+
+    const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
+    expect(savedLink.docSelection).toEqual({
+      types: ['rest'],
+      informeBlockKeys: [],
+      restContent: 'Reposo médico por 5 días',
+    });
   });
 
   it('does NOT throw when email fails (fire-and-forget)', async () => {

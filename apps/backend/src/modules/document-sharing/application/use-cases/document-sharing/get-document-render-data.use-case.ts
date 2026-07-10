@@ -38,6 +38,7 @@ import {
   STORAGE_PORT,
   type IStoragePort,
 } from '../../../../storage/application/ports/storage.port';
+import { GetConsultationBlocksUseCase } from '../../../../consultation-blocks/application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
 
 export interface GetDocumentRenderDataInput {
   token: string;
@@ -106,6 +107,17 @@ export interface RenderConsultationData {
   blocksSnapshot: Record<string, unknown> | null;
 }
 
+/**
+ * A single resolved block entry for the render — label + metadata needed by
+ * MedicalDocumentPdf to render each block section with the correct heading.
+ */
+export interface RenderConsultationBlock {
+  key: string;
+  label: string;
+  printable: boolean;
+  sortOrder: number;
+}
+
 /** Full render-data payload returned to the frontend. */
 export interface DocumentRenderData {
   /** Link-level section flags (legacy backward-compat). */
@@ -120,6 +132,15 @@ export interface DocumentRenderData {
   doctor: RenderDoctorProfile;
   prescriptions: RenderPrescriptionItem[];
   ehrRecord: RenderEhrRecord | null;
+  /**
+   * Resolved consultation blocks for the doctor — provides the label and metadata
+   * (printable, sortOrder) needed by MedicalDocumentPdf to render each block section
+   * with the correct heading.
+   *
+   * Only enabled blocks are included, sorted by sort_order ASC.
+   * Empty array when the doctor has no blocks configured.
+   */
+  consultationBlocks: RenderConsultationBlock[];
   /**
    * Template config for the 'informe' type.
    *
@@ -175,6 +196,7 @@ export class GetDocumentRenderDataUseCase {
     @Inject(STORAGE_PORT)
     private readonly storage: IStoragePort,
     private readonly sessionTokenValidator: SessionTokenValidatorService,
+    private readonly getConsultationBlocks: GetConsultationBlocksUseCase,
   ) {}
 
   async execute(input: GetDocumentRenderDataInput): Promise<DocumentRenderData> {
@@ -191,15 +213,23 @@ export class GetDocumentRenderDataUseCase {
     this.sessionTokenValidator.validate(input.sessionToken, link.id, input.token);
 
     // 3. Fetch all live data in parallel (doctorId scoped throughout — anti-IDOR)
-    const [consultation, prescriptions, ehrRecord, patient, doctorProfile, informeTemplate] =
-      await Promise.all([
-        this.consultationRepo.findById(link.consultationId, link.doctorId),
-        this.prescriptionRepo.findByConsultation(link.consultationId, link.doctorId),
-        this.ehrRepo.findByConsultation(link.consultationId, link.doctorId),
-        this.patientRepo.findById(link.patientId, link.doctorId),
-        this.doctorProfileRepo.findByDoctorId(link.doctorId),
-        this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'informe'),
-      ]);
+    const [
+      consultation,
+      prescriptions,
+      ehrRecord,
+      patient,
+      doctorProfile,
+      informeTemplate,
+      blocksOutput,
+    ] = await Promise.all([
+      this.consultationRepo.findById(link.consultationId, link.doctorId),
+      this.prescriptionRepo.findByConsultation(link.consultationId, link.doctorId),
+      this.ehrRepo.findByConsultation(link.consultationId, link.doctorId),
+      this.patientRepo.findById(link.patientId, link.doctorId),
+      this.doctorProfileRepo.findByDoctorId(link.doctorId),
+      this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'informe'),
+      this.getConsultationBlocks.execute(link.doctorId),
+    ]);
 
     if (!consultation) {
       this.logger.warn('[render-data] consultation not found for active link');
@@ -273,6 +303,12 @@ export class GetDocumentRenderDataUseCase {
             treatmentPlan: ehrRecord.treatmentPlan,
           }
         : null,
+      consultationBlocks: blocksOutput.resolved.map((b) => ({
+        key: b.key,
+        label: b.label,
+        printable: b.printable,
+        sortOrder: b.sortOrder,
+      })),
       templateConfig,
     };
   }

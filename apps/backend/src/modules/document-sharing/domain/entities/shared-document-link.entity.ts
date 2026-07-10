@@ -22,10 +22,15 @@ export interface DocumentSections {
  * `types`            — document type keys chosen by the doctor.
  *                      Subset of: 'recipe' | 'paraclinical' | 'history' | 'rest' | 'informe'
  * `informeBlockKeys` — block keys selected within the 'informe' type (may be empty).
+ * `restContent`      — text of the medical rest (reposo), frozen at share time.
+ *                      The rest document is NOT persisted in blocksSnapshot (it lives only
+ *                      in the frontend form state), so it must be snapshotted here when
+ *                      the doctor chooses to share it.  Null when not provided or not shared.
  */
 export interface DocSelection {
   types: string[];
   informeBlockKeys: string[];
+  restContent?: string | null;
 }
 
 export interface SharedDocumentLinkCreateParams {

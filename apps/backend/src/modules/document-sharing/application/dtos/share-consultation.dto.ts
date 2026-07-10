@@ -10,10 +10,13 @@ export type DocTypeValue = (typeof DOC_TYPE_VALUES)[number];
  * `types`            — document types the doctor chose to share (non-empty).
  * `informeBlockKeys` — block keys selected within the 'informe' type.
  *                      Optional; defaults to empty array.
+ * `restContent`      — text of the medical rest (reposo), frozen at share time.
+ *                      Optional and nullable — only present when 'rest' is in types.
  */
 export const DocSelectionSchema = z.object({
   types: z.array(z.enum(DOC_TYPE_VALUES)).min(1, 'Debe seleccionar al menos un tipo de documento'),
   informeBlockKeys: z.array(z.string()).optional().default([]),
+  restContent: z.string().nullable().optional(),
 });
 
 export type DocSelectionDto = z.infer<typeof DocSelectionSchema>;

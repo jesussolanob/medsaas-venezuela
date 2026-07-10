@@ -49,5 +49,8 @@ import { ConsultationBlocksController } from './presentation/controllers/consult
     GetConsultationBlocksUseCase,
     SaveConsultationBlocksUseCase,
   ],
+  // Export GetConsultationBlocksUseCase so DocumentSharingModule can call
+  // resolveBlocks for a doctorId without duplicating the repository setup.
+  exports: [GetConsultationBlocksUseCase],
 })
 export class ConsultationBlocksModule {}

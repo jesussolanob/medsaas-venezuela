@@ -100,6 +100,10 @@ export class SequelizeSharedDocumentLinkRepository implements ISharedDocumentLin
   /**
    * Safely parses the raw JSONB `doc_selection` column into a typed DocSelection.
    * Returns null when the column is absent, null, or malformed (backward-compat).
+   *
+   * `restContent` is an optional nullable string — present only when the doctor
+   * froze the reposo text at share time. Older rows without the field deserialize
+   * cleanly because the interface declares it optional.
    */
   private parseDocSelection(raw: Record<string, unknown> | null | undefined): DocSelection | null {
     if (!raw) return null;
@@ -107,6 +111,12 @@ export class SequelizeSharedDocumentLinkRepository implements ISharedDocumentLin
     const informeBlockKeys = Array.isArray(raw['informeBlockKeys'])
       ? (raw['informeBlockKeys'] as string[])
       : [];
-    return { types, informeBlockKeys };
+    const restContent =
+      typeof raw['restContent'] === 'string'
+        ? raw['restContent']
+        : raw['restContent'] === null
+          ? null
+          : undefined;
+    return { types, informeBlockKeys, restContent };
   }
 }

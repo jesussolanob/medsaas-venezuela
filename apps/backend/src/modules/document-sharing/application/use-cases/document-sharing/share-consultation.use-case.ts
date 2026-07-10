@@ -110,6 +110,7 @@ export class ShareConsultationUseCase {
       ? {
           types: input.dto.doc_selection.types as string[],
           informeBlockKeys: input.dto.doc_selection.informeBlockKeys ?? [],
+          restContent: input.dto.doc_selection.restContent ?? null,
         }
       : null;
 
