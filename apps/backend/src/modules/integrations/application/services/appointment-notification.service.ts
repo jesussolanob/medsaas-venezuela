@@ -210,8 +210,16 @@ export class AppointmentNotificationService {
           {
             patient_name: input.patientName,
             doctor_name: input.doctorName,
-            appointment_date: new Date(input.scheduledAtISO).toLocaleDateString('es-VE'),
-            appointment_time: new Date(input.scheduledAtISO).toLocaleTimeString('es-VE'),
+            // timeZone Caracas: sin esto el formateo usa la zona del servidor (Cloud
+            // Run = UTC) → una cita 09:20 Caracas salía "1:20 p.m." (13:20 UTC) en el email.
+            appointment_date: new Date(input.scheduledAtISO).toLocaleDateString('es-VE', {
+              timeZone: 'America/Caracas',
+            }),
+            appointment_time: new Date(input.scheduledAtISO).toLocaleTimeString('es-VE', {
+              timeZone: 'America/Caracas',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
             meet_link: extra.meetLink ?? '',
             office_address: input.officeAddress ?? '',
             office_name: input.officeName ?? '',
