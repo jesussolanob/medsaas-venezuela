@@ -4,6 +4,7 @@ import { ShareConsultationUseCase } from '../../application/use-cases/document-s
 import { VerifyCodeUseCase } from '../../application/use-cases/document-sharing/verify-code.use-case';
 import { DownloadDocumentUseCase } from '../../application/use-cases/document-sharing/download-document.use-case';
 import { RequestNewCodeUseCase } from '../../application/use-cases/document-sharing/request-new-code.use-case';
+import { GetDocumentRenderDataUseCase } from '../../application/use-cases/document-sharing/get-document-render-data.use-case';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { DocumentLinkNotFoundError } from '../../domain/errors/document-link-not-found.error';
 import { InvalidAccessCodeError } from '../../domain/errors/invalid-access-code.error';
@@ -15,6 +16,7 @@ const mockShareUseCase = { execute: jest.fn() };
 const mockVerifyUseCase = { execute: jest.fn() };
 const mockDownloadUseCase = { execute: jest.fn() };
 const mockRequestCodeUseCase = { execute: jest.fn() };
+const mockRenderDataUseCase = { execute: jest.fn() };
 
 const mockUser = { sub: 'doctor-1', role: 'doctor', email: 'doctor@test.com' };
 
@@ -31,6 +33,7 @@ describe('DocumentSharingController', () => {
         { provide: VerifyCodeUseCase, useValue: mockVerifyUseCase },
         { provide: DownloadDocumentUseCase, useValue: mockDownloadUseCase },
         { provide: RequestNewCodeUseCase, useValue: mockRequestCodeUseCase },
+        { provide: GetDocumentRenderDataUseCase, useValue: mockRenderDataUseCase },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -211,6 +214,65 @@ describe('DocumentSharingController', () => {
 
       await expect(controller.requestCodeEndpoint('link-token')).rejects.toBeInstanceOf(
         CodeRequestRateLimitedError,
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // renderData
+  // ---------------------------------------------------------------------------
+
+  describe('renderData', () => {
+    const renderPayload = {
+      sections: { report: true, prescriptions: false, ehr: false },
+      docSelection: { types: ['recipe'], informeBlockKeys: [] },
+      consultation: {
+        id: 'consult-1',
+        consultationCode: 'DLT-202607-001',
+        consultationDate: new Date('2026-07-10').toISOString(),
+        chiefComplaint: null,
+        diagnosis: null,
+        treatment: null,
+        notes: null,
+        blocksSnapshot: null,
+      },
+      patient: { fullName: 'Ana Pérez', cedula: 'V-12345678' },
+      doctor: {
+        fullName: 'Dr. Test',
+        professionalTitle: null,
+        specialty: null,
+        licenseNumber: null,
+        logoUrl: null,
+        signatureUrl: null,
+      },
+      prescriptions: [],
+      ehrRecord: null,
+      templateConfig: null,
+    };
+
+    it('returns success envelope with render data', async () => {
+      mockRenderDataUseCase.execute.mockResolvedValue(renderPayload);
+
+      const result = await controller.renderData('link-token', 'session-token');
+
+      expect(result.success).toBe(true);
+      expect(result.data.consultation.id).toBe('consult-1');
+      expect(result.data.docSelection).toEqual({ types: ['recipe'], informeBlockKeys: [] });
+    });
+
+    it('passes empty string to use case when sessionToken is absent', async () => {
+      mockRenderDataUseCase.execute.mockRejectedValue(new InvalidSessionTokenError());
+
+      await expect(controller.renderData('link-token', undefined)).rejects.toBeInstanceOf(
+        InvalidSessionTokenError,
+      );
+    });
+
+    it('propagates DocumentLinkNotFoundError', async () => {
+      mockRenderDataUseCase.execute.mockRejectedValue(new DocumentLinkNotFoundError());
+
+      await expect(controller.renderData('bad-token', 'sess')).rejects.toBeInstanceOf(
+        DocumentLinkNotFoundError,
       );
     });
   });

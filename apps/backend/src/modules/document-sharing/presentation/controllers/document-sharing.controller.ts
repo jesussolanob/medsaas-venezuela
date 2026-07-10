@@ -16,6 +16,10 @@ import { ShareConsultationUseCase } from '../../application/use-cases/document-s
 import { VerifyCodeUseCase } from '../../application/use-cases/document-sharing/verify-code.use-case';
 import { DownloadDocumentUseCase } from '../../application/use-cases/document-sharing/download-document.use-case';
 import { RequestNewCodeUseCase } from '../../application/use-cases/document-sharing/request-new-code.use-case';
+import {
+  GetDocumentRenderDataUseCase,
+  type DocumentRenderData,
+} from '../../application/use-cases/document-sharing/get-document-render-data.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -49,6 +53,7 @@ export class DocumentSharingController {
     private readonly verifyCode: VerifyCodeUseCase,
     private readonly downloadDocument: DownloadDocumentUseCase,
     private readonly requestNewCode: RequestNewCodeUseCase,
+    private readonly getDocumentRenderData: GetDocumentRenderDataUseCase,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -175,5 +180,41 @@ export class DocumentSharingController {
       success: true,
       data: { expiresAt: result.expiresAt.toISOString() },
     };
+  }
+
+  /**
+   * GET /api/documents/:token/render-data?sessionToken=<sessionToken>
+   *
+   * Returns all live clinical data needed by the frontend to render the shared
+   * document using the same React-PDF component as the doctor download.
+   *
+   * This endpoint replaces server-side PDF generation for the patient view.
+   * The backend remains responsible for:
+   *   - Session token validation (HMAC + expiry + resource match)
+   *   - Anti-IDOR (doctorId always from the link, never from input)
+   *   - Resolving signed URLs for logo/signature images
+   *   - Audit logging
+   *
+   * Response shape: { success: true, data: DocumentRenderData }
+   *   - sections          — legacy booleans (backward-compat)
+   *   - docSelection      — new unified selection (null for legacy links)
+   *   - consultation      — live decrypted consultation fields + blocksSnapshot
+   *   - patient           — fullName + cedula only
+   *   - doctor            — profile + signed image URLs
+   *   - prescriptions     — all prescriptions for this consultation
+   *   - ehrRecord         — EHR record (null if not present)
+   *   - templateConfig    — 'informe' template (null if doctor has not configured one)
+   */
+  @Get('documents/:token/render-data')
+  async renderData(
+    @Param('token') token: string,
+    @Query('sessionToken') sessionToken: string | undefined,
+  ): Promise<SuccessResponse<DocumentRenderData>> {
+    const resolvedSessionToken = sessionToken?.trim() ?? '';
+    const data = await this.getDocumentRenderData.execute({
+      token,
+      sessionToken: resolvedSessionToken,
+    });
+    return { success: true, data };
   }
 }

@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { DownloadDocumentUseCase } from './download-document.use-case';
 import { VerifyCodeUseCase } from './verify-code.use-case';
+import { SessionTokenValidatorService } from '../../../application/services/session-token-validator.service';
 import type { ISharedDocumentLinkRepository } from '../../../domain/repositories/shared-document-link.repository';
 import type { IConsultationRepository } from '../../../../consultations/domain/repositories/consultation.repository';
 import type { IPrescriptionRepository } from '../../../../prescriptions/domain/repositories/prescription.repository';
@@ -27,6 +28,9 @@ const mockConfig = {
 const mockConfigNoSecret = {
   get: jest.fn(() => undefined),
 } as unknown as ConfigService;
+
+/** Build a real SessionTokenValidatorService backed by the given ConfigService. */
+const makeValidator = (config: ConfigService) => new SessionTokenValidatorService(config);
 
 const mockLinkRepo: jest.Mocked<ISharedDocumentLinkRepository> = {
   save: jest.fn(),
@@ -94,6 +98,7 @@ const makeActiveLink = (): SharedDocumentLink =>
     patientId: 'patient-1',
     token: 'the-link-token',
     sections: { report: true, prescriptions: false, ehr: false },
+    docSelection: null,
     status: 'active',
     failedAttempts: 0,
     lastCodeRequestedAt: null,
@@ -168,7 +173,7 @@ describe('DownloadDocumentUseCase', () => {
       mockPatientRepo,
       mockDoctorProfileRepo,
       mockPdfGenerator as unknown as PdfGeneratorService,
-      mockConfig,
+      makeValidator(mockConfig),
     );
 
     mockLinkRepo.findByToken.mockResolvedValue(makeActiveLink());
@@ -260,9 +265,16 @@ describe('DownloadDocumentUseCase', () => {
   it('throws DocumentLinkNotActiveError when link is revoked', async () => {
     mockLinkRepo.findByToken.mockResolvedValue(
       SharedDocumentLink.create({
-        ...makeActiveLink(),
         id: 'link-r',
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        patientId: 'patient-1',
+        token: 'the-link-token',
+        sections: { report: true, prescriptions: false, ehr: false },
+        docSelection: null,
         status: 'revoked',
+        failedAttempts: 0,
+        lastCodeRequestedAt: null,
         createdAt: new Date(),
       }),
     );
@@ -311,7 +323,7 @@ describe('DownloadDocumentUseCase', () => {
       mockPatientRepo,
       mockDoctorProfileRepo,
       mockPdfGenerator as unknown as PdfGeneratorService,
-      mockConfigNoSecret,
+      makeValidator(mockConfigNoSecret),
     );
 
     const exp = new Date(Date.now() + 10 * 60 * 1000);

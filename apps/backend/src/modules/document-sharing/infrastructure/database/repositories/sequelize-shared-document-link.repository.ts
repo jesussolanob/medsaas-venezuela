@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { literal } from 'sequelize';
 import type { WhereOptions } from 'sequelize';
 import type {
+  DocSelection,
   DocumentSections,
   SharedDocumentLinkCreateParams,
 } from '../../../domain/entities/shared-document-link.entity';
@@ -32,6 +33,7 @@ export class SequelizeSharedDocumentLinkRepository implements ISharedDocumentLin
       patientId: link.patientId,
       token: link.token,
       sections: link.sections,
+      docSelection: link.docSelection ?? null,
       status: link.status,
     });
     return this.toDomain(row);
@@ -77,6 +79,8 @@ export class SequelizeSharedDocumentLinkRepository implements ISharedDocumentLin
       ehr: rawSections['ehr'] === true,
     };
 
+    const docSelection = this.parseDocSelection(row.docSelection);
+
     const params: SharedDocumentLinkCreateParams = {
       id: row.id,
       consultationId: row.consultationId,
@@ -84,11 +88,25 @@ export class SequelizeSharedDocumentLinkRepository implements ISharedDocumentLin
       patientId: row.patientId,
       token: row.token,
       sections,
+      docSelection,
       status: row.status as 'active' | 'revoked',
       failedAttempts: row.failedAttempts ?? 0,
       lastCodeRequestedAt: row.lastCodeRequestedAt ?? null,
       createdAt: row.createdAt,
     };
     return SharedDocumentLink.create(params);
+  }
+
+  /**
+   * Safely parses the raw JSONB `doc_selection` column into a typed DocSelection.
+   * Returns null when the column is absent, null, or malformed (backward-compat).
+   */
+  private parseDocSelection(raw: Record<string, unknown> | null | undefined): DocSelection | null {
+    if (!raw) return null;
+    const types = Array.isArray(raw['types']) ? (raw['types'] as string[]) : [];
+    const informeBlockKeys = Array.isArray(raw['informeBlockKeys'])
+      ? (raw['informeBlockKeys'] as string[])
+      : [];
+    return { types, informeBlockKeys };
   }
 }

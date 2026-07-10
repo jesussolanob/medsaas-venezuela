@@ -7,6 +7,7 @@ const base = {
   patientId: 'patient-1',
   token: 'random-long-token-abc123',
   sections: { report: true, prescriptions: false, ehr: false },
+  docSelection: null,
   status: 'active' as const,
   failedAttempts: 0,
   lastCodeRequestedAt: null,

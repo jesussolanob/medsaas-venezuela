@@ -1,14 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as crypto from 'crypto';
 import {
   SHARED_DOCUMENT_LINK_REPOSITORY,
   type ISharedDocumentLinkRepository,
 } from '../../../domain/repositories/shared-document-link.repository';
 import { DocumentLinkNotFoundError } from '../../../domain/errors/document-link-not-found.error';
 import { DocumentLinkNotActiveError } from '../../../domain/errors/document-link-not-active.error';
-import { InvalidSessionTokenError } from '../../../domain/errors/invalid-session-token.error';
-import { MissingHmacSecretError } from '../../../domain/errors/missing-hmac-secret.error';
+import { SessionTokenValidatorService } from '../../services/session-token-validator.service';
 import { PdfGeneratorService } from '../../../infrastructure/pdf/pdf-generator.service';
 import {
   CONSULTATION_REPOSITORY,
@@ -80,16 +77,11 @@ export class DownloadDocumentUseCase {
     @Inject(DOCTOR_PROFILE_REPOSITORY)
     private readonly doctorProfileRepo: IDoctorProfileRepository,
     private readonly pdfGenerator: PdfGeneratorService,
-    private readonly config: ConfigService,
+    private readonly sessionTokenValidator: SessionTokenValidatorService,
   ) {}
 
   async execute(input: DownloadDocumentInput): Promise<DownloadDocumentOutput> {
-    // 1. Validate sessionToken presence before any DB call
-    if (!input.sessionToken || input.sessionToken.trim() === '') {
-      throw new InvalidSessionTokenError();
-    }
-
-    // 2. Find link
+    // 1. Find link (presence check is handled inside validateSessionToken below)
     const link = await this.linkRepo.findByToken(input.token);
     if (!link) {
       throw new DocumentLinkNotFoundError();
@@ -98,8 +90,8 @@ export class DownloadDocumentUseCase {
       throw new DocumentLinkNotActiveError();
     }
 
-    // 3. Validate session token (HMAC + expiry + resource match)
-    this.validateSessionToken(input.sessionToken, link.id, input.token);
+    // 2. Validate session token (presence + HMAC + expiry + resource match)
+    this.sessionTokenValidator.validate(input.sessionToken, link.id, input.token);
 
     // 4. Fetch decrypted consultation (doctorId scoped — anti-IDOR)
     const consultation = await this.consultationRepo.findById(link.consultationId, link.doctorId);
@@ -145,74 +137,6 @@ export class DownloadDocumentUseCase {
     void this.logDownloadAccess(link.doctorId, link.patientId, link.sections);
 
     return { pdfBytes, filename };
-  }
-
-  /**
-   * Validates a session token issued by VerifyCodeUseCase.signSessionToken.
-   *
-   * Format: base64url(payload) . hex(HMAC-SHA256(payload, secret))
-   * Payload: { linkId, token, exp }
-   *
-   * SECURITY: AUTH_RESOLVE_SECRET is mandatory — missing secret throws
-   * MissingHmacSecretError (not InvalidSessionTokenError) so ops can detect it.
-   *
-   * @throws {InvalidSessionTokenError} on any validation failure.
-   * @throws {MissingHmacSecretError} when the signing secret is absent.
-   */
-  private validateSessionToken(
-    sessionToken: string,
-    expectedLinkId: string,
-    expectedToken: string,
-  ): void {
-    const secret =
-      this.config.get<string>('AUTH_RESOLVE_SECRET') ??
-      this.config.get<string>('ENCRYPTION_HMAC_SECRET');
-
-    if (!secret) {
-      throw new MissingHmacSecretError();
-    }
-
-    try {
-      const parts = sessionToken.split('.');
-      if (parts.length !== 2) {
-        throw new Error('malformed');
-      }
-      const [payloadB64, sigHex] = parts as [string, string];
-
-      // Verify signature using constant-time comparison
-      const expectedSig = crypto.createHmac('sha256', secret).update(payloadB64).digest('hex');
-      const sigBuf = Buffer.from(sigHex, 'hex');
-      const expectedSigBuf = Buffer.from(expectedSig, 'hex');
-
-      if (sigBuf.length !== expectedSigBuf.length) {
-        throw new Error('invalid signature length');
-      }
-
-      const validSig = crypto.timingSafeEqual(sigBuf, expectedSigBuf);
-      if (!validSig) {
-        throw new Error('invalid signature');
-      }
-
-      // Decode payload
-      const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8')) as {
-        linkId: string;
-        token: string;
-        exp: string;
-      };
-
-      // Check expiry
-      if (new Date(payload.exp) < new Date()) {
-        throw new Error('expired');
-      }
-
-      // Verify linkId and token match the requested resource
-      if (payload.linkId !== expectedLinkId || payload.token !== expectedToken) {
-        throw new Error('resource mismatch');
-      }
-    } catch (err) {
-      if (err instanceof MissingHmacSecretError) throw err;
-      throw new InvalidSessionTokenError();
-    }
   }
 
   private async logDownloadAccess(

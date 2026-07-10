@@ -65,6 +65,16 @@ export class SharedDocumentLinkModel extends Model {
   @Column({ type: DataType.DATE, field: 'last_code_requested_at' })
   declare lastCodeRequestedAt: Date | null;
 
+  /**
+   * New unified document selection — stores which types and informe-block keys the
+   * doctor chose when sharing. Nullable for backward-compat with older links.
+   *
+   * Shape: { types: string[]; informeBlockKeys: string[] }
+   */
+  @AllowNull(true)
+  @Column({ type: DataType.JSONB, field: 'doc_selection' })
+  declare docSelection: Record<string, unknown> | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

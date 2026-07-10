@@ -106,6 +106,13 @@ export class ShareConsultationUseCase {
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
     // 4. Persist link
+    const docSelection = input.dto.doc_selection
+      ? {
+          types: input.dto.doc_selection.types as string[],
+          informeBlockKeys: input.dto.doc_selection.informeBlockKeys ?? [],
+        }
+      : null;
+
     const link = SharedDocumentLink.create({
       id: randomUUID(),
       consultationId: input.consultationId,
@@ -113,6 +120,7 @@ export class ShareConsultationUseCase {
       patientId: consultation.patientId,
       token,
       sections,
+      docSelection,
       status: 'active',
       failedAttempts: 0,
       lastCodeRequestedAt: null,

@@ -31,5 +31,8 @@ import { DoctorTemplatesController } from './presentation/controllers/doctor-tem
     ListDoctorTemplatesUseCase,
     UpsertDoctorTemplateUseCase,
   ],
+  // Export repository so DocumentSharingModule can fetch the 'informe' template
+  // for the render-data endpoint without duplicating the model registration.
+  exports: [DOCTOR_TEMPLATE_REPOSITORY],
 })
 export class DoctorTemplatesModule {}

@@ -9,11 +9,13 @@ import { SHARED_DOCUMENT_LINK_REPOSITORY } from './domain/repositories/shared-do
 import { DOCUMENT_ACCESS_CODE_REPOSITORY } from './domain/repositories/document-access-code.repository';
 
 import { PdfGeneratorService } from './infrastructure/pdf/pdf-generator.service';
+import { SessionTokenValidatorService } from './application/services/session-token-validator.service';
 
 import { ShareConsultationUseCase } from './application/use-cases/document-sharing/share-consultation.use-case';
 import { VerifyCodeUseCase } from './application/use-cases/document-sharing/verify-code.use-case';
 import { DownloadDocumentUseCase } from './application/use-cases/document-sharing/download-document.use-case';
 import { RequestNewCodeUseCase } from './application/use-cases/document-sharing/request-new-code.use-case';
+import { GetDocumentRenderDataUseCase } from './application/use-cases/document-sharing/get-document-render-data.use-case';
 
 import { DocumentSharingController } from './presentation/controllers/document-sharing.controller';
 
@@ -24,6 +26,8 @@ import { EhrModule } from '../ehr/ehr.module';
 import { PatientsModule } from '../patients/patients.module';
 import { EmailModule } from '../email/email.module';
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
+import { DoctorTemplatesModule } from '../doctor-templates/doctor-templates.module';
+import { StorageModule } from '../storage/storage.module';
 
 /**
  * DocumentSharingModule — allows doctors to share consultation documents
@@ -40,6 +44,8 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
  *   - PatientsModule        → PATIENT_REPOSITORY (patient email + name for email)
  *   - EmailModule           → MailerService (send email with code)
  *   - DoctorSettingsModule  → DOCTOR_PROFILE_REPOSITORY (doctor name in PDF header)
+ *   - DoctorTemplatesModule → DOCTOR_TEMPLATE_REPOSITORY (informe template for render-data)
+ *   - StorageModule         → STORAGE_PORT (signed URL resolution for logo/signature images)
  */
 @Module({
   imports: [
@@ -50,6 +56,8 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     PatientsModule,
     EmailModule,
     DoctorSettingsModule,
+    DoctorTemplatesModule,
+    StorageModule,
   ],
   controllers: [DocumentSharingController],
   providers: [
@@ -66,11 +74,15 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     // Infrastructure services
     PdfGeneratorService,
 
+    // Application services
+    SessionTokenValidatorService,
+
     // Use cases
     ShareConsultationUseCase,
     VerifyCodeUseCase,
     DownloadDocumentUseCase,
     RequestNewCodeUseCase,
+    GetDocumentRenderDataUseCase,
   ],
 })
 export class DocumentSharingModule {}

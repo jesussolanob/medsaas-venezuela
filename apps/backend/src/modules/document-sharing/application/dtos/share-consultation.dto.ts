@@ -1,5 +1,23 @@
 import { z } from 'zod';
 
+/** Valid document type keys for the new unified sharing selection. */
+export const DOC_TYPE_VALUES = ['recipe', 'paraclinical', 'history', 'rest', 'informe'] as const;
+export type DocTypeValue = (typeof DOC_TYPE_VALUES)[number];
+
+/**
+ * Schema for the new unified doc selection.
+ *
+ * `types`            — document types the doctor chose to share (non-empty).
+ * `informeBlockKeys` — block keys selected within the 'informe' type.
+ *                      Optional; defaults to empty array.
+ */
+export const DocSelectionSchema = z.object({
+  types: z.array(z.enum(DOC_TYPE_VALUES)).min(1, 'Debe seleccionar al menos un tipo de documento'),
+  informeBlockKeys: z.array(z.string()).optional().default([]),
+});
+
+export type DocSelectionDto = z.infer<typeof DocSelectionSchema>;
+
 export const ShareConsultationDtoSchema = z.object({
   sections: z
     .object({
@@ -10,6 +28,11 @@ export const ShareConsultationDtoSchema = z.object({
     .refine((s) => s.report || s.prescriptions || s.ehr, {
       message: 'Debe seleccionar al menos una sección para compartir',
     }),
+  /**
+   * New unified selection — present when the doctor uses the redesigned modal.
+   * When present it is persisted alongside `sections` (which is kept for compat).
+   */
+  doc_selection: DocSelectionSchema.optional(),
 });
 
 export type ShareConsultationDto = z.infer<typeof ShareConsultationDtoSchema>;

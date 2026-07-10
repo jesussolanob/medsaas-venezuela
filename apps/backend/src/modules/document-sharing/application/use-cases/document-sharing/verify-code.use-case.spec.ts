@@ -68,6 +68,7 @@ const makeActiveLink = (failedAttempts = 0): SharedDocumentLink =>
     patientId: 'patient-1',
     token: 'valid-token-abc123',
     sections: { report: true, prescriptions: true, ehr: false },
+    docSelection: null,
     status: 'active',
     failedAttempts,
     lastCodeRequestedAt: null,

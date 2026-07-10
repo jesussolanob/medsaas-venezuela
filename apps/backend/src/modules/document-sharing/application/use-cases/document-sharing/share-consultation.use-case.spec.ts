@@ -92,6 +92,7 @@ const makeLink = (): SharedDocumentLink =>
     patientId: 'patient-1',
     token: 'abc-token-long',
     sections: { report: true, prescriptions: false, ehr: false },
+    docSelection: null,
     status: 'active',
     failedAttempts: 0,
     lastCodeRequestedAt: null,
@@ -234,6 +235,39 @@ describe('ShareConsultationUseCase', () => {
 
     expect(mockLinkRepo.save).toHaveBeenCalledTimes(1);
     expect(mockCodeRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists docSelection when provided in dto', async () => {
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: {
+        sections: { report: true, prescriptions: false, ehr: false },
+        doc_selection: {
+          types: ['recipe', 'informe'],
+          informeBlockKeys: ['diagnosis', 'treatment'],
+        },
+      },
+      doctorName: 'Dr. Test',
+    });
+
+    const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
+    expect(savedLink.docSelection).toEqual({
+      types: ['recipe', 'informe'],
+      informeBlockKeys: ['diagnosis', 'treatment'],
+    });
+  });
+
+  it('persists docSelection as null when not provided', async () => {
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: { sections: { report: true, prescriptions: false, ehr: false } },
+      doctorName: 'Dr. Test',
+    });
+
+    const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
+    expect(savedLink.docSelection).toBeNull();
   });
 
   it('does NOT throw when email fails (fire-and-forget)', async () => {

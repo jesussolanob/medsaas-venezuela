@@ -15,6 +15,19 @@ export interface DocumentSections {
   ehr: boolean;
 }
 
+/**
+ * New unified doc selection — stores which document types the doctor chose when
+ * sharing, so the frontend can render the exact same component as the download.
+ *
+ * `types`            — document type keys chosen by the doctor.
+ *                      Subset of: 'recipe' | 'paraclinical' | 'history' | 'rest' | 'informe'
+ * `informeBlockKeys` — block keys selected within the 'informe' type (may be empty).
+ */
+export interface DocSelection {
+  types: string[];
+  informeBlockKeys: string[];
+}
+
 export interface SharedDocumentLinkCreateParams {
   id: string;
   consultationId: string;
@@ -22,6 +35,11 @@ export interface SharedDocumentLinkCreateParams {
   patientId: string;
   token: string;
   sections: DocumentSections;
+  /**
+   * New unified document selection (nullable).
+   * When present, the frontend uses this for rendering; otherwise falls back to `sections`.
+   */
+  docSelection: DocSelection | null;
   status: 'active' | 'revoked';
   /** Accumulated failed verify-code attempts across ALL codes for this link. */
   failedAttempts: number;
@@ -37,6 +55,11 @@ export class SharedDocumentLink {
   readonly patientId: string;
   readonly token: string;
   readonly sections: DocumentSections;
+  /**
+   * New unified document selection (nullable).
+   * When present, the frontend uses this for rendering; otherwise falls back to `sections`.
+   */
+  readonly docSelection: DocSelection | null;
   readonly status: 'active' | 'revoked';
   /** Accumulated failed verify-code attempts across ALL codes for this link. */
   readonly failedAttempts: number;
@@ -61,6 +84,7 @@ export class SharedDocumentLink {
     this.patientId = params.patientId;
     this.token = params.token;
     this.sections = params.sections;
+    this.docSelection = params.docSelection ?? null;
     this.status = params.status;
     this.failedAttempts = params.failedAttempts;
     this.lastCodeRequestedAt = params.lastCodeRequestedAt;
