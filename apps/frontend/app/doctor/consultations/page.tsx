@@ -1916,6 +1916,29 @@ function ConsultationsPage() {
                   {(() => {
                     const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
                     if (!tmplCfg || !doctorName) return null;
+
+                    // Cantidad de consultas del mismo paciente (habilita Historia clínica)
+                    const patientConsultationCount = consultations.filter(
+                      (x) => x.patient_id === selected.patient_id,
+                    ).length;
+
+                    // Texto del reposo médico de la consulta actual
+                    const reposoContentStr =
+                      reposoDays > 0 || reposoDiagnosis || reposoFrom
+                        ? [
+                            `Reposo de ${reposoDays} día${reposoDays !== 1 ? 's' : ''}`,
+                            reposoFrom
+                              ? `desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                              : null,
+                            reposoTo
+                              ? `hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                              : null,
+                            reposoDiagnosis ? `Diagnóstico: ${reposoDiagnosis}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join('. ')
+                        : null;
+
                     return (
                       <GenerateDocumentModal
                         consultationCode={selected.consultation_code}
@@ -1933,6 +1956,8 @@ function ConsultationsPage() {
                         }}
                         informeContent={buildPdfContent(selected)}
                         savedPrescriptions={savedPrescriptions}
+                        patientConsultationCount={patientConsultationCount}
+                        restContent={reposoContentStr}
                       />
                     );
                   })()}

@@ -3,60 +3,37 @@
 /**
  * app/doctor/consultations/GenerateDocumentModal.tsx
  *
- * Modal "Generar Documento" — permite al doctor elegir, bloque por bloque,
- * qué secciones incluir en el PDF consolidado on-demand.
+ * Modal "Generar Documento" — 5 tipos de documento con auto-detección.
  *
- * Checkboxes de bloques:
- *  - Un checkbox por cada bloque en `informeContent` (los que buildPdfContent
- *    devuelve: printable + con contenido).
- *  - Default marcado: TODOS excepto 'indications', 'paraclinical', 'prescription'
- *    que arrancan desmarcados (el doctor los agrega si quiere).
+ * La unidad de selección es el TIPO de documento (no el bloque individual):
+ *   1. Receta e indicaciones
+ *   2. Paraclínicos
+ *   3. Historia clínica (EHR on-demand)
+ *   4. Reposo médico
+ *   5. Informe médico (con sub-selector de bloques)
  *
- * Toggles adicionales al final (ambos desmarcados por defecto):
- *  - Recetas (recetario) — las savedPrescriptions del módulo de recetas.
- *  - Historia clínica (EHR) — fetch on-demand /api/ehr/patient/:id.
- *
- * El PDF se genera SOLO cuando el doctor presiona "Generar", no al montar el
- * componente — esto resuelve el "loading fantasma" del PDFDownloadLink antiguo.
+ * Se genera UN solo PDF consolidado con separadores de sección.
+ * El patrón on-demand (import dinámico de react-pdf + pdf().toBlob()) se preserva.
  */
 
 import { useState, useCallback } from 'react';
-import { FileText, X, AlertCircle, Loader2, Download } from 'lucide-react';
+import { FileText, X, AlertCircle, Loader2, Download, ChevronDown } from 'lucide-react';
 import type {
   TemplateConfigPdf,
   ContentBlock,
   DoctorInfoPdf,
 } from '@/components/pdf/MedicalDocumentPdf';
+import {
+  type DocumentTypeKey,
+  type SavedPrescription,
+  type EhrRecord,
+  computeAvailableDocTypes,
+  buildConsolidatedContent,
+  INFORME_EXCLUDED_KEYS,
+  INFORME_CHECKED_BY_DEFAULT,
+} from './consultation-documents';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/**
- * Keys de bloque que arrancan desmarcados por defecto.
- * El doctor los puede marcar si quiere incluirlos.
- */
-const UNCHECKED_BY_DEFAULT = new Set(['indications', 'paraclinical', 'prescription']);
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface SavedPrescription {
-  id: string;
-  medications: Array<{
-    name: string;
-    dose: string;
-    frequency: string;
-    duration: string;
-    indications: string;
-  }>;
-  notes: string | null;
-  created_at: string;
-}
-
-interface EhrRecord {
-  id: string;
-  diagnosis: string | null;
-  treatment_plan: string | null;
-  created_at: string;
-}
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface GenerateDocumentModalProps {
   consultationCode: string;
@@ -68,6 +45,10 @@ interface GenerateDocumentModalProps {
   doctor: DoctorInfoPdf;
   informeContent: ContentBlock[];
   savedPrescriptions: SavedPrescription[];
+  /** Cantidad de consultas del paciente (habilita Historia clínica si > 1). */
+  patientConsultationCount: number;
+  /** Texto del reposo médico de la consulta actual; null si no hay reposo. */
+  restContent: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -80,139 +61,107 @@ function formatDateVE(dateStr: string): string {
   }).format(new Date(dateStr));
 }
 
-/**
- * Construye ContentBlock[] de recetas a partir de las prescripciones guardadas.
- */
-function buildRecetasContent(prescriptions: SavedPrescription[]): ContentBlock[] {
-  return prescriptions
-    .flatMap((rx, rxIdx) =>
-      rx.medications.map((med, medIdx) => {
-        const parts: string[] = [];
-        if (med.dose) parts.push(`Dosis: ${med.dose}`);
-        if (med.frequency) parts.push(`Frecuencia: ${med.frequency}`);
-        if (med.duration) parts.push(`Duración: ${med.duration}`);
-        if (med.indications) parts.push(`Indicaciones: ${med.indications}`);
-        return {
-          key: `rx-${rxIdx}-med-${medIdx}`,
-          label: med.name || `Medicamento ${medIdx + 1}`,
-          value: parts.length > 0 ? parts.join(' · ') : null,
-        };
-      }),
-    )
-    .filter((b): b is ContentBlock & { value: string } => b.value !== null);
-}
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-/**
- * Construye ContentBlock[] de historia clínica a partir de los registros EHR.
- */
-function buildEhrContent(records: EhrRecord[]): ContentBlock[] {
-  return records.flatMap((r, idx) => {
-    const blocks: ContentBlock[] = [];
-    if (r.diagnosis?.trim()) {
-      blocks.push({
-        key: `ehr-diag-${idx}`,
-        label: `Diagnóstico${records.length > 1 ? ` #${idx + 1}` : ''}`,
-        value: r.diagnosis.trim(),
-      });
-    }
-    if (r.treatment_plan?.trim()) {
-      blocks.push({
-        key: `ehr-plan-${idx}`,
-        label: `Plan terapéutico${records.length > 1 ? ` #${idx + 1}` : ''}`,
-        value: r.treatment_plan.trim(),
-      });
-    }
-    return blocks;
-  });
-}
-
-/**
- * Inserta un bloque-título de sección (separador visual en el PDF).
- */
-function sectionHeader(label: string): ContentBlock {
-  return {
-    key: `section-header-${label.toLowerCase().replace(/\s+/g, '-')}`,
-    label: `━━━  ${label}  ━━━`,
-    value: ' ',
-  };
-}
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-interface BlockCheckboxProps {
-  label: string;
-  checked: boolean;
-  onChange: () => void;
-}
-
-function BlockCheckbox({ label, checked, onChange }: BlockCheckboxProps) {
-  return (
-    <label
-      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
-        checked
-          ? 'bg-teal-50 border-teal-200 text-teal-800 font-medium'
-          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="w-3.5 h-3.5 accent-teal-500 cursor-pointer shrink-0"
-      />
-      <span className="truncate">{label}</span>
-    </label>
-  );
-}
-
-interface ExtraToggleProps {
-  icon: React.ReactNode;
+interface DocTypeCardProps {
   label: string;
   description: string;
+  enabled: boolean;
   checked: boolean;
   onChange: () => void;
-  disabled?: boolean;
+  children?: React.ReactNode;
 }
 
-function ExtraToggle({
-  icon,
+function DocTypeCard({
   label,
   description,
+  enabled,
   checked,
   onChange,
-  disabled = false,
-}: ExtraToggleProps) {
+  children,
+}: DocTypeCardProps) {
   return (
-    <label
-      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-        disabled
-          ? 'opacity-40 cursor-not-allowed bg-white border-slate-100'
+    <div
+      className={`rounded-xl border transition-colors ${
+        !enabled
+          ? 'opacity-45 bg-slate-50 border-slate-100 cursor-not-allowed'
           : checked
             ? 'bg-teal-50 border-teal-200'
-            : 'bg-white border-slate-200 hover:bg-slate-50'
+            : 'bg-white border-slate-200 hover:border-slate-300'
       }`}
     >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        disabled={disabled}
-        className="mt-0.5 w-4 h-4 accent-teal-500 cursor-pointer shrink-0"
-      />
-      <div className="flex items-start gap-2 min-w-0">
-        <span className="mt-0.5 shrink-0">{icon}</span>
-        <div className="min-w-0">
-          <p className={`text-sm font-semibold ${checked ? 'text-teal-800' : 'text-slate-700'}`}>
+      <label
+        className={`flex items-start gap-3 p-3.5 ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onChange}
+          disabled={!enabled}
+          className="mt-0.5 w-4 h-4 accent-teal-500 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <p
+            className={`text-sm font-semibold ${
+              !enabled ? 'text-slate-400' : checked ? 'text-teal-800' : 'text-slate-700'
+            }`}
+          >
             {label}
           </p>
-          <p className="text-xs text-slate-400 mt-0.5">{description}</p>
+          <p className={`text-xs mt-0.5 ${!enabled ? 'text-slate-300' : 'text-slate-400'}`}>
+            {description}
+          </p>
         </div>
-      </div>
-    </label>
+      </label>
+      {children}
+    </div>
   );
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+interface BlockSubSelectorProps {
+  informeContent: ContentBlock[];
+  checkedKeys: Set<string>;
+  onToggle: (key: string) => void;
+}
+
+function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSelectorProps) {
+  const eligibleBlocks = informeContent.filter((b) => !INFORME_EXCLUDED_KEYS.has(b.key));
+
+  if (eligibleBlocks.length === 0) return null;
+
+  return (
+    <div className="px-3.5 pb-3.5 pt-0 border-t border-teal-100">
+      <div className="flex items-center gap-1.5 mt-2 mb-2">
+        <ChevronDown className="w-3 h-3 text-teal-500" />
+        <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide">
+          Bloques a incluir
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-1">
+        {eligibleBlocks.map((block) => (
+          <label
+            key={block.key}
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+              checkedKeys.has(block.key)
+                ? 'bg-teal-100 border-teal-200 text-teal-800 font-medium'
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checkedKeys.has(block.key)}
+              onChange={() => onToggle(block.key)}
+              className="w-3 h-3 accent-teal-500 shrink-0"
+            />
+            <span className="truncate">{block.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GenerateDocumentModal({
   consultationCode,
@@ -224,39 +173,42 @@ export default function GenerateDocumentModal({
   doctor,
   informeContent,
   savedPrescriptions,
+  patientConsultationCount,
+  restContent,
 }: GenerateDocumentModalProps) {
   const [open, setOpen] = useState(false);
 
-  /**
-   * Mapa de keys de bloque → marcado/desmarcado.
-   * Se inicializa cuando el modal se abre (para reflejar informeContent actual).
-   */
-  const [checkedBlocks, setCheckedBlocks] = useState<Map<string, boolean>>(new Map());
+  /** Tipos de documento seleccionados por el doctor */
+  const [selectedTypes, setSelectedTypes] = useState<Set<DocumentTypeKey>>(new Set());
 
-  /** Toggles adicionales — ambos desmarcados por defecto */
-  const [includeRecetas, setIncludeRecetas] = useState(false);
-  const [includeHistoria, setIncludeHistoria] = useState(false);
+  /**
+   * Sub-selector de bloques para el tipo "informe".
+   * Se inicializa al abrir el modal con las defaults (chief_complaint, history, diagnosis).
+   */
+  const [informeCheckedKeys, setInformeCheckedKeys] = useState<Set<string>>(new Set());
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasRecetas = savedPrescriptions.length > 0;
+  const availableTypes = computeAvailableDocTypes({
+    informeContent,
+    savedPrescriptions,
+    patientConsultationCount,
+    restContent,
+  });
 
-  /**
-   * Devuelve true si hay al menos un bloque o toggle seleccionado.
-   */
-  const hasSelection =
-    [...checkedBlocks.values()].some(Boolean) || includeRecetas || includeHistoria;
+  const hasSelection = selectedTypes.size > 0;
 
   function handleOpen() {
-    // Inicializar checkedBlocks según los bloques disponibles y las reglas de default
-    const initial = new Map<string, boolean>();
+    // Inicializar sub-selector del informe con defaults
+    const defaultInformeKeys = new Set<string>();
     for (const block of informeContent) {
-      initial.set(block.key, !UNCHECKED_BY_DEFAULT.has(block.key));
+      if (!INFORME_EXCLUDED_KEYS.has(block.key) && INFORME_CHECKED_BY_DEFAULT.has(block.key)) {
+        defaultInformeKeys.add(block.key);
+      }
     }
-    setCheckedBlocks(initial);
-    setIncludeRecetas(false);
-    setIncludeHistoria(false);
+    setInformeCheckedKeys(defaultInformeKeys);
+    setSelectedTypes(new Set());
     setError(null);
     setOpen(true);
   }
@@ -267,10 +219,26 @@ export default function GenerateDocumentModal({
     setError(null);
   }
 
-  function toggleBlock(key: string) {
-    setCheckedBlocks((prev) => {
-      const next = new Map(prev);
-      next.set(key, !next.get(key));
+  function toggleType(key: DocumentTypeKey) {
+    setSelectedTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  function toggleInformeBlock(key: string) {
+    setInformeCheckedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
       return next;
     });
   }
@@ -281,61 +249,39 @@ export default function GenerateDocumentModal({
     setError(null);
 
     try {
-      // 1. Armar los bloques de la consulta (solo los marcados)
-      const selectedInformeBlocks = informeContent.filter((b) => checkedBlocks.get(b.key) === true);
-
-      const allBlocks: ContentBlock[] = [];
-
-      // Contar cuántas secciones de alto nivel hay para decidir si poner separadores
-      const sectionCount =
-        (selectedInformeBlocks.length > 0 ? 1 : 0) +
-        (includeRecetas ? 1 : 0) +
-        (includeHistoria ? 1 : 0);
-      const needsSeparators = sectionCount > 1;
-
-      // Bloques de la consulta
-      if (selectedInformeBlocks.length > 0) {
-        if (needsSeparators) allBlocks.push(sectionHeader('Informe Médico'));
-        allBlocks.push(...selectedInformeBlocks);
-      }
-
-      // Recetas
-      if (includeRecetas) {
-        const recetasBlocks = buildRecetasContent(savedPrescriptions);
-        if (recetasBlocks.length > 0) {
-          if (needsSeparators) allBlocks.push(sectionHeader('Recetas'));
-          allBlocks.push(...recetasBlocks);
-        }
-      }
-
-      // Historia clínica — fetch on-demand
-      if (includeHistoria) {
+      // Fetch EHR on-demand solo si el tipo historia está seleccionado
+      let fetchedEhrRecords: EhrRecord[] = [];
+      if (selectedTypes.has('history')) {
         const res = await fetch(`/api/ehr/patient/${patientId}`, { cache: 'no-store' });
         if (res.ok) {
           const json = (await res.json()) as
             | { success: true; data: EhrRecord[] }
             | { data: EhrRecord[] }
             | EhrRecord[];
-          const records: EhrRecord[] = Array.isArray(json)
+          fetchedEhrRecords = Array.isArray(json)
             ? json
             : Array.isArray((json as { data?: unknown }).data)
               ? (json as { data: EhrRecord[] }).data
               : [];
-          const ehrBlocks = buildEhrContent(records);
-          if (ehrBlocks.length > 0) {
-            if (needsSeparators) allBlocks.push(sectionHeader('Historia Clínica'));
-            allBlocks.push(...ehrBlocks);
-          }
         }
         // Non-fatal: si el fetch falla, continuamos sin la sección EHR
       }
+
+      const allBlocks = buildConsolidatedContent({
+        selectedTypes: [...selectedTypes],
+        informeSelectedBlockKeys: informeCheckedKeys,
+        informeContent,
+        savedPrescriptions,
+        ehrRecords: fetchedEhrRecords,
+        restContent,
+      });
 
       if (allBlocks.length === 0) {
         setError('No hay contenido disponible en las secciones seleccionadas.');
         return;
       }
 
-      // 2. Import dinámico de react-pdf — jamás entra al bundle SSR
+      // Import dinámico de react-pdf — jamás entra al bundle SSR
       const { pdf } = await import('@react-pdf/renderer');
       const { MedicalDocumentPdf } = await import('@/components/pdf/MedicalDocumentPdf');
 
@@ -353,16 +299,14 @@ export default function GenerateDocumentModal({
 
       const blob = await pdf(element).toBlob();
 
-      // 3. Disparar descarga vía object URL
+      // Disparar descarga vía object URL
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
       anchor.download = `documento-${consultationCode}.pdf`;
       anchor.click();
-      // Liberar memoria después de un tick
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-      // Cerrar modal al terminar exitosamente
       setOpen(false);
       setError(null);
     } catch (err: unknown) {
@@ -374,11 +318,11 @@ export default function GenerateDocumentModal({
   }, [
     hasSelection,
     generating,
+    selectedTypes,
+    informeCheckedKeys,
     informeContent,
-    checkedBlocks,
-    includeRecetas,
-    includeHistoria,
     savedPrescriptions,
+    restContent,
     patientId,
     templateConfig,
     doctor,
@@ -432,101 +376,45 @@ export default function GenerateDocumentModal({
             </div>
 
             {/* Body — scrollable */}
-            <div className="px-5 py-5 space-y-5 overflow-y-auto flex-1">
+            <div className="px-5 py-5 space-y-3 overflow-y-auto flex-1">
               <p className="text-sm text-slate-500">
-                Selecciona los bloques a incluir. Se generará un único PDF consolidado con todo el
-                contenido seleccionado.
+                Seleccioná los tipos de documento a incluir. Se generará un único PDF consolidado
+                con el contenido de cada sección seleccionada.
               </p>
 
-              {/* Bloques individuales de la consulta */}
-              {informeContent.length > 0 ? (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Bloques de la consulta
-                  </p>
-                  <div className="grid grid-cols-1 gap-1.5">
-                    {informeContent.map((block) => (
-                      <BlockCheckbox
-                        key={block.key}
-                        label={block.label}
-                        checked={checkedBlocks.get(block.key) ?? false}
-                        onChange={() => toggleBlock(block.key)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400 italic">
-                  Esta consulta no tiene bloques con contenido para incluir en el informe.
-                </p>
-              )}
-
-              {/* Secciones adicionales */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Secciones adicionales
+                  Tipos de documento
                 </p>
-                <ExtraToggle
-                  icon={
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-violet-600"
-                    >
-                      <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11m0 0H5m4 0h10m-5-4v4m0 0H5m4 0h10" />
-                    </svg>
-                  }
-                  label="Recetas (recetario)"
-                  description={
-                    hasRecetas
-                      ? `${savedPrescriptions.length} receta${savedPrescriptions.length !== 1 ? 's' : ''} guardada${savedPrescriptions.length !== 1 ? 's' : ''}`
-                      : 'Sin recetas guardadas para este paciente'
-                  }
-                  checked={includeRecetas}
-                  onChange={() => {
-                    if (hasRecetas) setIncludeRecetas((v) => !v);
-                  }}
-                  disabled={!hasRecetas}
-                />
-                <ExtraToggle
-                  icon={
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-sky-600"
-                    >
-                      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-                      <rect x="9" y="3" width="6" height="4" rx="1" />
-                      <line x1="9" y1="12" x2="15" y2="12" />
-                      <line x1="9" y1="16" x2="13" y2="16" />
-                    </svg>
-                  }
-                  label="Historia clínica (EHR)"
-                  description="Historial clínico electrónico registrado del paciente"
-                  checked={includeHistoria}
-                  onChange={() => setIncludeHistoria((v) => !v)}
-                />
+
+                {availableTypes.map((docType) => (
+                  <DocTypeCard
+                    key={docType.key}
+                    label={docType.label}
+                    description={docType.description}
+                    enabled={docType.enabled}
+                    checked={selectedTypes.has(docType.key)}
+                    onChange={() => {
+                      if (docType.enabled) toggleType(docType.key);
+                    }}
+                  >
+                    {/* Sub-selector de bloques solo para "informe" cuando está marcado */}
+                    {docType.key === 'informe' && selectedTypes.has('informe') && (
+                      <BlockSubSelector
+                        informeContent={informeContent}
+                        checkedKeys={informeCheckedKeys}
+                        onToggle={toggleInformeBlock}
+                      />
+                    )}
+                  </DocTypeCard>
+                ))}
               </div>
 
               {/* Validation hint */}
               {!hasSelection && (
                 <p className="text-xs text-amber-600 flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  Selecciona al menos un bloque o sección
+                  Seleccioná al menos un tipo de documento disponible
                 </p>
               )}
 
