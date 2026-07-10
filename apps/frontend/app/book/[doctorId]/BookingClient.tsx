@@ -1442,46 +1442,54 @@ export default function BookingClient({
                       month: 'long',
                     })}
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {grouped[selectedDate]?.map((slot) => {
-                      const booked = isSlotBooked(slot.date, slot.time);
-                      const isBlocked = blockedTimes.get(slot.date)?.has(slot.time) ?? false;
-                      const isSel =
-                        selectedSlot?.date === slot.date && selectedSlot?.time === slot.time;
-                      const isUnavailable = booked || isBlocked;
+                  {(() => {
+                    const daySlots = grouped[selectedDate] ?? [];
+                    // #25: ocultar por completo los horarios BLOQUEADOS por el médico
+                    // (antes se mostraban tachados). Los OCUPADOS sí se siguen viendo
+                    // tachados para que el paciente sepa que ese horario ya está tomado.
+                    const visibleSlots = daySlots.filter(
+                      (slot) => !(blockedTimes.get(slot.date)?.has(slot.time) ?? false),
+                    );
+                    if (visibleSlots.length === 0) {
                       return (
-                        <button
-                          key={slot.time}
-                          onClick={() => {
-                            if (!isUnavailable) {
-                              setSelectedSlot(slot);
-                              setActiveStep(4);
-                            }
-                          }}
-                          disabled={isUnavailable}
-                          title={
-                            isBlocked
-                              ? 'Horario bloqueado por el médico'
-                              : booked
-                                ? 'Horario ocupado'
-                                : undefined
-                          }
-                          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                            isBlocked
-                              ? 'bg-red-50 text-red-300 cursor-not-allowed line-through border border-red-100'
-                              : booked
-                                ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through'
-                                : isSel
-                                  ? 'text-white shadow-md shadow-cyan-500/20'
-                                  : 'bg-white border border-slate-200 text-slate-700 hover:border-cyan-400'
-                          }`}
-                          style={isSel ? { background: BRAND.turquoise } : undefined}
-                        >
-                          {slot.time}
-                        </button>
+                        <p className="text-xs text-slate-400">
+                          No hay horarios disponibles para este día.
+                        </p>
                       );
-                    })}
-                  </div>
+                    }
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {visibleSlots.map((slot) => {
+                          const booked = isSlotBooked(slot.date, slot.time);
+                          const isSel =
+                            selectedSlot?.date === slot.date && selectedSlot?.time === slot.time;
+                          return (
+                            <button
+                              key={slot.time}
+                              onClick={() => {
+                                if (!booked) {
+                                  setSelectedSlot(slot);
+                                  setActiveStep(4);
+                                }
+                              }}
+                              disabled={booked}
+                              title={booked ? 'Horario ocupado' : undefined}
+                              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                booked
+                                  ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through'
+                                  : isSel
+                                    ? 'text-white shadow-md shadow-cyan-500/20'
+                                    : 'bg-white border border-slate-200 text-slate-700 hover:border-cyan-400'
+                              }`}
+                              style={isSel ? { background: BRAND.turquoise } : undefined}
+                            >
+                              {slot.time}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
