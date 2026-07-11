@@ -204,7 +204,8 @@ export function TemplatePdfPreview({
     content: sampleContent,
   };
 
-  const fileName = `plantilla-${docType}-ejemplo.pdf`;
+  // Human-readable filename using the document type label (no PII).
+  const fileName = `Plantilla-${docTypeLabel.replace(/\s+/g, '-')}.pdf`;
 
   return (
     <div className="space-y-3">

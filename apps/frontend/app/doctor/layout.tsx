@@ -557,6 +557,10 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               const sectionHasActive = visibleItems.some((item) =>
                 isPathActive(pathname, item.href),
               );
+              // Show a lock badge on the section header when ALL visible items are locked.
+              const allSectionLocked =
+                planFeatures !== null &&
+                visibleItems.every((item) => !isPlanUnlocked(item, planFeatures));
               return (
                 <div key={section.key} className="mt-3">
                   <button
@@ -564,7 +568,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                     className="w-full flex items-center justify-between px-3.5 py-2 text-sm transition-all"
                     style={{
                       borderRadius: 'var(--dh-r-md)',
-                      color: sectionHasActive ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-600)',
+                      color: allSectionLocked
+                        ? 'var(--dh-gray-300)'
+                        : sectionHasActive
+                          ? 'var(--dh-turquoise-700)'
+                          : 'var(--dh-gray-600)',
                       fontWeight: sectionHasActive ? 600 : 500,
                     }}
                   >
@@ -572,12 +580,18 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                       <section.icon
                         className="w-[18px] h-[18px] shrink-0"
                         style={{
-                          color: sectionHasActive
-                            ? 'var(--dh-turquoise-700)'
-                            : 'var(--dh-gray-400)',
+                          color: allSectionLocked
+                            ? 'var(--dh-gray-200)'
+                            : sectionHasActive
+                              ? 'var(--dh-turquoise-700)'
+                              : 'var(--dh-gray-400)',
+                          opacity: allSectionLocked ? 0.5 : 1,
                         }}
                       />
-                      {section.label}
+                      <span className={allSectionLocked ? 'opacity-50' : undefined}>
+                        {section.label}
+                      </span>
+                      {allSectionLocked && <Lock className="w-3 h-3 opacity-40 shrink-0" />}
                     </span>
                     <ChevronDown
                       className="w-3.5 h-3.5 transition-transform duration-200"

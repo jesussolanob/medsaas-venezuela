@@ -325,11 +325,18 @@ export async function GET(
       buffer.byteOffset + buffer.byteLength,
     );
 
+    // Build a human-readable filename from the consultation code.
+    // Avoid PII (cedula, full name) — consultation code is safe.
+    const safeCode = renderData.consultation.consultationCode
+      ? renderData.consultation.consultationCode.replace(/[^\w-]/g, '')
+      : 'documento';
+    const pdfFilename = `Documentos-${safeCode}.pdf`;
+
     return new NextResponse(arrayBuffer as ArrayBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="documentos-consulta.pdf"',
+        'Content-Disposition': `attachment; filename="${pdfFilename}"`,
       },
     });
   } catch (err: unknown) {

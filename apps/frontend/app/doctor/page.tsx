@@ -25,6 +25,7 @@ import {
   X,
   Loader2,
   Plus,
+  Lock,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -41,6 +42,8 @@ import {
 } from '@/app/doctor/finances/payments-actions';
 import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
+import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
+import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
 import {
   getDoctorProfile,
@@ -112,6 +115,7 @@ export default function DoctorDashboard() {
     patients_attended: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
   // Modal "Nueva consulta"
@@ -120,7 +124,11 @@ export default function DoctorDashboard() {
   // patientId del recien creado para abrir NewAppointmentFlow opcionalmente.
   const [showPatientForm, setShowPatientForm] = useState(false);
   const [patientFormSaving, setPatientFormSaving] = useState(false);
+  // newAppointmentPatientId: controls the "¿Crear cita ahora?" mini-prompt visibility.
+  // preselectPatientId: the patient to pre-fill in NewAppointmentFlow (persists while
+  // the flow is open, so closing the mini-prompt doesn't lose the preselect).
   const [newAppointmentPatientId, setNewAppointmentPatientId] = useState<string | null>(null);
+  const [preselectPatientId, setPreselectPatientId] = useState<string | null>(null);
 
   // Quick "Registrar gasto" modal (reuses the finances addExpense action).
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -194,13 +202,16 @@ export default function DoctorDashboard() {
         const monthStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}`;
 
         // Fetch all independent data in parallel for performance.
-        const [prof, appts, financeSummary, allTimeData, scheduled] = await Promise.all([
+        const [prof, appts, financeSummary, allTimeData, scheduled, planFeat] = await Promise.all([
           getDoctorProfile(),
           getTodayAppointments(),
           getDashboardFinanceSummary(monthStr),
           getDashboardAllTimeStats(),
           getScheduledAppointments(),
+          getDoctorPlanFeatures(),
         ]);
+
+        setPlanFeatures(planFeat);
 
         // Map profile — DoctorProfile uses camelCase (NestJS wire format).
         if (prof) {
@@ -360,6 +371,7 @@ export default function DoctorDashboard() {
       showToast({ type: 'success', message: 'Paciente creado' });
       setShowPatientForm(false);
       setNewAppointmentPatientId(res.patient_id);
+      setPreselectPatientId(res.patient_id);
     } catch (err: unknown) {
       // Re-throw para que PatientForm muestre el error inline
       throw err;
@@ -1103,49 +1115,78 @@ export default function DoctorDashboard() {
               </div>
 
               {/* Acciones rápidas de finanzas */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <button
-                  onClick={() => setShowIncomeModal(true)}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
-                  style={{ background: 'var(--dh-turquoise)' }}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Ingreso
-                </button>
-                <button
-                  onClick={handleOpenPaymentModal}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
-                  style={{
-                    background: 'var(--dh-turquoise-50)',
-                    border: '1px solid var(--dh-turquoise-100)',
-                    color: 'var(--dh-turquoise-700)',
-                  }}
-                >
-                  <Wallet className="w-3.5 h-3.5" />
-                  Cobros
-                </button>
-                <button
-                  onClick={() => setShowExpenseModal(true)}
-                  className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+              {planUnlocks(planFeatures, 'finances') ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    <button
+                      onClick={() => setShowIncomeModal(true)}
+                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+                      style={{ background: 'var(--dh-turquoise)' }}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Ingreso
+                    </button>
+                    <button
+                      onClick={handleOpenPaymentModal}
+                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                      style={{
+                        background: 'var(--dh-turquoise-50)',
+                        border: '1px solid var(--dh-turquoise-100)',
+                        color: 'var(--dh-turquoise-700)',
+                      }}
+                    >
+                      <Wallet className="w-3.5 h-3.5" />
+                      Cobros
+                    </button>
+                    <button
+                      onClick={() => setShowExpenseModal(true)}
+                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                      style={{
+                        background: 'var(--dh-gray-50)',
+                        border: '1px solid var(--dh-gray-200)',
+                        color: 'var(--dh-gray-800)',
+                      }}
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      Gasto
+                    </button>
+                  </div>
+
+                  <Link
+                    href="/doctor/finances"
+                    className="text-xs font-semibold flex items-center gap-1 pt-2"
+                    style={{ color: 'var(--dh-turquoise-700)' }}
+                  >
+                    Ver más detalles
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </>
+              ) : (
+                <div
+                  className="mt-2 px-4 py-3 rounded-lg flex items-center justify-between gap-3"
                   style={{
                     background: 'var(--dh-gray-50)',
-                    border: '1px solid var(--dh-gray-200)',
-                    color: 'var(--dh-gray-800)',
+                    border: '1px solid var(--dh-gray-100)',
                   }}
                 >
-                  <Receipt className="w-3.5 h-3.5" />
-                  Gasto
-                </button>
-              </div>
-
-              <Link
-                href="/doctor/finances"
-                className="text-xs font-semibold flex items-center gap-1 pt-2"
-                style={{ color: 'var(--dh-turquoise-700)' }}
-              >
-                Ver más detalles
-                <ArrowRight className="w-3 h-3" />
-              </Link>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Lock
+                      className="w-3.5 h-3.5 shrink-0"
+                      style={{ color: 'var(--dh-gray-400)' }}
+                    />
+                    <p className="text-xs text-slate-500">
+                      Finanzas disponible en Delta Base o superior
+                    </p>
+                  </div>
+                  <Link
+                    href="/doctor/upgrade"
+                    className="shrink-0 text-[11px] font-bold text-white px-3 py-1.5 rounded-lg transition-colors"
+                    style={{ background: 'var(--dh-turquoise)' }}
+                  >
+                    Mejorar plan
+                  </Link>
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -1156,19 +1197,17 @@ export default function DoctorDashboard() {
         open={showNewFlow}
         onClose={() => {
           setShowNewFlow(false);
-          // L3 (2026-04-29): si veniamos del flujo "crear paciente → crear cita"
-          // limpiamos el patientId pendiente para evitar re-mostrar el prompt.
-          setNewAppointmentPatientId(null);
+          setPreselectPatientId(null);
         }}
         onSuccess={(id) => {
           setShowNewFlow(false);
-          setNewAppointmentPatientId(null);
+          setPreselectPatientId(null);
           router.push(`/doctor/consultations?open=${id}`);
         }}
         initialContext={{
           origin: 'dashboard_btn',
           // L3 (2026-04-29): pre-rellenar paciente si viene del quick action.
-          ...(newAppointmentPatientId ? { patientId: newAppointmentPatientId } : {}),
+          ...(preselectPatientId ? { patientId: preselectPatientId } : {}),
         }}
       />
 
@@ -1217,14 +1256,20 @@ export default function DoctorDashboard() {
             <p className="text-sm text-slate-500 mb-5">¿Quieres agendarle una cita ahora?</p>
             <div className="flex gap-2">
               <button
-                onClick={() => setNewAppointmentPatientId(null)}
+                onClick={() => {
+                  setNewAppointmentPatientId(null);
+                  setPreselectPatientId(null);
+                }}
                 className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
               >
                 Más tarde
               </button>
               <button
                 onClick={() => {
-                  // Mantenemos el id en estado: NewAppointmentFlow lo recibe via initialContext
+                  // Close the mini-prompt and open the appointment flow.
+                  // preselectPatientId already holds the id; NewAppointmentFlow
+                  // will read it via initialContext without the mini-prompt visible.
+                  setNewAppointmentPatientId(null);
                   setShowNewFlow(true);
                 }}
                 className="flex-1 py-2.5 px-4 rounded-xl bg-teal-500 text-white text-sm font-bold hover:bg-teal-600"

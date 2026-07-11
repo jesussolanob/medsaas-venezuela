@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showToast } from '@/components/ui/Toaster';
+import PhoneInput from '@/components/shared/PhoneInput';
 
 type Office = {
   id: string;
@@ -166,6 +167,7 @@ export default function OfficesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Office | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -238,6 +240,7 @@ export default function OfficesPage() {
     setSlotDuration(30);
     setBufferMinutes(10);
     setModality('in_person');
+    setSaveError(null);
     setShowForm(true);
   }
 
@@ -251,12 +254,14 @@ export default function OfficesPage() {
     setSlotDuration(office.slot_duration);
     setBufferMinutes(office.buffer_minutes);
     setModality(office.modality);
+    setSaveError(null);
     setShowForm(true);
   }
 
   function closeForm() {
     setShowForm(false);
     setEditing(null);
+    setSaveError(null);
   }
 
   // ---------------------------------------------------------------------------
@@ -314,53 +319,58 @@ export default function OfficesPage() {
   // ---------------------------------------------------------------------------
 
   async function handleSave() {
+    setSaveError(null);
+
     if (!name.trim() || !address.trim() || !city.trim()) {
-      showToast({ type: 'error', message: 'Nombre, dirección y ciudad son obligatorios' });
+      setSaveError('Nombre, dirección y ciudad son obligatorios.');
       return;
     }
     if (!canSave) {
-      showToast({ type: 'error', message: 'Corrige los bloques de horario antes de guardar' });
+      setSaveError('Corrige los bloques de horario antes de guardar.');
+      return;
+    }
+
+    // Validate that there is at least one enabled block.
+    const hasEnabledBlock = schedule.some((b) => b.enabled);
+    if (!hasEnabledBlock) {
+      setSaveError('Debes tener al menos un bloque de horario habilitado.');
       return;
     }
 
     setSaving(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        address: address.trim(),
+        city: city.trim(),
+        phone: phone.trim(),
+        schedule,
+        slot_duration: slotDuration,
+        buffer_minutes: bufferMinutes,
+        modality,
+      };
 
-    const payload = {
-      name: name.trim(),
-      address: address.trim(),
-      city: city.trim(),
-      phone: phone.trim(),
-      schedule,
-      slot_duration: slotDuration,
-      buffer_minutes: bufferMinutes,
-      modality,
-    };
+      let result;
+      if (editing) {
+        result = await updateOffice(editing.id, payload);
+      } else {
+        result = await createOffice(payload);
+      }
 
-    let result;
-    if (editing) {
-      result = await updateOffice(editing.id, payload);
-    } else {
-      result = await createOffice(payload);
+      if (!result.ok) {
+        // Show the backend error message (in Spanish) inside the modal.
+        // The backend already returns translated messages for conflict errors.
+        setSaveError(result.error ?? 'Ocurrió un error al guardar.');
+        return;
+      }
+
+      closeForm();
+      fetchOffices();
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-
-    if (!result.ok) {
-      const isConflict =
-        result.error?.includes('OFFICE_SCHEDULE_CONFLICT') ||
-        result.error?.includes('conflict') ||
-        result.error?.includes('solapa');
-      showToast({
-        type: 'error',
-        message: isConflict
-          ? 'Ese horario se solapa con otro consultorio'
-          : (result.error ?? 'Ocurrió un error al guardar'),
-      });
-      return;
-    }
-
-    closeForm();
-    fetchOffices();
   }
 
   // ---------------------------------------------------------------------------
@@ -568,16 +578,10 @@ export default function OfficesPage() {
         </div>
       )}
 
-      {/* Form modal */}
+      {/* Form modal — backdrop click intentionally disabled; close via Cancelar or X button */}
       {showForm && (
-        <div
-          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-          onClick={closeForm}
-        >
-          <div
-            className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
               <h3 className="text-base font-bold text-slate-900">
                 {editing ? 'Editar consultorio' : 'Nuevo consultorio'}
@@ -588,6 +592,13 @@ export default function OfficesPage() {
             </div>
 
             <div className="px-6 py-5 space-y-4">
+              {/* In-modal error banner (replaces toast for save errors) */}
+              {saveError && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{saveError}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">
                   Nombre del consultorio <span className="text-red-400">*</span>
@@ -628,12 +639,7 @@ export default function OfficesPage() {
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">
                     Teléfono
                   </label>
-                  <input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+58 212 1234567"
-                    className={inp}
-                  />
+                  <PhoneInput value={phone} onChange={setPhone} placeholder="4121234567" />
                 </div>
               </div>
 

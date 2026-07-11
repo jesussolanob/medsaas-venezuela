@@ -328,14 +328,9 @@ export default function ShareDocumentsModal({
         Compartir documentos
       </button>
 
-      {/* Modal backdrop */}
+      {/* Modal backdrop — no se cierra al hacer clic en el backdrop (solo con X o Cerrar) */}
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) handleClose();
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
 // RecetaPdfButton importa estáticamente PdfDownloadButton + MedicalDocumentPdf.
 // El dynamic ssr:false aquí excluye TODO el código de @react-pdf/renderer del bundle SSR.
@@ -112,6 +112,8 @@ type Consultation = {
   diagnosis: string | null;
   treatment: string | null;
   status: 'pending' | 'in_progress' | 'completed' | 'no_show'; // Estado de la CONSULTA (no del pago)
+  /** Raw appointment status (scheduled/confirmed/completed/no_show) — preservado para mostrar "Por confirmar" */
+  appointment_status?: string | null;
   payment_status: 'pending' | 'approved'; // Quitamos 'cancelled' — los pagos no se cancelan
   payment_method?: string | null;
   payment_reference?: string | null;
@@ -282,6 +284,8 @@ export default function ConsultationsPageWrapper() {
 
 function ConsultationsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const openId = searchParams.get('open');
   const { rate: bcvRate, toBs } = useBcvRate();
   const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
@@ -319,10 +323,23 @@ function ConsultationsPage() {
   );
 
   /** Construye ContentBlock[] para react-pdf a partir del snapshot/config viva y de
-   *  blocks_data (valores JSONB guardados en la consulta). Misma lógica que [id]/page.tsx. */
+   *  blocks_data (valores JSONB guardados en la consulta). Misma lógica que [id]/page.tsx.
+   *
+   *  FIX Fix 4: también considera el estado VIVO del editor (`report`) para los campos
+   *  legacy (chief_complaint/diagnosis/treatment/notes). Así, si el doctor llenó
+   *  esos campos pero aún no guardó (o el backend no tiene blocks_data hidratado),
+   *  el Informe médico queda HABILITADO en GenerateDocumentModal. */
   function buildPdfContent(c: Consultation): ContentBlock[] {
     const blocks = getEffectiveBlocks(c);
     const bd = (c.blocks_data ?? {}) as Record<string, unknown>;
+    // Mapa de campos legacy → valor vivo del editor (fuente de verdad si blocks_data no lo tiene)
+    const legacyLive: Record<string, string> = {
+      chief_complaint: report.chief_complaint,
+      diagnosis: report.diagnosis,
+      treatment: report.treatment,
+      notes: report.notes,
+      informe: report.notes,
+    };
     return blocks
       .filter((b) => b.printable !== false)
       .map((b) => {
@@ -331,6 +348,14 @@ function ConsultationsPage() {
         if (typeof raw === 'string') value = raw.trim() || null;
         else if (Array.isArray(raw)) value = (raw as string[]).filter(Boolean);
         else if (raw != null) value = String(raw);
+        // Fallback al valor vivo del editor para campos legacy
+        if (
+          (value === null || value === '') &&
+          Object.prototype.hasOwnProperty.call(legacyLive, b.key)
+        ) {
+          const live = legacyLive[b.key];
+          if (live && live.trim()) value = live.trim();
+        }
         return { key: b.key, label: b.label, value };
       })
       .filter(
@@ -357,6 +382,7 @@ function ConsultationsPage() {
   const [reposoFrom, setReposoFrom] = useState('');
   const [reposoTo, setReposoTo] = useState('');
   const [reposoDiagnosis, setReposoDiagnosis] = useState('');
+  const [reposoComments, setReposoComments] = useState('');
 
   // New consultation modal
   const [showNewConsultation, setShowNewConsultation] = useState(false);
@@ -791,6 +817,7 @@ function ConsultationsPage() {
           diagnosis: c.diagnosis,
           treatment: c.treatment,
           status: mapAppointmentStatusToConsulta(c.appointment_status),
+          appointment_status: c.appointment_status ?? null,
           payment_status: c.payment_status,
           appointment_id: c.appointment_id,
           patient_id: c.patient_id,
@@ -805,8 +832,11 @@ function ConsultationsPage() {
         setConsultations(consultationsList);
 
         // Auto-open consultation if openId is in query params
+        // Fix: buscar por c.id O por c.appointment_id (el dashboard redirige con appointmentId)
         if (openId) {
-          const consultationToOpen = consultationsList.find((c) => c.id === openId);
+          const consultationToOpen = consultationsList.find(
+            (c) => c.id === openId || c.appointment_id === openId,
+          );
           if (consultationToOpen) {
             await new Promise((resolve) => setTimeout(resolve, 100));
             openConsultation(consultationToOpen);
@@ -944,16 +974,20 @@ function ConsultationsPage() {
         // Reconciliar report con blocks_data: si blocks_data tiene valor para un campo
         // legacy, usarlo como fuente de verdad (es más reciente que la columna top-level).
         const bd = (fresh.blocks_data || {}) as Record<string, unknown>;
+        const freshDiagnosis =
+          typeof bd.diagnosis === 'string' ? bd.diagnosis : (fresh.diagnosis ?? '');
         setReport({
           chief_complaint:
             typeof bd.chief_complaint === 'string'
               ? bd.chief_complaint
               : (fresh.chief_complaint ?? ''),
           notes: typeof bd.notes === 'string' ? bd.notes : (fresh.notes ?? ''),
-          diagnosis: typeof bd.diagnosis === 'string' ? bd.diagnosis : (fresh.diagnosis ?? ''),
+          diagnosis: freshDiagnosis,
           treatment: typeof bd.treatment === 'string' ? bd.treatment : (fresh.treatment ?? ''),
           payment_status: fresh.payment_status,
         });
+        // Prefill reposo diagnosis con el diagnóstico de la consulta (si el doctor no lo editó)
+        if (freshDiagnosis) setReposoDiagnosis(freshDiagnosis);
         // Inicializar estado del panel de detalles de pago
         setPagoMethod(fresh.payment_method ?? '');
         setPagoReference(fresh.payment_reference ?? '');
@@ -964,13 +998,15 @@ function ConsultationsPage() {
       } else {
         // Fallback to cached data
         setSelected(c);
+        const cachedDiagnosis = c.diagnosis ?? '';
         setReport({
           chief_complaint: c.chief_complaint ?? '',
           notes: c.notes ?? '',
-          diagnosis: c.diagnosis ?? '',
+          diagnosis: cachedDiagnosis,
           treatment: c.treatment ?? '',
           payment_status: c.payment_status,
         });
+        if (cachedDiagnosis) setReposoDiagnosis(cachedDiagnosis);
         setPagoMethod(c.payment_method ?? '');
         setPagoReference(c.payment_reference ?? '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -979,13 +1015,15 @@ function ConsultationsPage() {
     } catch {
       // Fallback to cached data on error
       setSelected(c);
+      const cachedDiagnosisFallback = c.diagnosis ?? '';
       setReport({
         chief_complaint: c.chief_complaint ?? '',
         notes: c.notes ?? '',
-        diagnosis: c.diagnosis ?? '',
+        diagnosis: cachedDiagnosisFallback,
         treatment: c.treatment ?? '',
         payment_status: c.payment_status,
       });
+      if (cachedDiagnosisFallback) setReposoDiagnosis(cachedDiagnosisFallback);
       setPagoMethod(c.payment_method ?? '');
       setPagoReference(c.payment_reference ?? '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -1034,12 +1072,14 @@ function ConsultationsPage() {
         /* patient detail is optional — view still opens */
       });
 
-    // PLACEHOLDER: blocks_data.reposo — blocks_data not in Etapa-1 schema.
-    // Reposo fields reset to default. Fase 5: load from blocks_data.
-    setReposoDiagnosis('');
+    // Reposo: pre-poblar diagnóstico con el diagnóstico de la consulta si está disponible.
+    // Fecha desde: default = HOY. Comentarios: reset.
+    setReposoDiagnosis(''); // se setea abajo con el diagnóstico de la consulta
     setReposoDays(0);
-    setReposoFrom('');
+    // Fecha "desde" por defecto = hoy (formato YYYY-MM-DD)
+    setReposoFrom(new Date().toISOString().split('T')[0]);
     setReposoTo('');
+    setReposoComments('');
 
     // MIGRATED: Load prescriptions via backend → GET /api/prescriptions/patient/:id
     try {
@@ -1211,6 +1251,7 @@ function ConsultationsPage() {
           diagnosis: c.diagnosis,
           treatment: c.treatment,
           status: mapAppointmentStatusToConsulta(c.appointment_status),
+          appointment_status: c.appointment_status ?? null,
           payment_status: c.payment_status,
           appointment_id: c.appointment_id,
           patient_id: c.patient_id,
@@ -1681,6 +1722,17 @@ function ConsultationsPage() {
     };
   }, [flushBlocksSave]);
 
+  // Fix: cuando el usuario navega al sidebar "Consultas" sin ?open=,
+  // searchParams cambia y openId queda null → cerrar el editor inline.
+  useEffect(() => {
+    if (!openId && view === 'consultation') {
+      flushBlocksSave();
+      setView('list');
+      setSelected(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+
   // Auto-save BLOQUE REPOSO en blocks_data — debounce 1.5s
   // Reposo NO tiene tabla propia, se persiste en consultations.blocks_data['reposo']
   const reposoSaveTimer = useRef<NodeJS.Timeout | null>(null);
@@ -1698,6 +1750,7 @@ function ConsultationsPage() {
         days: reposoDays,
         from: reposoFrom,
         to: reposoTo,
+        comments: reposoComments,
         updated_at: new Date().toISOString(),
       };
       fetch('/api/doctor/consultations', {
@@ -1716,7 +1769,7 @@ function ConsultationsPage() {
       if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reposoDiagnosis, reposoDays, reposoFrom, reposoTo, selected?.id]);
+  }, [reposoDiagnosis, reposoDays, reposoFrom, reposoTo, reposoComments, selected?.id]);
 
   // L1 (2026-04-29): callAI unificado — un solo punto de entrada para los 3 modos.
   // - patient_history: solo necesita patientId; el endpoint extrae historial completo.
@@ -1895,7 +1948,8 @@ function ConsultationsPage() {
                 <button
                   onClick={() => {
                     flushBlocksSave();
-                    setView('list');
+                    // Limpiar ?open= del URL sin reload de página — el useEffect lo cerrará
+                    router.push(pathname, { scroll: false });
                   }}
                   className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
                 >
@@ -2123,7 +2177,11 @@ function ConsultationsPage() {
                   const effective = getEffectiveBlocks(selected as Consultation);
                   if (effective && effective.length > 0) {
                     const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order);
-                    dynamicTabs = sorted.map((b) => ({ key: `block:${b.key}`, label: b.label }));
+                    // Renombrar "prescription" → "Récipe" en la UI (el backend puede llamarlo "Receta" o "Prescripción")
+                    dynamicTabs = sorted.map((b) => ({
+                      key: `block:${b.key}`,
+                      label: b.key === 'prescription' ? 'Récipe' : b.label,
+                    }));
                   } else {
                     dynamicTabs = [
                       { key: 'block:chief_complaint', label: 'Motivo de consulta' },
@@ -2470,13 +2528,13 @@ function ConsultationsPage() {
                     : 'hidden'
                 }`}
               >
-                {/* Recipe Tab — block:prescription */}
+                {/* Récipe Tab — block:prescription */}
                 {consultationTab === 'block:prescription' && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2">
                         <Pill className="w-4 h-4 text-slate-400" />
-                        <p className="text-sm font-bold text-slate-800">Receta</p>
+                        <p className="text-sm font-bold text-slate-800">Récipe</p>
                       </div>
                       <button
                         onClick={() => setShowRecipe(true)}
@@ -2556,94 +2614,12 @@ function ConsultationsPage() {
                       </div>
                     )}
 
-                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                      <Pill className="w-3.5 h-3.5 text-slate-400" /> Tratamiento / Indicaciones
-                    </label>
-                    <RichTextEditor
-                      value={report.treatment}
-                      onChange={(html) => setReport((p) => ({ ...p, treatment: html }))}
-                      placeholder="Medicamentos, dosis, indicaciones, próxima cita..."
-                    />
+                    {/* Nota: el campo "Indicaciones/Tratamiento" vive en el bloque dinámico
+                        del informe. No se duplica aquí — ver GenerateDocumentModal para incluirlo en el PDF. */}
                     <div className="flex gap-2 pt-2">
-                      <button
-                        onClick={() => setShowRecipe(true)}
-                        className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
-                      >
-                        <Pill className="w-4 h-4" />{' '}
-                        {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          const printWindow = window.open('', '_blank');
-                          if (!printWindow) return;
-                          let bodyContent = '';
-                          if (recipe.medications.length > 0) {
-                            bodyContent +=
-                              '<div class="section"><div class="section-title">Medicamentos</div>';
-                            bodyContent +=
-                              recipe.medications
-                                .map(
-                                  (m, i) =>
-                                    '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px">' +
-                                    '<div style="font-size:14px;font-weight:700;color:#1e293b">' +
-                                    (i + 1) +
-                                    '. ' +
-                                    (m.name || 'Sin nombre') +
-                                    '</div>' +
-                                    '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">' +
-                                    (m.dose
-                                      ? '<div style="font-size:12px;color:#475569"><strong>Dosis:</strong> ' +
-                                        m.dose +
-                                        '</div>'
-                                      : '') +
-                                    (m.frequency
-                                      ? '<div style="font-size:12px;color:#475569"><strong>Frecuencia:</strong> ' +
-                                        m.frequency +
-                                        '</div>'
-                                      : '') +
-                                    (m.duration
-                                      ? '<div style="font-size:12px;color:#475569"><strong>Duración:</strong> ' +
-                                        m.duration +
-                                        '</div>'
-                                      : '') +
-                                    '</div>' +
-                                    (m.indications
-                                      ? '<div style="font-size:12px;color:#64748b;margin-top:4px"><em>' +
-                                        m.indications +
-                                        '</em></div>'
-                                      : '') +
-                                    '</div>',
-                                )
-                                .join('') + '</div>';
-                          }
-                          if (report.treatment)
-                            bodyContent +=
-                              '<div class="section"><div class="section-title">Indicaciones generales</div><div class="section-content">' +
-                              report.treatment +
-                              '</div></div>';
-                          const dateStr = new Date(selected.consultation_date).toLocaleDateString(
-                            'es-VE',
-                            { year: 'numeric', month: 'long', day: 'numeric' },
-                          );
-                          printWindow.document.write(
-                            buildPdfHtml(
-                              'recipe',
-                              'Receta Médica',
-                              bodyContent,
-                              selected.patient_name,
-                              selected.consultation_code,
-                              dateStr,
-                            ),
-                          );
-                          printWindow.document.close();
-                        }}
-                        className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50"
-                      >
-                        <Printer className="w-4 h-4" /> Imprimir
-                      </button>
                       {pdfTemplateConfig && recipe.medications.length > 0 && (
                         <RecetaPdfButton
-                          fileName={`receta-${selected.consultation_code}.pdf`}
+                          fileName={`Récipe-${selected.consultation_code}.pdf`}
                           templateConfig={pdfTemplateConfig}
                           doctor={{
                             fullName: doctorName || '',
@@ -2678,7 +2654,7 @@ function ConsultationsPage() {
                           ]}
                           className="flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
                         >
-                          Descargar PDF
+                          Descargar récipe PDF
                         </RecetaPdfButton>
                       )}
                     </div>
@@ -3014,52 +2990,96 @@ function ConsultationsPage() {
                         />
                       </div>
                     </div>
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                        <FileText className="w-3.5 h-3.5 text-slate-400" /> Comentarios{' '}
+                        <span className="text-slate-400 font-normal text-xs">(opcional)</span>
+                      </label>
+                      <textarea
+                        placeholder="Observaciones adicionales del médico..."
+                        value={reposoComments}
+                        onChange={(e) => setReposoComments(e.target.value)}
+                        rows={3}
+                        className={fi + ' resize-none'}
+                      />
+                    </div>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (!reposoFrom || !reposoDiagnosis || reposoDays === 0) {
-                          showToast({ type: 'error', message: 'Completa todos los campos' });
+                          showToast({
+                            type: 'error',
+                            message: 'Completa diagnóstico, días y fecha de inicio',
+                          });
                           return;
                         }
-                        const printWindow = window.open('', '_blank');
-                        if (!printWindow) return;
-                        const bodyContent =
-                          '<div class="section"><div class="section-title">Diagnóstico</div><div class="section-content">' +
-                          reposoDiagnosis +
-                          '</div></div>' +
-                          '<div class="section"><div class="section-title">Período de Reposo</div><div class="section-content">Desde: ' +
-                          new Date(reposoFrom).toLocaleDateString('es-VE', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                          }) +
-                          '<br>Hasta: ' +
-                          new Date(reposoTo).toLocaleDateString('es-VE', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                          }) +
-                          '<br>Duración: ' +
-                          reposoDays +
-                          ' días</div></div>';
-                        const dateStr = new Date(selected.consultation_date).toLocaleDateString(
-                          'es-VE',
-                          { year: 'numeric', month: 'long', day: 'numeric' },
-                        );
-                        printWindow.document.write(
-                          buildPdfHtml(
-                            'reposo',
-                            'Constancia de Reposo',
-                            bodyContent,
-                            selected.patient_name,
-                            selected.consultation_code,
-                            dateStr,
-                          ),
-                        );
-                        printWindow.document.close();
+                        try {
+                          const { pdf } = await import('@react-pdf/renderer');
+                          const { MedicalDocumentPdf } =
+                            await import('@/components/pdf/MedicalDocumentPdf');
+                          const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
+                          if (!tmplCfg) {
+                            showToast({ type: 'error', message: 'Plantilla no disponible aún' });
+                            return;
+                          }
+                          const reposoBlocks = [
+                            { key: 'reposo-diag', label: 'Diagnóstico', value: reposoDiagnosis },
+                            {
+                              key: 'reposo-period',
+                              label: 'Período de reposo',
+                              value:
+                                `${reposoDays} día${reposoDays !== 1 ? 's' : ''}` +
+                                ` — desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
+                                (reposoTo
+                                  ? ` hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                                  : ''),
+                            },
+                            ...(reposoComments
+                              ? [
+                                  {
+                                    key: 'reposo-comments',
+                                    label: 'Comentarios',
+                                    value: reposoComments,
+                                  },
+                                ]
+                              : []),
+                          ];
+                          const element = (
+                            <MedicalDocumentPdf
+                              docType="rest"
+                              templateConfig={tmplCfg}
+                              doctor={{
+                                fullName: doctorName || '',
+                                specialty: doctorSpecialty,
+                                licenseNumber: doctorLicense,
+                              }}
+                              patient={{
+                                fullName: selected.patient_name || '—',
+                                cedula:
+                                  patients.find((p) => p.id === selected.patient_id)?.cedula ??
+                                  null,
+                              }}
+                              docDate={selected.consultation_date}
+                              consultationCode={selected.consultation_code}
+                              content={reposoBlocks}
+                            />
+                          );
+                          const blob = await pdf(element).toBlob();
+                          const url = URL.createObjectURL(blob);
+                          const anchor = document.createElement('a');
+                          anchor.href = url;
+                          anchor.download = `Reposo-${selected.consultation_code}.pdf`;
+                          anchor.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        } catch (err) {
+                          showToast({
+                            type: 'error',
+                            message: err instanceof Error ? err.message : 'Error al generar el PDF',
+                          });
+                        }
                       }}
                       className="w-full flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
                     >
-                      <Printer className="w-4 h-4" /> Generar PDF Reposo
+                      <Printer className="w-4 h-4" /> Descargar PDF Reposo
                     </button>
                   </div>
                 )}
@@ -4360,6 +4380,11 @@ function ConsultationsPage() {
                       {!isToday && isUpcoming && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">
                           Próxima
+                        </span>
+                      )}
+                      {c.appointment_status === 'scheduled' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 shrink-0">
+                          Por confirmar
                         </span>
                       )}
                     </div>

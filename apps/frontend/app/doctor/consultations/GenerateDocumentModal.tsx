@@ -303,11 +303,21 @@ export default function GenerateDocumentModal({
 
       const blob = await pdf(element).toBlob();
 
-      // Disparar descarga vía object URL
+      // Disparar descarga vía object URL — nombre legible según el tipo de documento
+      const typeLabels: Record<string, string> = {
+        recipe: 'Récipe',
+        paraclinical: 'Paraclínicos',
+        history: 'Historia-Clínica',
+        rest: 'Reposo',
+        informe: 'Informe',
+      };
+      const typeKeys = [...selectedTypes];
+      const labelPart =
+        typeKeys.length === 1 ? (typeLabels[typeKeys[0]] ?? 'Documento') : 'Documento-Consolidado';
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `documento-${consultationCode}.pdf`;
+      anchor.download = `${labelPart}-${consultationCode}.pdf`;
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
@@ -347,14 +357,9 @@ export default function GenerateDocumentModal({
         Generar Documento
       </button>
 
-      {/* Modal backdrop */}
+      {/* Modal backdrop — no se cierra al hacer clic en el backdrop (solo con Cancelar o X) */}
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) handleClose();
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">

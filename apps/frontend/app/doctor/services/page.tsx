@@ -504,16 +504,10 @@ export default function ServicesPage() {
         </div>
       )}
 
-      {/* Form modal */}
+      {/* Form modal — backdrop click intentionally disabled; close via Cancelar or X button */}
       {showForm && (
-        <div
-          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-          onClick={closeForm}
-        >
-          <div
-            className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
               <h3 className="text-base font-bold text-slate-900">
                 {editing ? 'Editar' : 'Nuevo'} {type === 'plan' ? 'plan de consulta' : 'servicio'}

@@ -127,12 +127,18 @@ export default function PhoneInput({
 
   const veValidationError: string | null = (() => {
     if (!isVenezuela || localDigits.length === 0) return null;
-    if (localDigits.length < 10) return 'Teléfono debe tener 10 dígitos';
-    if (!localDigits.startsWith('4')) return 'Teléfono móvil debe iniciar con 4';
+    if (localDigits.length > 10) return 'No debe exceder 10 dígitos';
+    if (localDigits.length < 10) return 'El teléfono debe tener 10 dígitos';
+    if (!localDigits.startsWith('4')) return 'El teléfono móvil debe iniciar con 4';
     return null;
   })();
 
-  const displayError = error ?? veValidationError ?? null;
+  // Validation error for exceeding max digits for non-VE countries.
+  // Venezuela's over-limit case is already covered by veValidationError.
+  const tooManyDigitsError: string | null =
+    !isVenezuela && localDigits.length > 15 ? 'No debe exceder 15 dígitos' : null;
+
+  const displayError = error ?? veValidationError ?? tooManyDigitsError ?? null;
 
   // ── Emisión del valor canónico ───────────────────────────────────────────
 
@@ -162,7 +168,9 @@ export default function PhoneInput({
   }
 
   function handleLocalChange(raw: string) {
-    const digits = raw.replace(/\D/g, '').slice(0, 15);
+    // Strip non-digits but do NOT truncate: let the user type freely so they
+    // can see the validation error without the field silently chopping input.
+    const digits = raw.replace(/\D/g, '');
     setLocalDigits(digits);
     emitCanonical(countryCode, digits);
   }

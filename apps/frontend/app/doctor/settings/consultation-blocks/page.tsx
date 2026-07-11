@@ -16,6 +16,7 @@ import {
 /**
  * Bloques del catálogo estándar con nombre fijo (no renombrables por el doctor).
  * El input de label queda readonly/disabled para estas keys.
+ * Estos bloques siempre aparecen primero y vienen habilitados por defecto.
  */
 const LOCKED_BLOCK_KEYS = new Set([
   'chief_complaint',
@@ -24,7 +25,28 @@ const LOCKED_BLOCK_KEYS = new Set([
   'prescription',
   'indications',
   'paraclinical',
+  'rest',
 ]);
+
+/** Orden canónico de los bloques fijos para mostrarlos siempre primero. */
+const LOCKED_BLOCK_ORDER: Record<string, number> = {
+  chief_complaint: 0,
+  history: 1,
+  diagnosis: 2,
+  prescription: 3,
+  indications: 4,
+  paraclinical: 5,
+  rest: 6,
+};
+
+/**
+ * Label de presentación para bloques fijos cuyo nombre frontend difiere del
+ * default_label del backend (p.ej. el backend puede enviar "Prescription" en
+ * inglés o con casing distinto).
+ */
+const LOCKED_BLOCK_LABELS: Record<string, string> = {
+  prescription: 'Récipe',
+};
 import Link from 'next/link';
 
 type CatalogEntry = {
@@ -93,14 +115,23 @@ export default function ConsultationBlocksConfigPage() {
     const merged: BlockRow[] = catalog.map((c) => {
       const cfg = cfgMap.get(c.key);
       const spec = specialtyMap.get(c.key);
+      const isLocked = LOCKED_BLOCK_KEYS.has(c.key);
       // F-FONDO (2026-04-29): mismo modelo que la consulta — si no hay cfg ni
       // spec, usar `default_enabled` del catálogo (4 core marcados, resto NO).
-      // Antes quedaba todo en false → "0/15 activos" inconsistente con consulta.
-      const enabled = cfg ? cfg.enabled : spec ? spec.enabled : (c.defaultEnabled ?? false);
+      // Fixed (locked) blocks are always enabled by default when no doctor config exists.
+      const enabled = cfg
+        ? cfg.enabled
+        : spec
+          ? spec.enabled
+          : isLocked
+            ? true
+            : (c.defaultEnabled ?? false);
       const sort_order = cfg?.sortOrder ?? spec?.sortOrder ?? 99;
+      // Apply frontend label overrides for locked blocks (e.g. prescription → Récipe).
+      const frontendLabelOverride = LOCKED_BLOCK_LABELS[c.key];
       return {
         block_key: c.key,
-        default_label: c.defaultLabel,
+        default_label: frontendLabelOverride ?? c.defaultLabel,
         custom_label: cfg?.customLabel ?? '',
         default_description: c.description,
         // customDescription del doctor; null = sin override (se mostrará el default como placeholder).
@@ -113,8 +144,20 @@ export default function ConsultationBlocksConfigPage() {
       };
     });
 
-    // Orden inicial: primero los enabled por sort_order, luego los disabled
+    // Sort order: fixed blocks first (in canonical order), then the rest sorted by
+    // enabled status and sort_order.
     merged.sort((a, b) => {
+      const aLocked = LOCKED_BLOCK_KEYS.has(a.block_key);
+      const bLocked = LOCKED_BLOCK_KEYS.has(b.block_key);
+      // Fixed blocks always come first
+      if (aLocked !== bLocked) return aLocked ? -1 : 1;
+      // Among fixed blocks, use canonical order
+      if (aLocked && bLocked) {
+        const aOrder = LOCKED_BLOCK_ORDER[a.block_key] ?? 99;
+        const bOrder = LOCKED_BLOCK_ORDER[b.block_key] ?? 99;
+        return aOrder - bOrder;
+      }
+      // Among non-fixed blocks: enabled first, then by sort_order
       if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
       return a.sort_order - b.sort_order;
     });
@@ -284,7 +327,7 @@ export default function ConsultationBlocksConfigPage() {
                   {LOCKED_BLOCK_KEYS.has(r.block_key) ? (
                     <div className="flex-1 min-w-0 flex items-center gap-1.5">
                       <span className="font-semibold text-slate-900 truncate">
-                        {r.default_label}
+                        {LOCKED_BLOCK_LABELS[r.block_key] ?? r.default_label}
                       </span>
                       <span
                         title="Nombre fijo — este bloque no se puede renombrar"

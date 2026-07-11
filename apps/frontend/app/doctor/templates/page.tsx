@@ -90,7 +90,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   informe: FileText,
 };
 
-// Fallback para doctores sin bloques configurados (retrocompat con datos viejos)
+// Fallback para doctores sin bloques configurados (retrocompat con datos viejos).
+// Los 5 tipos estándar de documentos médicos usados en Venezuela.
 const FALLBACK_TABS: TemplateTab[] = [
   {
     key: 'informe',
@@ -100,19 +101,25 @@ const FALLBACK_TABS: TemplateTab[] = [
   },
   {
     key: 'recipe',
-    label: 'Recipe',
+    label: 'Récipe',
     icon: Pill,
     description: 'Receta médica con medicamentos y dosis',
   },
   {
-    key: 'prescripciones',
-    label: 'Prescripciones',
+    key: 'indications',
+    label: 'Indicaciones',
     icon: ClipboardList,
-    description: 'Órdenes de exámenes de laboratorio e imágenes',
+    description: 'Instrucciones y recomendaciones para el paciente',
+  },
+  {
+    key: 'paraclinical',
+    label: 'Paraclínicos',
+    icon: ClipboardList,
+    description: 'Órdenes de exámenes de laboratorio e imágenes diagnósticas',
   },
   {
     key: 'reposo',
-    label: 'Reposo Médico',
+    label: 'Reposo',
     icon: Bed,
     description: 'Constancia de reposo médico para el paciente',
   },
@@ -709,7 +716,10 @@ export default function TemplatesPage() {
             </div>
 
             {showPreview && (
+              // key={activeTab} forces a full remount when the tab changes,
+              // preventing react-pdf from showing a stale/blank render.
               <TemplatePdfPreview
+                key={activeTab}
                 docType={activeTab}
                 docTypeLabel={tabInfo.label}
                 templateConfig={{

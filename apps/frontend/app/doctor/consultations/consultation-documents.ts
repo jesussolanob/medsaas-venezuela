@@ -184,7 +184,7 @@ export function computeAvailableDocTypes(
   return [
     {
       key: 'recipe',
-      label: 'Receta e indicaciones',
+      label: 'Récipe e indicaciones',
       description: recipeDescription,
       enabled: recipeEnabled,
     },
@@ -270,7 +270,7 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
     if (hasBlockContent(indicationsBlock)) blocks.push(indicationsBlock!);
 
     if (blocks.length > 0) {
-      sections.push({ label: 'Recetas e indicaciones', blocks });
+      sections.push({ label: 'Récipe e indicaciones', blocks });
     }
   }
 
