@@ -24,7 +24,7 @@
  * tal cual (código + local, sin '+'). Los helpers se actualizarán en Fase 5.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { normalizePhoneVE } from '@/lib/phone-utils';
 import CountryCodeSelect, { LATAM_COUNTRIES } from '@/components/ui/CountryCodeSelect';
 
@@ -112,13 +112,19 @@ export default function PhoneInput({
   const initial = parsePhoneValue(value);
   const [countryCode, setCountryCode] = useState<string>(initial.code);
   const [localDigits, setLocalDigits] = useState<string>(initial.local);
+  // Último valor canónico que ESTE componente emitió al padre. Sirve para NO
+  // re-sincronizar el input con el eco de nuestra propia emisión: cuando el número
+  // queda incompleto/ inválido emitimos '' al padre, y sin este guard el efecto de
+  // abajo reescribiría el campo a vacío borrando lo que el usuario está tecleando.
+  const lastEmitted = useRef<string | null>(null);
 
-  // Sincronizar cuando el padre actualiza el value externamente
+  // Sincronizar SOLO cuando el value del padre es un cambio EXTERNO real (no el eco
+  // de lo que acabamos de emitir). Nunca destruye lo que el usuario tiene escrito.
   useEffect(() => {
+    if (value === lastEmitted.current) return;
     const p = parsePhoneValue(value);
     setCountryCode(p.code);
     setLocalDigits(p.local);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   // ── Validación ──────────────────────────────────────────────────────────
@@ -143,21 +149,19 @@ export default function PhoneInput({
   // ── Emisión del valor canónico ───────────────────────────────────────────
 
   function emitCanonical(code: string, local: string) {
+    let out: string;
     if (!local) {
-      onChange('');
-      return;
-    }
-    if (code === '+58') {
-      // VE: solo emitir cuando está completo y bien formado (backward-compat)
-      if (local.length === 10 && local.startsWith('4')) {
-        onChange('58' + local);
-      } else {
-        onChange('');
-      }
+      out = '';
+    } else if (code === '+58') {
+      // VE: solo emitir canónico cuando está completo y bien formado (backward-compat).
+      out = local.length === 10 && local.startsWith('4') ? '58' + local : '';
     } else {
-      // Otros países: emitir en cuanto haya dígitos
-      onChange(code.replace('+', '') + local);
+      // Otros países: emitir en cuanto haya dígitos.
+      out = code.replace('+', '') + local;
     }
+    // Recordar lo emitido para que el efecto de sync no reescriba el input con este eco.
+    lastEmitted.current = out;
+    onChange(out);
   }
 
   // ── Handlers ────────────────────────────────────────────────────────────

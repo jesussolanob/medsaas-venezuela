@@ -81,9 +81,9 @@ export default function StepPatient({
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
           >
             <option value="">Sexo</option>
-            <option value="masculino">Masculino</option>
-            <option value="femenino">Femenino</option>
-            <option value="otro">Otro</option>
+            <option value="male">Masculino</option>
+            <option value="female">Femenino</option>
+            <option value="other">Otro</option>
           </select>
         </div>
         <button
