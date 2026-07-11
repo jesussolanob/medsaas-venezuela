@@ -339,7 +339,7 @@ export function MedicalDocumentPdf({
 }: MedicalDocumentPdfProps) {
   const primaryColor = templateConfig.primary_color || '#0891b2';
   const styles = makeStyles(primaryColor);
-  const headerTitle = templateConfig.header_text || doctor.fullName || 'Delta Medical';
+  const headerTitle = templateConfig.header_text || doctor.fullName || 'Delta Salud';
   const docLabel = getDocLabel(docType);
   const formattedDate = formatDateVE(docDate);
 
@@ -356,7 +356,7 @@ export function MedicalDocumentPdf({
       title={`${docLabel} — ${patient.fullName}`}
       author={doctor.fullName}
       subject={docLabel}
-      creator="Delta Medical CRM"
+      creator="Delta Salud"
     >
       <Page size="A4" style={styles.page}>
         {/* ── HEADER ── */}

@@ -75,7 +75,7 @@ export class PdfGeneratorService {
     // ---------------------------------------------------------------------------
     // Header
     // ---------------------------------------------------------------------------
-    currentPage.drawText('Delta Medical CRM', {
+    currentPage.drawText('Delta Salud', {
       x: margin,
       y: yPos,
       size: 18,

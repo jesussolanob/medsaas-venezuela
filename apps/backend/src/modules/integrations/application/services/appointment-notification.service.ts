@@ -120,7 +120,7 @@ export class AppointmentNotificationService {
         doctorId: input.doctorId,
         summary: `Cita médica — ${input.doctorName}`,
         // Do not include patient name or any PII in the description.
-        description: `Cita registrada en Delta Medical — ID: ${input.appointmentId}`,
+        description: `Cita registrada en Delta Salud — ID: ${input.appointmentId}`,
         startISO: input.scheduledAtISO,
         endISO,
         // Only add the patient as an attendee when their email is known.

@@ -77,7 +77,7 @@ export class SendInvoiceEmailUseCase {
       });
 
       const amountFormatted = `${invoice.currency} ${invoice.amount.toFixed(2)}`;
-      const description = invoice.description ?? 'Suscripción mensual Delta Medical';
+      const description = invoice.description ?? 'Suscripción mensual Delta Salud';
 
       await this.mailerService.sendTemplate(
         'invoice',

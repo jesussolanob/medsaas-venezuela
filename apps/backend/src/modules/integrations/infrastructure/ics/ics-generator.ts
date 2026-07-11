@@ -90,7 +90,7 @@ export function generateIcsEvent(params: IcsEventParams): string {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Delta Medical CRM//ES',
+    'PRODID:-//Delta Salud//ES',
     'CALSCALE:GREGORIAN',
     'METHOD:REQUEST',
     'BEGIN:VEVENT',
