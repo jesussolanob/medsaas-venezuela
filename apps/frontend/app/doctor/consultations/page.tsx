@@ -4478,10 +4478,45 @@ function ConsultationsPage() {
         <NewAppointmentFlow
           open={showNewConsultation}
           onClose={() => setShowNewConsultation(false)}
-          onSuccess={() => {
+          onSuccess={(newApptId?: string) => {
             setShowNewConsultation(false);
-            // Refrescar listado de consultas tras crear
-            window.location.reload();
+            // Refrescar SOLO la tabla (sin recargar toda la pagina) y abrir la
+            // consulta recien creada. El backend crea la consulta para la cita
+            // (confirmada o por-confirmar), asi que debe venir en la lista.
+            void (async () => {
+              try {
+                const freshList = await listConsultations({ limit: 200 });
+                const mapped = freshList.map((c) => ({
+                  id: c.id,
+                  consultation_code: c.consultation_code,
+                  consultation_date: c.consultation_date,
+                  chief_complaint: c.chief_complaint,
+                  notes: c.notes,
+                  diagnosis: c.diagnosis,
+                  treatment: c.treatment,
+                  status: mapAppointmentStatusToConsulta(c.appointment_status),
+                  appointment_status: c.appointment_status ?? null,
+                  payment_status: c.payment_status,
+                  appointment_id: c.appointment_id,
+                  patient_id: c.patient_id,
+                  patient_name: c.patient_name || 'Paciente',
+                  patient_phone: null,
+                  started_at: c.started_at,
+                  ended_at: c.ended_at,
+                  duration_minutes: c.duration_minutes,
+                  version: null,
+                }));
+                setConsultations(mapped);
+                if (newApptId) {
+                  const toOpen = mapped.find(
+                    (c) => c.id === newApptId || c.appointment_id === newApptId,
+                  );
+                  if (toOpen) openConsultation(toOpen);
+                }
+              } catch (err) {
+                reportError('doctor/consultations', 'reloadAfterCreate', err);
+              }
+            })();
           }}
           initialContext={{ origin: 'dashboard_btn' }}
         />
