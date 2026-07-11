@@ -2,6 +2,56 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-10/11 — Batch QA (.txt DELTA BASE) DESPLEGADO + VERIFICADO en prod ✅
+
+Sesión larga guiada por QA (14+ commits en `feature/migracion-backend`, todos desplegados, runs success).
+Equipo de agentes (backend-agent/frontend-agent) + lead verifica en disco (build/tsc/tests) + deploy con
+boot-test en Cloud Run. **Verificado en vivo con Playwright + Gmail** al final.
+
+- **#24 Autoguardado entre bloques de consulta** (commit `6ed43f4`) — **VERIFICADO EN VIVO**: escribir bloque A →
+  cambiar a B → volver a A conserva texto; ambos persisten en `consultations.blocks_snapshot` (JSONB de valores por
+  block_key) tras recargar. Causa raíz: stale closure en el timer de autosave. `flushBlocksSave` lee `selectedRef.current`;
+  flush en tab-change/unmount/volver.
+- **#27 Motivo del booking → bloque Motivo** (frontend-only, `03bedc7`): el backend ya copiaba
+  `appointment.chief_complaint`→`consultations.chief_complaint` al confirmar la cita, pero el editor de bloques leía solo
+  `blocks_data`. `buildInitialBlocksData()` siembra las columnas legacy (chief_complaint/diagnosis/treatment/notes) en
+  blocks_data cuando el snapshot no las trae (respeta vaciado intencional `''`).
+- **#28 Generar Documento → 5 tipos con auto-detección** (`ed3a45e`): receta+indicaciones / paraclínicos / historia
+  clínica / reposo / informe (sub-selector de bloques, default chief_complaint+history+diagnosis). Multi-select → **1 PDF
+  consolidado branded** con separadores. Lógica factorizada en `app/doctor/consultations/consultation-documents.ts`
+  (`computeAvailableDocTypes`, `buildConsolidatedContent`) — reusada por Compartir.
+- **#29 Compartir = MISMO PDF branded que la descarga, EN VIVO** (backend `633b4a1`+`20468ef`, frontend `483ef16`). Ver
+  ADR-020. Decisión usuario: mismo componente + datos frescos. El paciente descarga vía **ruta Next
+  `/api/documents/[token]/pdf`** que pide `render-data` al backend y **renderiza server-side `MedicalDocumentPdf`
+  (react-pdf `renderToBuffer`)** → idéntico al del doctor y refleja ediciones. Backend: endpoint
+  `GET documents/:token/render-data` (valida sessionToken HMAC extraído a `SessionTokenValidatorService`; devuelve consulta
+  EN VIVO + `consultationBlocks` key→label + logo/firma/matrícula + template informe con URLs firmadas + `docSelection` +
+  `ehrRecords[]` del paciente); persiste selección del doctor (`doc_selection` JSONB, **mig `20260710000002`**; incluye
+  `restContent` congelado del reposo). ShareDocumentsModal → 5 tipos. **VERIFICADO EN VIVO**: share → **correos llegaron
+  a Gmail** (remitente "Delta Salud", código en asunto) → viewer valida cédula+código → **descarga PDF branded 762KB**.
+- **#30 Detalles de pago editables en la consulta** (`4a57239`): método cambiable + referencia + comprobante (opcionales).
+  Columnas `payment_reference`+`payment_receipt_url` (**mig `20260710000003`**), endpoint `PATCH :id/payment-details`
+  (`UpdatePaymentDetailsUseCase`, editable aunque approved, semántica undefined=no-toca/null=limpia, anti-IDOR). Front:
+  sección editable en panel de pago + upload kind=receipt + action `updateConsultationPaymentDetails`. **VERIFICADO EN
+  VIVO**: método+referencia persisten tras recargar.
+- **#31 "Pagar después" en link público** (frontend-only, `537fc2c`): el paciente confirma sin comprobante (pago
+  pendiente); comprobante pasa a opcional; se muestran igual los datos de pago del especialista. ⚠️ NO verificado en vivo
+  (booking de lucas deshabilitado).
+- **#25 Ocultar horarios bloqueados en link público** (frontend-only, `d27be07`): los bloqueados (availability-blocks) se
+  ocultan (antes tachados); ocupados siguen tachados; estado vacío si no queda ninguno. **Parte 2 (motivo requerido) ya
+  estaba bien** (default `false`, OFF muestra motivo opcional). ⚠️ NO verificado en vivo (booking deshabilitado).
+- **2 FIXES post-QA** (commits `6b85124` branding + `50ddc45` historia; run 29133432204 success, **re-verificados en vivo**):
+  1. **Branding → "Delta Salud"**: `MedicalDocumentPdf` (header fallback + metadata `creator`), pdf-lib legacy, y strings
+     de correo/calendario (factura, `.ics` PRODID + descripción evento). Plantillas email en BD ya migradas en #23.
+     Verificado: el PDF descargado contiene "(Delta Salud)" y CERO "Delta Medical".
+  2. **Historia clínica 422**: se habilitaba por nº de consultas pero su contenido es EHR → sin EHR daba PDF vacío 422.
+     Ahora se habilita por presencia real de EHR (`patientEhrCount`, fetch `/api/ehr/patient/:id` en openConsultation, prop
+     nueva a ambos modales) y el render-data trae el historial del PACIENTE (`ehrRepo.findByPatient` → `ehrRecords[]`, antes
+     `findByConsultation`). Verificado: Historia clínica sale DESHABILITADA sin EHR. (Fix colateral: mocks de
+     `IConsultationRepository` en specs de document-sharing necesitaban `updatePaymentDetails` por #30.)
+- **Guion de QA** (`23f3696`): `memory-bank/07-qa-test-script.md` sección D-2026-07 con 51 casos + PEND-01..06.
+- **Deuda menor:** dup de DocTypeCard/BlockSubSelector entre GenerateDocumentModal y ShareDocumentsModal.
+
 ## 2026-07-08 — MVP 7.7: Seguimiento del Paciente (shared_files) DESPLEGADO + doctor VERIFICADO en prod ✅
 
 Módulo NUEVO completo (backend + doctor + portal paciente). Commits `238402d` (backend) + `406f6d4` (frontend).

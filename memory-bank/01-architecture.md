@@ -159,6 +159,18 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
 --cors-file`) y `MedicalDocumentPdf.proxyGcsUrl()` ahora devuelve la **URL directa de GCS** (verificado en prod: react-pdf
   baja logo+firma directo, 0 hits al proxy). El route `/api/storage/image-proxy` se **deja como fallback** (re-activable
   descomentando en `proxyGcsUrl`).
+- **ADR-020 (2026-07-10):** **El PDF que descarga el paciente al compartir = el MISMO `MedicalDocumentPdf` branded que baja
+  el doctor, renderizado server-side con datos EN VIVO.** Antes el paciente recibía un PDF distinto (backend `pdf-lib`, sin
+  logo/firma) vs la descarga del doctor (react-pdf client-side). Decisión del usuario: una sola fuente de verdad + refleja
+  ediciones posteriores. **Arquitectura:** el backend NO genera el PDF; expone `GET documents/:token/render-data` (valida el
+  sessionToken con `SessionTokenValidatorService` = HMAC extraído del download; devuelve consulta viva + `consultationBlocks`
+  key→label + logo/firma/matrícula + template informe con URLs firmadas + `docSelection` + `ehrRecords[]` del paciente + audit
+  log). La **ruta Next `/api/documents/[token]/pdf` (runtime nodejs)** pide esos datos, arma el contenido con
+  `app/doctor/consultations/consultation-documents.ts` (mismo helper que Generar Documento) y **renderiza `MedicalDocumentPdf`
+  con `@react-pdf/renderer` `renderToBuffer`**. El viewer `/documents/[token]` apunta a `/pdf` (la ruta backend `/download`
+  pdf-lib queda legacy). La selección del doctor se persiste en `shared_document_links.doc_selection` (JSONB, mig
+  `20260710000002`). **Modelo de 5 tipos de documento** (receta/paraclínicos/historia/reposo/informe) compartido entre
+  Generar y Compartir vía el helper; "Historia clínica" se habilita por presencia de EHR del paciente (no por nº de consultas).
 - **ADR-019 (2026-07-08):** **Seguimiento del Paciente = módulo `shared-files` (tareas/comentarios/archivos doctor↔paciente).**
   Tabla `shared_files` (mig `20260708000001`): doctor_id, patient_id, title, description, `file_url` (**guarda el PATH de
   GCS, no la signed URL**), file_type, file_size_bytes, category (instruction|file|recipe|lab_result|image|other|comment),

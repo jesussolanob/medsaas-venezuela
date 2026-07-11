@@ -19,7 +19,13 @@ suggestions, settings (+ settings/consultation-blocks), patient-requests.
 (cita-360 ELIMINADO el 2026-06-23; **`consultations/[id]` ELIMINADO el 2026-07-07** — el editor de consulta vive inline
 en la lista con deep-link `?open=<id>`; "Generar informe" descarga el PDF directo y `ShareDocumentsModal` (compartir
 enlace+código, ahora con botón WhatsApp) se montó en la lista. `patient-requests` (solicitudes de documentos al paciente)
-ahora es accesible desde el sidebar Consultorio y desde un botón "Documentos (N)" en la ficha. Ver 05-progress-log + ADR-016/017.)
+ahora es accesible desde el sidebar Consultorio y desde un botón "Documentos (N)" en la ficha. Ver 05-progress-log + ADR-016/017.
+**(2026-07-10, batch QA)** consultas: **autoguardado entre bloques** (fix stale closure); **Generar Documento** rediseñado a
+**5 tipos con auto-detección** (`GenerateDocumentModal` + helper `consultation-documents.ts` con `computeAvailableDocTypes`/
+`buildConsolidatedContent`, reusado por `ShareDocumentsModal`); **Compartir = mismo PDF branded server-side** (ruta Next
+`app/api/documents/[token]/pdf/route.ts` renderiza `MedicalDocumentPdf` con `renderToBuffer`, ADR-020); **panel de pago
+editable** (método/referencia/comprobante → `PATCH :id/payment-details`). `MedicalDocumentPdf` rebrandeado a "Delta Salud".
+Booking público (`/book/[doctorId]`): "Pagar después" + ocultar horarios bloqueados. Ver 05-progress-log + ADR-020.)
 
 ### `/patient`
 
