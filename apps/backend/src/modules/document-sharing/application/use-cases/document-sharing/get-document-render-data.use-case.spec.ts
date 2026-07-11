@@ -95,6 +95,7 @@ const mockConsultationRepo: jest.Mocked<IConsultationRepository> = {
   save: jest.fn(),
   update: jest.fn(),
   updatePayment: jest.fn(),
+  updatePaymentDetails: jest.fn(),
   list: jest.fn(),
   findByPatient: jest.fn(),
   findByAppointmentId: jest.fn(),
@@ -280,7 +281,7 @@ describe('GetDocumentRenderDataUseCase', () => {
     mockLinkRepo.findByToken.mockResolvedValue(makeActiveLink());
     mockConsultationRepo.findById.mockResolvedValue(makeConsultation());
     mockPrescriptionRepo.findByConsultation.mockResolvedValue([makePrescription()]);
-    mockEhrRepo.findByConsultation.mockResolvedValue(makeEhrRecord());
+    mockEhrRepo.findByPatient.mockResolvedValue([makeEhrRecord()]);
     mockPatientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       doctorId: 'doctor-1',
@@ -327,7 +328,7 @@ describe('GetDocumentRenderDataUseCase', () => {
     expect(result.doctor.fullName).toBe('Dr. Juan García');
     expect(result.prescriptions).toHaveLength(1);
     expect(result.prescriptions[0]?.medication).toBe('Ibuprofeno');
-    expect(result.ehrRecord?.diagnosis).toBe('tension headache');
+    expect(result.ehrRecords[0]?.diagnosis).toBe('tension headache');
   });
 
   it('returns docSelection from the link', async () => {
@@ -418,12 +419,12 @@ describe('GetDocumentRenderDataUseCase', () => {
     expect(result.doctor.logoUrl).toBeNull();
   });
 
-  it('returns null ehrRecord when no EHR record exists', async () => {
-    mockEhrRepo.findByConsultation.mockResolvedValue(null);
+  it('returns empty ehrRecords when the patient has no EHR history', async () => {
+    mockEhrRepo.findByPatient.mockResolvedValue([]);
     const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
     const result = await useCase.execute({ token: 'the-link-token', sessionToken });
 
-    expect(result.ehrRecord).toBeNull();
+    expect(result.ehrRecords).toEqual([]);
   });
 
   it('returns empty prescriptions array when none exist', async () => {
@@ -582,7 +583,7 @@ describe('GetDocumentRenderDataUseCase', () => {
     // All repo calls must use the link's doctorId ('doctor-1'), never anything else
     expect(mockConsultationRepo.findById).toHaveBeenCalledWith('consult-1', 'doctor-1');
     expect(mockPrescriptionRepo.findByConsultation).toHaveBeenCalledWith('consult-1', 'doctor-1');
-    expect(mockEhrRepo.findByConsultation).toHaveBeenCalledWith('consult-1', 'doctor-1');
+    expect(mockEhrRepo.findByPatient).toHaveBeenCalledWith('patient-1', 'doctor-1');
     expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1', 'doctor-1');
     expect(mockDoctorProfileRepo.findByDoctorId).toHaveBeenCalledWith('doctor-1');
     expect(mockDoctorTemplateRepo.findByDoctorAndType).toHaveBeenCalledWith('doctor-1', 'informe');

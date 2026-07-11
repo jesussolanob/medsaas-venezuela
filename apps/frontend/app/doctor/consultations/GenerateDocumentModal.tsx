@@ -45,8 +45,10 @@ interface GenerateDocumentModalProps {
   doctor: DoctorInfoPdf;
   informeContent: ContentBlock[];
   savedPrescriptions: SavedPrescription[];
-  /** Cantidad de consultas del paciente (habilita Historia clínica si > 1). */
+  /** Cantidad de consultas del paciente (contexto). */
   patientConsultationCount: number;
+  /** Cantidad de registros EHR del paciente (habilita Historia clínica si > 0). */
+  patientEhrCount: number;
   /** Texto del reposo médico de la consulta actual; null si no hay reposo. */
   restContent: string | null;
 }
@@ -174,6 +176,7 @@ export default function GenerateDocumentModal({
   informeContent,
   savedPrescriptions,
   patientConsultationCount,
+  patientEhrCount,
   restContent,
 }: GenerateDocumentModalProps) {
   const [open, setOpen] = useState(false);
@@ -194,6 +197,7 @@ export default function GenerateDocumentModal({
     informeContent,
     savedPrescriptions,
     patientConsultationCount,
+    patientEhrCount,
     restContent,
   });
 

@@ -53,8 +53,10 @@ interface Props {
   informeContent: ContentBlock[];
   /** Recetas guardadas de la consulta. */
   savedPrescriptions: SavedPrescription[];
-  /** Total de consultas del paciente (habilita Historia clínica si > 1). */
+  /** Total de consultas del paciente (contexto). */
   patientConsultationCount: number;
+  /** Cantidad de registros EHR del paciente (habilita Historia clínica si > 0). */
+  patientEhrCount: number;
   /** Texto del reposo médico de la consulta; null si no hay reposo. */
   restContent: string | null;
 }
@@ -177,6 +179,7 @@ export default function ShareDocumentsModal({
   informeContent,
   savedPrescriptions,
   patientConsultationCount,
+  patientEhrCount,
   restContent,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -192,6 +195,7 @@ export default function ShareDocumentsModal({
     informeContent,
     savedPrescriptions,
     patientConsultationCount,
+    patientEhrCount,
     restContent,
   });
 

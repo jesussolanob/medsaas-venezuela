@@ -131,7 +131,8 @@ export interface DocumentRenderData {
   patient: RenderPatientData;
   doctor: RenderDoctorProfile;
   prescriptions: RenderPrescriptionItem[];
-  ehrRecord: RenderEhrRecord | null;
+  /** Full EHR history for the patient (empty array when the patient has no EHR records). */
+  ehrRecords: RenderEhrRecord[];
   /**
    * Resolved consultation blocks for the doctor — provides the label and metadata
    * (printable, sortOrder) needed by MedicalDocumentPdf to render each block section
@@ -216,7 +217,7 @@ export class GetDocumentRenderDataUseCase {
     const [
       consultation,
       prescriptions,
-      ehrRecord,
+      ehrRecords,
       patient,
       doctorProfile,
       informeTemplate,
@@ -224,7 +225,9 @@ export class GetDocumentRenderDataUseCase {
     ] = await Promise.all([
       this.consultationRepo.findById(link.consultationId, link.doctorId),
       this.prescriptionRepo.findByConsultation(link.consultationId, link.doctorId),
-      this.ehrRepo.findByConsultation(link.consultationId, link.doctorId),
+      // Historia clínica = historial EHR del PACIENTE (no de esta sola consulta),
+      // consistente con la descarga del doctor (/api/ehr/patient/:id).
+      this.ehrRepo.findByPatient(link.patientId, link.doctorId),
       this.patientRepo.findById(link.patientId, link.doctorId),
       this.doctorProfileRepo.findByDoctorId(link.doctorId),
       this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'informe'),
@@ -296,13 +299,11 @@ export class GetDocumentRenderDataUseCase {
         duration: p.duration,
         notes: p.notes,
       })),
-      ehrRecord: ehrRecord
-        ? {
-            id: ehrRecord.id,
-            diagnosis: ehrRecord.diagnosis,
-            treatmentPlan: ehrRecord.treatmentPlan,
-          }
-        : null,
+      ehrRecords: ehrRecords.map((r) => ({
+        id: r.id,
+        diagnosis: r.diagnosis,
+        treatmentPlan: r.treatmentPlan,
+      })),
       consultationBlocks: blocksOutput.resolved.map((b) => ({
         key: b.key,
         label: b.label,

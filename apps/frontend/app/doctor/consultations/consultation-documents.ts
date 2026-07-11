@@ -45,6 +45,12 @@ export interface ComputeAvailableDocTypesArgs {
   informeContent: ContentBlock[];
   savedPrescriptions: SavedPrescription[];
   patientConsultationCount: number;
+  /**
+   * Cantidad de registros EHR del PACIENTE. La "Historia clínica" se habilita por
+   * presencia real de EHR (su contenido), no por nº de consultas — evita generar un
+   * documento vacío (422) cuando el paciente tiene consultas pero ningún registro EHR.
+   */
+  patientEhrCount: number;
   restContent: string | null;
 }
 
@@ -154,7 +160,7 @@ function hasBlockContent(block: ContentBlock | undefined): boolean {
 export function computeAvailableDocTypes(
   args: ComputeAvailableDocTypesArgs,
 ): DocumentTypeDescriptor[] {
-  const { informeContent, savedPrescriptions, patientConsultationCount, restContent } = args;
+  const { informeContent, savedPrescriptions, patientEhrCount, restContent } = args;
 
   const blockByKey = new Map<string, ContentBlock>(informeContent.map((b) => [b.key, b]));
 
@@ -194,10 +200,10 @@ export function computeAvailableDocTypes(
       key: 'history',
       label: 'Historia clínica',
       description:
-        patientConsultationCount > 1
-          ? `Historial clínico con ${patientConsultationCount} consultas`
-          : 'Primera consulta del paciente — sin historial previo',
-      enabled: patientConsultationCount > 1,
+        patientEhrCount > 0
+          ? `${patientEhrCount} registro${patientEhrCount !== 1 ? 's' : ''} de historia clínica`
+          : 'Sin registros de historia clínica (EHR) para este paciente',
+      enabled: patientEhrCount > 0,
     },
     {
       key: 'rest',

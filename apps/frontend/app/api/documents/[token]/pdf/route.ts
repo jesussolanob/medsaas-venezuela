@@ -77,11 +77,11 @@ interface DocumentRenderData {
     duration: string | null;
     notes: string | null;
   }>;
-  ehrRecord: {
+  ehrRecords: Array<{
     id: string;
     diagnosis: string | null;
     treatmentPlan: string | null;
-  } | null;
+  }>;
   templateConfig: {
     headerText: string | null;
     footerText: string | null;
@@ -141,18 +141,15 @@ function mapPrescriptions(prescriptions: DocumentRenderData['prescriptions']): S
 }
 
 /**
- * Mapea el ehrRecord del backend a EhrRecord[].
+ * Mapea los ehrRecords (historial del paciente) del backend a EhrRecord[].
  */
-function mapEhrRecords(ehrRecord: DocumentRenderData['ehrRecord']): EhrRecord[] {
-  if (!ehrRecord) return [];
-  return [
-    {
-      id: ehrRecord.id,
-      diagnosis: ehrRecord.diagnosis,
-      treatment_plan: ehrRecord.treatmentPlan,
-      created_at: '',
-    },
-  ];
+function mapEhrRecords(ehrRecords: DocumentRenderData['ehrRecords']): EhrRecord[] {
+  return ehrRecords.map((r) => ({
+    id: r.id,
+    diagnosis: r.diagnosis,
+    treatment_plan: r.treatmentPlan,
+    created_at: '',
+  }));
 }
 
 /**
@@ -255,7 +252,7 @@ export async function GET(
     renderData.consultation.blocksSnapshot,
   );
   const savedPrescriptions = mapPrescriptions(renderData.prescriptions);
-  const ehrRecords = mapEhrRecords(renderData.ehrRecord);
+  const ehrRecords = mapEhrRecords(renderData.ehrRecords);
 
   // 3. Resolve doc selection
   let selectedTypes: DocumentTypeKey[];

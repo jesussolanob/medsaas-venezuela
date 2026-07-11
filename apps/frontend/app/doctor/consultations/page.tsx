@@ -369,6 +369,9 @@ function ConsultationsPage() {
   const [pagoReceiptUploading, setPagoReceiptUploading] = useState(false);
   const [pagoDetailsSaving, setPagoDetailsSaving] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
+  // Cantidad de registros EHR del paciente de la consulta abierta — habilita el tipo
+  // "Historia clínica" en generar/compartir (evita PDF vacío / 422 sin EHR).
+  const [patientEhrCount, setPatientEhrCount] = useState(0);
   const [pricingPlans, setPricingPlans] = useState<
     { id: string; name: string; price_usd: number; duration_minutes: number }[]
   >([]);
@@ -1071,6 +1074,24 @@ function ConsultationsPage() {
       setRecipe({ medications: [], notes: '' });
       setPrescripciones([]);
     }
+
+    // Cargar cantidad de registros EHR del paciente → habilita "Historia clínica".
+    // No bloqueante: si falla, queda en 0 (el tipo se muestra deshabilitado).
+    setPatientEhrCount(0);
+    fetch(`/api/ehr/patient/${c.patient_id}`, { cache: 'no-store' })
+      .then(async (r) => {
+        if (!r.ok) return;
+        const j: unknown = await r.json();
+        const records = Array.isArray(j)
+          ? j
+          : Array.isArray((j as { data?: unknown }).data)
+            ? (j as { data: unknown[] }).data
+            : [];
+        setPatientEhrCount(records.length);
+      })
+      .catch(() => {
+        /* EHR opcional — el tipo Historia clínica queda deshabilitado */
+      });
 
     setView('consultation');
     setSaved(false);
@@ -1981,6 +2002,7 @@ function ConsultationsPage() {
                           informeContent={sharedInformeContent}
                           savedPrescriptions={savedPrescriptions}
                           patientConsultationCount={sharedPatientConsultationCount}
+                          patientEhrCount={patientEhrCount}
                           restContent={sharedReposoContentStr}
                         />
                       )}
@@ -1992,6 +2014,7 @@ function ConsultationsPage() {
                         informeContent={sharedInformeContent}
                         savedPrescriptions={savedPrescriptions}
                         patientConsultationCount={sharedPatientConsultationCount}
+                        patientEhrCount={patientEhrCount}
                         restContent={sharedReposoContentStr}
                       />
                     </div>
