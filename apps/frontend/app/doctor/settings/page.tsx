@@ -164,6 +164,15 @@ const ALL_MODULES: Module[] = [
   },
 ];
 
+/**
+ * Formatea un número de cuenta bancaria venezolano: 20 dígitos agrupados como
+ * xxxx-xxxx-xxxx-xxxx-xxxx. Descarta no-dígitos y recorta a 20.
+ */
+function formatBankAccount(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 20);
+  return digits.replace(/(.{4})(?=.)/g, '$1-');
+}
+
 const PAYMENT_METHODS: PaymentMethodData[] = [
   {
     id: 'pago_movil',
@@ -556,6 +565,17 @@ function SettingsPageInner() {
   }
 
   async function savePaymentMethods() {
+    // Validación: si Transferencia está activa y tiene N° de cuenta, debe ser 20 dígitos.
+    if (paymentMethods.includes('transferencia')) {
+      const acc = (paymentDetails['transferencia']?.account ?? '').replace(/\D/g, '');
+      if (acc.length > 0 && acc.length !== 20) {
+        showToast({
+          type: 'error',
+          message: `El N° de cuenta de transferencia debe tener 20 dígitos (van ${acc.length}).`,
+        });
+        return;
+      }
+    }
     // Replaces: supabase.from('profiles').update({ payment_methods, payment_details })
     const result = await savePaymentSettings({
       payment_methods: paymentMethods,
@@ -1408,22 +1428,50 @@ function SettingsPageInner() {
                       </button>
                       {active && method.fields.length > 0 && (
                         <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {method.fields.map((f) => (
-                            <div key={f.key}>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">
-                                {f.label}
-                              </label>
-                              <input
-                                type={f.type ?? 'text'}
-                                value={paymentDetails[method.id]?.[f.key] ?? ''}
-                                onChange={(e) =>
-                                  updatePaymentField(method.id, f.key, e.target.value)
-                                }
-                                placeholder={f.placeholder}
-                                className={fi}
-                              />
-                            </div>
-                          ))}
+                          {method.fields.map((f) => {
+                            const isBankAccount =
+                              method.id === 'transferencia' && f.key === 'account';
+                            const rawVal = paymentDetails[method.id]?.[f.key] ?? '';
+                            const accountDigits = isBankAccount ? rawVal.replace(/\D/g, '') : '';
+                            const accountError =
+                              isBankAccount &&
+                              accountDigits.length > 0 &&
+                              accountDigits.length !== 20
+                                ? `La cuenta debe tener 20 dígitos (van ${accountDigits.length})`
+                                : null;
+                            return (
+                              <div key={f.key}>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">
+                                  {f.label}
+                                </label>
+                                <input
+                                  type={f.type ?? 'text'}
+                                  inputMode={isBankAccount ? 'numeric' : undefined}
+                                  value={rawVal}
+                                  onChange={(e) =>
+                                    updatePaymentField(
+                                      method.id,
+                                      f.key,
+                                      isBankAccount
+                                        ? formatBankAccount(e.target.value)
+                                        : e.target.value,
+                                    )
+                                  }
+                                  placeholder={
+                                    isBankAccount ? '0000-0000-0000-0000-0000' : f.placeholder
+                                  }
+                                  className={
+                                    accountError
+                                      ? fi.replace('border-slate-200', 'border-red-300')
+                                      : fi
+                                  }
+                                />
+                                {accountError && (
+                                  <p className="text-[11px] text-red-600 mt-1">{accountError}</p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

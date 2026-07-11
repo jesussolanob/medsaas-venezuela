@@ -4,12 +4,6 @@ import { useState, useEffect, useTransition, useRef, useCallback, Suspense } fro
 import dynamic from 'next/dynamic';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
-// RecetaPdfButton importa estáticamente PdfDownloadButton + MedicalDocumentPdf.
-// El dynamic ssr:false aquí excluye TODO el código de @react-pdf/renderer del bundle SSR.
-const RecetaPdfButton = dynamic(
-  () => import('./RecetaPdfButton').then((m) => ({ default: m.RecetaPdfButton })),
-  { ssr: false, loading: () => null },
-);
 // GenerateDocumentModal: reemplaza ConsultationInformePdfButton.
 // Se importa con ssr:false para excluir @react-pdf del bundle de Node
 // (el PDF se genera on-demand dentro del modal, no al montarse).
@@ -27,6 +21,7 @@ import {
   UserCheck,
   Banknote,
   ChevronRight,
+  ChevronLeft,
   ArrowLeft,
   Save,
   CheckCircle,
@@ -248,6 +243,20 @@ type ViewMode = 'list' | 'consultation';
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today';
 type ConsultationTab = string; // dinámico según blocks_snapshot del doctor
 
+/**
+ * Keys de bloques del sistema que NO pueden ser renombrados por el doctor.
+ * El botón de lápiz en DynamicBlocks se oculta para estos keys.
+ */
+const LOCKED_BLOCK_KEYS = new Set([
+  'chief_complaint',
+  'history',
+  'diagnosis',
+  'prescription',
+  'indications',
+  'paraclinical',
+  'rest',
+]);
+
 type Prescripcion = {
   exam_name: string;
   notes: string;
@@ -301,6 +310,8 @@ function ConsultationsPage() {
   const [saved, setSaved] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref para el strip de tabs — usado por las flechas de scroll
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
   // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint');
   // RONDA 39: bloques actualmente ACTIVOS del doctor (config viva en /doctor/settings/consultation-blocks).
@@ -1761,8 +1772,17 @@ function ConsultationsPage() {
           blocks_data: { reposo: reposoPayload },
         }),
       }).catch((err) => console.warn('[reposo autosave]', err));
+      // Merge con blocks_data existente para no sobrescribir otros bloques
       setSelected((prev) =>
-        prev ? { ...prev, blocks_data: { reposo: reposoPayload } as any } : prev,
+        prev
+          ? {
+              ...prev,
+              blocks_data: {
+                ...((prev.blocks_data as Record<string, unknown>) || {}),
+                reposo: reposoPayload,
+              } as any,
+            }
+          : prev,
       );
     }, 1500);
     return () => {
@@ -2165,221 +2185,249 @@ function ConsultationsPage() {
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               {/* Safari-style Tab Navigation — DINÁMICAS según blocks_snapshot del doctor.
                   Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas.
-                  L1 (2026-04-29): se agrega botón "+" al final para sumar bloques on-the-fly. */}
-              <div className="flex items-end gap-1 px-6 pt-4 bg-slate-50 border-b border-slate-200 overflow-x-auto">
-                {(() => {
-                  // RONDA 38+39: tabs 100% dinamicas.
-                  //   - Si la consulta tiene snapshot congelado → usar snapshot (inmutable)
-                  //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
-                  // Fallback ultimo: motivo + diagnostico para que el doctor nunca vea
-                  // un informe vacio.
-                  let dynamicTabs: { key: string; label: string }[] = [];
-                  const effective = getEffectiveBlocks(selected as Consultation);
-                  if (effective && effective.length > 0) {
-                    const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order);
-                    // Renombrar "prescription" → "Récipe" en la UI (el backend puede llamarlo "Receta" o "Prescripción")
-                    dynamicTabs = sorted.map((b) => ({
-                      key: `block:${b.key}`,
-                      label: b.key === 'prescription' ? 'Récipe' : b.label,
-                    }));
-                  } else {
-                    dynamicTabs = [
-                      { key: 'block:chief_complaint', label: 'Motivo de consulta' },
-                      { key: 'block:diagnosis', label: 'Diagnóstico' },
-                    ];
-                  }
-                  return dynamicTabs.map((t) => (
-                    <button
-                      key={t.key}
-                      onClick={() => handleTabChange(t.key)}
-                      className={`safari-tab text-sm font-semibold transition-all whitespace-nowrap ${
-                        consultationTab === t.key
-                          ? 'active border-t border-l border-r border-slate-200 text-slate-900'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ));
-                })()}
-                {/* FIX 2026-04-29: el contenedor padre tiene overflow-x-auto que
-                    clipea cualquier dropdown absolute. Solución: convertir a
-                    MODAL global (fixed inset-0) para escapar el clip. */}
+                  L1 (2026-04-29): se agrega botón "+" al final para sumar bloques on-the-fly.
+                  Flechas ‹ › para desplazar el strip cuando no caben todos los tabs. */}
+              <div className="flex items-stretch bg-slate-50 border-b border-slate-200">
+                {/* Flecha izquierda */}
                 <button
                   type="button"
-                  onClick={() => setShowAddBlockMenu(true)}
-                  title="Agregar bloque"
-                  className="safari-tab text-sm font-bold whitespace-nowrap bg-slate-100 text-teal-600 hover:bg-slate-200 transition-all"
+                  aria-label="Desplazar tabs a la izquierda"
+                  onClick={() =>
+                    tabsScrollRef.current?.scrollBy({ left: -120, behavior: 'smooth' })
+                  }
+                  className="shrink-0 flex items-center justify-center px-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                 >
-                  +
+                  <ChevronLeft className="w-4 h-4" />
                 </button>
-                {showAddBlockMenu &&
-                  selected &&
-                  (() => {
-                    const effective = getEffectiveBlocks(selected);
-                    const activeKeys = new Set(effective.map((b) => b.key));
-                    return (
-                      <div
-                        className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4"
-                        onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+
+                {/* Strip de tabs con scroll horizontal suave */}
+                <div
+                  ref={tabsScrollRef}
+                  className="flex items-end gap-1 px-2 pt-4 overflow-x-auto flex-1 scroll-smooth"
+                  style={{ scrollbarWidth: 'none' }}
+                >
+                  {(() => {
+                    // RONDA 38+39: tabs 100% dinamicas.
+                    //   - Si la consulta tiene snapshot congelado → usar snapshot (inmutable)
+                    //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
+                    // Fallback ultimo: motivo + diagnostico para que el doctor nunca vea
+                    // un informe vacio.
+                    let dynamicTabs: { key: string; label: string }[] = [];
+                    const effective = getEffectiveBlocks(selected as Consultation);
+                    if (effective && effective.length > 0) {
+                      const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order);
+                      // Label desde el bloque; nunca mostrar el key técnico en la UI
+                      dynamicTabs = sorted.map((b) => ({
+                        key: `block:${b.key}`,
+                        label: b.key === 'prescription' ? 'Récipe' : b.label || b.key,
+                      }));
+                    } else {
+                      dynamicTabs = [
+                        { key: 'block:chief_complaint', label: 'Motivo de consulta' },
+                        { key: 'block:diagnosis', label: 'Diagnóstico' },
+                      ];
+                    }
+                    return dynamicTabs.map((t) => (
+                      <button
+                        key={t.key}
+                        onClick={() => handleTabChange(t.key)}
+                        className={`safari-tab text-sm font-semibold transition-all whitespace-nowrap ${
+                          consultationTab === t.key
+                            ? 'active border-t border-l border-r border-slate-200 text-slate-900'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
                       >
-                        <div
-                          className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-base font-bold text-slate-800">
-                              Agregar bloque a esta consulta
-                            </p>
-                            <button
-                              onClick={() => !addingBlock && setShowAddBlockMenu(false)}
-                              className="text-slate-400 hover:text-slate-600"
-                            >
-                              <X className="w-5 h-5" />
-                            </button>
-                          </div>
-                          <p className="text-xs text-slate-500 mb-3">
-                            Selecciona un bloque del catálogo. Los que ya están activos se ven en
-                            gris.
+                        {t.label}
+                      </button>
+                    ));
+                  })()}
+                  {/* FIX 2026-04-29: el contenedor padre tiene overflow-x-auto que
+                      clipea cualquier dropdown absolute. Solución: convertir a
+                      MODAL global (fixed inset-0) para escapar el clip. */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAddBlockMenu(true)}
+                    title="Agregar bloque"
+                    className="safari-tab text-sm font-bold whitespace-nowrap bg-slate-100 text-teal-600 hover:bg-slate-200 transition-all"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* Flecha derecha */}
+                <button
+                  type="button"
+                  aria-label="Desplazar tabs a la derecha"
+                  onClick={() => tabsScrollRef.current?.scrollBy({ left: 120, behavior: 'smooth' })}
+                  className="shrink-0 flex items-center justify-center px-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              {showAddBlockMenu &&
+                selected &&
+                (() => {
+                  const effective = getEffectiveBlocks(selected);
+                  const activeKeys = new Set(effective.map((b) => b.key));
+                  return (
+                    <div
+                      className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4"
+                      onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+                    >
+                      <div
+                        className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-base font-bold text-slate-800">
+                            Agregar bloque a esta consulta
                           </p>
-                          {blockCatalog.length === 0 ? (
-                            <p className="text-xs text-slate-400 italic px-2 py-2">
-                              Catálogo vacío.
-                            </p>
-                          ) : (
-                            blockCatalog.map((c) => {
-                              const alreadyActive = activeKeys.has(c.key);
-                              return (
-                                <button
-                                  key={c.key}
-                                  disabled={addingBlock || alreadyActive}
-                                  onClick={async () => {
-                                    if (alreadyActive) return;
-                                    if (!selected) return;
-                                    setAddingBlock(true);
-                                    try {
-                                      // Persist via PUT /api/doctor/consultation-blocks (BFF route)
-                                      // Supabase removed; user context from dev-auth header (server-side).
-                                      const blockUserId = await getDevDoctorId();
-                                      if (!blockUserId) {
-                                        setAddingBlock(false);
-                                        return;
-                                      }
-                                      // Reconstruir config actual desde doctorActiveBlocks + el nuevo
-                                      const newSortOrder =
-                                        (doctorActiveBlocks[doctorActiveBlocks.length - 1]
-                                          ?.sort_order ?? 0) + 1;
-                                      const nextBlocks = [
-                                        ...doctorActiveBlocks.map((b, i) => ({
-                                          block_key: b.key,
-                                          enabled: true,
-                                          sort_order: b.sort_order ?? i,
-                                          custom_label: null,
-                                          printable: b.printable,
-                                          send_to_patient: b.send_to_patient,
-                                        })),
-                                        {
-                                          block_key: c.key,
-                                          enabled: true,
-                                          sort_order: newSortOrder,
-                                          custom_label: null,
-                                          printable: c.printable,
-                                          send_to_patient: c.send_to_patient,
-                                        },
-                                      ];
-                                      const res = await fetch('/api/doctor/consultation-blocks', {
-                                        method: 'PUT',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ blocks: nextBlocks }),
-                                      });
-                                      if (!res.ok) {
-                                        const e = await res.json().catch(() => ({}));
-                                        showToast({
-                                          type: 'error',
-                                          message: e.error || 'No se pudo agregar el bloque',
-                                        });
-                                        return;
-                                      }
-                                      // Refrescar config viva
-                                      const refreshed = await fetch(
-                                        '/api/doctor/consultation-blocks',
-                                        { cache: 'no-store' },
-                                      );
-                                      if (refreshed.ok) {
-                                        const j = await refreshed.json();
-                                        const resolved = (j.resolved || []) as SnapshotBlock[];
-                                        setDoctorActiveBlocks(resolved);
-                                        // Extend frozen snapshot if present (blocks_snapshot update
-                                        // via PATCH BFF route — non-blocking, best-effort).
-                                        const currentSnap = (selected as any).blocks_snapshot;
-                                        if (Array.isArray(currentSnap) && currentSnap.length > 0) {
-                                          const newSnap = [
-                                            ...currentSnap,
-                                            {
-                                              key: c.key,
-                                              label: c.label,
-                                              content_type: c.content_type,
-                                              sort_order:
-                                                (currentSnap[currentSnap.length - 1]?.sort_order ??
-                                                  0) + 1,
-                                              printable: c.printable,
-                                              send_to_patient: c.send_to_patient,
-                                            },
-                                          ];
-                                          fetch('/api/doctor/consultations', {
-                                            method: 'PATCH',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({
-                                              id: selected.id,
-                                              blocks_snapshot: newSnap,
-                                            }),
-                                          }).catch(() => {});
-                                          setSelected({
-                                            ...selected,
-                                            blocks_snapshot: newSnap as any,
-                                          });
-                                        }
-                                      }
-                                      setShowAddBlockMenu(false);
-                                      handleTabChange(`block:${c.key}`);
-                                    } catch (err) {
-                                      reportError('doctor/consultations', 'addBlock', err);
+                          <button
+                            onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+                            className="text-slate-400 hover:text-slate-600"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-3">
+                          Selecciona un bloque del catálogo. Los que ya están activos se ven en
+                          gris.
+                        </p>
+                        {blockCatalog.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic px-2 py-2">Catálogo vacío.</p>
+                        ) : (
+                          blockCatalog.map((c) => {
+                            const alreadyActive = activeKeys.has(c.key);
+                            return (
+                              <button
+                                key={c.key}
+                                disabled={addingBlock || alreadyActive}
+                                onClick={async () => {
+                                  if (alreadyActive) return;
+                                  if (!selected) return;
+                                  setAddingBlock(true);
+                                  try {
+                                    // Persist via PUT /api/doctor/consultation-blocks (BFF route)
+                                    // Supabase removed; user context from dev-auth header (server-side).
+                                    const blockUserId = await getDevDoctorId();
+                                    if (!blockUserId) {
+                                      setAddingBlock(false);
+                                      return;
+                                    }
+                                    // Reconstruir config actual desde doctorActiveBlocks + el nuevo
+                                    const newSortOrder =
+                                      (doctorActiveBlocks[doctorActiveBlocks.length - 1]
+                                        ?.sort_order ?? 0) + 1;
+                                    const nextBlocks = [
+                                      ...doctorActiveBlocks.map((b, i) => ({
+                                        block_key: b.key,
+                                        enabled: true,
+                                        sort_order: b.sort_order ?? i,
+                                        custom_label: null,
+                                        printable: b.printable,
+                                        send_to_patient: b.send_to_patient,
+                                      })),
+                                      {
+                                        block_key: c.key,
+                                        enabled: true,
+                                        sort_order: newSortOrder,
+                                        custom_label: null,
+                                        printable: c.printable,
+                                        send_to_patient: c.send_to_patient,
+                                      },
+                                    ];
+                                    const res = await fetch('/api/doctor/consultation-blocks', {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ blocks: nextBlocks }),
+                                    });
+                                    if (!res.ok) {
+                                      const e = await res.json().catch(() => ({}));
                                       showToast({
                                         type: 'error',
-                                        message: 'Error agregando el bloque',
+                                        message: e.error || 'No se pudo agregar el bloque',
                                       });
-                                    } finally {
-                                      setAddingBlock(false);
+                                      return;
                                     }
-                                  }}
-                                  className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 ${
-                                    alreadyActive
-                                      ? 'opacity-60 cursor-not-allowed bg-slate-50'
-                                      : 'hover:bg-slate-50 disabled:opacity-50'
-                                  }`}
+                                    // Refrescar config viva
+                                    const refreshed = await fetch(
+                                      '/api/doctor/consultation-blocks',
+                                      { cache: 'no-store' },
+                                    );
+                                    if (refreshed.ok) {
+                                      const j = await refreshed.json();
+                                      const resolved = (j.resolved || []) as SnapshotBlock[];
+                                      setDoctorActiveBlocks(resolved);
+                                      // Extend frozen snapshot if present (blocks_snapshot update
+                                      // via PATCH BFF route — non-blocking, best-effort).
+                                      const currentSnap = (selected as any).blocks_snapshot;
+                                      if (Array.isArray(currentSnap) && currentSnap.length > 0) {
+                                        const newSnap = [
+                                          ...currentSnap,
+                                          {
+                                            key: c.key,
+                                            label: c.label,
+                                            content_type: c.content_type,
+                                            sort_order:
+                                              (currentSnap[currentSnap.length - 1]?.sort_order ??
+                                                0) + 1,
+                                            printable: c.printable,
+                                            send_to_patient: c.send_to_patient,
+                                          },
+                                        ];
+                                        fetch('/api/doctor/consultations', {
+                                          method: 'PATCH',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            id: selected.id,
+                                            blocks_snapshot: newSnap,
+                                          }),
+                                        }).catch(() => {});
+                                        setSelected({
+                                          ...selected,
+                                          blocks_snapshot: newSnap as any,
+                                        });
+                                      }
+                                    }
+                                    setShowAddBlockMenu(false);
+                                    handleTabChange(`block:${c.key}`);
+                                  } catch (err) {
+                                    reportError('doctor/consultations', 'addBlock', err);
+                                    showToast({
+                                      type: 'error',
+                                      message: 'Error agregando el bloque',
+                                    });
+                                  } finally {
+                                    setAddingBlock(false);
+                                  }
+                                }}
+                                className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 ${
+                                  alreadyActive
+                                    ? 'opacity-60 cursor-not-allowed bg-slate-50'
+                                    : 'hover:bg-slate-50 disabled:opacity-50'
+                                }`}
+                              >
+                                <Plus
+                                  className={`w-3.5 h-3.5 shrink-0 ${alreadyActive ? 'text-slate-300' : 'text-teal-500'}`}
+                                />
+                                <span
+                                  className={`flex-1 ${alreadyActive ? 'text-slate-400' : 'text-slate-700'}`}
                                 >
-                                  <Plus
-                                    className={`w-3.5 h-3.5 shrink-0 ${alreadyActive ? 'text-slate-300' : 'text-teal-500'}`}
-                                  />
-                                  <span
-                                    className={`flex-1 ${alreadyActive ? 'text-slate-400' : 'text-slate-700'}`}
-                                  >
-                                    {c.label}
+                                  {c.label}
+                                </span>
+                                {alreadyActive && (
+                                  <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                                    Ya activo
                                   </span>
-                                  {alreadyActive && (
-                                    <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                                      Ya activo
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
+                                )}
+                              </button>
+                            );
+                          })
+                        )}
                       </div>
-                    );
-                  })()}
-              </div>
+                    </div>
+                  );
+                })()}
 
               {/* RONDA 38: renderer del bloque dinámico.
                   - Si el block_key tiene un FLUJO ESPECIAL (prescription, requested_exams, rest,
@@ -2492,6 +2540,7 @@ function ConsultationsPage() {
                             }
                           }, 1500);
                         }}
+                        lockedKeys={LOCKED_BLOCK_KEYS}
                         onSave={async () => {
                           // Guardado manual inmediato — usa selectedRef para datos frescos
                           if (!selectedRef.current) return;
@@ -2614,48 +2663,77 @@ function ConsultationsPage() {
                       </div>
                     )}
 
-                    {/* Nota: el campo "Indicaciones/Tratamiento" vive en el bloque dinámico
-                        del informe. No se duplica aquí — ver GenerateDocumentModal para incluirlo en el PDF. */}
+                    {/* Generación on-click del récipe PDF — sin pre-render constante.
+                        Solo medicamentos + diagnóstico en el récipe (indicaciones van aparte). */}
                     <div className="flex gap-2 pt-2">
                       {pdfTemplateConfig && recipe.medications.length > 0 && (
-                        <RecetaPdfButton
-                          fileName={`Récipe-${selected.consultation_code}.pdf`}
-                          templateConfig={pdfTemplateConfig}
-                          doctor={{
-                            fullName: doctorName || '',
-                            specialty: doctorSpecialty,
-                            licenseNumber: doctorLicense,
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const { pdf } = await import('@react-pdf/renderer');
+                              const { MedicalDocumentPdf } =
+                                await import('@/components/pdf/MedicalDocumentPdf');
+                              const diagnosisValue =
+                                ((selected.blocks_data as Record<string, unknown> | null)
+                                  ?.diagnosis as string | undefined) ||
+                                report.diagnosis ||
+                                null;
+                              const recipeContent: ContentBlock[] = [
+                                ...(diagnosisValue
+                                  ? [
+                                      {
+                                        key: 'diagnosis',
+                                        label: 'Diagnóstico',
+                                        value: diagnosisValue,
+                                      },
+                                    ]
+                                  : []),
+                                {
+                                  key: 'medications',
+                                  label: 'Medicamentos',
+                                  value: recipe.medications.map(
+                                    (m) =>
+                                      `${m.name}${m.dose ? ' — ' + m.dose : ''}${m.frequency ? ' — ' + m.frequency : ''}${m.duration ? ' — ' + m.duration : ''}`,
+                                  ),
+                                },
+                              ];
+                              const el = (
+                                <MedicalDocumentPdf
+                                  docType="recipe"
+                                  templateConfig={pdfTemplateConfig}
+                                  doctor={{
+                                    fullName: doctorName || '',
+                                    specialty: doctorSpecialty,
+                                    licenseNumber: doctorLicense,
+                                  }}
+                                  patient={{
+                                    fullName: selected.patient_name || '—',
+                                    cedula:
+                                      patients.find((p) => p.id === selected.patient_id)?.cedula ??
+                                      null,
+                                  }}
+                                  docDate={selected.consultation_date}
+                                  consultationCode={selected.consultation_code}
+                                  content={recipeContent}
+                                />
+                              );
+                              const blob = await pdf(el).toBlob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `Récipe-${selected.consultation_code}.pdf`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            } catch (err) {
+                              showToast({ type: 'error', message: 'Error al generar el PDF' });
+                              console.error('[RecipePdf]', err);
+                            }
                           }}
-                          patient={{
-                            fullName: selected.patient_name || '—',
-                            cedula:
-                              patients.find((p) => p.id === selected.patient_id)?.cedula ?? null,
-                          }}
-                          docDate={selected.consultation_date}
-                          consultationCode={selected.consultation_code}
-                          content={[
-                            {
-                              key: 'medications',
-                              label: 'Medicamentos',
-                              value: recipe.medications.map(
-                                (m) =>
-                                  `${m.name}${m.dose ? ' — ' + m.dose : ''}${m.frequency ? ' — ' + m.frequency : ''}${m.duration ? ' — ' + m.duration : ''}${m.indications ? ' (' + m.indications + ')' : ''}`,
-                              ),
-                            },
-                            ...(report.treatment
-                              ? [
-                                  {
-                                    key: 'indications',
-                                    label: 'Indicaciones',
-                                    value: report.treatment.replace(/<[^>]+>/g, ''),
-                                  },
-                                ]
-                              : []),
-                          ]}
                           className="flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
                         >
-                          Descargar récipe PDF
-                        </RecetaPdfButton>
+                          <Printer className="w-4 h-4" /> Descargar récipe PDF
+                        </button>
                       )}
                     </div>
                   </div>

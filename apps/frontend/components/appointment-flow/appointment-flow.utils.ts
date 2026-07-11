@@ -160,14 +160,23 @@ export function getTimeSlotsForDate(
   const d = new Date(dateStr + 'T12:00:00');
   const jsDay = d.getDay();
   const schedDay = jsDayToScheduleDay(jsDay);
-  const sched = office.schedule.find((s) => s.day === schedDay && s.enabled);
-  if (!sched) return [];
-  return timesBetween(
-    sched.start,
-    sched.end,
-    office.slot_duration ?? 30,
-    office.buffer_minutes ?? 0,
-  );
+  // Un día puede tener VARIOS bloques habilitados (mañana + tarde, ADR-018).
+  // Usar filter (no find) y unir los slots de todos los bloques del día.
+  const scheds = office.schedule.filter((s) => s.day === schedDay && s.enabled);
+  if (scheds.length === 0) return [];
+  const all = new Set<string>();
+  for (const s of scheds) {
+    for (const t of timesBetween(
+      s.start,
+      s.end,
+      office.slot_duration ?? 30,
+      office.buffer_minutes ?? 0,
+    )) {
+      all.add(t);
+    }
+  }
+  // HH:MM con ceros a la izquierda → orden lexicográfico == cronológico.
+  return Array.from(all).sort();
 }
 
 // ---------------------------------------------------------------------------

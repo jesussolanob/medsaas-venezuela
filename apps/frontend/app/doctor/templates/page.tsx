@@ -148,6 +148,7 @@ export default function TemplatesPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingSignature, setUploadingSignature] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [doctorName, setDoctorName] = useState('');
   const [doctorSpecialty, setDoctorSpecialty] = useState('');
   const [doctorLicense, setDoctorLicense] = useState<string | null>(null);
@@ -697,7 +698,15 @@ export default function TemplatesPage() {
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-slate-700">Vista previa PDF</p>
               <button
-                onClick={() => setShowPreview(!showPreview)}
+                onClick={() => {
+                  if (!showPreview) {
+                    setPreviewLoading(true);
+                    setShowPreview(true);
+                  } else {
+                    setShowPreview(false);
+                    setPreviewLoading(false);
+                  }
+                }}
                 aria-expanded={showPreview}
                 className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
               >
@@ -709,17 +718,26 @@ export default function TemplatesPage() {
                 ) : (
                   <>
                     <Eye className="w-3.5 h-3.5" />
-                    Mostrar PDF
+                    Ver vista previa
                   </>
                 )}
               </button>
             </div>
+
+            {/* Indicador de carga mientras el componente react-pdf monta */}
+            {showPreview && previewLoading && (
+              <div className="flex flex-col items-center justify-center min-h-[100px] gap-2 bg-slate-50 rounded-xl border border-slate-200 py-6">
+                <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
+                <p className="text-sm text-slate-500">Cargando vista previa…</p>
+              </div>
+            )}
 
             {showPreview && (
               // key={activeTab} forces a full remount when the tab changes,
               // preventing react-pdf from showing a stale/blank render.
               <TemplatePdfPreview
                 key={activeTab}
+                onReady={() => setPreviewLoading(false)}
                 docType={activeTab}
                 docTypeLabel={tabInfo.label}
                 templateConfig={{

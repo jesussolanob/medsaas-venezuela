@@ -55,12 +55,16 @@ export interface ComputeAvailableDocTypesArgs {
 }
 
 /**
- * Keys de bloque que NO pertenecen al tipo "Informe médico" (van en otros tipos).
+ * Keys de bloque que NO pertenecen al tipo "Informe médico" (van en sus propios tipos).
+ * - prescription / indications → Récipe
+ * - paraclinical / requested_exams → Paraclínicos
+ * - rest → Reposo
  */
 export const INFORME_EXCLUDED_KEYS = new Set<string>([
   'prescription',
   'indications',
   'paraclinical',
+  'requested_exams',
   'rest',
 ]);
 
@@ -150,12 +154,15 @@ function hasBlockContent(block: ContentBlock | undefined): boolean {
 /**
  * Determina qué tipos de documento están disponibles (enabled) para la consulta actual.
  *
- * Reglas:
- * - recipe:      hay savedPrescriptions, o el bloque 'prescription' o 'indications' tiene contenido
- * - paraclinical: el bloque 'paraclinical' tiene contenido
- * - history:     patientConsultationCount > 1
- * - rest:        restContent es no vacío
- * - informe:     hay al menos un bloque elegible (no excluido) con contenido
+ * Reglas (separación clara por tipo):
+ * - recipe:       hay savedPrescriptions (medicamentos) — SIN indicaciones ni exámenes
+ * - paraclinical: el bloque 'paraclinical' O 'requested_exams' tiene contenido (exámenes solicitados)
+ * - history:      patientEhrCount > 0
+ * - rest:         restContent es no vacío
+ * - informe:      hay al menos un bloque elegible (no excluido) con contenido
+ *
+ * "Indicaciones" va incluido como sección del récipe cuando hay medicamentos guardados;
+ * si no hay receta pero sí indicaciones, también se activa el tipo recipe para no perderlas.
  */
 export function computeAvailableDocTypes(
   args: ComputeAvailableDocTypesArgs,
@@ -166,8 +173,11 @@ export function computeAvailableDocTypes(
 
   const hasPrescriptionBlock = hasBlockContent(blockByKey.get('prescription'));
   const hasIndicationsBlock = hasBlockContent(blockByKey.get('indications'));
-  const hasParaclinicalBlock = hasBlockContent(blockByKey.get('paraclinical'));
+  const hasParaclinicalBlock =
+    hasBlockContent(blockByKey.get('paraclinical')) ||
+    hasBlockContent(blockByKey.get('requested_exams'));
 
+  // Récipe = medicamentos guardados. Si también hay indicaciones sin receta, se activa igual.
   const recipeEnabled =
     savedPrescriptions.length > 0 || hasPrescriptionBlock || hasIndicationsBlock;
 
@@ -176,15 +186,15 @@ export function computeAvailableDocTypes(
 
   const recipeDescription =
     savedPrescriptions.length > 0
-      ? `${savedPrescriptions.length} receta${savedPrescriptions.length !== 1 ? 's' : ''} guardada${savedPrescriptions.length !== 1 ? 's' : ''}`
+      ? `${savedPrescriptions.length} medicamento${savedPrescriptions.flatMap((r) => r.medications).length !== 1 ? 's' : ''} en récipe`
       : hasPrescriptionBlock || hasIndicationsBlock
-        ? 'Prescripción e indicaciones en la consulta'
-        : 'Sin recetas ni indicaciones registradas';
+        ? 'Prescripción en la consulta'
+        : 'Sin receta registrada';
 
   return [
     {
       key: 'recipe',
-      label: 'Récipe e indicaciones',
+      label: 'Récipe',
       description: recipeDescription,
       enabled: recipeEnabled,
     },
@@ -192,8 +202,8 @@ export function computeAvailableDocTypes(
       key: 'paraclinical',
       label: 'Paraclínicos',
       description: hasParaclinicalBlock
-        ? 'Exámenes y estudios paraclínicos indicados'
-        : 'Sin paraclínicos registrados en esta consulta',
+        ? 'Exámenes y estudios paraclínicos solicitados'
+        : 'Sin exámenes paraclínicos registrados en esta consulta',
       enabled: hasParaclinicalBlock,
     },
     {
@@ -240,10 +250,20 @@ export interface BuildConsolidatedContentArgs {
   ehrRecords: EhrRecord[];
   /** Texto del reposo médico */
   restContent: string | null;
+  /** Diagnóstico de la consulta — se incluye en el récipe */
+  diagnosisValue?: string | null;
 }
 
 /**
  * Arma el ContentBlock[] final con separadores de sección.
+ *
+ * Separación de contenido por tipo:
+ * - recipe:      diagnóstico + medicamentos (buildRecetasContent). SIN indicaciones ni exámenes.
+ * - paraclinical: bloque 'paraclinical' O 'requested_exams' (lista de exámenes solicitados).
+ * - history:     registros EHR del paciente.
+ * - rest:        constancia de reposo.
+ * - informe:     bloques seleccionados del informe (excluye prescription/paraclinical/rest).
+ *
  * El fetch de EHR es responsabilidad del caller; aquí solo se consume `ehrRecords`.
  */
 export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): ContentBlock[] {
@@ -254,30 +274,44 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
     savedPrescriptions,
     ehrRecords,
     restContent,
+    diagnosisValue,
   } = args;
 
   const sections: Array<{ label: string; blocks: ContentBlock[] }> = [];
 
   if (selectedTypes.includes('recipe')) {
     const blocks: ContentBlock[] = [];
+
+    // Diagnóstico al inicio del récipe (punto 6)
+    if (diagnosisValue?.trim()) {
+      blocks.push({ key: 'recipe-diagnosis', label: 'Diagnóstico', value: diagnosisValue.trim() });
+    }
+
+    // Solo medicamentos — sin indicaciones ni exámenes
     const recetasBlocks = buildRecetasContent(savedPrescriptions);
     blocks.push(...recetasBlocks);
 
+    // Fallback: si hay un bloque 'prescription' en blocks_data (sin receta guardada en BD)
     const prescriptionBlock = informeContent.find((b) => b.key === 'prescription');
-    if (hasBlockContent(prescriptionBlock)) blocks.push(prescriptionBlock!);
-
-    const indicationsBlock = informeContent.find((b) => b.key === 'indications');
-    if (hasBlockContent(indicationsBlock)) blocks.push(indicationsBlock!);
+    if (recetasBlocks.length === 0 && hasBlockContent(prescriptionBlock)) {
+      blocks.push(prescriptionBlock!);
+    }
 
     if (blocks.length > 0) {
-      sections.push({ label: 'Récipe e indicaciones', blocks });
+      sections.push({ label: 'Récipe', blocks });
     }
   }
 
   if (selectedTypes.includes('paraclinical')) {
-    const block = informeContent.find((b) => b.key === 'paraclinical');
+    // Acepta tanto 'paraclinical' como 'requested_exams'
+    const block =
+      informeContent.find((b) => b.key === 'paraclinical') ??
+      informeContent.find((b) => b.key === 'requested_exams');
     if (hasBlockContent(block)) {
-      sections.push({ label: 'Paraclínicos', blocks: [block!] });
+      sections.push({
+        label: 'Exámenes solicitados',
+        blocks: [{ ...block!, label: block!.label || 'Exámenes solicitados' }],
+      });
     }
   }
 

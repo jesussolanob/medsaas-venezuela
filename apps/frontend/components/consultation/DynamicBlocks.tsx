@@ -39,6 +39,8 @@ type Props = {
   readOnly?: boolean;
   onSave?: () => void;
   saving?: boolean;
+  /** Keys cuyo label NO puede ser renombrado (bloques fijos del sistema). */
+  lockedKeys?: Set<string>;
 };
 
 export default function DynamicBlocks({
@@ -49,6 +51,7 @@ export default function DynamicBlocks({
   readOnly = false,
   onSave,
   saving,
+  lockedKeys,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [editingLabel, setEditingLabel] = useState<Record<string, boolean>>({});
@@ -133,7 +136,7 @@ export default function DynamicBlocks({
                   </button>
                 )}
 
-                {!readOnly && !editingLabel[block.key] && (
+                {!readOnly && !editingLabel[block.key] && !lockedKeys?.has(block.key) && (
                   <button
                     type="button"
                     onClick={() => {

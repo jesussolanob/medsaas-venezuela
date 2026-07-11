@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   listOffices,
   createOffice,
@@ -168,6 +168,8 @@ export default function OfficesPage() {
   const [editing, setEditing] = useState<Office | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Ref para hacer scroll al error inferior cuando aparece
+  const saveErrorBottomRef = useRef<HTMLDivElement>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -318,22 +320,31 @@ export default function OfficesPage() {
   // Guardar
   // ---------------------------------------------------------------------------
 
+  /** Establece el error y hace scroll al banner inferior para que sea visible sin scrollear. */
+  function setErrorAndScroll(msg: string) {
+    setSaveError(msg);
+    // Diferir para que React renderice el banner antes del scroll
+    setTimeout(() => {
+      saveErrorBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
+  }
+
   async function handleSave() {
     setSaveError(null);
 
     if (!name.trim() || !address.trim() || !city.trim()) {
-      setSaveError('Nombre, dirección y ciudad son obligatorios.');
+      setErrorAndScroll('Nombre, dirección y ciudad son obligatorios.');
       return;
     }
     if (!canSave) {
-      setSaveError('Corrige los bloques de horario antes de guardar.');
+      setErrorAndScroll('Corrige los bloques de horario antes de guardar.');
       return;
     }
 
     // Validate that there is at least one enabled block.
     const hasEnabledBlock = schedule.some((b) => b.enabled);
     if (!hasEnabledBlock) {
-      setSaveError('Debes tener al menos un bloque de horario habilitado.');
+      setErrorAndScroll('Debes tener al menos un bloque de horario habilitado.');
       return;
     }
 
@@ -360,14 +371,14 @@ export default function OfficesPage() {
       if (!result.ok) {
         // Show the backend error message (in Spanish) inside the modal.
         // The backend already returns translated messages for conflict errors.
-        setSaveError(result.error ?? 'Ocurrió un error al guardar.');
+        setErrorAndScroll(result.error ?? 'Ocurrió un error al guardar.');
         return;
       }
 
       closeForm();
       fetchOffices();
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
+      setErrorAndScroll(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
     } finally {
       setSaving(false);
     }
@@ -878,26 +889,87 @@ export default function OfficesPage() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 flex gap-3 rounded-b-2xl">
-              <button
-                onClick={closeForm}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !canSave}
-                title={!canSave ? 'Corrige los bloques de horario antes de guardar' : undefined}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {editing ? 'Guardar cambios' : 'Crear consultorio'}
-              </button>
+            {/* ── Panel de referencia: horarios ya ocupados por OTROS consultorios activos ──
+                Ayuda al doctor a evitar conflictos antes de guardar. */}
+            {(() => {
+              const otherOffices = offices.filter(
+                (o) => o.is_active && (!editing || o.id !== editing.id),
+              );
+              if (otherOffices.length === 0) return null;
+
+              return (
+                <details className="group mx-6 mb-2">
+                  <summary className="flex items-center gap-2 cursor-pointer list-none text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors py-2 select-none">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 group-open:text-teal-500 transition-colors" />
+                    <span>Horarios ocupados en otros consultorios</span>
+                    <span className="ml-auto text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                      {otherOffices.length} activo{otherOffices.length !== 1 ? 's' : ''}
+                    </span>
+                  </summary>
+                  <div className="mt-2 space-y-3 pb-3">
+                    {otherOffices.map((o) => {
+                      const summary = summarizeSchedule(o.schedule);
+                      return (
+                        <div
+                          key={o.id}
+                          className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                        >
+                          <p className="text-xs font-semibold text-slate-700 mb-1.5">{o.name}</p>
+                          {summary.length === 0 ? (
+                            <p className="text-[10px] text-slate-400 italic">Sin horarios</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {summary.map(({ day, blocks }) => (
+                                <span
+                                  key={day}
+                                  className="text-[10px] font-medium bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200"
+                                >
+                                  {DAYS_SHORT[day]}{' '}
+                                  {blocks.map((b) => `${b.start}–${b.end}`).join(', ')}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              );
+            })()}
+
+            <div className="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 rounded-b-2xl space-y-3">
+              {/* Banner de error duplicado junto a los botones — visible sin scrollear */}
+              {saveError && (
+                <div
+                  ref={saveErrorBottomRef}
+                  className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5"
+                >
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{saveError}</p>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={closeForm}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || !canSave}
+                  title={!canSave ? 'Corrige los bloques de horario antes de guardar' : undefined}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {editing ? 'Guardar cambios' : 'Crear consultorio'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

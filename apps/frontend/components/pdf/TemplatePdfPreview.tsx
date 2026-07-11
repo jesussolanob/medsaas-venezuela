@@ -8,8 +8,15 @@
  *
  * PDFViewer y PDFDownloadLink se cargan solo en el cliente (dynamic ssr:false).
  * El componente recibe la config del template activo y los datos del doctor.
+ * Muestra un indicador "Cargando vista previa…" mientras react-pdf genera el PDF.
+ *
+ * Estrategia de loading:
+ *   - La prop `loading` del dynamic de PDFViewer ya muestra un spinner (PdfLoadingPlaceholder).
+ *   - El componente padre puede pasar onReady() para ocultar su propio indicador.
+ *     Se invoca tras un pequeño delay que da tiempo al viewer a pintar su primer frame.
  */
 
+import { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2, Download, FileText } from 'lucide-react';
 import type { TemplateConfigPdf, DoctorInfoPdf, ContentBlock } from './MedicalDocumentPdf';
@@ -180,6 +187,8 @@ interface TemplatePdfPreviewProps {
   docTypeLabel: string;
   templateConfig: TemplateConfigPdf;
   doctor: DoctorInfoPdf;
+  /** Llamado cuando el PDFViewer termina de renderizar la primera página. */
+  onReady?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +200,16 @@ export function TemplatePdfPreview({
   docTypeLabel,
   templateConfig,
   doctor,
+  onReady,
 }: TemplatePdfPreviewProps) {
+  // Notificar al padre tras un breve delay para que el viewer tenga tiempo de pintar.
+  // No hay un callback nativo en PDFViewer para "primera página lista".
+  useEffect(() => {
+    const t = setTimeout(() => onReady?.(), 2000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const sampleContent = getSampleContent(docType, doctor.fullName);
 
   const docProps = {
@@ -246,7 +264,9 @@ export function TemplatePdfPreview({
         datos reales del paciente y el contenido del informe.
       </p>
 
-      {/* Viewer embebido */}
+      {/* Viewer embebido.
+          El dynamic loading={() => <PdfLoadingPlaceholder />} ya muestra el spinner
+          mientras react-pdf carga. Una vez listo, se reemplaza por el viewer real. */}
       <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
         <PDFViewer width="100%" height={520} showToolbar={false}>
           <MedicalDocumentPdf {...docProps} />
