@@ -728,5 +728,78 @@ reminders, crm, ehr, messages, reports, patients, consultations`. Free (`delta_f
 
 ---
 
+## D-2026-07-11) Lote QA "doctor real" — 22 observaciones del usuario + método reforzado
+
+> **Por qué existe esta sección (queja del usuario 2026-07-11):** el ciclo de QA anterior
+> NO fue bueno — se probaron acciones **aisladas** ("crear paciente OK", "crear cita OK")
+> en vez de **recorridos completos de un médico real**. Por eso se escaparon 22 bugs
+> encadenados (crear paciente → agendar → ver en consultas → cobrar → generar documento →
+> compartir). **Regla nueva y OBLIGATORIA:** el Agente A NO valida un caso como PASA hasta
+> completar el **recorrido end-to-end** del que forma parte y comprobar el efecto en las
+> pantallas _siguientes_ (no solo en la que ejecutó la acción). "La UI no dio error" NO es PASA.
+
+### D-11.0 — Recorrido de doctor real (E2E obligatorio, ejecutar COMPLETO en cada release)
+
+Ejecutar como un médico que estrena la cuenta, **sin saltarse pasos** y verificando cada
+pantalla siguiente. Agente B verifica en BD en cada punto (sin PII).
+
+1. **Inicio → "Crear paciente":** llenar el form. Teléfono: escribir **más de 10 dígitos** →
+   debe mostrar "No debe exceder 10 dígitos" y **NO borrar** lo escrito (D-11.1). Guardar.
+2. Al crear, aparece "¿Crear cita ahora?" → **"Crear cita ahora"** → el modal-pregunta debe
+   **cerrarse** y abrir "Nueva consulta" con el paciente **preseleccionado** (D-11.3). NO dos modales.
+3. Completar la cita (consultorio, tipo, fecha/hora) y crear → verificar que **redirige a
+   Consultas** y que **la consulta recién creada APARECE en el listado** con badge
+   **"Por confirmar"** (D-11.4/D-11.5). B: existe fila en `consultations` ligada al `appointment`.
+4. **Inicio → Finanzas:** "Dinero por ingresar" debe reflejar el monto de esa consulta sin pago
+   (≠ $0) (D-11.7). B: `SUM(COALESCE(c.amount,a.plan_price))` de pending > 0.
+5. **Menú izq. → Consultas** (estando en el editor de una consulta): debe **volver al listado**
+   (cerrar el editor) (D-11.22).
+6. Abrir la consulta → tab **Récipe** (ya no "Prescripción"): NO debe haber textarea de
+   "Tratamiento/Indicaciones" duplicado (vive en el modal) (D-11.18).
+7. Tab **Reposo:** diagnóstico **precargado** del tab diagnóstico; "desde" = **hoy**; campo
+   **Comentarios** opcional; botón **descarga el PDF directo** (no abre otra pestaña) (D-11.19).
+8. Llenar todos los tabs → **Generar/Compartir documento:** "Informe médico" debe estar
+   **HABILITADO** (no "Sin bloques de consulta con contenido") (D-11.20). Descargar → el PDF
+   tiene **nombre legible** y abre bien (D-11.21).
+9. **Compartir:** generar enlace + código → abrir como paciente → descargar → PDF branded con
+   nombre legible (D-11.21).
+10. **Consultorios → Nuevo:** teléfono con selector +58 (D-11.10); dejar **un solo bloque** y
+    guardar → NO carga infinita (D-11.12); provocar solape → error **en español, DENTRO del
+    modal**, indicando el día (D-11.11). Cerrar haciendo click **afuera** → NO debe cerrar (D-11.13).
+
+### D-11.x — Matriz de casos (cada uno = observación del usuario). Front (A) + BD/efecto (B):
+
+| Caso    | Flujo / acción                                        | Criterio de PASA (verificar pantalla SIGUIENTE, no solo la actual)                                                              |
+| ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| D-11.1  | Teléfono paciente: teclear >10 dígitos                | Muestra error de formato y **conserva** el valor; NO limpia el campo.                                                           |
+| D-11.2  | Crear paciente desde modal de consulta                | Si falla validación, el banner muestra el **campo específico** (no "Validation failed" genérico).                               |
+| D-11.3  | Inicio → crear paciente → "Crear cita ahora"          | Modal-pregunta se cierra; se abre "Nueva consulta" con paciente preseleccionado. **Un solo modal**.                             |
+| D-11.4  | Crear cita → redirige a Consultas                     | La consulta recién creada **aparece** en el listado (abre por `appointment_id`). B: fila en `consultations`.                    |
+| D-11.5  | Citas "por confirmar" (scheduled)                     | Aparecen en Consultas con badge **"Por confirmar"**; no se filtran fuera.                                                       |
+| D-11.6  | Crear consulta desde botón de Consultas               | Recarga **solo la tabla**, NO refresca toda la página; la nueva fila aparece.                                                   |
+| D-11.7  | Finanzas "Por ingresar" con consulta sin pago         | Monto ≠ $0 (usa `COALESCE(c.amount, a.plan_price)`). B: query de pending > 0.                                                   |
+| D-11.8  | Plan Free → botones Ingreso/Cobros/Gasto              | NO abren modal funcional; muestran aviso "Disponible en Delta Base" + link a /doctor/upgrade.                                   |
+| D-11.9  | Sidebar en plan Free                                  | **Finanzas** y **Marketing** muestran **candado** (igual que Agenda), no solo Agenda.                                           |
+| D-11.10 | Consultorio: campo teléfono                           | Usa el mismo PhoneInput (+58) que registro de paciente. ⚠️ ojo fijos (212…): reportar si no guarda.                             |
+| D-11.11 | Consultorio: solape de horario                        | Error **en español**, **dentro del modal** (no toast detrás), indicando el **día**.                                             |
+| D-11.12 | Consultorio: dejar un solo bloque y guardar           | NO carga infinita; guarda o muestra error claro; `saving` siempre se resetea.                                                   |
+| D-11.13 | Cualquier modal: click fuera (backdrop)               | **NO cierra**; solo cierra con botón Cancelar / X. (offices, services, patient-requests, generar/compartir doc).                |
+| D-11.14 | Bloques de consulta: orden y default                  | Los **fijos** aparecen **primero** y **habilitados** por defecto.                                                               |
+| D-11.15 | Bloque "Prescripción"                                 | Se muestra como **"Récipe"** en bloques, tab, tipos de documento y PDF. B: `consultation_block_catalog.default_label='Récipe'`. |
+| D-11.16 | Plantillas: 5 tipos                                   | Informe, Récipe, Indicaciones, Paraclínicos, Reposo (exactamente esos 5).                                                       |
+| D-11.17 | Plantillas: "Ver preview" + "Descargar ejemplo"       | Preview NO queda en negro (remonta al cambiar de tab, con loading); descarga PDF con **nombre del documento**.                  |
+| D-11.18 | Detalle consulta: tab Récipe                          | NO tiene textarea "Tratamiento/Indicaciones" duplicado (vive en el modal de documento).                                         |
+| D-11.19 | Detalle consulta: tab Reposo                          | Diagnóstico precargado; "desde"=hoy; campo Comentarios opcional; botón **descarga PDF directo** (no otra pestaña).              |
+| D-11.20 | Generar/Compartir documento con tabs llenos           | "Informe médico" **HABILITADO** (considera el estado vivo del editor, no solo snapshot).                                        |
+| D-11.21 | Descargar PDF (doctor y paciente/compartir)           | El archivo tiene **nombre legible** (`Informe-<código>.pdf`, `Documentos-<código>.pdf`) y abre como PDF válido.                 |
+| D-11.22 | Menú izq. "Consultas" desde el editor de una consulta | Vuelve al **listado** (cierra el editor). Los links del menú siempre van a su ruta base.                                        |
+
+> **Cierre del método:** un caso NO es PASA si solo "no dio error" en la pantalla donde se ejecutó.
+> A debe navegar a la pantalla donde el efecto debe verse (Consultas, Finanzas, PDF descargado) y
+> confirmarlo; B confirma persistencia y ausencia de errores en logs/Sentry. Probar como **un médico
+> real haciendo su día completo**, no acciones sueltas.
+
+---
+
 > Mantener este guion vivo: cuando aparezca un bug de prod, agregar una fila a la
 > **Sección D** y un caso al módulo correspondiente para que el qa-agent lo cubra siempre.

@@ -2,6 +2,30 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-11 — Lote QA "doctor real" (22 observaciones) — commits `c704b2f`+`e81889c`, DESPLEGADO ⏳ QA usuario
+
+Origen: el usuario reportó 22 bugs encadenados de un recorrido real (crear paciente→cita→consultas→
+finanzas→documentos→compartir) + 7 capturas en Escritorio. Diagnóstico con 5 Explore en paralelo; fixes
+con backend-agent + 2 frontend-agent (sets de archivos disjuntos). Lead verificó en disco: tsc back+front
+limpio, 60 tests afectados verdes, DI sin ciclos, migración idempotente. (Los agentes terminaron con
+"Not logged in" al final pero dejaron los cambios; el build/lint lo corrió el lead — OJO: `nx lint` de todo
+`src` **OOMea** en esta máquina; usar eslint/tsc sobre archivos cambiados con `--max-old-space-size`.)
+
+- **Backend (`c704b2f`):** auto-crea consulta para TODA cita con paciente (panel + booking, no-fatal,
+  idempotente por `consultationId`, `amount=plan_price`) → las "por confirmar" aparecen en Consultas.
+  Finanzas "Por ingresar" usa `COALESCE(c.amount, a.plan_price)` (LEFT JOIN appointments) → deja de dar $0.
+  Errores de horario de consultorio en español con nombre del día. `ZodValidationPipe` → primer error de campo.
+  Mig `20260711000001`: catálogo bloques → **"Récipe"** + fijos enabled/orden. Ver ADR-021.
+- **Frontend (`e81889c`):** PhoneInput no borra al exceder (muestra error); dashboard doble-modal
+  (`preselectPatientId`) + gating de botones Finanzas en Free; candados sidebar Finanzas/Marketing; Consultas
+  abre por `appointment_id` + badge "Por confirmar" + cierra editor al quitar `?open=` (volver por el menú);
+  tab Récipe sin textarea duplicado; tab Reposo (diagnóstico precargado, "desde"=hoy, comentarios, descarga
+  PDF directa); Informe usa estado vivo del editor; consultorios con PhoneInput + error en-modal + fix carga
+  infinita (try/finally); plantillas 5 tipos + preview con `key` + nombres de PDF legibles; modales no cierran
+  por backdrop. **QA guion:** sección **D-2026-07-11** (recorrido de doctor real + 22 casos mapeados).
+- ⚠️ **Falta QA VISUAL del usuario** de los 22 casos. Ojo consultorio: PhoneInput es mobile-only (VE 10 díg.
+  empezando en 4) → un **fijo** (212…) podría no guardar; decidir si se relaja para consultorios.
+
 ## 2026-07-10/11 — Batch QA (.txt DELTA BASE) DESPLEGADO + VERIFICADO en prod ✅
 
 Sesión larga guiada por QA (14+ commits en `feature/migracion-backend`, todos desplegados, runs success).

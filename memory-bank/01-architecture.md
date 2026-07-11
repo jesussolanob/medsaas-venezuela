@@ -171,6 +171,18 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   pdf-lib queda legacy). La selección del doctor se persiste en `shared_document_links.doc_selection` (JSONB, mig
   `20260710000002`). **Modelo de 5 tipos de documento** (receta/paraclínicos/historia/reposo/informe) compartido entre
   Generar y Compartir vía el helper; "Historia clínica" se habilita por presencia de EHR del paciente (no por nº de consultas).
+- **ADR-021 (2026-07-11):** **Toda cita con paciente genera su consulta al crearse (no solo las confirmadas).**
+  Antes la consulta se auto-creaba únicamente cuando la cita quedaba `confirmed`; las citas `scheduled`
+  ("por confirmar") no generaban fila → NO aparecían en el módulo Consultas y NO sumaban a "Por ingresar".
+  Ahora `CreateAppointmentUseCase` y `CreateBookingUseCase` (link público, best-effort no-fatal) crean la
+  consulta para **cualquier** cita con `patientId`, idempotente por `consultationId` (y `UpdateAppointmentStatus`
+  no la duplica al confirmar). La consulta hereda `amount = appointment.plan_price`. La lista muestra un badge
+  **"Por confirmar"** para `appointment_status='scheduled'`. **Finanzas "Por ingresar"** ahora suma
+  `COALESCE(c.amount, a.plan_price, 0)` para consultas `pending` (LEFT JOIN appointments) — arregla el $0
+  crónico y cubre filas legacy sin migración de datos. Bloque `prescription` renombrado a **"Récipe"** en toda
+  la UI + `consultation_block_catalog.default_label` (mig `20260711000001`, fijos enabled/orden). Errores de
+  horario de consultorio ahora en **español con nombre del día**; `ZodValidationPipe` devuelve el primer error
+  de campo (no "Validation failed"). Modales de captura ya **no cierran por click en el backdrop**.
 - **ADR-019 (2026-07-08):** **Seguimiento del Paciente = módulo `shared-files` (tareas/comentarios/archivos doctor↔paciente).**
   Tabla `shared_files` (mig `20260708000001`): doctor_id, patient_id, title, description, `file_url` (**guarda el PATH de
   GCS, no la signed URL**), file_type, file_size_bytes, category (instruction|file|recipe|lab_result|image|other|comment),
