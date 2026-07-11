@@ -12,13 +12,19 @@ export class ZodValidationPipe implements PipeTransform {
   transform(value: unknown): unknown {
     const result = this.schema.safeParse(value);
     if (!result.success) {
-      throw new BadRequestException({
-        message: 'Validation failed',
-        errors: result.error.issues.map((issue) => ({
-          path: issue.path.join('.'),
-          message: issue.message,
-        })),
-      });
+      const errors = result.error.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      }));
+      // Surface the first field error as the top-level message so the front-end
+      // displays a meaningful hint instead of the generic "Validation failed".
+      const firstError = errors[0];
+      const topLevelMessage = firstError
+        ? firstError.path
+          ? `${firstError.path}: ${firstError.message}`
+          : firstError.message
+        : 'Validation failed';
+      throw new BadRequestException({ message: topLevelMessage, errors });
     }
     return result.data;
   }

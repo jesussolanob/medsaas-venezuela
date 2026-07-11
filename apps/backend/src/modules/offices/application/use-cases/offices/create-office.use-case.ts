@@ -45,9 +45,7 @@ export function assertNoSelfOverlap(proposedSchedule: DayScheduleParams[]): void
         const a = slots[i]!;
         const b = slots[j]!;
         if (timesOverlap(a.start, a.end, b.start, b.end)) {
-          throw new OfficeInvalidScheduleError(
-            `Los bloques del día ${day} se solapan entre sí (${a.start}-${a.end} y ${b.start}-${b.end})`,
-          );
+          throw OfficeInvalidScheduleError.selfOverlap(day, a.start, a.end, b.start, b.end);
         }
       }
     }
@@ -98,10 +96,10 @@ export class CreateOfficeUseCase {
     for (const entry of dto.schedule) {
       const ds = DaySchedule.validate(entry);
       if (!ds) {
-        throw new OfficeInvalidScheduleError(`Invalid schedule entry for day ${entry.day}`);
+        throw OfficeInvalidScheduleError.invalidEntry(entry.day);
       }
       if (!ds.hasValidWindow()) {
-        throw new OfficeInvalidScheduleError(`Schedule for day ${entry.day} has start >= end`);
+        throw OfficeInvalidScheduleError.invalidWindow(entry.day);
       }
     }
 

@@ -16,6 +16,8 @@ export interface CreateConsultationInput {
   consultationDate: Date;
   chiefComplaint?: string | null;
   notes?: string | null;
+  /** Pre-populate the consultation amount from the appointment's plan price. */
+  amount?: number | null;
 }
 
 /**
@@ -71,7 +73,7 @@ export class CreateConsultationUseCase {
         notes: input.notes ?? null,
         paymentStatus: 'pending',
         paymentMethod: null,
-        amount: null,
+        amount: input.amount ?? null,
         paymentDate: null,
         blocksSnapshot: null,
         createdAt: new Date(),

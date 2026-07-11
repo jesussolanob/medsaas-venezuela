@@ -117,15 +117,21 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
     // COUNT returns bigint in Postgres; node-postgres delivers bigint as a string.
     // The ::text cast keeps the wire type consistent with the SumAggRow pattern
     // and avoids potential precision loss through JavaScript's number type.
+    // LEFT JOIN appointments so that consultations without an explicit amount can
+    // fall back to the appointment's plan_price (covers legacy rows and new bookings
+    // where the amount is propagated from the appointment at create-time).
+    // COALESCE(c.amount, a.plan_price, 0) is used for pending_total only; approved_total
+    // still uses c.amount because approved consultations should have an explicit amount.
     const rows = await this.sequelize.query<ConsultationAggRow>(
       `SELECT
-         COALESCE(SUM(CASE WHEN payment_status = 'approved' THEN amount ELSE 0 END), 0) AS approved_total,
-         COUNT(CASE WHEN payment_status = 'approved' THEN 1 ELSE NULL END)::text         AS approved_count,
-         COALESCE(SUM(CASE WHEN payment_status = 'pending'  THEN amount ELSE 0 END), 0) AS pending_total
-       FROM consultations
-       WHERE doctor_id = :doctorId
-         AND consultation_date >= :start
-         AND consultation_date <  :end`,
+         COALESCE(SUM(CASE WHEN c.payment_status = 'approved' THEN c.amount ELSE 0 END), 0)                            AS approved_total,
+         COUNT(CASE WHEN c.payment_status = 'approved' THEN 1 ELSE NULL END)::text                                     AS approved_count,
+         COALESCE(SUM(CASE WHEN c.payment_status = 'pending'  THEN COALESCE(c.amount, a.plan_price, 0) ELSE 0 END), 0) AS pending_total
+       FROM consultations c
+       LEFT JOIN appointments a ON a.id = c.appointment_id
+       WHERE c.doctor_id = :doctorId
+         AND c.consultation_date >= :start
+         AND c.consultation_date <  :end`,
       {
         replacements: { doctorId, start: start.toISOString(), end: end.toISOString() },
         type: QueryTypes.SELECT,

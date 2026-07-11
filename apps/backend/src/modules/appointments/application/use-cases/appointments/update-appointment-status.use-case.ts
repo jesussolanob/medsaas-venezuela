@@ -100,7 +100,14 @@ export class UpdateAppointmentStatusUseCase {
 
     // 7. Auto-create consultation when transitioning to confirmed (idempotent).
     //    Only when the appointment has a known patient and the use-case is injected.
-    if (dto.status === 'confirmed' && appointment.patientId && this.createConsultationUC) {
+    //    Skip entirely when consultationId is already set — the consultation was
+    //    auto-created at booking/appointment-create time (no duplicate needed).
+    if (
+      dto.status === 'confirmed' &&
+      appointment.patientId &&
+      this.createConsultationUC &&
+      !appointment.consultationId
+    ) {
       return this.maybeCreateConsultation(appointment, dto.actor_id, updated);
     }
 

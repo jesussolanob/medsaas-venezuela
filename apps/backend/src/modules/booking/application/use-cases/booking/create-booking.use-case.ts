@@ -45,6 +45,7 @@ import {
   DOCTOR_SCHEDULE_REPOSITORY,
   type IDoctorScheduleRepository,
 } from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
+import { CreateConsultationUseCase } from '../../../../consultations/application/use-cases/consultations/create-consultation.use-case';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -142,6 +143,18 @@ export class CreateBookingUseCase {
     @Optional()
     @Inject(DOCTOR_SCHEDULE_REPOSITORY)
     private readonly scheduleRepo: IDoctorScheduleRepository | null = null,
+    /**
+     * CreateConsultationUseCase — optional for backward compatibility with
+     * existing tests that do not inject it. When present, a consultation is
+     * auto-created (best-effort, non-fatal) after the booking appointment is
+     * saved. A failure here must NEVER roll back the booking itself.
+     *
+     * @Inject is mandatory: TypeScript emits `Object` for union types
+     * (`T | null`) in reflect-metadata, so NestJS cannot resolve the token.
+     */
+    @Optional()
+    @Inject(CreateConsultationUseCase)
+    private readonly createConsultationUC: CreateConsultationUseCase | null = null,
   ) {}
 
   async execute(
@@ -387,6 +400,26 @@ export class CreateBookingUseCase {
       } catch {
         // Non-fatal — appointment is already saved
         this.logger.warn('[booking] notification failed (non-fatal)');
+      }
+    }
+
+    // --- Step 8: Auto-create consultation (best-effort — must NOT break booking) ---
+    // A failure here only means the consultation will be absent from the list;
+    // the booking appointment itself is fully persisted and confirmed.
+    if (this.createConsultationUC && !savedAppointment.consultationId) {
+      try {
+        const consultation = await this.createConsultationUC.execute({
+          doctorId: dto.doctor_id,
+          patientId: patient.id,
+          appointmentId: savedAppointment.id,
+          consultationDate: savedAppointment.scheduledAt,
+          chiefComplaint: dto.chief_complaint ?? null,
+          amount: dto.plan_price ?? null,
+        });
+        await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);
+      } catch {
+        // Non-fatal — do NOT log PII (patient id, name, etc.).
+        this.logger.warn('[booking] auto-create consultation failed (non-fatal)');
       }
     }
 

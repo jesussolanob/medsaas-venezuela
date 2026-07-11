@@ -50,6 +50,9 @@ import { OfficesModule } from '../offices/offices.module';
 
 // AvailabilityBlocksModule exports AVAILABILITY_BLOCK_REPOSITORY for slot filtering.
 import { AvailabilityBlocksModule } from '../availability-blocks/availability-blocks.module';
+// ConsultationsModule exports CreateConsultationUseCase for auto-creating consultations after booking.
+// No circular dependency: ConsultationsModule does NOT import BookingModule.
+import { ConsultationsModule } from '../consultations/consultations.module';
 
 // DOCTOR_SCHEDULE_REPOSITORY for horizon check in GetAvailableSlotsUseCase.
 import { DOCTOR_SCHEDULE_REPOSITORY } from '../doctor-settings/domain/repositories/doctor-schedule.repository';
@@ -84,6 +87,9 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
     IntegrationsModule,
     // AvailabilityBlocksModule exports AVAILABILITY_BLOCK_REPOSITORY for slot filtering.
     AvailabilityBlocksModule,
+    // ConsultationsModule exports CreateConsultationUseCase for auto-creating consultations
+    // after a public booking is completed (non-fatal, best-effort).
+    ConsultationsModule,
   ],
   controllers: [BookingController, DoctorBookingController],
   providers: [

@@ -59,22 +59,20 @@ function makeRepo(
     findById: jest.fn().mockResolvedValue(appointment),
     list: jest.fn(),
     save: jest.fn(),
-    updateStatus: jest
-      .fn()
-      .mockImplementation((_id: string, status: string) =>
-        Promise.resolve(
-          makeAppointment({
-            status: status as
-              | 'scheduled'
-              | 'confirmed'
-              | 'completed'
-              | 'cancelled'
-              | 'no_show'
-              | 'pending'
-              | 'accepted',
-          }),
-        ),
+    updateStatus: jest.fn().mockImplementation((_id: string, status: string) =>
+      Promise.resolve(
+        makeAppointment({
+          status: status as
+            | 'scheduled'
+            | 'confirmed'
+            | 'completed'
+            | 'cancelled'
+            | 'no_show'
+            | 'pending'
+            | 'accepted',
+        }),
       ),
+    ),
     updateScheduledAt: jest.fn(),
     hasOverlap: jest.fn(),
     hasPatientOverlap: jest.fn(),
@@ -117,6 +115,7 @@ function makeConsultationRepo(
     save: jest.fn(),
     update: jest.fn(),
     updatePayment: jest.fn(),
+    updatePaymentDetails: jest.fn(),
     list: jest.fn(),
     findByPatient: jest.fn(),
     findByAppointmentId: jest.fn().mockResolvedValue(existingConsultation),

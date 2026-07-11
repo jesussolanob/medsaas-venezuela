@@ -174,8 +174,9 @@ export class CreateAppointmentUseCase {
 
     const saved = await this.appointmentRepo.save(appointment);
 
-    // 8. Auto-create consultation when appointment is auto-confirmed and patient is known.
-    if (saved.status === 'confirmed' && saved.patientId && this.createConsultationUC) {
+    // 8. Auto-create consultation for any appointment with a known patient.
+    //    Idempotency: skip if a consultation is already linked (saved.consultationId != null).
+    if (saved.patientId && this.createConsultationUC && !saved.consultationId) {
       return this.maybeCreateConsultation(saved);
     }
 
@@ -183,7 +184,7 @@ export class CreateAppointmentUseCase {
   }
 
   /**
-   * Creates a consultation linked to a confirmed appointment and updates the
+   * Creates a consultation linked to the appointment and updates the
    * appointment's consultation_id FK. Non-fatal: on failure the appointment is
    * still returned without a linked consultation (can be linked manually later).
    */
@@ -198,6 +199,7 @@ export class CreateAppointmentUseCase {
         appointmentId: saved.id,
         consultationDate: saved.scheduledAt,
         chiefComplaint: saved.chiefComplaint ?? null,
+        amount: saved.planPrice ?? null,
       });
       return await this.appointmentRepo.updateConsultationId(saved.id, consultation.id);
     } catch (err: unknown) {

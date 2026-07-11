@@ -29,10 +29,10 @@ export class UpdateOfficeUseCase {
     for (const entry of newSchedule) {
       const ds = DaySchedule.validate(entry);
       if (!ds) {
-        throw new OfficeInvalidScheduleError(`Invalid schedule entry for day ${entry.day}`);
+        throw OfficeInvalidScheduleError.invalidEntry(entry.day);
       }
       if (!ds.hasValidWindow()) {
-        throw new OfficeInvalidScheduleError(`Schedule for day ${entry.day} has start >= end`);
+        throw OfficeInvalidScheduleError.invalidWindow(entry.day);
       }
     }
 
