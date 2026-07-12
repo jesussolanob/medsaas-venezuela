@@ -295,6 +295,10 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       } catch {}
       return next;
     });
+    // El botón vive DENTRO del sidebar, así que al hacer clic `hovered` queda true
+    // y `sidebarVisible = pinned || hovered` seguía en true → no se ocultaba.
+    // Forzar hovered=false hace que se oculte de inmediato al despinnear.
+    setHovered(false);
   }, []);
 
   const sidebarVisible = pinned || hovered;
