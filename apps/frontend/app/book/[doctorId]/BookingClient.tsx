@@ -187,14 +187,16 @@ function generateSlots(offices: DoctorOffice[] = [], horizonDays = 56, minLeadDa
 
       const dayTimes = new Set<string>();
       for (const off of enabledOffices) {
-        const sched = off.schedule!.find((s) => s.day === scheduleDay && s.enabled)!;
-        const tt = timesBetween(
-          sched.start,
-          sched.end,
-          off.slot_duration ?? 30,
-          off.buffer_minutes ?? 0,
-        );
-        tt.forEach((t) => dayTimes.add(t));
+        const scheds = off.schedule!.filter((s) => s.day === scheduleDay && s.enabled);
+        for (const sched of scheds) {
+          const tt = timesBetween(
+            sched.start,
+            sched.end,
+            off.slot_duration ?? 30,
+            off.buffer_minutes ?? 0,
+          );
+          tt.forEach((t) => dayTimes.add(t));
+        }
       }
       Array.from(dayTimes)
         .sort()
@@ -2065,6 +2067,17 @@ export default function BookingClient({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                      Cédula <span className="text-red-500">*</span>
+                    </label>
+                    {/* L6 (2026-04-29): cedula canonica (modo invitado) */}
+                    <CedulaInput
+                      value={form.cedula}
+                      onChange={(v) => setForm((f) => ({ ...f, cedula: v }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                       Nombre completo <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -2099,17 +2112,6 @@ export default function BookingClient({
                       onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                      Cédula <span className="text-red-500">*</span>
-                    </label>
-                    {/* L6 (2026-04-29): cedula canonica (modo invitado) */}
-                    <CedulaInput
-                      value={form.cedula}
-                      onChange={(v) => setForm((f) => ({ ...f, cedula: v }))}
-                      required
-                    />
-                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -2128,17 +2130,6 @@ export default function BookingClient({
                     style={{ background: BRAND.turquoise }}
                   >
                     Continuar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGuestMode(false);
-                      setAuthMode('login');
-                    }}
-                    className="text-xs font-semibold hover:underline"
-                    style={{ color: BRAND.turquoise }}
-                  >
-                    Prefiero iniciar sesión
                   </button>
                 </div>
               )}
