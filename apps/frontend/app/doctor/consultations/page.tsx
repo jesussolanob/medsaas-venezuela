@@ -1791,16 +1791,23 @@ function ConsultationsPage() {
     }
   }, []);
 
-  // Refetch al recuperar foco/visibilidad de la pestaña (auto-sana el stale).
+  // Refetch al recuperar foco/visibilidad de la pestaña + polling ligero cada 15s
+  // mientras la pestaña está visible. Auto-sana el stale sin importar cómo llegó el
+  // usuario a la página (navegación SPA sin cambio de foco, etc.) → las consultas
+  // recién creadas aparecen solas, sin recargar a mano.
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState === 'visible') void reloadConsultationsTable();
     }
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void reloadConsultationsTable();
+    }, 15000);
     return () => {
       window.removeEventListener('focus', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(interval);
     };
   }, [reloadConsultationsTable]);
 
