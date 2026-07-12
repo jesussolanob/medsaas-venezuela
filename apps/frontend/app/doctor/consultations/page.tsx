@@ -81,7 +81,6 @@ import {
   getPatientConsultations,
   getConsultation,
   updateConsultation,
-  approveConsultationPayment,
   updateConsultationPaymentDetails,
   getQuickItems,
   updateAppointmentStatus,
@@ -101,6 +100,7 @@ import { reportError } from '@/lib/report-error';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import { showToast } from '@/components/ui/Toaster';
 import ShareDocumentsModal from './ShareDocumentsModal';
+import ApprovePaymentModal, { type ExistingExtraItem } from './ApprovePaymentModal';
 
 type Consultation = {
   id: string;
@@ -127,6 +127,12 @@ type Consultation = {
   started_at: string | null;
   ended_at: string | null;
   duration_minutes: number | null;
+  /** Monto total de la consulta (base + extras) tal como persiste el backend. */
+  amount?: number | null;
+  /** Monto base fijo de la consulta (sin extras). Expuesto por el backend en el detalle. */
+  base_amount?: number | null;
+  /** Servicios adicionales registrados en esta consulta. */
+  extra_items?: ExistingExtraItem[] | null;
   blocks_snapshot?: Array<{
     key: string;
     label: string;
@@ -442,6 +448,8 @@ function ConsultationsPage() {
   const [pagoReceiptPath, setPagoReceiptPath] = useState<string | null>(null);
   const [pagoReceiptUploading, setPagoReceiptUploading] = useState(false);
   const [pagoDetailsSaving, setPagoDetailsSaving] = useState(false);
+  // Modal de aprobación de pago (con monto base + extras)
+  const [showApprovePaymentModal, setShowApprovePaymentModal] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   // Cantidad de registros EHR del paciente de la consulta abierta — habilita el tipo
   // "Historia clínica" en generar/compartir (evita PDF vacío / 422 sin EHR).
@@ -975,24 +983,21 @@ function ConsultationsPage() {
     newStatus: 'pending' | 'approved',
     _appointmentId: string | null,
   ) {
+    if (newStatus === 'approved') {
+      // Abrir el modal de aprobación — no aprobar directamente
+      setShowApprovePaymentModal(true);
+      return;
+    }
+
+    // Solo 'pending' llega aquí (volver a pendiente se aplica directo sin modal)
     setPagoSaving(true);
     try {
-      if (newStatus === 'approved') {
-        // Call backend payment approval via action (amount 0 if not known — Fase 5)
-        const result = await approveConsultationPayment(consultationId, 0, 'manual');
-        if (!result.success) {
-          showToast({ type: 'error', message: 'Error al aprobar el pago' });
-          setPagoSaving(false);
-          return;
-        }
-      }
       // Optimistic update — payments table sync deferred to Fase 5
       setSelected((prev) => (prev ? { ...prev, payment_status: newStatus } : prev));
       setReport((prev) => ({ ...prev, payment_status: newStatus }));
       setConsultations((prev) =>
         prev.map((x) => (x.id === consultationId ? { ...x, payment_status: newStatus } : x)),
       );
-      // Bug 7: migrar a showToast global para consistencia
       showToast({ type: 'success', message: 'Estado de pago actualizado correctamente' });
     } catch (err: unknown) {
       reportError('doctor/consultations', 'updatePagoStatus', err);
@@ -1000,6 +1005,26 @@ function ConsultationsPage() {
     } finally {
       setPagoSaving(false);
     }
+  }
+
+  /**
+   * Callback invocado por ApprovePaymentModal cuando el pago fue aprobado
+   * exitosamente. Actualiza el estado local con el total y los extras devueltos.
+   */
+  function handlePaymentApproved(total: number, extras: ExistingExtraItem[]) {
+    if (!selected) return;
+    const updated: Partial<Consultation> = {
+      payment_status: 'approved',
+      amount: total,
+      extra_items: extras,
+    };
+    setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
+    setReport((prev) => ({ ...prev, payment_status: 'approved' }));
+    setConsultations((prev) =>
+      prev.map((x) =>
+        x.id === selected.id ? { ...x, payment_status: 'approved', amount: total } : x,
+      ),
+    );
   }
 
   async function openConsultation(c: Consultation) {
@@ -1035,6 +1060,15 @@ function ConsultationsPage() {
           started_at: fresh_raw.started_at,
           ended_at: fresh_raw.ended_at,
           duration_minutes: fresh_raw.duration_minutes,
+          amount: (fresh_raw as Record<string, unknown>).amount as number | null | undefined,
+          base_amount: (fresh_raw as Record<string, unknown>).base_amount as
+            | number
+            | null
+            | undefined,
+          extra_items: (fresh_raw as Record<string, unknown>).extra_items as
+            | ExistingExtraItem[]
+            | null
+            | undefined,
           blocks_snapshot: null, // structure resolved separately from the doctor's template
           // Backend persists the filled report VALUES in `blocks_snapshot` (JSONB record);
           // hydrate the editor so saved dynamic blocks survive a reload.
@@ -1864,6 +1898,7 @@ function ConsultationsPage() {
             started_at: c.started_at,
             ended_at: c.ended_at,
             duration_minutes: c.duration_minutes,
+            amount: (c as Record<string, unknown>).amount as number | null | undefined,
             version: null,
           })),
         );
@@ -3881,6 +3916,39 @@ function ConsultationsPage() {
                         )}
                       </div>
 
+                      {/* Total cobrado (visible cuando el pago está aprobado) */}
+                      {selected.payment_status === 'approved' && selected.amount != null && (
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-1">
+                          <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
+                            Total cobrado
+                          </p>
+                          <p className="text-sm font-extrabold text-emerald-700">
+                            ${Number(selected.amount).toFixed(2)}
+                          </p>
+                          {selected.extra_items && selected.extra_items.length > 0 && (
+                            <div className="pt-1 space-y-0.5">
+                              {selected.base_amount != null && (
+                                <div className="flex justify-between text-[10px] text-emerald-600">
+                                  <span>Consulta base</span>
+                                  <span>${Number(selected.base_amount).toFixed(2)}</span>
+                                </div>
+                              )}
+                              {selected.extra_items.map((ei, idx) => (
+                                <div
+                                  key={ei.id ?? idx}
+                                  className="flex justify-between text-[10px] text-emerald-600"
+                                >
+                                  <span className="truncate mr-2">{ei.description}</span>
+                                  <span className="shrink-0">
+                                    ${Number(ei.amount_usd).toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Datos de cita (read-only) */}
                       {appointmentData &&
                         (appointmentData.payment_method || appointmentData.plan_price) && (
@@ -5554,6 +5622,19 @@ function ConsultationsPage() {
               </div>
             );
           })()}
+
+        {/* === Modal de aprobación de pago (con monto base + extras) === */}
+        {selected && (
+          <ApprovePaymentModal
+            open={showApprovePaymentModal}
+            consultationId={selected.id}
+            baseAmount={selected.base_amount ?? selected.amount ?? 0}
+            existingExtras={selected.extra_items ?? []}
+            paymentMethod={pagoMethod || undefined}
+            onClose={() => setShowApprovePaymentModal(false)}
+            onApproved={handlePaymentApproved}
+          />
+        )}
 
         {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
         {confirmDeleteConsulta && (
