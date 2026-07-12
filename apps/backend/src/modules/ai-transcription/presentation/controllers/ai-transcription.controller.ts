@@ -22,7 +22,11 @@ import type { TranscribeAudioOutputDto } from '../../application/dtos/transcribe
 import { ALLOWED_LANGUAGES } from '../../application/dtos/transcribe-audio.dto';
 import { TranscriptionAudioInvalidError } from '../../domain/errors/transcription-audio-invalid.error';
 import { AiTextUseCase } from '../../application/use-cases/ai-text.use-case';
-import type { AiTextOutputDto, AiTextActionInput } from '../../application/dtos/ai-text.dto';
+import type {
+  AiTextOutputDto,
+  AiTextActionInput,
+  ImproveBlockMode,
+} from '../../application/dtos/ai-text.dto';
 
 /**
  * Removes ASCII control characters (U+0000–U+001F) from a string.
@@ -55,6 +59,14 @@ const ALLOWED_MIME_BASE = new Set([
 
 /** Block key validation: only lowercase letters and underscores. */
 const BLOCK_KEY_RE = /^[a-z_]+$/u;
+
+/** Allowed values for the optional improve_block `mode` field. */
+const ALLOWED_IMPROVE_MODES = new Set<ImproveBlockMode>([
+  'improve',
+  'formal',
+  'shorten',
+  'lengthen',
+]);
 
 interface TranscribeSuccessResponse {
   success: true;
@@ -200,6 +212,7 @@ export class AiTranscriptionController {
       const content = body['content'];
       const block_key = body['block_key'];
       const block_label = body['block_label'];
+      const rawMode = body['mode'];
 
       if (typeof content !== 'string' || !content.trim()) {
         throw new BadRequestException('Campo "content" es requerido para improve_block.');
@@ -211,11 +224,24 @@ export class AiTranscriptionController {
         throw new BadRequestException('Campo "block_label" es requerido para improve_block.');
       }
 
+      // mode is optional; if provided it must be one of the allowed values.
+      if (
+        rawMode !== undefined &&
+        (typeof rawMode !== 'string' || !ALLOWED_IMPROVE_MODES.has(rawMode as ImproveBlockMode))
+      ) {
+        throw new BadRequestException(
+          'Campo "mode" inválido. Valores permitidos: improve, formal, shorten, lengthen.',
+        );
+      }
+
+      const mode = rawMode !== undefined ? (rawMode as ImproveBlockMode) : undefined;
+
       return {
         action: 'improve_block',
         content: content.slice(0, 10_000),
         block_key: block_key.slice(0, 100),
         block_label: block_label.slice(0, 200),
+        ...(mode !== undefined && { mode }),
       };
     }
 

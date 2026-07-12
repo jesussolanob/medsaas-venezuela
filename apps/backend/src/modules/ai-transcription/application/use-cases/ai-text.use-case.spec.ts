@@ -1,4 +1,9 @@
-import { AiTextUseCase, buildBlockPrompt, stripHtml } from './ai-text.use-case';
+import {
+  AiTextUseCase,
+  buildBlockPrompt,
+  sanitizeImproveBlockOutput,
+  stripHtml,
+} from './ai-text.use-case';
 import type { IAiTextGenerator } from '../ports/ai-text-generator.port';
 import type { IAiRequestLogRepository } from '../../domain/repositories/ai-request-log.repository';
 import type { IPlanFeaturesRepository } from '../../../doctor-settings/domain/repositories/plan-features.repository';
@@ -195,9 +200,13 @@ describe('AiTextUseCase', () => {
       findById: jest.fn(),
       findByCode: jest.fn(),
       countByDoctorAndMonth: jest.fn(),
+      getMaxSequenceForMonth: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
       updatePayment: jest.fn(),
+      updatePaymentDetails: jest.fn(),
+      approveWithExtras: jest.fn(),
+      findExtraItems: jest.fn(),
       list: jest.fn(),
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),
@@ -234,10 +243,11 @@ describe('AiTextUseCase', () => {
       expect(result.result).toBe('Texto mejorado.');
     });
 
-    it('calls text generator with a prompt containing the block label', async () => {
+    it('calls text generator with a prompt containing the block-specific instruction', async () => {
       await useCase.execute(baseImproveBlockInput);
 
       const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
+      // The new prompt includes the block-specific instruction keyword.
       expect(prompt).toContain('Motivo de consulta');
     });
 
@@ -264,7 +274,7 @@ describe('AiTextUseCase', () => {
       await useCase.execute(baseImproveBlockInput);
 
       const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
-      expect(prompt).toContain('motivo de consulta');
+      expect(prompt).toContain('Motivo de consulta');
     });
 
     it('uses default instruction for unknown block key', async () => {
@@ -281,7 +291,8 @@ describe('AiTextUseCase', () => {
       await useCase.execute(unknownBlockInput);
 
       const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
-      expect(prompt).toContain('Bloque Desconocido');
+      // Default instruction no longer echoes the label — verify a known phrase from the default text.
+      expect(prompt).toContain('Campo clínico');
     });
 
     it('checks ai_assistant feature (not ai_reports) for improve_block', async () => {
@@ -321,6 +332,109 @@ describe('AiTextUseCase', () => {
       );
 
       expect(mockLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+    });
+
+    it('strips leading parenthetical field name from AI output', async () => {
+      mockTextGenerator.generate.mockResolvedValue(
+        '(chief_complaint) El paciente acude por cefalea.',
+      );
+
+      const result = await useCase.execute(baseImproveBlockInput);
+
+      expect(result.result).toBe('El paciente acude por cefalea.');
+    });
+
+    it('strips wrapping quotes from AI output', async () => {
+      mockTextGenerator.generate.mockResolvedValue('"El paciente acude por cefalea."');
+
+      const result = await useCase.execute(baseImproveBlockInput);
+
+      expect(result.result).toBe('El paciente acude por cefalea.');
+    });
+
+    it('does not strip output for summarize_report action (only improve_block is sanitized)', async () => {
+      mockTextGenerator.generate.mockResolvedValue('(some_field) Resumen del informe.');
+
+      const result = await useCase.execute({
+        ...baseSummarizeInput,
+        isSuperAdmin: false,
+      });
+
+      // summarize_report output is NOT post-processed.
+      expect(result.result).toBe('(some_field) Resumen del informe.');
+    });
+
+    it('passes mode=shorten to buildBlockPrompt (prompt contains shorten instruction)', async () => {
+      const input: AiTextInputDto = {
+        ...baseImproveBlockInput,
+        actionInput: {
+          action: 'improve_block',
+          content: 'Texto extenso para acortar.',
+          block_key: 'chief_complaint',
+          block_label: 'Motivo de consulta',
+          mode: 'shorten',
+        },
+      };
+
+      await useCase.execute(input);
+
+      const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
+      expect(prompt).toContain('Sintetiza');
+    });
+
+    it('passes mode=lengthen to buildBlockPrompt (prompt contains lengthen instruction)', async () => {
+      const input: AiTextInputDto = {
+        ...baseImproveBlockInput,
+        actionInput: {
+          action: 'improve_block',
+          content: 'Cefalea.',
+          block_key: 'chief_complaint',
+          block_label: 'Motivo de consulta',
+          mode: 'lengthen',
+        },
+      };
+
+      await useCase.execute(input);
+
+      const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
+      expect(prompt).toContain('Desarrolla y amplía');
+    });
+
+    it('passes mode=formal to buildBlockPrompt (prompt contains formal instruction)', async () => {
+      const input: AiTextInputDto = {
+        ...baseImproveBlockInput,
+        actionInput: {
+          action: 'improve_block',
+          content: 'Hipertensión.',
+          block_key: 'diagnosis',
+          block_label: 'Diagnóstico',
+          mode: 'formal',
+        },
+      };
+
+      await useCase.execute(input);
+
+      const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
+      expect(prompt).toContain('protocolar');
+    });
+
+    it('defaults to improve mode when mode is undefined', async () => {
+      const inputNoMode: AiTextInputDto = {
+        ...baseImproveBlockInput,
+        actionInput: {
+          action: 'improve_block',
+          content: 'Cefalea.',
+          block_key: 'chief_complaint',
+          block_label: 'Motivo de consulta',
+          // mode intentionally omitted
+        },
+      };
+
+      await useCase.execute(inputNoMode);
+
+      const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
+      // improve mode uses "Reescribe el siguiente texto clínico en prosa formal"
+      expect(prompt).toContain('prosa formal');
     });
   });
 
@@ -661,11 +775,6 @@ describe('stripHtml', () => {
 });
 
 describe('buildBlockPrompt', () => {
-  it('includes block label in the prompt', () => {
-    const prompt = buildBlockPrompt('chief_complaint', 'Motivo de consulta', 'Dolor');
-    expect(prompt).toContain('Motivo de consulta');
-  });
-
   it('includes stripped content in the prompt', () => {
     const prompt = buildBlockPrompt('chief_complaint', 'Motivo', '<b>Dolor</b>');
     expect(prompt).toContain('Dolor');
@@ -684,11 +793,92 @@ describe('buildBlockPrompt', () => {
 
   it('uses default instruction for unknown block key', () => {
     const prompt = buildBlockPrompt('custom_block', 'Mi bloque', 'contenido');
-    expect(prompt).toContain('Mi bloque');
+    expect(prompt).toContain('Campo clínico');
   });
 
   it('returns prompt in Spanish', () => {
     const prompt = buildBlockPrompt('chief_complaint', 'Motivo', 'contenido');
     expect(prompt).toContain('español (Venezuela)');
+  });
+
+  it('does NOT embed the raw label directly adjacent to the content', () => {
+    // The label must not appear as "(Label):" immediately before the content
+    // to avoid the model echoing it in the output.
+    const prompt = buildBlockPrompt('chief_complaint', 'Motivo de consulta', 'Dolor');
+    expect(prompt).not.toMatch(/\(Motivo de consulta\):/u);
+    // Content is under a clear separator heading.
+    expect(prompt).toContain('Contenido a mejorar:');
+  });
+
+  it('includes explicit output-only constraint instruction', () => {
+    const prompt = buildBlockPrompt('chief_complaint', 'Motivo', 'contenido');
+    expect(prompt).toContain('Devuelve ÚNICAMENTE');
+  });
+
+  it('defaults to improve mode when mode is not provided', () => {
+    const promptDefault = buildBlockPrompt('chief_complaint', 'Motivo', 'contenido');
+    const promptImprove = buildBlockPrompt('chief_complaint', 'Motivo', 'contenido', 'improve');
+    expect(promptDefault).toBe(promptImprove);
+  });
+
+  it('uses shorten instruction when mode=shorten', () => {
+    const prompt = buildBlockPrompt('chief_complaint', 'Motivo', 'contenido', 'shorten');
+    expect(prompt).toContain('Sintetiza');
+  });
+
+  it('uses lengthen instruction when mode=lengthen', () => {
+    const prompt = buildBlockPrompt('diagnosis', 'Diagnóstico', 'contenido', 'lengthen');
+    expect(prompt).toContain('Desarrolla y amplía');
+  });
+
+  it('uses formal instruction when mode=formal', () => {
+    const prompt = buildBlockPrompt('treatment', 'Tratamiento', 'contenido', 'formal');
+    expect(prompt).toContain('protocolar');
+  });
+});
+
+describe('sanitizeImproveBlockOutput', () => {
+  it('strips leading parenthetical snake_case field name', () => {
+    expect(sanitizeImproveBlockOutput('(chief_complaint) El paciente acude...')).toBe(
+      'El paciente acude...',
+    );
+  });
+
+  it('strips leading parenthetical label with colon', () => {
+    expect(sanitizeImproveBlockOutput('(Motivo de consulta): El paciente acude...')).toBe(
+      'El paciente acude...',
+    );
+  });
+
+  it('strips leading parenthetical label without colon', () => {
+    expect(sanitizeImproveBlockOutput('(Diagnóstico) Hipertensión arterial primaria.')).toBe(
+      'Hipertensión arterial primaria.',
+    );
+  });
+
+  it('strips wrapping double quotes', () => {
+    expect(sanitizeImproveBlockOutput('"El paciente refiere cefalea."')).toBe(
+      'El paciente refiere cefalea.',
+    );
+  });
+
+  it('strips wrapping single quotes', () => {
+    expect(sanitizeImproveBlockOutput("'El paciente refiere cefalea.'")).toBe(
+      'El paciente refiere cefalea.',
+    );
+  });
+
+  it('strips both wrapping quotes and leading parenthetical in correct order', () => {
+    expect(sanitizeImproveBlockOutput('"(chief_complaint) El paciente..."')).toBe('El paciente...');
+  });
+
+  it('returns clean text unchanged', () => {
+    expect(sanitizeImproveBlockOutput('El paciente acude por cefalea tensional.')).toBe(
+      'El paciente acude por cefalea tensional.',
+    );
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(sanitizeImproveBlockOutput('  El paciente acude.  ')).toBe('El paciente acude.');
   });
 });

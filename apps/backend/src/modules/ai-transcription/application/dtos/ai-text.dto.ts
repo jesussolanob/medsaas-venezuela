@@ -22,11 +22,23 @@ export interface AiTextOutputDto {
 // Action-specific input shapes (discriminated union)
 // ---------------------------------------------------------------------------
 
+/**
+ * Rewriting modes for improve_block (analogous to Gmail tone chips).
+ *
+ *   improve  — default; formal clinical rewrite in complete sentences (third person).
+ *   formal   — elevates register to a more formal/protocolar tone.
+ *   shorten  — condenses while preserving all clinical information.
+ *   lengthen — expands with semiological detail WITHOUT inventing data.
+ */
+export type ImproveBlockMode = 'improve' | 'formal' | 'shorten' | 'lengthen';
+
 export interface ImproveBlockInput {
   action: 'improve_block';
   content: string;
   block_key: string;
   block_label: string;
+  /** Optional rewriting mode. Defaults to 'improve' when omitted. */
+  mode?: ImproveBlockMode;
 }
 
 export interface SummarizeReportLegacy {

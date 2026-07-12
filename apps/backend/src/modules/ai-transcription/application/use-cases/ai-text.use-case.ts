@@ -35,6 +35,7 @@ import type {
   AiTextInputDto,
   AiTextOutputDto,
   ImproveBlockInput,
+  ImproveBlockMode,
   SummarizeReportInput,
 } from '../dtos/ai-text.dto';
 
@@ -106,6 +107,7 @@ export class AiTextUseCase {
         input.actionInput.block_key,
         input.actionInput.block_label,
         input.actionInput.content,
+        input.actionInput.mode,
       );
     } else if (input.actionInput.action === 'summarize_report') {
       prompt = await this.buildSummarizeReportPrompt(input.actionInput);
@@ -118,7 +120,11 @@ export class AiTextUseCase {
     let status = 'success';
 
     try {
-      const result = await this.textGenerator.generate(prompt);
+      const raw = await this.textGenerator.generate(prompt);
+      // Post-process improve_block output: strip leading parenthetical field name and
+      // wrapping quotes that some models echo back from the prompt.
+      const result =
+        input.actionInput.action === 'improve_block' ? sanitizeImproveBlockOutput(raw) : raw;
       await this.writeAuditLog(input.doctorId, action, status);
       return { result };
     } catch (err) {
@@ -316,49 +322,120 @@ export function stripHtml(html: string): string {
 }
 
 /**
+ * Removes a leading parenthetical field-name echo that some models copy from
+ * the prompt, plus any wrapping quotation marks.
+ *
+ * Examples stripped:
+ *   "(chief_complaint) El paciente..." → "El paciente..."
+ *   "(Motivo de consulta): El paciente..." → "El paciente..."
+ *   '"El paciente..."'  → "El paciente..."
+ *
+ * Exported for testing.
+ */
+export function sanitizeImproveBlockOutput(raw: string): string {
+  // Step 1: strip wrapping quotes (single, double, or typographic).
+  let text = raw
+    .trim()
+    .replace(/^["'«""]([\s\S]*?)["'»""]$/u, '$1')
+    .trim();
+
+  // Step 2: strip a leading parenthesised label "(anything) :?" at the start.
+  // Matches patterns like: (chief_complaint), (Motivo de consulta):, (Label) —
+  text = text.replace(/^\s*\([^)]{1,120}\)\s*:?\s*/u, '').trim();
+
+  return text;
+}
+
+/**
+ * Returns the mode-specific instruction prefix that frames the rewriting goal.
+ * This is injected into the prompt BEFORE the block-specific instruction so
+ * the model understands the overarching task.
+ */
+function getModeInstruction(mode: ImproveBlockMode): string {
+  switch (mode) {
+    case 'formal':
+      return 'Reescribe el siguiente texto clínico elevando el registro a un tono formal y protocolar, propio de un informe médico oficial. Usa prosa continua, vocabulario técnico preciso, tercera persona gramatical, y oraciones completas y bien articuladas.';
+    case 'shorten':
+      return 'Sintetiza el siguiente texto clínico en una versión más breve, conservando íntegramente toda la información clínica relevante. Usa tono formal, tercera persona y oraciones completas. Elimina redundancias y palabras innecesarias, pero no omitas ningún dato clínico.';
+    case 'lengthen':
+      return 'Desarrolla y amplía el siguiente texto clínico con mayor precisión semiológica y estructura formal. Usa tono profesional, tercera persona y oraciones completas. NO inventes datos clínicos que no estén implícitos en el texto original; amplía con estructura, terminología y detalle descriptivo.';
+    case 'improve':
+    default:
+      return 'Reescribe el siguiente texto clínico en prosa formal y profesional. Usa tercera persona gramatical, oraciones completas y bien construidas, y vocabulario médico apropiado. El resultado debe sonar como una nota clínica redactada por un médico, no como un dictado informal.';
+  }
+}
+
+/**
  * Builds the improve_block prompt.
  * Exported for testing.
  */
-export function buildBlockPrompt(blockKey: string, blockLabel: string, content: string): string {
-  const instruction = getBlockInstruction(blockKey, blockLabel);
+export function buildBlockPrompt(
+  blockKey: string,
+  _blockLabel: string,
+  content: string,
+  mode: ImproveBlockMode = 'improve',
+): string {
+  const modeInstruction = getModeInstruction(mode);
+  const blockInstruction = getBlockInstruction(blockKey);
   const cleanContent = stripHtml(content);
 
-  return `Eres un asistente de redacción médica profesional. ${instruction} Mantén toda la información clínica intacta — NO inventes datos que no estén en el texto original. Responde en español (Venezuela) y devuelve SOLO el texto mejorado, sin explicaciones, encabezados, ni comillas.\n\nTexto original (${blockLabel}):\n${cleanContent}`;
+  // Key design decisions (tasks 1a + 2):
+  //   - The label is mentioned only in the block-specific instruction context,
+  //     NOT embedded directly adjacent to the content text, to avoid the model
+  //     repeating it in the output.
+  //   - The output constraint ("devuelve ÚNICAMENTE") is explicit and placed
+  //     immediately before the content section, not buried in the middle.
+  //   - "Contenido a mejorar:" separates the instruction from the text clearly.
+  return [
+    `Eres un asistente de redacción médica profesional. ${modeInstruction}`,
+    ``,
+    `Instrucción específica para este campo: ${blockInstruction}`,
+    ``,
+    `REGLAS DE SALIDA — respétalas sin excepción:`,
+    `• Devuelve ÚNICAMENTE el texto clínico reescrito.`,
+    `• NO incluyas el nombre del campo, ni encabezados, ni etiquetas, ni paréntesis con nombres de campos.`,
+    `• NO incluyas explicaciones, aclaraciones, ni comillas envolventes.`,
+    `• Conserva TODA la información clínica del original — no inventes datos inexistentes.`,
+    `• Responde en español (Venezuela).`,
+    ``,
+    `Contenido a mejorar:`,
+    cleanContent,
+  ].join('\n');
 }
 
-function getBlockInstruction(blockKey: string, blockLabel: string): string {
+function getBlockInstruction(blockKey: string): string {
   switch (blockKey) {
     case 'chief_complaint':
-      return 'Reescribe el motivo de consulta de forma clara, concisa y en lenguaje médico apropiado. Estructura los síntomas con su tiempo de evolución, intensidad y factores asociados cuando estén presentes.';
+      return 'Motivo de consulta: reescribe en prosa clínica estructurando los síntomas con tiempo de evolución, intensidad y factores asociados cuando estén presentes en el original.';
     case 'history':
-      return 'Mejora la redacción de los antecedentes del paciente. Organízalos en categorías (personales, familiares, quirúrgicos, alérgicos, hábitos) cuando aplique, y usa terminología médica estandarizada.';
+      return 'Antecedentes: organiza en categorías (personales, familiares, quirúrgicos, alérgicos, hábitos) cuando aplique; usa terminología médica estandarizada.';
     case 'physical_exam':
-      return 'Mejora la redacción del examen físico. Estructura los hallazgos por sistemas (general, cardiopulmonar, abdominal, neurológico, etc.) y usa terminología semiológica precisa.';
+      return 'Examen físico: estructura los hallazgos por sistemas (general, cardiopulmonar, abdominal, neurológico, etc.) usando terminología semiológica precisa.';
     case 'diagnosis':
-      return 'Mejora la redacción del diagnóstico clínico. Sé preciso, usa terminología CIE-10 cuando sea posible, distingue diagnóstico principal de diagnósticos secundarios o diferenciales si los hay.';
+      return 'Diagnóstico clínico: usa terminología CIE-10 cuando sea posible; distingue diagnóstico principal de secundarios o diferenciales si los hay en el original.';
     case 'treatment':
-      return 'Mejora la redacción del plan terapéutico. Estructura el tratamiento (farmacológico, no farmacológico, medidas generales) de forma clara y organizada.';
+      return 'Plan terapéutico: estructura el tratamiento (farmacológico, no farmacológico, medidas generales) de forma clara y jerarquizada.';
     case 'prescription':
-      return 'Mejora la redacción de la prescripción. Asegúrate que cada medicamento tenga: nombre genérico, dosis, vía, frecuencia y duración. Mantén el formato profesional de receta médica.';
+      return 'Prescripción médica: asegúrate de que cada medicamento presente nombre genérico, dosis, vía, frecuencia y duración; mantén formato profesional de receta.';
     case 'rest':
-      return 'Mejora la redacción del reposo indicado. Especifica tipo de reposo (absoluto/relativo/laboral), duración y motivo clínico de forma profesional.';
+      return 'Reposo indicado: especifica tipo (absoluto/relativo/laboral), duración y motivo clínico de forma profesional.';
     case 'tasks':
-      return 'Mejora la redacción de las tareas terapéuticas para el paciente. Sé claro y específico en lo que el paciente debe hacer, con instrucciones accionables y medibles.';
+      return 'Tareas terapéuticas: redacta instrucciones claras, accionables y medibles para que el paciente las ejecute.';
     case 'nutrition_plan':
-      return 'Mejora la redacción del plan alimenticio. Estructura por comidas (desayuno, merienda, almuerzo, cena), enfatiza balance nutricional, porciones, alimentos recomendados y a evitar.';
+      return 'Plan alimenticio: estructura por comidas (desayuno, merienda, almuerzo, cena); enfatiza balance nutricional, porciones, alimentos recomendados y a evitar.';
     case 'exercises':
-      return 'Mejora la redacción de la rutina de ejercicios. Especifica tipo de ejercicio, series, repeticiones, frecuencia semanal, progresión y precauciones cuando apliquen.';
+      return 'Rutina de ejercicios: especifica tipo de ejercicio, series, repeticiones, frecuencia semanal, progresión y precauciones cuando apliquen en el original.';
     case 'indications':
-      return 'Mejora la redacción de las indicaciones generales al paciente. Usa lenguaje claro, lista los puntos cuando sean varios y enfatiza signos de alarma si los hay.';
+      return 'Indicaciones generales: usa lenguaje claro; lista los puntos cuando sean varios y enfatiza signos de alarma si los hay.';
     case 'recommendations':
-      return 'Mejora la redacción de las recomendaciones complementarias. Sé práctico, accionable y prioriza lo más importante para el paciente.';
+      return 'Recomendaciones complementarias: sé práctico y accionable; prioriza lo más importante para el seguimiento del paciente.';
     case 'requested_exams':
-      return 'Mejora la redacción de los exámenes solicitados. Usa el nombre completo y estandarizado de cada estudio (laboratorio, imagen, especiales) y agrupa por tipo cuando aplique.';
+      return 'Exámenes solicitados: usa el nombre completo y estandarizado de cada estudio (laboratorio, imagen, especiales); agrupa por tipo cuando aplique.';
     case 'next_followup':
-      return 'Mejora la redacción de la próxima cita / control. Especifica fecha aproximada, motivo del control y qué debe traer el paciente si aplica.';
+      return 'Próxima cita/control: especifica fecha aproximada, motivo del control y qué debe traer el paciente si aplica.';
     case 'internal_notes':
-      return 'Mejora la redacción de las notas internas del médico. Estas notas son privadas (no se comparten con el paciente) — sé directo, técnico y enfócate en seguimiento, pendientes y consideraciones clínicas.';
+      return 'Notas internas del médico (privadas, no se comparten con el paciente): sé directo, técnico y enfócate en seguimiento, pendientes y consideraciones clínicas relevantes.';
     default:
-      return `Mejora la redacción de este bloque clínico (${blockLabel}). Hazlo más profesional, claro y estructurado.`;
+      return 'Campo clínico: reescríbelo de manera profesional, clara y estructurada según el contexto clínico implícito.';
   }
 }
