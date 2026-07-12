@@ -34,6 +34,7 @@ import type {
   PublicStats,
   CreateAdminDoctorParams,
   AdminCreatedDoctorResult,
+  DoctorPatientRow,
 } from '../../../domain/repositories/admin.repository';
 import type { PlanConfig } from '../../../domain/value-objects/plan-config.vo';
 import { PlanConfig as PlanConfigVO } from '../../../domain/value-objects/plan-config.vo';
@@ -43,6 +44,8 @@ import { AdminSubscriptionModel } from '../models/subscription.model';
 import { PlanConfigModel } from '../models/plan-config.model';
 import { PlanFeatureModel } from '../models/plan-feature.model';
 import { PlanPriceModel } from '../models/plan-price.model';
+import { AccessAuditLogModel } from '../../../../patients/infrastructure/database/models/access-audit-log.model';
+import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 
 // Sensitive keys that must never be returned from the settings endpoint
@@ -138,7 +141,10 @@ export class SequelizeAdminRepository implements IAdminRepository {
     private readonly planFeatureModel: typeof PlanFeatureModel,
     @InjectModel(PlanPriceModel)
     private readonly planPriceModel: typeof PlanPriceModel,
+    @InjectModel(AccessAuditLogModel)
+    private readonly auditLogModel: typeof AccessAuditLogModel,
     private readonly sequelize: Sequelize,
+    private readonly crypto: CryptoService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -1411,5 +1417,98 @@ export class SequelizeAdminRepository implements IAdminRepository {
     }
 
     return isActive;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin: doctor → patient identity listing
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns patients attended by the given doctor with decrypted identity fields
+   * and consultation aggregate data (count + last attended date).
+   *
+   * The query joins patients with consultations scoped to doctorId, so only
+   * patients that have at least one consultation row are included. Patients
+   * registered with this doctor but never seen appear in the outer join and will
+   * have consultationCount=0 / lastAttendedAt=null.
+   *
+   * PHI decryption happens in-process after the raw query returns ciphertext.
+   * Throws DoctorNotFoundError if the profile does not exist.
+   *
+   * SECURITY: caller MUST log an audit row per access (see logAdminReveal).
+   */
+  async listDoctorPatients(doctorId: string): Promise<DoctorPatientRow[]> {
+    // Validate that the doctor exists before revealing any patient identity.
+    const doctorExists = await this.profileModel.findOne({
+      where: { id: doctorId, role: 'doctor' },
+      attributes: ['id'],
+    });
+    if (!doctorExists) {
+      throw new DoctorNotFoundError(doctorId);
+    }
+
+    interface PatientConsultationRow {
+      patient_id: string;
+      full_name: string;
+      cedula: string | null;
+      consultation_count: string;
+      last_attended_at: Date | null;
+    }
+
+    // LEFT JOIN ensures patients with zero consultations appear with count=0.
+    // Scoped strictly to doctorId on both the patients and consultations sides
+    // to prevent cross-doctor data leaks.
+    const rows = await this.sequelize.query<PatientConsultationRow>(
+      `SELECT
+         p.id                               AS patient_id,
+         p.full_name                        AS full_name,
+         p.cedula                           AS cedula,
+         COUNT(c.id)::text                  AS consultation_count,
+         MAX(c.consultation_date)           AS last_attended_at
+       FROM patients p
+       LEFT JOIN consultations c
+         ON c.patient_id = p.id
+        AND c.doctor_id  = :doctorId
+       WHERE p.doctor_id   = :doctorId
+         AND p.deleted_at IS NULL
+       GROUP BY p.id, p.full_name, p.cedula
+       ORDER BY p.full_name ASC`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { doctorId },
+      },
+    );
+
+    return rows.map((row) => ({
+      id: row.patient_id,
+      fullName: this.crypto.decrypt(row.full_name),
+      cedula: row.cedula ? this.crypto.decrypt(row.cedula) : null,
+      consultationCount: parseInt(row.consultation_count ?? '0', 10),
+      lastAttendedAt: row.last_attended_at ? new Date(row.last_attended_at) : null,
+    }));
+  }
+
+  /**
+   * Inserts a single row into access_audit_log.
+   * Fire-and-forget — errors MUST be swallowed by the caller (never propagate to response).
+   */
+  async logAdminReveal(entry: {
+    actorId: string;
+    actorRole: string;
+    patientId: string;
+    fieldRevealed: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+    reason?: string | null;
+  }): Promise<void> {
+    await this.auditLogModel.create({
+      actorId: entry.actorId,
+      actorRole: entry.actorRole,
+      patientId: entry.patientId,
+      fieldRevealed: entry.fieldRevealed,
+      ipAddress: entry.ipAddress,
+      userAgent: entry.userAgent,
+      reason: entry.reason ?? null,
+    });
   }
 }

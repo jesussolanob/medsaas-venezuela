@@ -436,6 +436,34 @@ export interface IAdminRepository {
    * Throws DoctorNotFoundError if the profile does not exist.
    */
   setProfileActive(profileId: string, isActive: boolean): Promise<boolean>;
+
+  /**
+   * Returns the list of patients attended by a specific doctor.
+   *
+   * Decrypts patient PII (full_name, cedula) for admin display.
+   * Aggregates consultation counts and last attended date from the
+   * consultations table, scoped strictly to the given doctorId.
+   *
+   * Throws DoctorNotFoundError if no doctor profile with the given ID exists.
+   *
+   * SECURITY: PII returned here requires an audit row in access_audit_log
+   * (caller responsibility). Never expose outside super_admin-guarded contexts.
+   */
+  listDoctorPatients(doctorId: string): Promise<DoctorPatientRow[]>;
+
+  /**
+   * Inserts a single row into access_audit_log for audit trail.
+   * Fire-and-forget semantics — errors must NOT propagate to the caller.
+   */
+  logAdminReveal(entry: {
+    actorId: string;
+    actorRole: string;
+    patientId: string;
+    fieldRevealed: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+    reason?: string | null;
+  }): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,4 +498,31 @@ export interface PublicStats {
   specialists: number;
   /** COUNT of total patient rows. */
   patients: number;
+}
+
+// ---------------------------------------------------------------------------
+// Admin: doctor → patient identity listing (PII — audit required)
+// ---------------------------------------------------------------------------
+
+/**
+ * Patient identity row for admin listing of a doctor's patients.
+ *
+ * SECURITY: fullName and cedula are PII decrypted for admin display only.
+ * This type must never be reused outside super_admin-guarded contexts.
+ * Every access is recorded in access_audit_log.
+ *
+ * Intentionally excludes all medical data (diagnosis, treatment, ehr,
+ * prescriptions) and all contact data (phone, email).
+ */
+export interface DoctorPatientRow {
+  /** Patient UUID */
+  id: string;
+  /** PII — decrypted full name. Admin-only. Do NOT log. */
+  fullName: string;
+  /** PII — decrypted cedula. Admin-only. Do NOT log. May be null. */
+  cedula: string | null;
+  /** Total consultations this patient has had with this specific doctor. */
+  consultationCount: number;
+  /** Date of the most recent consultation with this doctor, or null if none yet. */
+  lastAttendedAt: Date | null;
 }

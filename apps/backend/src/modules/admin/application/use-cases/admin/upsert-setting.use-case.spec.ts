@@ -41,6 +41,8 @@ const makeRepo = (): jest.Mocked<IAdminRepository> =>
     getPublicStats: jest.fn(),
     setProfileActive: jest.fn(),
     createAdminDoctor: jest.fn(),
+    listDoctorPatients: jest.fn(),
+    logAdminReveal: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('UpsertSettingUseCase', () => {

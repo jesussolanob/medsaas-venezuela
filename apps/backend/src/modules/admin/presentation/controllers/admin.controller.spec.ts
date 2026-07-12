@@ -37,6 +37,7 @@ import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan
 import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-doctors.use-case';
 import { SetDoctorAccessUseCase } from '../../application/use-cases/admin/set-doctor-access.use-case';
 import { CreateAdminDoctorUseCase } from '../../application/use-cases/admin/create-admin-doctor.use-case';
+import { GetDoctorPatientsUseCase } from '../../application/use-cases/admin/get-doctor-patients.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
 import type { DoctorDetail, DoctorGrowthData } from '../../domain/repositories/admin.repository';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
@@ -244,6 +245,10 @@ const buildModule = async (): Promise<TestingModule> => {
       { provide: ExportDoctorsUseCase, useValue: mockExportDoctors },
       { provide: SetDoctorAccessUseCase, useValue: mockSetDoctorAccess },
       { provide: CreateAdminDoctorUseCase, useValue: mockCreateAdminDoctor },
+      {
+        provide: GetDoctorPatientsUseCase,
+        useValue: { execute: jest.fn().mockResolvedValue([]) },
+      },
     ],
   })
     .overrideGuard(AppAuthGuard)

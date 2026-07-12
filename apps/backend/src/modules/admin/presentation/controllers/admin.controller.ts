@@ -9,10 +9,11 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
@@ -82,6 +83,7 @@ import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan
 import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-doctors.use-case';
 import { SetDoctorAccessUseCase } from '../../application/use-cases/admin/set-doctor-access.use-case';
 import { CreateAdminDoctorUseCase } from '../../application/use-cases/admin/create-admin-doctor.use-case';
+import { GetDoctorPatientsUseCase } from '../../application/use-cases/admin/get-doctor-patients.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -141,6 +143,7 @@ export class AdminController {
     private readonly exportDoctorsOp: ExportDoctorsUseCase,
     private readonly setDoctorAccessOp: SetDoctorAccessUseCase,
     private readonly createAdminDoctorOp: CreateAdminDoctorUseCase,
+    private readonly getDoctorPatientsOp: GetDoctorPatientsUseCase,
   ) {}
 
   /**
@@ -344,6 +347,58 @@ export class AdminController {
         cedula: d.cedula,
       })),
       meta: { total: result.total, page: result.page, limit: result.limit },
+    };
+  }
+
+  /**
+   * GET /api/admin/doctors/:doctorId/patients — list patients attended by a doctor.
+   *
+   * Returns patient identity (fullName + cedula) plus consultation aggregate data
+   * (consultationCount + lastAttendedAt). Explicitly excludes all medical content
+   * (diagnosis, treatment, EHR, prescriptions) and all contact data (phone, email).
+   *
+   * Each request is recorded in access_audit_log with:
+   *   fieldRevealed = 'admin_patient_identity'
+   *   patientId     = doctorId (bulk-reveal proxy — no single patient applies)
+   *   reason        = 'admin listed patients for doctor <doctorId>'
+   *
+   * Anti-IDOR: the scope is strictly bound to :doctorId in the repository query.
+   *
+   * NOTE: This route is declared BEFORE 'doctors/:id' to prevent NestJS from
+   * matching 'doctors/:doctorId/patients' with the detail handler and treating
+   * 'patients' as the :id segment.
+   *
+   * SECURITY: returns PII (fullName, cedula). Guarded by @Roles('super_admin').
+   */
+  @Get('doctors/:doctorId/patients')
+  async getDoctorPatients(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('doctorId') doctorId: string,
+    @Req() req: Request,
+  ): Promise<SuccessResponse<unknown[]>> {
+    const ipAddress =
+      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
+      req.socket?.remoteAddress ??
+      null;
+    const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+
+    const patients = await this.getDoctorPatientsOp.execute({
+      doctorId,
+      actorId: user.sub,
+      actorRole: user.role,
+      ipAddress,
+      userAgent,
+    });
+
+    return {
+      success: true,
+      data: patients.map((p) => ({
+        id: p.id,
+        fullName: p.fullName,
+        cedula: p.cedula,
+        consultationCount: p.consultationCount,
+        lastAttendedAt: p.lastAttendedAt,
+      })),
     };
   }
 

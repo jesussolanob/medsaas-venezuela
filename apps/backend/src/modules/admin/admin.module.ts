@@ -7,6 +7,7 @@ import { AdminSubscriptionModel } from './infrastructure/database/models/subscri
 import { PlanConfigModel } from './infrastructure/database/models/plan-config.model';
 import { PlanFeatureModel } from './infrastructure/database/models/plan-feature.model';
 import { PlanPriceModel } from './infrastructure/database/models/plan-price.model';
+import { AccessAuditLogModel } from '../patients/infrastructure/database/models/access-audit-log.model';
 
 // Repository
 import { SequelizeAdminRepository } from './infrastructure/database/repositories/sequelize-admin.repository';
@@ -43,6 +44,7 @@ import { ExportDoctorsUseCase } from './application/use-cases/admin/export-docto
 import { GetPublicStatsUseCase } from './application/use-cases/admin/get-public-stats.use-case';
 import { SetDoctorAccessUseCase } from './application/use-cases/admin/set-doctor-access.use-case';
 import { CreateAdminDoctorUseCase } from './application/use-cases/admin/create-admin-doctor.use-case';
+import { GetDoctorPatientsUseCase } from './application/use-cases/admin/get-doctor-patients.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -72,6 +74,7 @@ import { PublicStatsController } from './presentation/controllers/public-stats.c
       PlanConfigModel,
       PlanFeatureModel,
       PlanPriceModel,
+      AccessAuditLogModel,
     ]),
   ],
   controllers: [AdminController, PlansCatalogController, PublicStatsController],
@@ -116,6 +119,7 @@ import { PublicStatsController } from './presentation/controllers/public-stats.c
     GetPublicStatsUseCase,
     SetDoctorAccessUseCase,
     CreateAdminDoctorUseCase,
+    GetDoctorPatientsUseCase,
   ],
 })
 export class AdminModule {}
