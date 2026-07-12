@@ -2215,8 +2215,12 @@ function ConsultationsPage() {
                     (x) => x.patient_id === selected.patient_id,
                   ).length;
 
+                  // El reposo solo cuenta como "configurado" si tiene días > 0.
+                  // `reposoFrom` (hoy) y `reposoDiagnosis` (prefill del diagnóstico de
+                  // la consulta) vienen precargados, así que NO deben habilitar por sí
+                  // solos la generación del reposo — si no hay días, no hay reposo.
                   const sharedReposoContentStr =
-                    reposoDays > 0 || reposoDiagnosis || reposoFrom
+                    reposoDays > 0
                       ? [
                           `Reposo de ${reposoDays} día${reposoDays !== 1 ? 's' : ''}`,
                           reposoFrom
