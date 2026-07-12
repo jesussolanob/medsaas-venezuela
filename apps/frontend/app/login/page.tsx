@@ -572,9 +572,16 @@ function LoginInner() {
               </p>
             </div>
 
-            <p className="text-center text-xs mt-5" style={{ color: 'var(--dh-gray-400)' }}>
+            <p
+              className="text-center text-xs mt-5 flex items-center justify-center gap-3"
+              style={{ color: 'var(--dh-gray-400)' }}
+            >
               <Link href="/" className="hover:opacity-70 transition-opacity">
                 ← Volver al inicio
+              </Link>
+              <span aria-hidden="true">·</span>
+              <Link href="/terms" className="hover:opacity-70 transition-opacity">
+                Términos y Condiciones
               </Link>
             </p>
           </div>

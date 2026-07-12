@@ -35,6 +35,7 @@ import {
   CheckCircle,
   Lock,
   FileUp,
+  FileText,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
@@ -51,6 +52,7 @@ import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
 import { checkOnboardingComplete } from './actions';
 import TelemetryProvider from '@/components/telemetry/TelemetryProvider';
+import TermsModal from '@/components/legal/TermsModal';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 type NavSection = { key: string; label: string; icon: React.ElementType; items: NavItem[] };
@@ -215,6 +217,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
   const [accountBlocked, setAccountBlocked] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
 
   // Intercept 403 ACCOUNT_BLOCKED from any BFF fetch in the doctor portal.
   useAccountBlockedGuard(() => {
@@ -762,6 +765,23 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             )}
 
             <button
+              onClick={() => setTermsModalOpen(true)}
+              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
+              style={{ color: 'var(--dh-gray-400)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--dh-gray-600)';
+                e.currentTarget.style.background = 'var(--dh-gray-50)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--dh-gray-400)';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <FileText className="w-4 h-4" />
+              Términos y Condiciones
+            </button>
+
+            <button
               onClick={handleLogout}
               className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
               style={{ color: 'var(--dh-gray-400)' }}
@@ -779,6 +799,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             </button>
           </div>
         </aside>
+        <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
 
         {/* Main content */}
         <div

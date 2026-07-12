@@ -28,6 +28,8 @@ export interface RegistrationInput {
   specialty?: string;
   mpps_number?: string | null;
   colegiado_number?: string | null;
+  /** Flag de aceptación de Términos y Condiciones. El backend lo acepta opcionalmente. */
+  accepted_terms?: boolean;
 }
 
 export interface RegistrationResult {
@@ -64,6 +66,9 @@ export async function submitDoctorRegistration(
   }
   if (input.colegiado_number?.trim()) {
     body.colegiado_number = input.colegiado_number.trim();
+  }
+  if (input.accepted_terms) {
+    body.accepted_terms = true;
   }
 
   const result = await backendPost<BackendRegistrationResponse>('/api/doctor/registration', body);

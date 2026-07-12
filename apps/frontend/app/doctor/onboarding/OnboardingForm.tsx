@@ -30,6 +30,7 @@ import {
   Stethoscope,
 } from 'lucide-react';
 import { submitDoctorRegistration } from './actions';
+import TermsModal from '@/components/legal/TermsModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -381,6 +382,8 @@ export default function OnboardingForm({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Validation
@@ -431,6 +434,7 @@ export default function OnboardingForm({
         specialty: resolvedSpecialty || undefined,
         mpps_number: mppsNumber.trim() || null,
         colegiado_number: colegiadoNumber.trim() || null,
+        accepted_terms: true,
       });
 
       if (!result.ok) {
@@ -458,7 +462,8 @@ export default function OnboardingForm({
       ? /^[A-Za-z0-9]{5,20}$/.test(cedulaNumberTrimmed)
       : /^\d{6,9}$/.test(cedulaNumberTrimmed);
 
-  const isFormValid = fullName.trim().length > 0 && isCedulaValid && resolvedSpecialty.length > 0;
+  const isFormValid =
+    fullName.trim().length > 0 && isCedulaValid && resolvedSpecialty.length > 0 && termsAccepted;
 
   // ---------------------------------------------------------------------------
   // Success screen
@@ -798,6 +803,65 @@ export default function OnboardingForm({
           />
         </div>
 
+        {/* Terms acceptance */}
+        <div>
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <div className="relative shrink-0 mt-0.5">
+              <input
+                id="field-terms"
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="sr-only peer"
+                aria-label="Aceptar Términos y Condiciones"
+              />
+              <div
+                className="w-4.5 h-4.5 rounded border-2 transition-all peer-focus:ring-2 peer-focus:ring-teal-300 flex items-center justify-center"
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderColor: termsAccepted ? 'var(--dh-turquoise)' : 'var(--dh-gray-300)',
+                  background: termsAccepted ? 'var(--dh-turquoise)' : '#fff',
+                }}
+                onClick={() => setTermsAccepted((v) => !v)}
+                aria-hidden="true"
+              >
+                {termsAccepted && (
+                  <svg viewBox="0 0 10 8" className="w-2.5 h-2.5" fill="none">
+                    <path
+                      d="M1 4l3 3 5-6"
+                      stroke="#fff"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </div>
+            </div>
+            <span className="text-xs leading-relaxed" style={{ color: 'var(--dh-gray-600)' }}>
+              He leído y acepto los{' '}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setTermsModalOpen(true);
+                }}
+                className="font-semibold underline transition-colors"
+                style={{ color: 'var(--dh-turquoise-700)' }}
+              >
+                Términos y Condiciones
+              </button>{' '}
+              de Delta Salud.
+            </span>
+          </label>
+          {!termsAccepted && (
+            <p className="text-xs text-red-500 mt-1 ml-6" role="status" aria-live="polite">
+              Debes aceptar los Términos y Condiciones para continuar.
+            </p>
+          )}
+        </div>
+
         {/* Submit */}
         <div className="pt-2">
           <button
@@ -823,6 +887,8 @@ export default function OnboardingForm({
           </p>
         </div>
       </form>
+
+      <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
     </div>
   );
 }
