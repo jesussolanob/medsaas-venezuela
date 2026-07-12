@@ -1199,10 +1199,11 @@ export default function DoctorDashboard() {
           setShowNewFlow(false);
           setPreselectPatientId(null);
         }}
-        onSuccess={(id) => {
+        onSuccess={() => {
           setShowNewFlow(false);
           setPreselectPatientId(null);
-          router.push(`/doctor/consultations?open=${id}`);
+          // Tras crear, ir al LISTADO de consultas (sin ?open= → NO abre el editor).
+          router.push('/doctor/consultations');
         }}
         initialContext={{
           origin: 'dashboard_btn',
