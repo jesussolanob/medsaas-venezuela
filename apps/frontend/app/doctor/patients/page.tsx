@@ -47,7 +47,8 @@ import {
 //   Tab "Seguimiento" shows placeholder; write ops are no-ops until Fase 5.
 // - AI button: supabase.auth.getSession() removed; calls /api/doctor/ai without token.
 import {
-  getPatients,
+  getPatientsPaged,
+  searchPatients,
   addPatient,
   updatePatient,
   getDoctorId,
@@ -60,6 +61,7 @@ import {
   type Consultation,
   type PatientPackageInfo,
 } from './actions';
+import Paginator from '@/components/ui/Paginator';
 import { getDoctorServices } from '@/app/doctor/services/actions';
 import { getDoctorProfile } from '@/app/doctor/actions';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
@@ -192,6 +194,12 @@ export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Paginación server-side (solo activa cuando search está vacío)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [total, setTotal] = useState(0);
+  // Indica que la lista actual es resultado de una búsqueda (search endpoint)
+  const [isSearchResult, setIsSearchResult] = useState(false);
   const [view, setView] = useState<View>('list');
   const [selected, setSelected] = useState<Patient | null>(null);
   // Bug 2: detailLoaded impide que el médico abra el formulario de edición antes de
@@ -331,22 +339,37 @@ export default function PatientsPage() {
   const requiresReceipt = (method: string) =>
     !['efectivo', 'efectivo_bs', 'pos', ''].includes(method);
 
+  // Carga paginada del listado (sin búsqueda).
+  const loadPagedPatients = useRef<
+    ((p: number, ps: number, openParam?: string | null) => void) | null
+  >(null);
+
   useEffect(() => {
-    getDoctorId().then(async (id) => {
-      if (!id) return;
-      setDoctorId(id);
-      getPatients(id).then((p) => {
-        setPatients(p);
+    loadPagedPatients.current = (p: number, ps: number, openParam?: string | null) => {
+      setLoading(true);
+      getPatientsPaged({ page: p, limit: ps }).then((result) => {
+        setPatients(result.items);
+        setTotal(result.total);
+        setIsSearchResult(false);
         setLoading(false);
         // Deep-link: si viene ?open=<patientId> y existe, abrir su ficha directo.
-        if (openPatientParam && !deepLinkHandledRef.current) {
-          const match = p.find((x) => x.id === openPatientParam);
+        if (openParam && !deepLinkHandledRef.current) {
+          const match = result.items.find((x) => x.id === openParam);
           if (match) {
             deepLinkHandledRef.current = true;
             openPatient(match);
           }
         }
       });
+    };
+  });
+
+  useEffect(() => {
+    getDoctorId().then(async (id) => {
+      if (!id) return;
+      setDoctorId(id);
+      // Carga inicial paginada
+      loadPagedPatients.current?.(1, 15, openPatientParam);
 
       // Load package info — GET /api/packages/doctor?status=active
       loadPackageInfo();
@@ -373,7 +396,45 @@ export default function PatientsPage() {
         }
       });
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-fetch al cambiar página o tamaño (solo cuando no hay búsqueda activa).
+  useEffect(() => {
+    if (isSearchResult) return; // la búsqueda maneja su propio estado
+    loadPagedPatients.current?.(page, pageSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
+
+  // Búsqueda: debounce 350ms — llama al endpoint /api/patients/search.
+  // Cuando el texto se vacía, vuelve al listado paginado normal.
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+
+    if (!search.trim()) {
+      // Vacío → volver al listado paginado desde page 1.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPage(1);
+      loadPagedPatients.current?.(1, pageSize);
+      return;
+    }
+
+    searchTimerRef.current = setTimeout(() => {
+      setLoading(true);
+      searchPatients(search).then((results) => {
+        setPatients(results);
+        setTotal(results.length);
+        setIsSearchResult(true);
+        setLoading(false);
+      });
+    }, 350);
+
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   function loadPackageInfo() {
     // Wire GET /api/packages/doctor?status=active → package counters per patient.
@@ -605,7 +666,7 @@ export default function PatientsPage() {
         });
         if (!res.success) throw new Error(res.error || 'Error al crear');
         // Recargar lista y mostrar modal para crear consulta inmediatamente.
-        getPatients(doctorId).then(setPatients);
+        loadPagedPatients.current?.(page, pageSize);
         setPatientFormOpen(false);
         setPatientFormInitial(null);
         setPostCreateModal({ patientId: res.patient_id, patientName: formData.full_name });
@@ -658,7 +719,7 @@ export default function PatientsPage() {
         notes: '',
         source: '',
       });
-      if (doctorId) getPatients(doctorId).then(setPatients);
+      loadPagedPatients.current?.(page, pageSize);
     });
   }
 
@@ -734,15 +795,11 @@ export default function PatientsPage() {
     setUploadingReceipt(false);
   }
 
+  // La búsqueda por texto es server-side (searchPatients). Aquí solo filtramos
+  // por canal de origen (client-side, ya que es un campo de la lista actual).
   const filtered = patients.filter((p) => {
-    const q = search.toLowerCase();
-    const matchSearch =
-      !q ||
-      p.full_name.toLowerCase().includes(q) ||
-      (p.phone ?? '').includes(q) ||
-      (p.cedula ?? '').includes(q);
     const matchSource = filterSource === 'all' || p.source === filterSource;
-    return matchSearch && matchSource;
+    return matchSource;
   });
 
   return (
@@ -766,8 +823,9 @@ export default function PatientsPage() {
                 Pacientes
               </h1>
               <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
-                {patients.length} paciente{patients.length !== 1 ? 's' : ''} registrado
-                {patients.length !== 1 ? 's' : ''}
+                {isSearchResult
+                  ? `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`
+                  : `${total} paciente${total !== 1 ? 's' : ''} registrado${total !== 1 ? 's' : ''}`}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
@@ -918,6 +976,21 @@ export default function PatientsPage() {
                 );
               })}
             </div>
+          )}
+
+          {/* Paginación server-side (solo cuando no hay búsqueda activa) */}
+          {!loading && !isSearchResult && total > 0 && (
+            <Paginator
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              pageSizeOptions={[10, 15, 20, 50]}
+              onPageChange={(p) => setPage(p)}
+              onPageSizeChange={(ps) => {
+                setPageSize(ps);
+                setPage(1);
+              }}
+            />
           )}
         </div>
       )}

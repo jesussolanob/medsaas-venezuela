@@ -36,7 +36,14 @@ import { appErrorToString } from '@/lib/app-error';
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
 import { resolveIdentity } from '@/lib/identity.server';
-import { backendGet, backendPost, backendPut, type AppError } from '@/lib/api-client.server';
+import {
+  backendGet,
+  backendGetPaged,
+  backendPost,
+  backendPut,
+  type AppError,
+  type PagedResult,
+} from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Pagination constants
@@ -257,6 +264,69 @@ export async function getPatients(_doctorId: string): Promise<Patient[]> {
 
   if (!result.ok) {
     log.error('[getPatients] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+
+  const items = Array.isArray(result.value) ? result.value : [];
+  return items.map(mapListItemToPatient);
+}
+
+/**
+ * Fetch a paginated page of patients for the authenticated doctor.
+ *
+ * Backend: GET /api/patients?page=&limit= returns
+ * { success, data: BackendPatientListItem[], meta: { total, page, limit } }.
+ * Backend max is 100 items per request; use PAGE_SIZE_ALL (0) to fetch up to
+ * 100 items (the back-end cap).
+ *
+ * @param opts.page     - 1-based page number.
+ * @param opts.limit    - Items per page. Pass 0 (PAGE_SIZE_ALL) to fetch up to 100.
+ */
+export async function getPatientsPaged(opts: {
+  page: number;
+  limit: number;
+}): Promise<PagedResult<Patient>> {
+  // Backend caps at 100 per request. PAGE_SIZE_ALL (0) maps to the cap.
+  const effectiveLimit = opts.limit === 0 ? 100 : Math.min(opts.limit, 100);
+
+  const result = await backendGetPaged<BackendPatientListItem>(
+    `/api/patients?page=${opts.page}&limit=${effectiveLimit}`,
+  );
+
+  if (!result.ok) {
+    log.error('[getPatientsPaged] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { items: [], total: 0 };
+  }
+
+  return {
+    items: result.value.items.map(mapListItemToPatient),
+    total: result.value.total,
+  };
+}
+
+/**
+ * Search patients by name (decrypted, partial match) or exact match on
+ * cédula / email. Uses GET /api/patients/search?q= which searches across
+ * ALL patients of the doctor — not just the current page.
+ *
+ * Returns an empty array on error to avoid crashing the search UX.
+ */
+export async function searchPatients(q: string): Promise<Patient[]> {
+  if (!q.trim()) return [];
+
+  const qs = new URLSearchParams({ q: q.trim() });
+  const result = await backendGet<BackendPatientListItem[]>(
+    `/api/patients/search?${qs.toString()}`,
+  );
+
+  if (!result.ok) {
+    log.error('[searchPatients] backend error', {
       code: result.error.code,
       status: result.error.status,
     });
