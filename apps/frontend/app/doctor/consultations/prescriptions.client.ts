@@ -20,6 +20,7 @@ export type Prescription = {
   frequency: string | null;
   duration: string | null;
   notes: string | null;
+  presentation: string | null;
   issued_date: string;
   created_at: string;
   updated_at: string;
@@ -56,6 +57,7 @@ export async function createPrescription(input: {
   frequency?: string | null;
   duration?: string | null;
   notes?: string | null;
+  presentation?: string | null;
 }): Promise<PrescriptionActionResult> {
   try {
     const res = await fetch('/api/doctor/prescriptions', {

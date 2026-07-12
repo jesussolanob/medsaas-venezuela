@@ -11,13 +11,7 @@ import type { ContentBlock, DocumentPage } from '@/components/pdf/MedicalDocumen
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type DocumentTypeKey =
-  | 'recipe'
-  | 'indications'
-  | 'paraclinical'
-  | 'history'
-  | 'rest'
-  | 'informe';
+export type DocumentTypeKey = 'recipe' | 'paraclinical' | 'history' | 'rest' | 'informe';
 
 export interface DocumentTypeDescriptor {
   key: DocumentTypeKey;
@@ -34,6 +28,7 @@ export interface SavedPrescription {
     frequency: string;
     duration: string;
     indications: string;
+    presentation?: string;
   }>;
   notes: string | null;
   created_at: string;
@@ -62,14 +57,15 @@ export interface ComputeAvailableDocTypesArgs {
 
 /**
  * Keys de bloque que NO pertenecen al tipo "Informe médico" (van en sus propios tipos).
- * - prescription  → Récipe (diagnóstico + medicamentos)
- * - indications   → Indicaciones (instrucciones al paciente + referencia de medicamentos)
+ * - prescription  → Récipe (diagnóstico + medicamentos en hoja 1; indicaciones en hoja 2)
  * - paraclinical / requested_exams → Paraclínicos
  * - rest → Reposo
+ *
+ * NOTA: 'indications' (ahora "Evaluación actual") SÍ va dentro del informe.
+ * Ya no existe como documento suelto — su contenido de medicamentos pasó a la hoja 2 del récipe.
  */
 export const INFORME_EXCLUDED_KEYS = new Set<string>([
   'prescription',
-  'indications',
   'paraclinical',
   'requested_exams',
   'rest',
@@ -98,11 +94,30 @@ export function sectionHeader(label: string): ContentBlock {
 }
 
 /**
- * Construye ContentBlock[] de recetas a partir de las prescripciones guardadas.
- * Incluye: nombre, dosis, frecuencia, duración.
- * NO incluye indicaciones por medicamento — esas van en el documento "Indicaciones".
+ * Construye ContentBlock[] para la HOJA 1 del récipe.
+ * Incluye: nombre + dosis solamente (formato limpio de récipe venezolano).
  */
 export function buildRecetasContent(prescriptions: SavedPrescription[]): ContentBlock[] {
+  return prescriptions
+    .flatMap((rx, rxIdx) =>
+      rx.medications.map((med, medIdx) => {
+        const value = med.dose ? med.dose : null;
+        return {
+          key: `rx-${rxIdx}-med-${medIdx}`,
+          label: med.name || `Medicamento ${medIdx + 1}`,
+          value,
+        };
+      }),
+    )
+    .filter((b): b is ContentBlock & { value: string } => b.value !== null);
+}
+
+/**
+ * Construye ContentBlock[] para la HOJA 2 del récipe ("Indicaciones").
+ * Por cada medicamento incluye: nombre + dosis + frecuencia + duración + indicaciones + presentación.
+ * Esta hoja reemplaza al antiguo doc suelto "Indicaciones".
+ */
+export function buildRecipeHoja2Content(prescriptions: SavedPrescription[]): ContentBlock[] {
   return prescriptions
     .flatMap((rx, rxIdx) =>
       rx.medications.map((med, medIdx) => {
@@ -110,9 +125,10 @@ export function buildRecetasContent(prescriptions: SavedPrescription[]): Content
         if (med.dose) parts.push(`Dosis: ${med.dose}`);
         if (med.frequency) parts.push(`Frecuencia: ${med.frequency}`);
         if (med.duration) parts.push(`Duración: ${med.duration}`);
-        // med.indications va exclusivamente en el tipo 'indications' (buildIndicationsContent)
+        if (med.presentation) parts.push(`Presentación: ${med.presentation}`);
+        if (med.indications) parts.push(`Indicación: ${med.indications}`);
         return {
-          key: `rx-${rxIdx}-med-${medIdx}`,
+          key: `rx2-${rxIdx}-med-${medIdx}`,
           label: med.name || `Medicamento ${medIdx + 1}`,
           value: parts.length > 0 ? parts.join(' · ') : null,
         };
@@ -215,14 +231,15 @@ function hasBlockContent(block: ContentBlock | undefined): boolean {
  * Determina qué tipos de documento están disponibles (enabled) para la consulta actual.
  *
  * Reglas (separación clara por tipo):
- * - recipe:       savedPrescriptions con medicamentos — diagnóstico + medicamentos (sin indicaciones)
- * - indications:  bloque 'indications' con contenido O savedPrescriptions (para mostrar la referencia de medicamentos)
+ * - recipe:       savedPrescriptions con medicamentos → 2 hojas (Récipe + Indicaciones)
  * - paraclinical: el bloque 'paraclinical' O 'requested_exams' tiene contenido
  * - history:      patientEhrCount > 0
  * - rest:         restContent es no vacío
  * - informe:      hay al menos un bloque elegible (no excluido) con contenido
  *
- * Orden mostrado: Informe, Récipe, Indicaciones, Paraclínicos, Historia, Reposo.
+ * Orden mostrado: Informe, Récipe, Paraclínicos, Historia, Reposo.
+ * NOTA: 'indications' ya no es un tipo de documento suelto — su contenido de medicamentos
+ * va en la hoja 2 del récipe; el bloque de texto va dentro del informe.
  */
 export function computeAvailableDocTypes(
   args: ComputeAvailableDocTypesArgs,
@@ -232,16 +249,12 @@ export function computeAvailableDocTypes(
   const blockByKey = new Map<string, ContentBlock>(informeContent.map((b) => [b.key, b]));
 
   const hasPrescriptionBlock = hasBlockContent(blockByKey.get('prescription'));
-  const hasIndicationsBlock = hasBlockContent(blockByKey.get('indications'));
   const hasParaclinicalBlock =
     hasBlockContent(blockByKey.get('paraclinical')) ||
     hasBlockContent(blockByKey.get('requested_exams'));
 
   // Récipe = medicamentos guardados O bloque prescription en blocks_data
   const recipeEnabled = savedPrescriptions.length > 0 || hasPrescriptionBlock;
-
-  // Indicaciones = bloque 'indications' con contenido O hay medicamentos (para mostrar referencia)
-  const indicationsEnabled = hasIndicationsBlock || savedPrescriptions.length > 0;
 
   const informeBlocks = informeContent.filter((b) => !INFORME_EXCLUDED_KEYS.has(b.key));
   const informeEnabled = informeBlocks.length > 0;
@@ -250,23 +263,10 @@ export function computeAvailableDocTypes(
 
   const recipeDescription =
     savedPrescriptions.length > 0
-      ? `${totalMedCount} medicamento${totalMedCount !== 1 ? 's' : ''} en récipe`
+      ? `${totalMedCount} medicamento${totalMedCount !== 1 ? 's' : ''} · 2 hojas (Récipe + Indicaciones)`
       : hasPrescriptionBlock
         ? 'Prescripción en la consulta'
         : 'Sin receta registrada';
-
-  const indicationsDescription = (() => {
-    if (hasIndicationsBlock && savedPrescriptions.length > 0) {
-      return `Instrucciones al paciente + referencia de ${totalMedCount} medicamento${totalMedCount !== 1 ? 's' : ''}`;
-    }
-    if (hasIndicationsBlock) {
-      return 'Instrucciones y recomendaciones al paciente';
-    }
-    if (savedPrescriptions.length > 0) {
-      return `Referencia de ${totalMedCount} medicamento${totalMedCount !== 1 ? 's' : ''} prescritos`;
-    }
-    return 'Sin indicaciones registradas';
-  })();
 
   return [
     {
@@ -282,12 +282,6 @@ export function computeAvailableDocTypes(
       label: 'Récipe',
       description: recipeDescription,
       enabled: recipeEnabled,
-    },
-    {
-      key: 'indications',
-      label: 'Indicaciones',
-      description: indicationsDescription,
-      enabled: indicationsEnabled,
     },
     {
       key: 'paraclinical',
@@ -342,11 +336,11 @@ export interface BuildConsolidatedContentArgs {
  *
  * Separación de contenido por tipo:
  * - recipe:       diagnóstico + medicamentos (buildRecetasContent). SIN indicaciones ni exámenes.
- * - indications:  instrucciones al paciente (bloque 'indications') + referencia de medicamentos.
+ *                 La hoja 2 (Indicaciones) la arma buildDocumentPages directamente.
  * - paraclinical: bloque 'paraclinical' O 'requested_exams' (lista de exámenes solicitados).
  * - history:      registros EHR del paciente.
  * - rest:         constancia de reposo.
- * - informe:      bloques seleccionados del informe (excluye prescription/indications/paraclinical/rest).
+ * - informe:      bloques seleccionados del informe (excluye prescription/paraclinical/rest).
  *
  * El fetch de EHR es responsabilidad del caller; aquí solo se consume `ehrRecords`.
  */
@@ -371,7 +365,7 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
       blocks.push({ key: 'recipe-diagnosis', label: 'Diagnóstico', value: diagnosisValue.trim() });
     }
 
-    // Solo medicamentos — sin indicaciones ni exámenes
+    // Solo nombre + dosis (hoja 1)
     const recetasBlocks = buildRecetasContent(savedPrescriptions);
     blocks.push(...recetasBlocks);
 
@@ -383,14 +377,6 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
 
     if (blocks.length > 0) {
       sections.push({ label: 'Récipe', blocks });
-    }
-  }
-
-  if (selectedTypes.includes('indications')) {
-    const indicationsBlock = informeContent.find((b) => b.key === 'indications');
-    const blocks = buildIndicationsContent(indicationsBlock, savedPrescriptions);
-    if (blocks.length > 0) {
-      sections.push({ label: 'Indicaciones', blocks });
     }
   }
 
@@ -448,11 +434,11 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
 /**
  * Arma un array de DocumentPage (una página por tipo de documento seleccionado).
  *
- * Cada entrada del resultado corresponde exactamente a un tipo de documento
- * seleccionado por el doctor. El PDF resultante tendrá N hojas (una por tipo).
+ * Cuando el tipo es 'recipe' se generan DOS páginas:
+ *   - Hoja 1 "Récipe": diagnóstico + nombre/dosis de medicamentos
+ *   - Hoja 2 "Indicaciones": nombre + dosis + frecuencia + duración + presentación + indicación
  *
- * Tipos soportados: informe, recipe, indications, paraclinical, history, rest.
- * Si solo se selecciona 1 tipo, devuelve un array con 1 elemento.
+ * Tipos soportados: informe, recipe (2 hojas), paraclinical, history, rest.
  */
 export function buildDocumentPages(args: BuildConsolidatedContentArgs): DocumentPage[] {
   const {
@@ -477,27 +463,32 @@ export function buildDocumentPages(args: BuildConsolidatedContentArgs): Document
   }
 
   if (selectedTypes.includes('recipe')) {
-    const blocks: ContentBlock[] = [];
+    // ── Hoja 1: Récipe (diagnóstico + nombre + dosis) ──
+    const hoja1Blocks: ContentBlock[] = [];
     if (diagnosisValue?.trim()) {
-      blocks.push({ key: 'recipe-diagnosis', label: 'Diagnóstico', value: diagnosisValue.trim() });
+      hoja1Blocks.push({
+        key: 'recipe-diagnosis',
+        label: 'Diagnóstico',
+        value: diagnosisValue.trim(),
+      });
     }
     const recetasBlocks = buildRecetasContent(savedPrescriptions);
-    blocks.push(...recetasBlocks);
+    hoja1Blocks.push(...recetasBlocks);
     // Fallback: bloque 'prescription' en blocks_data sin receta guardada en BD
     const prescriptionBlock = informeContent.find((b) => b.key === 'prescription');
     if (recetasBlocks.length === 0 && hasBlockContent(prescriptionBlock)) {
-      blocks.push(prescriptionBlock!);
+      hoja1Blocks.push(prescriptionBlock!);
     }
-    if (blocks.length > 0) {
-      pages.push({ docType: 'recipe', content: blocks });
+    if (hoja1Blocks.length > 0) {
+      pages.push({ docType: 'recipe', content: hoja1Blocks });
     }
-  }
 
-  if (selectedTypes.includes('indications')) {
-    const indicationsBlock = informeContent.find((b) => b.key === 'indications');
-    const blocks = buildIndicationsContent(indicationsBlock, savedPrescriptions);
-    if (blocks.length > 0) {
-      pages.push({ docType: 'indications', content: blocks });
+    // ── Hoja 2: Indicaciones (detalles completos por medicamento) ──
+    if (savedPrescriptions.length > 0) {
+      const hoja2Blocks = buildRecipeHoja2Content(savedPrescriptions);
+      if (hoja2Blocks.length > 0) {
+        pages.push({ docType: 'indications', content: hoja2Blocks });
+      }
     }
   }
 

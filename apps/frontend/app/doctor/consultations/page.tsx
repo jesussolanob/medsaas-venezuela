@@ -178,6 +178,7 @@ type Medication = {
   frequency: string;
   duration: string;
   indications: string;
+  presentation: string;
 };
 
 type Recipe = {
@@ -1167,6 +1168,7 @@ function ConsultationsPage() {
               frequency: rx.frequency || '',
               duration: rx.duration || '',
               indications: rx.notes || '',
+              presentation: rx.presentation || '',
             },
           ],
           notes: rx.notes,
@@ -1370,6 +1372,7 @@ function ConsultationsPage() {
           frequency: med.frequency || null,
           duration: med.duration || null,
           notes: med.indications || recipe.notes || null,
+          presentation: med.presentation || null,
         });
         if (!result.success) {
           showToast({ type: 'error', message: `Error al guardar receta: ${result.error}` });
@@ -1388,6 +1391,7 @@ function ConsultationsPage() {
             frequency: rx.frequency || '',
             duration: rx.duration || '',
             indications: rx.notes || '',
+            presentation: rx.presentation || '',
           },
         ],
         notes: rx.notes,
@@ -1621,7 +1625,7 @@ function ConsultationsPage() {
       ...p,
       medications: [
         ...p.medications,
-        { name: '', dose: '', frequency: '', duration: '', indications: '' },
+        { name: '', dose: '', frequency: '', duration: '', indications: '', presentation: '' },
       ],
     }));
   }
@@ -2397,10 +2401,15 @@ function ConsultationsPage() {
                     const effective = getEffectiveBlocks(selected as Consultation);
                     if (effective && effective.length > 0) {
                       const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order);
-                      // Label desde el bloque; nunca mostrar el key técnico en la UI
+                      // Label desde el bloque; nunca mostrar el key técnico en la UI.
+                      // Overrides de UI: prescription → Récipe, indications → Evaluación actual.
+                      const LOCKED_BLOCK_LABELS: Record<string, string> = {
+                        prescription: 'Récipe',
+                        indications: 'Evaluación actual',
+                      };
                       dynamicTabs = sorted.map((b) => ({
                         key: `block:${b.key}`,
-                        label: b.key === 'prescription' ? 'Récipe' : b.label || b.key,
+                        label: LOCKED_BLOCK_LABELS[b.key] ?? b.label ?? b.key,
                       }));
                     } else {
                       dynamicTabs = [
@@ -2801,6 +2810,11 @@ function ConsultationsPage() {
                                   Duración: {med.duration}
                                 </span>
                               )}
+                              {med.presentation && (
+                                <span className="text-xs text-teal-700">
+                                  Presentación: {med.presentation}
+                                </span>
+                              )}
                             </div>
                             {med.indications && (
                               <p className="text-xs text-teal-600 mt-1">{med.indications}</p>
@@ -2831,6 +2845,7 @@ function ConsultationsPage() {
                                       frequency: '',
                                       duration: '',
                                       indications: '',
+                                      presentation: '',
                                     },
                                   ],
                                 }))
@@ -2855,12 +2870,26 @@ function ConsultationsPage() {
                               const { pdf } = await import('@react-pdf/renderer');
                               const { MedicalDocumentPdf } =
                                 await import('@/components/pdf/MedicalDocumentPdf');
+                              const { buildRecetasContent, buildRecipeHoja2Content } =
+                                await import('./consultation-documents');
                               const diagnosisValue =
                                 ((selected.blocks_data as Record<string, unknown> | null)
                                   ?.diagnosis as string | undefined) ||
                                 report.diagnosis ||
                                 null;
-                              const recipeContent: ContentBlock[] = [
+
+                              // Convertir recipe.medications al shape de SavedPrescription
+                              const syntheticPrescriptions = [
+                                {
+                                  id: 'local',
+                                  medications: recipe.medications,
+                                  notes: recipe.notes || null,
+                                  created_at: '',
+                                },
+                              ];
+
+                              // Hoja 1: diagnóstico + nombre/dosis
+                              const hoja1Blocks: ContentBlock[] = [
                                 ...(diagnosisValue
                                   ? [
                                       {
@@ -2870,15 +2899,24 @@ function ConsultationsPage() {
                                       },
                                     ]
                                   : []),
-                                {
-                                  key: 'medications',
-                                  label: 'Medicamentos',
-                                  value: recipe.medications.map(
-                                    (m) =>
-                                      `${m.name}${m.dose ? ' — ' + m.dose : ''}${m.frequency ? ' — ' + m.frequency : ''}${m.duration ? ' — ' + m.duration : ''}`,
-                                  ),
-                                },
+                                ...buildRecetasContent(syntheticPrescriptions),
                               ];
+
+                              // Hoja 2: detalles completos por medicamento
+                              const hoja2Blocks = buildRecipeHoja2Content(syntheticPrescriptions);
+
+                              const docPages = [
+                                ...(hoja1Blocks.length > 0
+                                  ? [{ docType: 'recipe', content: hoja1Blocks }]
+                                  : []),
+                                ...(hoja2Blocks.length > 0
+                                  ? [{ docType: 'indications', content: hoja2Blocks }]
+                                  : []),
+                              ];
+
+                              const patientCedula =
+                                patients.find((p) => p.id === selected.patient_id)?.cedula ?? null;
+
                               const el = (
                                 <MedicalDocumentPdf
                                   docType="recipe"
@@ -2890,13 +2928,12 @@ function ConsultationsPage() {
                                   }}
                                   patient={{
                                     fullName: selected.patient_name || '—',
-                                    cedula:
-                                      patients.find((p) => p.id === selected.patient_id)?.cedula ??
-                                      null,
+                                    cedula: patientCedula,
                                   }}
                                   docDate={selected.consultation_date}
                                   consultationCode={selected.consultation_code}
-                                  content={recipeContent}
+                                  content={docPages[0]?.content ?? []}
+                                  documents={docPages.length > 1 ? docPages : undefined}
                                 />
                               );
                               const blob = await pdf(el).toBlob();
@@ -3076,6 +3113,7 @@ function ConsultationsPage() {
                                     frequency: rx.frequency || '',
                                     duration: rx.duration || '',
                                     indications: rx.notes || '',
+                                    presentation: rx.presentation || '',
                                   },
                                 ],
                                 notes: rx.notes,
@@ -4186,6 +4224,93 @@ function ConsultationsPage() {
                           }
                           className={fi}
                         />
+                        {/* Selector de presentación farmacéutica */}
+                        <div className="flex gap-2">
+                          <select
+                            value={
+                              med.presentation &&
+                              ![
+                                'Tabletas',
+                                'Cápsulas',
+                                'Gotas',
+                                'Jarabe',
+                                'Spray',
+                                'Crema',
+                                'Ungüento',
+                                'Ampolla/Inyección',
+                                'Supositorio',
+                                'Óvulo',
+                                'Inhalador',
+                                'Polvo',
+                                'Solución',
+                                'Parche',
+                              ].includes(med.presentation)
+                                ? 'Otro'
+                                : med.presentation
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setRecipe((p) => ({
+                                ...p,
+                                medications: p.medications.map((m, i) =>
+                                  i === idx ? { ...m, presentation: val === 'Otro' ? '' : val } : m,
+                                ),
+                              }));
+                            }}
+                            className={`${fi} flex-1`}
+                          >
+                            <option value="">Presentación (opcional)</option>
+                            <option value="Tabletas">Tabletas</option>
+                            <option value="Cápsulas">Cápsulas</option>
+                            <option value="Gotas">Gotas</option>
+                            <option value="Jarabe">Jarabe</option>
+                            <option value="Spray">Spray</option>
+                            <option value="Crema">Crema</option>
+                            <option value="Ungüento">Ungüento</option>
+                            <option value="Ampolla/Inyección">Ampolla/Inyección</option>
+                            <option value="Supositorio">Supositorio</option>
+                            <option value="Óvulo">Óvulo</option>
+                            <option value="Inhalador">Inhalador</option>
+                            <option value="Polvo">Polvo</option>
+                            <option value="Solución">Solución</option>
+                            <option value="Parche">Parche</option>
+                            <option value="Otro">Otro</option>
+                          </select>
+                          {/* Input libre cuando eligen "Otro" */}
+                          {med.presentation &&
+                            ![
+                              'Tabletas',
+                              'Cápsulas',
+                              'Gotas',
+                              'Jarabe',
+                              'Spray',
+                              'Crema',
+                              'Ungüento',
+                              'Ampolla/Inyección',
+                              'Supositorio',
+                              'Óvulo',
+                              'Inhalador',
+                              'Polvo',
+                              'Solución',
+                              'Parche',
+                              '',
+                            ].includes(med.presentation) && (
+                              <input
+                                type="text"
+                                placeholder="Especificar presentación"
+                                value={med.presentation}
+                                onChange={(e) =>
+                                  setRecipe((p) => ({
+                                    ...p,
+                                    medications: p.medications.map((m, i) =>
+                                      i === idx ? { ...m, presentation: e.target.value } : m,
+                                    ),
+                                  }))
+                                }
+                                className={`${fi} flex-1`}
+                              />
+                            )}
+                        </div>
                       </div>
                       <button
                         onClick={() => removeMedication(idx)}
@@ -4219,6 +4344,7 @@ function ConsultationsPage() {
                                 frequency: '',
                                 duration: '',
                                 indications: '',
+                                presentation: '',
                               },
                             ],
                           }))

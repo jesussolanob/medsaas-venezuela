@@ -91,7 +91,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 
 // Fallback para doctores sin bloques configurados (retrocompat con datos viejos).
-// Los 5 tipos estándar de documentos médicos usados en Venezuela.
+// Tipos estándar de documentos médicos usados en Venezuela.
+// NOTA: 'indications' se eliminó como tipo separado — su contenido va en la hoja 2 del récipe.
 const FALLBACK_TABS: TemplateTab[] = [
   {
     key: 'informe',
@@ -103,13 +104,7 @@ const FALLBACK_TABS: TemplateTab[] = [
     key: 'recipe',
     label: 'Récipe',
     icon: Pill,
-    description: 'Receta médica con medicamentos y dosis',
-  },
-  {
-    key: 'indications',
-    label: 'Indicaciones',
-    icon: ClipboardList,
-    description: 'Instrucciones y recomendaciones para el paciente',
+    description: 'Récipe médico (2 hojas: medicamentos + indicaciones detalladas)',
   },
   {
     key: 'paraclinical',
@@ -226,6 +221,9 @@ export default function TemplatesPage() {
         const printable = doctorEntry?.printable ?? cat.default_printable;
         if (printable === false) continue;
         if (cat.key === 'internal_notes') continue;
+        // 'indications' ya no es un tipo de documento PDF separado:
+        // su contenido de medicamentos va en la hoja 2 del récipe.
+        if (cat.key === 'indications') continue;
 
         const label = doctorEntry?.custom_label || cat.default_label || cat.key;
         const order = doctorEntry?.sort_order ?? specialtyEntry?.sort_order ?? 99;

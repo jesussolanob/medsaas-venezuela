@@ -31,6 +31,7 @@ interface BackendPrescription {
   frequency: string | null;
   duration: string | null;
   notes: string | null;
+  presentation: string | null;
   issued_date: string;
   created_at: string;
   updated_at: string;
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     frequency: (body.frequency as string | null | undefined) ?? null,
     duration: (body.duration as string | null | undefined) ?? null,
     notes: (body.notes as string | null | undefined) ?? null,
+    presentation: (body.presentation as string | null | undefined) ?? null,
   });
 
   if (!result.ok) {

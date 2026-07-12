@@ -46,6 +46,7 @@ const LOCKED_BLOCK_ORDER: Record<string, number> = {
  */
 const LOCKED_BLOCK_LABELS: Record<string, string> = {
   prescription: 'Récipe',
+  indications: 'Evaluación actual',
 };
 import Link from 'next/link';
 
