@@ -33,6 +33,7 @@ export interface OfficeView {
   address: string;
   city: string;
   phone: string;
+  map_url?: string | null;
   is_active: boolean;
   schedule: OfficeDay[];
   slot_duration: number;
@@ -47,6 +48,7 @@ interface BackendOffice {
   address: string;
   city: string;
   phone: string;
+  mapUrl?: string | null;
   isActive: boolean;
   schedule: OfficeDay[];
   slotDuration: number;
@@ -59,6 +61,7 @@ export interface OfficeInput {
   address: string;
   city: string;
   phone: string;
+  map_url?: string;
   schedule: OfficeDay[];
   slot_duration: number;
   buffer_minutes: number;
@@ -77,6 +80,7 @@ function toView(o: BackendOffice): OfficeView {
     address: o.address,
     city: o.city,
     phone: o.phone,
+    map_url: o.mapUrl ?? null,
     is_active: o.isActive,
     schedule: o.schedule ?? [],
     slot_duration: o.slotDuration,

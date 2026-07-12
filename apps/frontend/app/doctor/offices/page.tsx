@@ -36,6 +36,7 @@ type Office = {
   address: string;
   city: string;
   phone: string;
+  map_url?: string | null;
   is_active: boolean;
   schedule: DaySchedule[];
   slot_duration: number;
@@ -178,6 +179,7 @@ export default function OfficesPage() {
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [phone, setPhone] = useState('');
+  const [mapUrl, setMapUrl] = useState('');
   const [schedule, setSchedule] = useState<DaySchedule[]>(DEFAULT_SCHEDULE);
   const [slotDuration, setSlotDuration] = useState(30);
   const [bufferMinutes, setBufferMinutes] = useState(10);
@@ -238,6 +240,7 @@ export default function OfficesPage() {
     setAddress('');
     setCity('');
     setPhone('');
+    setMapUrl('');
     setSchedule(DEFAULT_SCHEDULE.map((d) => ({ ...d })));
     setSlotDuration(30);
     setBufferMinutes(10);
@@ -252,6 +255,7 @@ export default function OfficesPage() {
     setAddress(office.address);
     setCity(office.city);
     setPhone(office.phone);
+    setMapUrl(office.map_url ?? '');
     setSchedule(office.schedule.map((d) => ({ ...d })));
     setSlotDuration(office.slot_duration);
     setBufferMinutes(office.buffer_minutes);
@@ -348,6 +352,13 @@ export default function OfficesPage() {
       return;
     }
 
+    // Validación ligera del enlace de mapa (opcional): debe ser http/https.
+    const mapUrlTrimmed = mapUrl.trim();
+    if (mapUrlTrimmed && !/^https?:\/\//i.test(mapUrlTrimmed)) {
+      setErrorAndScroll('El enlace de ubicación debe empezar con http:// o https://');
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -355,6 +366,7 @@ export default function OfficesPage() {
         address: address.trim(),
         city: city.trim(),
         phone: phone.trim(),
+        map_url: mapUrlTrimmed || undefined,
         schedule,
         slot_duration: slotDuration,
         buffer_minutes: bufferMinutes,
@@ -652,6 +664,25 @@ export default function OfficesPage() {
                   </label>
                   <PhoneInput value={phone} onChange={setPhone} placeholder="4121234567" />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Enlace de ubicación (Google Maps){' '}
+                  <span className="font-normal text-slate-400">(opcional)</span>
+                </label>
+                <input
+                  type="url"
+                  inputMode="url"
+                  value={mapUrl}
+                  onChange={(e) => setMapUrl(e.target.value)}
+                  placeholder="https://maps.google.com/?q=..."
+                  className={inp}
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Se enviará al paciente en el correo de confirmación para que abra la ubicación en
+                  su mapa.
+                </p>
               </div>
 
               {/* Slot config */}
