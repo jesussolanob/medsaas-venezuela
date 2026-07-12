@@ -219,6 +219,12 @@ export default function FinancesPage() {
   const [expPagedItems, setExpPagedItems] = useState<BackendExpense[]>([]);
   const [expLoading, setExpLoading] = useState(false);
 
+  // ─── Clave de refresco para paginación tras mutaciones ──────────────────
+  // Se incrementa después de agregar/eliminar/editar ingresos o gastos para
+  // que los useEffect de paginación re-fetchen sin necesidad de cambiar
+  // tab/página/mes, evitando que el listado quede stale tras una mutación.
+  const [refreshKey, setRefreshKey] = useState(0);
+
   // ETAPA 1: loadData migrado al backend. Supabase eliminado.
   const loadData = async () => {
     setLoading(true);
@@ -336,7 +342,7 @@ export default function FinancesPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, incPage, incPageSize, activeMonth]);
+  }, [tab, incPage, incPageSize, activeMonth, refreshKey]);
 
   // ─── Cargar página de Egresos cuando cambia tab/página/tamaño/mes ───────
   useEffect(() => {
@@ -368,7 +374,7 @@ export default function FinancesPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, expPage, expPageSize, activeMonth]);
+  }, [tab, expPage, expPageSize, activeMonth, refreshKey]);
 
   // ETAPA 1 NOTE: Supabase Realtime removed. Live refresh is deferred to Fase 5
   // (WebSocket or SSE from NestJS). The page reloads data on mount only.
@@ -503,8 +509,6 @@ export default function FinancesPage() {
     }
     return periods;
   }, [incomes, manualIncomes, expenses, viewMode, currentDate]);
-
-  const maxChartVal = Math.max(...chartData.map((p) => Math.max(p.income, p.expenses)), 1);
 
   // L7 (2026-04-29): opciones del dropdown — últimos 12 meses.
   const monthOptions = useMemo(() => {
@@ -853,6 +857,7 @@ export default function FinancesPage() {
       });
       setShowExpenseForm(false);
       loadData();
+      setRefreshKey((k) => k + 1);
     } catch (err) {
       reportError('doctor/finances', 'handleAddExpense', err);
     }
@@ -865,6 +870,7 @@ export default function FinancesPage() {
   // exposes DELETE /api/finances/transactions/:id.
   const handleDeleteExpense = (id: string) => {
     setExpenses((prev) => prev.filter((e) => e.id !== id));
+    setRefreshKey((k) => k + 1);
   };
 
   // #6 — Guardar ingreso extraordinario
@@ -900,6 +906,7 @@ export default function FinancesPage() {
         });
         setShowIncomeModal(false);
         loadData();
+        setRefreshKey((k) => k + 1);
       }
     } catch (err) {
       reportError('doctor/finances', 'handleAddIncome', err);
@@ -931,6 +938,7 @@ export default function FinancesPage() {
       } else {
         setEditingTx(null);
         loadData();
+        setRefreshKey((k) => k + 1);
       }
     } catch (err) {
       reportError('doctor/finances', 'handleSaveEdit', err);
@@ -1148,127 +1156,41 @@ export default function FinancesPage() {
         </div>
       )}
 
-      {/* Chart — visible en overview/income/expenses (no en reports) */}
+      {/* Chart — visible en overview/income (no en reports ni expenses) */}
       {tab !== 'reports' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
           <div className="flex items-center gap-3 mb-5 flex-wrap">
             <BarChart3 className="w-5 h-5 text-slate-400" />
             <h3 className="text-sm font-bold text-slate-700">Ingresos vs Gastos</h3>
-            <div className="flex items-center gap-4 ml-auto">
-              <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="w-3 h-3 rounded-sm bg-emerald-500" /> Ingresos
-              </span>
-              <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="w-3 h-3 rounded-sm bg-red-400" /> Gastos
-              </span>
-              <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="w-3 h-3 rounded-sm bg-teal-200" /> Balance
-              </span>
-            </div>
           </div>
           {chartData.every((p) => p.income === 0 && p.expenses === 0) ? (
-            <div className="flex items-center justify-center h-48 text-sm text-slate-300">
+            <div className="flex items-center justify-center h-64 rounded-xl border border-dashed border-slate-200 text-sm text-slate-300">
               Sin datos en este período
             </div>
           ) : (
-            <>
-              {/* Y-axis labels + Bars */}
-              <div className="flex gap-2">
-                {/* Y-axis */}
-                <div className="flex flex-col justify-between h-56 py-1 shrink-0">
-                  <span className="text-[9px] text-slate-400 font-medium text-right w-10">
-                    $
-                    {maxChartVal >= 1000
-                      ? `${(maxChartVal / 1000).toFixed(1)}k`
-                      : maxChartVal.toFixed(0)}
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-medium text-right w-10">
-                    $
-                    {maxChartVal >= 1000
-                      ? `${(maxChartVal / 2000).toFixed(1)}k`
-                      : (maxChartVal / 2).toFixed(0)}
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-medium text-right w-10">$0</span>
-                </div>
-                {/* Chart area */}
-                <div className="flex-1 relative">
-                  {/* Grid lines */}
-                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                    <div className="border-b border-dashed border-slate-100" />
-                    <div className="border-b border-dashed border-slate-100" />
-                    <div className="border-b border-slate-200" />
-                  </div>
-                  {/* Bars */}
-                  <div className="flex items-end gap-2 sm:gap-4 h-56 relative z-10">
-                    {chartData.map((p, i) => {
-                      const balance = p.income - p.expenses;
-                      return (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-                          <div className="w-full flex gap-0.5 sm:gap-1 items-end h-48">
-                            {/* Income bar */}
-                            <div className="flex-1 flex flex-col items-center justify-end relative">
-                              <div className="absolute -top-5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[9px] font-bold px-2 py-1 rounded-md whitespace-nowrap z-20 pointer-events-none">
-                                +${p.income.toFixed(2)}
-                              </div>
-                              {p.income > 0 && (
-                                <span className="text-[9px] font-bold text-emerald-600 mb-0.5">
-                                  $
-                                  {p.income >= 1000
-                                    ? `${(p.income / 1000).toFixed(1)}k`
-                                    : p.income.toFixed(0)}
-                                </span>
-                              )}
-                              <div
-                                className="w-full rounded-t-lg transition-all duration-700 ease-out"
-                                style={{
-                                  height: `${Math.max((p.income / maxChartVal) * 100, p.income > 0 ? 5 : 0)}%`,
-                                  background: 'linear-gradient(180deg, #10b981 0%, #059669 100%)',
-                                }}
-                              />
-                            </div>
-                            {/* Expense bar */}
-                            <div className="flex-1 flex flex-col items-center justify-end relative">
-                              <div className="absolute -top-5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[9px] font-bold px-2 py-1 rounded-md whitespace-nowrap z-20 pointer-events-none">
-                                -${p.expenses.toFixed(2)}
-                              </div>
-                              {p.expenses > 0 && (
-                                <span className="text-[9px] font-bold text-red-500 mb-0.5">
-                                  $
-                                  {p.expenses >= 1000
-                                    ? `${(p.expenses / 1000).toFixed(1)}k`
-                                    : p.expenses.toFixed(0)}
-                                </span>
-                              )}
-                              <div
-                                className="w-full rounded-t-lg transition-all duration-700 ease-out"
-                                style={{
-                                  height: `${Math.max((p.expenses / maxChartVal) * 100, p.expenses > 0 ? 5 : 0)}%`,
-                                  background: 'linear-gradient(180deg, #f87171 0%, #ef4444 100%)',
-                                }}
-                              />
-                            </div>
-                          </div>
-                          {/* Label + Balance */}
-                          <span className="text-[10px] text-slate-500 font-semibold">
-                            {p.label}
-                          </span>
-                          {(p.income > 0 || p.expenses > 0) && (
-                            <span
-                              className={`text-[9px] font-bold ${balance >= 0 ? 'text-teal-600' : 'text-red-500'}`}
-                            >
-                              {balance >= 0 ? '+' : ''}
-                              {balance >= 1000 || balance <= -1000
-                                ? `$${(balance / 1000).toFixed(1)}k`
-                                : `$${balance.toFixed(0)}`}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </>
+            <div className="w-full h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData.map((p) => ({
+                    name: p.label,
+                    ingresos: p.income,
+                    egresos: p.expenses,
+                  }))}
+                  margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <RTooltip
+                    formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
+                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
       )}
