@@ -174,6 +174,18 @@ export class PatientsController {
       age: dto.age,
       sex: dto.sex,
       authUserId: dto.auth_user_id,
+      // Datos demográficos/ubicación/clínicos/contacto de emergencia — se perdían al
+      // CREAR porque el handler no los mapeaba (el use-case + entity + repo ya los persisten;
+      // el handler PUT/update sí los mapeaba). Ahora se guardan también al crear.
+      bloodType: dto.blood_type,
+      allergies: dto.allergies,
+      chronicConditions: dto.chronic_conditions,
+      address: dto.address,
+      city: dto.city,
+      emergencyContactName: dto.emergency_contact_name,
+      emergencyContactPhone: dto.emergency_contact_phone,
+      emergencyContactRelationship: dto.emergency_contact_relationship,
+      notes: dto.notes,
     });
     // POST returns minimal list shape — same as GET / so the caller can merge into its list
     return { success: true, data: toPatientListItem(patient) };

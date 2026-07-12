@@ -363,6 +363,7 @@ export default function DoctorDashboard() {
         chronic_conditions: formData.chronic_conditions ?? undefined,
         emergency_contact_name: formData.emergency_contact_name ?? undefined,
         emergency_contact_phone: formData.emergency_contact_phone ?? undefined,
+        emergency_contact_relationship: formData.emergency_contact_relationship ?? undefined,
         address: formData.address ?? undefined,
         city: formData.city ?? undefined,
         source: 'manual',
