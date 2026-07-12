@@ -21,10 +21,15 @@ import {
   updateIncomeConcept,
   deleteIncomeConcept,
   editTransaction,
+  getIncomePaged,
+  getExpensesPaged,
   type BackendConsultationRow,
+  type BackendExpense,
   type IncomeConcept,
   type IncomeTransactionItem,
+  type IncomePageItem,
 } from './actions';
+import Paginator, { PAGE_SIZE_ALL } from '@/components/ui/Paginator';
 import {
   DollarSign,
   TrendingUp,
@@ -200,6 +205,20 @@ export default function FinancesPage() {
   // Lista de pacientes del doctor para el IncomeModal (se carga junto a los datos).
   const [patientsList, setPatientsList] = useState<Patient[]>([]);
 
+  // ─── Paginación server-side: Tab Ingresos ───────────────────────────────
+  const [incPage, setIncPage] = useState(1);
+  const [incPageSize, setIncPageSize] = useState(15);
+  const [incTotal, setIncTotal] = useState(0);
+  const [incPagedItems, setIncPagedItems] = useState<IncomePageItem[]>([]);
+  const [incLoading, setIncLoading] = useState(false);
+
+  // ─── Paginación server-side: Tab Egresos ────────────────────────────────
+  const [expPage, setExpPage] = useState(1);
+  const [expPageSize, setExpPageSize] = useState(15);
+  const [expTotal, setExpTotal] = useState(0);
+  const [expPagedItems, setExpPagedItems] = useState<BackendExpense[]>([]);
+  const [expLoading, setExpLoading] = useState(false);
+
   // ETAPA 1: loadData migrado al backend. Supabase eliminado.
   const loadData = async () => {
     setLoading(true);
@@ -275,6 +294,81 @@ export default function FinancesPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  /**
+   * Deriva el string YYYY-MM del período activo del navegador.
+   * En modo mes devuelve el mes de currentDate.
+   * En modo semana/día devuelve el mes que contiene la semana/día actual.
+   */
+  const activeMonth = (() => {
+    const y = currentDate.getFullYear();
+    const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  })();
+
+  // ─── Cargar página de Ingresos cuando cambia tab/página/tamaño/mes ──────
+  useEffect(() => {
+    if (tab !== 'income') return;
+
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIncLoading(true);
+
+    const limit = incPageSize === PAGE_SIZE_ALL ? 100 : incPageSize;
+    const page = incPageSize === PAGE_SIZE_ALL ? 1 : incPage;
+
+    getIncomePaged({ page, limit, month: activeMonth })
+      .then((result) => {
+        if (cancelled) return;
+        setIncPagedItems(result.items);
+        setIncTotal(result.total);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIncPagedItems([]);
+          setIncTotal(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIncLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, incPage, incPageSize, activeMonth]);
+
+  // ─── Cargar página de Egresos cuando cambia tab/página/tamaño/mes ───────
+  useEffect(() => {
+    if (tab !== 'expenses') return;
+
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setExpLoading(true);
+
+    const limit = expPageSize === PAGE_SIZE_ALL ? 100 : expPageSize;
+    const page = expPageSize === PAGE_SIZE_ALL ? 1 : expPage;
+
+    getExpensesPaged({ page, limit, month: activeMonth })
+      .then((result) => {
+        if (cancelled) return;
+        setExpPagedItems(result.items);
+        setExpTotal(result.total);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExpPagedItems([]);
+          setExpTotal(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setExpLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, expPage, expPageSize, activeMonth]);
 
   // ETAPA 1 NOTE: Supabase Realtime removed. Live refresh is deferred to Fase 5
   // (WebSocket or SSE from NestJS). The page reloads data on mount only.
@@ -617,6 +711,9 @@ export default function FinancesPage() {
     else if (viewMode === 'week') d.setDate(d.getDate() + dir * 7);
     else d.setDate(d.getDate() + dir);
     setCurrentDate(d);
+    // Reset pagination when period changes
+    setIncPage(1);
+    setExpPage(1);
   };
 
   const periodLabel = () => {
@@ -876,7 +973,12 @@ export default function FinancesPage() {
             {(['day', 'week', 'month'] as ViewMode[]).map((m) => (
               <button
                 key={m}
-                onClick={() => setViewMode(m)}
+                onClick={() => {
+                  setViewMode(m);
+                  // Cambio de modo resetea paginación (cambia el mes activo)
+                  setIncPage(1);
+                  setExpPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === m ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {m === 'day' ? 'Día' : m === 'week' ? 'Semana' : 'Mes'}
@@ -910,7 +1012,12 @@ export default function FinancesPage() {
             return (
               <button
                 key={t.value}
-                onClick={() => setTab(t.value)}
+                onClick={() => {
+                  setTab(t.value);
+                  // Reset paginación al cambiar de tab
+                  setIncPage(1);
+                  setExpPage(1);
+                }}
                 className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   tab === t.value
                     ? 'bg-white text-teal-600 shadow-sm'
@@ -1436,25 +1543,17 @@ export default function FinancesPage() {
         </div>
       )}
 
-      {/* Income Table */}
-      {(tab === 'overview' || tab === 'income') &&
+      {/* Income Table — Overview: legacy filtered list (primeros 5) */}
+      {tab === 'overview' &&
         (() => {
-          const tableIncomes =
-            tab === 'income'
-              ? incomes.filter((i) => {
-                  if (incomeDateFrom && new Date(i.date) < new Date(incomeDateFrom)) return false;
-                  if (incomeDateTo && new Date(i.date) > new Date(incomeDateTo + 'T23:59:59'))
-                    return false;
-                  return true;
-                })
-              : filteredData.filteredIncomes.slice(0, 5);
+          const tableIncomes = filteredData.filteredIncomes.slice(0, 5);
           const tableTotal = tableIncomes.reduce((s, i) => s + (i.amount_usd || 0), 0);
 
           return (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-700">Ingresos (Pagos aprobados)</h3>
+                  <h3 className="text-sm font-bold text-slate-700">Ingresos recientes</h3>
                   <button
                     onClick={() => downloadCSV('income')}
                     className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-teal-600 transition-colors"
@@ -1463,47 +1562,15 @@ export default function FinancesPage() {
                     <Download className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  {tab === 'income' && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Calendar className="w-4 h-4 text-slate-400" />
-                      {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (necesita >=16px); text-xs sólo en sm+ */}
-                      <input
-                        type="date"
-                        value={incomeDateFrom}
-                        onChange={(e) => setIncomeDateFrom(e.target.value)}
-                        className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
-                      />
-                      <span className="text-xs text-slate-400">a</span>
-                      <input
-                        type="date"
-                        value={incomeDateTo}
-                        onChange={(e) => setIncomeDateTo(e.target.value)}
-                        className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
-                      />
-                      {(incomeDateFrom || incomeDateTo) && (
-                        <button
-                          onClick={() => {
-                            setIncomeDateFrom('');
-                            setIncomeDateTo('');
-                          }}
-                          className="text-xs text-teal-600 hover:text-teal-700 font-medium"
-                        >
-                          Limpiar
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <button
-                    onClick={() => {
-                      setIncomeError('');
-                      setShowIncomeModal(true);
-                    }}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Agregar ingreso
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    setIncomeError('');
+                    setShowIncomeModal(true);
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar ingreso
+                </button>
               </div>
 
               {tableIncomes.length === 0 ? (
@@ -1573,6 +1640,196 @@ export default function FinancesPage() {
           );
         })()}
 
+      {/* Income Table — Tab Ingresos: paginación server-side */}
+      {tab === 'income' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-700">
+                Ingresos · {periodLabel()}
+                {incTotal > 0 && (
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">
+                    ({incTotal} total)
+                  </span>
+                )}
+              </h3>
+              <button
+                onClick={() => downloadCSV('income')}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-teal-600 transition-colors"
+                title="Descargar CSV del período"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Filtros de fecha adicionales — aplica client-side sobre la página actual */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Calendar className="w-4 h-4 text-slate-400" />
+                {/* F4: text-base evita zoom en iOS Safari */}
+                <input
+                  type="date"
+                  value={incomeDateFrom}
+                  onChange={(e) => setIncomeDateFrom(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
+                />
+                <span className="text-xs text-slate-400">a</span>
+                <input
+                  type="date"
+                  value={incomeDateTo}
+                  onChange={(e) => setIncomeDateTo(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
+                />
+                {(incomeDateFrom || incomeDateTo) && (
+                  <button
+                    onClick={() => {
+                      setIncomeDateFrom('');
+                      setIncomeDateTo('');
+                    }}
+                    className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setIncomeError('');
+                  setShowIncomeModal(true);
+                }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Agregar ingreso
+              </button>
+            </div>
+          </div>
+
+          {incLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
+            </div>
+          ) : (
+            (() => {
+              // Filtrado client-side adicional (date range) sobre la página actual
+              const displayItems = incPagedItems.filter((item) => {
+                const d = parseDateLocal(item.date);
+                if (incomeDateFrom && d < parseDateLocal(incomeDateFrom)) return false;
+                if (incomeDateTo && d > parseDateLocal(incomeDateTo)) return false;
+                return true;
+              });
+              const pageTotal = displayItems.reduce((s, i) => s + (i.amount_usd || 0), 0);
+
+              return displayItems.length === 0 ? (
+                <div className="px-5 py-10 text-center text-slate-400 text-sm">
+                  No hay ingresos en este período
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full md:min-w-[600px]">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100">
+                          <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Fecha
+                          </th>
+                          <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Paciente
+                          </th>
+                          <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Origen / Concepto
+                          </th>
+                          <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Estado
+                          </th>
+                          <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Monto USD
+                          </th>
+                          <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Monto Bs
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {displayItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-5 py-3 text-xs text-slate-600">
+                              {new Intl.DateTimeFormat('es-VE', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              }).format(parseDateLocal(item.date))}
+                            </td>
+                            <td className="px-5 py-3 text-sm font-medium text-slate-900">
+                              {item.patient_name ?? '—'}
+                            </td>
+                            <td className="px-5 py-3 text-xs text-slate-600">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold mr-1.5 ${
+                                  item.source === 'consultation'
+                                    ? 'bg-blue-50 text-blue-700'
+                                    : 'bg-purple-50 text-purple-700'
+                                }`}
+                              >
+                                {item.source === 'consultation' ? 'Consulta' : 'Manual'}
+                              </span>
+                              {item.concept ?? (item.reference ? `Ref: ${item.reference}` : '—')}
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              {item.status ? (
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    item.status === 'approved'
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : 'bg-amber-50 text-amber-700'
+                                  }`}
+                                >
+                                  {item.status === 'approved' ? 'Aprobado' : 'Pendiente'}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">
+                              +{formatUsd(item.amount_usd)}
+                            </td>
+                            <td className="px-5 py-3 text-xs text-slate-400 text-right">
+                              {bcvRate ? toBs(item.amount_usd) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-emerald-50/50 border-t border-emerald-100">
+                          <td colSpan={4} className="px-5 py-3 text-xs font-bold text-slate-700">
+                            Total en esta página
+                          </td>
+                          <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">
+                            {formatUsd(pageTotal)}
+                          </td>
+                          <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">
+                            {bcvRate ? toBs(pageTotal) : '—'}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <Paginator
+                    page={incPage}
+                    pageSize={incPageSize}
+                    total={incTotal}
+                    onPageChange={(p) => setIncPage(p)}
+                    onPageSizeChange={(s) => {
+                      setIncPageSize(s);
+                      setIncPage(1);
+                    }}
+                    pageSizeOptions={[10, 15, 20]}
+                  />
+                </>
+              );
+            })()
+          )}
+        </div>
+      )}
+
       {/* #6 — Modal: Registrar ingreso extraordinario */}
       {showIncomeModal && (
         <IncomeModal
@@ -1626,26 +1883,17 @@ export default function FinancesPage() {
         />
       )}
 
-      {/* Expenses Table */}
-      {(tab === 'overview' || tab === 'expenses') &&
+      {/* Expenses Table — Overview: legacy filtered list (primeros 5) */}
+      {tab === 'overview' &&
         (() => {
-          const tableExpenses =
-            tab === 'expenses'
-              ? expenses.filter((e) => {
-                  if (expenseDateFrom && new Date(e.due_date) < new Date(expenseDateFrom))
-                    return false;
-                  if (expenseDateTo && new Date(e.due_date) > new Date(expenseDateTo + 'T23:59:59'))
-                    return false;
-                  return true;
-                })
-              : filteredData.filteredExpenses.slice(0, 5);
+          const tableExpenses = filteredData.filteredExpenses.slice(0, 5);
           const tableTotal = tableExpenses.reduce((s, e) => s + (e.amount || 0), 0);
 
           return (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-700">Gastos del consultorio</h3>
+                  <h3 className="text-sm font-bold text-slate-700">Gastos recientes</h3>
                   <button
                     onClick={() => downloadCSV('expenses')}
                     className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-teal-600 transition-colors"
@@ -1654,44 +1902,12 @@ export default function FinancesPage() {
                     <Download className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  {tab === 'expenses' && (
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-slate-400" />
-                      {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari */}
-                      <input
-                        type="date"
-                        value={expenseDateFrom}
-                        onChange={(e) => setExpenseDateFrom(e.target.value)}
-                        className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
-                      />
-                      <span className="text-xs text-slate-400">a</span>
-                      <input
-                        type="date"
-                        value={expenseDateTo}
-                        onChange={(e) => setExpenseDateTo(e.target.value)}
-                        className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
-                      />
-                      {(expenseDateFrom || expenseDateTo) && (
-                        <button
-                          onClick={() => {
-                            setExpenseDateFrom('');
-                            setExpenseDateTo('');
-                          }}
-                          className="text-xs text-teal-600 hover:text-teal-700 font-medium"
-                        >
-                          Limpiar
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <button
-                    onClick={() => setShowExpenseForm(!showExpenseForm)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Agregar gasto
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowExpenseForm(!showExpenseForm)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar gasto
+                </button>
               </div>
 
               {/* Add expense form */}
@@ -1727,7 +1943,6 @@ export default function FinancesPage() {
                       onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
                       className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
                     />
-                    {/* F4 (2026-04-29): text-base en mobile evita zoom-in en iOS Safari (input date) */}
                     <input
                       type="date"
                       value={expenseForm.due_date}
@@ -1802,7 +2017,6 @@ export default function FinancesPage() {
                           </td>
                           <td className="px-2 py-3">
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                              {/* #7 — Editar gasto */}
                               <button
                                 onClick={() => {
                                   setEditError('');
@@ -1852,6 +2066,257 @@ export default function FinancesPage() {
             </div>
           );
         })()}
+
+      {/* Expenses Table — Tab Gastos: paginación server-side */}
+      {tab === 'expenses' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-700">
+                Gastos · {periodLabel()}
+                {expTotal > 0 && (
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">
+                    ({expTotal} total)
+                  </span>
+                )}
+              </h3>
+              <button
+                onClick={() => downloadCSV('expenses')}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-teal-600 transition-colors"
+                title="Descargar CSV del período"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Filtros de fecha adicionales — aplica client-side sobre la página actual */}
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-400" />
+                {/* F4: text-base evita zoom en iOS Safari */}
+                <input
+                  type="date"
+                  value={expenseDateFrom}
+                  onChange={(e) => setExpenseDateFrom(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
+                />
+                <span className="text-xs text-slate-400">a</span>
+                <input
+                  type="date"
+                  value={expenseDateTo}
+                  onChange={(e) => setExpenseDateTo(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 text-base sm:text-xs"
+                />
+                {(expenseDateFrom || expenseDateTo) && (
+                  <button
+                    onClick={() => {
+                      setExpenseDateFrom('');
+                      setExpenseDateTo('');
+                    }}
+                    className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setShowExpenseForm(!showExpenseForm)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Agregar gasto
+              </button>
+            </div>
+          </div>
+
+          {/* Add expense form */}
+          {showExpenseForm && (
+            <form
+              onSubmit={handleAddExpense}
+              className="px-5 py-4 bg-slate-50 border-b border-slate-100 space-y-3"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <select
+                  value={expenseForm.category}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, category: e.target.value }))}
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Concepto"
+                  value={expenseForm.concept}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, concept: e.target.value }))}
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Monto USD"
+                  value={expenseForm.amount}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                />
+                <input
+                  type="date"
+                  value={expenseForm.due_date}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, due_date: e.target.value }))}
+                  className="px-3 py-2 rounded-lg border border-slate-200 text-base sm:text-sm"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={savingExpense}
+                  className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-all hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
+                >
+                  {savingExpense ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseForm(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
+
+          {expLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
+            </div>
+          ) : (
+            (() => {
+              // Filtrado client-side adicional (date range) sobre la página actual
+              const displayItems = expPagedItems.filter((exp) => {
+                const d = parseDateLocal(exp.due_date);
+                if (expenseDateFrom && d < parseDateLocal(expenseDateFrom)) return false;
+                if (expenseDateTo && d > parseDateLocal(expenseDateTo)) return false;
+                return true;
+              });
+              const pageTotal = displayItems.reduce((s, e) => s + (e.amount || 0), 0);
+
+              return displayItems.length === 0 ? (
+                <div className="px-5 py-10 text-center text-slate-400 text-sm">
+                  No hay gastos en este período
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full md:min-w-[400px]">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100">
+                          <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Fecha
+                          </th>
+                          <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Gasto
+                          </th>
+                          <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Monto USD
+                          </th>
+                          <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Monto Bs
+                          </th>
+                          <th className="w-16"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {displayItems.map((exp) => (
+                          <tr key={exp.id} className="hover:bg-slate-50 transition-colors group">
+                            <td className="px-5 py-3 text-xs text-slate-600">
+                              {new Intl.DateTimeFormat('es-VE', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              }).format(parseDateLocal(exp.due_date))}
+                            </td>
+                            <td className="px-5 py-3">
+                              <p className="text-sm font-medium text-slate-900">{exp.concept}</p>
+                              {exp.notes && (
+                                <p className="text-[10px] text-slate-400">
+                                  {EXPENSE_CATEGORIES.find((c) => c.value === exp.notes)?.label ||
+                                    exp.notes}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">
+                              -{formatUsd(exp.amount)}
+                            </td>
+                            <td className="px-5 py-3 text-xs text-slate-400 text-right">
+                              {bcvRate ? toBs(exp.amount || 0) : '—'}
+                            </td>
+                            <td className="px-2 py-3">
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                {/* #7 — Editar gasto */}
+                                <button
+                                  onClick={() => {
+                                    setEditError('');
+                                    setEditingTx({
+                                      id: exp.id,
+                                      type: 'expense',
+                                      description: exp.concept,
+                                      amount: String(exp.amount),
+                                      date: exp.due_date,
+                                      conceptId: '',
+                                    });
+                                  }}
+                                  className="p-1 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50"
+                                  title="Editar gasto"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteExpense(exp.id)}
+                                  className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                  title="Eliminar gasto"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-red-50/50 border-t border-red-100">
+                          <td colSpan={2} className="px-5 py-3 text-xs font-bold text-slate-700">
+                            Total en esta página
+                          </td>
+                          <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">
+                            -{formatUsd(pageTotal)}
+                          </td>
+                          <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">
+                            {bcvRate ? toBs(pageTotal) : '—'}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <Paginator
+                    page={expPage}
+                    pageSize={expPageSize}
+                    total={expTotal}
+                    onPageChange={(p) => setExpPage(p)}
+                    onPageSizeChange={(s) => {
+                      setExpPageSize(s);
+                      setExpPage(1);
+                    }}
+                    pageSizeOptions={[10, 15, 20]}
+                  />
+                </>
+              );
+            })()
+          )}
+        </div>
+      )}
     </div>
   );
 }

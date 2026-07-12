@@ -47,7 +47,14 @@ import { appErrorToString } from '@/lib/app-error';
 
 import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
-import { backendGet, backendPost, backendPut, backendDelete } from '@/lib/api-client.server';
+import {
+  backendGet,
+  backendGetPaged,
+  backendPost,
+  backendPut,
+  backendDelete,
+  type PagedResult,
+} from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,6 +181,101 @@ export async function getManualIncomes(month?: string): Promise<IncomeTransactio
     return (raw as { data: IncomeTransactionItem[] }).data;
   }
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// Income unified list — paged (GET /api/finances/income)
+// ---------------------------------------------------------------------------
+
+/** Unified income item: consultation payment OR manual income entry */
+export type IncomePageItem = {
+  id: string;
+  date: string;
+  amount_usd: number;
+  source: 'consultation' | 'manual';
+  status: 'pending' | 'approved' | null;
+  concept: string | null;
+  patient_name: string | null;
+  patient_id: string | null;
+  reference: string | null;
+};
+
+/**
+ * Fetch a page of unified income entries (consultation payments + manual incomes).
+ * Calls GET /api/finances/income?month=YYYY-MM&page=N&limit=N.
+ * Cap: 100 items per page.
+ */
+export async function getIncomePaged(opts: {
+  page: number;
+  limit: number;
+  month?: string;
+}): Promise<PagedResult<IncomePageItem>> {
+  const limit = Math.min(opts.limit > 0 ? opts.limit : 20, 100);
+  const qs = new URLSearchParams({ page: String(opts.page), limit: String(limit) });
+  if (opts.month) qs.set('month', opts.month);
+
+  const result = await backendGetPaged<IncomePageItem>(`/api/finances/income?${qs.toString()}`);
+
+  if (!result.ok) {
+    log.error('[getIncomePaged] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { items: [], total: 0 };
+  }
+
+  return result.value;
+}
+
+// ---------------------------------------------------------------------------
+// Expenses paged (GET /api/finances/transactions?type=expense)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch a page of expense transactions.
+ * Calls GET /api/finances/transactions?type=expense&month=YYYY-MM&page=N&limit=N.
+ * Cap: 100 items per page.
+ */
+export async function getExpensesPaged(opts: {
+  page: number;
+  limit: number;
+  month?: string;
+}): Promise<PagedResult<BackendExpense>> {
+  const limit = Math.min(opts.limit > 0 ? opts.limit : 20, 100);
+  const qs = new URLSearchParams({
+    type: 'expense',
+    page: String(opts.page),
+    limit: String(limit),
+  });
+  if (opts.month) qs.set('month', opts.month);
+
+  const result = await backendGetPaged<TransactionItem>(
+    `/api/finances/transactions?${qs.toString()}`,
+  );
+
+  if (!result.ok) {
+    log.error('[getExpensesPaged] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { items: [], total: 0 };
+  }
+
+  const mapped = result.value.items
+    .filter((t) => t.type === 'expense')
+    .map(
+      (t): BackendExpense => ({
+        id: t.id,
+        vendor_name: t.description,
+        concept: t.description,
+        amount: t.amount,
+        due_date: t.date ? t.date.slice(0, 10) : t.createdAt.slice(0, 10),
+        paid: true,
+        notes: t.currency !== 'USD' ? t.currency : undefined,
+      }),
+    );
+
+  return { items: mapped, total: result.value.total };
 }
 
 // ---------------------------------------------------------------------------
