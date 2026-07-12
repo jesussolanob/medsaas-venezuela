@@ -38,15 +38,17 @@ describe('CompleteRegistrationUseCase', () => {
 
   beforeEach(() => {
     mockRepo = {
-      findById: jest.fn(),
+      // Default: prior profile already has a cedula (re-submit). Tests that
+      // need first-registration behaviour override this individually.
+      findById: jest.fn().mockResolvedValue(makeRegistration({ cedula: 'V-existing' })),
       updateRegistration: jest.fn(),
       updateVerification: jest.fn(),
       listByVerificationStatus: jest.fn(),
-      findAllSuperAdmins: jest.fn(),
+      findAllSuperAdmins: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IDoctorRegistrationRepository>;
 
     mockMailer = {
-      sendTemplate: jest.fn(),
+      sendTemplate: jest.fn().mockResolvedValue({ id: 'default-msg' }),
     } as unknown as jest.Mocked<MailerService>;
 
     mockVerifyMpps = {
