@@ -29,6 +29,12 @@ export const DoctorRegistrationDtoSchema = z
      * catalogue on the frontend). Optional — can be updated later from settings.
      */
     specialty: z.string().min(1).max(200).nullable().optional(),
+    /**
+     * Whether the doctor has accepted the current Terms & Conditions.
+     * When true, the acceptance timestamp and T&C version are persisted on the profile.
+     * Optional — omitting it does not change any existing acceptance record.
+     */
+    accepted_terms: z.boolean().optional(),
   })
   .strict();
 

@@ -76,6 +76,22 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_completed' })
   declare onboardingCompleted: boolean;
 
+  /**
+   * Timestamp when the doctor explicitly accepted the Terms & Conditions.
+   * NULL means the doctor has not accepted (or the field was not tracked before migration).
+   * Added in migration 20260712000008-legal-documents.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'terms_accepted_at' })
+  declare termsAcceptedAt: Date | null;
+
+  /**
+   * Version string of the T&C document accepted by the doctor (e.g. '2026-07').
+   * NULL when no acceptance has been recorded.
+   * Added in migration 20260712000008-legal-documents.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'terms_accepted_version' })
+  declare termsAcceptedVersion: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

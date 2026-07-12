@@ -25,6 +25,10 @@ import { EmailModule } from '../email/email.module';
 // Credential verification (fire-and-forget after registration)
 import { CredentialVerificationModule } from '../credential-verification/credential-verification.module';
 
+// LegalModule exports LEGAL_DOCUMENT_REPOSITORY used by CompleteRegistrationUseCase
+// to read the current T&C version when persisting terms acceptance.
+import { LegalModule } from '../legal/legal.module';
+
 /**
  * DoctorRegistrationModule
  *
@@ -52,6 +56,9 @@ import { CredentialVerificationModule } from '../credential-verification/credent
     // CredentialVerificationModule exports VerifyMppsUseCase used for
     // fire-and-forget post-registration verification.
     CredentialVerificationModule,
+    // LegalModule exports LEGAL_DOCUMENT_REPOSITORY used by CompleteRegistrationUseCase
+    // to read the current T&C version when the doctor accepts terms during onboarding.
+    LegalModule,
   ],
   controllers: [DoctorRegistrationController],
   providers: [

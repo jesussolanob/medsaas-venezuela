@@ -19,6 +19,11 @@ export interface VerificationUpdateParams {
   verifiedAt: Date;
 }
 
+export interface TermsAcceptanceParams {
+  acceptedAt: Date;
+  version: string;
+}
+
 export interface SuperAdminRow {
   id: string;
   email: string;
@@ -66,4 +71,11 @@ export interface IDoctorRegistrationRepository {
    * SECURITY: call site must never log the returned email addresses.
    */
   findAllSuperAdmins(): Promise<SuperAdminRow[]>;
+
+  /**
+   * Persists the terms acceptance timestamp and version on the doctor's profile.
+   * Sets terms_accepted_at = params.acceptedAt and terms_accepted_version = params.version.
+   * Silently no-ops when the profile does not exist (best-effort, fire-and-forget caller).
+   */
+  acceptTerms(doctorId: string, params: TermsAcceptanceParams): Promise<void>;
 }

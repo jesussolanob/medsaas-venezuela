@@ -47,6 +47,7 @@ import { DocumentSharingModule } from './modules/document-sharing/document-shari
 import { HelpAssistantModule } from './modules/help-assistant/help-assistant.module';
 import { PatientRequestsModule } from './modules/patient-requests/patient-requests.module';
 import { SharedFilesModule } from './modules/shared-files/shared-files.module';
+import { LegalModule } from './modules/legal/legal.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -104,6 +105,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     HelpAssistantModule,
     PatientRequestsModule,
     SharedFilesModule,
+    LegalModule,
   ],
   controllers: [HealthController],
   providers: [

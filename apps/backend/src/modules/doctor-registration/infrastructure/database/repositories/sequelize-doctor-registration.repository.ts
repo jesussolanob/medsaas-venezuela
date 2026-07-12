@@ -9,6 +9,7 @@ import type {
   RegistrationUpdateParams,
   VerificationUpdateParams,
   SuperAdminRow,
+  TermsAcceptanceParams,
 } from '../../../domain/repositories/doctor-registration.repository';
 import { DoctorRegistrationNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 import { RegistrationProfileModel } from '../models/registration-profile.model';
@@ -93,6 +94,19 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
       email: r.email,
       fullName: r.fullName,
     }));
+  }
+
+  async acceptTerms(doctorId: string, params: TermsAcceptanceParams): Promise<void> {
+    const row = await this.model.findByPk(doctorId);
+    if (!row) {
+      // Best-effort: silently no-op when the profile does not exist.
+      return;
+    }
+
+    await row.update({
+      termsAcceptedAt: params.acceptedAt,
+      termsAcceptedVersion: params.version,
+    });
   }
 
   private toDomain(row: RegistrationProfileModel): DoctorRegistration {

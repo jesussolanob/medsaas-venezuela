@@ -8,6 +8,10 @@ import type { DoctorRegistration } from '../../domain/entities/doctor-registrati
 import { DoctorRegistrationNotFoundError } from '../../domain/errors/doctor-not-found.error';
 import { MailerService } from '../../../email/application/services/mailer.service';
 import { VerifyMppsUseCase } from '../../../credential-verification/application/use-cases/verify-mpps.use-case';
+import {
+  LEGAL_DOCUMENT_REPOSITORY,
+  type ILegalDocumentRepository,
+} from '../../../legal/domain/repositories/legal-document.repository';
 
 export interface CompleteRegistrationInput {
   doctorId: string;
@@ -16,6 +20,8 @@ export interface CompleteRegistrationInput {
   mppsNumber?: string | null;
   colegiadoNumber?: string | null;
   specialty?: string | null;
+  /** When true, persists terms acceptance (timestamp + version) on the profile. */
+  acceptedTerms?: boolean;
 }
 
 export interface CompleteRegistrationOutput {
@@ -57,6 +63,8 @@ export class CompleteRegistrationUseCase {
     private readonly mailer: MailerService,
     private readonly verifyMpps: VerifyMppsUseCase,
     private readonly config: ConfigService,
+    @Inject(LEGAL_DOCUMENT_REPOSITORY)
+    private readonly legalRepo: ILegalDocumentRepository,
   ) {}
 
   async execute(input: CompleteRegistrationInput): Promise<CompleteRegistrationOutput> {
@@ -85,7 +93,18 @@ export class CompleteRegistrationUseCase {
 
     this.logger.log(`[registration] profile updated doctorId=${input.doctorId}`);
 
-    // 2. Dispatch MPPS credential verification — fire-and-forget
+    // 2. Persist terms acceptance — fire-and-forget (never fails registration).
+    //    Only runs when the client explicitly sends accepted_terms: true.
+    if (input.acceptedTerms === true) {
+      this.persistTermsAcceptance(input.doctorId).catch((err: unknown) => {
+        this.logger.error(
+          `[registration] failed to persist terms acceptance for doctorId=${input.doctorId}`,
+          err instanceof Error ? err.message : String(err),
+        );
+      });
+    }
+
+    // 4. Dispatch MPPS credential verification — fire-and-forget
     // Registration MUST NOT fail if SACS is unavailable.
     this.verifyMpps.execute(input.doctorId).catch((err: unknown) => {
       this.logger.error(
@@ -94,7 +113,7 @@ export class CompleteRegistrationUseCase {
       );
     });
 
-    // 3. Notify all super_admins — fire-and-forget
+    // 5. Notify all super_admins — fire-and-forget
     this.notifySuperAdmins(updated).catch((err: unknown) => {
       this.logger.error(
         `[registration] failed to notify super_admins for doctorId=${input.doctorId}`,
@@ -102,7 +121,7 @@ export class CompleteRegistrationUseCase {
       );
     });
 
-    // 4. Send onboarding welcome email on first registration — fire-and-forget.
+    // 6. Send onboarding welcome email on first registration — fire-and-forget.
     //    Gated to isFirstRegistration so re-submits (idempotent updates) never
     //    trigger a duplicate welcome. Also requires a destination email address.
     //    SECURITY: doctorId only in the log — never log email/fullName.
@@ -134,6 +153,30 @@ export class CompleteRegistrationUseCase {
       doctorId: updated.id,
       verificationStatus: updated.verificationStatus,
     };
+  }
+
+  /**
+   * Looks up the current T&C version and writes the acceptance record to the profile.
+   * Fire-and-forget: called without await so registration is not blocked.
+   * If no current terms document exists, the acceptance is silently skipped.
+   */
+  private async persistTermsAcceptance(doctorId: string): Promise<void> {
+    const termsDoc = await this.legalRepo.findCurrentByType('terms');
+    if (!termsDoc) {
+      this.logger.warn(
+        `[registration] no current terms document found — skipping acceptance for doctorId=${doctorId}`,
+      );
+      return;
+    }
+
+    await this.repo.acceptTerms(doctorId, {
+      acceptedAt: new Date(),
+      version: termsDoc.version,
+    });
+
+    this.logger.log(
+      `[registration] terms acceptance persisted version=${termsDoc.version} doctorId=${doctorId}`,
+    );
   }
 
   private async notifySuperAdmins(registration: DoctorRegistration): Promise<void> {

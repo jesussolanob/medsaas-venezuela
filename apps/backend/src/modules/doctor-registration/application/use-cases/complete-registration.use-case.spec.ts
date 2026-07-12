@@ -4,6 +4,8 @@ import type { MailerService } from '../../../email/application/services/mailer.s
 import type { VerifyMppsUseCase } from '../../../credential-verification/application/use-cases/verify-mpps.use-case';
 import type { ConfigService } from '@nestjs/config';
 import { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
+import type { ILegalDocumentRepository } from '../../../legal/domain/repositories/legal-document.repository';
+import { LegalDocument } from '../../../legal/domain/entities/legal-document.entity';
 
 const makeRegistration = (
   overrides: Partial<Parameters<typeof DoctorRegistration.create>[0]> = {},
@@ -29,12 +31,24 @@ const makeRegistration = (
 const makeEmptyRegistration = () =>
   makeRegistration({ cedula: null, fullName: '', email: 'new@example.com' });
 
+const makeTermsDoc = (): LegalDocument =>
+  LegalDocument.reconstitute({
+    id: 'legal-uuid-1',
+    docType: 'terms',
+    version: '2026-07',
+    contentHtml: '<h1>T&C</h1>',
+    isCurrent: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
 describe('CompleteRegistrationUseCase', () => {
   let useCase: CompleteRegistrationUseCase;
   let mockRepo: jest.Mocked<IDoctorRegistrationRepository>;
   let mockMailer: jest.Mocked<MailerService>;
   let mockVerifyMpps: jest.Mocked<Pick<VerifyMppsUseCase, 'execute'>>;
   let mockConfig: jest.Mocked<Pick<ConfigService, 'get'>>;
+  let mockLegalRepo: jest.Mocked<ILegalDocumentRepository>;
 
   beforeEach(() => {
     mockRepo = {
@@ -45,7 +59,12 @@ describe('CompleteRegistrationUseCase', () => {
       updateVerification: jest.fn(),
       listByVerificationStatus: jest.fn(),
       findAllSuperAdmins: jest.fn().mockResolvedValue([]),
+      acceptTerms: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IDoctorRegistrationRepository>;
+
+    mockLegalRepo = {
+      findCurrentByType: jest.fn().mockResolvedValue(makeTermsDoc()),
+    } as jest.Mocked<ILegalDocumentRepository>;
 
     mockMailer = {
       sendTemplate: jest.fn().mockResolvedValue({ id: 'default-msg' }),
@@ -67,6 +86,7 @@ describe('CompleteRegistrationUseCase', () => {
       mockMailer,
       mockVerifyMpps as unknown as VerifyMppsUseCase,
       mockConfig as unknown as ConfigService,
+      mockLegalRepo,
     );
   });
 
@@ -447,5 +467,103 @@ describe('CompleteRegistrationUseCase', () => {
     await expect(
       useCase.execute({ doctorId: 'doc-1', fullName: 'Dr. Fail', cedula: 'V-66666' }),
     ).resolves.toMatchObject({ doctorId: 'doc-1' });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Terms acceptance
+  // ---------------------------------------------------------------------------
+
+  it('persists terms acceptance when accepted_terms is true', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-existing' }));
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+      acceptedTerms: true,
+    });
+
+    // Allow fire-and-forget to settle
+    await new Promise(process.nextTick);
+
+    expect(mockLegalRepo.findCurrentByType).toHaveBeenCalledWith('terms');
+    expect(mockRepo.acceptTerms).toHaveBeenCalledWith(
+      'doc-1',
+      expect.objectContaining({ version: '2026-07' }),
+    );
+  });
+
+  it('does NOT call acceptTerms when acceptedTerms is false', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-existing' }));
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+      acceptedTerms: false,
+    });
+
+    await new Promise(process.nextTick);
+
+    expect(mockRepo.acceptTerms).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call acceptTerms when acceptedTerms is omitted', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-existing' }));
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+    });
+
+    await new Promise(process.nextTick);
+
+    expect(mockRepo.acceptTerms).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when terms acceptance fails (fire-and-forget)', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-existing' }));
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockRepo.acceptTerms.mockRejectedValueOnce(new Error('DB unavailable'));
+
+    await expect(
+      useCase.execute({
+        doctorId: 'doc-1',
+        fullName: 'Dr.',
+        cedula: 'V-1',
+        acceptedTerms: true,
+      }),
+    ).resolves.toMatchObject({ doctorId: 'doc-1' });
+  });
+
+  it('silently skips acceptTerms when no current terms document exists', async () => {
+    mockLegalRepo.findCurrentByType.mockResolvedValueOnce(null);
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-existing' }));
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Dr.',
+      cedula: 'V-1',
+      acceptedTerms: true,
+    });
+
+    await new Promise(process.nextTick);
+
+    expect(mockRepo.acceptTerms).not.toHaveBeenCalled();
   });
 });

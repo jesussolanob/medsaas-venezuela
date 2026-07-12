@@ -119,6 +119,7 @@ export class DoctorRegistrationController {
       mppsNumber: body.mpps_number ?? null,
       colegiadoNumber: body.colegiado_number ?? null,
       specialty: body.specialty ?? null,
+      acceptedTerms: body.accepted_terms,
     });
 
     return { success: true, data: result };
