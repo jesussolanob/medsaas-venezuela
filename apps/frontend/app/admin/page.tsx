@@ -121,9 +121,18 @@ export default async function AdminDashboard() {
 
   const now = new Date();
 
-  const hour = now.getHours();
+  // Hora de Venezuela (America/Caracas): el server de Cloud Run corre en UTC, así que
+  // `now.getHours()` daba un saludo equivocado (p.ej. "Buenas noches" en la tarde).
+  const hour = Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Caracas',
+      hour: '2-digit',
+      hour12: false,
+    }).format(now),
+  );
   const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
   const dateStr = now.toLocaleDateString('es-VE', {
+    timeZone: 'America/Caracas',
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -174,17 +183,22 @@ export default async function AdminDashboard() {
               {pendingPayments.length > 0 ? 'Revisar pagos' : 'Ver especialistas'}
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
-            <Link
-              href="/admin/doctors"
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[13px] font-semibold transition-all"
-              style={{
-                background: 'rgba(255,255,255,0.15)',
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.25)',
-              }}
-            >
-              Ver especialistas
-            </Link>
+            {/* Cuando hay pagos pendientes, el botón blanco lleva a pagos; ofrecemos
+                además el acceso directo a especialistas. Sin pagos pendientes el botón
+                blanco ya dice "Ver especialistas", así que no duplicamos. */}
+            {pendingPayments.length > 0 && (
+              <Link
+                href="/admin/doctors"
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[13px] font-semibold transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.25)',
+                }}
+              >
+                Ver especialistas
+              </Link>
+            )}
           </div>
         </div>
       </div>
