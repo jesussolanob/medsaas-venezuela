@@ -3,14 +3,15 @@
 /**
  * app/doctor/consultations/GenerateDocumentModal.tsx
  *
- * Modal "Generar Documento" — 5 tipos de documento con auto-detección.
+ * Modal "Generar Documento" — 6 tipos de documento con auto-detección.
  *
  * La unidad de selección es el TIPO de documento (no el bloque individual):
- *   1. Receta e indicaciones
- *   2. Paraclínicos
- *   3. Historia clínica (EHR on-demand)
- *   4. Reposo médico
- *   5. Informe médico (con sub-selector de bloques)
+ *   1. Informe médico (con sub-selector de bloques)
+ *   2. Récipe (diagnóstico + medicamentos, sin indicaciones)
+ *   3. Indicaciones (instrucciones al paciente + referencia de medicamentos)
+ *   4. Paraclínicos
+ *   5. Historia clínica (EHR on-demand)
+ *   6. Reposo médico
  *
  * Se genera UN solo PDF consolidado con separadores de sección.
  * El patrón on-demand (import dinámico de react-pdf + pdf().toBlob()) se preserva.
@@ -311,11 +312,12 @@ export default function GenerateDocumentModal({
 
       // Disparar descarga vía object URL — nombre legible según el tipo de documento
       const typeLabels: Record<string, string> = {
+        informe: 'Informe',
         recipe: 'Récipe',
+        indications: 'Indicaciones',
         paraclinical: 'Paraclínicos',
         history: 'Historia-Clínica',
         rest: 'Reposo',
-        informe: 'Informe',
       };
       const typeKeys = [...selectedTypes];
       const labelPart =

@@ -82,15 +82,20 @@ export interface MedicalDocumentPdfProps {
 /** Mapeo de tipos de documento a etiquetas en español venezolano. */
 const DOC_TYPE_LABELS: Record<string, string> = {
   informe: 'Informe Médico',
-  recipe: 'Recipe Médico',
+  recipe: 'Récipe Médico',
   receta: 'Receta Médica',
   prescripciones: 'Prescripción Médica',
+  // key del sistema de 6 tipos (consultation-documents.ts)
+  indications: 'Indicaciones al Paciente',
+  // legacy keys
   indicaciones: 'Indicaciones Médicas',
   reposo: 'Constancia de Reposo Médico',
   nutrition_plan: 'Plan Nutricional',
   exercises: 'Plan de Ejercicios',
   tasks: 'Tareas / Indicaciones',
   requested_exams: 'Exámenes Solicitados',
+  paraclinical: 'Exámenes Paraclínicos',
+  history: 'Historia Clínica',
   rest: 'Constancia de Reposo Médico',
   recommendations: 'Recomendaciones Médicas',
   diagnosis: 'Diagnóstico',
