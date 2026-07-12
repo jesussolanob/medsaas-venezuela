@@ -10,6 +10,12 @@ import {
 const VALID_ROLE_KEYS = new Set(['doctor', 'admin', 'patient']);
 const DEFAULT_ROLE_KEY = 'doctor';
 
+/**
+ * Plans that must never appear in the public catalog, regardless of their
+ * is_active / role_key values. These are internal plans used by the platform.
+ */
+const NON_PUBLIC_PLAN_KEYS = new Set(['free_trial']);
+
 /** Public-safe price shape — omits internal `isActive` flag. */
 export interface PublicPriceEntry {
   period: string;
@@ -82,7 +88,7 @@ export class GetPublicPlanCatalogUseCase {
     const allPlans = await this.adminRepo.listPlansWithDetails();
 
     return allPlans
-      .filter((p) => p.isActive && p.roleKey === roleKey)
+      .filter((p) => p.isActive && p.roleKey === roleKey && !NON_PUBLIC_PLAN_KEYS.has(p.planKey))
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(toCatalogItem);
   }

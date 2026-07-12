@@ -13,18 +13,28 @@ import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 
 /**
  * Plan and status assigned to every new doctor at registration.
- * delta_free is the permanent free plan (is_permanent=true in plan_configs).
+ *
+ * free_trial is the 30-day onboarding trial assigned on first registration.
+ * After 30 days, the lazy-downgrade on login (ProcessLoginTouchUseCase) flips
+ * subscriptions.status to 'past_due', which causes the features and panel
+ * resolvers to fall back to delta_free (the permanent free plan).
+ *
+ * The trial plan is NOT public (excluded from the catalog by plan_key filter).
  */
-const DOCTOR_INITIAL_PLAN: SubscriptionPlan = 'delta_free';
-const DOCTOR_INITIAL_STATUS: SubscriptionStatus = 'active';
+const DOCTOR_INITIAL_PLAN: SubscriptionPlan = 'free_trial';
+const DOCTOR_INITIAL_STATUS: SubscriptionStatus = 'trialing';
+
+/** Trial duration in days for new doctor registrations. */
+const TRIAL_DURATION_DAYS = 30;
 
 /**
- * Returns a Date 100 years after `from`.
- * Used as the subscription period end for the permanent free plan —
- * effectively "no expiry" without relying on magic NULL values.
+ * Returns a Date `days` after `from`.
+ * Used to set current_period_end for the free_trial subscription.
  */
-function permanentPeriodEnd(from: Date): Date {
-  return new Date(from.getFullYear() + 100, from.getMonth(), from.getDate());
+function trialPeriodEnd(from: Date, days: number): Date {
+  const end = new Date(from);
+  end.setDate(end.getDate() + days);
+  return end;
 }
 
 /**
@@ -130,6 +140,7 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
       );
 
       const now = new Date();
+      const periodEnd = trialPeriodEnd(now, TRIAL_DURATION_DAYS);
       await this.subscriptionModel.findOrCreate({
         where: { doctorId: row.id },
         defaults: {
@@ -139,8 +150,8 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
           priceUsd: 0,
           billingCycle: null,
           currentPeriodStart: now,
-          currentPeriodEnd: permanentPeriodEnd(now),
-          trialEndsAt: null,
+          currentPeriodEnd: periodEnd,
+          trialEndsAt: periodEnd,
           cancelledAt: null,
           notes: null,
         },
@@ -163,6 +174,7 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
           // guard here in case it crashed after the profile INSERT and before the
           // subscription findOrCreate. doctor_id UNIQUE prevents duplicates.
           const now = new Date();
+          const periodEnd = trialPeriodEnd(now, TRIAL_DURATION_DAYS);
           await this.subscriptionModel.findOrCreate({
             where: { doctorId: existing.id },
             defaults: {
@@ -172,8 +184,8 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
               priceUsd: 0,
               billingCycle: null,
               currentPeriodStart: now,
-              currentPeriodEnd: permanentPeriodEnd(now),
-              trialEndsAt: null,
+              currentPeriodEnd: periodEnd,
+              trialEndsAt: periodEnd,
               cancelledAt: null,
               notes: null,
             },

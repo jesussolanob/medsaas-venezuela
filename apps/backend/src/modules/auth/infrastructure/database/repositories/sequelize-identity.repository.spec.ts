@@ -136,8 +136,8 @@ describe('SequelizeIdentityRepository', () => {
         email: data.email,
         fullName: data.fullName,
         role: 'doctor',
-        plan: 'delta_free',
-        subscriptionStatus: 'active',
+        plan: 'free_trial',
+        subscriptionStatus: 'trialing',
       });
       modelMock.create.mockResolvedValue(row);
       subscriptionModelMock.findOrCreate.mockResolvedValue([{ id: 'sub-1' }, true]);
@@ -147,7 +147,7 @@ describe('SequelizeIdentityRepository', () => {
       // Transaction opened
       expect(sequelizeMock.transaction).toHaveBeenCalledTimes(1);
 
-      // Profile created with snapshot fields
+      // Profile created with free_trial + trialing snapshot
       expect(modelMock.create).toHaveBeenCalledWith(
         expect.objectContaining({
           id: data.id,
@@ -156,25 +156,43 @@ describe('SequelizeIdentityRepository', () => {
           role: 'doctor',
           auth0Sub: null,
           isActive: true,
-          plan: 'delta_free',
-          subscriptionStatus: 'active',
+          plan: 'free_trial',
+          subscriptionStatus: 'trialing',
         }),
         expect.objectContaining({ transaction: sequelizeMock._tx }),
       );
 
-      // Subscription created via findOrCreate
-      expect(subscriptionModelMock.findOrCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { doctorId: data.id },
-          defaults: expect.objectContaining({
-            doctorId: data.id,
-            plan: 'delta_free',
-            status: 'active',
-            priceUsd: 0,
-          }),
-          transaction: sequelizeMock._tx,
-        }),
+      // Subscription created via findOrCreate with 30-day trial
+      const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
+        where: { doctorId: string };
+        defaults: {
+          doctorId: string;
+          plan: string;
+          status: string;
+          priceUsd: number;
+          currentPeriodEnd: Date;
+          trialEndsAt: Date;
+        };
+        transaction: unknown;
+      };
+      expect(findOrCreateCall.where).toEqual({ doctorId: data.id });
+      expect(findOrCreateCall.defaults.plan).toBe('free_trial');
+      expect(findOrCreateCall.defaults.status).toBe('trialing');
+      expect(findOrCreateCall.defaults.priceUsd).toBe(0);
+      // currentPeriodEnd should be approximately 30 days from now
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
+        nowMs + thirtyDaysMs - 5000,
       );
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
+        nowMs + thirtyDaysMs + 5000,
+      );
+      // trialEndsAt should equal currentPeriodEnd
+      expect(findOrCreateCall.defaults.trialEndsAt.getTime()).toBe(
+        findOrCreateCall.defaults.currentPeriodEnd.getTime(),
+      );
+      expect(findOrCreateCall.transaction).toBe(sequelizeMock._tx);
 
       // Transaction committed
       expect(sequelizeMock._tx.commit).toHaveBeenCalledTimes(1);
@@ -207,8 +225,8 @@ describe('SequelizeIdentityRepository', () => {
         id: 'uuid-winner',
         email: 'concurrent@example.com',
         role: 'doctor',
-        plan: 'delta_free',
-        subscriptionStatus: 'active',
+        plan: 'free_trial',
+        subscriptionStatus: 'trialing',
       });
 
       const uniqueError = new UniqueConstraintError({ errors: [] });
@@ -224,17 +242,14 @@ describe('SequelizeIdentityRepository', () => {
       expect(sequelizeMock._tx.commit).not.toHaveBeenCalled();
 
       // Defensive subscription check outside transaction
-      expect(subscriptionModelMock.findOrCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { doctorId: 'uuid-winner' },
-          defaults: expect.objectContaining({
-            doctorId: 'uuid-winner',
-            plan: 'delta_free',
-            status: 'active',
-            priceUsd: 0,
-          }),
-        }),
-      );
+      const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
+        where: { doctorId: string };
+        defaults: { doctorId: string; plan: string; status: string; priceUsd: number };
+      };
+      expect(findOrCreateCall.where).toEqual({ doctorId: 'uuid-winner' });
+      expect(findOrCreateCall.defaults.plan).toBe('free_trial');
+      expect(findOrCreateCall.defaults.status).toBe('trialing');
+      expect(findOrCreateCall.defaults.priceUsd).toBe(0);
 
       expect(result).toBeInstanceOf(Identity);
       expect(result.id).toBe('uuid-winner');

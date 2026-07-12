@@ -10,6 +10,7 @@ import { SubscriptionStatusSchema } from './enums';
 // Subscription plan key (matches plan_configs.plan_key)
 // Legacy values: trial, basic, professional, clinic, enterprise
 // New parametric values (20260611 migration): delta_free, delta_base, delta_plus
+// Free trial introduced in migration 20260712000007: free_trial (30-day onboarding plan, not public)
 export const SubscriptionPlanSchema = z.enum([
   'trial',
   'basic',
@@ -21,6 +22,8 @@ export const SubscriptionPlanSchema = z.enum([
   'delta_free',
   'delta_base',
   'delta_plus',
+  // Free trial plan: 30-day onboarding plan assigned at doctor registration (not public)
+  'free_trial',
 ]);
 export type SubscriptionPlan = z.infer<typeof SubscriptionPlanSchema>;
 

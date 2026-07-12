@@ -92,19 +92,23 @@ export class SequelizeLoginTouchRepository implements ILoginTouchRepository {
       );
 
       // 2. Flip subscriptions.status to past_due.
+      //    Covers 'active', 'trial', and 'trialing' (free_trial onboarding plan uses 'trialing').
       await this.sequelize.query(
         `UPDATE subscriptions
             SET status = 'past_due', updated_at = NOW()
           WHERE doctor_id = :doctorId
-            AND status IN ('active', 'trial')`,
+            AND status IN ('active', 'trial', 'trialing')`,
         { replacements: { doctorId }, type: QueryTypes.UPDATE, transaction: t },
       );
 
       // 3. Sync the profiles snapshot.
+      //    Only update when the profile is in an expirable status to avoid
+      //    clobbering a status already set by an admin action.
       await this.sequelize.query(
         `UPDATE profiles
             SET subscription_status = 'past_due', updated_at = NOW()
-          WHERE id = :doctorId`,
+          WHERE id = :doctorId
+            AND subscription_status IN ('active', 'trial', 'trialing')`,
         { replacements: { doctorId }, type: QueryTypes.UPDATE, transaction: t },
       );
 

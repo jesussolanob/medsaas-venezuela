@@ -144,8 +144,10 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
 
     const isExpired = !isPermanent && expiresAtMs !== null ? expiresAtMs < now : false;
 
-    // is_in_trial is only true when status is 'trial' AND the plan is not permanent
-    const isInTrial = !isPermanent && status === 'trial';
+    // is_in_trial is true when status is 'trial' or 'trialing' AND the plan is not permanent.
+    // 'trialing' is used by the free_trial onboarding plan.
+    const TRIAL_STATUSES = new Set(['trial', 'trialing']);
+    const isInTrial = !isPermanent && status !== null && TRIAL_STATUSES.has(status);
 
     const planName = planConfig?.name ?? effectivePlanKey;
     const basePriceUsd =

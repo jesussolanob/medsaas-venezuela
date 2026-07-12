@@ -39,6 +39,27 @@ describe('GetPublicPlanCatalogUseCase', () => {
     expect(result.map((r) => r.plan_key)).toEqual(['delta_free', 'delta_base', 'delta_plus']);
   });
 
+  it('excludes free_trial even when is_active=true and role_key=doctor', async () => {
+    mockRepo.listPlansWithDetails.mockResolvedValue([
+      makePlan({ planKey: 'delta_free', name: 'Delta Free', sortOrder: 1, isActive: true }),
+      makePlan({ planKey: 'delta_plus', name: 'Delta Plus', sortOrder: 3, isActive: true }),
+      makePlan({
+        planKey: 'free_trial',
+        name: 'Free Trial',
+        sortOrder: 99,
+        isActive: true,
+        roleKey: 'doctor',
+        isPermanent: false,
+      }),
+    ]);
+
+    const result = await useCase.execute({ role: 'doctor' });
+
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.plan_key)).not.toContain('free_trial');
+    expect(result.map((r) => r.plan_key)).toEqual(['delta_free', 'delta_plus']);
+  });
+
   it('excludes inactive plans', async () => {
     mockRepo.listPlansWithDetails.mockResolvedValue([
       makePlan({ planKey: 'active_plan', isActive: true }),

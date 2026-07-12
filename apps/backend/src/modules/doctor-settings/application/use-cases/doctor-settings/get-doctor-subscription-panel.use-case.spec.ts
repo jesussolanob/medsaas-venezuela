@@ -319,6 +319,58 @@ describe('GetDoctorSubscriptionPanelUseCase', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // free_trial plan (trialing status) — new doctor onboarding
+  // ---------------------------------------------------------------------------
+
+  describe('free_trial plan (trialing status) — new doctor onboarding', () => {
+    it('returns is_in_trial=true for a doctor with free_trial / trialing status', async () => {
+      const trialEnd = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
+      mockRepo.findPanelData.mockResolvedValue(
+        makeTrialPanelData({
+          planKey: 'free_trial',
+          planName: 'Free Trial',
+          status: 'trialing',
+          isInTrial: true,
+          isPermanent: false,
+          isExpired: false,
+          daysRemaining: 25,
+          expiresAt: trialEnd,
+        }),
+      );
+
+      const result: SubscriptionPanelOutput = await useCase.execute(DOCTOR_ID);
+
+      expect(result.state.is_in_trial).toBe(true);
+      expect(result.state.status).toBe('trialing');
+      expect(result.state.is_permanent).toBe(false);
+      expect(result.state.expires_at).toBe(trialEnd);
+      expect(result.state.days_remaining).toBe(25);
+    });
+
+    it('returns is_expired=true once the 30-day trial has elapsed', async () => {
+      const pastEnd = new Date('2026-01-01T00:00:00.000Z').toISOString();
+      mockRepo.findPanelData.mockResolvedValue(
+        makeTrialPanelData({
+          planKey: 'free_trial',
+          planName: 'Free Trial',
+          status: 'past_due',
+          isInTrial: false,
+          isPermanent: false,
+          isExpired: true,
+          daysRemaining: 0,
+          expiresAt: pastEnd,
+        }),
+      );
+
+      const result: SubscriptionPanelOutput = await useCase.execute(DOCTOR_ID);
+
+      expect(result.state.is_expired).toBe(true);
+      expect(result.state.is_in_trial).toBe(false);
+      expect(result.state.days_remaining).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Permanent plan (delta_free) — doctor without subscription
   // ---------------------------------------------------------------------------
 

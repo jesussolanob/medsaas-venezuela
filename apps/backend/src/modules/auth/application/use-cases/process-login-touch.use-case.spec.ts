@@ -125,6 +125,41 @@ describe('ProcessLoginTouchUseCase', () => {
     expect(result).toEqual({ downgraded: true });
   });
 
+  it('downgrades an expired free_trial (trialing status) to past_due on login', async () => {
+    // free_trial plan: assigned at registration, status=trialing, expires after 30 days
+    repo.findSubscriptionByDoctorId.mockResolvedValue({
+      id: 'sub-free-trial',
+      doctorId: DOCTOR_ID,
+      status: 'trialing',
+      currentPeriodEnd: pastDate(1), // 1 day past the 30-day window
+      plan: 'free_trial',
+    });
+    repo.findPlanConfigByKey.mockResolvedValue({ planKey: 'free_trial', isPermanent: false });
+
+    const result = await useCase.execute({ profileId: PROFILE_ID, role: 'doctor' });
+
+    // persistDowngradeAndTouch flips status to past_due;
+    // the features resolver then shows delta_free features (lazy downgrade).
+    expect(repo.persistDowngradeAndTouch).toHaveBeenCalledWith(PROFILE_ID, DOCTOR_ID);
+    expect(result).toEqual({ downgraded: true });
+  });
+
+  it('does NOT downgrade a valid free_trial within its 30-day window', async () => {
+    repo.findSubscriptionByDoctorId.mockResolvedValue({
+      id: 'sub-free-trial-active',
+      doctorId: DOCTOR_ID,
+      status: 'trialing',
+      currentPeriodEnd: futureDate(25), // still 25 days to go
+      plan: 'free_trial',
+    });
+
+    const result = await useCase.execute({ profileId: PROFILE_ID, role: 'doctor' });
+
+    expect(repo.persistDowngradeAndTouch).not.toHaveBeenCalled();
+    expect(repo.touchLastSignInAt).toHaveBeenCalledWith(PROFILE_ID);
+    expect(result).toEqual({ downgraded: false });
+  });
+
   // -------------------------------------------------------------------------
   // (c) Permanent plan → never downgraded
   // -------------------------------------------------------------------------
