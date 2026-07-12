@@ -11,6 +11,9 @@ import type {
   ConsultationSummary,
   IncomeListFilters,
   IncomeTransactionItem,
+  UnifiedIncomeItem,
+  UnifiedIncomeListFilters,
+  UnifiedIncomeListResult,
 } from '../../../domain/repositories/finance.repository';
 import { FinancialTransactionModel } from '../models/financial-transaction.model';
 import { TransactionNotFoundError } from '../../../domain/errors/transaction-not-found.error';
@@ -30,6 +33,25 @@ interface ConsultationAggRow {
 interface SumAggRow {
   total: string | null;
   count: string | null;
+}
+
+/** Raw row returned by the unified income UNION query. */
+interface UnifiedIncomeRow {
+  id: string;
+  date: Date;
+  amount_usd: string;
+  source: string;
+  status: string | null;
+  concept: string | null;
+  patient_id: string | null;
+  /** AES-256-GCM ciphertext of the patient full name; null when no patient. */
+  patient_full_name_enc: string | null;
+  reference: string | null;
+}
+
+/** Raw row returned by the unified income COUNT query. */
+interface CountRow {
+  total: string;
 }
 
 /** Raw row for the listIncomeTransactions join query. */
@@ -326,6 +348,129 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         patientName,
       };
     });
+  }
+
+  async listIncomePaginated(filters: UnifiedIncomeListFilters): Promise<UnifiedIncomeListResult> {
+    const replacements: Record<string, unknown> = { doctorId: filters.doctorId };
+
+    // Build optional month WHERE clauses applied to both branches of the UNION.
+    let monthWhereConsult = '';
+    let monthWhereTx = '';
+
+    if (filters.month) {
+      const { start, end } = this.monthBounds(filters.month);
+      replacements.start = start.toISOString();
+      replacements.end = end.toISOString();
+      // payments uses paid_at for approved rows and created_at as fallback
+      monthWhereConsult =
+        'AND COALESCE(p.paid_at, p.created_at) >= :start AND COALESCE(p.paid_at, p.created_at) < :end';
+      monthWhereTx = 'AND ft.transaction_date >= :start AND ft.transaction_date < :end';
+    }
+
+    /**
+     * UNION ALL of two income sources:
+     *  1) payments — consultation income (approved + pending)
+     *  2) financial_transactions (type='income') — manual income entries
+     *
+     * Both branches project to the same 9 columns so the outer query can
+     * ORDER BY date DESC and apply LIMIT/OFFSET uniformly.
+     *
+     * SECURITY:
+     *  - doctor_id filter on both branches enforces ownership (anti-IDOR).
+     *  - LEFT JOIN patients uses `pt.doctor_id = :doctorId` as a second gate
+     *    (defense-in-depth): prevents surfacing a patient row belonging to a
+     *    different doctor even if a patient_id FK was written incorrectly.
+     *  - `pt.deleted_at IS NULL` excludes soft-deleted patients.
+     *  - patient_full_name_enc is AES-256-GCM ciphertext — decrypted below,
+     *    never logged (PII).
+     */
+    const unionSql = `
+      SELECT
+        p.id::text                          AS id,
+        COALESCE(p.paid_at, p.created_at)  AS date,
+        p.amount_usd::text                  AS amount_usd,
+        'consultation'                      AS source,
+        p.status::text                      AS status,
+        NULL::text                          AS concept,
+        p.patient_id::text                  AS patient_id,
+        pt.full_name                        AS patient_full_name_enc,
+        p.payment_code                      AS reference
+      FROM payments p
+      LEFT JOIN patients pt
+        ON  pt.id         = p.patient_id
+        AND pt.doctor_id  = :doctorId
+        AND pt.deleted_at IS NULL
+      WHERE p.doctor_id = :doctorId
+        ${monthWhereConsult}
+
+      UNION ALL
+
+      SELECT
+        ft.id::text                         AS id,
+        ft.transaction_date                 AS date,
+        ft.amount::text                     AS amount_usd,
+        'manual'                            AS source,
+        NULL::text                          AS status,
+        ft.description                      AS concept,
+        ft.patient_id::text                 AS patient_id,
+        pt2.full_name                       AS patient_full_name_enc,
+        NULL::text                          AS reference
+      FROM financial_transactions ft
+      LEFT JOIN patients pt2
+        ON  pt2.id        = ft.patient_id
+        AND pt2.doctor_id = :doctorId
+        AND pt2.deleted_at IS NULL
+      WHERE ft.doctor_id = :doctorId
+        AND ft.type = 'income'
+        ${monthWhereTx}
+    `;
+
+    // Run COUNT and paginated SELECT in parallel.
+    const offset = (filters.page - 1) * filters.limit;
+    replacements.limit = filters.limit;
+    replacements.offset = offset;
+
+    const [countRows, rows] = await Promise.all([
+      this.sequelize.query<CountRow>(`SELECT COUNT(*) AS total FROM (${unionSql}) sub`, {
+        replacements,
+        type: QueryTypes.SELECT,
+      }),
+      this.sequelize.query<UnifiedIncomeRow>(
+        `SELECT * FROM (${unionSql}) sub ORDER BY date DESC LIMIT :limit OFFSET :offset`,
+        { replacements, type: QueryTypes.SELECT },
+      ),
+    ]);
+
+    const total = countRows[0] ? parseInt(countRows[0].total, 10) : 0;
+
+    const items: UnifiedIncomeItem[] = rows.map((r) => {
+      // Decrypt patient name owner-scoped — graceful degradation on failure.
+      // NEVER log the plaintext name or the ciphertext (PII).
+      let patientName: string | null = null;
+      if (r.patient_full_name_enc) {
+        try {
+          patientName = this.crypto.decrypt(r.patient_full_name_enc);
+        } catch {
+          // Log the row id only — no PII.
+          // eslint-disable-next-line no-console
+          console.warn(`[FinanceRepo] Failed to decrypt patient name for income row ${r.id}`);
+        }
+      }
+
+      return {
+        id: r.id,
+        date: r.date instanceof Date ? r.date : new Date(r.date),
+        amount_usd: parseFloat(r.amount_usd),
+        source: r.source as 'consultation' | 'manual',
+        status: (r.status as 'pending' | 'approved' | null) ?? null,
+        concept: r.concept,
+        patient_id: r.patient_id,
+        patient_name: patientName,
+        reference: r.reference,
+      };
+    });
+
+    return { items, total, page: filters.page, limit: filters.limit };
   }
 
   // ---------------------------------------------------------------------------

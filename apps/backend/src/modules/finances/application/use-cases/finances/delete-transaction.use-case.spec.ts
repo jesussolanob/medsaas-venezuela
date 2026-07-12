@@ -22,6 +22,7 @@ describe('DeleteTransactionUseCase', () => {
       lifetimeIncome: jest.fn(),
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
+      listIncomePaginated: jest.fn(),
     };
     useCase = new DeleteTransactionUseCase(mockRepo);
   });

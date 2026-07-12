@@ -13,6 +13,7 @@ import { UpdateIncomeConceptUseCase } from '../../application/use-cases/finances
 import { DeleteIncomeConceptUseCase } from '../../application/use-cases/finances/delete-income-concept.use-case';
 import { UpdateTransactionUseCase } from '../../application/use-cases/finances/update-transaction.use-case';
 import { ListIncomeTransactionsUseCase } from '../../application/use-cases/finances/list-income-transactions.use-case';
+import { ListIncomeUseCase } from '../../application/use-cases/finances/list-income.use-case';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { Reflector } from '@nestjs/core';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
@@ -37,6 +38,7 @@ describe('FinancesController', () => {
   let mockDeleteConcept: jest.Mocked<DeleteIncomeConceptUseCase>;
   let mockUpdateTx: jest.Mocked<UpdateTransactionUseCase>;
   let mockListIncomeTx: jest.Mocked<ListIncomeTransactionsUseCase>;
+  let mockListIncome: jest.Mocked<ListIncomeUseCase>;
 
   beforeEach(async () => {
     mockSummary = { execute: jest.fn() } as unknown as jest.Mocked<GetFinancialSummaryUseCase>;
@@ -59,6 +61,7 @@ describe('FinancesController', () => {
     mockListIncomeTx = {
       execute: jest.fn(),
     } as unknown as jest.Mocked<ListIncomeTransactionsUseCase>;
+    mockListIncome = { execute: jest.fn() } as unknown as jest.Mocked<ListIncomeUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FinancesController],
@@ -76,6 +79,7 @@ describe('FinancesController', () => {
         { provide: DeleteIncomeConceptUseCase, useValue: mockDeleteConcept },
         { provide: UpdateTransactionUseCase, useValue: mockUpdateTx },
         { provide: ListIncomeTransactionsUseCase, useValue: mockListIncomeTx },
+        { provide: ListIncomeUseCase, useValue: mockListIncome },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -466,6 +470,113 @@ describe('FinancesController', () => {
       expect(mockUpdateTx.execute).toHaveBeenCalledWith(
         expect.objectContaining({ patientId: 'patient-uuid-1' }),
       );
+    });
+  });
+
+  describe('GET /finances/income', () => {
+    const makeIncomeItem = (source: 'consultation' | 'manual' = 'consultation') => ({
+      id: 'item-1',
+      date: new Date('2026-06-15T10:00:00Z'),
+      amount_usd: 150,
+      source,
+      status: source === 'consultation' ? ('approved' as const) : null,
+      concept: source === 'manual' ? 'Honorarios' : null,
+      patient_id: 'p-1',
+      patient_name: 'Ana López',
+      reference: source === 'consultation' ? 'PAY-001' : null,
+    });
+
+    it('returns paginated income list with meta', async () => {
+      const items = [makeIncomeItem('consultation'), makeIncomeItem('manual')];
+      mockListIncome.execute.mockResolvedValue({ items, total: 2, page: 1, limit: 20 });
+
+      const result = await controller.incomeList(mockUser, undefined, '1', '20');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(2);
+      expect(result.meta).toEqual({ total: 2, page: 1, limit: 20 });
+    });
+
+    it('passes month filter when provided', async () => {
+      mockListIncome.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.incomeList(mockUser, '2026-06', '1', '20');
+
+      expect(mockListIncome.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ month: '2026-06', doctorId: 'doctor-uuid-1' }),
+      );
+    });
+
+    it('uses user.sub as doctorId (anti-IDOR)', async () => {
+      mockListIncome.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.incomeList(mockUser);
+
+      const callArg = mockListIncome.execute.mock.calls[0]?.[0];
+      expect(callArg?.doctorId).toBe('doctor-uuid-1');
+    });
+
+    it('throws BadRequestException for invalid month format', async () => {
+      await expect(controller.incomeList(mockUser, 'bad-date')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('throws BadRequestException for month=00 (out of range)', async () => {
+      await expect(controller.incomeList(mockUser, '2026-00')).rejects.toThrow(BadRequestException);
+    });
+
+    it('returns empty data with total 0 when no income exists', async () => {
+      mockListIncome.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      const result = await controller.incomeList(mockUser, '2020-01');
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+    });
+
+    it('item from consultation source has status field', async () => {
+      const items = [makeIncomeItem('consultation')];
+      mockListIncome.execute.mockResolvedValue({ items, total: 1, page: 1, limit: 20 });
+
+      const result = await controller.incomeList(mockUser);
+
+      expect(result.data[0]?.source).toBe('consultation');
+      expect(result.data[0]?.status).toBe('approved');
+    });
+
+    it('item from manual source has concept field and null status', async () => {
+      const items = [makeIncomeItem('manual')];
+      mockListIncome.execute.mockResolvedValue({ items, total: 1, page: 1, limit: 20 });
+
+      const result = await controller.incomeList(mockUser);
+
+      expect(result.data[0]?.source).toBe('manual');
+      expect(result.data[0]?.concept).toBe('Honorarios');
+      expect(result.data[0]?.status).toBeNull();
+    });
+
+    it('exposes patient_id and patient_name (owner-scoped, decrypted by repo)', async () => {
+      const items = [makeIncomeItem('consultation')];
+      mockListIncome.execute.mockResolvedValue({ items, total: 1, page: 1, limit: 20 });
+
+      const result = await controller.incomeList(mockUser);
+
+      const item = result.data[0] as unknown as Record<string, unknown>;
+      expect(item['patient_id']).toBe('p-1');
+      // patient_name is the plaintext returned by the repo's owner-scoped decrypt.
+      // The controller passes it through unchanged — it is NOT undefined.
+      expect(item['patient_name']).toBe('Ana López');
+    });
+
+    it('patient_name is null when patient is not linked to income row', async () => {
+      const items = [{ ...makeIncomeItem('consultation'), patient_id: null, patient_name: null }];
+      mockListIncome.execute.mockResolvedValue({ items, total: 1, page: 1, limit: 20 });
+
+      const result = await controller.incomeList(mockUser);
+
+      const item = result.data[0] as unknown as Record<string, unknown>;
+      expect(item['patient_name']).toBeNull();
     });
   });
 

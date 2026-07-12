@@ -29,6 +29,45 @@ export interface IncomeListFilters {
   limit?: number;
 }
 
+/**
+ * A single normalised income row returned by the unified UNION query.
+ * Both `payments` and `financial_transactions (type='income')` are projected
+ * to this shape before paging.
+ */
+export interface UnifiedIncomeItem {
+  id: string;
+  date: Date;
+  amount_usd: number;
+  source: 'consultation' | 'manual';
+  /** 'pending' | 'approved' for consultation rows; null for manual rows. */
+  status: 'pending' | 'approved' | null;
+  /** Concept description for manual rows; null for consultation rows. */
+  concept: string | null;
+  patient_id: string | null;
+  /**
+   * Decrypted patient full name — owner-scoped (doctor_id matches both the
+   * payment/transaction and the patients row). Null when no patient is linked
+   * or when decryption fails. NEVER log this value (PII).
+   */
+  patient_name: string | null;
+  /** Payment/consultation reference code; null for manual rows without one. */
+  reference: string | null;
+}
+
+export interface UnifiedIncomeListFilters {
+  doctorId: string;
+  month?: string; // 'YYYY-MM'
+  page: number;
+  limit: number;
+}
+
+export interface UnifiedIncomeListResult {
+  items: UnifiedIncomeItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface TransactionListResult {
   items: FinancialTransaction[];
   total: number;
@@ -110,4 +149,17 @@ export interface IFinanceRepository {
    * Patient names are decrypted within the doctor's own scope — never logged as PII.
    */
   listIncomeTransactions(filters: IncomeListFilters): Promise<IncomeTransactionItem[]>;
+
+  /**
+   * Unified paginated list of income from both sources:
+   *   - `payments` table (consultation income, approved + pending)
+   *   - `financial_transactions` WHERE type = 'income' (manual income)
+   *
+   * Results are ordered by date DESC and paginated via LIMIT/OFFSET.
+   * The total COUNT spans the full UNION (not just one page).
+   *
+   * SECURITY: doctorId is always from the authenticated caller (anti-IDOR).
+   * No patient PII (name, cedula, phone) is returned — only patient_id.
+   */
+  listIncomePaginated(filters: UnifiedIncomeListFilters): Promise<UnifiedIncomeListResult>;
 }

@@ -96,6 +96,7 @@ describe('RecordIncomeUseCase', () => {
       lifetimeIncome: jest.fn(),
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
+      listIncomePaginated: jest.fn(),
     };
     mockConceptRepo = {
       findActiveByDoctor: jest.fn(),
@@ -107,6 +108,7 @@ describe('RecordIncomeUseCase', () => {
       findById: jest.fn(),
       findByCode: jest.fn(),
       countByDoctorAndMonth: jest.fn(),
+      getMaxSequenceForMonth: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
       updatePayment: jest.fn(),

@@ -35,6 +35,7 @@ import { UpdateIncomeConceptUseCase } from './application/use-cases/finances/upd
 import { DeleteIncomeConceptUseCase } from './application/use-cases/finances/delete-income-concept.use-case';
 import { UpdateTransactionUseCase } from './application/use-cases/finances/update-transaction.use-case';
 import { ListIncomeTransactionsUseCase } from './application/use-cases/finances/list-income-transactions.use-case';
+import { ListIncomeUseCase } from './application/use-cases/finances/list-income.use-case';
 
 // Use cases — payments
 import { ListPaymentsUseCase } from './application/use-cases/payments/list-payments.use-case';
@@ -137,6 +138,7 @@ import { PatientsModule } from '../patients/patients.module';
     DeleteIncomeConceptUseCase,
     UpdateTransactionUseCase,
     ListIncomeTransactionsUseCase,
+    ListIncomeUseCase,
 
     // Use cases — payments
     ListPaymentsUseCase,

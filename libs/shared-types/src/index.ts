@@ -50,3 +50,4 @@ export * from './dtos/specialties.dto';
 export * from './dtos/set-rate-source.dto';
 export * from './dtos/income-concept.dto';
 export * from './dtos/update-email-template.dto';
+export * from './dtos/income-list-item.dto';

@@ -73,6 +73,10 @@ import {
   INCOME_TX_DEFAULT_LIMIT,
   INCOME_TX_MAX_LIMIT,
 } from '../../application/constants/income-transactions.constants';
+import {
+  ListIncomeUseCase,
+  type IncomeListItemOutput,
+} from '../../application/use-cases/finances/list-income.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -124,6 +128,7 @@ export class FinancesController {
     private readonly deleteIncomeConcept: DeleteIncomeConceptUseCase,
     private readonly updateTransaction: UpdateTransactionUseCase,
     private readonly listIncomeTransactions: ListIncomeTransactionsUseCase,
+    private readonly listIncome: ListIncomeUseCase,
   ) {}
 
   /**
@@ -207,6 +212,40 @@ export class FinancesController {
       ),
     });
     return { success: true, data: result };
+  }
+
+  /**
+   * GET /api/finances/income?month=YYYY-MM&page=1&limit=20
+   *
+   * Unified paginated income list combining:
+   *   - Consultation payments (`payments` table, all statuses)
+   *   - Manual income entries (`financial_transactions` WHERE type='income')
+   *
+   * Results are sorted by date DESC and paginated server-side.
+   * Cap: limit max 100.
+   *
+   * SECURITY: doctorId is ALWAYS from the authenticated token (anti-IDOR).
+   * No patient PII (name, cedula, phone) is returned — only patient_id.
+   */
+  @Get('income')
+  async incomeList(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('month') month?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ): Promise<PaginatedResponse<IncomeListItemOutput>> {
+    const result = await this.listIncome.execute({
+      doctorId: user.sub,
+      month: parseOptionalMonth(month, 'month'),
+      page: Math.max(1, parseInt(page, 10) || 1),
+      limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
+    });
+
+    return {
+      success: true,
+      data: result.items,
+      meta: { total: result.total, page: result.page, limit: result.limit },
+    };
   }
 
   /**

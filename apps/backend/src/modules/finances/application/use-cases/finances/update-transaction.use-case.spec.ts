@@ -67,6 +67,7 @@ describe('UpdateTransactionUseCase', () => {
       lifetimeIncome: jest.fn(),
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
+      listIncomePaginated: jest.fn(),
     };
     mockConceptRepo = {
       findActiveByDoctor: jest.fn(),

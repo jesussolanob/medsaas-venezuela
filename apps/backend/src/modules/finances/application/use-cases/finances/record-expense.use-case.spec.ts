@@ -33,6 +33,7 @@ describe('RecordExpenseUseCase', () => {
       lifetimeIncome: jest.fn(),
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
+      listIncomePaginated: jest.fn(),
     };
     useCase = new RecordExpenseUseCase(mockRepo);
   });
