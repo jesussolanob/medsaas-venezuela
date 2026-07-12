@@ -29,7 +29,7 @@ import 'server-only';
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { backendGet, backendPost, backendPut } from '@/lib/api-client.server';
+import { backendGet, backendGetPaged, backendPost, backendPut } from '@/lib/api-client.server';
 import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -46,23 +46,65 @@ const PAGE_SIZE_DEFAULT = 50;
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url);
   const patientId = searchParams.get('patient_id');
-  const status = searchParams.get('status');
-  const limit = Math.min(100, parseInt(searchParams.get('limit') ?? String(PAGE_SIZE_DEFAULT), 10));
-  const offset = parseInt(searchParams.get('offset') ?? '0', 10);
-  const page = Math.max(1, Math.floor(offset / limit) + 1);
 
-  let path: string;
-  if (patientId) {
-    // Patient-scoped history endpoint
-    path = `/api/consultations/patient/${patientId}?page=${page}&limit=${limit}`;
+  // Legacy offset-based params (kept for backwards compat with old callers)
+  const legacyLimit = searchParams.get('limit');
+  const legacyOffset = searchParams.get('offset');
+
+  // New server-side pagination params (take precedence when present)
+  const pageParam = searchParams.get('page');
+  const limitParam = searchParams.get('limit');
+  const sort = searchParams.get('sort');
+  const dateFrom = searchParams.get('date_from');
+  const dateTo = searchParams.get('date_to');
+  // Accept both 'status' (legacy) and 'payment_status' (new)
+  const paymentStatus = searchParams.get('payment_status') ?? searchParams.get('status');
+
+  let page: number;
+  let limit: number;
+
+  if (pageParam) {
+    page = Math.max(1, parseInt(pageParam, 10));
+    limit = Math.max(1, Math.min(500, parseInt(limitParam ?? String(PAGE_SIZE_DEFAULT), 10)));
+  } else if (legacyOffset) {
+    // Backwards-compat: translate offset → page
+    limit = Math.min(500, parseInt(legacyLimit ?? String(PAGE_SIZE_DEFAULT), 10));
+    const offset = parseInt(legacyOffset, 10);
+    page = Math.max(1, Math.floor(offset / limit) + 1);
   } else {
-    // Doctor-wide list with optional payment_status filter
-    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (status) qs.set('payment_status', status);
-    path = `/api/consultations?${qs.toString()}`;
+    page = 1;
+    limit = Math.max(1, Math.min(500, parseInt(limitParam ?? String(PAGE_SIZE_DEFAULT), 10)));
   }
 
-  const result = await backendGet<unknown[]>(path);
+  if (patientId) {
+    // Patient-scoped history — no pagination meta needed here
+    const path = `/api/consultations/patient/${patientId}?page=${page}&limit=${limit}`;
+    const result = await backendGet<unknown[]>(path);
+    if (!result.ok) {
+      log.error('[consultations GET patient] backend error', {
+        code: result.error.code,
+        status: result.error.status,
+      });
+      return NextResponse.json(
+        { error: result.error.message },
+        { status: result.error.status || 500 },
+      );
+    }
+    const data = Array.isArray(result.value) ? result.value : [];
+    return NextResponse.json({ data, total: data.length });
+  }
+
+  // Doctor-wide list — use paged variant to capture meta.total
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  if (sort) qs.set('sort', sort);
+  if (dateFrom) qs.set('date_from', dateFrom);
+  if (dateTo) qs.set('date_to', dateTo);
+  if (paymentStatus) qs.set('payment_status', paymentStatus);
+
+  const result = await backendGetPaged<unknown>(`/api/consultations?${qs.toString()}`);
 
   if (!result.ok) {
     log.error('[consultations GET] backend error', {
@@ -75,8 +117,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const data = Array.isArray(result.value) ? result.value : [];
-  return NextResponse.json({ data, total: data.length });
+  return NextResponse.json({ data: result.value.items, total: result.value.total });
 }
 
 // ---------------------------------------------------------------------------

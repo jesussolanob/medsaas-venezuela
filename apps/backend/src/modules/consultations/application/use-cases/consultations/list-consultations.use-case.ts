@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { PaymentStatus } from '@delta/shared-types';
-import type { ConsultationListResult } from '../../../domain/repositories/consultation.repository';
+import type {
+  ConsultationListResult,
+  ConsultationSortField,
+} from '../../../domain/repositories/consultation.repository';
 import {
   IConsultationRepository,
   CONSULTATION_REPOSITORY,
@@ -13,12 +16,14 @@ export interface ListConsultationsInput {
   paymentStatus?: PaymentStatus;
   page: number;
   limit: number;
+  sort?: ConsultationSortField;
 }
 
 /**
  * Returns a paginated list of consultations for the authenticated doctor.
  *
- * Supports filtering by date range and payment status.
+ * Supports filtering by date range and payment status, and server-side sorting
+ * via the `sort` field (defaults to 'consultation_date' DESC when absent).
  * Clinical data is returned in plaintext (decrypted by the repository layer).
  */
 @Injectable()
@@ -36,6 +41,7 @@ export class ListConsultationsUseCase {
       paymentStatus: input.paymentStatus,
       page: input.page,
       limit: input.limit,
+      sort: input.sort,
     });
   }
 }

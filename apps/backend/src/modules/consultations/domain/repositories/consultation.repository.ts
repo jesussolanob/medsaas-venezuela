@@ -3,6 +3,12 @@ import type { PaymentStatus } from '@delta/shared-types';
 
 export const CONSULTATION_REPOSITORY = 'CONSULTATION_REPOSITORY';
 
+export type ConsultationSortField =
+  | 'consultation_date'
+  | 'created_at'
+  | 'consultation_status'
+  | 'confirmation_status';
+
 export interface ConsultationListFilters {
   doctorId: string;
   dateFrom?: string;
@@ -10,6 +16,8 @@ export interface ConsultationListFilters {
   paymentStatus?: PaymentStatus;
   page: number;
   limit: number;
+  /** Server-side sort column. Defaults to 'consultation_date' when absent or invalid. */
+  sort?: ConsultationSortField;
 }
 
 export interface ConsultationListResult {

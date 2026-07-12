@@ -151,6 +151,15 @@ export async function backendFetch<T>(
 }
 
 // ---------------------------------------------------------------------------
+// Paged envelope type
+// ---------------------------------------------------------------------------
+
+export interface PagedResult<T> {
+  items: T[];
+  total: number;
+}
+
+// ---------------------------------------------------------------------------
 // Convenience wrappers per HTTP verb
 // ---------------------------------------------------------------------------
 
@@ -160,6 +169,84 @@ export function backendGet<T>(
   options: Omit<FetchOptions, 'method' | 'body'> = {},
 ): Promise<Result<T, AppError>> {
   return backendFetch<T>(path, { ...options, method: 'GET' });
+}
+
+/**
+ * GET /api/<path> — paged variant.
+ *
+ * Reads the backend envelope `{ success: true, data: T[], meta: { total: number } }`
+ * and returns `Result<{ items: T[]; total: number }, AppError>`.
+ *
+ * Use this instead of `backendGet` whenever the backend returns a paginated
+ * list with a `meta.total` field that must be forwarded to the UI.
+ * `backendGet` discards `meta`; this helper preserves it.
+ */
+export async function backendGetPaged<T>(
+  path: string,
+  options: Omit<FetchOptions, 'method' | 'body'> = {},
+): Promise<Result<PagedResult<T>, AppError>> {
+  const { body: _body, userId, role, ...fetchOptions } = options as FetchOptions;
+
+  let resolvedId: string;
+  let resolvedRole: string;
+
+  if (userId && role) {
+    resolvedId = userId;
+    resolvedRole = role;
+  } else {
+    try {
+      const identity = await resolveIdentity();
+      resolvedId = identity.id;
+      resolvedRole = identity.role;
+    } catch (error: unknown) {
+      if (error instanceof UnauthenticatedError) {
+        return err({ code: 'UNAUTHENTICATED', message: 'No autenticado', status: 401 });
+      }
+      throw error;
+    }
+  }
+
+  const url = `${BACKEND_URL}${path}`;
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    'x-dev-user-id': resolvedId,
+    'x-dev-user-role': resolvedRole,
+    ...fetchOptions.headers,
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...fetchOptions, method: 'GET', headers });
+  } catch (networkError: unknown) {
+    const message = networkError instanceof Error ? networkError.message : 'Network error';
+    return err({ code: 'NETWORK_ERROR', message, status: 0 });
+  }
+
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    return err({
+      code: 'PARSE_ERROR',
+      message: 'El servidor devolvió una respuesta no válida',
+      status: response.status,
+    });
+  }
+
+  if (!response.ok) {
+    const error = json as { success?: false; code?: string; message?: string } | null;
+    return err({
+      code: error?.code ?? 'BACKEND_ERROR',
+      message: error?.message ?? `Error ${response.status}`,
+      status: response.status,
+    });
+  }
+
+  const envelope = json as { success: true; data: T[]; meta?: { total?: number } };
+  const items = Array.isArray(envelope.data) ? envelope.data : [];
+  const total = envelope.meta?.total ?? items.length;
+
+  return ok({ items, total });
 }
 
 /** POST /api/<path> */

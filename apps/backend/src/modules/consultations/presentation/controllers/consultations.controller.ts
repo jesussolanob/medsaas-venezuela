@@ -27,6 +27,7 @@ import {
   type UpdatePaymentDetailsDto,
   type PaymentStatus,
 } from '@delta/shared-types';
+import type { ConsultationSortField } from '../../domain/repositories/consultation.repository';
 
 import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from '../../application/use-cases/consultations/update-consultation.use-case';
@@ -66,6 +67,27 @@ function parseOptionalPaymentStatus(value: string | undefined): PaymentStatus | 
     );
   }
   return value as PaymentStatus;
+}
+
+const SORT_VALUES: readonly ConsultationSortField[] = [
+  'consultation_date',
+  'created_at',
+  'consultation_status',
+  'confirmation_status',
+];
+
+/**
+ * Validates the optional `sort` query param against the whitelisted set.
+ * Returns undefined (falls back to default in the repo) for absent or invalid values.
+ * Invalid values are silently ignored — no exception is thrown — to keep the API
+ * lenient for future clients that may send an older sort key.
+ */
+function parseOptionalSort(value: string | undefined): ConsultationSortField | undefined {
+  if (!value) return undefined;
+  if (SORT_VALUES.includes(value as ConsultationSortField)) {
+    return value as ConsultationSortField;
+  }
+  return undefined;
 }
 
 interface SuccessResponse<T> {
@@ -121,7 +143,7 @@ export class ConsultationsController {
     return { success: true, data: items };
   }
 
-  /** GET /api/consultations — paginated list with optional filters. */
+  /** GET /api/consultations — paginated list with optional filters and sort. */
   @Get()
   async list(
     @CurrentUser() user: CurrentUserPayload,
@@ -130,6 +152,7 @@ export class ConsultationsController {
     @Query('payment_status') paymentStatus?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
+    @Query('sort') sort?: string,
   ): Promise<PaginatedResponse<unknown>> {
     const result = await this.listConsultations.execute({
       doctorId: user.sub,
@@ -138,6 +161,7 @@ export class ConsultationsController {
       paymentStatus: parseOptionalPaymentStatus(paymentStatus),
       page: Math.max(1, parseInt(page, 10) || 1),
       limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
+      sort: parseOptionalSort(sort),
     });
 
     return {

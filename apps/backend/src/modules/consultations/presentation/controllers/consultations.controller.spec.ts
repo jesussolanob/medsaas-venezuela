@@ -147,6 +147,76 @@ describe('ConsultationsController', () => {
         controller.list(mockUser, '2026-01-01T00:00:00Z', '2026-12-31T23:59:59Z'),
       ).resolves.not.toThrow();
     });
+
+    it('passes sort=created_at to the use case when provided', async () => {
+      mockList.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.list(mockUser, undefined, undefined, undefined, '1', '20', 'created_at');
+
+      expect(mockList.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: 'created_at' }),
+      );
+    });
+
+    it('passes sort=consultation_status to the use case when provided', async () => {
+      mockList.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.list(
+        mockUser,
+        undefined,
+        undefined,
+        undefined,
+        '1',
+        '20',
+        'consultation_status',
+      );
+
+      expect(mockList.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: 'consultation_status' }),
+      );
+    });
+
+    it('passes sort=confirmation_status to the use case when provided', async () => {
+      mockList.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.list(
+        mockUser,
+        undefined,
+        undefined,
+        undefined,
+        '1',
+        '20',
+        'confirmation_status',
+      );
+
+      expect(mockList.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: 'confirmation_status' }),
+      );
+    });
+
+    it('passes sort=undefined when an unknown sort value is received', async () => {
+      mockList.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.list(
+        mockUser,
+        undefined,
+        undefined,
+        undefined,
+        '1',
+        '20',
+        'invalid_sort_key',
+      );
+
+      expect(mockList.execute).toHaveBeenCalledWith(expect.objectContaining({ sort: undefined }));
+    });
+
+    it('passes sort=undefined when sort is absent', async () => {
+      mockList.execute.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      await controller.list(mockUser);
+
+      expect(mockList.execute).toHaveBeenCalledWith(expect.objectContaining({ sort: undefined }));
+    });
   });
 
   describe('findOne', () => {

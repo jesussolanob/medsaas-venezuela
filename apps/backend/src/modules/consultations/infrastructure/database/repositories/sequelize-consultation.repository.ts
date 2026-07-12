@@ -365,6 +365,21 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     );
     const total = parseInt(countRows[0]?.cnt ?? '0', 10);
 
+    // Whitelisted ORDER BY clauses — values are never interpolated from raw user input.
+    // Each entry is a static SQL fragment; the map key is compared with === at runtime.
+    const ORDER_BY_MAP: Record<string, string> = {
+      consultation_date: 'c.consultation_date DESC, c.id DESC',
+      created_at: 'c.created_at DESC, c.id DESC',
+      consultation_status: `CASE WHEN a.status = 'completed' THEN 0 WHEN a.status = 'no_show' THEN 1 ELSE 2 END ASC, c.consultation_date DESC, c.id DESC`,
+      confirmation_status: `CASE WHEN a.status = 'confirmed' THEN 0 WHEN a.status = 'scheduled' THEN 1 ELSE 2 END ASC, c.consultation_date DESC, c.id DESC`,
+    };
+
+    const sortKey =
+      filters.sort && Object.prototype.hasOwnProperty.call(ORDER_BY_MAP, filters.sort)
+        ? filters.sort
+        : 'consultation_date';
+    const orderBy = ORDER_BY_MAP[sortKey];
+
     // LIST query with LEFT JOIN to enrich patient_name and appointment_status
     const rows = await this.sequelize.query<ConsultationEnrichedRow>(
       `SELECT
@@ -379,7 +394,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
        LEFT JOIN patients     p ON p.id = c.patient_id
        LEFT JOIN appointments a ON a.id = c.appointment_id
        WHERE ${where}
-       ORDER BY c.consultation_date DESC
+       ORDER BY ${orderBy}
        LIMIT :limit OFFSET :offset`,
       {
         replacements: { ...replacements, limit: filters.limit, offset },

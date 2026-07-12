@@ -52,6 +52,7 @@ import {
   ExternalLink,
   Lock,
   RefreshCw,
+  ArrowUpDown,
 } from 'lucide-react';
 // Etapa 1: Supabase removed.
 // PLACEHOLDER — following data sources have no backend endpoint yet (Fase 5):
@@ -62,7 +63,7 @@ import {
 //   - appointments booked times → no backend endpoint in Etapa 1
 // Those state vars stay empty/zero; the UI handles them gracefully (empty selects etc).
 // MIGRATED in this file:
-//   - consultations list → listConsultations (actions.ts)
+//   - consultations list → listConsultationsPaged (actions.ts)
 //   - updateConsultaStatus → optimistic local state only (status field not in Etapa-1 schema)
 //   - updatePagoStatus → approveConsultationPayment (actions.ts)
 //   - openConsultation → getConsultation (actions.ts)
@@ -76,7 +77,7 @@ import { getDoctorId as getDevDoctorId, getDoctorProfile, getDoctorServices } fr
 import { loadTemplateConfigs } from '@/app/doctor/templates/actions';
 import type { TemplateConfigPdf, ContentBlock } from '@/components/pdf/MedicalDocumentPdf';
 import {
-  listConsultations,
+  listConsultationsPaged,
   getPatientConsultations,
   getConsultation,
   updateConsultation,
@@ -85,6 +86,7 @@ import {
   getQuickItems,
   updateAppointmentStatus,
 } from './actions';
+import Paginator, { PAGE_SIZE_ALL } from '@/components/ui/Paginator';
 import { getEhrPatients } from '../ehr/actions';
 import { getPatientPrescriptions, createPrescription } from './actions-prescriptions';
 import { useBcvRate } from '@/lib/useBcvRate';
@@ -103,6 +105,7 @@ type Consultation = {
   id: string;
   consultation_code: string;
   consultation_date: string;
+  created_at: string;
   chief_complaint: string | null;
   notes: string | null;
   diagnosis: string | null;
@@ -387,6 +390,31 @@ function ConsultationsPage() {
     treatment: '',
     payment_status: 'pending' as Consultation['payment_status'],
   });
+
+  // Sort control state for the list view — actual sorting applied by the backend (server-side)
+  type SortKey = 'consultation_date' | 'created_at' | 'status' | 'appointment_status';
+  const [sortKey, setSortKey] = useState<SortKey>('consultation_date');
+
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [total, setTotal] = useState(0);
+
+  // Helpers that reset page=1 before changing a filter/sort. Using plain
+  // React.startTransition is not needed here — the effect above fires after the
+  // state batch settles and triggers a single fetch call.
+  function setSortKeyAndReset(sk: SortKey) {
+    setPage(1);
+    setSortKey(sk);
+  }
+  function setPageSizeAndReset(ps: number) {
+    setPage(1);
+    setPageSize(ps);
+  }
+  function setTimeFilterAndReset(tf: TimeFilter) {
+    setPage(1);
+    setTimeFilter(tf);
+  }
 
   // Estado del botón "Refrescar" del listado.
   const [refreshing, setRefreshing] = useState(false);
@@ -824,12 +852,20 @@ function ConsultationsPage() {
         // PLACEHOLDER: doctor_templates — no backend endpoint in Etapa 1.
         // templateConfigs stay at defaultTemplateConfig — Fase 5.
 
-        // MIGRATED: consultations list → GET /api/consultations (NestJS backend)
-        const backendConsultations = await listConsultations({ limit: 200 });
-        const consultationsList = backendConsultations.map((c) => ({
+        // MIGRATED: consultations list → GET /api/consultations (server-side paged)
+        // When ?open= is present we fetch with a high limit so the target is likely
+        // in page 1; otherwise fetch the default first page.
+        const initLimit = openId ? 100_000 : 15;
+        const pagedResult = await listConsultationsPaged({
+          page: 1,
+          limit: initLimit,
+          sort: 'consultation_date',
+        });
+        const consultationsList = pagedResult.items.map((c) => ({
           id: c.id,
           consultation_code: c.consultation_code,
           consultation_date: c.consultation_date,
+          created_at: c.created_at,
           chief_complaint: c.chief_complaint,
           notes: c.notes,
           diagnosis: c.diagnosis,
@@ -848,6 +884,10 @@ function ConsultationsPage() {
         }));
 
         setConsultations(consultationsList);
+        setTotal(pagedResult.total);
+        // Reset page to 1 on initial load (in case of stale state)
+        setPage(1);
+        if (!openId) setPageSize(15);
 
         // Auto-open consultation if openId is in query params
         // Fix: buscar por c.id O por c.appointment_id (el dashboard redirige con appointmentId)
@@ -974,6 +1014,7 @@ function ConsultationsPage() {
           id: fresh_raw.id,
           consultation_code: fresh_raw.consultation_code,
           consultation_date: fresh_raw.consultation_date,
+          created_at: fresh_raw.created_at,
           chief_complaint: fresh_raw.chief_complaint,
           notes: fresh_raw.notes,
           diagnosis: fresh_raw.diagnosis,
@@ -1267,30 +1308,8 @@ function ConsultationsPage() {
         }
       }
 
-      // Reload consultation list from backend → GET /api/consultations
-      const freshList = await listConsultations({ limit: 200 });
-      setConsultations(
-        freshList.map((c) => ({
-          id: c.id,
-          consultation_code: c.consultation_code,
-          consultation_date: c.consultation_date,
-          chief_complaint: c.chief_complaint,
-          notes: c.notes,
-          diagnosis: c.diagnosis,
-          treatment: c.treatment,
-          status: mapAppointmentStatusToConsulta(c.appointment_status),
-          appointment_status: c.appointment_status ?? null,
-          payment_status: c.payment_status,
-          appointment_id: c.appointment_id,
-          patient_id: c.patient_id,
-          patient_name: c.patient_name || 'Paciente',
-          patient_phone: null,
-          started_at: c.started_at,
-          ended_at: c.ended_at,
-          duration_minutes: c.duration_minutes,
-          version: null,
-        })),
-      );
+      // Reload consultation list from backend using current paged state
+      await fetchPagedConsultations();
 
       setShowNewConsultation(false);
       setReceiptFile(null);
@@ -1762,38 +1781,102 @@ function ConsultationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
 
+  // ---------------------------------------------------------------------------
+  // Maps UI sort keys to backend sort param values.
+  // Backend accepts: consultation_date | created_at | consultation_status | confirmation_status
+  // ---------------------------------------------------------------------------
+  function mapSortKey(sk: SortKey): string {
+    if (sk === 'status') return 'consultation_status';
+    if (sk === 'appointment_status') return 'confirmation_status';
+    return sk; // 'consultation_date' | 'created_at' pass through unchanged
+  }
+
+  // ---------------------------------------------------------------------------
+  // Maps timeFilter to date_from / date_to for the backend query.
+  // 'all' → no date filter
+  // 'today' → date_from = date_to = YYYY-MM-DD
+  // 'upcoming' → date_from = tomorrow
+  // 'past' → date_to = yesterday
+  // ---------------------------------------------------------------------------
+  function mapTimeFilter(tf: TimeFilter): { dateFrom?: string; dateTo?: string } {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (tf === 'today') return { dateFrom: todayStr, dateTo: todayStr };
+    if (tf === 'upcoming') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return { dateFrom: tomorrow.toISOString().split('T')[0] };
+    }
+    if (tf === 'past') {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      return { dateTo: yesterday.toISOString().split('T')[0] };
+    }
+    return {};
+  }
+
+  // ---------------------------------------------------------------------------
+  // Central paged fetch. All list loads go through here so sort/filter/page are
+  // always consistent. Maps local state into `listConsultationsPaged` params.
+  // ---------------------------------------------------------------------------
+  const fetchPagedConsultations = useCallback(
+    async (opts: { p?: number; ps?: number; sk?: SortKey; tf?: TimeFilter } = {}) => {
+      const p = opts.p ?? page;
+      const ps = opts.ps ?? pageSize;
+      const sk = opts.sk ?? sortKey;
+      const tf = opts.tf ?? timeFilter;
+
+      const effectiveLimit = ps === PAGE_SIZE_ALL ? 100_000 : ps;
+      const { dateFrom, dateTo } = mapTimeFilter(tf);
+
+      try {
+        const result = await listConsultationsPaged({
+          page: p,
+          limit: effectiveLimit,
+          sort: mapSortKey(sk),
+          dateFrom,
+          dateTo,
+        });
+
+        setConsultations(
+          result.items.map((c) => ({
+            id: c.id,
+            consultation_code: c.consultation_code,
+            consultation_date: c.consultation_date,
+            created_at: c.created_at,
+            chief_complaint: c.chief_complaint,
+            notes: c.notes,
+            diagnosis: c.diagnosis,
+            treatment: c.treatment,
+            status: mapAppointmentStatusToConsulta(c.appointment_status),
+            appointment_status: c.appointment_status ?? null,
+            payment_status: c.payment_status,
+            appointment_id: c.appointment_id,
+            patient_id: c.patient_id,
+            patient_name: c.patient_name || 'Paciente',
+            patient_phone: null,
+            started_at: c.started_at,
+            ended_at: c.ended_at,
+            duration_minutes: c.duration_minutes,
+            version: null,
+          })),
+        );
+        setTotal(result.total);
+      } catch {
+        /* no-op: se reintenta en la próxima oportunidad */
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [page, pageSize, sortKey, timeFilter],
+  );
+
   // Fix (2026-07-11): recarga SOLO la tabla de consultas desde el backend.
   // La lista quedaba STALE al volver a la página (Router Cache de Next servía la
   // versión vieja) → las consultas recién creadas no aparecían sin recargar a mano.
+  // Ahora delega en fetchPagedConsultations para mantener consistencia con la
+  // paginación / ordenamiento / filtro activos.
   const reloadConsultationsTable = useCallback(async () => {
-    try {
-      const fresh = await listConsultations({ limit: 200 });
-      setConsultations(
-        fresh.map((c) => ({
-          id: c.id,
-          consultation_code: c.consultation_code,
-          consultation_date: c.consultation_date,
-          chief_complaint: c.chief_complaint,
-          notes: c.notes,
-          diagnosis: c.diagnosis,
-          treatment: c.treatment,
-          status: mapAppointmentStatusToConsulta(c.appointment_status),
-          appointment_status: c.appointment_status ?? null,
-          payment_status: c.payment_status,
-          appointment_id: c.appointment_id,
-          patient_id: c.patient_id,
-          patient_name: c.patient_name || 'Paciente',
-          patient_phone: null,
-          started_at: c.started_at,
-          ended_at: c.ended_at,
-          duration_minutes: c.duration_minutes,
-          version: null,
-        })),
-      );
-    } catch {
-      /* no-op: se reintenta en la próxima oportunidad */
-    }
-  }, []);
+    await fetchPagedConsultations();
+  }, [fetchPagedConsultations]);
 
   // Refetch al recuperar foco/visibilidad de la pestaña (volver desde otra ventana/pestaña).
   useEffect(() => {
@@ -1821,6 +1904,14 @@ function ConsultationsPage() {
     if (openId) void reloadConsultationsTable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
+
+  // Al cambiar sort, pageSize o timeFilter → re-fetchear con los nuevos parámetros.
+  // La página ya fue reseteada a 1 en el handler (setSortKeyAndReset / setPageSizeAndReset /
+  // setTimeFilterAndReset), por lo que el efecto solo necesita disparar el fetch.
+  useEffect(() => {
+    void fetchPagedConsultations({ p: page, sk: sortKey, ps: pageSize, tf: timeFilter });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortKey, pageSize, timeFilter, page]);
 
   // Auto-save BLOQUE REPOSO en blocks_data — debounce 1.5s
   // Reposo NO tiene tabla propia, se persiste en consultations.blocks_data['reposo']
@@ -2001,7 +2092,7 @@ function ConsultationsPage() {
     setAiAction(null);
   }
 
-  // Filtering
+  // Filtering (sorting is a UI-only control wired to backend via query param — Fase server-side)
   const now = new Date();
   const filtered = consultations.filter((c) => {
     const matchSearch =
@@ -4432,7 +4523,7 @@ function ConsultationsPage() {
           {[
             {
               label: 'Total',
-              value: consultations.length,
+              value: total,
               color: 'text-slate-700',
               bg: 'bg-white',
               filter: 'all' as TimeFilter,
@@ -4453,7 +4544,7 @@ function ConsultationsPage() {
             },
             {
               label: 'Realizadas',
-              value: consultations.length - upcoming,
+              value: total - upcoming,
               color: 'text-slate-600',
               bg: 'bg-slate-50',
               filter: 'past' as TimeFilter,
@@ -4461,7 +4552,7 @@ function ConsultationsPage() {
           ].map((s) => (
             <button
               key={s.filter}
-              onClick={() => setTimeFilter(timeFilter === s.filter ? 'all' : s.filter)}
+              onClick={() => setTimeFilterAndReset(timeFilter === s.filter ? 'all' : s.filter)}
               className={`border rounded-xl p-3 sm:p-4 text-center transition-all hover:shadow-sm ${s.bg} ${timeFilter === s.filter ? 'ring-2 ring-teal-400 ring-offset-1' : 'border-slate-200'}`}
             >
               <p className={`text-xl sm:text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -4483,7 +4574,7 @@ function ConsultationsPage() {
           </div>
           <select
             value={timeFilter}
-            onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
+            onChange={(e) => setTimeFilterAndReset(e.target.value as TimeFilter)}
             className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-400 text-slate-600 bg-white shrink-0"
           >
             <option value="all">Todas</option>
@@ -4491,6 +4582,19 @@ function ConsultationsPage() {
             <option value="upcoming">Próximas</option>
             <option value="past">Realizadas</option>
           </select>
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 shrink-0">
+            <ArrowUpDown className="w-4 h-4 text-slate-400 hidden sm:block" />
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKeyAndReset(e.target.value as typeof sortKey)}
+              className="text-sm text-slate-600 outline-none bg-transparent py-2.5 pr-2"
+            >
+              <option value="consultation_date">Ordenar por: Fecha de consulta</option>
+              <option value="created_at">Ordenar por: Fecha de creación</option>
+              <option value="status">Ordenar por: Estatus (atendida)</option>
+              <option value="appointment_status">Ordenar por: Confirmación</option>
+            </select>
+          </div>
         </div>
 
         {/* List */}
@@ -4498,7 +4602,7 @@ function ConsultationsPage() {
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ClipboardList className="w-4 h-4 text-slate-400" />
-              <p className="text-sm font-semibold text-slate-700">{filtered.length} consultas</p>
+              <p className="text-sm font-semibold text-slate-700">{total} consultas</p>
             </div>
           </div>
 
@@ -4645,6 +4749,21 @@ function ConsultationsPage() {
                 </button>
               );
             })
+          )}
+
+          {/* Paginación server-side */}
+          {!loading && total > 0 && (
+            <Paginator
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              pageSizeOptions={[10, 15, 20, 50]}
+              onPageChange={(p) => setPage(p)}
+              onPageSizeChange={(ps) => {
+                setPageSize(ps);
+                setPage(1);
+              }}
+            />
           )}
         </div>
 

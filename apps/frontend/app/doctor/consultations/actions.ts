@@ -34,11 +34,13 @@ import { revalidatePath } from 'next/cache';
 import { log } from '@/lib/logger';
 import {
   backendGet,
+  backendGetPaged,
   backendPost,
   backendPut,
   backendPatch,
   backendDelete,
   type AppError,
+  type PagedResult,
 } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
@@ -110,6 +112,51 @@ export async function listConsultations(opts?: {
   }
 
   return Array.isArray(result.value) ? result.value : [];
+}
+
+/**
+ * Fetch a paginated page of consultations for the authenticated doctor.
+ *
+ * Returns `{ items, total }` where `total` is the backend-reported count of
+ * ALL matching records (used by the Paginator to compute page count).
+ *
+ * Backend query params forwarded:
+ *   page, limit, sort, date_from, date_to, payment_status
+ *
+ * Sort values accepted by the backend:
+ *   consultation_date | created_at | consultation_status | confirmation_status
+ *
+ * @param opts.sort - One of the backend sort keys above. Pass `undefined` to
+ *   use the backend default (consultation_date DESC).
+ */
+export async function listConsultationsPaged(opts: {
+  page: number;
+  limit: number;
+  sort?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  paymentStatus?: 'pending' | 'approved';
+}): Promise<PagedResult<Consultation>> {
+  const qs = new URLSearchParams({
+    page: String(opts.page),
+    limit: String(opts.limit),
+  });
+  if (opts.sort) qs.set('sort', opts.sort);
+  if (opts.dateFrom) qs.set('date_from', opts.dateFrom);
+  if (opts.dateTo) qs.set('date_to', opts.dateTo);
+  if (opts.paymentStatus) qs.set('payment_status', opts.paymentStatus);
+
+  const result = await backendGetPaged<Consultation>(`/api/consultations?${qs.toString()}`);
+
+  if (!result.ok) {
+    log.error('[listConsultationsPaged] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { items: [], total: 0 };
+  }
+
+  return result.value;
 }
 
 /** Fetch consultation history for a specific patient. */
