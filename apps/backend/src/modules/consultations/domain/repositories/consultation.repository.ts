@@ -1,4 +1,5 @@
 import type { Consultation } from '../entities/consultation.entity';
+import type { ConsultationExtraItem } from '../entities/consultation-extra-item.entity';
 import type { PaymentStatus } from '@delta/shared-types';
 
 export const CONSULTATION_REPOSITORY = 'CONSULTATION_REPOSITORY';
@@ -149,4 +150,39 @@ export interface IConsultationRepository {
    * before removing the parent appointment row.
    */
   deleteById(id: string): Promise<void>;
+
+  /**
+   * Atomically approves a consultation payment with extra service items.
+   *
+   * Within a single DB transaction:
+   *   1. If `baseAmount` is null on the consultation (first approval), sets
+   *      `base_amount = COALESCE(current_amount, appointment.plan_price, 0)`.
+   *   2. Deletes all existing `consultation_extra_items` for this consultationId.
+   *   3. Inserts the provided extras (empty array = no extras).
+   *   4. Computes `total = base_amount + Σ(extras.amount_usd)`.
+   *   5. Updates `consultations.amount = total`, `payment_status = 'approved'`,
+   *      `payment_method`, and `payment_date = NOW()`.
+   *   6. Returns the updated Consultation with `extraItems` populated.
+   *
+   * Anti-double-count guarantee:
+   *   `base_amount` is written only once (on first approval) and is derived from
+   *   the consultation's amount BEFORE any extras are added. On re-approval the
+   *   stored `base_amount` is used directly — the extras sum is NOT re-accumulated
+   *   on top of a total that already includes a previous extras sum.
+   *
+   * Scoped to (id, doctorId) — returns null if not found or not owned.
+   */
+  approveWithExtras(
+    id: string,
+    doctorId: string,
+    extras: Array<{ description: string; amountUsd: number }>,
+    paymentMethod?: string | null,
+  ): Promise<Consultation>;
+
+  /**
+   * Loads extra items for a given consultation, scoped to doctorId.
+   * Returns an empty array when there are no extras or when the consultation
+   * does not belong to the doctor.
+   */
+  findExtraItems(consultationId: string, doctorId: string): Promise<ConsultationExtraItem[]>;
 }

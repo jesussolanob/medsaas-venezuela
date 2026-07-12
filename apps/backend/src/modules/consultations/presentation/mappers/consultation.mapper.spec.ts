@@ -1,5 +1,6 @@
 import { toConsultationResponse, toConsultationListItem } from './consultation.mapper';
 import { Consultation } from '../../domain/entities/consultation.entity';
+import { ConsultationExtraItem } from '../../domain/entities/consultation-extra-item.entity';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PATIENT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -129,6 +130,47 @@ describe('toConsultationResponse — enrichment fields', () => {
     const consultation = makeConsultation({ appointmentStatus: null });
     const result = toConsultationResponse(consultation);
     expect(result.appointment_status).toBeNull();
+  });
+});
+
+describe('toConsultationResponse — base_amount and extra_items', () => {
+  it('exposes base_amount when set (post first approval)', () => {
+    const consultation = makeConsultation({ amount: 50, baseAmount: 30 });
+    const result = toConsultationResponse(consultation);
+    expect(result.base_amount).toBe(30);
+  });
+
+  it('exposes base_amount as null before first approval', () => {
+    const consultation = makeConsultation({ baseAmount: null });
+    const result = toConsultationResponse(consultation);
+    expect(result.base_amount).toBeNull();
+  });
+
+  it('exposes extra_items as empty array by default', () => {
+    const consultation = makeConsultation();
+    const result = toConsultationResponse(consultation);
+    expect(result.extra_items).toEqual([]);
+  });
+
+  it('serializes extra_items with id, description, and amount_usd', () => {
+    const extraItem = ConsultationExtraItem.create({
+      id: 'eeeeeeee-0000-0000-0000-000000000001',
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      description: 'Limpieza dental',
+      amountUsd: 20,
+      createdAt: now,
+    });
+    const consultation = makeConsultation({ extraItems: [extraItem] });
+    const result = toConsultationResponse(consultation);
+
+    expect(result.extra_items).toEqual([
+      {
+        id: 'eeeeeeee-0000-0000-0000-000000000001',
+        description: 'Limpieza dental',
+        amount_usd: 20,
+      },
+    ]);
   });
 });
 

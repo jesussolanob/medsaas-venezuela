@@ -72,6 +72,14 @@ export class ConsultationModel extends Model {
   @Column({ type: DataType.DECIMAL(12, 2), allowNull: true })
   declare amount: number | null;
 
+  /**
+   * Stable base price set once on first payment approval.
+   * Added by migration 20260712000009.
+   * total = base_amount + Σ(consultation_extra_items.amount_usd)
+   */
+  @Column({ type: DataType.DECIMAL(12, 2), allowNull: true, field: 'base_amount' })
+  declare baseAmount: number | null;
+
   // Added by migration 20260602000003
   @Column({ type: DataType.DATE, allowNull: true, field: 'payment_date' })
   declare paymentDate: Date | null;

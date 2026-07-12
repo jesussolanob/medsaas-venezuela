@@ -1,9 +1,11 @@
+import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, QueryTypes, UniqueConstraintError, type WhereOptions } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import type { PaymentStatus } from '@delta/shared-types';
 import { Consultation } from '../../../domain/entities/consultation.entity';
+import { ConsultationExtraItem } from '../../../domain/entities/consultation-extra-item.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationCodeConflictError } from '../../../domain/errors/consultation-code-conflict.error';
 import { DecryptionError } from '../../../domain/errors/decryption.error';
@@ -13,6 +15,7 @@ import type {
   ConsultationListResult,
 } from '../../../domain/repositories/consultation.repository';
 import { ConsultationModel } from '../models/consultation.model';
+import { ConsultationExtraItemModel } from '../models/consultation-extra-item.model';
 import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 
 /**
@@ -33,6 +36,7 @@ interface ConsultationEnrichedRow {
   payment_status: string;
   payment_method: string | null;
   amount: string | null;
+  base_amount: string | null;
   payment_date: string | null;
   payment_reference: string | null;
   payment_receipt_url: string | null;
@@ -43,6 +47,16 @@ interface ConsultationEnrichedRow {
   patient_full_name_enc: string | null;
   /** Status from the linked appointments row — null when consultation has no appointment. */
   appointment_status: string | null;
+}
+
+/** Raw row returned by queries against consultation_extra_items. */
+interface ExtraItemRow {
+  id: string;
+  consultation_id: string;
+  doctor_id: string;
+  description: string;
+  amount_usd: string;
+  created_at: string;
 }
 
 /**
@@ -67,6 +81,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
   constructor(
     @InjectModel(ConsultationModel)
     private readonly consultationModel: typeof ConsultationModel,
+    @InjectModel(ConsultationExtraItemModel)
+    private readonly extraItemModel: typeof ConsultationExtraItemModel,
     private readonly crypto: CryptoService,
     private readonly sequelize: Sequelize,
   ) {}
@@ -76,7 +92,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       `SELECT
          c.id, c.doctor_id, c.patient_id, c.appointment_id, c.consultation_code,
          c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
-         c.payment_status, c.payment_method, c.amount, c.payment_date,
+         c.payment_status, c.payment_method, c.amount, c.base_amount, c.payment_date,
          c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
@@ -90,7 +106,10 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     );
     const row = rows[0];
     if (!row) return null;
-    return this.toDomainEnriched(row);
+
+    // Load extra items for the detail view so the frontend modal can pre-populate.
+    const extras = await this.loadExtraItems(id, doctorId);
+    return this.toDomainEnriched(row, extras);
   }
 
   async findByCode(code: string): Promise<Consultation | null> {
@@ -380,12 +399,14 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         : 'consultation_date';
     const orderBy = ORDER_BY_MAP[sortKey];
 
-    // LIST query with LEFT JOIN to enrich patient_name and appointment_status
+    // LIST query with LEFT JOIN to enrich patient_name and appointment_status.
+    // base_amount is included for the list view (needed by some finance consumers).
+    // Extra items are NOT loaded for list queries — too expensive (N+1 per row).
     const rows = await this.sequelize.query<ConsultationEnrichedRow>(
       `SELECT
          c.id, c.doctor_id, c.patient_id, c.appointment_id, c.consultation_code,
          c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
-         c.payment_status, c.payment_method, c.amount, c.payment_date,
+         c.payment_status, c.payment_method, c.amount, c.base_amount, c.payment_date,
          c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
@@ -403,7 +424,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     );
 
     return {
-      items: rows.map((r) => this.toDomainEnriched(r)),
+      items: rows.map((r) => this.toDomainEnriched(r, [])),
       total,
       page: filters.page,
       limit: filters.limit,
@@ -447,9 +468,173 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     await this.consultationModel.destroy({ where: { id } as WhereOptions });
   }
 
+  /**
+   * Atomically approves a consultation payment with extra service items.
+   *
+   * Transaction semantics (all-or-nothing):
+   *   1. Read the current consultation row to resolve `base_amount` (first approval
+   *      only: set to COALESCE(current amount, plan_price via appointments, 0)).
+   *   2. Delete all existing extra items for this consultation.
+   *   3. Bulk-insert the new extras.
+   *   4. Recompute total = base_amount + Σ(extras.amount_usd).
+   *   5. Update consultations: amount = total, payment_status = 'approved',
+   *      payment_method (if provided), payment_date = NOW().
+   *   6. Return the updated Consultation entity with extraItems populated.
+   *
+   * Anti-double-count: base_amount is written only on the first approval
+   * (when base_amount IS NULL in the DB). Re-approvals read the stored base_amount.
+   */
+  async approveWithExtras(
+    id: string,
+    doctorId: string,
+    extras: Array<{ description: string; amountUsd: number }>,
+    paymentMethod?: string | null,
+  ): Promise<Consultation> {
+    return this.sequelize.transaction(async (t) => {
+      // Step 1 — Resolve base amount inside the transaction for a consistent read.
+      const baseRows = await this.sequelize.query<{
+        base_amount: string | null;
+        amount: string | null;
+        plan_price: string | null;
+      }>(
+        `SELECT c.base_amount, c.amount, a.plan_price
+           FROM consultations c
+           LEFT JOIN appointments a ON a.id = c.appointment_id
+           WHERE c.id = :id AND c.doctor_id = :doctorId
+           LIMIT 1`,
+        { replacements: { id, doctorId }, type: QueryTypes.SELECT, transaction: t },
+      );
+
+      const baseRow = baseRows[0];
+      if (!baseRow) {
+        throw new ConsultationNotFoundError();
+      }
+
+      // On first approval, fix base_amount from COALESCE(current amount, plan_price, 0).
+      // On re-approval use the already-stored base_amount unchanged.
+      const resolvedBase =
+        baseRow.base_amount !== null
+          ? parseFloat(baseRow.base_amount)
+          : parseFloat(baseRow.amount ?? baseRow.plan_price ?? '0');
+
+      // Step 2 — Delete all previous extra items.
+      await this.extraItemModel.destroy({
+        where: { consultationId: id } as WhereOptions,
+        transaction: t,
+      });
+
+      // Step 3 — Insert new extras.
+      const now = new Date();
+      const extraRecords = extras.map((e) => ({
+        id: randomUUID(),
+        consultationId: id,
+        doctorId,
+        description: e.description.trim(),
+        amountUsd: e.amountUsd,
+        createdAt: now,
+      }));
+
+      if (extraRecords.length > 0) {
+        await this.extraItemModel.bulkCreate(extraRecords, { transaction: t });
+      }
+
+      // Step 4 — Compute total.
+      const extrasSum = extras.reduce((acc, e) => acc + e.amountUsd, 0);
+      const total = parseFloat((resolvedBase + extrasSum).toFixed(2));
+
+      // Step 5 — Update the consultation row.
+      const updateData: Record<string, unknown> = {
+        amount: total,
+        paymentStatus: 'approved' as PaymentStatus,
+        paymentDate: now,
+      };
+      // base_amount is only set on first approval (when it was NULL).
+      if (baseRow.base_amount === null) {
+        updateData.baseAmount = resolvedBase;
+      }
+      if (paymentMethod !== undefined) {
+        updateData.paymentMethod = paymentMethod;
+      }
+
+      await this.consultationModel.update(updateData, {
+        where: { id, doctorId } as WhereOptions,
+        transaction: t,
+      });
+
+      // Step 6 — Re-read the updated consultation inside the transaction.
+      const updatedRows = await this.sequelize.query<ConsultationEnrichedRow>(
+        `SELECT
+           c.id, c.doctor_id, c.patient_id, c.appointment_id, c.consultation_code,
+           c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
+           c.payment_status, c.payment_method, c.amount, c.base_amount, c.payment_date,
+           c.payment_reference, c.payment_receipt_url,
+           c.blocks_snapshot, c.created_at, c.updated_at,
+           p.full_name AS patient_full_name_enc,
+           a.status    AS appointment_status
+         FROM consultations c
+         LEFT JOIN patients     p ON p.id = c.patient_id
+         LEFT JOIN appointments a ON a.id = c.appointment_id
+         WHERE c.id = :id AND c.doctor_id = :doctorId
+         LIMIT 1`,
+        { replacements: { id, doctorId }, type: QueryTypes.SELECT, transaction: t },
+      );
+
+      const updatedRow = updatedRows[0];
+      if (!updatedRow) {
+        throw new ConsultationNotFoundError();
+      }
+
+      // Build extra item entities from the freshly inserted records.
+      const extraItemEntities = extraRecords.map((r) =>
+        ConsultationExtraItem.create({
+          id: r.id,
+          consultationId: r.consultationId,
+          doctorId: r.doctorId,
+          description: r.description,
+          amountUsd: r.amountUsd,
+          createdAt: r.createdAt,
+        }),
+      );
+
+      return this.toDomainEnriched(updatedRow, extraItemEntities);
+    });
+  }
+
+  async findExtraItems(consultationId: string, doctorId: string): Promise<ConsultationExtraItem[]> {
+    return this.loadExtraItems(consultationId, doctorId);
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Loads extra items for a consultation, scoped to doctorId (anti-IDOR).
+   * Returns an empty array when there are no items.
+   */
+  private async loadExtraItems(
+    consultationId: string,
+    doctorId: string,
+  ): Promise<ConsultationExtraItem[]> {
+    const rows = await this.sequelize.query<ExtraItemRow>(
+      `SELECT id, consultation_id, doctor_id, description, amount_usd, created_at
+         FROM consultation_extra_items
+         WHERE consultation_id = :consultationId AND doctor_id = :doctorId
+         ORDER BY created_at ASC`,
+      { replacements: { consultationId, doctorId }, type: QueryTypes.SELECT },
+    );
+
+    return rows.map((r) =>
+      ConsultationExtraItem.create({
+        id: r.id,
+        consultationId: r.consultation_id,
+        doctorId: r.doctor_id,
+        description: r.description,
+        amountUsd: parseFloat(r.amount_usd),
+        createdAt: new Date(r.created_at),
+      }),
+    );
+  }
 
   private encryptClinicalFields(consultation: Consultation): {
     chiefComplaint: string | null;
@@ -482,12 +667,14 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       paymentStatus: row.paymentStatus as 'pending' | 'approved',
       paymentMethod: row.paymentMethod,
       amount: row.amount !== null ? Number(row.amount) : null,
+      baseAmount: row.baseAmount !== null ? Number(row.baseAmount) : null,
       paymentDate: row.paymentDate,
       paymentReference: row.paymentReference,
       paymentReceiptUrl: row.paymentReceiptUrl,
       blocksSnapshot: row.blocksSnapshot,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      extraItems: [],
     });
   }
 
@@ -509,9 +696,16 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
 
   /**
    * Maps a raw enriched SQL row (from JOIN queries) to a Consultation entity.
-   * Populates patientName (decrypted) and appointmentStatus from JOIN columns.
+   * Populates patientName (decrypted), appointmentStatus, and extraItems.
+   *
+   * @param extras - Pre-loaded extra items for this consultation. Pass [] for list
+   *   queries where extras are not loaded (avoids N+1). Pass the loaded array for
+   *   findById and approveWithExtras responses.
    */
-  private toDomainEnriched(row: ConsultationEnrichedRow): Consultation {
+  private toDomainEnriched(
+    row: ConsultationEnrichedRow,
+    extras: ConsultationExtraItem[] = [],
+  ): Consultation {
     const patientName = row.patient_full_name_enc
       ? this.safeDecrypt(row.patient_full_name_enc, 'full_name')
       : null;
@@ -530,6 +724,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       paymentStatus: row.payment_status as 'pending' | 'approved',
       paymentMethod: row.payment_method,
       amount: row.amount !== null ? Number(row.amount) : null,
+      baseAmount: row.base_amount !== null ? Number(row.base_amount) : null,
       paymentDate: row.payment_date ? new Date(row.payment_date) : null,
       paymentReference: row.payment_reference,
       paymentReceiptUrl: row.payment_receipt_url,
@@ -538,6 +733,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       updatedAt: new Date(row.updated_at),
       patientName,
       appointmentStatus: row.appointment_status ?? null,
+      extraItems: extras,
     });
   }
 }

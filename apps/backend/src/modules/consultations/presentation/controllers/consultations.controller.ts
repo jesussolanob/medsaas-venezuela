@@ -20,10 +20,12 @@ import {
   CreateConsultationBodyDtoSchema,
   UpdateConsultationDtoSchema,
   ApprovePaymentDtoSchema,
+  ApprovePaymentWithExtrasDtoSchema,
   UpdatePaymentDetailsDtoSchema,
   type CreateConsultationBodyDto,
   type UpdateConsultationDto,
   type ApprovePaymentDto,
+  type ApprovePaymentWithExtrasDto,
   type UpdatePaymentDetailsDto,
   type PaymentStatus,
 } from '@delta/shared-types';
@@ -32,6 +34,7 @@ import type { ConsultationSortField } from '../../domain/repositories/consultati
 import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from '../../application/use-cases/consultations/update-consultation.use-case';
 import { ApprovePaymentUseCase } from '../../application/use-cases/consultations/approve-payment.use-case';
+import { ApprovePaymentWithExtrasUseCase } from '../../application/use-cases/consultations/approve-payment-with-extras.use-case';
 import { UpdatePaymentDetailsUseCase } from '../../application/use-cases/consultations/update-payment-details.use-case';
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
@@ -117,6 +120,7 @@ export class ConsultationsController {
     private readonly createConsultation: CreateConsultationUseCase,
     private readonly updateConsultation: UpdateConsultationUseCase,
     private readonly approvePayment: ApprovePaymentUseCase,
+    private readonly approvePaymentWithExtras: ApprovePaymentWithExtrasUseCase,
     private readonly updatePaymentDetailsUseCase: UpdatePaymentDetailsUseCase,
     private readonly getById: GetConsultationByIdUseCase,
     private readonly getHistory: GetPatientConsultationHistoryUseCase,
@@ -264,6 +268,36 @@ export class ConsultationsController {
       amount: dto.amount,
       paymentMethod: dto.payment_method,
       paymentDate: dto.payment_date ? new Date(dto.payment_date) : null,
+    });
+    return { success: true, data: toConsultationResponse(consultation) };
+  }
+
+  /**
+   * PATCH /api/consultations/:id/approve-payment — approve payment with extra items.
+   *
+   * Replaces the extras list atomically and sets payment_status = 'approved'.
+   * Can be called multiple times to edit the extras (re-approval is idempotent
+   * with respect to the base price — base_amount is fixed on the first call).
+   *
+   * Body: { extras: [{ description, amount_usd }], method?: string }
+   *
+   * Total = base_amount + Σ(extras[].amount_usd) is persisted to consultations.amount
+   * so the finance module (COALESCE(c.amount, a.plan_price, 0)) picks it up automatically.
+   *
+   * SECURITY: doctorId comes from user.sub (never from the body — anti-IDOR).
+   */
+  @Patch(':id/approve-payment')
+  async approvePaymentWithExtrasEndpoint(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(ApprovePaymentWithExtrasDtoSchema))
+    dto: ApprovePaymentWithExtrasDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<unknown>> {
+    const consultation = await this.approvePaymentWithExtras.execute({
+      consultationId: id,
+      doctorId: user.sub,
+      extras: dto.extras.map((e) => ({ description: e.description, amountUsd: e.amount_usd })),
+      paymentMethod: dto.method ?? null,
     });
     return { success: true, data: toConsultationResponse(consultation) };
   }

@@ -1,4 +1,5 @@
 import type { PaymentStatus } from '@delta/shared-types';
+import type { ConsultationExtraItem } from './consultation-extra-item.entity';
 
 export interface ConsultationCreateParams {
   id: string;
@@ -14,6 +15,12 @@ export interface ConsultationCreateParams {
   paymentStatus: PaymentStatus;
   paymentMethod?: string | null;
   amount?: number | null;
+  /**
+   * The stable base price of the consultation (set once on first approval).
+   * `total = base_amount + Σ(extra_items.amount_usd)`.
+   * Null until the payment has been approved at least once.
+   */
+  baseAmount?: number | null;
   paymentDate?: Date | null;
   paymentReference?: string | null;
   paymentReceiptUrl?: string | null;
@@ -28,6 +35,12 @@ export interface ConsultationCreateParams {
    */
   patientName?: string | null;
   appointmentStatus?: string | null;
+  /**
+   * Extra service items linked to this consultation.
+   * Populated by findById (not by list queries — too expensive).
+   * Empty array when there are no extras or when not loaded.
+   */
+  extraItems?: ConsultationExtraItem[];
 }
 
 /**
@@ -54,6 +67,8 @@ export class Consultation {
   readonly paymentStatus: PaymentStatus;
   readonly paymentMethod: string | null;
   readonly amount: number | null;
+  /** Stable base price set on first approval. Total = baseAmount + Σ extraItems. */
+  readonly baseAmount: number | null;
   readonly paymentDate: Date | null;
   readonly paymentReference: string | null;
   readonly paymentReceiptUrl: string | null;
@@ -64,6 +79,8 @@ export class Consultation {
   readonly patientName: string | null;
   /** Status of the linked appointment — populated by the enriched list/findById query. */
   readonly appointmentStatus: string | null;
+  /** Extra service items — populated by findById. Empty array when not loaded. */
+  readonly extraItems: ConsultationExtraItem[];
 
   constructor(params: ConsultationCreateParams) {
     this.id = params.id;
@@ -79,6 +96,7 @@ export class Consultation {
     this.paymentStatus = params.paymentStatus;
     this.paymentMethod = params.paymentMethod ?? null;
     this.amount = params.amount ?? null;
+    this.baseAmount = params.baseAmount ?? null;
     this.paymentDate = params.paymentDate ?? null;
     this.paymentReference = params.paymentReference ?? null;
     this.paymentReceiptUrl = params.paymentReceiptUrl ?? null;
@@ -87,6 +105,7 @@ export class Consultation {
     this.updatedAt = params.updatedAt;
     this.patientName = params.patientName ?? null;
     this.appointmentStatus = params.appointmentStatus ?? null;
+    this.extraItems = params.extraItems ?? [];
   }
 
   /**

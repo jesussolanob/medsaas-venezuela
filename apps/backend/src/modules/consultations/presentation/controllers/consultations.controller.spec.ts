@@ -3,6 +3,7 @@ import { ConsultationsController } from './consultations.controller';
 import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from '../../application/use-cases/consultations/update-consultation.use-case';
 import { ApprovePaymentUseCase } from '../../application/use-cases/consultations/approve-payment.use-case';
+import { ApprovePaymentWithExtrasUseCase } from '../../application/use-cases/consultations/approve-payment-with-extras.use-case';
 import { UpdatePaymentDetailsUseCase } from '../../application/use-cases/consultations/update-payment-details.use-case';
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
@@ -46,6 +47,7 @@ describe('ConsultationsController', () => {
   const mockCreate = { execute: jest.fn() };
   const mockUpdate = { execute: jest.fn() };
   const mockApprove = { execute: jest.fn() };
+  const mockApproveWithExtras = { execute: jest.fn() };
   const mockUpdatePaymentDetails = { execute: jest.fn() };
   const mockGetById = { execute: jest.fn() };
   const mockGetHistory = { execute: jest.fn() };
@@ -61,6 +63,7 @@ describe('ConsultationsController', () => {
         { provide: CreateConsultationUseCase, useValue: mockCreate },
         { provide: UpdateConsultationUseCase, useValue: mockUpdate },
         { provide: ApprovePaymentUseCase, useValue: mockApprove },
+        { provide: ApprovePaymentWithExtrasUseCase, useValue: mockApproveWithExtras },
         { provide: UpdatePaymentDetailsUseCase, useValue: mockUpdatePaymentDetails },
         { provide: GetConsultationByIdUseCase, useValue: mockGetById },
         { provide: GetPatientConsultationHistoryUseCase, useValue: mockGetHistory },
@@ -422,6 +425,107 @@ describe('ConsultationsController', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as Record<string, unknown>).payment_reference).toBe('REF-UPDATED');
+    });
+  });
+
+  describe('approvePaymentWithExtrasEndpoint', () => {
+    it('approves with extras and returns serialized consultation', async () => {
+      const consultation = makeConsultation({
+        paymentStatus: 'approved',
+        amount: 50,
+        baseAmount: 30,
+        paymentMethod: 'zelle',
+      });
+      mockApproveWithExtras.execute.mockResolvedValue(consultation);
+
+      const result = await controller.approvePaymentWithExtrasEndpoint(
+        CONSULTATION_ID,
+        {
+          extras: [{ description: 'Limpieza', amount_usd: 20 }],
+          method: 'zelle',
+        },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as Record<string, unknown>).payment_status).toBe('approved');
+      expect((result.data as Record<string, unknown>).amount).toBe(50);
+      expect((result.data as Record<string, unknown>).base_amount).toBe(30);
+    });
+
+    it('approves with empty extras — base price only', async () => {
+      const consultation = makeConsultation({
+        paymentStatus: 'approved',
+        amount: 30,
+        baseAmount: 30,
+      });
+      mockApproveWithExtras.execute.mockResolvedValue(consultation);
+
+      const result = await controller.approvePaymentWithExtrasEndpoint(
+        CONSULTATION_ID,
+        { extras: [] },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockApproveWithExtras.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          consultationId: CONSULTATION_ID,
+          doctorId: DOCTOR_ID,
+          extras: [],
+          paymentMethod: null,
+        }),
+      );
+    });
+
+    it('uses doctorId from authenticated user (anti-IDOR)', async () => {
+      const consultation = makeConsultation({
+        paymentStatus: 'approved',
+        amount: 30,
+        baseAmount: 30,
+      });
+      mockApproveWithExtras.execute.mockResolvedValue(consultation);
+
+      await controller.approvePaymentWithExtrasEndpoint(CONSULTATION_ID, { extras: [] }, mockUser);
+
+      expect(mockApproveWithExtras.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ doctorId: DOCTOR_ID }),
+      );
+    });
+
+    it('propagates ConsultationNotFoundError', async () => {
+      mockApproveWithExtras.execute.mockRejectedValue(new ConsultationNotFoundError());
+
+      await expect(
+        controller.approvePaymentWithExtrasEndpoint(CONSULTATION_ID, { extras: [] }, mockUser),
+      ).rejects.toThrow(ConsultationNotFoundError);
+    });
+  });
+
+  describe('response shape — base_amount and extra_items', () => {
+    it('serializes base_amount and extra_items in the GET response', async () => {
+      const consultation = makeConsultation({
+        amount: 50,
+        baseAmount: 30,
+        paymentStatus: 'approved',
+      });
+      mockGetById.execute.mockResolvedValue(consultation);
+
+      const result = await controller.findOne(CONSULTATION_ID, mockUser);
+      const data = result.data as Record<string, unknown>;
+
+      expect(data.base_amount).toBe(30);
+      expect(data.extra_items).toEqual([]);
+    });
+
+    it('serializes base_amount as null when not yet approved', async () => {
+      const consultation = makeConsultation({ baseAmount: null });
+      mockGetById.execute.mockResolvedValue(consultation);
+
+      const result = await controller.findOne(CONSULTATION_ID, mockUser);
+      const data = result.data as Record<string, unknown>;
+
+      expect(data.base_amount).toBeNull();
     });
   });
 });

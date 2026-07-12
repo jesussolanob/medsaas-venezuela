@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 
 import { ConsultationModel } from './infrastructure/database/models/consultation.model';
+import { ConsultationExtraItemModel } from './infrastructure/database/models/consultation-extra-item.model';
 import { SequelizeConsultationRepository } from './infrastructure/database/repositories/sequelize-consultation.repository';
 import { CONSULTATION_REPOSITORY } from './domain/repositories/consultation.repository';
 
@@ -10,6 +11,7 @@ import { CONSULTATION_REPOSITORY } from './domain/repositories/consultation.repo
 import { CreateConsultationUseCase } from './application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from './application/use-cases/consultations/update-consultation.use-case';
 import { ApprovePaymentUseCase } from './application/use-cases/consultations/approve-payment.use-case';
+import { ApprovePaymentWithExtrasUseCase } from './application/use-cases/consultations/approve-payment-with-extras.use-case';
 import { UpdatePaymentDetailsUseCase } from './application/use-cases/consultations/update-payment-details.use-case';
 import { GetConsultationByIdUseCase } from './application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from './application/use-cases/consultations/get-patient-consultation-history.use-case';
@@ -23,7 +25,10 @@ import { ConsultationsController } from './presentation/controllers/consultation
 import { PatientsModule } from '../patients/patients.module';
 
 @Module({
-  imports: [SequelizeModule.forFeature([ConsultationModel]), PatientsModule],
+  imports: [
+    SequelizeModule.forFeature([ConsultationModel, ConsultationExtraItemModel]),
+    PatientsModule,
+  ],
   controllers: [ConsultationsController],
   providers: [
     // Sequelize is global (provided by SequelizeModule.forRootAsync in AppModule) — no import needed.
@@ -38,6 +43,7 @@ import { PatientsModule } from '../patients/patients.module';
     CreateConsultationUseCase,
     UpdateConsultationUseCase,
     ApprovePaymentUseCase,
+    ApprovePaymentWithExtrasUseCase,
     UpdatePaymentDetailsUseCase,
     GetConsultationByIdUseCase,
     GetPatientConsultationHistoryUseCase,

@@ -35,6 +35,8 @@ describe('CreateConsultationUseCase', () => {
       update: jest.fn(),
       updatePayment: jest.fn(),
       updatePaymentDetails: jest.fn(),
+      approveWithExtras: jest.fn(),
+      findExtraItems: jest.fn(),
       list: jest.fn(),
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),

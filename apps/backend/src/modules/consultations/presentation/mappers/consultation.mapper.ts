@@ -24,6 +24,12 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     payment_status: consultation.paymentStatus,
     payment_method: consultation.paymentMethod,
     amount: consultation.amount !== null ? Number(consultation.amount) : null,
+    /**
+     * Stable base price of the consultation (set once on first approval).
+     * total = base_amount + Σ(extra_items[].amount_usd)
+     * Null until the consultation has been approved at least once.
+     */
+    base_amount: consultation.baseAmount !== null ? Number(consultation.baseAmount) : null,
     payment_date: consultation.paymentDate?.toISOString() ?? null,
     payment_reference: consultation.paymentReference,
     payment_receipt_url: consultation.paymentReceiptUrl,
@@ -33,6 +39,15 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     /** Enriched read-side fields — null when not populated by a JOIN query. */
     patient_name: consultation.patientName,
     appointment_status: consultation.appointmentStatus,
+    /**
+     * Extra service items. Populated by GET /consultations/:id (for modal pre-load).
+     * Empty array in list endpoints (not loaded for performance — N+1 avoidance).
+     */
+    extra_items: consultation.extraItems.map((ei) => ({
+      id: ei.id,
+      description: ei.description,
+      amount_usd: ei.amountUsd,
+    })),
   };
 }
 

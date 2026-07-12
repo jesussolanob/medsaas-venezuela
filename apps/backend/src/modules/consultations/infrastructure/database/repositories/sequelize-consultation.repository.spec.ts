@@ -14,6 +14,7 @@
 import { Sequelize } from 'sequelize-typescript';
 import { QueryTypes } from 'sequelize';
 import { ConsultationModel } from '../models/consultation.model';
+import { ConsultationExtraItemModel } from '../models/consultation-extra-item.model';
 import { SequelizeConsultationRepository } from './sequelize-consultation.repository';
 import { Consultation } from '../../../domain/entities/consultation.entity';
 import { DecryptionError } from '../../../domain/errors/decryption.error';
@@ -50,6 +51,7 @@ describe('SequelizeConsultationRepository (integration)', () => {
 
     repo = new SequelizeConsultationRepository(
       ConsultationModel as never,
+      ConsultationExtraItemModel as never,
       fakeCrypto as never,
       sequelize,
     );
@@ -242,6 +244,7 @@ describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
     payment_status: 'pending',
     payment_method: null,
     amount: null,
+    base_amount: null,
     payment_date: null,
     payment_reference: null,
     payment_receipt_url: null,
@@ -265,13 +268,18 @@ describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
     const rawRow = makeRawRow({ chief_complaint: 'corrupted-ciphertext' });
 
     // findById uses this.sequelize.query() — mock it to return the raw row
+    // First call = consultation JOIN query; second call = loadExtraItems (returns []).
     const mockSequelize = {
-      query: jest.fn().mockResolvedValue([rawRow]),
+      query: jest
+        .fn()
+        .mockResolvedValueOnce([rawRow]) // consultation row
+        .mockResolvedValueOnce([]), // extra items (empty)
       transaction: jest.fn(),
     };
 
     const repo = new SequelizeConsultationRepository(
       {} as never, // consultationModel not used by findById (raw SQL path)
+      {} as never, // extraItemModel not used by the decryption error path
       failingCrypto as never,
       mockSequelize as never,
     );
@@ -290,13 +298,15 @@ describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
       chief_complaint: null, // null — safeDecrypt should short-circuit
     });
 
+    // First call = consultation JOIN query; second call = loadExtraItems (returns []).
     const mockSequelize = {
-      query: jest.fn().mockResolvedValue([rawRow]),
+      query: jest.fn().mockResolvedValueOnce([rawRow]).mockResolvedValueOnce([]),
       transaction: jest.fn(),
     };
 
     const repo = new SequelizeConsultationRepository(
       {} as never,
+      {} as never, // extraItemModel not used by this null-field test
       cryptoSpy as never,
       mockSequelize as never,
     );
