@@ -46,6 +46,9 @@ export default function RemindersPage() {
   const [loading, setLoading] = useState(true);
   const [remindersSent, setRemindersSent] = useState<Record<string, ReminderSent[]>>({});
   const [filterDays, setFilterDays] = useState<number>(7);
+  // PRUEBAS 12-07: filtro por DÍA de consulta específico para recordatorios masivos.
+  // '' = usar la ventana "días adelante" (filterDays); YYYY-MM-DD = solo ese día.
+  const [filterDate, setFilterDate] = useState<string>('');
   const [sending, setSending] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkChannel, setBulkChannel] = useState<'whatsapp' | 'email'>('whatsapp');
@@ -155,15 +158,16 @@ export default function RemindersPage() {
     const date = formatDate(consult.consultation_date);
     const time = formatTime(consult.consultation_date);
     const doc = doctorName || 'su médico';
-    const subject = encodeURIComponent(`Confirmación de consulta - ${date}`);
-    let body = `Estimado/a ${consult.patient_name},\n\n`;
+    const subject = encodeURIComponent(`📅 Confirmación de consulta - ${date}`);
+    let body = `Estimado/a ${consult.patient_name} 👋\n\n`;
     body += `Le confirmamos su consulta con ${doc}:\n\n`;
-    body += `Fecha: ${date}\n`;
-    body += `Hora: ${time}\n`;
-    if (consult.plan_name) body += `Servicio: ${consult.plan_name}\n`;
-    body += `Código: ${consult.consultation_code}\n\n`;
+    body += `📅 Fecha: ${date}\n`;
+    body += `🕐 Hora: ${time}\n`;
+    if (consult.plan_name) body += `📋 Servicio: ${consult.plan_name}\n`;
+    body += `🔖 Código: ${consult.consultation_code}\n\n`;
     body += `Por favor llegue con 10 minutos de anticipación.\n`;
     body += `Si necesita reagendar, contáctenos con anticipación.\n\n`;
+    body += `¡Le esperamos! 🏥\n\n`;
     body += `Saludos,\n${doc}`;
     return { subject, body: encodeURIComponent(body) };
   }
@@ -239,9 +243,12 @@ export default function RemindersPage() {
     setBulkSending(false);
   }
 
-  const filtered = upcomingConsults.filter(
-    (c) => daysUntil(c.consultation_date) <= filterDays && daysUntil(c.consultation_date) >= 0,
-  );
+  const filtered = upcomingConsults.filter((c) => {
+    // Filtro por día específico tiene prioridad sobre la ventana "días adelante".
+    if (filterDate) return toLocalYMD(new Date(c.consultation_date)) === filterDate;
+    const d = daysUntil(c.consultation_date);
+    return d >= 0 && d <= filterDays;
+  });
 
   function urgencyBadge(days: number) {
     if (days === 0)
@@ -293,12 +300,43 @@ export default function RemindersPage() {
               {DAYS_AHEAD.map((d) => (
                 <button
                   key={d}
-                  onClick={() => setFilterDays(d)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filterDays === d ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  onClick={() => {
+                    setFilterDays(d);
+                    setFilterDate('');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    !filterDate && filterDays === d
+                      ? 'bg-white text-teal-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
                 >
                   {d === 0 ? 'Hoy' : `${d}d`}
                 </button>
               ))}
+            </div>
+            {/* PRUEBAS 12-07: filtro por día de consulta para recordatorios masivos */}
+            <div
+              className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 transition-colors ${
+                filterDate ? 'border-teal-300 bg-teal-50' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="text-xs font-semibold text-slate-600 bg-transparent outline-none"
+                aria-label="Filtrar por día de consulta"
+              />
+              {filterDate && (
+                <button
+                  onClick={() => setFilterDate('')}
+                  className="p-0.5 rounded hover:bg-teal-100"
+                  title="Quitar filtro de día"
+                >
+                  <X className="w-3 h-3 text-teal-600" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -350,7 +388,9 @@ export default function RemindersPage() {
             <CheckCircle className="w-12 h-12 text-emerald-200 mb-3" />
             <p className="text-slate-600 font-semibold">Sin consultas próximas</p>
             <p className="text-slate-400 text-sm mt-1">
-              No hay consultas en los próximos {filterDays} días.
+              {filterDate
+                ? `No hay consultas para el ${formatDate(`${filterDate}T12:00:00`)}.`
+                : `No hay consultas en los próximos ${filterDays} días.`}
             </p>
           </div>
         ) : (
