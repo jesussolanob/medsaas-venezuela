@@ -282,7 +282,22 @@ export function useAppointmentFlow(
     fetch('/api/doctor/offices', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((json) => {
-        const list = Array.isArray(json.data) ? (json.data as DoctorOffice[]) : [];
+        // El backend devuelve camelCase (slotDuration/bufferMinutes); el resto del
+        // flujo lee snake_case (slot_duration/buffer_minutes). Sin este mapeo, el
+        // buffer entre consultas quedaba en undefined→0 y los slots salían cada
+        // slot_duration en vez de slot_duration+buffer (p.ej. 9:00,9:30 en vez de 9:00,9:40).
+        const raw = Array.isArray(json.data) ? (json.data as Array<Record<string, unknown>>) : [];
+        const list: DoctorOffice[] = raw.map((o) => ({
+          ...(o as unknown as DoctorOffice),
+          slot_duration:
+            (o.slot_duration as number | null | undefined) ??
+            (o.slotDuration as number | null | undefined) ??
+            30,
+          buffer_minutes:
+            (o.buffer_minutes as number | null | undefined) ??
+            (o.bufferMinutes as number | null | undefined) ??
+            0,
+        }));
         setOffices(list);
         // Si el doctor tiene consultorios, auto-seleccionar el primero (ya no existe
         // la opción "Sin consultorio específico"). Solo si aún no hay uno elegido.
