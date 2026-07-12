@@ -123,6 +123,12 @@ export async function backendFetch<T>(
   try {
     json = await response.json();
   } catch {
+    // Cuerpo vacío (p.ej. 204 No Content de un DELETE): response.json() lanza.
+    // En una respuesta exitosa eso es VÁLIDO → devolver resultado vacío en vez de
+    // un error de parseo (evita el 500 espurio al cancelar/eliminar una cita).
+    if (response.ok) {
+      return ok(undefined as T);
+    }
     return err({
       code: 'PARSE_ERROR',
       message: 'El servidor devolvió una respuesta no válida',
