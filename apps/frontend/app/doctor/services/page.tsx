@@ -16,7 +16,6 @@ import {
   Pencil,
   Trash2,
   DollarSign,
-  Clock,
   Save,
   X,
   Loader2,
@@ -435,10 +434,6 @@ export default function ServicesPage() {
                 </div>
 
                 <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {item.duration_minutes} min
-                  </div>
                   {item.sessions_count > 1 && (
                     <div className="flex items-center gap-1">
                       <Tag className="w-3 h-3" />
@@ -599,38 +594,22 @@ export default function ServicesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    Precio USD <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={priceUsd}
-                      onChange={(e) => setPriceUsd(e.target.value)}
-                      placeholder="30.00"
-                      className={inp + ' pl-9'}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    Duración (min)
-                  </label>
-                  <select
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(e.target.value)}
-                    className={inp}
-                  >
-                    {[15, 20, 30, 45, 60, 90, 120].map((d) => (
-                      <option key={d} value={d}>
-                        {d} minutos
-                      </option>
-                    ))}
-                  </select>
+              {/* Duración removida (PRUEBAS 12-07): la duración real de la cita se define
+                  a nivel de consultorio (doctor_offices.slot_duration), no por servicio. */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Precio USD <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={priceUsd}
+                    onChange={(e) => setPriceUsd(e.target.value)}
+                    placeholder="30.00"
+                    className={inp + ' pl-9'}
+                  />
                 </div>
               </div>
 
