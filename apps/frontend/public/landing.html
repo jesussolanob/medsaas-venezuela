@@ -274,6 +274,31 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
   .nav-links { display: none; }
   .nav-mobile-toggle { display: block; }
   .nav-cta-wrap { display: none; }
+
+  /* Menú móvil desplegable: la hamburguesa (.mobile-open en .nav-inner) revela
+     los enlaces Y las opciones de login/registro, apilados a lo ancho. Antes el
+     toggle apuntaba a una clase sin regla CSS y no mostraba nada. */
+  .nav-inner.mobile-open {
+    flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: var(--dh-shadow-sm);
+    border-radius: 0 0 16px 16px;
+  }
+  .nav-inner.mobile-open .nav-links,
+  .nav-inner.mobile-open .nav-cta-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .nav-inner.mobile-open .nav-cta-wrap { margin-top: 8px; padding-bottom: 8px; }
+  .nav-inner.mobile-open .nav-links a { padding: 6px 0; font-size: 16px; }
+  .nav-inner.mobile-open .nav-login,
+  .nav-inner.mobile-open .nav-cta { text-align: center; }
 }
 
 /* ============================================================
@@ -1270,7 +1295,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       <a target="_top" href="/login" class="nav-login">Iniciar sesión</a>
       <a target="_top" href="/register" class="nav-cta">Comenzar gratis</a>
     </div>
-    <button class="nav-mobile-toggle" onclick="document.querySelector('.nav-links').classList.toggle('show-mobile')">
+    <button class="nav-mobile-toggle" aria-label="Abrir menú" onclick="this.closest('.nav-inner').classList.toggle('mobile-open')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
     </button>
   </div>
