@@ -361,10 +361,12 @@ export default function TemplatesPage() {
         primary_color: currentConfig.primary_color,
       };
 
-      const result = await applyTemplateConfigToAll(
-        input,
-        templateTabs.map((t) => t.key),
-      );
+      // El backend solo acepta estos 4 tipos de plantilla. Antes se iteraban las
+      // keys de las tabs (que incluyen block-keys como 'indications'/'paraclinical'),
+      // provocando INVALID_TEMPLATE_TYPE 400 (Sentry DELTA-FRONTEND-M). Se aplica la
+      // config solo a los tipos válidos.
+      const VALID_TEMPLATE_TYPES = ['informe', 'recipe', 'prescripciones', 'reposo'];
+      const result = await applyTemplateConfigToAll(input, VALID_TEMPLATE_TYPES);
 
       if (!result.ok) {
         showToast({
