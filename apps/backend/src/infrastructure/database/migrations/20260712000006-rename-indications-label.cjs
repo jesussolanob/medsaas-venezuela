@@ -22,8 +22,7 @@ module.exports = {
 
     await q.query(`
       UPDATE consultation_block_catalog
-         SET default_label = 'Evaluación actual',
-             updated_at    = NOW()
+         SET default_label = 'Evaluación actual'
        WHERE key           = 'indications'
          AND default_label = 'Indicaciones'
     `);
@@ -34,8 +33,7 @@ module.exports = {
 
     await q.query(`
       UPDATE consultation_block_catalog
-         SET default_label = 'Indicaciones',
-             updated_at    = NOW()
+         SET default_label = 'Indicaciones'
        WHERE key           = 'indications'
          AND default_label = 'Evaluación actual'
     `);
