@@ -32,6 +32,8 @@ import {
   Smartphone,
   CreditCard,
   Lock,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   loadSettingsProfile,
@@ -45,6 +47,7 @@ import {
   disconnectGoogle,
   type GoogleStatusView,
 } from './actions';
+import ExchangeRateSection from '@/components/doctor/ExchangeRateSection';
 import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -297,6 +300,11 @@ function SettingsPageInner() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [paymentDetails, setPaymentDetails] = useState<Record<string, Record<string, string>>>({});
   const [paymentSaved, setPaymentSaved] = useState(false);
+  // Acordeón de métodos de pago: solo los métodos activos se expanden por defecto.
+  // Un método colapsado muestra solo el toggle + nombre; uno expandido muestra sus campos.
+  // Decisión: expandido por defecto solo si el método está activo al montar — da feedback
+  // inmediato de "ya tienes esto configurado", sin abrumar con todos los campos abiertos.
+  const [expandedMethods, setExpandedMethods] = useState<Set<string>>(new Set());
 
   // Insurance
   const [insurances, setInsurances] = useState<Insurance[]>([]);
@@ -397,6 +405,8 @@ function SettingsPageInner() {
         setLicenseNumber(profileData.license_number ?? '');
         setPaymentMethods(profileData.payment_methods);
         setPaymentDetails(profileData.payment_details);
+        // Pre-expandir los métodos que ya estaban activos al cargar.
+        setExpandedMethods(new Set(profileData.payment_methods));
         setCedula(profileData.cedula ?? null);
       }
 
@@ -569,6 +579,18 @@ function SettingsPageInner() {
       ...prev,
       [methodId]: { ...(prev[methodId] ?? {}), [field]: value },
     }));
+  }
+
+  function toggleMethodExpand(id: string) {
+    setExpandedMethods((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   async function savePaymentMethods() {
@@ -766,26 +788,6 @@ function SettingsPageInner() {
         <div>
           <h1 className="text-xl font-bold text-slate-900">Configuración</h1>
           <p className="text-sm text-slate-500">Perfil, métodos de pago, notificaciones y más</p>
-        </div>
-
-        {/* Shortcuts a secciones avanzadas — Bloques de consulta movidos a /doctor/templates */}
-        <div className="grid grid-cols-1 gap-3">
-          <a
-            href="/doctor/settings/exchange-rate"
-            className="block p-4 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-                <DollarSign className="w-5 h-5 text-amber-600" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-slate-900">Tasa de cambio</p>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  USD BCV, EUR BCV o tasa personalizada para conversiones a Bs.
-                </p>
-              </div>
-            </div>
-          </a>
         </div>
 
         {/* Tabs */}
@@ -1396,46 +1398,107 @@ function SettingsPageInner() {
         {/* ---------------- PAYMENT METHODS ---------------- */}
         {tab === 'payment' && (
           <div className="space-y-4">
+            {/* Métodos de pago — acordeón colapsable */}
             <div className="bg-white border border-slate-200 rounded-xl p-6">
               <p className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-1">
                 Métodos de pago aceptados
               </p>
               <p className="text-xs text-slate-500 mb-4">
-                Configura los datos para recibir pagos. Los pacientes verán esta información al
-                agendar o pagar.
+                Activa los métodos que aceptas y expande cada uno para configurar sus datos. Los
+                pacientes verán esta información al agendar o pagar.
               </p>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {PAYMENT_METHODS.map((method) => {
                   const active = paymentMethods.includes(method.id);
+                  const hasFields = method.fields.length > 0;
+                  // El panel de campos se muestra si el método está activo Y expandido
+                  const expanded = active && hasFields && expandedMethods.has(method.id);
+
                   return (
                     <div
                       key={method.id}
-                      className={`border rounded-xl overflow-hidden transition-all ${active ? 'border-teal-300 bg-teal-50/30' : 'border-slate-200 bg-white'}`}
+                      className={`border rounded-xl overflow-hidden transition-colors ${active ? 'border-teal-300 bg-teal-50/20' : 'border-slate-200 bg-white'}`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => togglePaymentMethod(method.id)}
-                        className="w-full flex items-center gap-3 p-3 text-left hover:bg-slate-50 transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          readOnly
-                          checked={active}
-                          className="w-5 h-5 rounded border-slate-300 text-teal-500 pointer-events-none"
-                        />
-                        <span className="text-xl">{method.emoji}</span>
-                        <span className="text-sm font-medium text-slate-700 flex-1">
-                          {method.label}
-                        </span>
-                        {active && method.fields.length > 0 && (
-                          <span className="text-[10px] font-bold text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">
-                            Configurable
+                      {/* Fila de encabezado: toggle de activación + nombre + chevron */}
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        {/* Toggle de activación — clic en el checkbox/texto activa/desactiva */}
+                        <button
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => {
+                            togglePaymentMethod(method.id);
+                            // Al activar, expandir automáticamente si tiene campos.
+                            // Al desactivar, colapsar.
+                            if (!active && hasFields) {
+                              setExpandedMethods((prev) => new Set([...prev, method.id]));
+                            } else if (active) {
+                              setExpandedMethods((prev) => {
+                                const next = new Set(prev);
+                                next.delete(method.id);
+                                return next;
+                              });
+                            }
+                          }}
+                          className="flex items-center gap-3 flex-1 text-left min-w-0"
+                        >
+                          <input
+                            type="checkbox"
+                            readOnly
+                            checked={active}
+                            aria-hidden="true"
+                            className="w-5 h-5 rounded border-slate-300 text-teal-500 pointer-events-none shrink-0"
+                          />
+                          <span className="text-xl shrink-0" aria-hidden="true">
+                            {method.emoji}
                           </span>
+                          <span className="text-sm font-medium text-slate-700 truncate">
+                            {method.label}
+                          </span>
+                          {active && hasFields && !expanded && (
+                            <span className="text-[10px] font-bold text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full shrink-0">
+                              Activo
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Chevron para expandir/colapsar campos (solo si tiene campos y está activo) */}
+                        {hasFields && (
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            aria-controls={`payment-fields-${method.id}`}
+                            aria-label={`${expanded ? 'Colapsar' : 'Expandir'} campos de ${method.label}`}
+                            onClick={() => {
+                              if (!active) {
+                                // Activar el método al intentar expandir desde inactivo
+                                togglePaymentMethod(method.id);
+                                setExpandedMethods((prev) => new Set([...prev, method.id]));
+                              } else {
+                                toggleMethodExpand(method.id);
+                              }
+                            }}
+                            className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                              active
+                                ? 'text-teal-600 hover:bg-teal-100'
+                                : 'text-slate-400 hover:bg-slate-100'
+                            }`}
+                          >
+                            {expanded ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </button>
                         )}
-                      </button>
-                      {active && method.fields.length > 0 && (
-                        <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      </div>
+
+                      {/* Panel de campos de configuración */}
+                      {expanded && (
+                        <div
+                          id={`payment-fields-${method.id}`}
+                          className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-teal-100"
+                        >
                           {method.fields.map((f) => {
                             const isBankAccount =
                               method.id === 'transferencia' && f.key === 'account';
@@ -1503,6 +1566,11 @@ function SettingsPageInner() {
                   </>
                 )}
               </button>
+            </div>
+
+            {/* Tasa de cambio — sección compacta integrada en el tab de pago */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <ExchangeRateSection />
             </div>
           </div>
         )}
