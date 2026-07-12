@@ -204,75 +204,135 @@ export default async function AdminDashboard() {
       </div>
 
       {/* ── 4 KPI cards ── */}
+      {/*
+       * Política anti-PII: el admin NUNCA ve datos de pacientes individuales.
+       * Tarjetas de "Consultas" no llevan a una lista de consultas (implicaría
+       * nombres de pacientes); en su lugar apuntan a /admin/doctors (vista de
+       * actividad de especialistas, sin PII de pacientes).
+       * "Suscripciones activas" → /admin/subscriptions.
+       */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <StatCard
-          label="Especialistas activos"
-          value={activeDoctors.toLocaleString('es-VE')}
-          delta={`${totalDoctors.toLocaleString('es-VE')} en total`}
-          deltaColor="neutral"
-          icon={<Users size={16} />}
-        />
-        <StatCard
-          label="Consultas hoy"
-          value={citasHoy.toLocaleString('es-VE')}
-          delta="Tiempo real"
-          deltaColor="turquoise"
-          icon={<Calendar size={16} />}
-        />
-        <StatCard
-          label="Consultas este mes"
-          value={totalCitasMonth.toLocaleString('es-VE')}
-          delta={momGrowth > 0 ? `+${momGrowth}% vs. mes anterior` : 'Sin comparación'}
-          deltaColor={momGrowth > 0 ? 'success' : 'neutral'}
-          icon={<Heart size={16} />}
-        />
-        <StatCard
-          label="Suscripciones activas"
-          value={activeSubscriptions.toLocaleString('es-VE')}
-          delta={trialSubscriptions > 0 ? `${trialSubscriptions} en trial` : 'Sin trials'}
-          deltaColor="success"
-          icon={<ClipboardList size={16} />}
-        />
+        <Link
+          href="/admin/doctors"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Especialistas activos"
+            value={activeDoctors.toLocaleString('es-VE')}
+            delta={`${totalDoctors.toLocaleString('es-VE')} en total`}
+            deltaColor="neutral"
+            icon={<Users size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
+        {/* Consultas hoy: dato de actividad global, sin PII → enlaza a /admin/doctors */}
+        <Link
+          href="/admin/doctors"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Consultas hoy"
+            value={citasHoy.toLocaleString('es-VE')}
+            delta="Tiempo real"
+            deltaColor="turquoise"
+            icon={<Calendar size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
+        {/* Consultas este mes: mismo razonamiento, enlaza a /admin/doctors */}
+        <Link
+          href="/admin/doctors"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Consultas este mes"
+            value={totalCitasMonth.toLocaleString('es-VE')}
+            delta={momGrowth > 0 ? `+${momGrowth}% vs. mes anterior` : 'Sin comparación'}
+            deltaColor={momGrowth > 0 ? 'success' : 'neutral'}
+            icon={<Heart size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
+        <Link
+          href="/admin/subscriptions"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Suscripciones activas"
+            value={activeSubscriptions.toLocaleString('es-VE')}
+            delta={trialSubscriptions > 0 ? `${trialSubscriptions} en trial` : 'Sin trials'}
+            deltaColor="success"
+            icon={<ClipboardList size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
       </div>
 
       {/* ── 2ª fila KPIs: actividad de especialistas + pacientes + CxC ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <StatCard
-          label="Especialistas fríos"
-          value={coldDoctors.toLocaleString('es-VE')}
-          delta="Sin acceso 7-30 días"
-          deltaColor="neutral"
-          icon={<Snowflake size={16} />}
-        />
-        <StatCard
-          label="Especialistas inactivos"
-          value={inactiveDoctors.toLocaleString('es-VE')}
-          delta={
-            expiringCount > 0
-              ? `${expiringCount} suscripción(es) por vencer`
-              : 'Sin acceso +30 días'
-          }
-          deltaColor={inactiveDoctors > 0 ? 'error' : 'neutral'}
-          icon={<UserX size={16} />}
-        />
-        <StatCard
-          label="Pacientes totales"
-          value={totalPatients.toLocaleString('es-VE')}
-          delta="En toda la plataforma"
-          deltaColor="neutral"
-          icon={<Heart size={16} />}
-        />
-        <StatCard
-          label="Por cobrar"
-          value={fmtUsd(cxcTotal)}
-          delta={
-            pendingPayments.length > 0
-              ? `${pendingPayments.length} pago(s) pendiente(s)`
-              : 'Sin pendientes'
-          }
-          deltaColor={cxcTotal > 0 ? 'turquoise' : 'neutral'}
-          icon={<DollarSign size={16} />}
-        />
+        <Link
+          href="/admin/doctors"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Especialistas fríos"
+            value={coldDoctors.toLocaleString('es-VE')}
+            delta="Sin acceso 7-30 días"
+            deltaColor="neutral"
+            icon={<Snowflake size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
+        <Link
+          href="/admin/doctors"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Especialistas inactivos"
+            value={inactiveDoctors.toLocaleString('es-VE')}
+            delta={
+              expiringCount > 0
+                ? `${expiringCount} suscripción(es) por vencer`
+                : 'Sin acceso +30 días'
+            }
+            deltaColor={inactiveDoctors > 0 ? 'error' : 'neutral'}
+            icon={<UserX size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
+        {/* Pacientes totales: KPI agregado (sin PII), no enlaza a lista de pacientes
+            porque implicaría mostrar nombres. Va a /admin/doctors como proxy
+            de actividad. */}
+        <Link
+          href="/admin/doctors"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Pacientes totales"
+            value={totalPatients.toLocaleString('es-VE')}
+            delta="En toda la plataforma"
+            deltaColor="neutral"
+            icon={<Heart size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
+        <Link
+          href="/admin/subscriptions"
+          className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
+        >
+          <StatCard
+            label="Por cobrar"
+            value={fmtUsd(cxcTotal)}
+            delta={
+              pendingPayments.length > 0
+                ? `${pendingPayments.length} pago(s) pendiente(s)`
+                : 'Sin pendientes'
+            }
+            deltaColor={cxcTotal > 0 ? 'turquoise' : 'neutral'}
+            icon={<DollarSign size={16} />}
+            className="group-hover:border-teal-200 transition-colors cursor-pointer"
+          />
+        </Link>
       </div>
 
       {/* ── Chart + Aprobaciones pendientes ── */}

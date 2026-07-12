@@ -12,12 +12,10 @@ import {
   Search,
   MoreHorizontal,
   Download,
-  Plus,
   Clock,
   Users,
   UserCheck,
   AlertTriangle,
-  ChevronDown,
 } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
 import NewDoctorModal from './NewDoctorModal';
@@ -149,11 +147,19 @@ function subscriptionPillStatus(
   }
 }
 
+// Filtros disponibles sobre la lista de especialistas.
+// 'all'         → sin filtro adicional
+// 'active'      → is_active === true
+// 'inactive_7d' → sin actividad ≥7 días (y is_active)
+// 'new_month'   → registrado en el mes actual
+type ActiveFilter = 'all' | 'active' | 'inactive_7d' | 'new_month';
+
 export default function UsersPanel() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all');
 
   const loadDoctors = async () => {
     try {
@@ -186,17 +192,6 @@ export default function UsersPanel() {
     a.remove();
   };
 
-  const filteredDoctors = useMemo(() => {
-    if (!searchQuery) return doctors;
-    const q = searchQuery.toLowerCase();
-    return doctors.filter(
-      (d) =>
-        d.full_name?.toLowerCase().includes(q) ||
-        d.email?.toLowerCase().includes(q) ||
-        d.specialty?.toLowerCase().includes(q),
-    );
-  }, [doctors, searchQuery]);
-
   const activeDoctors = doctors.filter((d) => d.is_active).length;
   const inactiveDays7 = doctors.filter((d) => {
     const days = daysSince(d.last_sign_in_at || d.created_at);
@@ -208,6 +203,39 @@ export default function UsersPanel() {
     return doctors.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMonth)
       .length;
   }, [doctors]);
+
+  // Aplica primero el filtro de chip y luego el de búsqueda de texto. El orden
+  // importa porque la exportación de CSV/PDF usa `filteredDoctors`, así el export
+  // siempre refleja lo que el usuario está viendo en pantalla.
+  const filteredDoctors = useMemo(() => {
+    const now = new Date();
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    let result = doctors;
+
+    if (activeFilter === 'active') {
+      result = result.filter((d) => d.is_active);
+    } else if (activeFilter === 'inactive_7d') {
+      result = result.filter((d) => {
+        const days = daysSince(d.last_sign_in_at || d.created_at);
+        return days >= 7 && d.is_active;
+      });
+    } else if (activeFilter === 'new_month') {
+      result = result.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMonth);
+    }
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (d) =>
+          d.full_name?.toLowerCase().includes(q) ||
+          d.email?.toLowerCase().includes(q) ||
+          d.specialty?.toLowerCase().includes(q),
+      );
+    }
+
+    return result;
+  }, [doctors, activeFilter, searchQuery]);
 
   return (
     <>
@@ -287,20 +315,45 @@ export default function UsersPanel() {
             style={{ color: 'var(--dh-ink)' }}
           />
         </div>
-        <button
-          className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-full text-[13px] font-medium cursor-pointer"
-          style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-gray-800)' }}
-        >
-          Todas las especialidades
-          <ChevronDown className="w-3 h-3" style={{ color: 'var(--dh-gray-400)' }} />
-        </button>
-        <button
-          className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-full text-[13px] font-medium cursor-pointer"
-          style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-gray-800)' }}
-        >
-          Más recientes
-          <ChevronDown className="w-3 h-3" style={{ color: 'var(--dh-gray-400)' }} />
-        </button>
+
+        {/* Chips de filtro. Al hacer clic se aplica el filtro a filteredDoctors
+            (también afecta la exportación CSV/PDF que usa filteredDoctors).  */}
+        {(
+          [
+            { key: 'all', label: 'Todos', count: doctors.length },
+            { key: 'active', label: 'Activos', count: activeDoctors },
+            { key: 'inactive_7d', label: '+7d sin actividad', count: inactiveDays7 },
+            { key: 'new_month', label: 'Nuevos este mes', count: newThisMonth },
+          ] as { key: ActiveFilter; label: string; count: number }[]
+        ).map(({ key, label, count }) => {
+          const isSelected = activeFilter === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setActiveFilter(key)}
+              className={clsx(
+                'flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium transition-colors cursor-pointer',
+                isSelected ? 'text-white' : 'bg-white',
+              )}
+              style={
+                isSelected
+                  ? { background: 'var(--dh-turquoise)', border: '1.5px solid var(--dh-turquoise)' }
+                  : { border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-gray-800)' }
+              }
+            >
+              {label}
+              <span
+                className={clsx(
+                  'text-[11px] font-semibold px-1.5 py-0.5 rounded-full leading-none',
+                  isSelected ? 'bg-white/20 text-white' : 'bg-slate-100',
+                )}
+                style={isSelected ? {} : { color: 'var(--dh-gray-600)' }}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Tabla — desktop */}

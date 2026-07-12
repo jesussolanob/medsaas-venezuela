@@ -1,7 +1,7 @@
-'use client'
+'use client';
 
-import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useTransition, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   X,
@@ -9,8 +9,13 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-} from 'lucide-react'
-import { createDoctor, type CreateDoctorInput } from './actions'
+  ChevronDown,
+  Search,
+  Stethoscope,
+} from 'lucide-react';
+import { createDoctor, type CreateDoctorInput } from './actions';
+import CedulaInput from '@/components/shared/CedulaInput';
+import PhoneInput from '@/components/shared/PhoneInput';
 
 const ESPECIALIDADES = [
   'Cardiología',
@@ -33,14 +38,16 @@ const ESPECIALIDADES = [
   'Reumatología',
   'Fisioterapia',
   'Urología',
-  'Otra',
-]
+];
+
+// Valor centinela para indicar "Otra especialidad" en el combobox.
+const OTRO_VALUE = '__OTRO__';
 
 // PLANES: bloque de selección de plan eliminado en beta privada (2026-04-22)
 // Todos los médicos nuevos arrancan en plan='trial' (1 año gratis).
 // Cuando se reactive el modelo de pago, descomentar este array y el fieldset.
 
-type FormState = CreateDoctorInput & { confirmPassword: string; cedula: string }
+type FormState = CreateDoctorInput & { confirmPassword: string; cedula: string };
 
 const defaultForm: FormState = {
   full_name: '',
@@ -51,89 +58,336 @@ const defaultForm: FormState = {
   specialty: '',
   phone: '',
   plan: 'basic', // valor placeholder; createDoctor en actions.ts lo fuerza a trial en beta
+};
+
+type FormErrors = Partial<Record<keyof FormState, string>>;
+
+// ---------------------------------------------------------------------------
+// SpecialtySelect — combobox con buscador + opción "Otra" editable.
+// Patrón idéntico al de OnboardingForm/SpecialtyCombobox.
+// ---------------------------------------------------------------------------
+
+interface SpecialtySelectProps {
+  value: string; // puede ser nombre de especialidad, OTRO_VALUE, o ''
+  customValue: string; // texto libre cuando value === OTRO_VALUE
+  onChange: (selected: string) => void;
+  onCustomChange: (text: string) => void;
+  error?: string;
 }
 
-type FormErrors = Partial<Record<keyof FormState, string>>
+function SpecialtySelect({
+  value,
+  customValue,
+  onChange,
+  onCustomChange,
+  error,
+}: SpecialtySelectProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const isOtro = value === OTRO_VALUE;
+  const displayLabel = isOtro
+    ? 'Otra especialidad'
+    : (ESPECIALIDADES.find((s) => s === value) ?? '');
+
+  const filtered =
+    query.trim() === ''
+      ? ESPECIALIDADES
+      : ESPECIALIDADES.filter((s) => s.toLowerCase().includes(query.toLowerCase().trim()));
+
+  const listItems = [
+    ...filtered.map((name) => ({ id: name, name })),
+    { id: OTRO_VALUE, name: 'Otra especialidad' },
+  ];
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+        setActiveIndex(-1);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  function openDropdown() {
+    setOpen(true);
+    setQuery('');
+    setActiveIndex(-1);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function selectItem(id: string) {
+    onChange(id);
+    setOpen(false);
+    setQuery('');
+    setActiveIndex(-1);
+  }
+
+  function clearSelection() {
+    onChange('');
+    onCustomChange('');
+    setQuery('');
+    setActiveIndex(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((prev) => Math.min(prev + 1, listItems.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && activeIndex < listItems.length) {
+        selectItem(listItems[activeIndex].id);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+      setQuery('');
+      setActiveIndex(-1);
+    }
+  }
+
+  useEffect(() => {
+    if (activeIndex >= 0 && listRef.current) {
+      const el = listRef.current.children[activeIndex] as HTMLLIElement | undefined;
+      el?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeIndex]);
+
+  const triggerBase =
+    'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium outline-none transition-colors border text-left bg-white';
+  const triggerNormal = triggerBase + ' border-slate-200 focus:border-teal-500';
+  const triggerError = triggerBase + ' border-red-300 bg-red-50 focus:border-red-400';
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open ? setOpen(false) : openDropdown();
+          }
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Seleccionar especialidad"
+        className={`cursor-pointer ${error ? triggerError : triggerNormal}`}
+      >
+        <Stethoscope className="w-4 h-4 shrink-0 text-slate-400" />
+        <span className={`flex-1 truncate ${value ? 'text-slate-700' : 'text-slate-400'}`}>
+          {displayLabel || 'Seleccionar...'}
+        </span>
+        {value ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              clearSelection();
+            }}
+            aria-label="Limpiar especialidad"
+            className="p-0.5 rounded hover:bg-slate-100 transition-colors shrink-0 text-slate-400"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <ChevronDown
+            className="w-4 h-4 shrink-0 text-slate-400 transition-transform duration-200"
+            style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
+        )}
+      </div>
+
+      {open && (
+        <div
+          className="absolute z-50 left-0 right-0 mt-1 bg-white rounded-xl shadow-lg overflow-hidden"
+          style={{ border: '1px solid #e2e8f0', top: '100%' }}
+          role="dialog"
+          aria-label="Lista de especialidades"
+        >
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
+            <Search className="w-4 h-4 shrink-0 text-slate-400" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveIndex(-1);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Busca una especialidad..."
+              className="flex-1 text-sm outline-none bg-transparent text-slate-800"
+              autoComplete="off"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setActiveIndex(-1);
+                  inputRef.current?.focus();
+                }}
+                aria-label="Borrar búsqueda"
+                className="shrink-0 text-slate-400"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <ul ref={listRef} role="listbox" className="max-h-48 overflow-y-auto">
+            {listItems.map((item, idx) => (
+              <li
+                key={item.id}
+                role="option"
+                aria-selected={value === item.id}
+                onClick={() => selectItem(item.id)}
+                className={`px-3 py-2 text-sm cursor-pointer flex items-center gap-2 transition-colors ${
+                  idx === activeIndex
+                    ? 'bg-teal-50 text-teal-700'
+                    : value === item.id
+                      ? 'bg-teal-50/50 text-teal-700'
+                      : 'hover:bg-slate-50 text-slate-700'
+                } ${item.id === OTRO_VALUE ? 'border-t border-slate-100 italic' : ''}`}
+              >
+                {item.id === OTRO_VALUE && (
+                  <Stethoscope className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                )}
+                {item.name}
+              </li>
+            ))}
+            {listItems.length === 1 /* solo "Otra" */ && (
+              <li className="px-3 py-3 text-xs text-center text-slate-400">
+                Sin resultados para &quot;{query}&quot;
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* Input libre cuando el usuario seleccionó "Otra" */}
+      {isOtro && (
+        <input
+          type="text"
+          value={customValue}
+          onChange={(e) => onCustomChange(e.target.value)}
+          placeholder="Escribe la especialidad..."
+          className="mt-2 w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+        />
+      )}
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
 
 export default function NewDoctorModal() {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [isPending, startTransition] = useTransition()
-  const [form, setForm] = useState<FormState>(defaultForm)
-  const [errors, setErrors] = useState<FormErrors>({})
-  const [serverError, setServerError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [form, setForm] = useState<FormState>(defaultForm);
+  // specialtyCustom: texto libre cuando el usuario elige "Otra" en el combobox.
+  const [specialtyCustom, setSpecialtyCustom] = useState('');
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   function handleOpen() {
-    setOpen(true)
-    setForm(defaultForm)
-    setErrors({})
-    setServerError(null)
-    setSuccess(false)
-    setShowPassword(false)
-    setShowConfirm(false)
+    setOpen(true);
+    setForm(defaultForm);
+    setSpecialtyCustom('');
+    setErrors({});
+    setServerError(null);
+    setSuccess(false);
+    setShowPassword(false);
+    setShowConfirm(false);
   }
 
   function handleClose() {
-    if (isPending) return
-    setOpen(false)
-    if (success) router.refresh()
+    if (isPending) return;
+    setOpen(false);
+    if (success) router.refresh();
   }
 
   function handleChange(field: keyof FormState, value: string) {
-    setForm((prev) => ({ ...prev, [field]: value }))
-    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }))
+    setForm((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+  }
+
+  // Resuelve el valor de especialidad que se enviará al backend.
+  // Si el usuario eligió OTRO_VALUE, se usa el texto libre (specialtyCustom).
+  function resolvedSpecialty(): string {
+    if (form.specialty === OTRO_VALUE) return specialtyCustom.trim();
+    return form.specialty;
   }
 
   function validate(): boolean {
-    const e: FormErrors = {}
+    const e: FormErrors = {};
 
-    if (!form.full_name.trim()) e.full_name = 'El nombre es obligatorio'
+    if (!form.full_name.trim()) e.full_name = 'El nombre es obligatorio';
 
+    // CedulaInput emite el canónico 'V-12345678' / '' cuando vacío.
     if (!form.cedula.trim()) {
-      e.cedula = 'La cédula es obligatoria'
-    } else if (!/^[VEve]-?\d{6,8}$/.test(form.cedula.trim())) {
-      e.cedula = 'Formato inválido. Ej: V-12345678'
+      e.cedula = 'La cédula es obligatoria';
+    } else if (!/^[VEPvep]-\d{6,10}$|^[Pp]-[A-Za-z0-9]{5,20}$/.test(form.cedula.trim())) {
+      e.cedula = 'Formato de cédula inválido';
     }
 
     if (!form.email.trim()) {
-      e.email = 'El email es obligatorio'
+      e.email = 'El email es obligatorio';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      e.email = 'Email inválido'
+      e.email = 'Email inválido';
     }
 
     if (!form.password) {
-      e.password = 'La contraseña es obligatoria'
+      e.password = 'La contraseña es obligatoria';
     } else if (form.password.length < 8) {
-      e.password = 'Mínimo 8 caracteres'
+      e.password = 'Mínimo 8 caracteres';
     }
 
     if (!form.confirmPassword) {
-      e.confirmPassword = 'Confirma la contraseña'
+      e.confirmPassword = 'Confirma la contraseña';
     } else if (form.password !== form.confirmPassword) {
-      e.confirmPassword = 'Las contraseñas no coinciden'
+      e.confirmPassword = 'Las contraseñas no coinciden';
     }
 
-    setErrors(e)
-    return Object.keys(e).length === 0
+    setErrors(e);
+    return Object.keys(e).length === 0;
   }
 
   function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!validate()) return
-    setServerError(null)
+    e.preventDefault();
+    if (!validate()) return;
+    setServerError(null);
 
     startTransition(async () => {
-      const { confirmPassword, ...input } = form
-      const result = await createDoctor(input)
+      // Construir el input con la especialidad ya resuelta (texto libre si era "Otra").
+      const { confirmPassword, ...rest } = form;
+      const input: CreateDoctorInput = {
+        ...rest,
+        specialty: resolvedSpecialty(),
+      };
+      void confirmPassword;
+      const result = await createDoctor(input);
       if (result.success) {
-        setSuccess(true)
+        setSuccess(true);
       } else {
-        setServerError(result.error)
+        setServerError(result.error);
       }
-    })
+    });
   }
 
   return (
@@ -201,13 +455,15 @@ export default function NewDoctorModal() {
                       />
                     </Field>
 
-                    <Field label="Cédula de Identidad" required error={errors.cedula}>
-                      <input
-                        type="text"
+                    {/* Cédula — CedulaInput maneja su propio mensaje de error;
+                        no pasamos error a Field para evitar duplicado. */}
+                    <Field label="Cédula de Identidad" required>
+                      <CedulaInput
                         value={form.cedula}
-                        onChange={(e) => handleChange('cedula', e.target.value)}
-                        placeholder="Ej: V-12345678"
-                        className={inputClass(!!errors.cedula)}
+                        onChange={(canonical) => handleChange('cedula', canonical)}
+                        error={errors.cedula}
+                        required
+                        placeholder="12345678"
                       />
                     </Field>
 
@@ -221,32 +477,29 @@ export default function NewDoctorModal() {
                       />
                     </Field>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Especialidad" error={errors.specialty}>
-                        <select
-                          value={form.specialty}
-                          onChange={(e) => handleChange('specialty', e.target.value)}
-                          className={selectClass(false)}
-                        >
-                          <option value="">Seleccionar...</option>
-                          {ESPECIALIDADES.map((esp) => (
-                            <option key={esp} value={esp}>
-                              {esp}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
+                    {/* Especialidad — SpecialtySelect maneja su propio mensaje de error */}
+                    <Field label="Especialidad">
+                      <SpecialtySelect
+                        value={form.specialty}
+                        customValue={specialtyCustom}
+                        onChange={(selected) => {
+                          handleChange('specialty', selected);
+                          if (selected !== OTRO_VALUE) setSpecialtyCustom('');
+                        }}
+                        onCustomChange={setSpecialtyCustom}
+                        error={errors.specialty}
+                      />
+                    </Field>
 
-                      <Field label="Teléfono" error={errors.phone}>
-                        <input
-                          type="tel"
-                          value={form.phone}
-                          onChange={(e) => handleChange('phone', e.target.value)}
-                          placeholder="+58 412 000 0000"
-                          className={inputClass(false)}
-                        />
-                      </Field>
-                    </div>
+                    {/* Teléfono — PhoneInput maneja su propio mensaje de error */}
+                    <Field label="Teléfono">
+                      <PhoneInput
+                        value={form.phone}
+                        onChange={(canonical) => handleChange('phone', canonical)}
+                        error={errors.phone}
+                        placeholder="4141234567"
+                      />
+                    </Field>
                   </fieldset>
 
                   <fieldset className="space-y-4">
@@ -269,7 +522,11 @@ export default function NewDoctorModal() {
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                           tabIndex={-1}
                         >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          {showPassword ? (
+                            <EyeOff className="w-4 h-4" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
                         </button>
                       </div>
                     </Field>
@@ -289,7 +546,11 @@ export default function NewDoctorModal() {
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                           tabIndex={-1}
                         >
-                          {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          {showConfirm ? (
+                            <EyeOff className="w-4 h-4" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
                         </button>
                       </div>
                     </Field>
@@ -342,16 +603,19 @@ export default function NewDoctorModal() {
         </div>
       )}
     </>
-  )
+  );
 }
 
 function Field({
-  label, required, error, children,
+  label,
+  required,
+  error,
+  children,
 }: {
-  label: string
-  required?: boolean
-  error?: string
-  children: React.ReactNode
+  label: string;
+  required?: boolean;
+  error?: string;
+  children: React.ReactNode;
 }) {
   return (
     <div>
@@ -362,33 +626,30 @@ function Field({
       {children}
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
-  )
+  );
 }
 
 function inputClass(hasError: boolean) {
   return `w-full px-3 py-2 text-sm rounded-lg border transition-colors outline-none
     focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500
-    ${hasError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`
-}
-
-function selectClass(hasError: boolean) {
-  return `w-full px-3 py-2 text-sm rounded-lg border transition-colors outline-none
-    focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-slate-700
-    ${hasError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`
+    ${hasError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`;
 }
 
 function SuccessView({
-  doctorName, email, plan, onClose,
+  doctorName,
+  email,
+  plan,
+  onClose,
 }: {
-  doctorName: string
-  email: string
-  plan: 'basic' | 'professional'
-  onClose: () => void
+  doctorName: string;
+  email: string;
+  plan: 'basic' | 'professional';
+  onClose: () => void;
 }) {
   // Beta privada (2026-04-22): todos los médicos arrancan en Beta Privada (1 año gratis)
-  const planLabel = 'Período de prueba · 1 año gratis'
-  const planColor = 'text-teal-600 bg-teal-50'
-  void plan // ignorar el plan recibido, en beta privada todos son trial
+  const planLabel = 'Período de prueba · 1 año gratis';
+  const planColor = 'text-teal-600 bg-teal-50';
+  void plan; // ignorar el plan recibido, en beta privada todos son trial
 
   return (
     <div className="flex flex-col items-center text-center gap-5 py-2">
@@ -398,7 +659,8 @@ function SuccessView({
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-slate-900">¡Médico creado exitosamente!</h3>
         <p className="text-sm text-slate-500">
-          La cuenta de <span className="font-medium text-slate-700">{doctorName}</span> está lista para usar.
+          La cuenta de <span className="font-medium text-slate-700">{doctorName}</span> está lista
+          para usar.
         </p>
       </div>
       <div className="w-full bg-slate-50 rounded-xl border border-slate-200 p-4 text-left space-y-3">
@@ -426,5 +688,5 @@ function SuccessView({
         Listo
       </button>
     </div>
-  )
+  );
 }
