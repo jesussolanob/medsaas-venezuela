@@ -1,35 +1,45 @@
-'use client'
-import { useState, useEffect } from 'react'
-import { getRecentDoctors } from './notifications-actions'
-import { Bell, ChevronRight } from 'lucide-react'
-import Link from 'next/link'
-import { reportError } from '@/lib/report-error'
+'use client';
+import { useState, useEffect } from 'react';
+import { Bell, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+
+type RecentDoctor = { id: string; full_name: string; email: string; created_at: string };
 
 /**
  * Notificaciones del admin — beta privada.
  * Muestra los médicos que se registraron en los últimos 7 días.
  * Ya NO maneja flujo de aprobaciones (eliminado).
+ *
+ * Usa el route handler estable /api/admin/recent-doctors (antes una Server Action,
+ * que rompía en pestañas viejas tras cada deploy → ruido masivo en Sentry). El
+ * polling es best-effort: si falla, se ignora en silencio (no es crítico).
  */
 export default function AdminNotifications() {
-  const [recentDoctors, setRecentDoctors] = useState<any[]>([])
-  const [isOpen, setIsOpen] = useState(false)
+  const [recentDoctors, setRecentDoctors] = useState<RecentDoctor[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     async function loadRecentDoctors() {
       try {
-        const data = await getRecentDoctors(7)
-        setRecentDoctors(data)
-      } catch (err) {
-        reportError('AdminNotifications', 'loadRecentDoctors', err)
+        const res = await fetch('/api/admin/recent-doctors?days=7', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = (await res.json()) as { data?: RecentDoctor[] };
+        if (!cancelled) setRecentDoctors(Array.isArray(json.data) ? json.data : []);
+      } catch {
+        // Best-effort: el bell no es crítico — ignorar fallos de red silenciosamente.
       }
     }
 
-    loadRecentDoctors()
-    const interval = setInterval(loadRecentDoctors, 60000)
-    return () => clearInterval(interval)
-  }, [])
+    loadRecentDoctors();
+    const interval = setInterval(loadRecentDoctors, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
-  const count = recentDoctors.length
+  const count = recentDoctors.length;
 
   return (
     <div className="relative">
@@ -71,7 +81,9 @@ export default function AdminNotifications() {
                       {doctor.full_name?.charAt(0) ?? '?'}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{doctor.full_name}</p>
+                      <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">
+                        {doctor.full_name}
+                      </p>
                       <p className="text-xs text-slate-400 truncate">{doctor.email}</p>
                     </div>
                   </div>
@@ -90,12 +102,7 @@ export default function AdminNotifications() {
         </div>
       )}
 
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+      {isOpen && <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />}
     </div>
-  )
+  );
 }
