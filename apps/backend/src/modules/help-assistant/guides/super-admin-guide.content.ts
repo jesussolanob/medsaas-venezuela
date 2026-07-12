@@ -1,16 +1,16 @@
 // Auto-authored user manual for SUPER_ADMIN profile. Plain markdown text, NO backticks inside the template literal.
 
 export const SUPER_ADMIN_GUIDE = `
-# Manual del Super Administrador — Delta Medical CRM
+# Manual del Super Administrador — Delta Salud
 
 Este manual describe, pantalla por pantalla y botón por botón, todo lo que el perfil
-SUPER ADMIN puede hacer dentro de Delta Medical CRM. Está pensado como base de conocimiento
+SUPER ADMIN puede hacer dentro de Delta Salud. Está pensado como base de conocimiento
 para un asistente de ayuda: cada sección explica la ruta, para qué sirve, qué hace cada botón,
 los pasos concretos de cada flujo y las reglas de negocio importantes.
 
-## 1. Qué es Delta Medical CRM
+## 1. Qué es Delta Salud
 
-Delta Medical CRM (nombre comercial: Delta) es un sistema SaaS multi-tenant para médicos
+Delta Salud (nombre comercial: Delta) es un sistema SaaS multi-tenant para médicos
 especialistas en Venezuela. Es un CRM clínico que combina gestión de pacientes, agenda de citas,
 historia clínica, finanzas del consultorio, recordatorios y un portal para pacientes. Cada médico
 trabaja en su propio espacio aislado; sus datos de pacientes son confidenciales y no se comparten

@@ -1,15 +1,15 @@
 // Auto-authored user manual for SPECIALIST (doctor) profile. Plain markdown text, NO backticks inside the template literal.
 
 export const SPECIALIST_GUIDE = `
-# Manual del Especialista — Delta Medical CRM
+# Manual del Especialista — Delta Salud
 
 Esta guia es la base de conocimiento del asistente de ayuda para el perfil ESPECIALISTA (medico). Responde con base UNICAMENTE en este contenido. Todo esta en espanol de Venezuela (es-VE). Las rutas, botones y reglas descritas corresponden al portal del medico, ubicado en la ruta /doctor.
 
 ---
 
-## 1. Introduccion: que es Delta Medical CRM para el especialista
+## 1. Introduccion: que es Delta Salud para el especialista
 
-Delta Medical CRM (tambien llamado Delta) es un CRM medico para especialistas en Venezuela. Como medico, desde un solo portal puedes:
+Delta Salud (tambien llamado Delta) es un CRM medico para especialistas en Venezuela. Como medico, desde un solo portal puedes:
 
 - Gestionar tus pacientes con su historia clinica cifrada.
 - Llevar una agenda de citas con calendario semanal, mensual y diario.
@@ -46,6 +46,8 @@ El boton para enviar dice **Activar cuenta y continuar**. Mientras procesa muest
 
 **Que pasa al enviar:** tu cuenta queda activada y veras la pantalla **Cuenta activada** con el mensaje 'Tus datos fueron recibidos correctamente. Ya puedes continuar al portal.' y un recuadro de **Verificacion de credenciales** que dice: 'Verificaremos tus credenciales profesionales. Si no logramos verificarte, nos contactaremos a tu correo.' Pulsa **Ir al portal** para entrar a /doctor.
 
+**Correo de bienvenida:** al completar tu registro por primera vez recibes en tu correo un **email de bienvenida** con un **paso a paso** de como empezar a usar Delta (configurar consultorios, servicios, plantillas, agenda, etc.). Revisa tu bandeja de entrada (y la carpeta de spam por si acaso).
+
 ---
 
 ## 3. Verificacion de credenciales y sus estados
@@ -65,7 +67,7 @@ Despues de activar tu cuenta, el equipo de Delta verifica tus credenciales profe
 
 La cedula es obligatoria precisamente porque se usa para esta verificacion y, ademas, para compartir documentos con pacientes de forma segura.
 
-**Bloqueo de cuenta (distinto de la verificacion):** un administrador puede bloquear tu cuenta por separado. Si tu cuenta esta bloqueada, al usar cualquier funcion veras una pantalla completa **Cuenta bloqueada** con el mensaje: 'Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunicate con el soporte de Delta Medical.' y un boton **Cerrar sesion**. Esto es independiente de tu plan y de la verificacion.
+**Bloqueo de cuenta (distinto de la verificacion):** un administrador puede bloquear tu cuenta por separado. Si tu cuenta esta bloqueada, al usar cualquier funcion veras una pantalla completa **Cuenta bloqueada** con el mensaje: 'Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunicate con el soporte de Delta Salud.' y un boton **Cerrar sesion**. Esto es independiente de tu plan y de la verificacion.
 
 ---
 
@@ -146,7 +148,8 @@ Los modulos que tu plan no habilita aparecen con candado y llevan a /doctor/upgr
 Es tu panel de control. Contiene:
 
 - **Saludo** con tu nombre y especialidad.
-- **Tarjetas de indicadores (KPIs):** Ingresos totales (total facturado en USD, con su equivalente en bolivares), Mis pacientes (registrados en tu consultorio) y Pacientes atendidos (con al menos una consulta).
+- **Tarjetas de indicadores (KPIs):** Ingresos totales (total facturado en USD, con su equivalente en bolivares), Mis pacientes (registrados en tu consultorio) y **Consultas atendidas** (total de consultas). Nota: este KPI antes se llamaba 'Pacientes atendidos'; ahora se llama **Consultas atendidas** y cuenta el total de consultas.
+- **Tarjeta guia para configurar plantillas:** si aun no subiste tu **logo** o tu **firma**, aparece en el inicio una tarjeta que te invita a configurar tus plantillas (logo, firma, sello). Desaparece cuando ya subiste tu logo y firma.
 - **Cita actual o proxima** destacada, con el paciente y la hora. Al pulsarla te lleva a **Abrir consulta** (si ya existe la consulta) o a **Ver agenda**.
 - **Acciones rapidas** (botones en el encabezado de bienvenida): **Ver Pacientes**, **Ver Agenda**, **Crear Consulta** (abre el flujo de nueva consulta, un modal tipo acordeon con varios pasos que tambien agenda la cita) y **Crear Paciente** (abre el formulario de paciente en un modal).
 - **Acciones rapidas de finanzas** (en la tarjeta de resumen financiero): **Registrar pago** (abre un modal con los cobros pendientes para aprobarlos) y **Registrar gasto** (abre un modal para anotar un gasto: categoria, monto, moneda, nota).
@@ -177,7 +180,7 @@ Estados de una cita: Agendada (recien creada), Confirmada (la confirmaste), Aten
 Gestion de tus pacientes. Solo ves TUS pacientes.
 
 - **Busqueda:** por nombre, email o cedula.
-- **Nuevo paciente:** abre el formulario. Campos: Nombre (obligatorio), **cedula (obligatoria)**, telefono, email, fecha de nacimiento, sexo (Masculino, Femenino, Otro), grupo sanguineo, alergias, condiciones cronicas, contacto de emergencia, notas, direccion y ciudad. Tambien puedes indicar 'Por donde llego este paciente' (canal: WhatsApp, Redes Sociales, Seguro, Manual, Invitacion, etc.). La edad se calcula automaticamente a partir de la fecha de nacimiento.
+- **Nuevo paciente:** abre el formulario. Campos: Nombre (obligatorio), **cedula (obligatoria)**, telefono, email, fecha de nacimiento, sexo (Masculino, Femenino, Otro), grupo sanguineo, alergias, condiciones cronicas, contacto de emergencia, notas, direccion y ciudad. Tambien puedes indicar 'Por donde llego este paciente' (canal: WhatsApp, Redes Sociales, Seguro, Manual, Invitacion, etc.). La edad se calcula automaticamente a partir de la fecha de nacimiento. La **fecha de nacimiento no puede ser una fecha futura**.
 - **Tabla de pacientes:** muestra nombre, cedula, telefono, email, ultima consulta y paquetes activos.
 - **Acciones por paciente:**
   - **Editar paciente** — actualiza sus datos.
@@ -202,12 +205,15 @@ Es el editor completo de una consulta. Contiene:
 
 - **Encabezado:** codigo, paciente y fecha.
 - **Datos del paciente.**
-- **Bloques dinamicos de la consulta:** son los campos clinicos (por ejemplo Motivo de consulta, Diagnostico, Tratamiento, Plan de tratamiento, Observaciones, Reposo, etc.). Los bloques que aparecen los defines tu en Configuracion (ver seccion de bloques de consulta). Cada bloque es un area de texto editable.
+- **Ver ficha del paciente:** el boton **Ver ficha del paciente** abre una **ventana emergente (modal) de solo lectura** con la ficha del paciente, sin sacarte de la consulta. Es solo para consultar; para editar la ficha vas a Pacientes.
+- **Bloques dinamicos de la consulta:** son los campos clinicos (por ejemplo Motivo de consulta, Diagnostico, Tratamiento, Plan de tratamiento, Evaluacion actual, Observaciones, Reposo, etc.). Los bloques que aparecen los defines tu en Configuracion (ver seccion de bloques de consulta). Cada bloque es un area de texto editable. El bloque que antes se llamaba **'Indicaciones'** ahora se llama **'Evaluacion actual'**, y su contenido **se integra al informe** (ya no genera un documento aparte).
 - **Botones de IA en cada bloque** (solo plan Delta Plus): **Mejorar con IA** (mejora la redaccion del bloque), **Resumen del informe** (genera un resumen) y **Resumir historial del paciente** / **Historial del paciente** (trae contexto de consultas anteriores). Tras usar la IA puedes **Copiar texto** o aplicar el resultado. Si no tienes plan Plus, estos botones no estan disponibles.
 - **Grabadora de voz / transcripcion** (solo plan Plus): boton **Grabar la consulta** (o 'Grabar consulta'). Mientras procesa veras 'Transcribiendo audio...' y 'Procesando con IA — no cierres esta pagina...'. La IA transcribe el audio y sugiere que bloques llenar. Puedes **Grabar otra vez**.
 - **Informacion del pago:** monto en USD y bolivares, metodo de pago y estado. Boton **Marcar pago como aprobado** (al aplicarlo se muestra como 'Pago aprobado ✓'). El estado actual se indica como Pendiente o Aprobado.
 - **Compartir documentos:** boton **Compartir** (abre el modal 'Compartir documentos'; ver flujo en la seccion 7).
-- **Recetas:** con **Nueva receta** puedes agregar recetas (medicamento, dosis, frecuencia, duracion).
+- **Recetas (recipes):** con **Nueva receta** puedes agregar recetas. Por cada medicamento cargas: **medicamento**, **dosis**, **frecuencia**, **duracion**, **indicaciones** y la **Presentacion** del medicamento. La Presentacion es un selector con estas opciones: Tabletas, Capsulas, Gotas, Jarabe, Spray, Crema, Unguento, Ampolla/Inyeccion, Supositorio, Ovulo, Inhalador, Polvo, Solucion, Parche u 'Otro'.
+  - **PDF de 2 hojas del recipe:** al generar un recipe se produce un PDF de **dos hojas**. La **hoja 1 ('Recipe')** lista el medicamento y la dosis; la **hoja 2 ('Indicaciones')** lista el medicamento, la dosis, las indicaciones, la frecuencia, la duracion y la presentacion. Este formato de 2 hojas aplica al **generar, descargar y compartir por enlace** el recipe.
+- **Reposo:** solo puedes **generar o compartir el reposo si tiene dias configurados (mayor que 0)**. Si el reposo tiene 0 dias, no se genera ni se comparte.
 - **Acciones principales:** **Guardar consulta**, **Marcar como atendida** (completa la cita) y **No asistio**.
 
 ### 6.6 Cobros — /doctor/cobros
@@ -225,10 +231,11 @@ Gestion de los pagos de tus consultas. (Requiere plan Base o Plus.)
 Resumen financiero mensual. (Requiere plan Base o Plus.)
 
 - **Selector de mes.**
+- **Pestanas:** Resumen e Ingresos (y las demas vistas de finanzas).
 - **Tarjetas:** Ingresos (Pagos aprobados), Gastos (Gastos del consultorio) y Balance (Ingresos menos Gastos; puede ser negativo). En USD y bolivares.
-- **Ingresos vs Gastos:** comparativa/grafico de tendencias.
+- **Grafico de barras de Ingresos vs Gastos:** en las pestanas **Resumen** e **Ingresos** hay un **grafico de barras** que compara Ingresos vs Gastos (es el mismo grafico que ves en Reporteria).
 - **Registrar ingreso** y registrar gasto (categorias como Alquiler, Personal, Insumos, Servicios, Impuestos, Otros).
-- Tabla de conceptos por fecha. Si no hay datos: 'No hay conceptos aun.'
+- Tabla de conceptos por fecha. El listado de ingresos/egresos **se actualiza automaticamente** al agregar, editar o eliminar un movimiento. Si no hay datos: 'No hay conceptos aun.'
 - La conversion a bolivares usa la tasa USDT/BCV; si no esta configurada, puede mostrarse como no disponible.
 
 ### 6.8 Servicios — /doctor/services
@@ -245,7 +252,8 @@ Tus servicios y tarifas, que tambien aparecen en el booking publico. (Requiere p
 
 Gestiona tus sedes y horarios de atencion.
 
-- **Crear consultorio.** Campos: Nombre (ejemplo: Consultorio Centro), Direccion, Ciudad, Telefono, **Modalidad** (Presencial, Online o Ambas), **Duracion del slot** en minutos (por defecto 30), **Buffer** entre citas en minutos (por defecto 10), y los **Horarios por dia** (Lunes a Domingo): para cada dia activas si trabajas y defines hora de inicio y fin.
+- **Crear consultorio.** Campos: Nombre (ejemplo: Consultorio Centro), Direccion, Ciudad, Telefono, **Enlace de ubicacion (Google Maps)** (opcional), **Modalidad** (Presencial, Online o Ambas), **Duracion del slot** en minutos (por defecto 30), **Buffer** entre citas en minutos (por defecto 10), y los **Horarios por dia** (Lunes a Domingo): para cada dia activas si trabajas y defines hora de inicio y fin.
+- **Enlace de ubicacion (Google Maps):** es un campo opcional. Si lo completas, ese enlace se envia al paciente en el **correo de confirmacion de la cita**, para que abra la ubicacion del consultorio directamente en su mapa.
 - **Editar**, **Activar/Desactivar** y **Eliminar** cada consultorio.
 - Si no tienes ninguno: 'No tienes consultorios registrados'. Si un consultorio no tiene horario: 'Sin horarios configurados'.
 - Los horarios y la modalidad de los consultorios activos son los que generan los slots disponibles en tu agenda y en el booking. La zona horaria es la de Venezuela (America/Caracas).
@@ -266,16 +274,20 @@ Configuracion de recordatorios automaticos a pacientes. (Requiere plan Base o Pl
 
 Perfil, metodos de pago, notificaciones y mas. Incluye:
 
-- **Perfil:** Nombre, Email (no editable, viene del login), Cedula (no editable, del onboarding), Especialidad (no editable), Titulo profesional, Telefono, Ciudad, Estado, **Consultas online** (activar/desactivar) y **Foto de perfil**.
-- **Metodos de pago:** agregar/editar/eliminar (Pago Movil, Transferencia, Zelle, Binance, Efectivo, Punto de venta), con sus datos. Tambien puedes configurar seguros.
+- **Perfil:** Nombre, Email (no editable, viene del login), Cedula (no editable, del onboarding), Especialidad (no editable), Titulo profesional, Telefono, Ciudad, Estado, **Consultas online** (activar/desactivar) y **Foto de perfil**. Si registras tu **fecha de nacimiento**, esta debe corresponder a una persona de **18 anios o mas** (no se aceptan menores de edad como especialista) y no puede ser una fecha futura.
+- **Metodos de pago:** agregar/editar/eliminar (Pago Movil, Transferencia, Zelle, Binance, Efectivo, Punto de venta), con sus datos. Cada metodo/opcion de pago es **colapsable** (se expande o contrae para ordenar la vista). Tambien puedes configurar seguros. **La tasa de cambio ahora vive DENTRO de esta seccion de Metodos de pago** (ya no es una pantalla aparte): eliges la tasa con la que cobras en bolivares entre **BCV USD**, **BCV EUR** o una **tasa personalizada** que tu defines.
 - **Tu link publico de booking** (solo si tu plan habilita booking): muestra tu enlace publico, un boton **Copiar**, el **Codigo QR de tu link** (descargable como PNG con el boton bajo el codigo) y **Ver mi pagina** para previsualizar como lo ve el paciente. Tambien una descripcion de perfil que se muestra en tu pagina publica. Nota: 'El booking (link publico + QR) se habilita por plan.'
 - **Compartir por WhatsApp:** mensaje de WhatsApp/Correo configurable (con emojis), para enviar tu link a tus contactos. La integracion plena con WhatsApp Business API esta en desarrollo.
 - **Google Calendar:** boton **Conectar Google Calendar y Meet** (inicia el permiso de Google). Una vez conectado, se muestra la cuenta conectada y el boton **Desconectar**. Si lo conectas, tus citas online crean automaticamente un evento con link de Google Meet y un recordatorio 30 minutos antes. Si NO lo conectas, se usa una videollamada alternativa (Jitsi) y un correo. Si hay un problema: 'Error al conectar Google'.
-- **Tasa de cambio:** referencia de la tasa BCV/USDT que se usa para mostrar montos en bolivares.
+- **Tasa de cambio:** la configuras DENTRO de **Metodos de pago** (BCV USD, BCV EUR o una tasa personalizada). Es la tasa con la que se convierten los montos a bolivares para cobrar. Ya NO es una pantalla/seccion aparte.
 
 ### 6.13 Bloques de consulta — /doctor/settings/consultation-blocks
 
-Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear, editar, ordenar y eliminar bloques (por ejemplo Motivo de consulta, Diagnostico, Plan de tratamiento). Cada bloque es un campo de texto que luego rellenas en el detalle de la consulta. Debes tener al menos un bloque y todos deben tener nombre.
+Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear, editar, ordenar y eliminar bloques (por ejemplo Motivo de consulta, Diagnostico, Evaluacion actual, Plan de tratamiento). Cada bloque es un campo de texto que luego rellenas en el detalle de la consulta. Debes tener al menos un bloque y todos deben tener nombre.
+
+**Reordenar bloques (incluidos los fijos):** con las flechas **arriba/abajo (↑↓)** puedes reordenar **TODOS los bloques, incluidos los bloques fijos**. El orden que definas aqui es exactamente el orden en que apareceran las secciones dentro del **informe** de la consulta.
+
+**Nota sobre 'Evaluacion actual':** el bloque que antes se llamaba 'Indicaciones' ahora se llama **'Evaluacion actual'** y su contenido se **integra al informe** (ya no produce un documento separado).
 
 ### 6.14 Otras pantallas
 
@@ -294,7 +306,7 @@ En Delta no existe un boton 'Crear Cita' aparte: la cita se agenda como parte de
 
 1. Desde **Inicio** pulsa **Crear Consulta**, o entra a **Agenda** y pulsa **Nueva consulta**.
 2. Selecciona el **paciente** (busca o crea uno nuevo).
-3. Selecciona la **fecha** y la **hora** entre los slots disponibles.
+3. Selecciona la **fecha** y la **hora** entre los slots disponibles. Para el dia de **hoy** NO puedes elegir **horas que ya pasaron**: solo se ofrecen horarios futuros.
 4. Selecciona el **consultorio y la modalidad** (presencial u online).
 5. Indica el **motivo** y el **plan de consulta** (tarifa) y, si aplica, el metodo de pago.
 6. Pulsa **Crear consulta**. La cita queda en estado **Agendada**.
@@ -308,7 +320,7 @@ Si conectaste Google Calendar y la cita es online, se crea automaticamente el ev
 2. Se abre el detalle con tus **bloques dinamicos** (los que configuraste en Bloques de consulta).
 3. Escribe el contenido en cada bloque (Motivo, Diagnostico, Tratamiento, etc.).
 4. Si tienes plan Plus, usa **Mejorar con IA** para pulir la redaccion de un bloque, o **Grabar la consulta** para transcribir audio.
-5. Agrega **recetas** si corresponde (medicamento, dosis, frecuencia, duracion).
+5. Agrega **recetas (recipes)** si corresponde: por cada medicamento indica medicamento, dosis, frecuencia, duracion, indicaciones y **Presentacion** (Tabletas, Capsulas, Gotas, Jarabe, Spray, Crema, Unguento, Ampolla/Inyeccion, Supositorio, Ovulo, Inhalador, Polvo, Solucion, Parche u 'Otro'). El recipe se genera como un **PDF de 2 hojas** (hoja 1 'Recipe' con medicamento+dosis; hoja 2 'Indicaciones' con medicamento+dosis+indicaciones+frecuencia+duracion+presentacion), tanto al generar como al descargar y al compartir por enlace.
 6. Pulsa **Guardar**. Para cerrar la cita, **Marcar como atendida**.
 
 ### 7.3 Usar la IA (solo plan Delta Plus)
@@ -350,7 +362,7 @@ En **Configuracion** tienes **Compartir por WhatsApp**: redactas un mensaje (con
 
 ### 7.7 Configurar consultorios (presencial/virtual, Google Calendar/Meet, fallback)
 
-1. Entra a **Consultorios** y crea uno con su **Modalidad** (Presencial, Online o Ambas).
+1. Entra a **Consultorios** y crea uno con su **Modalidad** (Presencial, Online o Ambas). Opcionalmente carga el **Enlace de ubicacion (Google Maps)**: si lo completas, ese enlace se incluye en el correo de confirmacion de la cita para que el paciente abra la ubicacion en su mapa.
 2. Define **Duracion del slot** (ej. 30 min) y **Buffer** entre citas (ej. 10 min).
 3. Activa los **dias** que atiendes y sus horas de inicio/fin.
 4. Para videoconsultas: en **Configuracion**, conecta **Google Calendar y Meet** (opt-in). Con Google conectado, las citas online generan link de Meet y recordatorio de Google. Sin Google, el sistema usa una videollamada alternativa (Jitsi) y envia el link por correo. El paciente tambien puede anadir la cita a su calendario (se ofrece 'Anadir a Google Calendar' o un archivo .ics).
@@ -441,7 +453,7 @@ Gasto: en **Inicio** (boton **Registrar gasto**) o en **Finanzas**, eligiendo ca
 **Confirmar cita** (en Agenda) pasa una cita Agendada a Confirmada. **Marcar como atendida** (dentro de la consulta) indica que el paciente asistio (cuenta como ingreso). **No asistio** (dentro de la consulta) indica que no vino (no devuelve sesiones de paquete).
 
 **Mi cuenta dice 'Cuenta bloqueada', que hago?**
-Tu cuenta fue bloqueada por un administrador. Comunicate con el soporte de Delta Medical. Esto es distinto de la verificacion de credenciales y del plan.
+Tu cuenta fue bloqueada por un administrador. Comunicate con el soporte de Delta Salud. Esto es distinto de la verificacion de credenciales y del plan.
 
 **Que significa que mi verificacion esta 'Pendiente'?**
 Significa que aun no se han confirmado tus credenciales (MPPS/colegiado). No te impide usar el portal. Si no se logra verificar, Delta te contactara por correo.

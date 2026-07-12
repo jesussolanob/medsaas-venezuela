@@ -1,9 +1,9 @@
 // Auto-authored user manual for PATIENT profile. Plain markdown text, NO backticks inside the template literal.
 
 export const PATIENT_GUIDE = `
-# Manual del Paciente — Delta Medical CRM
+# Manual del Paciente — Delta Salud
 
-Esta es la guia oficial para PACIENTES de Delta Medical CRM. Aqui encontraras, paso a paso,
+Esta es la guia oficial para PACIENTES de Delta Salud. Aqui encontraras, paso a paso,
 todo lo que puedes hacer: reservar una cita con un medico, usar tu portal personal y abrir los
 documentos medicos que tu doctor te comparte. El asistente de ayuda responde unicamente con la
 informacion de esta guia, asi que esta escrita para cubrir todas las acciones reales disponibles.
@@ -16,9 +16,9 @@ informacion de esta guia, asi que esta escrita para cubrir todas las acciones re
 
 ---
 
-## 1. Que es Delta Medical CRM (desde tu punto de vista)
+## 1. Que es Delta Salud (desde tu punto de vista)
 
-Delta Medical CRM es una plataforma medica usada por medicos especialistas en Venezuela para
+Delta Salud es una plataforma medica usada por medicos especialistas en Venezuela para
 gestionar su consultorio. Como paciente, la plataforma te sirve para tres cosas principales:
 
 1. **Reservar citas** con un medico desde su enlace publico de reservas, sin necesidad de crear
@@ -80,7 +80,9 @@ Depende de como tenga configurada su atencion el medico:
 Veras un calendario por semanas con tarjetas de dias. Usa las flechas para moverte entre semanas.
 - Los dias con horarios libres se pueden tocar; los dias sin disponibilidad aparecen atenuados y
   no se pueden seleccionar.
-- Al tocar un dia, abajo aparecen los **horarios disponibles** de ese dia.
+- Al tocar un dia, abajo aparecen los **horarios disponibles** de ese dia. Se muestran **todos los
+  bloques del dia (manana y tarde)** segun la agenda que el medico haya configurado, no solo un
+  turno.
 - Los horarios ya ocupados aparecen tachados y deshabilitados ("Horario ocupado"). Los horarios
   que el medico bloqueo aparecen tambien tachados ("Horario bloqueado por el medico").
 - Toca la hora que prefieras para continuar.
@@ -95,11 +97,13 @@ Si el consultorio solo permite un modo, ese sera el unico disponible y se indica
 
 ### Paso 5 — Tus datos
 
-Aqui te identificas. Como invitado debes ingresar:
+Aqui te identificas. El **primer campo es la cedula**. Como invitado debes ingresar:
+- **Cedula** (el PRIMER campo, OBLIGATORIA — con prefijo V, E, J o G). Sin cedula no se puede
+  agendar. Si **ya eres paciente de ese doctor** (tienes esa misma cedula registrada con el), el
+  sistema **te reconoce y asocia tu ficha existente**, sin crear un paciente duplicado.
 - **Nombre completo** (obligatorio).
 - **Email** (obligatorio).
 - **Telefono** (con prefijo +58).
-- **Cedula** (OBLIGATORIA — con prefijo V, E, J o G). Sin cedula no se puede agendar.
 
 Veras un aviso de que, como invitado, no podras usar paquetes prepagados ni ver tu historial a
 menos que tengas cuenta. Tambien existe la opcion "Iniciar sesion" para acceder a tus paquetes,
@@ -121,10 +125,16 @@ acepta el medico. Las opciones posibles son:
 - Efectivo (Bs)
 - Punto de venta
 
+Al elegir un metodo de pago, el sistema te muestra los **datos de pago del doctor** para ese
+metodo (por ejemplo el **numero de cuenta** para transferencia, o el **numero y datos de Pago
+Movil**), de modo que puedas hacer la transferencia. Luego puedes **subir el comprobante** o elegir
+**"pagar despues"**. El comprobante que subes le llega al doctor en su area de cobros.
+
 Segun el metodo:
-- En **Pago Movil, Transferencia, Zelle o Binance** se muestran los datos del medico para que
-  pagues y debes **subir un comprobante** (imagen JPG, PNG o PDF). El comprobante es obligatorio
-  para estos metodos.
+- En **Pago Movil, Transferencia, Zelle o Binance** se muestran los **datos de pago del medico**
+  (numero de cuenta, Pago Movil, etc.) para que pagues, y puedes **subir el comprobante** (imagen
+  JPG, PNG o PDF) o elegir **"pagar despues"**. El comprobante le llega al doctor a su area de
+  cobros para que lo revise.
 - En **Efectivo (USD), Efectivo (Bs) o Punto de venta** no se sube comprobante: pagas el dia de la
   consulta.
 
@@ -144,6 +154,10 @@ Al confirmar veras la pantalla "Cita agendada" con:
   videollamada (o el aviso de que lo recibiras por correo o WhatsApp).
 - Un boton para **Anadir a Google Calendar**.
 - El mensaje de que el medico confirmara la cita y se pondra en contacto contigo.
+
+Ademas, recibiras un **correo de confirmacion** de la cita. Si el consultorio tiene una **ubicacion
+configurada**, ese correo incluira un **enlace para abrir la ubicacion en Google Maps** y llegar
+facilmente.
 
 ### Importante: cuando NO puedes reservar en linea
 
