@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { QueryTypes, type Transaction } from 'sequelize';
+import { Op, QueryTypes, UniqueConstraintError, type Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { PlanPriceUpsertError } from '../../../domain/errors/plan-price-upsert.error';
 import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
+import { DoctorEmailConflictError } from '../../../domain/errors/doctor-email-conflict.error';
 import type {
   IAdminRepository,
   AdminDashboardData,
@@ -31,6 +32,8 @@ import type {
   RecentDoctorRow,
   DoctorExportRow,
   PublicStats,
+  CreateAdminDoctorParams,
+  AdminCreatedDoctorResult,
 } from '../../../domain/repositories/admin.repository';
 import type { PlanConfig } from '../../../domain/value-objects/plan-config.vo';
 import { PlanConfig as PlanConfigVO } from '../../../domain/value-objects/plan-config.vo';
@@ -44,6 +47,52 @@ import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 
 // Sensitive keys that must never be returned from the settings endpoint
 const HIDDEN_SETTING_KEYS = new Set(['encryption_key', 'jwt_secret', 'usdt_rate_raw']);
+
+/**
+ * Trial duration in days — matches the value in sequelize-identity.repository.ts.
+ * A new doctor created by admin with plan=free_trial gets 30 days from creation.
+ */
+const ADMIN_TRIAL_DURATION_DAYS = 30;
+
+/**
+ * Years to add for a "permanent" plan (delta_free).
+ * Large enough to be effectively permanent; avoids actual null in the column.
+ */
+const PERMANENT_PLAN_YEARS = 99;
+
+/**
+ * Resolves the subscription status and period_end date for a given plan.
+ *
+ * Used by createAdminDoctor to mirror the registration flow logic without
+ * duplicating the raw SQL / model imports from the auth module.
+ *
+ *   free_trial → trialing,  now + 30 days
+ *   delta_free → active,    now + 99 years (permanent)
+ *   delta_base → active,    now + 30 days (manual payment assumed; admin can extend later)
+ *   delta_plus → active,    now + 30 days (same — admin-provisioned, manual payment)
+ *   (fallback) → trialing,  now + 30 days
+ */
+function resolveSubscriptionTerms(
+  plan: import('@delta/shared-types').SubscriptionPlan,
+  now: Date,
+): { status: import('@delta/shared-types').SubscriptionStatus; periodEnd: Date } {
+  if (plan === 'delta_free') {
+    const periodEnd = new Date(now);
+    periodEnd.setFullYear(periodEnd.getFullYear() + PERMANENT_PLAN_YEARS);
+    return { status: 'active', periodEnd };
+  }
+
+  if (plan === 'delta_base' || plan === 'delta_plus') {
+    const periodEnd = new Date(now);
+    periodEnd.setDate(periodEnd.getDate() + ADMIN_TRIAL_DURATION_DAYS);
+    return { status: 'active', periodEnd };
+  }
+
+  // Default: free_trial and any other plan → trialing + 30-day period
+  const periodEnd = new Date(now);
+  periodEnd.setDate(periodEnd.getDate() + ADMIN_TRIAL_DURATION_DAYS);
+  return { status: 'trialing', periodEnd };
+}
 
 // Raw query row shapes
 interface CountRow {
@@ -1207,6 +1256,10 @@ export class SequelizeAdminRepository implements IAdminRepository {
     // Use real last_sign_in_at from the profiles row (column added in migration 20260612000002).
     const lastSignInAt: Date | null = row.lastSignInAt ?? null;
 
+    // cedula is PII — admin-only context. Passed through to the domain entity so
+    // the list and export surfaces can surface it when needed.
+    const cedula: string | null = row.cedula ?? null;
+
     return new DoctorWithActivity(
       row.id,
       row.fullName,
@@ -1216,6 +1269,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
       subscriptionPlan,
       subscriptionExpiresAt,
       lastSignInAt,
+      cedula,
     );
   }
 
@@ -1251,6 +1305,94 @@ export class SequelizeAdminRepository implements IAdminRepository {
       priceUsd: Number(row.priceUsd),
       isActive: row.isActive,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin doctor provisioning
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Atomically creates a new doctor profile + subscription row.
+   *
+   * Plan / status / expiry logic mirrors the normal registration flow
+   * (`sequelize-identity.repository.ts`) but allows the admin to override the
+   * initial plan:
+   *
+   *   free_trial  → status=trialing,  period_end = now + 30 days  (default)
+   *   delta_free  → status=active,    period_end = now + 99 years (permanent)
+   *   delta_base  → status=active,    period_end = now + 30 days  (manual payment expected)
+   *   delta_plus  → status=active,    period_end = now + 30 days  (manual payment expected)
+   *
+   * Throws DoctorEmailConflictError (409) when the email is already registered.
+   */
+  async createAdminDoctor(params: CreateAdminDoctorParams): Promise<AdminCreatedDoctorResult> {
+    const now = new Date();
+
+    // Determine plan/status/expiry from the requested plan (or default free_trial).
+    const resolvedPlan = params.plan ?? 'free_trial';
+    const { status, periodEnd } = resolveSubscriptionTerms(resolvedPlan, now);
+
+    const t = await this.sequelize.transaction();
+    try {
+      const row = await this.profileModel.create(
+        {
+          id: params.id,
+          fullName: params.fullName,
+          email: params.email,
+          role: 'doctor',
+          isActive: true,
+          plan: resolvedPlan,
+          subscriptionStatus: status,
+          specialty: params.specialty ?? null,
+          cedula: params.cedula ?? null,
+          phone: params.phone ?? null,
+        } as Parameters<typeof ProfileAdminModel.create>[0],
+        { transaction: t },
+      );
+
+      await this.subscriptionModel.findOrCreate({
+        where: { doctorId: row.id },
+        defaults: {
+          doctorId: row.id,
+          plan: resolvedPlan,
+          status,
+          priceUsd: 0,
+          billingCycle: null,
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          trialEndsAt: resolvedPlan === 'free_trial' ? periodEnd : null,
+          cancelledAt: null,
+          notes: null,
+        },
+        transaction: t,
+      });
+
+      await t.commit();
+
+      return {
+        id: row.id,
+        fullName: row.fullName,
+        email: row.email,
+        specialty: row.specialty ?? null,
+        cedula: row.cedula ?? null,
+        plan: resolvedPlan,
+        subscriptionStatus: status,
+        subscriptionExpiresAt: periodEnd,
+        createdAt: row.createdAt,
+      };
+    } catch (err) {
+      await t.rollback();
+      if (err instanceof UniqueConstraintError) {
+        // Check if there's an existing profile with this email (case-insensitive)
+        const existing = await this.profileModel.findOne({
+          where: { email: { [Op.iLike]: params.email } },
+        });
+        if (existing) {
+          throw new DoctorEmailConflictError(params.email);
+        }
+      }
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Put,
@@ -33,6 +35,7 @@ import {
   SetPlanFeaturesBodySchema,
   SetPlanPricesBodySchema,
   SetDoctorAccessBodySchema,
+  CreateAdminDoctorBodySchema,
   VALID_ACTIVITY_STATUSES,
   VALID_SUBSCRIPTION_STATUSES,
   VALID_SUBSCRIPTION_PLANS,
@@ -49,6 +52,7 @@ import {
   type SetPlanFeaturesBody,
   type SetPlanPricesBody,
   type SetDoctorAccessBody,
+  type CreateAdminDoctorBody,
 } from '../../application/dtos/admin.dtos';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDashboardOverviewUseCase } from '../../application/use-cases/admin/get-dashboard-overview.use-case';
@@ -77,6 +81,7 @@ import { SetPlanFeaturesUseCase } from '../../application/use-cases/admin/set-pl
 import { SetPlanPricesUseCase } from '../../application/use-cases/admin/set-plan-prices.use-case';
 import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-doctors.use-case';
 import { SetDoctorAccessUseCase } from '../../application/use-cases/admin/set-doctor-access.use-case';
+import { CreateAdminDoctorUseCase } from '../../application/use-cases/admin/create-admin-doctor.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -135,6 +140,7 @@ export class AdminController {
     private readonly setPlanPricesOp: SetPlanPricesUseCase,
     private readonly exportDoctorsOp: ExportDoctorsUseCase,
     private readonly setDoctorAccessOp: SetDoctorAccessUseCase,
+    private readonly createAdminDoctorOp: CreateAdminDoctorUseCase,
   ) {}
 
   /**
@@ -229,6 +235,55 @@ export class AdminController {
   }
 
   /**
+   * POST /api/admin/doctors — admin-provision a new doctor profile + subscription.
+   *
+   * Body (all fields except full_name and email are optional):
+   *   - full_name:  string (required)
+   *   - email:      valid email (required, must be unique)
+   *   - specialty:  string | null
+   *   - cedula:     string | null  (canonical form, e.g. "V-12345678")
+   *   - phone:      string | null
+   *   - plan:       'free_trial' | 'delta_free' | 'delta_base' | 'delta_plus'
+   *                 Defaults to 'free_trial' (30-day onboarding trial) when omitted.
+   *
+   * Returns 409 when the email is already registered.
+   *
+   * SECURITY: Creating a doctor profile is a privileged admin action.
+   *   - The new profile does NOT have an auth0_sub (dev-stub auth is header-based).
+   *   - In Etapa 2, the admin must also provision the user in Auth0 and call
+   *     PATCH /api/admin/doctors/:id/auth0-sub to link the Auth0 account.
+   */
+  @Post('doctors')
+  @HttpCode(HttpStatus.CREATED)
+  async createAdminDoctor(
+    @Body(new ZodValidationPipe(CreateAdminDoctorBodySchema)) body: CreateAdminDoctorBody,
+  ): Promise<SuccessResponse<unknown>> {
+    const created = await this.createAdminDoctorOp.execute({
+      fullName: body.full_name,
+      email: body.email,
+      specialty: body.specialty ?? null,
+      cedula: body.cedula ?? null,
+      phone: body.phone ?? null,
+      plan: body.plan,
+    });
+
+    return {
+      success: true,
+      data: {
+        id: created.id,
+        fullName: created.fullName,
+        email: created.email,
+        specialty: created.specialty,
+        cedula: created.cedula,
+        plan: created.plan,
+        subscriptionStatus: created.subscriptionStatus,
+        subscriptionExpiresAt: created.subscriptionExpiresAt,
+        createdAt: created.createdAt,
+      },
+    };
+  }
+
+  /**
    * GET /api/admin/doctors — paginated list with optional filters.
    *
    * ?activity_status must be one of: active | cold | inactive — returns 400 if invalid.
@@ -283,6 +338,10 @@ export class AdminController {
         subscriptionPlan: d.subscriptionPlan,
         subscriptionExpiresAt: d.subscriptionExpiresAt,
         activityStatus: d.activityStatus,
+        /** Real last login timestamp (null until Auth0 Fase 4 is active). */
+        lastSignInAt: d.lastSignInAt,
+        /** Doctor identity document (PII — super_admin only). */
+        cedula: d.cedula,
       })),
       meta: { total: result.total, page: result.page, limit: result.limit },
     };

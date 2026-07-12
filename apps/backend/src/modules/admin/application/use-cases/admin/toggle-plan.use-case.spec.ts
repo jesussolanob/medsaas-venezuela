@@ -42,6 +42,7 @@ const makeRepo = (plan: PlanConfig | null = basicPlan): jest.Mocked<IAdminReposi
     exportDoctors: jest.fn(),
     getPublicStats: jest.fn(),
     setProfileActive: jest.fn(),
+    createAdminDoctor: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('TogglePlanUseCase', () => {

@@ -42,6 +42,7 @@ import { GetPublicPlanCatalogUseCase } from './application/use-cases/admin/get-p
 import { ExportDoctorsUseCase } from './application/use-cases/admin/export-doctors.use-case';
 import { GetPublicStatsUseCase } from './application/use-cases/admin/get-public-stats.use-case';
 import { SetDoctorAccessUseCase } from './application/use-cases/admin/set-doctor-access.use-case';
+import { CreateAdminDoctorUseCase } from './application/use-cases/admin/create-admin-doctor.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -114,6 +115,7 @@ import { PublicStatsController } from './presentation/controllers/public-stats.c
     ExportDoctorsUseCase,
     GetPublicStatsUseCase,
     SetDoctorAccessUseCase,
+    CreateAdminDoctorUseCase,
   ],
 })
 export class AdminModule {}

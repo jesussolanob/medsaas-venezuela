@@ -25,6 +25,11 @@ export class DoctorWithActivity {
      * reflects profile updates, not actual logins.
      */
     public readonly lastSignInAt: Date | null,
+    /**
+     * Doctor's identity document in canonical form (e.g. "V-12345678").
+     * PII — admin-only context. Never expose outside super_admin-guarded surfaces.
+     */
+    public readonly cedula: string | null = null,
   ) {}
 
   /**

@@ -59,6 +59,7 @@ const makeRepo = (returnValue: DoctorDetail | null = doctorDetail): jest.Mocked<
     exportDoctors: jest.fn(),
     getPublicStats: jest.fn(),
     setProfileActive: jest.fn(),
+    createAdminDoctor: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('GetDoctorDetailUseCase', () => {

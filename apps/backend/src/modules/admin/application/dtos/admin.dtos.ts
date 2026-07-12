@@ -276,3 +276,46 @@ export const SetUserRoleBodySchema = z
   .strict();
 
 export type SetUserRoleBody = z.infer<typeof SetUserRoleBodySchema>;
+
+// ---------------------------------------------------------------------------
+// POST /admin/doctors — admin-provision a new doctor profile + subscription
+// ---------------------------------------------------------------------------
+
+/**
+ * Plans that the admin is allowed to assign when creating a new doctor.
+ * Only the currently active public plans + the default onboarding trial.
+ *
+ *   free_trial  → 30-day onboarding trial (default when plan is omitted)
+ *   delta_free  → permanent free plan
+ *   delta_base  → paid base plan (admin sets active status; payment expected later)
+ *   delta_plus  → paid plus plan (same)
+ */
+const ADMIN_ASSIGNABLE_PLANS = ['free_trial', 'delta_free', 'delta_base', 'delta_plus'] as const;
+export type AdminAssignablePlan = (typeof ADMIN_ASSIGNABLE_PLANS)[number];
+
+export const CreateAdminDoctorBodySchema = z
+  .object({
+    full_name: z.string().min(1, 'full_name is required').max(300),
+    email: z.string().email({ message: 'email must be a valid email address' }).max(320),
+    specialty: z.string().min(1).max(200).nullable().optional(),
+    /**
+     * Doctor identity document in canonical form: "V-12345678", "E-987654", etc.
+     * Stored as-is; the admin panel's CedulaInput emits the canonical format.
+     */
+    cedula: z.string().max(50).nullable().optional(),
+    phone: z.string().max(50).nullable().optional(),
+    /**
+     * Subscription plan to assign.
+     *
+     * - Omitting `plan` defaults to `free_trial` (30-day onboarding trial).
+     * - `delta_free` provisions a permanent free account.
+     * - `delta_base` / `delta_plus` provision an active paid account (manual payment
+     *   is expected separately — the admin can extend the subscription later).
+     *
+     * Invalid plan keys are rejected with a 400 validation error.
+     */
+    plan: z.enum(ADMIN_ASSIGNABLE_PLANS).optional(),
+  })
+  .strict();
+
+export type CreateAdminDoctorBody = z.infer<typeof CreateAdminDoctorBodySchema>;

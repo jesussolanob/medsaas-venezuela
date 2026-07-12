@@ -71,4 +71,24 @@ describe('DoctorWithActivity.activityStatus', () => {
     expect(doctor.subscriptionExpiresAt).toBe(expiresAt);
     expect(doctor.lastSignInAt).toBeNull();
   });
+
+  it('defaults cedula to null when not supplied', () => {
+    const doctor = makeDoctor(null);
+    expect(doctor.cedula).toBeNull();
+  });
+
+  it('stores cedula when supplied', () => {
+    const doctor = new DoctorWithActivity(
+      'uuid-3',
+      'Dr. With Cedula',
+      'cedula@test.com',
+      null,
+      'active',
+      'delta_base',
+      null,
+      null,
+      'V-12345678',
+    );
+    expect(doctor.cedula).toBe('V-12345678');
+  });
 });

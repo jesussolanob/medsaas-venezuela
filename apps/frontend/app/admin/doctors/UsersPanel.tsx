@@ -39,7 +39,10 @@ interface Doctor {
   specialty?: string;
   is_active: boolean;
   created_at?: string;
-  last_sign_in_at?: string;
+  /** Real last login timestamp from the backend (null until Auth0 Fase 4). */
+  last_sign_in_at?: string | null;
+  /** Doctor identity document in canonical form (e.g. "V-12345678"). PII. */
+  cedula?: string | null;
   plan?: string;
   subscription_status?: string;
   subscription_expires_at?: string;

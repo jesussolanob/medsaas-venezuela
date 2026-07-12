@@ -3,6 +3,49 @@ import type { DoctorWithActivity } from '../entities/doctor-with-activity.entity
 import type { PlanConfig } from '../value-objects/plan-config.vo';
 import type { BillingPeriod } from '../value-objects/plan-price.vo';
 
+// ---------------------------------------------------------------------------
+// Admin doctor provisioning
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for creating a new doctor profile from the admin panel.
+ *
+ * The admin supplies identity data + an optional plan. When plan is omitted
+ * the implementation falls back to the default registration plan (free_trial).
+ *
+ * NOTE: `id` is provided by the use case (UUID v4) so the caller controls
+ * the identifier without requiring a DB round-trip.
+ *
+ * SECURITY: email must be unique — the implementation throws
+ * DoctorEmailConflictError (409) if a profile with the same email exists.
+ */
+export interface CreateAdminDoctorParams {
+  id: string;
+  fullName: string;
+  email: string;
+  specialty?: string | null;
+  cedula?: string | null;
+  phone?: string | null;
+  /** Plan to assign. When omitted the default plan (free_trial) is used. */
+  plan?: SubscriptionPlan;
+}
+
+/**
+ * Minimal output after creating a doctor from the admin panel.
+ */
+export interface AdminCreatedDoctorResult {
+  id: string;
+  fullName: string;
+  email: string;
+  specialty: string | null;
+  cedula: string | null;
+  plan: SubscriptionPlan;
+  subscriptionStatus: SubscriptionStatus;
+  /** Subscription period end (ISO 8601). */
+  subscriptionExpiresAt: Date;
+  createdAt: Date;
+}
+
 export const ADMIN_REPOSITORY = Symbol('IAdminRepository');
 
 // ---------------------------------------------------------------------------
@@ -375,6 +418,13 @@ export interface IAdminRepository {
 
   // Export (admin-only, no PII of patients)
   exportDoctors(): Promise<DoctorExportRow[]>;
+
+  // Admin doctor provisioning
+  /**
+   * Atomically creates a new doctor profile + subscription row.
+   * Throws DoctorEmailConflictError (409) when the email is already registered.
+   */
+  createAdminDoctor(params: CreateAdminDoctorParams): Promise<AdminCreatedDoctorResult>;
 
   // Public stats (no PII, no auth required)
   getPublicStats(): Promise<PublicStats>;
