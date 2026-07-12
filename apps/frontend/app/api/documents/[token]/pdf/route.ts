@@ -15,7 +15,7 @@ import {
   type DocumentTypeKey,
   type SavedPrescription,
   type EhrRecord,
-  buildConsolidatedContent,
+  buildDocumentPages,
   INFORME_CHECKED_BY_DEFAULT,
 } from '@/app/doctor/consultations/consultation-documents';
 
@@ -271,17 +271,24 @@ export async function GET(
     restContent = null;
   }
 
-  // 4. Build consolidated content
-  const allBlocks = buildConsolidatedContent({
+  // 4. Build multi-page document (una Page por tipo; el récipe genera 2 hojas:
+  //    "Récipe" con nombre+dosis y "Indicaciones" con los detalles completos).
+  //    Antes se consolidaba todo en una sola hoja → el récipe compartido salía en
+  //    1 hoja, distinto a la generación. Ahora comparte el mismo formato.
+  const diagnosisRaw = informeContent.find((b) => b.key === 'diagnosis')?.value;
+  const diagnosisValue = typeof diagnosisRaw === 'string' ? diagnosisRaw : undefined;
+
+  const pages = buildDocumentPages({
     selectedTypes,
     informeSelectedBlockKeys,
     informeContent,
     savedPrescriptions,
     ehrRecords,
     restContent,
+    diagnosisValue,
   });
 
-  if (allBlocks.length === 0) {
+  if (pages.length === 0) {
     return NextResponse.json(
       { error: 'No hay contenido disponible para generar el documento.' },
       { status: 422 },
@@ -297,7 +304,8 @@ export async function GET(
     const { MedicalDocumentPdf } = await import('@/components/pdf/MedicalDocumentPdf');
 
     const element = React.createElement(MedicalDocumentPdf, {
-      docType: 'informe',
+      docType: pages[0].docType,
+      documents: pages,
       templateConfig: tmpl,
       doctor: {
         fullName: renderData.doctor.fullName,
@@ -310,7 +318,7 @@ export async function GET(
       },
       docDate: renderData.consultation.consultationDate,
       consultationCode: renderData.consultation.consultationCode,
-      content: allBlocks,
+      content: pages[0].content,
     });
 
     // renderToBuffer espera ReactElement<DocumentProps>; MedicalDocumentPdf
