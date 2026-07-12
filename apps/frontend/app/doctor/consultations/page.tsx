@@ -69,7 +69,7 @@ import {
 //   - openConsultation → getConsultation (actions.ts)
 //   - saveReport → updateConsultation (actions.ts)
 //   - autoSave → updateConsultation (actions.ts)
-//   - saveRecipe → createPrescription (actions-prescriptions.ts)
+//   - saveRecipe → createPrescription (prescriptions.client.ts → /api/doctor/prescriptions)
 //   - AI callAI → /api/doctor/ai without Supabase token
 //   - applyAIResult → updateConsultation (actions.ts)
 //   - reposo autoSave → PATCH /api/doctor/consultations (existing BFF route)
@@ -88,7 +88,7 @@ import {
 } from './actions';
 import Paginator, { PAGE_SIZE_ALL } from '@/components/ui/Paginator';
 import { getEhrPatients } from '../ehr/actions';
-import { getPatientPrescriptions, createPrescription } from './actions-prescriptions';
+import { getPatientPrescriptions, createPrescription } from './prescriptions.client';
 import { useBcvRate } from '@/lib/useBcvRate';
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks';
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
