@@ -1791,25 +1791,25 @@ function ConsultationsPage() {
     }
   }, []);
 
-  // Refetch al recuperar foco/visibilidad de la pestaña + polling ligero cada 15s
-  // mientras la pestaña está visible. Auto-sana el stale sin importar cómo llegó el
-  // usuario a la página (navegación SPA sin cambio de foco, etc.) → las consultas
-  // recién creadas aparecen solas, sin recargar a mano.
+  // Refetch al recuperar foco/visibilidad de la pestaña (volver desde otra ventana/pestaña).
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState === 'visible') void reloadConsultationsTable();
     }
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') void reloadConsultationsTable();
-    }, 15000);
     return () => {
       window.removeEventListener('focus', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(interval);
     };
   }, [reloadConsultationsTable]);
+
+  // Refetch al NAVEGAR a la página de Consultas (p.ej. desde Inicio/Agenda por el sidebar).
+  // Cubre el caso en que la consulta se creó en OTRA pantalla: al entrar aquí se re-buscan
+  // los datos y se repinta la tabla. Sin polling — solo cuando el usuario llega a la lista.
+  useEffect(() => {
+    if (pathname === '/doctor/consultations') void reloadConsultationsTable();
+  }, [pathname, reloadConsultationsTable]);
 
   // Al llegar con ?open=<id> (p.ej. redirigido desde el inicio tras crear la cita),
   // refrescar la tabla para que la consulta recién creada esté presente y se pueda abrir.
