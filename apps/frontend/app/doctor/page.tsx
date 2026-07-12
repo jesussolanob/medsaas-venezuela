@@ -940,10 +940,10 @@ export default function DoctorDashboard() {
             subtitle="Registrados en tu consultorio"
           />
           <StatCard
-            label="Pacientes atendidos"
+            label="Consultas atendidas"
             value={allTimeStats.patients_attended.toLocaleString('es-VE')}
             icon={<CheckCircle size={16} />}
-            subtitle="Con al menos una consulta"
+            subtitle="Total de consultas registradas"
           />
         </div>
 
