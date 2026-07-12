@@ -73,7 +73,7 @@ const FEATURE_LABELS: Record<string, string> = {
   ai_reports: 'Reportes IA',
 };
 
-const WHATSAPP_NUMBER = '58412000000'; // placeholder — admin configures this
+const WHATSAPP_NUMBER = '584221033582'; // WhatsApp de ventas Delta Salud (+58 422 103 3582)
 const WHATSAPP_MESSAGE = encodeURIComponent(
   'Hola, soy médico de Delta Salud y me interesa actualizar mi plan. ¿Pueden orientarme?',
 );
