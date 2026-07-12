@@ -24,27 +24,27 @@ import 'server-only';
 import { backendGet, backendPost } from './api-client.server';
 
 // ── Types ────────────────────────────────────────────────────────────────────
-export type PlanKey = 'trial' | 'basic' | 'professional' | 'enterprise' | 'clinic'
-export type SubStatus = 'active' | 'trial' | 'past_due' | 'suspended' | 'cancelled'
+export type PlanKey = 'trial' | 'basic' | 'professional' | 'enterprise' | 'clinic';
+export type SubStatus = 'active' | 'trial' | 'past_due' | 'suspended' | 'cancelled';
 
 export interface Subscription {
-  id: string
-  doctor_id: string
-  plan: PlanKey
-  status: SubStatus
-  price_usd: number
-  current_period_end: string | null
-  created_at: string
+  id: string;
+  doctor_id: string;
+  plan: PlanKey;
+  status: SubStatus;
+  price_usd: number;
+  current_period_end: string | null;
+  created_at: string;
 }
 
 export interface SubscriptionInfo {
-  plan: PlanKey
-  status: SubStatus
-  isActive: boolean
-  daysRemaining: number
-  currentPeriodEnd: string | null
-  planLabel: string
-  statusLabel: string
+  plan: PlanKey;
+  status: SubStatus;
+  isActive: boolean;
+  daysRemaining: number;
+  currentPeriodEnd: string | null;
+  planLabel: string;
+  statusLabel: string;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ export const PLAN_LABELS: Record<string, string> = {
   enterprise: 'Plan profesional',
   clinic: 'Plan profesional',
   centro_salud: 'Plan profesional',
-}
+};
 
 export const STATUS_LABELS: Record<string, string> = {
   active: 'Activo',
@@ -63,7 +63,7 @@ export const STATUS_LABELS: Record<string, string> = {
   past_due: 'Vencido',
   suspended: 'Suspendido',
   cancelled: 'Cancelado',
-}
+};
 
 export const PLAN_COLORS: Record<string, string> = {
   trial: 'bg-slate-100 text-slate-600',
@@ -71,7 +71,7 @@ export const PLAN_COLORS: Record<string, string> = {
   professional: 'bg-teal-50 text-teal-600',
   enterprise: 'bg-violet-50 text-violet-600',
   clinic: 'bg-violet-50 text-violet-600',
-}
+};
 
 export const STATUS_COLORS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-600',
@@ -79,46 +79,46 @@ export const STATUS_COLORS: Record<string, string> = {
   past_due: 'bg-orange-50 text-orange-600',
   suspended: 'bg-red-50 text-red-600',
   cancelled: 'bg-slate-100 text-slate-400',
-}
+};
 
-const ACTIVE_STATUSES: SubStatus[] = ['active', 'trial']
+const ACTIVE_STATUSES: SubStatus[] = ['active', 'trial'];
 
-const MVP_FEATURES = ['dashboard', 'agenda', 'consultations', 'patients', 'finances', 'settings']
+const MVP_FEATURES = ['dashboard', 'agenda', 'consultations', 'patients', 'finances', 'settings'];
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
 export function getPlanLabel(plan?: string | null): string {
-  return PLAN_LABELS[plan || 'trial'] || plan || 'Sin plan'
+  return PLAN_LABELS[plan || 'trial'] || plan || 'Sin plan';
 }
 
 export function getStatusLabel(status?: string | null): string {
-  return STATUS_LABELS[status || 'trial'] || status || 'Desconocido'
+  return STATUS_LABELS[status || 'trial'] || status || 'Desconocido';
 }
 
 export function getPlanColor(plan?: string | null): string {
-  return PLAN_COLORS[plan || 'trial'] || PLAN_COLORS.trial
+  return PLAN_COLORS[plan || 'trial'] || PLAN_COLORS.trial;
 }
 
 export function getStatusColor(status?: string | null): string {
-  return STATUS_COLORS[status || 'trial'] || STATUS_COLORS.trial
+  return STATUS_COLORS[status || 'trial'] || STATUS_COLORS.trial;
 }
 
 export function isSubscriptionActive(status?: string | null): boolean {
-  return ACTIVE_STATUSES.includes((status || '') as SubStatus)
+  return ACTIVE_STATUSES.includes((status || '') as SubStatus);
 }
 
 export function getDaysRemaining(periodEnd?: string | null): number {
-  if (!periodEnd) return -1
-  const diff = new Date(periodEnd).getTime() - Date.now()
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+  if (!periodEnd) return -1;
+  const diff = new Date(periodEnd).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
 export function buildSubscriptionInfo(sub: unknown): SubscriptionInfo {
-  const data = Array.isArray(sub) ? (sub as unknown[])[0] : sub
-  const d = data as Record<string, unknown> | null | undefined
+  const data = Array.isArray(sub) ? (sub as unknown[])[0] : sub;
+  const d = data as Record<string, unknown> | null | undefined;
 
-  const plan: PlanKey = (d?.plan as PlanKey) || 'trial'
-  const status: SubStatus = (d?.status as SubStatus) || 'trial'
+  const plan: PlanKey = (d?.plan as PlanKey) || 'trial';
+  const status: SubStatus = (d?.status as SubStatus) || 'trial';
 
   return {
     plan,
@@ -128,13 +128,13 @@ export function buildSubscriptionInfo(sub: unknown): SubscriptionInfo {
     currentPeriodEnd: (d?.current_period_end as string | null) || null,
     planLabel: getPlanLabel(plan),
     statusLabel: getStatusLabel(status),
-  }
+  };
 }
 
 export function isMvpFeatureEnabled(featureKey: string, isActive: boolean): boolean {
-  if (['dashboard', 'settings'].includes(featureKey)) return true
-  if (!isActive) return false
-  return MVP_FEATURES.includes(featureKey)
+  if (['dashboard', 'settings'].includes(featureKey)) return true;
+  if (!isActive) return false;
+  return MVP_FEATURES.includes(featureKey);
 }
 
 // ── Server-side queries ──────────────────────────────────────────────────────
@@ -148,20 +148,20 @@ export async function getSubscriptionByDoctorId(doctorId: string): Promise<Subsc
   const result = await backendGet<unknown[]>(
     `/api/admin/subscriptions?doctorId=${encodeURIComponent(doctorId)}`,
     { role: 'super_admin' },
-  )
+  );
   if (result.ok) {
-    const rows = result.value as Array<Record<string, unknown>>
-    const row = Array.isArray(rows) ? rows[0] : null
+    const rows = result.value as Array<Record<string, unknown>>;
+    const row = Array.isArray(rows) ? rows[0] : null;
     if (row) {
       return buildSubscriptionInfo({
         plan: row.plan,
         status: row.status,
         current_period_end: row.current_period_end,
-      })
+      });
     }
   }
   // Fallback: treat as active trial so the UI doesn't block the doctor.
-  return buildSubscriptionInfo(null)
+  return buildSubscriptionInfo(null);
 }
 
 /**
@@ -170,15 +170,14 @@ export async function getSubscriptionByDoctorId(doctorId: string): Promise<Subsc
  * Returns an array compatible with legacy consumers.
  */
 export async function getAllSubscriptions(): Promise<Array<Record<string, unknown>>> {
-  const result = await backendGet<Array<Record<string, unknown>>>(
-    '/api/admin/subscriptions',
-    { role: 'super_admin' },
-  )
+  const result = await backendGet<Array<Record<string, unknown>>>('/api/admin/subscriptions', {
+    role: 'super_admin',
+  });
   if (!result.ok) {
-    throw new Error(result.error.message)
+    throw new Error(result.error.message);
   }
-  const rows = result.value
-  if (!Array.isArray(rows)) return []
+  const rows = result.value;
+  if (!Array.isArray(rows)) return [];
   // Normalise to the legacy shape consumed by /admin/subscriptions page.
   return rows.map((r) => ({
     doctor_id: r.doctorId ?? r.doctor_id ?? null,
@@ -191,7 +190,7 @@ export async function getAllSubscriptions(): Promise<Array<Record<string, unknow
       email: r.email ?? null,
       specialty: r.specialty ?? null,
     },
-  }))
+  }));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -199,34 +198,42 @@ export async function getAllSubscriptions(): Promise<Array<Record<string, unknow
 // ════════════════════════════════════════════════════════════════════════════
 
 export type AppSettings = {
-  subscription_base_price_usd: number
-  subscription_currency: string
-  beta_duration_days: number
-  payment_methods_enabled: string[]
+  subscription_base_price_usd: number;
+  subscription_currency: string;
+  beta_duration_days: number;
+  payment_methods_enabled: string[];
   payment_methods_config: {
-    pago_movil?:    { phone?: string; cedula?: string; bank?: string }
-    transferencia?: { bank?: string; account?: string; holder?: string }
-    zelle?:         { email?: string; holder?: string }
-  }
-  stripe_enabled: boolean
-  expiration_warning_days: number[]
-  sales_whatsapp_number: string
-  sales_whatsapp_message: string
-}
+    pago_movil?: { phone?: string; cedula?: string; bank?: string };
+    transferencia?: { bank?: string; account?: string; holder?: string };
+    zelle?: { email?: string; holder?: string };
+  };
+  stripe_enabled: boolean;
+  expiration_warning_days: number[];
+  sales_whatsapp_number: string;
+  sales_whatsapp_message: string;
+};
 
 export type DurationOption = {
-  duration_months: number
-  base_price_usd: number
-  final_price_usd: number
-  discount_pct: number
-  promotion_id: string | null
-  label: string | null
-}
+  duration_months: number;
+  base_price_usd: number;
+  final_price_usd: number;
+  discount_pct: number;
+  promotion_id: string | null;
+  label: string | null;
+};
 
 export type SubscriptionChangeAction =
-  | 'created' | 'extended' | 'suspended' | 'reactivated' | 'cancelled'
-  | 'plan_changed' | 'payment_approved' | 'payment_rejected'
-  | 'price_adjusted' | 'manual_grant' | 'manual_revoke'
+  | 'created'
+  | 'extended'
+  | 'suspended'
+  | 'reactivated'
+  | 'cancelled'
+  | 'plan_changed'
+  | 'payment_approved'
+  | 'payment_rejected'
+  | 'price_adjusted'
+  | 'manual_grant'
+  | 'manual_revoke';
 
 const DEFAULT_SETTINGS: AppSettings = {
   subscription_base_price_usd: 30,
@@ -237,8 +244,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   stripe_enabled: false,
   expiration_warning_days: [7, 3, 1],
   sales_whatsapp_number: '',
-  sales_whatsapp_message: 'Hola, vengo de la web de Delta Medical CRM y me interesa conocer más sobre el plan.',
-}
+  sales_whatsapp_message:
+    'Hola, vengo de la web de Delta Salud y me interesa conocer más sobre el plan.',
+};
 
 /**
  * Returns global app settings.
@@ -246,7 +254,7 @@ const DEFAULT_SETTINGS: AppSettings = {
  * FASE futura: migrate to backendGet('/api/admin/settings').
  */
 export async function getAppSettings(): Promise<AppSettings> {
-  return { ...DEFAULT_SETTINGS }
+  return { ...DEFAULT_SETTINGS };
 }
 
 /**
@@ -268,7 +276,7 @@ export async function setAppSetting(
  * FASE futura: migrate to backendGet('/api/admin/plan-promotions').
  */
 export async function computeDurationOptions(): Promise<DurationOption[]> {
-  const basePrice = DEFAULT_SETTINGS.subscription_base_price_usd
+  const basePrice = DEFAULT_SETTINGS.subscription_base_price_usd;
   return [
     {
       duration_months: 1,
@@ -278,7 +286,7 @@ export async function computeDurationOptions(): Promise<DurationOption[]> {
       promotion_id: null,
       label: 'Mensual',
     },
-  ]
+  ];
 }
 
 // ── Audit log stub ───────────────────────────────────────────────────────────
@@ -289,14 +297,14 @@ export async function computeDurationOptions(): Promise<DurationOption[]> {
  * ETAPA 2 TODO: remove callers or wire to a dedicated backend endpoint.
  */
 export async function logSubscriptionChange(_args: {
-  doctor_id: string
-  action: SubscriptionChangeAction
-  actor_id: string | null
-  actor_role: string | null
-  before_state?: Record<string, unknown> | null
-  after_state?: Record<string, unknown> | null
-  metadata?: Record<string, unknown>
-  payment_id?: string | null
+  doctor_id: string;
+  action: SubscriptionChangeAction;
+  actor_id: string | null;
+  actor_role: string | null;
+  before_state?: Record<string, unknown> | null;
+  after_state?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
+  payment_id?: string | null;
 }): Promise<void> {
   // no-op — backend handles audit logging internally
 }
@@ -308,13 +316,13 @@ export async function logSubscriptionChange(_args: {
  * Backend: POST /api/admin/subscriptions/extend
  */
 export async function extendSubscription(args: {
-  doctor_id: string
-  months: number
-  actor_id: string | null
-  actor_role: string | null
-  reason: SubscriptionChangeAction
-  metadata?: Record<string, unknown>
-  payment_id?: string | null
+  doctor_id: string;
+  months: number;
+  actor_id: string | null;
+  actor_role: string | null;
+  reason: SubscriptionChangeAction;
+  metadata?: Record<string, unknown>;
+  payment_id?: string | null;
 }): Promise<{ success: true; new_expires_at: string } | { success: false; error: string }> {
   const result = await backendPost<{ newExpiresAt: string }>(
     '/api/admin/subscriptions/extend',
@@ -326,11 +334,11 @@ export async function extendSubscription(args: {
       metadata: args.metadata ?? {},
     },
     { role: 'super_admin' },
-  )
+  );
   if (!result.ok) {
-    return { success: false, error: result.error.message }
+    return { success: false, error: result.error.message };
   }
-  return { success: true, new_expires_at: result.value.newExpiresAt }
+  return { success: true, new_expires_at: result.value.newExpiresAt };
 }
 
 /**
@@ -338,20 +346,20 @@ export async function extendSubscription(args: {
  * Backend: POST /api/admin/subscriptions/suspend
  */
 export async function suspendSubscription(args: {
-  doctor_id: string
-  actor_id: string | null
-  actor_role: string | null
-  reason?: string
+  doctor_id: string;
+  actor_id: string | null;
+  actor_role: string | null;
+  reason?: string;
 }): Promise<{ success: boolean; error?: string }> {
   const result = await backendPost<unknown>(
     '/api/admin/subscriptions/suspend',
     { doctorId: args.doctor_id, reason: args.reason ?? null },
     { role: 'super_admin' },
-  )
+  );
   if (!result.ok) {
-    return { success: false, error: result.error.message }
+    return { success: false, error: result.error.message };
   }
-  return { success: true }
+  return { success: true };
 }
 
 /**
@@ -359,19 +367,19 @@ export async function suspendSubscription(args: {
  * Backend: POST /api/admin/subscriptions/reactivate
  */
 export async function reactivateSubscription(args: {
-  doctor_id: string
-  actor_id: string | null
-  actor_role: string | null
+  doctor_id: string;
+  actor_id: string | null;
+  actor_role: string | null;
 }): Promise<{ success: boolean; error?: string }> {
   const result = await backendPost<unknown>(
     '/api/admin/subscriptions/reactivate',
     { doctorId: args.doctor_id },
     { role: 'super_admin' },
-  )
+  );
   if (!result.ok) {
-    return { success: false, error: result.error.message }
+    return { success: false, error: result.error.message };
   }
-  return { success: true }
+  return { success: true };
 }
 
 // ── Beta registration stub ───────────────────────────────────────────────────

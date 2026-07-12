@@ -8,7 +8,7 @@ import { reportError } from '@/lib/report-error';
  *
  * Setup en Vercel:
  *   RESEND_API_KEY=re_xxx        ← obtener en https://resend.com/api-keys
- *   RESEND_FROM_EMAIL=Delta Medical CRM <hola@deltamedical.com>
+ *   RESEND_FROM_EMAIL=Delta Salud <hola@deltamedical.com>
  *   APP_URL=https://medsaas-venezuela.vercel.app  ← o tu dominio custom
  *
  * Si RESEND_API_KEY no está set, sendEmail() loggea y retorna ok:false
@@ -16,37 +16,37 @@ import { reportError } from '@/lib/report-error';
  */
 
 type EmailParams = {
-  to: string | string[]
-  subject: string
-  html: string
-  text?: string
+  to: string | string[];
+  subject: string;
+  html: string;
+  text?: string;
   /** Reply-to para que el doctor pueda responder al support */
-  replyTo?: string
+  replyTo?: string;
   /** Tags para tracking en Resend dashboard */
-  tags?: { name: string; value: string }[]
-}
+  tags?: { name: string; value: string }[];
+};
 
-type SendResult = { ok: true; id: string } | { ok: false; error: string }
+type SendResult = { ok: true; id: string } | { ok: false; error: string };
 
-const FROM_DEFAULT = 'Delta Medical CRM <onboarding@resend.dev>'  // sandbox de Resend hasta que se configure dominio
+const FROM_DEFAULT = 'Delta Salud <onboarding@resend.dev>'; // sandbox de Resend hasta que se configure dominio
 
 export async function sendEmail(params: EmailParams): Promise<SendResult> {
-  const apiKey = process.env.RESEND_API_KEY
-  const from = process.env.RESEND_FROM_EMAIL || FROM_DEFAULT
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL || FROM_DEFAULT;
 
   if (!apiKey) {
     console.warn('[email] RESEND_API_KEY no configurada. Email NO enviado:', {
       to: params.to,
       subject: params.subject,
-    })
-    return { ok: false, error: 'RESEND_API_KEY no configurada (skip silencioso)' }
+    });
+    return { ok: false, error: 'RESEND_API_KEY no configurada (skip silencioso)' };
   }
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -58,31 +58,34 @@ export async function sendEmail(params: EmailParams): Promise<SendResult> {
         reply_to: params.replyTo,
         tags: params.tags,
       }),
-    })
+    });
 
-    const data = await res.json().catch(() => ({}))
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      reportError('email', 'sendEmail', new Error(`Resend respondió ${res.status}`), { status: res.status })
-      return { ok: false, error: data?.message || `Resend respondió ${res.status}` }
+      reportError('email', 'sendEmail', new Error(`Resend respondió ${res.status}`), {
+        status: res.status,
+      });
+      return { ok: false, error: data?.message || `Resend respondió ${res.status}` };
     }
 
-    return { ok: true, id: data.id }
+    return { ok: true, id: data.id };
   } catch (err: unknown) {
-    reportError('email', 'sendEmail:network', err)
-    const msg = err instanceof Error ? err.message : 'Error de red'
-    return { ok: false, error: msg }
+    reportError('email', 'sendEmail:network', err);
+    const msg = err instanceof Error ? err.message : 'Error de red';
+    return { ok: false, error: msg };
   }
 }
 
 // ─── Helper: layout HTML profesional reutilizable ──────────────────────────
 export function emailLayout(opts: {
-  preheader?: string  // texto que aparece en preview de Gmail/Apple Mail
-  heading: string
-  body: string  // HTML body content
-  cta?: { label: string; url: string }
-  footerNote?: string
+  preheader?: string; // texto que aparece en preview de Gmail/Apple Mail
+  heading: string;
+  body: string; // HTML body content
+  cta?: { label: string; url: string };
+  footerNote?: string;
 }): string {
-  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_URL || 'https://medsaas-venezuela.vercel.app'
+  const appUrl =
+    process.env.APP_URL || process.env.NEXT_PUBLIC_URL || 'https://medsaas-venezuela.vercel.app';
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -121,13 +124,17 @@ export function emailLayout(opts: {
               <div style="font-size:15px;color:#475569;line-height:1.7">
                 ${opts.body}
               </div>
-              ${opts.cta ? `
+              ${
+                opts.cta
+                  ? `
                 <div style="margin:28px 0 0">
                   <a href="${opts.cta.url}" style="display:inline-block;background:#0891B2;color:#FFFFFF;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none">
                     ${opts.cta.label}
                   </a>
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
             </td>
           </tr>
 
@@ -136,7 +143,7 @@ export function emailLayout(opts: {
             <td style="padding:24px 32px;background:#F8FAFC;border-top:1px solid #E2E8F0">
               ${opts.footerNote ? `<p style="margin:0 0 12px;font-size:12px;color:#64748B;line-height:1.6">${opts.footerNote}</p>` : ''}
               <p style="margin:0;font-size:11px;color:#94A3B8;line-height:1.6">
-                Este correo fue enviado por <strong>Delta Medical CRM</strong>.<br>
+                Este correo fue enviado por <strong>Delta Salud</strong>.<br>
                 Si tienes preguntas, escríbenos a <a href="mailto:soporte@deltamedical.com" style="color:#0891B2">soporte@deltamedical.com</a>.<br>
                 <a href="${appUrl}" style="color:#94A3B8">${appUrl.replace(/^https?:\/\//, '')}</a>
               </p>
@@ -148,7 +155,7 @@ export function emailLayout(opts: {
     </tr>
   </table>
 </body>
-</html>`
+</html>`;
 }
 
 // ─── Templates predefinidos ────────────────────────────────────────────────
@@ -158,35 +165,39 @@ export function emailLayout(opts: {
  * Llamar desde Edge Function diaria que revisa subscription_expires_at.
  */
 export async function sendSubscriptionExpiringEmail(args: {
-  to: string
-  doctor_name: string
-  days_remaining: number
-  expires_at: string  // ISO date
+  to: string;
+  doctor_name: string;
+  days_remaining: number;
+  expires_at: string; // ISO date
 }): Promise<SendResult> {
-  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app'
+  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app';
   const expiresStr = new Date(args.expires_at).toLocaleDateString('es-VE', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
-  const urgent = args.days_remaining <= 3
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const urgent = args.days_remaining <= 3;
 
   const heading = urgent
     ? `⚠️ Tu suscripción vence en ${args.days_remaining} día${args.days_remaining === 1 ? '' : 's'}`
-    : `Tu suscripción vence pronto`
+    : `Tu suscripción vence pronto`;
 
   const body = `
     <p>Hola Dr/a. <strong>${escapeHtml(args.doctor_name)}</strong>,</p>
-    <p>Tu suscripción a Delta Medical CRM vence el <strong>${expiresStr}</strong>
+    <p>Tu suscripción a Delta Salud vence el <strong>${expiresStr}</strong>
     (en ${args.days_remaining} día${args.days_remaining === 1 ? '' : 's'}).</p>
     <p>Para no perder acceso a tu agenda, pacientes y consultas, renueva tu plan ahora.
     Toma menos de 2 minutos.</p>
-  `
+  `;
   const html = emailLayout({
     preheader: `Vence en ${args.days_remaining} día${args.days_remaining === 1 ? '' : 's'} — renueva para no perder acceso`,
     heading,
     body,
     cta: { label: 'Renovar mi plan', url: `${appUrl}/doctor/settings?tab=subscription` },
-    footerNote: 'Si renovaste recientemente, puede tomar unos minutos en reflejarse. Ignora este aviso.',
-  })
+    footerNote:
+      'Si renovaste recientemente, puede tomar unos minutos en reflejarse. Ignora este aviso.',
+  });
 
   return sendEmail({
     to: args.to,
@@ -196,21 +207,21 @@ export async function sendSubscriptionExpiringEmail(args: {
       { name: 'category', value: 'subscription_expiring' },
       { name: 'days_remaining', value: String(args.days_remaining) },
     ],
-  })
+  });
 }
 
 /**
  * Bienvenida al registrarse como doctor.
  */
 export async function sendWelcomeEmail(args: {
-  to: string
-  doctor_name: string
-  beta_days: number
+  to: string;
+  doctor_name: string;
+  beta_days: number;
 }): Promise<SendResult> {
-  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app'
+  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app';
   const body = `
     <p>Hola Dr/a. <strong>${escapeHtml(args.doctor_name)}</strong>,</p>
-    <p>Tu cuenta en Delta Medical CRM está lista. Tienes <strong>${args.beta_days} días de prueba gratis</strong>
+    <p>Tu cuenta en Delta Salud está lista. Tienes <strong>${args.beta_days} días de prueba gratis</strong>
     con acceso completo a la plataforma.</p>
     <p><strong>Próximos pasos:</strong></p>
     <ol style="padding-left:18px;margin:12px 0">
@@ -218,66 +229,69 @@ export async function sendWelcomeEmail(args: {
       <li>Configura tu agenda y disponibilidad</li>
       <li>Comparte tu link público de booking con tus pacientes</li>
     </ol>
-  `
+  `;
   const html = emailLayout({
-    preheader: '¡Bienvenido a Delta Medical CRM! Aquí están tus primeros pasos',
-    heading: '¡Bienvenido a Delta Medical CRM!',
+    preheader: '¡Bienvenido a Delta Salud! Aquí están tus primeros pasos',
+    heading: '¡Bienvenido a Delta Salud!',
     body,
     cta: { label: 'Ir a mi panel', url: `${appUrl}/doctor` },
-  })
+  });
 
   return sendEmail({
     to: args.to,
-    subject: '¡Bienvenido a Delta Medical CRM!',
+    subject: '¡Bienvenido a Delta Salud!',
     html,
     tags: [{ name: 'category', value: 'welcome' }],
-  })
+  });
 }
 
 /**
  * Comprobante de pago aprobado.
  */
 export async function sendPaymentApprovedEmail(args: {
-  to: string
-  doctor_name: string
-  amount_usd: number
-  duration_months: number
-  new_expires_at: string
+  to: string;
+  doctor_name: string;
+  amount_usd: number;
+  duration_months: number;
+  new_expires_at: string;
 }): Promise<SendResult> {
-  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app'
+  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app';
   const expiresStr = new Date(args.new_expires_at).toLocaleDateString('es-VE', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
   const body = `
     <p>Hola Dr/a. <strong>${escapeHtml(args.doctor_name)}</strong>,</p>
     <p>Tu pago de <strong>$${args.amount_usd} USD</strong> por
     ${args.duration_months} mes${args.duration_months > 1 ? 'es' : ''} fue aprobado.</p>
     <p>Tu suscripción ahora está activa hasta el <strong>${expiresStr}</strong>.
     ¡Gracias por tu confianza!</p>
-  `
+  `;
   const html = emailLayout({
     preheader: `Pago aprobado — suscripción extendida hasta ${expiresStr}`,
     heading: '✅ Pago aprobado',
     body,
     cta: { label: 'Ver mi suscripción', url: `${appUrl}/doctor/settings?tab=subscription` },
-  })
+  });
   return sendEmail({
     to: args.to,
-    subject: '✅ Pago aprobado — Delta Medical CRM',
+    subject: '✅ Pago aprobado — Delta Salud',
     html,
     tags: [{ name: 'category', value: 'payment_approved' }],
-  })
+  });
 }
 
 /**
  * Comprobante de pago rechazado.
  */
 export async function sendPaymentRejectedEmail(args: {
-  to: string
-  doctor_name: string
-  reason: string
+  to: string;
+  doctor_name: string;
+  reason: string;
 }): Promise<SendResult> {
-  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app'
+  const appUrl = process.env.APP_URL || 'https://medsaas-venezuela.vercel.app';
   const body = `
     <p>Hola Dr/a. <strong>${escapeHtml(args.doctor_name)}</strong>,</p>
     <p>Tu comprobante de pago no pudo ser aprobado. Motivo:</p>
@@ -285,19 +299,19 @@ export async function sendPaymentRejectedEmail(args: {
       ${escapeHtml(args.reason)}
     </blockquote>
     <p>Puedes subir un nuevo comprobante desde tu panel.</p>
-  `
+  `;
   const html = emailLayout({
     preheader: 'Tu comprobante de pago necesita revisión',
     heading: '⚠️ Comprobante no aprobado',
     body,
     cta: { label: 'Subir nuevo comprobante', url: `${appUrl}/doctor/settings?tab=subscription` },
-  })
+  });
   return sendEmail({
     to: args.to,
-    subject: 'Comprobante no aprobado — Delta Medical CRM',
+    subject: 'Comprobante no aprobado — Delta Salud',
     html,
     tags: [{ name: 'category', value: 'payment_rejected' }],
-  })
+  });
 }
 
 // ─── Util ───────────────────────────────────────────────────────────────────
@@ -307,5 +321,5 @@ function escapeHtml(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+    .replace(/'/g, '&#39;');
 }

@@ -275,7 +275,7 @@ export default function PatientRequestPage() {
         >
           <Stethoscope className="w-4 h-4 text-white" />
         </div>
-        <span className="text-sm font-bold text-slate-700">Delta Medical CRM</span>
+        <span className="text-sm font-bold text-slate-700">Delta Salud</span>
       </header>
 
       <main className="flex-1 flex items-center justify-center p-4">
@@ -644,9 +644,7 @@ export default function PatientRequestPage() {
       </main>
 
       <footer className="py-4 text-center">
-        <p className="text-xs text-slate-400">
-          Delta Medical CRM · Plataforma médica para Venezuela
-        </p>
+        <p className="text-xs text-slate-400">Delta Salud · Plataforma médica para Venezuela</p>
       </footer>
     </div>
   );

@@ -14,7 +14,7 @@ import OnboardingForm from './OnboardingForm';
 import { Activity } from 'lucide-react';
 
 export const metadata = {
-  title: 'Activa tu cuenta — Delta Medical CRM',
+  title: 'Activa tu cuenta — Delta Salud',
 };
 
 interface Specialty {

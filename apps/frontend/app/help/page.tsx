@@ -1,7 +1,15 @@
-import Link from 'next/link'
-import { ArrowLeft, UserPlus, Calendar, Stethoscope, DollarSign, MessageCircle, Mail } from 'lucide-react'
+import Link from 'next/link';
+import {
+  ArrowLeft,
+  UserPlus,
+  Calendar,
+  Stethoscope,
+  DollarSign,
+  MessageCircle,
+  Mail,
+} from 'lucide-react';
 
-export const metadata = { title: 'Centro de ayuda — Delta Medical CRM' }
+export const metadata = { title: 'Centro de ayuda — Delta Salud' };
 
 export default function HelpPage() {
   const steps = [
@@ -62,14 +70,17 @@ export default function HelpPage() {
         'Los pacientes pueden agendar sin necesidad de cuenta — registro opcional.',
       ],
     },
-  ]
+  ];
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Hero */}
       <div className="bg-gradient-to-br from-cyan-500 to-teal-600 text-white py-16 px-6">
         <div className="max-w-4xl mx-auto">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-6"
+          >
             <ArrowLeft className="w-4 h-4" /> Volver al inicio
           </Link>
           <h1 className="text-3xl sm:text-4xl font-bold">Centro de ayuda</h1>
@@ -81,18 +92,25 @@ export default function HelpPage() {
 
       {/* Pasos del tutorial */}
       <div className="max-w-4xl mx-auto px-6 py-12 space-y-6">
-        {steps.map(s => {
-          const Icon = s.icon
+        {steps.map((s) => {
+          const Icon = s.icon;
           return (
-            <div key={s.n} className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm hover:shadow-md transition-shadow">
+            <div
+              key={s.n}
+              className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm hover:shadow-md transition-shadow"
+            >
               <div className="flex items-start gap-4">
                 <div className="flex-shrink-0 w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center">
                   <Icon className="w-6 h-6 text-teal-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-teal-600">PASO {s.n}</span>
-                    <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">{s.time}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-teal-600">
+                      PASO {s.n}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+                      {s.time}
+                    </span>
                   </div>
                   <h2 className="text-xl font-bold text-slate-900 mb-3">{s.title}</h2>
                   <ul className="space-y-2 text-sm text-slate-700">
@@ -106,7 +124,7 @@ export default function HelpPage() {
                 </div>
               </div>
             </div>
-          )
+          );
         })}
 
         {/* Contacto */}
@@ -116,16 +134,20 @@ export default function HelpPage() {
             Si te queda alguna duda, escríbenos. Respondemos en menos de 24h.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <a href="mailto:hola@deltahealth.tech"
-              className="flex items-center gap-3 p-4 rounded-xl bg-white border border-slate-200 hover:border-teal-400 transition-colors">
+            <a
+              href="mailto:hola@deltahealth.tech"
+              className="flex items-center gap-3 p-4 rounded-xl bg-white border border-slate-200 hover:border-teal-400 transition-colors"
+            >
               <Mail className="w-5 h-5 text-teal-600 flex-shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-slate-900">Correo</p>
                 <p className="text-xs text-slate-500">hola@deltahealth.tech</p>
               </div>
             </a>
-            <a href="https://wa.me/584145209751"
-              className="flex items-center gap-3 p-4 rounded-xl bg-white border border-slate-200 hover:border-teal-400 transition-colors">
+            <a
+              href="https://wa.me/584145209751"
+              className="flex items-center gap-3 p-4 rounded-xl bg-white border border-slate-200 hover:border-teal-400 transition-colors"
+            >
               <MessageCircle className="w-5 h-5 text-teal-600 flex-shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-slate-900">WhatsApp</p>
@@ -136,5 +158,5 @@ export default function HelpPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

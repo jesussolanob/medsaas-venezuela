@@ -55,7 +55,7 @@ function LoginInner() {
   const [loading] = useState(false);
   const [error, setError] = useState(
     isBlocked
-      ? 'Tu cuenta ha sido bloqueada. Contacta al administrador de Delta Medical.'
+      ? 'Tu cuenta ha sido bloqueada. Contacta al administrador de Delta Salud.'
       : authError === 'auth'
         ? 'Error de autenticación. Intenta de nuevo.'
         : authError === 'suspended'

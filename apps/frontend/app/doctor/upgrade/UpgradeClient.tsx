@@ -75,7 +75,7 @@ const FEATURE_LABELS: Record<string, string> = {
 
 const WHATSAPP_NUMBER = '58412000000'; // placeholder — admin configures this
 const WHATSAPP_MESSAGE = encodeURIComponent(
-  'Hola, soy médico de Delta CRM y me interesa actualizar mi plan. ¿Pueden orientarme?',
+  'Hola, soy médico de Delta Salud y me interesa actualizar mi plan. ¿Pueden orientarme?',
 );
 
 interface UpgradeClientProps {

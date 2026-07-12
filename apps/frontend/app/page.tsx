@@ -12,7 +12,7 @@ export default function Home() {
         display: 'block',
         overflow: 'hidden',
       }}
-      title="Delta Medical CRM"
+      title="Delta Salud"
     />
-  )
+  );
 }

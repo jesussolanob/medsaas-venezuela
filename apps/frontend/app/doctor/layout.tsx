@@ -408,7 +408,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </h1>
           <p className="text-sm mb-6" style={{ color: 'var(--dh-gray-500)' }}>
             Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunícate
-            con el soporte de Delta Medical.
+            con el soporte de Delta Salud.
           </p>
           <button
             onClick={() => void blockedLogoutAction()}

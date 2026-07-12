@@ -1,30 +1,30 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Mail, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useState } from 'react';
+import Link from 'next/link';
+import { ArrowLeft, Mail, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [sent, setSent] = useState(false)
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     if (!email.trim()) {
-      setError('Ingresa tu email')
-      return
+      setError('Ingresa tu email');
+      return;
     }
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError('');
 
     // ETAPA 1: la recuperación de contraseña por email es un bloqueante (proveedor de
     // email/Auth0 sin definir — ver Fase 4/6). Sin Supabase. Mostramos siempre éxito
     // (anti email-enumeration); el envío real se conectará cuando exista proveedor.
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    setSent(true)
-    setLoading(false)
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    setSent(true);
+    setLoading(false);
   }
 
   return (
@@ -34,7 +34,10 @@ export default function ForgotPasswordPage() {
         .reset-root * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
       `}</style>
 
-      <div className="reset-root min-h-screen flex items-center justify-center p-4 sm:p-6" style={{ background: '#FAFBFC' }}>
+      <div
+        className="reset-root min-h-screen flex items-center justify-center p-4 sm:p-6"
+        style={{ background: '#FAFBFC' }}
+      >
         <div className="w-full max-w-md">
           <Link
             href="/login"
@@ -51,16 +54,21 @@ export default function ForgotPasswordPage() {
                 </div>
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Revisa tu correo</h1>
                 <p className="text-sm text-slate-600">
-                  Si <strong>{email}</strong> está registrado en Delta Medical CRM, te enviamos un enlace
+                  Si <strong>{email}</strong> está registrado en Delta Salud, te enviamos un enlace
                   para restablecer tu contraseña. Llega en menos de 2 minutos.
                 </p>
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left text-xs text-slate-500 space-y-1.5">
-                  <p>📬 <strong>Revisa también la carpeta de spam.</strong></p>
+                  <p>
+                    📬 <strong>Revisa también la carpeta de spam.</strong>
+                  </p>
                   <p>⏱ El enlace vence en 1 hora por seguridad.</p>
                   <p>🔁 Si no llega, podés intentar de nuevo en 60 segundos.</p>
                 </div>
                 <button
-                  onClick={() => { setSent(false); setEmail('') }}
+                  onClick={() => {
+                    setSent(false);
+                    setEmail('');
+                  }}
                   className="text-sm font-semibold text-teal-600 hover:text-teal-700"
                 >
                   Probar con otro email
@@ -72,7 +80,9 @@ export default function ForgotPasswordPage() {
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-600 flex items-center justify-center mb-4">
                     <Mail className="w-6 h-6 text-white" />
                   </div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-slate-900">¿Olvidaste tu contraseña?</h1>
+                  <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
+                    ¿Olvidaste tu contraseña?
+                  </h1>
                   <p className="text-sm text-slate-500 mt-1">
                     Ingresa tu email y te enviamos un enlace para restablecerla.
                   </p>
@@ -93,7 +103,7 @@ export default function ForgotPasswordPage() {
                     <input
                       type="email"
                       value={email}
-                      onChange={e => setEmail(e.target.value)}
+                      onChange={(e) => setEmail(e.target.value)}
                       placeholder="tucorreo@ejemplo.com"
                       autoComplete="email"
                       autoFocus
@@ -107,7 +117,11 @@ export default function ForgotPasswordPage() {
                     disabled={loading}
                     className="w-full py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                   >
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                    {loading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4" />
+                    )}
                     {loading ? 'Enviando...' : 'Enviar enlace de restablecimiento'}
                   </button>
                 </form>
@@ -126,5 +140,5 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </>
-  )
+  );
 }

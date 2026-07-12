@@ -11,7 +11,7 @@ import { backendGet } from '@/lib/api-client.server';
 import VerificationsClient, { type VerificationItem } from './VerificationsClient';
 
 export const metadata = {
-  title: 'Verificaciones — Delta Medical CRM',
+  title: 'Verificaciones — Delta Salud',
 };
 
 // Revalidate every 60 s so the page reflects new registrations without a full reload.

@@ -132,7 +132,7 @@ export function HelpWidget() {
           <p id="help-dialog-title" className="text-sm font-semibold leading-tight">
             Asistente de ayuda
           </p>
-          <p className="truncate text-xs text-white/80">Te guío por Delta Medical CRM</p>
+          <p className="truncate text-xs text-white/80">Te guío por Delta Salud</p>
         </div>
         <button
           type="button"
@@ -194,8 +194,8 @@ function WelcomeCard() {
     <div className="rounded-2xl border border-teal-100 bg-white p-4 shadow-sm">
       <p className="text-sm font-semibold text-slate-800">¡Hola! 👋</p>
       <p className="mt-1 text-sm text-slate-600">
-        Soy tu asistente de Delta Medical CRM. Pregúntame cómo hacer cualquier acción o dónde
-        encontrar una sección y te guío paso a paso.
+        Soy tu asistente de Delta Salud. Pregúntame cómo hacer cualquier acción o dónde encontrar
+        una sección y te guío paso a paso.
       </p>
     </div>
   );

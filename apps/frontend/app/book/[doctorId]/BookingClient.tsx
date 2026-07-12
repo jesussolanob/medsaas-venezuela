@@ -923,7 +923,7 @@ export default function BookingClient({
           )}
           <div className="flex items-center justify-center gap-2 mt-6 opacity-40">
             <DeltaIsotipo size={20} />
-            <span className="text-[10px] font-semibold text-slate-400">Delta Medical CRM</span>
+            <span className="text-[10px] font-semibold text-slate-400">Delta Salud</span>
           </div>
         </div>
       </div>
@@ -981,7 +981,7 @@ export default function BookingClient({
             <div className="flex items-center gap-2 mb-4 opacity-70">
               <DeltaIsotipo size={22} className="brightness-200" />
               <span className="text-[11px] font-semibold text-white/80 tracking-wide">
-                DELTA MEDICAL
+                DELTA SALUD
               </span>
             </div>
 
@@ -2493,7 +2493,7 @@ export default function BookingClient({
           {/* ── Footer branding ──────────────────────────────────────────── */}
           <div className="flex items-center justify-center gap-2 py-4 opacity-30">
             <DeltaIsotipo size={18} />
-            <span className="text-[10px] font-semibold text-slate-400">Delta Medical CRM</span>
+            <span className="text-[10px] font-semibold text-slate-400">Delta Salud</span>
           </div>
         </div>
       </div>

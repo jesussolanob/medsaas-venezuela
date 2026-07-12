@@ -283,17 +283,17 @@ export function SpecialistsReportPdf({ rows, generatedAt }: SpecialistsReportPdf
 
   return (
     <Document
-      title="Reporte de Especialistas — Delta Medical CRM"
-      author="Delta Medical CRM"
+      title="Reporte de Especialistas — Delta Salud"
+      author="Delta Salud"
       subject="Reporte tabular de especialistas"
-      creator="Delta Medical CRM"
+      creator="Delta Salud"
     >
       <Page size="A4" orientation="landscape" style={styles.page} wrap>
         {/* ── HEADER ── */}
         <View style={styles.header} fixed>
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>Reporte de Especialistas</Text>
-            <Text style={styles.headerSubtitle}>Delta Medical CRM — Panel Administrador</Text>
+            <Text style={styles.headerSubtitle}>Delta Salud — Panel Administrador</Text>
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.headerBadge}>Super Admin</Text>
@@ -405,7 +405,7 @@ export function SpecialistsReportPdf({ rows, generatedAt }: SpecialistsReportPdf
         {/* ── FOOTER ── */}
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>
-            Delta Medical CRM · Reporte confidencial · {total} especialistas
+            Delta Salud · Reporte confidencial · {total} especialistas
           </Text>
           <Text
             style={styles.pageNumber}
