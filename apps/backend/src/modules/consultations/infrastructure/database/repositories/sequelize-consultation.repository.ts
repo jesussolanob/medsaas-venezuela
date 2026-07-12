@@ -112,6 +112,24 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     });
   }
 
+  async getMaxSequenceForMonth(yearMonth: string): Promise<number> {
+    // Máximo del sufijo NNNN entre TODOS los códigos DLT-YYYYMM-NNNN del mes
+    // (global: el UNIQUE de consultation_code es global). Sembrar la próxima
+    // secuencia desde aquí evita colisiones cuando el mes ya tiene códigos con huecos.
+    const rows = await this.sequelize.query<{ max_seq: string | null }>(
+      `SELECT COALESCE(
+                MAX((substring(consultation_code from '^DLT-[0-9]{6}-([0-9]+)$'))::int),
+                0
+              )::text AS max_seq
+         FROM consultations
+        WHERE consultation_code LIKE :prefix`,
+      { replacements: { prefix: `DLT-${yearMonth}-%` }, type: QueryTypes.SELECT },
+    );
+    const raw = rows[0]?.max_seq;
+    const parsed = raw != null ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
   /**
    * Persists a new consultation.
    *

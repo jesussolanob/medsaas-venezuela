@@ -46,8 +46,12 @@ export class CreateConsultationUseCase {
     const date = input.consultationDate;
     const yearMonth = this.toYearMonth(date);
 
-    const existingCount = await this.repo.countByDoctorAndMonth(input.doctorId, yearMonth);
-    let sequence = existingCount + 1;
+    // Sembrar desde el MÁXIMO código del mes + 1 (collision-free), no desde un
+    // conteo: con huecos en la numeración, count+1 podía caer sobre un código
+    // existente y, en rangos densos, agotar los reintentos → la consulta no se
+    // creaba en silencio (bug de meses ya poblados, p.ej. citas de julio).
+    const maxSequence = await this.repo.getMaxSequenceForMonth(yearMonth);
+    let sequence = maxSequence + 1;
 
     const MAX_RETRIES = 5;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {

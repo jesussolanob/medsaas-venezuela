@@ -30,6 +30,7 @@ describe('CreateConsultationUseCase', () => {
       findById: jest.fn(),
       findByCode: jest.fn(),
       countByDoctorAndMonth: jest.fn(),
+      getMaxSequenceForMonth: jest.fn().mockResolvedValue(0),
       save: jest.fn(),
       update: jest.fn(),
       updatePayment: jest.fn(),
@@ -59,7 +60,7 @@ describe('CreateConsultationUseCase', () => {
   });
 
   it('generates code in DLT-YYYYMM-XXXX format', async () => {
-    mockRepo.countByDoctorAndMonth.mockResolvedValue(41);
+    mockRepo.getMaxSequenceForMonth.mockResolvedValue(41);
     mockRepo.findByCode.mockResolvedValue(null);
     mockRepo.save.mockImplementation(async (c) => c);
 

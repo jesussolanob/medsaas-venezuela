@@ -39,6 +39,18 @@ export interface IConsultationRepository {
   countByDoctorAndMonth(doctorId: string, yearMonth: string): Promise<number>;
 
   /**
+   * Returns the highest sequence number (NNNN) currently used in any
+   * `DLT-YYYYMM-NNNN` code for the given month, across ALL doctors — the
+   * consultation_code UNIQUE constraint is global. Returns 0 when none exist.
+   *
+   * Seeding the next sequence from this max (instead of a per-doctor count)
+   * makes code generation collision-free even when the month already has codes
+   * with gaps (the count-based seed could land on an existing code and, with
+   * dense ranges, exhaust the retry budget → consultation silently not created).
+   */
+  getMaxSequenceForMonth(yearMonth: string): Promise<number>;
+
+  /**
    * Persist a new consultation.
    *
    * Throws ConsultationCodeConflictError if the consultation_code already exists

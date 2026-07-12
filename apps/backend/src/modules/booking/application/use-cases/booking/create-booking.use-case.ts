@@ -417,9 +417,11 @@ export class CreateBookingUseCase {
           amount: dto.plan_price ?? null,
         });
         await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);
-      } catch {
-        // Non-fatal — do NOT log PII (patient id, name, etc.).
-        this.logger.warn('[booking] auto-create consultation failed (non-fatal)');
+      } catch (err: unknown) {
+        // Non-fatal. Log el MENSAJE del error (código/DB — NO contiene PII) para
+        // poder diagnosticar por qué no se creó la consulta.
+        const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        this.logger.warn(`[booking] auto-create consultation failed (non-fatal): ${detail}`);
       }
     }
 
