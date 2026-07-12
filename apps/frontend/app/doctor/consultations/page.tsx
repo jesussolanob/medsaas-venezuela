@@ -312,6 +312,9 @@ function ConsultationsPage() {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref para el strip de tabs — usado por las flechas de scroll
   const tabsScrollRef = useRef<HTMLDivElement>(null);
+  // Ref con el id de la consulta actualmente abierta — permite que el auto-open effect
+  // detecte si ya está abierta la misma consulta y evite un re-fetch innecesario.
+  const openedConsultationIdRef = useRef<string | null>(null);
   // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint');
   // RONDA 39: bloques actualmente ACTIVOS del doctor (config viva en /doctor/settings/consultation-blocks).
@@ -844,11 +847,12 @@ function ConsultationsPage() {
 
         // Auto-open consultation if openId is in query params
         // Fix: buscar por c.id O por c.appointment_id (el dashboard redirige con appointmentId)
+        // Guard: si la consulta ya está abierta (mismo id) → no re-abrir para evitar doble-fetch
         if (openId) {
           const consultationToOpen = consultationsList.find(
             (c) => c.id === openId || c.appointment_id === openId,
           );
-          if (consultationToOpen) {
+          if (consultationToOpen && openedConsultationIdRef.current !== consultationToOpen.id) {
             await new Promise((resolve) => setTimeout(resolve, 100));
             openConsultation(consultationToOpen);
           }
@@ -951,6 +955,13 @@ function ConsultationsPage() {
   }
 
   async function openConsultation(c: Consultation) {
+    // Marcar id abierto ANTES del fetch para que el guard del auto-open effect lo vea
+    openedConsultationIdRef.current = c.id;
+    // Reflejar el id en el URL: el sidebar "Consultas" navega a la ruta base (sin ?open=),
+    // lo que cambia openId a null → el effect de cierre (if !openId && view='consultation')
+    // cierra el editor automáticamente.
+    router.replace(`${pathname}?open=${c.id}`, { scroll: false });
+
     // Fetch fresh data from backend → GET /api/consultations/:id
     try {
       const fresh_raw = await getConsultation(c.id);
@@ -997,8 +1008,9 @@ function ConsultationsPage() {
           treatment: typeof bd.treatment === 'string' ? bd.treatment : (fresh.treatment ?? ''),
           payment_status: fresh.payment_status,
         });
-        // Prefill reposo diagnosis con el diagnóstico de la consulta (si el doctor no lo editó)
-        if (freshDiagnosis) setReposoDiagnosis(freshDiagnosis);
+        // Prefill reposo diagnosis con el diagnóstico de la consulta. Siempre se setea
+        // (default '') para no arrastrar el diagnóstico de una consulta abierta antes.
+        setReposoDiagnosis(freshDiagnosis || '');
         // Inicializar estado del panel de detalles de pago
         setPagoMethod(fresh.payment_method ?? '');
         setPagoReference(fresh.payment_reference ?? '');
@@ -1017,7 +1029,7 @@ function ConsultationsPage() {
           treatment: c.treatment ?? '',
           payment_status: c.payment_status,
         });
-        if (cachedDiagnosis) setReposoDiagnosis(cachedDiagnosis);
+        setReposoDiagnosis(cachedDiagnosis || '');
         setPagoMethod(c.payment_method ?? '');
         setPagoReference(c.payment_reference ?? '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -1034,7 +1046,7 @@ function ConsultationsPage() {
         treatment: c.treatment ?? '',
         payment_status: c.payment_status,
       });
-      if (cachedDiagnosisFallback) setReposoDiagnosis(cachedDiagnosisFallback);
+      setReposoDiagnosis(cachedDiagnosisFallback || '');
       setPagoMethod(c.payment_method ?? '');
       setPagoReference(c.payment_reference ?? '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -1085,7 +1097,8 @@ function ConsultationsPage() {
 
     // Reposo: pre-poblar diagnóstico con el diagnóstico de la consulta si está disponible.
     // Fecha desde: default = HOY. Comentarios: reset.
-    setReposoDiagnosis(''); // se setea abajo con el diagnóstico de la consulta
+    // NOTA: NO reseteamos reposoDiagnosis aquí — ya se prefilla más arriba con el diagnóstico
+    // de la consulta (freshDiagnosis / cachedDiagnosis). Resetear aquí lo borraba.
     setReposoDays(0);
     // Fecha "desde" por defecto = hoy (formato YYYY-MM-DD)
     setReposoFrom(new Date().toISOString().split('T')[0]);
@@ -1738,6 +1751,7 @@ function ConsultationsPage() {
   useEffect(() => {
     if (!openId && view === 'consultation') {
       flushBlocksSave();
+      openedConsultationIdRef.current = null;
       setView('list');
       setSelected(null);
     }
@@ -2021,8 +2035,13 @@ function ConsultationsPage() {
                 <button
                   onClick={() => {
                     flushBlocksSave();
-                    // Limpiar ?open= del URL sin reload de página — el useEffect lo cerrará
-                    router.push(pathname, { scroll: false });
+                    // Cerrar el editor directamente por estado — funciona siempre,
+                    // independientemente de si hay ?open= en el URL.
+                    openedConsultationIdRef.current = null;
+                    setView('list');
+                    setSelected(null);
+                    // Limpiar ?open= del URL si está presente (sin reload de página)
+                    if (openId) router.push(pathname, { scroll: false });
                   }}
                   className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
                 >

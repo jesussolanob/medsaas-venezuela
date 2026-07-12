@@ -28,7 +28,7 @@ import {
   type SavedPrescription,
   type EhrRecord,
   computeAvailableDocTypes,
-  buildConsolidatedContent,
+  buildDocumentPages,
   INFORME_EXCLUDED_KEYS,
   INFORME_CHECKED_BY_DEFAULT,
 } from './consultation-documents';
@@ -271,16 +271,20 @@ export default function GenerateDocumentModal({
         // Non-fatal: si el fetch falla, continuamos sin la sección EHR
       }
 
-      const allBlocks = buildConsolidatedContent({
+      // Armar una página por tipo de documento seleccionado
+      const docPages = buildDocumentPages({
         selectedTypes: [...selectedTypes],
         informeSelectedBlockKeys: informeCheckedKeys,
         informeContent,
         savedPrescriptions,
         ehrRecords: fetchedEhrRecords,
         restContent,
+        diagnosisValue: informeContent.find((b) => b.key === 'diagnosis')?.value as
+          | string
+          | undefined,
       });
 
-      if (allBlocks.length === 0) {
+      if (docPages.length === 0) {
         setError('No hay contenido disponible en las secciones seleccionadas.');
         return;
       }
@@ -289,15 +293,17 @@ export default function GenerateDocumentModal({
       const { pdf } = await import('@react-pdf/renderer');
       const { MedicalDocumentPdf } = await import('@/components/pdf/MedicalDocumentPdf');
 
+      // Un tipo = 1 página, N tipos = N páginas (una por tipo seleccionado)
       const element = (
         <MedicalDocumentPdf
-          docType="informe"
+          docType={docPages[0].docType}
           templateConfig={templateConfig}
           doctor={doctor}
           patient={{ fullName: patientName, cedula: patientCedula }}
           docDate={consultationDate}
           consultationCode={consultationCode}
-          content={allBlocks}
+          content={docPages[0].content}
+          documents={docPages.length > 1 ? docPages : undefined}
         />
       );
 
@@ -313,7 +319,9 @@ export default function GenerateDocumentModal({
       };
       const typeKeys = [...selectedTypes];
       const labelPart =
-        typeKeys.length === 1 ? (typeLabels[typeKeys[0]] ?? 'Documento') : 'Documento-Consolidado';
+        typeKeys.length === 1
+          ? (typeLabels[typeKeys[0]] ?? 'Documento')
+          : `Documentos-${typeKeys.length}-tipos`;
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;

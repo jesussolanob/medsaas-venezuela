@@ -7,7 +7,7 @@
  * Sin imports de React — este módulo es agnóstico del entorno.
  */
 
-import type { ContentBlock } from '@/components/pdf/MedicalDocumentPdf';
+import type { ContentBlock, DocumentPage } from '@/components/pdf/MedicalDocumentPdf';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -349,4 +349,82 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
   }
 
   return allBlocks;
+}
+
+// ─── Argumentos para buildDocumentPages ───────────────────────────────────────
+
+/**
+ * Arma un array de DocumentPage (una página por tipo de documento seleccionado).
+ *
+ * Cada entrada del resultado corresponde exactamente a un tipo de documento
+ * seleccionado por el doctor. El PDF resultante tendrá N hojas (una por tipo).
+ *
+ * Si solo se selecciona 1 tipo, devuelve un array con 1 elemento.
+ */
+export function buildDocumentPages(args: BuildConsolidatedContentArgs): DocumentPage[] {
+  const {
+    selectedTypes,
+    informeSelectedBlockKeys,
+    informeContent,
+    savedPrescriptions,
+    ehrRecords,
+    restContent,
+    diagnosisValue,
+  } = args;
+
+  const pages: DocumentPage[] = [];
+
+  if (selectedTypes.includes('recipe')) {
+    const blocks: ContentBlock[] = [];
+    if (diagnosisValue?.trim()) {
+      blocks.push({ key: 'recipe-diagnosis', label: 'Diagnóstico', value: diagnosisValue.trim() });
+    }
+    const recetasBlocks = buildRecetasContent(savedPrescriptions);
+    blocks.push(...recetasBlocks);
+    // Fallback: bloque 'prescription' en blocks_data sin receta guardada en BD
+    const prescriptionBlock = informeContent.find((b) => b.key === 'prescription');
+    if (recetasBlocks.length === 0 && hasBlockContent(prescriptionBlock)) {
+      blocks.push(prescriptionBlock!);
+    }
+    if (blocks.length > 0) {
+      pages.push({ docType: 'recipe', content: blocks });
+    }
+  }
+
+  if (selectedTypes.includes('paraclinical')) {
+    const block =
+      informeContent.find((b) => b.key === 'paraclinical') ??
+      informeContent.find((b) => b.key === 'requested_exams');
+    if (hasBlockContent(block)) {
+      pages.push({
+        docType: 'paraclinical',
+        content: [{ ...block!, label: block!.label || 'Exámenes solicitados' }],
+      });
+    }
+  }
+
+  if (selectedTypes.includes('history')) {
+    const ehrBlocks = buildEhrContent(ehrRecords);
+    if (ehrBlocks.length > 0) {
+      pages.push({ docType: 'history', content: ehrBlocks });
+    }
+  }
+
+  if (selectedTypes.includes('rest') && restContent?.trim()) {
+    pages.push({
+      docType: 'rest',
+      content: [{ key: 'rest-content', label: 'Reposo médico', value: restContent.trim() }],
+    });
+  }
+
+  if (selectedTypes.includes('informe')) {
+    const informeBlocks = informeContent.filter(
+      (b) => !INFORME_EXCLUDED_KEYS.has(b.key) && informeSelectedBlockKeys.has(b.key),
+    );
+    if (informeBlocks.length > 0) {
+      pages.push({ docType: 'informe', content: informeBlocks });
+    }
+  }
+
+  return pages;
 }

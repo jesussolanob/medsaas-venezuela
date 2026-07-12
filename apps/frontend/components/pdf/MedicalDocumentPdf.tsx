@@ -53,6 +53,12 @@ export interface ContentBlock {
   value: string | string[] | null;
 }
 
+/** Una página del documento multi-página (una por tipo de documento). */
+export interface DocumentPage {
+  docType: string;
+  content: ContentBlock[];
+}
+
 export interface MedicalDocumentPdfProps {
   docType: string;
   templateConfig: TemplateConfigPdf;
@@ -61,6 +67,12 @@ export interface MedicalDocumentPdfProps {
   docDate?: string;
   consultationCode?: string | null;
   content: ContentBlock[];
+  /**
+   * Cuando se pasa, el PDF tiene una página por entrada (una por tipo de
+   * documento seleccionado). La prop `content` se ignora cuando `documents`
+   * está presente. Mantener la firma actual para no romper usos existentes.
+   */
+  documents?: DocumentPage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +340,142 @@ function makeStyles(primaryColor: string) {
 // Component
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Shared sub-components (used by both single-page and multi-page variants)
+// ---------------------------------------------------------------------------
+
+interface PageContentProps {
+  styles: ReturnType<typeof makeStyles>;
+  headerTitle: string;
+  docLabel: string;
+  formattedDate: string;
+  templateConfig: TemplateConfigPdf;
+  doctor: DoctorInfoPdf;
+  patient: PatientInfoPdf;
+  consultationCode?: string | null;
+  visibleBlocks: ContentBlock[];
+}
+
+function PageContent({
+  styles,
+  headerTitle,
+  docLabel,
+  formattedDate,
+  templateConfig,
+  doctor,
+  patient,
+  consultationCode,
+  visibleBlocks,
+}: PageContentProps) {
+  return (
+    <>
+      {/* ── HEADER ── */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          {templateConfig.show_logo && templateConfig.logo_url ? (
+            <Image
+              src={proxyGcsUrl(templateConfig.logo_url) ?? templateConfig.logo_url}
+              style={styles.logo}
+            />
+          ) : null}
+          <Text style={styles.headerTitle}>{headerTitle}</Text>
+          {doctor.specialty ? <Text style={styles.headerSubtitle}>{doctor.specialty}</Text> : null}
+          {doctor.licenseNumber ? (
+            <Text style={styles.headerSubtitle}>M.P.P.S. {doctor.licenseNumber}</Text>
+          ) : null}
+        </View>
+        <View style={styles.headerRight}>
+          <Text style={styles.docTypeLabel}>{docLabel}</Text>
+        </View>
+      </View>
+
+      {/* ── META ROW ── */}
+      <View style={styles.metaRow}>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Paciente</Text>
+          <Text style={styles.metaValue}>{patient.fullName}</Text>
+          {patient.cedula ? (
+            <Text
+              style={[styles.metaValue, { fontSize: 8, fontFamily: 'Helvetica', marginTop: 1 }]}
+            >
+              C.I. {patient.cedula}
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Fecha</Text>
+          <Text style={styles.metaValue}>{formattedDate}</Text>
+        </View>
+        {consultationCode ? (
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>N° Consulta</Text>
+            <Text style={styles.metaValueMono}>{consultationCode}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* ── CONTENT BLOCKS ── */}
+      {visibleBlocks.length === 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionBody}>—</Text>
+        </View>
+      ) : (
+        visibleBlocks.map((block) => (
+          <View key={block.key} style={styles.section}>
+            <Text style={styles.sectionTitle}>{block.label}</Text>
+            {Array.isArray(block.value) ? (
+              block.value.map((item, idx) => (
+                <View key={idx} style={styles.listItem}>
+                  <View style={styles.listBullet}>
+                    <Text style={styles.listBulletText}>{idx + 1}</Text>
+                  </View>
+                  <Text style={styles.listItemText}>{item}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.sectionBody}>{block.value}</Text>
+            )}
+          </View>
+        ))
+      )}
+
+      {/* ── FIRMA ── */}
+      {templateConfig.show_signature ? (
+        <View style={styles.signatureArea}>
+          <View style={styles.signatureBlock}>
+            {templateConfig.signature_url ? (
+              <Image
+                src={proxyGcsUrl(templateConfig.signature_url) ?? templateConfig.signature_url}
+                style={styles.signatureImage}
+              />
+            ) : (
+              <View style={styles.signatureLine} />
+            )}
+            <Text style={styles.signatureName}>{doctor.fullName}</Text>
+            {doctor.specialty ? (
+              <Text style={styles.signatureSpecialty}>{doctor.specialty}</Text>
+            ) : null}
+            {doctor.licenseNumber ? (
+              <Text style={styles.signatureLicense}>M.P.P.S. {doctor.licenseNumber}</Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {/* ── FOOTER ── */}
+      <View style={styles.footer} fixed>
+        {templateConfig.footer_text ? (
+          <Text style={styles.footerText}>{templateConfig.footer_text}</Text>
+        ) : null}
+        <Text
+          style={styles.pageNumber}
+          render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
+        />
+      </View>
+    </>
+  );
+}
+
 export function MedicalDocumentPdf({
   docType,
   templateConfig,
@@ -336,20 +484,59 @@ export function MedicalDocumentPdf({
   docDate,
   consultationCode,
   content,
+  documents,
 }: MedicalDocumentPdfProps) {
   const primaryColor = templateConfig.primary_color || '#0891b2';
   const styles = makeStyles(primaryColor);
   const headerTitle = templateConfig.header_text || doctor.fullName || 'Delta Salud';
-  const docLabel = getDocLabel(docType);
   const formattedDate = formatDateVE(docDate);
 
-  // Filtrar bloques con contenido real
-  const visibleBlocks = content.filter((b) => {
-    if (!b.value) return false;
-    if (typeof b.value === 'string') return b.value.trim().length > 0;
-    if (Array.isArray(b.value)) return b.value.length > 0;
-    return true;
-  });
+  /** Filtra bloques con contenido real. */
+  function filterVisible(blocks: ContentBlock[]): ContentBlock[] {
+    return blocks.filter((b) => {
+      if (!b.value) return false;
+      if (typeof b.value === 'string') return b.value.trim().length > 0;
+      if (Array.isArray(b.value)) return b.value.length > 0;
+      return true;
+    });
+  }
+
+  // ── MODO MULTI-PÁGINA: una Page por tipo de documento ──────────────────
+  if (documents && documents.length > 0) {
+    const docTitle = documents.map((d) => getDocLabel(d.docType)).join(' + ');
+    return (
+      <Document
+        title={`${docTitle} — ${patient.fullName}`}
+        author={doctor.fullName}
+        subject={docTitle}
+        creator="Delta Salud"
+      >
+        {documents.map((doc, idx) => {
+          const pageDocLabel = getDocLabel(doc.docType);
+          const visibleBlocks = filterVisible(doc.content);
+          return (
+            <Page key={`${doc.docType}-${idx}`} size="A4" style={styles.page}>
+              <PageContent
+                styles={styles}
+                headerTitle={headerTitle}
+                docLabel={pageDocLabel}
+                formattedDate={formattedDate}
+                templateConfig={templateConfig}
+                doctor={doctor}
+                patient={patient}
+                consultationCode={consultationCode}
+                visibleBlocks={visibleBlocks}
+              />
+            </Page>
+          );
+        })}
+      </Document>
+    );
+  }
+
+  // ── MODO SINGLE-PÁGINA: comportamiento original ─────────────────────────
+  const docLabel = getDocLabel(docType);
+  const visibleBlocks = filterVisible(content);
 
   return (
     <Document
@@ -359,111 +546,17 @@ export function MedicalDocumentPdf({
       creator="Delta Salud"
     >
       <Page size="A4" style={styles.page}>
-        {/* ── HEADER ── */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            {templateConfig.show_logo && templateConfig.logo_url ? (
-              <Image
-                src={proxyGcsUrl(templateConfig.logo_url) ?? templateConfig.logo_url}
-                style={styles.logo}
-              />
-            ) : null}
-            <Text style={styles.headerTitle}>{headerTitle}</Text>
-            {doctor.specialty ? (
-              <Text style={styles.headerSubtitle}>{doctor.specialty}</Text>
-            ) : null}
-            {doctor.licenseNumber ? (
-              <Text style={styles.headerSubtitle}>M.P.P.S. {doctor.licenseNumber}</Text>
-            ) : null}
-          </View>
-          <View style={styles.headerRight}>
-            <Text style={styles.docTypeLabel}>{docLabel}</Text>
-          </View>
-        </View>
-
-        {/* ── META ROW ── */}
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Paciente</Text>
-            <Text style={styles.metaValue}>{patient.fullName}</Text>
-            {patient.cedula ? (
-              <Text
-                style={[styles.metaValue, { fontSize: 8, fontFamily: 'Helvetica', marginTop: 1 }]}
-              >
-                C.I. {patient.cedula}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Fecha</Text>
-            <Text style={styles.metaValue}>{formattedDate}</Text>
-          </View>
-          {consultationCode ? (
-            <View style={styles.metaItem}>
-              <Text style={styles.metaLabel}>N° Consulta</Text>
-              <Text style={styles.metaValueMono}>{consultationCode}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* ── CONTENT BLOCKS ── */}
-        {visibleBlocks.length === 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionBody}>—</Text>
-          </View>
-        ) : (
-          visibleBlocks.map((block) => (
-            <View key={block.key} style={styles.section}>
-              <Text style={styles.sectionTitle}>{block.label}</Text>
-              {Array.isArray(block.value) ? (
-                block.value.map((item, idx) => (
-                  <View key={idx} style={styles.listItem}>
-                    <View style={styles.listBullet}>
-                      <Text style={styles.listBulletText}>{idx + 1}</Text>
-                    </View>
-                    <Text style={styles.listItemText}>{item}</Text>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.sectionBody}>{block.value}</Text>
-              )}
-            </View>
-          ))
-        )}
-
-        {/* ── FIRMA ── */}
-        {templateConfig.show_signature ? (
-          <View style={styles.signatureArea}>
-            <View style={styles.signatureBlock}>
-              {templateConfig.signature_url ? (
-                <Image
-                  src={proxyGcsUrl(templateConfig.signature_url) ?? templateConfig.signature_url}
-                  style={styles.signatureImage}
-                />
-              ) : (
-                <View style={styles.signatureLine} />
-              )}
-              <Text style={styles.signatureName}>{doctor.fullName}</Text>
-              {doctor.specialty ? (
-                <Text style={styles.signatureSpecialty}>{doctor.specialty}</Text>
-              ) : null}
-              {doctor.licenseNumber ? (
-                <Text style={styles.signatureLicense}>M.P.P.S. {doctor.licenseNumber}</Text>
-              ) : null}
-            </View>
-          </View>
-        ) : null}
-
-        {/* ── FOOTER ── */}
-        <View style={styles.footer} fixed>
-          {templateConfig.footer_text ? (
-            <Text style={styles.footerText}>{templateConfig.footer_text}</Text>
-          ) : null}
-          <Text
-            style={styles.pageNumber}
-            render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
-          />
-        </View>
+        <PageContent
+          styles={styles}
+          headerTitle={headerTitle}
+          docLabel={docLabel}
+          formattedDate={formattedDate}
+          templateConfig={templateConfig}
+          doctor={doctor}
+          patient={patient}
+          consultationCode={consultationCode}
+          visibleBlocks={visibleBlocks}
+        />
       </Page>
     </Document>
   );

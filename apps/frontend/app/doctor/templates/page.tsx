@@ -724,38 +724,41 @@ export default function TemplatesPage() {
               </button>
             </div>
 
-            {/* Indicador de carga mientras el componente react-pdf monta */}
-            {showPreview && previewLoading && (
-              <div className="flex flex-col items-center justify-center min-h-[100px] gap-2 bg-slate-50 rounded-xl border border-slate-200 py-6">
-                <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
-                <p className="text-sm text-slate-500">Cargando vista previa…</p>
-              </div>
-            )}
-
             {showPreview && (
-              // key={activeTab} forces a full remount when the tab changes,
-              // preventing react-pdf from showing a stale/blank render.
-              <TemplatePdfPreview
-                key={activeTab}
-                onReady={() => setPreviewLoading(false)}
-                docType={activeTab}
-                docTypeLabel={tabInfo.label}
-                templateConfig={{
-                  header_text: config.header_text,
-                  footer_text: config.footer_text,
-                  primary_color: config.primary_color,
-                  font_family: config.font_family,
-                  logo_url: profileLogoUrl,
-                  signature_url: profileSignatureUrl,
-                  show_logo: config.show_logo,
-                  show_signature: config.show_signature,
-                }}
-                doctor={{
-                  fullName: doctorName || 'Dr. Nombre Apellido',
-                  specialty: doctorSpecialty || null,
-                  licenseNumber: doctorLicense,
-                }}
-              />
+              // Contenedor relativo: el spinner de carga se muestra como overlay
+              // DENTRO del mismo rectángulo que el PDFViewer — nunca fuera del recuadro.
+              <div className="relative">
+                {/* Overlay de carga — visible mientras previewLoading, sobre el viewer */}
+                {previewLoading && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-50/90 rounded-xl border border-slate-200">
+                    <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
+                    <p className="text-sm text-slate-500">Cargando vista previa…</p>
+                  </div>
+                )}
+                {/* key={activeTab} forces a full remount when the tab changes,
+                    preventing react-pdf from showing a stale/blank render. */}
+                <TemplatePdfPreview
+                  key={activeTab}
+                  onReady={() => setPreviewLoading(false)}
+                  docType={activeTab}
+                  docTypeLabel={tabInfo.label}
+                  templateConfig={{
+                    header_text: config.header_text,
+                    footer_text: config.footer_text,
+                    primary_color: config.primary_color,
+                    font_family: config.font_family,
+                    logo_url: profileLogoUrl,
+                    signature_url: profileSignatureUrl,
+                    show_logo: config.show_logo,
+                    show_signature: config.show_signature,
+                  }}
+                  doctor={{
+                    fullName: doctorName || 'Dr. Nombre Apellido',
+                    specialty: doctorSpecialty || null,
+                    licenseNumber: doctorLicense,
+                  }}
+                />
+              </div>
             )}
           </div>
         </div>
