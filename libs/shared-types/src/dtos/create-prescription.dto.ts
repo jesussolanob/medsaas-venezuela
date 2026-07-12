@@ -16,6 +16,14 @@ export const CreatePrescriptionDtoSchema = z.object({
   frequency: z.string().nullable().optional(),
   duration: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  // Pharmaceutical form (e.g. 'tabletas', 'gotas', 'spray', 'cápsulas').
+  // Empty strings are normalised to undefined so the DB stores NULL.
+  presentation: z
+    .preprocess(
+      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      z.string().trim().max(80).optional(),
+    )
+    .optional(),
 });
 
 export type CreatePrescriptionDto = z.infer<typeof CreatePrescriptionDtoSchema>;

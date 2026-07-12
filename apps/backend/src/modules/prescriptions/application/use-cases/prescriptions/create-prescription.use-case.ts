@@ -20,6 +20,7 @@ export interface CreatePrescriptionInput {
   frequency?: string | null;
   duration?: string | null;
   notes?: string | null;
+  presentation?: string | null;
 }
 
 /**
@@ -67,6 +68,7 @@ export class CreatePrescriptionUseCase {
       frequency: input.frequency ?? null,
       duration: input.duration ?? null,
       notes: input.notes ?? null,
+      presentation: input.presentation ?? null,
       createdAt: now,
       updatedAt: now,
     });

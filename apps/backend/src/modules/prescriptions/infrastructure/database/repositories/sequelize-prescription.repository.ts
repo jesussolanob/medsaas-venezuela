@@ -60,6 +60,7 @@ export class SequelizePrescriptionRepository implements IPrescriptionRepository 
       frequency: prescription.frequency,
       duration: prescription.duration,
       notes: prescription.notes,
+      presentation: prescription.presentation,
     });
     return this.toDomain(row);
   }
@@ -79,6 +80,7 @@ export class SequelizePrescriptionRepository implements IPrescriptionRepository 
       frequency: row.frequency,
       duration: row.duration,
       notes: row.notes,
+      presentation: row.presentation,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

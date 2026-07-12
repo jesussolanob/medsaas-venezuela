@@ -17,6 +17,7 @@ function makePrescription(
     frequency: 'twice daily',
     duration: '30 days',
     notes: null,
+    presentation: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -51,6 +52,7 @@ describe('Prescription', () => {
       expect(prescription.frequency).toBe('twice daily');
       expect(prescription.duration).toBe('30 days');
       expect(prescription.notes).toBeNull();
+      expect(prescription.presentation).toBeNull();
     });
 
     it('defaults optional fields to null when not provided', () => {
@@ -67,6 +69,12 @@ describe('Prescription', () => {
       expect(prescription.frequency).toBeNull();
       expect(prescription.duration).toBeNull();
       expect(prescription.notes).toBeNull();
+      expect(prescription.presentation).toBeNull();
+    });
+
+    it('stores presentation when provided', () => {
+      const prescription = makePrescription({ presentation: 'tabletas' });
+      expect(prescription.presentation).toBe('tabletas');
     });
 
     it('accepts a patientId when provided', () => {

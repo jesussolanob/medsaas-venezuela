@@ -51,6 +51,7 @@ describe('CreatePrescriptionUseCase', () => {
       frequency: 'twice daily',
       duration: '30 days',
       notes: 'Take with meals',
+      presentation: 'tabletas',
     });
 
     expect(mockPatientRepo.findById).toHaveBeenCalledWith(PATIENT_ID, DOCTOR_ID);
@@ -63,6 +64,27 @@ describe('CreatePrescriptionUseCase', () => {
     expect(result.frequency).toBe('twice daily');
     expect(result.duration).toBe('30 days');
     expect(result.notes).toBe('Take with meals');
+    expect(result.presentation).toBe('tabletas');
+  });
+
+  it('stores presentation as null when omitted', async () => {
+    mockRepo.save.mockImplementation(async (p) => p);
+
+    const result = await useCase.execute({ doctorId: DOCTOR_ID, medication: 'Aspirin' });
+
+    expect(result.presentation).toBeNull();
+  });
+
+  it('stores presentation as null when explicitly null', async () => {
+    mockRepo.save.mockImplementation(async (p) => p);
+
+    const result = await useCase.execute({
+      doctorId: DOCTOR_ID,
+      medication: 'Aspirin',
+      presentation: null,
+    });
+
+    expect(result.presentation).toBeNull();
   });
 
   it('creates a prescription without a patient (patientId omitted)', async () => {

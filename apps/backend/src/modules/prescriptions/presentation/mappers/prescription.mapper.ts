@@ -26,6 +26,7 @@ export function toPrescriptionResponse(prescription: Prescription): Record<strin
     frequency: prescription.frequency,
     duration: prescription.duration,
     notes: prescription.notes,
+    presentation: prescription.presentation,
     // issued_date is not a real column — created_at is the effective issue date
     issued_date: prescription.createdAt.toISOString(),
     created_at: prescription.createdAt.toISOString(),

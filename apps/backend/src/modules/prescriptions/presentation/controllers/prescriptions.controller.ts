@@ -91,6 +91,7 @@ export class PrescriptionsController {
       frequency: dto.frequency ?? null,
       duration: dto.duration ?? null,
       notes: dto.notes ?? null,
+      presentation: dto.presentation ?? null,
     });
     return { success: true, data: toPrescriptionResponse(prescription) };
   }

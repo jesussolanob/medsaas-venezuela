@@ -24,6 +24,7 @@ export interface PrescriptionCreateParams {
   frequency?: string | null;
   duration?: string | null;
   notes?: string | null;
+  presentation?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +39,7 @@ export class Prescription {
   readonly frequency: string | null;
   readonly duration: string | null;
   readonly notes: string | null;
+  readonly presentation: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -51,6 +53,7 @@ export class Prescription {
     this.frequency = params.frequency ?? null;
     this.duration = params.duration ?? null;
     this.notes = params.notes ?? null;
+    this.presentation = params.presentation ?? null;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
   }

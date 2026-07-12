@@ -63,6 +63,10 @@ export class PrescriptionModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare notes: string | null;
 
+  // plaintext — presentation is not PHI (e.g. 'tabletas', 'gotas', 'spray')
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare presentation: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;
