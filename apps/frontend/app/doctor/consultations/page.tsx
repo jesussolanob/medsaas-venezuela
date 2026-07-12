@@ -51,6 +51,7 @@ import {
   Timer,
   ExternalLink,
   Lock,
+  RefreshCw,
 } from 'lucide-react';
 // Etapa 1: Supabase removed.
 // PLACEHOLDER — following data sources have no backend endpoint yet (Fase 5):
@@ -386,6 +387,9 @@ function ConsultationsPage() {
     treatment: '',
     payment_status: 'pending' as Consultation['payment_status'],
   });
+
+  // Estado del botón "Refrescar" del listado.
+  const [refreshing, setRefreshing] = useState(false);
 
   // PDF include toggles
   const [includeRecipe, setIncludeRecipe] = useState(true);
@@ -4393,19 +4397,34 @@ function ConsultationsPage() {
               Gestiona tus consultas, entra a realizar el informe médico y controla el pago
             </p>
           </div>
-          <button
-            onClick={() => setShowNewConsultation(true)}
-            className="flex items-center justify-center sm:justify-start gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold text-white hover:-translate-y-px transition-all shrink-0"
-            style={{ background: 'var(--dh-ink)' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--dh-turquoise-700)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--dh-ink)';
-            }}
-          >
-            <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={async () => {
+                setRefreshing(true);
+                await reloadConsultationsTable();
+                setRefreshing(false);
+              }}
+              disabled={refreshing}
+              title="Refrescar el listado"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-[13px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refrescar</span>
+            </button>
+            <button
+              onClick={() => setShowNewConsultation(true)}
+              className="flex items-center justify-center sm:justify-start gap-2 px-5 py-2.5 rounded-full text-[13px] font-bold text-white hover:-translate-y-px transition-all shrink-0"
+              style={{ background: 'var(--dh-ink)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--dh-turquoise-700)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--dh-ink)';
+              }}
+            >
+              <Plus className="w-4 h-4" /> <span>Nueva consulta</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
