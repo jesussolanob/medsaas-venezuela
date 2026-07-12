@@ -64,8 +64,22 @@ function extractVariables(text: string): string[] {
   return Array.from(vars);
 }
 
-/** Formatea un nombre de plantilla snake_case a legible. */
+/** Mapa de nombres internos de plantillas a etiquetas legibles en español. */
+const TEMPLATE_LABELS: Record<string, string> = {
+  appointment_confirmed: 'Cita confirmada',
+  doctor_pending_verification: 'Verificación de médico pendiente',
+  invoice: 'Factura',
+  payment_approved: 'Pago aprobado',
+  reminder_24h: 'Recordatorio 24h',
+  reminder_3h: 'Recordatorio 3h',
+  reminder_7d: 'Recordatorio 7 días',
+  shared_documents_code: 'Código para compartir documentos',
+  welcome: 'Bienvenida',
+};
+
+/** Devuelve el label en español de la plantilla o capitaliza el snake_case como respaldo. */
 function formatTemplateName(name: string): string {
+  if (name in TEMPLATE_LABELS) return TEMPLATE_LABELS[name];
   return name
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -230,7 +244,7 @@ function TemplateEditor({ template, onBack, onSaved }: EditorProps) {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
           >
             {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {showPreview ? 'Ocultar preview' : 'Preview'}
+            {showPreview ? 'Ocultar vista previa' : 'Vista previa'}
           </button>
 
           {/* Save */}
@@ -263,7 +277,7 @@ function TemplateEditor({ template, onBack, onSaved }: EditorProps) {
           {/* Subject */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
             <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">
-              Asunto (Subject)
+              Asunto
             </label>
             <input
               type="text"
@@ -297,7 +311,7 @@ function TemplateEditor({ template, onBack, onSaved }: EditorProps) {
               <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">
                 Versión texto plano
               </label>
-              <span className="text-[11px] text-slate-400">Opcional — fallback sin HTML</span>
+              <span className="text-[11px] text-slate-400">Opcional — respaldo sin HTML</span>
             </div>
             <textarea
               value={text}
@@ -315,7 +329,7 @@ function TemplateEditor({ template, onBack, onSaved }: EditorProps) {
             <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2 shrink-0">
               <Eye className="w-4 h-4 text-slate-400" />
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Preview HTML
+                Vista previa HTML
               </span>
               <span className="ml-auto text-[11px] text-slate-400 italic">
                 Las variables se verán como texto literal

@@ -15,8 +15,6 @@ import {
   CreditCard,
   Users,
   Search,
-  Filter,
-  Clock,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -31,6 +29,7 @@ import {
   Calendar,
   DollarSign,
   Percent,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 
@@ -158,6 +157,31 @@ export default function AdminSubscriptionsPage() {
   );
 }
 
+// ─── PLAN LABELS ────────────────────────────────────────────────────────────
+const PLAN_OPTIONS = [
+  { value: 'delta_free', label: 'Delta Free' },
+  { value: 'delta_base', label: 'Delta Base' },
+  { value: 'delta_plus', label: 'Delta Plus' },
+] as const;
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Activo' },
+  { value: 'trial', label: 'Trial' },
+  { value: 'past_due', label: 'Vencido' },
+  { value: 'suspended', label: 'Suspendido' },
+] as const;
+
+type PlanKey = (typeof PLAN_OPTIONS)[number]['value'];
+type StatusKey = (typeof STATUS_OPTIONS)[number]['value'];
+
+interface ChangePlanTarget {
+  doctor_id: string;
+  doctor_name: string;
+  current_plan: string | null;
+  current_status: string | null;
+  current_period_end: string | null;
+}
+
 // ─── DOCTORS TAB ────────────────────────────────────────────────────────────
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<DoctorRow[]>([]);
@@ -165,6 +189,7 @@ function DoctorsTab() {
   const [filter, setFilter] = useState<string>('');
   const [search, setSearch] = useState('');
   const [actioning, setActioning] = useState<string | null>(null);
+  const [changePlanTarget, setChangePlanTarget] = useState<ChangePlanTarget | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -252,8 +277,30 @@ function DoctorsTab() {
     }
   }
 
+  function openChangePlan(d: DoctorRow) {
+    setChangePlanTarget({
+      doctor_id: d.doctor_id,
+      doctor_name: d.doctor_name,
+      current_plan: d.plan,
+      current_status: d.status,
+      current_period_end: d.current_period_end,
+    });
+  }
+
   return (
     <>
+      {/* Modal cambiar plan */}
+      {changePlanTarget && (
+        <ChangePlanModal
+          target={changePlanTarget}
+          onClose={() => setChangePlanTarget(null)}
+          onSaved={() => {
+            setChangePlanTarget(null);
+            load();
+          }}
+        />
+      )}
+
       {/* Filtros — search en línea propia en móvil para que no se aplaste */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
@@ -375,6 +422,14 @@ function DoctorsTab() {
                             >
                               <Plus className="w-4 h-4" />
                             </button>
+                            <button
+                              onClick={() => openChangePlan(d)}
+                              disabled={actioning === d.doctor_id}
+                              title="Cambiar plan"
+                              className="p-1.5 text-violet-600 hover:bg-violet-50 rounded-md disabled:opacity-40"
+                            >
+                              <ArrowLeftRight className="w-4 h-4" />
+                            </button>
                             {d.status === 'suspended' ? (
                               <button
                                 onClick={() => reactivateDoctor(d.doctor_id)}
@@ -466,13 +521,20 @@ function DoctorsTab() {
                       </span>
                     )}
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <button
                         onClick={() => extendDoctor(d.doctor_id, d.doctor_name)}
                         disabled={actioning === d.doctor_id}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg disabled:opacity-40"
                       >
                         <Plus className="w-4 h-4" /> Extender
+                      </button>
+                      <button
+                        onClick={() => openChangePlan(d)}
+                        disabled={actioning === d.doctor_id}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-lg disabled:opacity-40"
+                      >
+                        <ArrowLeftRight className="w-4 h-4" /> Cambiar plan
                       </button>
                       {d.status === 'suspended' ? (
                         <button
@@ -500,6 +562,191 @@ function DoctorsTab() {
         )}
       </div>
     </>
+  );
+}
+
+// ─── CHANGE PLAN MODAL ──────────────────────────────────────────────────────
+function ChangePlanModal({
+  target,
+  onClose,
+  onSaved,
+}: {
+  target: ChangePlanTarget;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const defaultExpiry = new Date();
+  defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
+  const defaultExpiryStr = defaultExpiry.toISOString().slice(0, 10);
+
+  const initialPlan: PlanKey =
+    (PLAN_OPTIONS.find((p) => p.value === target.current_plan)?.value as PlanKey | undefined) ??
+    'delta_free';
+  const initialStatus: StatusKey =
+    (STATUS_OPTIONS.find((s) => s.value === target.current_status)?.value as
+      | StatusKey
+      | undefined) ?? 'active';
+  const initialExpiry = target.current_period_end
+    ? target.current_period_end.slice(0, 10)
+    : defaultExpiryStr;
+
+  const [plan, setPlan] = useState<PlanKey>(initialPlan);
+  const [status, setStatus] = useState<StatusKey>(initialStatus);
+  const [expiresAt, setExpiresAt] = useState<string>(initialExpiry);
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    if (!expiresAt) {
+      setError('Seleccioná una fecha de vencimiento');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/doctors/${target.doctor_id}/subscription`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan,
+          status,
+          expires_at: new Date(expiresAt).toISOString(),
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
+        }),
+      });
+      const j = (await r.json()) as { success?: boolean; error?: string };
+      if (!r.ok) throw new Error(j.error ?? `Error ${r.status}`);
+      showToast({
+        type: 'success',
+        message: `Plan actualizado a ${PLAN_OPTIONS.find((p) => p.value === plan)?.label ?? plan}`,
+      });
+      onSaved();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error desconocido');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-slate-900 text-base">Cambiar plan</h3>
+            <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[220px]">
+              {target.doctor_name}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              Plan
+            </label>
+            <select
+              value={plan}
+              onChange={(e) => setPlan(e.target.value as PlanKey)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+            >
+              {PLAN_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              Estado
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as StatusKey)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              Vence
+            </label>
+            <input
+              type="date"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+              min={new Date().toISOString().slice(0, 10)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none"
+            />
+            {plan === 'delta_free' && (
+              <p className="text-xs text-slate-400 mt-1">
+                Para Free podés poner una fecha lejana (el plan es permanente).
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              Notas <span className="font-normal normal-case text-slate-400">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ej: migración manual por solicitud del doctor"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none placeholder:text-slate-400"
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs text-red-600 border border-red-200 bg-red-50 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 px-5 pb-5">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 py-2.5 text-sm font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+          >
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
