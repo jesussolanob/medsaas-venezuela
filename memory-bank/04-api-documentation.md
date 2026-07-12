@@ -463,3 +463,29 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 > ingreses datos de pacientes". **Frontend:** `POST /api/help/chat` = thin-proxy (`requireRole`). Widget global
 > `components/help/HelpWidget.tsx` montado en el root `layout.tsx` (sobrevive la navegación; se resetea al cerrar);
 > botón "Ayuda" (`HelpButton`) en los topbars de doctor/admin/patient; estado vía pub/sub `helpChatStore`.
+
+### Lote 2026-07-12 — rutas nuevas / campos nuevos
+
+> Route handlers Next (BFF), no NestJS: se migran acciones frecuentes o con polling desde Server Actions
+> (cuyos IDs se rehashean por build → "Server Action not found" tras deploy). Ver ADR-022.
+
+| Endpoint                           | Método    | Auth        | Notas                                                                                                                                                                                         |
+| ---------------------------------- | --------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/admin/recent-doctors?days=7` | GET       | super_admin | **Route handler** (reemplaza la Server Action `getRecentDoctors` del bell de admin — polling 60s generaba ~6000 "Server Action not found" en Sentry). Sobrevive deploys. Polling best-effort. |
+| `/api/doctor/prescriptions`        | GET, POST | doctor      | **Route handler estable** (reemplaza la Server Action que truena tras deploy). GET `?patientId=`; POST acepta el campo nuevo `presentation`. Proxea al backend NestJS.                        |
+
+**Campos nuevos (backend NestJS):**
+
+- `prescriptions.presentation` (mig `20260712000005`) — presentación del medicamento (Tabletas, Cápsulas,
+  Gotas, Jarabe, …, "Otro" libre). `GET/POST /api/prescriptions` lo exponen/aceptan (snake_case). Se renderiza
+  en la hoja 2 "Indicaciones" del récipe (PDF de 2 hojas).
+- `doctor_offices.map_url` (mig `20260712000003`) — enlace opcional de Google Maps del consultorio; `create`/
+  `update` office lo aceptan (validado http/https, sanitizado). Se envía al paciente en el correo de
+  confirmación de la cita ("Ver ubicación en el mapa").
+- `GET /api/booking/:id/info` ahora incluye **`paymentDetails`** (nro de cuenta, Pago Móvil, etc.) — antes el
+  backend los omitía; se muestran en el link público de reserva.
+- `consultation_block_catalog.default_label`: bloque **"Indicaciones" → "Evaluación actual"** (mig
+  `20260712000006`). ⚠️ Esa migración también intentaba `SET updated_at=NOW()` pero la tabla NO tiene esa
+  columna → bloqueaba todos los deploys; corregida en `4b4fbf1`.
+- Plantilla de email `welcome` enriquecida (paso a paso de onboarding, mig `20260712000002`) — se envía al
+  especialista en su PRIMER registro.

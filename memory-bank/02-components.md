@@ -359,3 +359,18 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
   panel del root layout (open/close), sin prop drilling entre layouts.
 - Backend: módulo `help-assistant` (ver 04-api-documentation). La guía se elige por rol del CurrentUser; los
   manuales viven como strings TS en `apps/backend/src/modules/help-assistant/guides/`.
+
+### Componentes frontend nuevos (2026-07-12)
+
+- `components/patient/PatientFichaModal.tsx` — modal de **solo lectura** de la ficha del paciente (identidad,
+  contacto, datos clínicos, contacto de emergencia, notas). Se abre con "Ver ficha del paciente" DENTRO de la
+  consulta, sin sacar al doctor del editor de la consulta.
+- `components/doctor/ExchangeRateSection.tsx` — sección compacta de **tasa de cambio** (BCV USD, BCV EUR,
+  personalizada) embebida dentro de **Métodos de pago**. Reemplaza la pantalla dedicada
+  `/doctor/settings/exchange-rate` (eliminada). Las opciones de pago pasan a ser **colapsables** (acordeón).
+- **Tarjeta guía de plantillas** en el inicio del doctor (`app/doctor/page.tsx`): aparece si el doctor aún NO
+  tiene logo/firma, invitándolo a configurar sus plantillas.
+- Récipe = **PDF de 2 hojas** vía `buildDocumentPages` (`consultation-documents.ts`) → `MedicalDocumentPdf` en
+  modo multi-página (`documents=[...]`): hoja 1 "Récipe" (medicamento + dosis), hoja 2 "Indicaciones"
+  (+ indicaciones/frecuencia/duración/**presentación**). Bloque "Indicaciones" renombrado a **"Evaluación
+  actual"** e integrado al informe (ya no documento suelto). Branding **"Delta Salud"** en toda la UI/emails/PDF.

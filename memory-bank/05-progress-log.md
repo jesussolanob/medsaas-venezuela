@@ -1820,3 +1820,80 @@ con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
     vigilar que el deploy levante (lección 06-22).
 - **PENDIENTE**: confirmar que el deploy de Cloud Run levantó OK (boot/DI); QA visual del flujo de registrar
   pago (admin → extiende suscripción del doctor); el usuario reinicia sesión con permisos bypaseados para seguir.
+
+## 2026-07-12 — Lote QA doctor+booking+finanzas + Sentry (desplegado)
+
+> Rama `feature/migracion-backend`, TODO desplegado en prod. Lote grande de fixes/mejoras del recorrido de
+> médico real (récipe, validaciones, config/pagos, finanzas, booking del paciente, onboarding/marca/mobile,
+> infra/Sentry). Guion QA nuevo: `07-qa-test-script.md` sección D-2026-07-12.
+
+- **Récipe / Consultas:**
+  - Récipe ahora es **PDF de 2 hojas**: hoja 1 "Récipe" (medicamento + dosis); hoja 2 "Indicaciones"
+    (medicamento + dosis + indicaciones + frecuencia + duración + presentación). Aplica al generar, descargar
+    directo y **compartir por enlace** (commits `10d08aa`, `227edc6`). Helper `buildDocumentPages` en
+    `consultation-documents.ts`; render con `documents=[...]` (modo multi-página de `MedicalDocumentPdf`).
+  - Nuevo campo por medicamento **Presentación** (selector con presets: Tabletas, Cápsulas, Gotas, Jarabe,
+    Spray, Crema, Ungüento, Ampolla/Inyección, Supositorio, Óvulo, Inhalador, Polvo, Solución, Parche + "Otro"
+    libre). Persiste en `prescriptions.presentation` (mig `20260712000005`, snake_case) (`317c53b`, `10d08aa`).
+  - Bloque **"Indicaciones" renombrado a "Evaluación actual"** e integrado al informe (ya NO documento aparte);
+    se eliminó el documento suelto "Indicaciones" de Generar/Compartir y de la preview de plantillas. Rename en
+    `consultation_block_catalog.default_label` (mig `20260712000006`) (`317c53b`, `10d08aa`).
+  - Guardar receta ya NO truena con "Server Action not found" tras deploy → migrado a route handler
+    `/api/doctor/prescriptions` (`adfae69`).
+  - **Reposo**: no se puede generar/compartir sin días (>0) — antes la fecha (hoy) y el diagnóstico prefilled
+    lo habilitaban falsamente (`a2303c3`).
+  - "Ver ficha del paciente" dentro de la consulta abre un **modal de solo lectura** (identidad, contacto,
+    datos clínicos, contacto de emergencia, notas) sin sacar de la consulta (`c460761`).
+  - Reordenar bloques: ahora también los **bloques fijos** se reordenan con ↑↓ y ese orden manda en el informe
+    (el backend ya ordenaba por `sort_order` sin distinguir fijos) (`6642541`).
+- **Validaciones:**
+  - No se puede agendar en **horas pasadas de hoy** en el selector de horario (`StepSchedule`, hora de
+    Venezuela) (`73b6068`).
+  - Fecha de nacimiento de **paciente** no futura; **especialista** exige edad mínima **18 años** (helper
+    `lib/date-validation.ts`) (`73b6068`).
+- **Config / Pagos:**
+  - Las **tasas de cambio** (BCV USD, BCV EUR, personalizada) se movieron a una sección compacta dentro de
+    **Métodos de pago** (`ExchangeRateSection`); se eliminó la pantalla `/doctor/settings/exchange-rate`. Las
+    opciones de pago ahora son **colapsables** (acordeón) (`443df30`).
+  - Consultorio: nuevo campo opcional **"Enlace de ubicación (Google Maps)"** (`doctor_offices.map_url`, mig
+    `20260712000003`) que se envía al paciente en el correo de confirmación ("Ver ubicación en el mapa";
+    validado http/https, sanitizado) (`fb63c5b`, `e1c6945`).
+- **Finanzas / Cobros:**
+  - El **listado de cobros pendientes** ya no sale vacío (era **doble desempaque del envelope**: `getPayments`
+    leía `result.value.data` pero `backendGet` ya desempaqueta) y los montos coinciden con el dashboard
+    (`COALESCE(c.amount, a.plan_price, 0)`) (`05042c5`).
+  - **Finanzas**: el listado de Ingresos/Egresos se refresca tras agregar/editar/eliminar (`refreshKey`); el
+    gráfico "Ingresos vs Gastos" en Resumen e Ingresos ahora es de **barras (recharts)** como en Reportería
+    (`68ce20e`).
+  - **Dashboard**: el KPI antes "Pacientes atendidos / Con al menos una consulta" ahora dice **"Consultas
+    atendidas"** (el valor es total de consultas) (`0468113`).
+- **Booking del paciente:**
+  - **Datos de pago del doctor** (nro de cuenta, Pago Móvil, etc.) ahora se muestran en el link de reserva
+    (antes solo los métodos; el backend los omitía a propósito). `GET /api/booking/:id/info` ahora incluye
+    `paymentDetails` (`f2678d9`).
+  - **Slots multi-bloque**: el booking muestra todos los bloques del día (mañana+tarde) en el mismo orden que
+    ve el doctor (antes `.find` tomaba solo el primero) (`edd6f7d`).
+  - **Paciente recurrente**: dedup por **cédula primero** (identificador estable), asocia sin sobrescribir
+    datos (`f2678d9`). En "Tus datos" la **cédula va primero**; se **quitó** el botón "Prefiero iniciar
+    sesión" (`edd6f7d`).
+  - Verificado: el booking crea un pago `status='pending'` con el comprobante en la cita → aparece en cobros
+    del doctor.
+- **Onboarding / Marca / Mobile:**
+  - **Correo de bienvenida** al especialista en su PRIMER registro (paso a paso de cómo usar Delta), gated por
+    primer registro (`231a38c`; plantilla `welcome` enriquecida, mig `20260712000002`).
+  - **Tarjeta guía** en el inicio del doctor para configurar plantillas (subir logo/firma) si aún no las tiene
+    (`3a324d1`).
+  - Branding **"Delta Salud"** en toda la UI, emails y PDF (antes "Delta Medical CRM") (`6c2cac9`, `3a324d1`).
+  - **Hamburguesa mobile** de la landing (`public/landing.html`) arreglada: antes no abría y login/registro
+    quedaban inaccesibles en celular (`b262254`).
+- **Infra / Sentry:**
+  - Fix de deploy: la mig `20260712000006` hacía `UPDATE ... SET updated_at=NOW()` pero
+    `consultation_block_catalog` **no tiene esa columna** → bloqueaba TODOS los deploys (las migraciones corren
+    ANTES del build) (`4b4fbf1`).
+  - Sentry: el ruido masivo (~6000 eventos) de "Server Action not found" venía del bell de admin
+    (`getRecentDoctors`, polling 60s) → migrado a route handler `/api/admin/recent-doctors` + polling
+    best-effort; se agregó `ignoreErrors` para ruido benigno (Server Action not found, Failed to fetch,
+    AbortError, 204). Bug real de plantillas `INVALID_TEMPLATE_TYPE` (`applyTemplateConfigToAll` enviaba tipos
+    inválidos) arreglado a los 4 tipos válidos (informe/recipe/prescripciones/reposo) (`5408b66`, `efad4bd`).
+- **PENDIENTE**: QA visual del usuario del recorrido completo (ver guion D-2026-07-12). Regla del proyecto:
+  PASA solo si el efecto se ve en la pantalla siguiente.

@@ -183,6 +183,20 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   la UI + `consultation_block_catalog.default_label` (mig `20260711000001`, fijos enabled/orden). Errores de
   horario de consultorio ahora en **español con nombre del día**; `ZodValidationPipe` devuelve el primer error
   de campo (no "Validation failed"). Modales de captura ya **no cierran por click en el backdrop**.
+- **ADR-022 (2026-07-12):** **Acciones frecuentes o con polling van a route handler (BFF), no a Server Action.**
+  Los **IDs de Server Action de Next se rehashean por build** → tras cada deploy los clientes viejos invocan un
+  ID que ya no existe y truena "Server Action not found". Esto causó (a) que guardar receta fallara tras deploy y
+  (b) ~6000 eventos de ruido en Sentry desde el bell de admin (`getRecentDoctors`, polling 60s). **Regla:** todo
+  lo que se invoque en polling, con frecuencia, o desde clientes de larga vida, se implementa como **route
+  handler** (`/api/doctor/prescriptions`, `/api/admin/recent-doctors`) que **sobrevive a deploys**. Además, en
+  Sentry se agregó `ignoreErrors` para ruido benigno (Server Action not found, Failed to fetch, AbortError, 204).
+  Complementos del lote: (b) **récipe = PDF de 2 hojas** (hoja 1 "Récipe" medicamento+dosis; hoja 2
+  "Indicaciones" +presentación/frecuencia/duración) vía el **modo multi-página de `MedicalDocumentPdf`**
+  (`documents=[...]`, helper `buildDocumentPages`), aplicado a generar/descargar/compartir; (c) bloque
+  **"Indicaciones" renombrado a "Evaluación actual"** e integrado al informe (ya NO documento aparte);
+  (d) **GOTCHA de deploy:** las migraciones corren **ANTES del build** y una migración rota **bloquea TODOS los
+  deploys** — la mig `20260712000006` hacía `SET updated_at=NOW()` pero `consultation_block_catalog` **no tiene
+  columna `updated_at`** (fix `4b4fbf1`); toda migración nueva debe verificarse contra el esquema real de la tabla.
 - **ADR-019 (2026-07-08):** **Seguimiento del Paciente = módulo `shared-files` (tareas/comentarios/archivos doctor↔paciente).**
   Tabla `shared_files` (mig `20260708000001`): doctor_id, patient_id, title, description, `file_url` (**guarda el PATH de
   GCS, no la signed URL**), file_type, file_size_bytes, category (instruction|file|recipe|lab_result|image|other|comment),

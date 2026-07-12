@@ -18,7 +18,9 @@
   fixes de las sesiones **2026-07-07 a 2026-07-10** (gating por plan, ficha de paciente,
   módulo Consultas inline, Seguimiento/`shared_files`, compartir, horario multi-bloque,
   imágenes/PDF, Nueva consulta, bloques de nombre fijo + Paraclínico, email de confirmación),
-  que las secciones C/D-regresión previas no cubrían.
+  que las secciones C/D-regresión previas no cubrían. Las secciones **D-2026-07-11** (recorrido de
+  doctor real, 22 observaciones) y **D-2026-07-12** (récipe 2 hojas, booking, finanzas, Sentry) siguen
+  al final con el mismo método E2E.
 
 ## Cómo usarlo
 
@@ -798,6 +800,75 @@ pantalla siguiente. Agente B verifica en BD en cada punto (sin PII).
 > A debe navegar a la pantalla donde el efecto debe verse (Consultas, Finanzas, PDF descargado) y
 > confirmarlo; B confirma persistencia y ausencia de errores en logs/Sentry. Probar como **un médico
 > real haciendo su día completo**, no acciones sueltas.
+
+---
+
+## D-2026-07-12) Lote QA récipe/booking/finanzas/sentry
+
+> Cobertura del lote **2026-07-12** (todo desplegado en prod). Reusa el entorno prod y el harness de BD de las
+> secciones **Entorno** y **B**. Convención: `doctorId` de `user.sub`; PII de paciente NUNCA en claro en logs.
+> **Regla del proyecto:** un caso PASA solo si el efecto se ve en la **pantalla siguiente** (no basta con "la UI
+> no dio error"). Commits de referencia en `05-progress-log.md` (sección 2026-07-12).
+
+### D-12.a — Récipe / Consultas
+
+| Caso   | Precondición                                   | Acción                                                    | Esperado front                                                                                                                                                             | BD / efecto                                                                       |
+| ------ | ---------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| D-12.1 | Consulta con récipe (≥1 medicamento con dosis) | Generar / descargar récipe                                | PDF de **2 hojas**: hoja 1 "Récipe" (medicamento + dosis); hoja 2 "Indicaciones" (medicamento+dosis+indicaciones+frecuencia+duración+**presentación**)                     | —                                                                                 |
+| D-12.2 | Récipe compartido por enlace + código          | Abrir como paciente y descargar                           | Mismo PDF de 2 hojas branded "Delta Salud"                                                                                                                                 | `shared_document_links` activo; sin PII en logs                                   |
+| D-12.3 | Editar medicamento en el récipe                | Elegir **Presentación** (preset o "Otro" libre) y guardar | El valor persiste y sale en la hoja 2                                                                                                                                      | `SELECT presentation FROM prescriptions WHERE id=:p` = valor elegido (snake_case) |
+| D-12.4 | Consulta con bloque de evaluación              | Abrir tabs de la consulta                                 | El bloque antes "Indicaciones" ahora se llama **"Evaluación actual"**; NO aparece "Indicaciones" como documento suelto en Generar/Compartir ni en la preview de plantillas | `consultation_block_catalog.default_label` = "Evaluación actual"                  |
+| D-12.5 | Récipe recién editado, tras un deploy reciente | Guardar receta                                            | NO error "Server Action not found"; guarda vía route handler `/api/doctor/prescriptions`                                                                                   | fila `prescriptions` persistida                                                   |
+| D-12.6 | Reposo SIN días (días=0)                       | Intentar generar/compartir reposo                         | **Deshabilitado**; NO se genera aunque fecha (hoy) y diagnóstico estén prefilled                                                                                           | —                                                                                 |
+| D-12.7 | Reposo con días >0                             | Generar reposo                                            | Genera el PDF                                                                                                                                                              | —                                                                                 |
+| D-12.8 | Editor de una consulta                         | "Ver ficha del paciente"                                  | Abre **modal de solo lectura** (identidad, contacto, clínicos, emergencia, notas); NO saca del editor de la consulta                                                       | ninguna escritura                                                                 |
+| D-12.9 | Informe con **bloques fijos** + dinámicos      | Reordenar bloques fijos con ↑↓ y generar informe          | El orden de los fijos manda en el informe (no solo los dinámicos)                                                                                                          | backend ordena por `sort_order` sin distinguir fijos                              |
+
+### D-12.b — Validaciones
+
+| Caso    | Precondición                 | Acción                                        | Esperado front                                                         | BD / efecto |
+| ------- | ---------------------------- | --------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| D-12.10 | Selector de horario, hoy     | Intentar elegir una **hora ya pasada** de hoy | Bloqueada/no seleccionable (hora de **Venezuela**); solo horas futuras | —           |
+| D-12.11 | Registro/edición de paciente | Poner fecha de nacimiento **futura**          | Rechaza (`lib/date-validation.ts`)                                     | no persiste |
+| D-12.12 | Registro de especialista     | Fecha de nacimiento con edad **<18 años**     | Rechaza; exige mínimo 18                                               | no persiste |
+
+### D-12.c — Config / Pagos
+
+| Caso    | Precondición               | Acción                                                                                                 | Esperado front                                                                                                                       | BD / efecto                                                |
+| ------- | -------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| D-12.13 | Settings → Métodos de pago | Buscar la tasa de cambio                                                                               | Vive en una **sección compacta** (`ExchangeRateSection`) dentro de Métodos de pago; NO hay pantalla `/doctor/settings/exchange-rate` | —                                                          |
+| D-12.14 | Settings → Métodos de pago | Ver las opciones de pago                                                                               | Son **colapsables** (acordeón)                                                                                                       | —                                                          |
+| D-12.15 | Consultorio nuevo/editar   | Agregar **"Enlace de ubicación (Google Maps)"** y guardar; luego confirmar una cita en ese consultorio | El correo de confirmación al paciente incluye "Ver ubicación en el mapa"                                                             | `doctor_offices.map_url` guardado (http/https, sanitizado) |
+
+### D-12.d — Finanzas / Cobros
+
+| Caso    | Precondición                  | Acción                                  | Esperado front                                                                        | BD / efecto                                               |
+| ------- | ----------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| D-12.16 | Consultas pendientes de pago  | Abrir Cobros                            | El **listado no sale vacío**; los montos coinciden con el dashboard                   | `SUM(COALESCE(c.amount, a.plan_price, 0))` de pending > 0 |
+| D-12.17 | Finanzas → Ingresos/Egresos   | Agregar/editar/eliminar una transacción | El listado **se refresca** al instante (mecanismo `refreshKey`)                       | fila creada/editada/borrada en `financial_transactions`   |
+| D-12.18 | Finanzas → Resumen / Ingresos | Ver gráfico "Ingresos vs Gastos"        | Es de **barras (recharts)**, como en Reportería                                       | —                                                         |
+| D-12.19 | Dashboard del doctor          | Leer el KPI de consultas                | Dice **"Consultas atendidas"** (valor = total de consultas), no "Pacientes atendidos" | —                                                         |
+
+### D-12.e — Booking del paciente
+
+| Caso    | Precondición                                            | Acción                                            | Esperado front                                                                                      | BD / efecto                                          |
+| ------- | ------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| D-12.20 | Doctor con datos de pago cargados                       | Abrir el link público de reserva y llegar al pago | Se muestran los **datos de pago del doctor** (nro de cuenta, Pago Móvil, etc.), no solo los métodos | `GET /api/booking/:id/info` incluye `paymentDetails` |
+| D-12.21 | Doctor con **multi-bloque** el mismo día (mañana+tarde) | Ver los horarios disponibles                      | Muestra **todos los bloques del día** en el mismo orden que ve el doctor (no solo el primero)       | slots union de todos los bloques                     |
+| D-12.22 | Paciente ya existente (misma cédula)                    | Reservar de nuevo con esa cédula                  | Dedup por **cédula primero**; asocia sin **sobrescribir** los datos existentes                      | no se crea duplicado; datos previos intactos         |
+| D-12.23 | Paso "Tus datos"                                        | Ver el orden de campos                            | La **cédula va primero**; **NO** aparece el botón "Prefiero iniciar sesión"                         | —                                                    |
+| D-12.24 | Reserva completada con comprobante                      | Completar el booking; revisar Cobros del doctor   | Aparece un pago `pending` con el comprobante en la cita, en el área de cobros                       | `payments` fila `status='pending'` ligada a la cita  |
+
+### D-12.f — Onboarding / Marca / Mobile / Sentry
+
+| Caso    | Precondición                           | Acción                      | Esperado front                                                                                                                                   | BD / efecto                                           |
+| ------- | -------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| D-12.25 | Especialista en su **primer** registro | Completar el registro       | Recibe **correo de bienvenida** con paso a paso de cómo usar Delta (solo la 1ª vez)                                                              | plantilla `welcome` enriquecida; gate primer registro |
+| D-12.26 | Doctor SIN logo/firma                  | Entrar al inicio del doctor | Aparece la **tarjeta guía** para configurar plantillas (subir logo/firma)                                                                        | desaparece cuando ya tiene logo/firma                 |
+| D-12.27 | Cualquier pantalla / email / PDF       | Revisar el branding         | Dice **"Delta Salud"** en todos lados (ya no "Delta Medical CRM")                                                                                | —                                                     |
+| D-12.28 | Landing en **móvil** (`landing.html`)  | Tocar la **hamburguesa**    | El menú abre; login/registro accesibles en celular                                                                                               | —                                                     |
+| D-12.29 | Sentry (post-deploy)                   | Observar eventos            | Cesa el ruido de "Server Action not found" del bell admin; `getRecentDoctors` es route handler `/api/admin/recent-doctors` (polling best-effort) | `ignoreErrors` filtra ruido benigno                   |
+| D-12.30 | Aplicar config de plantillas a todos   | "Aplicar a todos"           | NO error `INVALID_TEMPLATE_TYPE`; usa los **4 tipos válidos** (informe/recipe/prescripciones/reposo)                                             | —                                                     |
 
 ---
 
