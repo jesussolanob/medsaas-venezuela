@@ -51,6 +51,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SubscriptionPanel from '@/components/doctor/SubscriptionPanel';
 import BookingQrCode from '@/components/doctor/BookingQrCode';
 import { reportError } from '@/lib/report-error';
+import { validateBirthDate, maxBirthDateForMinAge } from '@/lib/date-validation';
 import { showToast } from '@/components/ui/Toaster';
 import PhoneInput from '@/components/shared/PhoneInput';
 
@@ -415,6 +416,12 @@ function SettingsPageInner() {
   /* ---------------- PROFILE ---------------- */
 
   async function saveProfile() {
+    // El especialista debe ser mayor de 18 años (y la fecha no puede ser futura).
+    const bdError = validateBirthDate(profile.birth_date, { minAge: 18 });
+    if (bdError) {
+      showToast({ type: 'error', message: bdError });
+      return;
+    }
     // Persist fields supported by PUT /api/doctor/profile.
     const result = await saveSettingsProfile({
       full_name: profile.full_name,
@@ -1040,6 +1047,7 @@ function SettingsPageInner() {
                       <input
                         type="date"
                         value={profile.birth_date}
+                        max={maxBirthDateForMinAge(18)}
                         onChange={(e) => setProfile((p) => ({ ...p, birth_date: e.target.value }))}
                         className={fi}
                       />

@@ -66,6 +66,7 @@ import { getDoctorServices } from '@/app/doctor/services/actions';
 import { getDoctorProfile } from '@/app/doctor/actions';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
+import { validateBirthDate, todayCaracasISO } from '@/lib/date-validation';
 // RONDA 40: componente compartido de drag & drop
 import UploadDropZone from '@/components/shared/UploadDropZone';
 // RONDA 46: renderer de markdown ligero para outputs de Gemini
@@ -477,6 +478,11 @@ export default function PatientsPage() {
       setEditError('La cédula es obligatoria');
       return;
     }
+    const editBdError = validateBirthDate(editPat.birth_date);
+    if (editBdError) {
+      setEditError(editBdError);
+      return;
+    }
     setSavingEdit(true);
     setEditError('');
     try {
@@ -687,6 +693,11 @@ export default function PatientsPage() {
     }
     if (!newPat.cedula.trim() || newPat.cedula.trim().length < 5) {
       setPatError('La cédula es obligatoria');
+      return;
+    }
+    const newBdError = validateBirthDate(newPat.birth_date);
+    if (newBdError) {
+      setPatError(newBdError);
       return;
     }
     if (!doctorId) return;
@@ -2752,6 +2763,7 @@ export default function PatientsPage() {
                   <input
                     type="date"
                     value={newPat.birth_date}
+                    max={todayCaracasISO()}
                     onChange={(e) => {
                       const bd = e.target.value;
                       const calculatedAge = calcAgeFromBirthDate(bd);
@@ -2919,6 +2931,7 @@ export default function PatientsPage() {
                   <input
                     type="date"
                     value={editPat.birth_date}
+                    max={todayCaracasISO()}
                     onChange={(e) => {
                       const bd = e.target.value;
                       const calculatedAge = calcAgeFromBirthDate(bd);

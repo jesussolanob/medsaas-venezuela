@@ -35,6 +35,7 @@ import {
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
 import { isValidEmail } from '@/lib/validation';
+import { validateBirthDate, todayCaracasISO } from '@/lib/date-validation';
 
 export type PatientFormData = {
   id?: string;
@@ -148,6 +149,12 @@ export default function PatientForm({
       setError('El email no tiene un formato válido');
       return;
     }
+    // Fecha de nacimiento (opcional) no puede ser futura.
+    const bdError = validateBirthDate(data.birth_date);
+    if (bdError) {
+      setError(bdError);
+      return;
+    }
     try {
       // Limpiar strings vacios a null para no ensuciar BD
       const cleaned: PatientFormData = { ...data };
@@ -251,6 +258,7 @@ export default function PatientForm({
             <input
               type="date"
               value={data.birth_date ?? ''}
+              max={todayCaracasISO()}
               onChange={(e) => set('birth_date', e.target.value)}
               className={fi}
             />

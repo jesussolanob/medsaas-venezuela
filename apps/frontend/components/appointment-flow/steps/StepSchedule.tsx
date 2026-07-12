@@ -96,6 +96,23 @@ export default function StepSchedule({
 
   const unavailableForDate = unavailableTimes.get(selectedDate) ?? new Set<string>();
 
+  // Bloquear horas ya pasadas cuando la fecha seleccionada es HOY (hora de
+  // Venezuela, UTC-4). No debe poder agendarse una consulta en el pasado.
+  const nowParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Caracas',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const nowPart = (t: string) => nowParts.find((p) => p.type === t)?.value ?? '';
+  const todayCaracas = `${nowPart('year')}-${nowPart('month')}-${nowPart('day')}`;
+  const nowHour = nowPart('hour') === '24' ? '00' : nowPart('hour');
+  const nowHHMM = `${nowHour}:${nowPart('minute')}`;
+  const isTodaySelected = selectedDate === todayCaracas;
+
   // If no office schedule, show a hint about generic times
   const usingGenericTimes =
     !selectedOffice || !selectedOffice.schedule || selectedOffice.schedule.length === 0;
@@ -199,7 +216,8 @@ export default function StepSchedule({
           ) : (
             <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
               {timeSlots.map((t) => {
-                const isUnavailable = unavailableForDate.has(t);
+                const isPast = isTodaySelected && t <= nowHHMM;
+                const isUnavailable = unavailableForDate.has(t) || isPast;
                 const isActive = selectedTime === t;
                 return (
                   <button
@@ -207,7 +225,13 @@ export default function StepSchedule({
                     type="button"
                     disabled={isUnavailable}
                     onClick={() => selectTime(t)}
-                    title={isUnavailable ? 'Horario no disponible' : undefined}
+                    title={
+                      isPast
+                        ? 'Hora ya pasada'
+                        : isUnavailable
+                          ? 'Horario no disponible'
+                          : undefined
+                    }
                     className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                       isUnavailable
                         ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed'
