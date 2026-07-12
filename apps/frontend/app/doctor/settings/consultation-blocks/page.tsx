@@ -112,7 +112,7 @@ export default function ConsultationBlocksConfigPage() {
 
     // Construir filas: una por cada entrada del catálogo.
     // Prioridad: config del doctor > defaults por especialidad > catálogo default.
-    const merged: BlockRow[] = catalog.map((c) => {
+    const merged: BlockRow[] = catalog.map((c, i) => {
       const cfg = cfgMap.get(c.key);
       const spec = specialtyMap.get(c.key);
       const isLocked = LOCKED_BLOCK_KEYS.has(c.key);
@@ -126,7 +126,14 @@ export default function ConsultationBlocksConfigPage() {
           : isLocked
             ? true
             : (c.defaultEnabled ?? false);
-      const sort_order = cfg?.sortOrder ?? spec?.sortOrder ?? 99;
+      // Default de orden cuando el doctor aún no guardó config:
+      // los fijos toman su orden canónico (0..N) y los demás van después (100+i,
+      // preservando el orden del catálogo). Una vez que el doctor reordena y guarda,
+      // `cfg.sortOrder` manda para TODOS — incluidos los fijos.
+      const sort_order =
+        cfg?.sortOrder ??
+        spec?.sortOrder ??
+        (isLocked ? (LOCKED_BLOCK_ORDER[c.key] ?? 50) : 100 + i);
       // Apply frontend label overrides for locked blocks (e.g. prescription → Récipe).
       const frontendLabelOverride = LOCKED_BLOCK_LABELS[c.key];
       return {
@@ -144,22 +151,12 @@ export default function ConsultationBlocksConfigPage() {
       };
     });
 
-    // Sort order: fixed blocks first (in canonical order), then the rest sorted by
-    // enabled status and sort_order.
+    // Orden puramente por sort_order (el orden que definió el doctor, incluidos
+    // los bloques fijos). El default de arriba ya coloca fijos primero cuando no
+    // hay config; a partir de que el doctor reordena y guarda, su orden manda.
     merged.sort((a, b) => {
-      const aLocked = LOCKED_BLOCK_KEYS.has(a.block_key);
-      const bLocked = LOCKED_BLOCK_KEYS.has(b.block_key);
-      // Fixed blocks always come first
-      if (aLocked !== bLocked) return aLocked ? -1 : 1;
-      // Among fixed blocks, use canonical order
-      if (aLocked && bLocked) {
-        const aOrder = LOCKED_BLOCK_ORDER[a.block_key] ?? 99;
-        const bOrder = LOCKED_BLOCK_ORDER[b.block_key] ?? 99;
-        return aOrder - bOrder;
-      }
-      // Among non-fixed blocks: enabled first, then by sort_order
-      if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-      return a.sort_order - b.sort_order;
+      if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+      return a.block_key.localeCompare(b.block_key);
     });
     // Reasignar sort_order 0..N
     merged.forEach((r, i) => {
