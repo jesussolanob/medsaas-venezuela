@@ -98,18 +98,18 @@ export function sectionHeader(label: string): ContentBlock {
  * Incluye: nombre + dosis solamente (formato limpio de récipe venezolano).
  */
 export function buildRecetasContent(prescriptions: SavedPrescription[]): ContentBlock[] {
-  return prescriptions
-    .flatMap((rx, rxIdx) =>
-      rx.medications.map((med, medIdx) => {
-        const value = med.dose ? med.dose : null;
-        return {
-          key: `rx-${rxIdx}-med-${medIdx}`,
-          label: med.name || `Medicamento ${medIdx + 1}`,
-          value,
-        };
-      }),
-    )
-    .filter((b): b is ContentBlock & { value: string } => b.value !== null);
+  // Hoja 1 (Récipe): UN solo bloque "Medicamentos" con lista numerada de
+  // "Nombre — dosis" (agrupados, como antes del split de 2 hojas), NO una sección
+  // por medicamento.
+  const items = prescriptions.flatMap((rx) =>
+    rx.medications
+      .filter((med) => (med.name ?? '').trim().length > 0)
+      .map((med) =>
+        [med.name, med.dose].filter((p): p is string => !!p && p.trim() !== '').join(' — '),
+      ),
+  );
+  if (items.length === 0) return [];
+  return [{ key: 'medicamentos', label: 'Medicamentos', value: items }];
 }
 
 /**
@@ -118,23 +118,20 @@ export function buildRecetasContent(prescriptions: SavedPrescription[]): Content
  * Esta hoja reemplaza al antiguo doc suelto "Indicaciones".
  */
 export function buildRecipeHoja2Content(prescriptions: SavedPrescription[]): ContentBlock[] {
-  return prescriptions
-    .flatMap((rx, rxIdx) =>
-      rx.medications.map((med, medIdx) => {
-        const parts: string[] = [];
-        if (med.dose) parts.push(`Dosis: ${med.dose}`);
-        if (med.frequency) parts.push(`Frecuencia: ${med.frequency}`);
-        if (med.duration) parts.push(`Duración: ${med.duration}`);
-        if (med.presentation) parts.push(`Presentación: ${med.presentation}`);
-        if (med.indications) parts.push(`Indicación: ${med.indications}`);
-        return {
-          key: `rx2-${rxIdx}-med-${medIdx}`,
-          label: med.name || `Medicamento ${medIdx + 1}`,
-          value: parts.length > 0 ? parts.join(' · ') : null,
-        };
-      }),
-    )
-    .filter((b): b is ContentBlock & { value: string } => b.value !== null);
+  // Hoja 2 ("Indicaciones"): UN solo bloque "Medicamentos" con lista numerada;
+  // cada item = nombre + dosis + frecuencia + duración + presentación + indicación
+  // (agrupados, mismo formato que antes; NO una sección por medicamento).
+  const items = prescriptions.flatMap((rx) =>
+    rx.medications
+      .filter((med) => (med.name ?? '').trim().length > 0)
+      .map((med) =>
+        [med.name, med.dose, med.frequency, med.duration, med.presentation, med.indications]
+          .filter((p): p is string => !!p && p.trim() !== '')
+          .join(' — '),
+      ),
+  );
+  if (items.length === 0) return [];
+  return [{ key: 'medicamentos-detalle', label: 'Medicamentos', value: items }];
 }
 
 /**
