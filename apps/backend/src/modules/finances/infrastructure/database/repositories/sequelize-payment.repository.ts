@@ -117,7 +117,7 @@ export class SequelizePaymentRepository implements IPaymentRepository {
          SELECT
            'c:' || c.id            AS id,
            c.consultation_code     AS payment_code,
-           COALESCE(c.amount, 0)   AS amount_usd,
+           COALESCE(c.amount, a.plan_price, 0) AS amount_usd,
            NULL::numeric           AS amount_bs,
            'pending'               AS status,
            NULL::timestamptz       AS paid_at,

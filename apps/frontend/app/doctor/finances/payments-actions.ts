@@ -47,7 +47,6 @@ interface Envelope<T> {
   data: T;
 }
 
-
 /** Fetch the authenticated doctor's payments (joined with appointment + consultation). */
 export async function getPayments(filters: PaymentsFilters = {}): Promise<PaymentRow[]> {
   const qs = new URLSearchParams();
@@ -55,9 +54,10 @@ export async function getPayments(filters: PaymentsFilters = {}): Promise<Paymen
   if (filters.fromDate) qs.set('from_date', filters.fromDate);
   if (filters.toDate) qs.set('to_date', filters.toDate);
 
-  const result = await backendGet<Envelope<PaymentRow[]>>(
-    `/api/finances/payments?${qs.toString()}`,
-  );
+  // backendGet YA desempaqueta el envelope { success, data } → result.value es el
+  // array de pagos. Leer result.value.data (doble desempaque) daba SIEMPRE [] y
+  // dejaba el listado de cobros vacío aunque el dashboard mostrara montos.
+  const result = await backendGet<PaymentRow[]>(`/api/finances/payments?${qs.toString()}`);
 
   if (!result.ok) {
     log.error('[getPayments] backend error', {
@@ -67,7 +67,7 @@ export async function getPayments(filters: PaymentsFilters = {}): Promise<Paymen
     return [];
   }
 
-  return Array.isArray(result.value.data) ? result.value.data : [];
+  return Array.isArray(result.value) ? result.value : [];
 }
 
 /** Approve a payment or mark it pending. Backend syncs consultations.payment_status. */
@@ -90,9 +90,7 @@ export async function updatePaymentStatus(
 
 /** List the extra line items of a payment. */
 export async function getPaymentItems(paymentId: string): Promise<PaymentItemRow[]> {
-  const result = await backendGet<Envelope<PaymentItemRow[]>>(
-    `/api/finances/payments/${paymentId}/items`,
-  );
+  const result = await backendGet<PaymentItemRow[]>(`/api/finances/payments/${paymentId}/items`);
 
   if (!result.ok) {
     log.error('[getPaymentItems] backend error', {
@@ -102,7 +100,7 @@ export async function getPaymentItems(paymentId: string): Promise<PaymentItemRow
     return [];
   }
 
-  return Array.isArray(result.value.data) ? result.value.data : [];
+  return Array.isArray(result.value) ? result.value : [];
 }
 
 /** Add an extra line item; backend recalculates the payment total + appointment.plan_price. */
@@ -110,22 +108,19 @@ export async function addPaymentItem(
   paymentId: string,
   input: { name: string; amountUsd: number; sourceType?: string; sourceId?: string },
 ): Promise<PaymentActionResult & { item?: PaymentItemRow }> {
-  const result = await backendPost<Envelope<PaymentItemRow>>(
-    `/api/finances/payments/${paymentId}/items`,
-    {
-      name: input.name,
-      amount_usd: input.amountUsd,
-      source_type: input.sourceType ?? null,
-      source_id: input.sourceId ?? null,
-    },
-  );
+  const result = await backendPost<PaymentItemRow>(`/api/finances/payments/${paymentId}/items`, {
+    name: input.name,
+    amount_usd: input.amountUsd,
+    source_type: input.sourceType ?? null,
+    source_id: input.sourceId ?? null,
+  });
 
   if (!result.ok) {
     return { success: false, error: appErrorToString(result.error) };
   }
 
   revalidatePath('/doctor/cobros');
-  return { success: true, item: result.value.data };
+  return { success: true, item: result.value };
 }
 
 /** Remove an extra line item; backend recalculates the payment total. */
