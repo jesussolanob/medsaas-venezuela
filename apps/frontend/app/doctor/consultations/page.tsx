@@ -1744,6 +1744,59 @@ function ConsultationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
 
+  // Fix (2026-07-11): recarga SOLO la tabla de consultas desde el backend.
+  // La lista quedaba STALE al volver a la página (Router Cache de Next servía la
+  // versión vieja) → las consultas recién creadas no aparecían sin recargar a mano.
+  const reloadConsultationsTable = useCallback(async () => {
+    try {
+      const fresh = await listConsultations({ limit: 200 });
+      setConsultations(
+        fresh.map((c) => ({
+          id: c.id,
+          consultation_code: c.consultation_code,
+          consultation_date: c.consultation_date,
+          chief_complaint: c.chief_complaint,
+          notes: c.notes,
+          diagnosis: c.diagnosis,
+          treatment: c.treatment,
+          status: mapAppointmentStatusToConsulta(c.appointment_status),
+          appointment_status: c.appointment_status ?? null,
+          payment_status: c.payment_status,
+          appointment_id: c.appointment_id,
+          patient_id: c.patient_id,
+          patient_name: c.patient_name || 'Paciente',
+          patient_phone: null,
+          started_at: c.started_at,
+          ended_at: c.ended_at,
+          duration_minutes: c.duration_minutes,
+          version: null,
+        })),
+      );
+    } catch {
+      /* no-op: se reintenta en la próxima oportunidad */
+    }
+  }, []);
+
+  // Refetch al recuperar foco/visibilidad de la pestaña (auto-sana el stale).
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible') void reloadConsultationsTable();
+    }
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [reloadConsultationsTable]);
+
+  // Al llegar con ?open=<id> (p.ej. redirigido desde el inicio tras crear la cita),
+  // refrescar la tabla para que la consulta recién creada esté presente y se pueda abrir.
+  useEffect(() => {
+    if (openId) void reloadConsultationsTable();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+
   // Auto-save BLOQUE REPOSO en blocks_data — debounce 1.5s
   // Reposo NO tiene tabla propia, se persiste en consultations.blocks_data['reposo']
   const reposoSaveTimer = useRef<NodeJS.Timeout | null>(null);
