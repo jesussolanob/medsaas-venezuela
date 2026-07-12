@@ -330,8 +330,16 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     } catch {
       // Intentionally swallowed: telemetry flush must not block logout.
     }
-    // ETAPA 1 dev-stub: logoutAction clears dev-auth cookies server-side.
-    // ETAPA 2: will call Auth0 /v2/logout instead.
+    // Auth0: navegación DURA a la ruta de logout del SDK. El navegador SALE de la
+    // app y va directo a /auth/logout → Auth0 /v2/logout. Así NO se renderiza la
+    // landing hasta que Auth0 cierra la sesión por completo y redirige de vuelta.
+    // (El server action `redirect('/auth/logout')` hacía una navegación soft que
+    // pintaba la landing antes de irse a Auth0.)
+    if (process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0') {
+      window.location.href = '/auth/logout';
+      return;
+    }
+    // Dev-stub: el server action limpia las cookies dev y redirige a /login.
     await logoutAction();
   }
 
