@@ -62,17 +62,29 @@ function formatGeneratedAt(dateStr: string): string {
   }).format(d);
 }
 
-function daysSince(dateStr?: string | null): number {
-  if (!dateStr) return 999;
+function daysSince(dateStr?: string | null): number | null {
+  if (!dateStr) return null;
   const ms = Date.now() - new Date(dateStr).getTime();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
+  return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
 function activityLabel(row: SpecialistRow): string {
   const days = daysSince(row.last_sign_in_at ?? row.created_at);
+  if (days === null) return 'Sin actividad';
   if (days >= 14) return 'Inactivo';
   if (days >= 7) return 'Frío';
   return 'Activo';
+}
+
+function formatLastAccess(row: SpecialistRow): string {
+  if (!row.last_sign_in_at) return 'Sin actividad';
+  const d = new Date(row.last_sign_in_at);
+  if (isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('es-VE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d);
 }
 
 function subscriptionLabel(status?: string | null): string {
@@ -274,12 +286,18 @@ const COL_WIDTHS = {
 
 export function SpecialistsReportPdf({ rows, generatedAt }: SpecialistsReportPdfProps) {
   const total = rows.length;
-  const activos = rows.filter((r) => daysSince(r.last_sign_in_at ?? r.created_at) < 7).length;
+  const activos = rows.filter((r) => {
+    const d = daysSince(r.last_sign_in_at ?? r.created_at);
+    return d !== null && d < 7;
+  }).length;
   const frios = rows.filter((r) => {
     const d = daysSince(r.last_sign_in_at ?? r.created_at);
-    return d >= 7 && d < 14;
+    return d !== null && d >= 7 && d < 14;
   }).length;
-  const inactivos = rows.filter((r) => daysSince(r.last_sign_in_at ?? r.created_at) >= 14).length;
+  const inactivos = rows.filter((r) => {
+    const d = daysSince(r.last_sign_in_at ?? r.created_at);
+    return d !== null && d >= 14;
+  }).length;
 
   return (
     <Document
@@ -345,9 +363,21 @@ export function SpecialistsReportPdf({ rows, generatedAt }: SpecialistsReportPdf
           {rows.map((row, idx) => {
             const activity = activityLabel(row);
             const activityColor =
-              activity === 'Inactivo' ? '#b91c1c' : activity === 'Frío' ? '#92400e' : '#047857';
+              activity === 'Sin actividad'
+                ? '#94a3b8'
+                : activity === 'Inactivo'
+                  ? '#b91c1c'
+                  : activity === 'Frío'
+                    ? '#92400e'
+                    : '#047857';
             const activityBg =
-              activity === 'Inactivo' ? '#fee2e2' : activity === 'Frío' ? '#fef3c7' : '#d1fae5';
+              activity === 'Sin actividad'
+                ? '#f1f5f9'
+                : activity === 'Inactivo'
+                  ? '#fee2e2'
+                  : activity === 'Frío'
+                    ? '#fef3c7'
+                    : '#d1fae5';
 
             return (
               <View
@@ -382,7 +412,7 @@ export function SpecialistsReportPdf({ rows, generatedAt }: SpecialistsReportPdf
                   {formatDateVE(row.subscription_expires_at)}
                 </Text>
                 <Text style={[styles.cellMono, { width: COL_WIDTHS.ultimoAcceso }]}>
-                  {formatDateVE(row.last_sign_in_at)}
+                  {formatLastAccess(row)}
                 </Text>
                 {/* Actividad con color semáforo */}
                 <View

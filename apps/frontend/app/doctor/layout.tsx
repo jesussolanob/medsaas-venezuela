@@ -53,6 +53,7 @@ import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-
 import { checkOnboardingComplete } from './actions';
 import TelemetryProvider from '@/components/telemetry/TelemetryProvider';
 import TermsModal from '@/components/legal/TermsModal';
+import TrialExpiryBanner from '@/components/doctor/TrialExpiryBanner';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 type NavSection = { key: string; label: string; icon: React.ElementType; items: NavItem[] };
@@ -861,6 +862,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               </div>
             </div>
           </header>
+
+          {/* Trial expiry warning — only renders when is_in_trial && days_remaining ≤ 5 */}
+          <TrialExpiryBanner />
 
           <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 w-full">
             <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">

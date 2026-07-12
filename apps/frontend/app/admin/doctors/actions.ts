@@ -15,28 +15,47 @@
 
 import { revalidatePath } from 'next/cache';
 
+export type DoctorPlan = 'free_trial' | 'delta_free' | 'delta_base' | 'delta_plus';
+
 export type CreateDoctorInput = {
   full_name: string;
+  cedula: string;
   email: string;
   password: string;
   specialty: string;
   phone: string;
-  plan: 'basic' | 'professional';
+  plan: DoctorPlan;
 };
 
 export type ActionResult = { success: true } | { success: false; error: string };
 
-export async function createDoctor(_input: CreateDoctorInput): Promise<ActionResult> {
-  // ETAPA 2 TODO: provision user via Auth0 Management API, then call
-  //   POST /api/admin/doctors on the NestJS backend to create profile
-  //   + subscription with plan set to input.plan.
-  console.warn('[admin/doctors] createDoctor is a dev-stub (Etapa 2: Auth0 + backend)');
-  revalidatePath('/admin/doctors');
-  return {
-    success: false,
-    error:
-      'Alta de médicos disponible en Etapa 2 (Auth0). En desarrollo, usa el seed de la BD directamente.',
-  };
+export async function createDoctor(input: CreateDoctorInput): Promise<ActionResult> {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BFF_URL ?? ''}/api/admin/doctors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: input.full_name,
+        cedula: input.cedula || null,
+        email: input.email,
+        password: input.password,
+        specialty: input.specialty || null,
+        phone: input.phone || null,
+        plan: input.plan,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Error desconocido' }));
+      return { success: false, error: err.error ?? 'Error al crear el médico' };
+    }
+
+    revalidatePath('/admin/doctors');
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error de conexión';
+    return { success: false, error: message };
+  }
 }
 
 // DEPRECATED 2026-04-22: tabla clinics eliminada en reingeniería MVP.

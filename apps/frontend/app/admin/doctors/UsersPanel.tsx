@@ -48,9 +48,26 @@ interface Doctor {
   subscription_expires_at?: string;
 }
 
-function daysSince(dateStr?: string | null): number {
-  if (!dateStr) return 999;
-  return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
+/**
+ * Returns days since the given date.
+ * Returns null when dateStr is null/undefined (no activity data available).
+ */
+function daysSince(dateStr?: string | null): number | null {
+  if (!dateStr) return null;
+  const ms = Date.now() - new Date(dateStr).getTime();
+  return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+}
+
+/**
+ * Returns the effective activity days for a doctor.
+ * Uses last_sign_in_at first; falls back to created_at.
+ * Returns null when neither field is available (never logged in + no created_at).
+ */
+function effectiveDaysSince(d: {
+  last_sign_in_at?: string | null;
+  created_at?: string | null;
+}): number | null {
+  return daysSince(d.last_sign_in_at ?? d.created_at);
 }
 
 /**
@@ -197,8 +214,10 @@ export default function UsersPanel() {
 
   const activeDoctors = doctors.filter((d) => d.is_active).length;
   const inactiveDays7 = doctors.filter((d) => {
-    const days = daysSince(d.last_sign_in_at || d.created_at);
-    return days >= 7 && d.is_active;
+    const days = effectiveDaysSince(d);
+    // Doctors with no activity data (days === null) are NOT counted as inactive —
+    // they are new accounts that have never signed in. Only count those with real data.
+    return days !== null && days >= 7 && d.is_active;
   }).length;
   const newThisMonth = useMemo(() => {
     const now = new Date();
@@ -220,8 +239,8 @@ export default function UsersPanel() {
       result = result.filter((d) => d.is_active);
     } else if (activeFilter === 'inactive_7d') {
       result = result.filter((d) => {
-        const days = daysSince(d.last_sign_in_at || d.created_at);
-        return days >= 7 && d.is_active;
+        const days = effectiveDaysSince(d);
+        return days !== null && days >= 7 && d.is_active;
       });
     } else if (activeFilter === 'new_month') {
       result = result.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMonth);
@@ -421,7 +440,7 @@ export default function UsersPanel() {
                 </tr>
               ) : (
                 filteredDoctors.map((d, i) => {
-                  const days = daysSince(d.last_sign_in_at || d.created_at);
+                  const days = effectiveDaysSince(d);
                   const status = subscriptionPillStatus(d.subscription_status);
                   const venceText = d.subscription_expires_at
                     ? new Date(d.subscription_expires_at).toLocaleDateString('es-VE', {
@@ -494,18 +513,29 @@ export default function UsersPanel() {
                         <ExpiryBadge expiresAt={d.subscription_expires_at} dateText={venceText} />
                       </td>
                       <td style={{ padding: '16px 20px' }}>
-                        <span
-                          className={clsx(
-                            'inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold',
-                          )}
-                          style={{
-                            background: days >= 14 ? '#FEE2E2' : days >= 7 ? '#FEF3C7' : '#D1FAE5',
-                            color: days >= 14 ? '#B91C1C' : days >= 7 ? '#92400E' : '#047857',
-                          }}
-                        >
-                          <Clock className="w-3 h-3" />
-                          {days === 0 ? 'Hoy' : `${days}d`}
-                        </span>
+                        {days === null ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                            style={{ background: '#F1F5F9', color: '#94A3B8' }}
+                          >
+                            <Clock className="w-3 h-3" />
+                            Sin actividad
+                          </span>
+                        ) : (
+                          <span
+                            className={clsx(
+                              'inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold',
+                            )}
+                            style={{
+                              background:
+                                days >= 14 ? '#FEE2E2' : days >= 7 ? '#FEF3C7' : '#D1FAE5',
+                              color: days >= 14 ? '#B91C1C' : days >= 7 ? '#92400E' : '#047857',
+                            }}
+                          >
+                            <Clock className="w-3 h-3" />
+                            {days === 0 ? 'Hoy' : `${days}d`}
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '16px 20px', textAlign: 'right' }}>
                         <button
