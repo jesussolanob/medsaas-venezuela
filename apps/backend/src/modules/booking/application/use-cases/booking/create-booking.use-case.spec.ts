@@ -30,6 +30,7 @@ const DOCTOR: DoctorPublicInfo = {
   specialty: 'Cardiología',
   professionalTitle: 'Dr.',
   paymentMethods: ['pago_movil'],
+  paymentDetails: null,
   allowsOnline: false,
   officeAddress: 'Av. Principal',
   city: 'Caracas',

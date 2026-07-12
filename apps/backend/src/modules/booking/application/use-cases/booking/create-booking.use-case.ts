@@ -471,26 +471,32 @@ export class CreateBookingUseCase {
    * Find-or-create patient using available identifiers.
    *
    * Match priority (scoped to doctorId):
-   *   1. Email hash — when patient_email is present.
-   *   2. Cedula hash — when patient_cedula is present.
+   *   1. Cedula hash — when patient_cedula is present.
+   *      The cédula is the stable, government-issued identifier for Venezuelan patients,
+   *      so it takes priority over email as the primary deduplication key. A returning
+   *      patient may change their email address over time; their cédula never changes.
+   *      When a match is found the existing record is returned AS-IS — we never overwrite
+   *      the stored name/email/phone with the form values from the new booking.
+   *   2. Email hash — fallback when no cedula was supplied or the cedula did not match.
    *   3. Create new patient — when neither matches (or neither was supplied).
    *
    * Deliberately does NOT match on name alone to prevent false duplicates.
    * PII encryption is handled by the patient repository layer.
    */
   private async findOrCreatePatient(dto: CreateBookingDto): Promise<Patient> {
-    // 1. Try email hash lookup when email is present
-    if (dto.patient_email) {
-      const emailHash = this.crypto.hashForSearch(dto.patient_email);
-      const byEmail = await this.patientRepo.findByEmailHash(emailHash, dto.doctor_id);
-      if (byEmail) return byEmail;
-    }
-
-    // 2. Try cedula hash lookup when cedula is present
+    // 1. Try cedula hash lookup first — cédula is the stable identifier for Venezuelan
+    //    patients and must be the primary deduplication key. Email may change; cedula does not.
     if (dto.patient_cedula) {
       const cedulaHash = this.crypto.hashForSearch(dto.patient_cedula);
       const byCedula = await this.patientRepo.findByCedulaHash(cedulaHash, dto.doctor_id);
       if (byCedula) return byCedula;
+    }
+
+    // 2. Try email hash lookup as fallback when no cedula match was found
+    if (dto.patient_email) {
+      const emailHash = this.crypto.hashForSearch(dto.patient_email);
+      const byEmail = await this.patientRepo.findByEmailHash(emailHash, dto.doctor_id);
+      if (byEmail) return byEmail;
     }
 
     // 3. Create new patient

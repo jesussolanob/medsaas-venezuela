@@ -14,6 +14,7 @@ interface ProfileWithHorizonRow {
   specialty: string | null;
   professionalTitle: string | null;
   paymentMethods: string[] | null;
+  paymentDetails: Record<string, unknown> | null;
   avatarUrl: string | null;
   allowsOnline: boolean | null;
   officeAddress: string | null;
@@ -47,6 +48,7 @@ export class SequelizeBookingDoctorRepository implements IBookingDoctorLoader {
         p.specialty,
         p.professional_title AS "professionalTitle",
         p.payment_methods   AS "paymentMethods",
+        p.payment_details   AS "paymentDetails",
         p.avatar_url        AS "avatarUrl",
         p.allows_online     AS "allowsOnline",
         p.office_address    AS "officeAddress",
@@ -73,6 +75,7 @@ export class SequelizeBookingDoctorRepository implements IBookingDoctorLoader {
       specialty: row.specialty,
       professionalTitle: row.professionalTitle,
       paymentMethods: row.paymentMethods,
+      paymentDetails: row.paymentDetails,
       allowsOnline: row.allowsOnline,
       officeAddress: row.officeAddress,
       city: row.city,

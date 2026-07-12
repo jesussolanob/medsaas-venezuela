@@ -6,6 +6,12 @@ export interface DoctorPublicInfo {
   specialty: string | null;
   professionalTitle: string | null;
   paymentMethods: string[] | null;
+  /**
+   * Doctor's payment detail instructions (account numbers, mobile-pay details, etc.).
+   * This is payment metadata set by the doctor — NOT patient PHI.
+   * Shown on the public booking widget so patients know how to pay.
+   */
+  paymentDetails: Record<string, unknown> | null;
   allowsOnline: boolean | null;
   officeAddress: string | null;
   city: string | null;

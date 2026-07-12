@@ -45,8 +45,14 @@ export class ProfileModel extends Model {
   @Column({ type: DataType.ARRAY(DataType.TEXT), allowNull: true, field: 'payment_methods' })
   declare paymentMethods: string[] | null;
 
-  // payment_details is intentionally not selected — the column exists in the DB
-  // but the public booking surface does not need the full payment detail blob.
+  /**
+   * Doctor's payment detail instructions (account numbers, mobile-pay info, etc.).
+   * This is payment *metadata* set by the doctor — NOT patient PHI.
+   * Exposed on the public booking surface so patients see how to pay before
+   * or after the appointment.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true, field: 'payment_details' })
+  declare paymentDetails: Record<string, unknown> | null;
 
   @Column({ type: DataType.TEXT, allowNull: true, field: 'avatar_url' })
   declare avatarUrl: string | null;
