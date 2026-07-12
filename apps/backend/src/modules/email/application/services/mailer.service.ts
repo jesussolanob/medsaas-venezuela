@@ -97,7 +97,7 @@ export class MailerService {
     }
 
     const subject = this.render(template.subject, data);
-    const html = this.render(template.html, data);
+    const html = this.withLogoHeader(this.render(template.html, data));
     const text = template.text !== null ? this.render(template.text, data) : undefined;
 
     this.logger.debug(
@@ -142,6 +142,36 @@ export class MailerService {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Prepends a centered app-logo banner at the top of the email body.
+   *
+   * The logo is served publicly by the frontend at `${APP_BASE_URL}/logos/...`.
+   * If no base URL is configured (or it is not an absolute http(s) URL), the
+   * HTML is returned unchanged — email clients cannot resolve relative image
+   * paths, so we avoid injecting a broken <img>.
+   */
+  private withLogoHeader(html: string): string {
+    const baseUrl = (
+      this.config.get<string>('APP_BASE_URL') ??
+      this.config.get<string>('FRONTEND_URL') ??
+      ''
+    ).replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(baseUrl)) {
+      return html;
+    }
+    const logoUrl = `${baseUrl}/logos/delta-iso-256.png`;
+    const banner =
+      `<div style="text-align:center;padding:20px 0 8px;background:#ffffff">` +
+      `<img src="${logoUrl}" alt="Delta Salud" width="96" ` +
+      `style="max-width:96px;height:auto;border:0;display:inline-block" /></div>`;
+    // Insertar justo después de <body ...> (las plantillas son HTML completo).
+    if (/<body[^>]*>/i.test(html)) {
+      return html.replace(/(<body[^>]*>)/i, `$1${banner}`);
+    }
+    // Fallback: fragmento sin <body> → anteponer el banner.
+    return banner + html;
+  }
 
   /**
    * Replaces all {{key}} occurrences in `template` with the corresponding
