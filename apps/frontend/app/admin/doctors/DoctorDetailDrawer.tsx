@@ -1,74 +1,90 @@
-'use client'
-import { useEffect, useState } from 'react'
-import { X, Phone, Mail, FileText, Calendar, Users, TrendingUp, MapPin, Building2 } from 'lucide-react'
-import { reportError } from '@/lib/report-error'
+'use client';
+import { useEffect, useState } from 'react';
+import {
+  X,
+  Phone,
+  Mail,
+  FileText,
+  Calendar,
+  Users,
+  TrendingUp,
+  MapPin,
+  Building2,
+} from 'lucide-react';
+import { reportError } from '@/lib/report-error';
+import DoctorPatientsList from './DoctorPatientsList';
 
 interface DoctorDetailDrawerProps {
-  doctor: any
-  isOpen: boolean
-  onClose: () => void
-  onDoctorUpdated?: () => void
+  doctor: any;
+  isOpen: boolean;
+  onClose: () => void;
+  onDoctorUpdated?: () => void;
 }
 
-export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUpdated }: DoctorDetailDrawerProps) {
-  const [details, setDetails] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [suspending, setSuspending] = useState(false)
-  const [successMessage, setSuccessMessage] = useState('')
+export default function DoctorDetailDrawer({
+  doctor,
+  isOpen,
+  onClose,
+  onDoctorUpdated,
+}: DoctorDetailDrawerProps) {
+  const [details, setDetails] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [suspending, setSuspending] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     if (!isOpen || !doctor) {
-      setLoading(true)
-      return
+      setLoading(true);
+      return;
     }
 
     async function loadDetails() {
       try {
-        setLoading(true)
-        setError('')
+        setLoading(true);
+        setError('');
 
-        const res = await fetch(`/api/admin/doctor-details?id=${doctor.id}`)
-        const data = await res.json()
+        const res = await fetch(`/api/admin/doctor-details?id=${doctor.id}`);
+        const data = await res.json();
 
-        if (!res.ok) throw new Error(data.error || 'Error al cargar detalles')
+        if (!res.ok) throw new Error(data.error || 'Error al cargar detalles');
 
-        setDetails(data)
+        setDetails(data);
       } catch (err: unknown) {
-        reportError('DoctorDetailDrawer', 'loadDetails', err)
-        setError(err instanceof Error ? err.message : 'Error al cargar detalles')
+        reportError('DoctorDetailDrawer', 'loadDetails', err);
+        setError(err instanceof Error ? err.message : 'Error al cargar detalles');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
 
-    loadDetails()
-  }, [isOpen, doctor?.id])
+    loadDetails();
+  }, [isOpen, doctor?.id]);
 
   const handleToggleStatus = async () => {
-    if (!details?.profile) return
+    if (!details?.profile) return;
 
-    const action = details.profile.is_active ? 'suspend' : 'activate'
+    const action = details.profile.is_active ? 'suspend' : 'activate';
     const message = details.profile.is_active
       ? '¿Estás seguro de que deseas suspender este médico?'
-      : '¿Estás seguro de que deseas activar este médico?'
+      : '¿Estás seguro de que deseas activar este médico?';
 
-    if (!confirm(message)) return
+    if (!confirm(message)) return;
 
     try {
-      setSuspending(true)
-      setError('')
+      setSuspending(true);
+      setError('');
 
       const response = await fetch('/api/admin/toggle-doctor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ doctorId: details.profile.id, action }),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error al actualizar el estado')
+        throw new Error(data.error || 'Error al actualizar el estado');
       }
 
       setDetails({
@@ -77,34 +93,35 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
           ...details.profile,
           is_active: action === 'activate',
         },
-      })
+      });
 
-      setSuccessMessage(`Médico ${action === 'activate' ? 'activado' : 'suspendido'} exitosamente`)
-      setTimeout(() => setSuccessMessage(''), 3000)
-      onDoctorUpdated?.()
+      setSuccessMessage(`Médico ${action === 'activate' ? 'activado' : 'suspendido'} exitosamente`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      onDoctorUpdated?.();
     } catch (err: unknown) {
-      reportError('DoctorDetailDrawer', 'handleToggleStatus', err)
-      setError(err instanceof Error ? err.message : 'Error al actualizar el estado')
+      reportError('DoctorDetailDrawer', 'handleToggleStatus', err);
+      setError(err instanceof Error ? err.message : 'Error al actualizar el estado');
     } finally {
-      setSuspending(false)
+      setSuspending(false);
     }
-  }
+  };
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
-  const profile = details?.profile || doctor
-  const subscription = details?.subscription
-  const trialDaysLeft = subscription && subscription.trial_ends_at
-    ? Math.ceil((new Date(subscription.trial_ends_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-    : 0
+  const profile = details?.profile || doctor;
+  const subscription = details?.subscription;
+  const trialDaysLeft =
+    subscription && subscription.trial_ends_at
+      ? Math.ceil(
+          (new Date(subscription.trial_ends_at).getTime() - new Date().getTime()) /
+            (1000 * 60 * 60 * 24),
+        )
+      : 0;
 
   return (
     <>
       {/* Overlay */}
-      <div
-        className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Drawer */}
       <div className="fixed right-0 top-0 bottom-0 w-96 bg-white z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200">
@@ -194,7 +211,9 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
               <div className="bg-teal-50 border border-teal-200 p-3 rounded-lg">
                 <p className="text-xs text-slate-500 uppercase mb-1">Plan</p>
                 <p className="text-sm font-bold text-teal-700">Plan profesional</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Acceso completo a todas las funcionalidades</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Acceso completo a todas las funcionalidades
+                </p>
               </div>
 
               {/* Registro */}
@@ -221,13 +240,20 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                     <TrendingUp className="w-4 h-4 text-slate-400" />
                     Citas (mes)
                   </span>
-                  <span className="font-semibold text-slate-900">{details?.consultationCount || 0}</span>
+                  <span className="font-semibold text-slate-900">
+                    {details?.consultationCount || 0}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">Ingresos (mes)</span>
-                  <span className="font-semibold text-slate-900">${(details?.monthlyRevenue || 0).toFixed(2)}</span>
+                  <span className="font-semibold text-slate-900">
+                    ${(details?.monthlyRevenue || 0).toFixed(2)}
+                  </span>
                 </div>
               </div>
+
+              {/* Pacientes atendidos — carga perezosa al expandir */}
+              <DoctorPatientsList doctorId={profile?.id ?? doctor?.id} />
             </>
           )}
         </div>
@@ -244,7 +270,7 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
                   : 'bg-emerald-500 text-white hover:bg-emerald-600'
               }`}
             >
-              {suspending ? 'Actualizando...' : (profile?.is_active ? 'Suspender' : 'Activar')}
+              {suspending ? 'Actualizando...' : profile?.is_active ? 'Suspender' : 'Activar'}
             </button>
             <button
               onClick={onClose}
@@ -256,5 +282,5 @@ export default function DoctorDetailDrawer({ doctor, isOpen, onClose, onDoctorUp
         )}
       </div>
     </>
-  )
+  );
 }
