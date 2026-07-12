@@ -26,6 +26,7 @@ import {
   Loader2,
   Plus,
   Lock,
+  ImagePlus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -60,6 +61,12 @@ type Profile = {
   email: string;
   professional_title: string | null;
   cedula: string | null;
+  /** Logo URL from profile — null when the doctor has not uploaded a logo yet. */
+  logoUrl: string | null;
+  /** Signature URL from profile — null when the doctor has not uploaded a signature yet. */
+  signatureUrl: string | null;
+  /** M.P.P.S. registration number — null when not set. */
+  licenseNumber: string | null;
 };
 
 type Appointment = {
@@ -118,6 +125,8 @@ export default function DoctorDashboard() {
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
+  // Controla si el doctor descartó el banner de plantillas en esta sesión.
+  const [dismissTemplatesBanner, setDismissTemplatesBanner] = useState(false);
   // Modal "Nueva consulta"
   const [showNewFlow, setShowNewFlow] = useState(false);
   // L3 (2026-04-29): estado del modal "Crear paciente" (quick action) +
@@ -221,6 +230,9 @@ export default function DoctorDashboard() {
             email: prof.email,
             professional_title: prof.professionalTitle ?? null,
             cedula: prof.cedula ?? null,
+            logoUrl: prof.logoUrl ?? null,
+            signatureUrl: prof.signatureUrl ?? null,
+            licenseNumber: prof.licenseNumber ?? null,
           });
         }
 
@@ -611,6 +623,71 @@ export default function DoctorDashboard() {
         {/* Onboarding banner removed — access gate now lives in the layout.
             Doctors without a cedula are redirected to /doctor/onboarding before
             they ever reach this page. */}
+
+        {/* Tarjeta guía: el doctor aún no configuró sus plantillas de documentos */}
+        {profile !== null &&
+          !profile.logoUrl &&
+          !profile.signatureUrl &&
+          !dismissTemplatesBanner && (
+            <div
+              className="relative flex flex-col sm:flex-row items-start gap-4 p-5 sm:p-6"
+              style={{
+                background: 'linear-gradient(135deg, #f0fdf9 0%, #ecfdf5 50%, #f0f9ff 100%)',
+                border: '1px solid #99f6e4',
+                borderRadius: 'var(--dh-r-xl)',
+              }}
+            >
+              {/* Ícono */}
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: 'var(--dh-turquoise)', color: '#fff' }}
+                aria-hidden="true"
+              >
+                <ImagePlus className="w-5 h-5" />
+              </div>
+
+              {/* Texto */}
+              <div className="flex-1 min-w-0 pr-6 sm:pr-0">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--dh-turquoise-700)' }}>
+                  Personaliza tus documentos médicos
+                </h3>
+                <p className="text-xs leading-relaxed mt-1" style={{ color: '#0f766e' }}>
+                  Sube tu <span className="font-semibold">logo</span>,{' '}
+                  <span className="font-semibold">firma</span> y matrícula profesional para que tus{' '}
+                  <span className="font-semibold">
+                    recetas, informes, indicaciones, paraclínicos y reposos
+                  </span>{' '}
+                  salgan con tu marca en el PDF.
+                </p>
+                <div className="mt-3">
+                  <Link
+                    href="/doctor/templates"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
+                    style={{ background: 'var(--dh-turquoise)' }}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Configurar plantillas
+                  </Link>
+                </div>
+              </div>
+
+              {/* Botón descartar */}
+              <button
+                onClick={() => setDismissTemplatesBanner(true)}
+                className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                style={{ color: '#0f766e' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#ccfbf1';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+                aria-label="Descartar aviso de plantillas"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
         {/* Alerta: sin consultorios configurados */}
         {hasOffices === false && (
