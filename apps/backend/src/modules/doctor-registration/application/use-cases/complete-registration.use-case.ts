@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   DOCTOR_REGISTRATION_REPOSITORY,
   type IDoctorRegistrationRepository,
@@ -55,9 +56,20 @@ export class CompleteRegistrationUseCase {
     private readonly repo: IDoctorRegistrationRepository,
     private readonly mailer: MailerService,
     private readonly verifyMpps: VerifyMppsUseCase,
+    private readonly config: ConfigService,
   ) {}
 
   async execute(input: CompleteRegistrationInput): Promise<CompleteRegistrationOutput> {
+    // 0. Read the prior state BEFORE persisting so we can detect first-time
+    //    registration. A missing cedula (null or blank string) means the doctor
+    //    has not yet submitted identity data — i.e. this is their first submit.
+    //    We use cedula as the sentinel because it is the mandatory identity field
+    //    that is always present on a genuine first registration, and it is never
+    //    set during the initial profile creation (Auth0 SSO only creates the row
+    //    with email/id but no identity fields).
+    const prior = await this.repo.findById(input.doctorId);
+    const isFirstRegistration = !prior?.cedula || prior.cedula.trim() === '';
+
     // 1. Persist registration data (idempotent — updates if already submitted)
     const updated = await this.repo.updateRegistration(input.doctorId, {
       fullName: input.fullName,
@@ -89,6 +101,34 @@ export class CompleteRegistrationUseCase {
         err instanceof Error ? err.message : String(err),
       );
     });
+
+    // 4. Send onboarding welcome email on first registration — fire-and-forget.
+    //    Gated to isFirstRegistration so re-submits (idempotent updates) never
+    //    trigger a duplicate welcome. Also requires a destination email address.
+    //    SECURITY: doctorId only in the log — never log email/fullName.
+    if (isFirstRegistration && updated.email) {
+      const appUrl = (
+        this.config.get<string>('APP_BASE_URL') ??
+        this.config.get<string>('FRONTEND_URL') ??
+        ''
+      ).replace(/\/+$/, '');
+
+      this.mailer
+        .sendTemplate(
+          'welcome',
+          updated.email,
+          { doctorName: updated.fullName || 'Doctor', appUrl },
+          { type: 'doctor', id: updated.id },
+        )
+        .catch((err: unknown) => {
+          this.logger.error(
+            `[registration] failed to send welcome email for doctorId=${input.doctorId}`,
+            err instanceof Error ? err.message : String(err),
+          );
+        });
+
+      this.logger.log(`[registration] welcome email dispatched for doctorId=${input.doctorId}`);
+    }
 
     return {
       doctorId: updated.id,

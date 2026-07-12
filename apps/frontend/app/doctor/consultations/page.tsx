@@ -95,6 +95,7 @@ import ConsultationRecorder from '@/components/consultation/ConsultationRecorder
 // RONDA 46: renderer de markdown ligero para outputs de Gemini
 import MarkdownText from '@/components/shared/MarkdownText';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
+import PatientFichaModal from '@/components/patient/PatientFichaModal';
 import { log } from '@/lib/logger';
 import { reportError } from '@/lib/report-error';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
@@ -552,6 +553,8 @@ function ConsultationsPage() {
   // Collapsible sidebar sections
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  // Ficha del paciente en modal (no saca de la consulta en curso).
+  const [fichaPatientId, setFichaPatientId] = useState<string | null>(null);
 
   // Doctor profile for share template
   const [doctorName, setDoctorName] = useState('');
@@ -3654,12 +3657,13 @@ function ConsultationsPage() {
                     <p className="font-bold text-slate-900">{selected.patient_name}</p>
                     <p className="text-xs text-slate-400 font-mono">{selected.consultation_code}</p>
                     {selected.patient_id && (
-                      <a
-                        href={`/doctor/patients?open=${selected.patient_id}`}
+                      <button
+                        type="button"
+                        onClick={() => setFichaPatientId(selected.patient_id)}
                         className="inline-flex items-center gap-0.5 mt-1 text-xs font-semibold text-teal-600 hover:text-teal-700"
                       >
                         Ver ficha del paciente <ChevronRight className="w-3 h-3" />
-                      </a>
+                      </button>
                     )}
                   </div>
                   <button
@@ -4781,6 +4785,15 @@ function ConsultationsPage() {
           }}
           initialContext={{ origin: 'dashboard_btn' }}
         />
+
+        {/* Ficha del paciente en ventana emergente — no saca de la consulta. */}
+        {fichaPatientId && (
+          <PatientFichaModal
+            patientId={fichaPatientId}
+            patientName={selected?.patient_name}
+            onClose={() => setFichaPatientId(null)}
+          />
+        )}
 
         {/* === Modal viejo eliminado en ronda 11 (commented out, mantener un bloque vacio para no romper closures) === */}
         {false && showNewConsultation && (
