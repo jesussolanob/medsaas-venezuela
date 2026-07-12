@@ -123,6 +123,7 @@ export class CreateOfficeUseCase {
       bufferMinutes: dto.buffer_minutes,
       isActive: true,
       modality: dto.modality ?? 'in_person',
+      mapUrl: dto.map_url ?? null,
       createdAt: now,
       updatedAt: now,
     });

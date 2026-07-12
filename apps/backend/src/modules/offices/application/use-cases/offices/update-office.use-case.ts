@@ -47,6 +47,11 @@ export class UpdateOfficeUseCase {
     }
 
     // 4. Merge updates into the existing office (immutable)
+    // map_url: undefined means "not supplied" (keep existing);
+    //          null  is never produced by the DTO (empty string → undefined via transform).
+    //          A valid URL string replaces the existing value.
+    const updatedMapUrl = dto.map_url !== undefined ? (dto.map_url ?? null) : existing.mapUrl;
+
     const updated = Office.create({
       id: existing.id,
       doctorId: existing.doctorId,
@@ -59,6 +64,7 @@ export class UpdateOfficeUseCase {
       bufferMinutes: dto.buffer_minutes ?? existing.bufferMinutes,
       isActive: existing.isActive,
       modality: dto.modality ?? existing.modality,
+      mapUrl: updatedMapUrl,
       createdAt: existing.createdAt,
       updatedAt: new Date(),
     });

@@ -37,6 +37,13 @@ export interface AppointmentNotificationInput {
   officeAddress?: string;
   /** Office name. */
   officeName?: string;
+  /**
+   * Optional map URL (http/https) for the office location.
+   * When present, a "Ver ubicación en el mapa" button is inserted in the
+   * confirmation email. Only http/https URLs are rendered — any other scheme
+   * is silently ignored (defence in depth; the DTO already validates this).
+   */
+  officeMapUrl?: string;
 }
 
 export interface AppointmentNotificationResult {
@@ -50,6 +57,55 @@ export interface AppointmentNotificationResult {
   googleCalendarEventId: string | null;
   /** How the notification was delivered. */
   channel: 'google_meet' | 'jitsi_fallback' | 'in_person';
+}
+
+/**
+ * Builds a sanitized HTML snippet with a "Ver ubicación en el mapa" button.
+ *
+ * SECURITY:
+ *   - Re-validates that the URL starts with http:// or https:// before interpolation.
+ *     The DTO already enforces this, but we apply defence-in-depth here because
+ *     the raw HTML is passed directly to MailerService without further escaping.
+ *   - HTML-encodes the URL characters that could break the href attribute (< > " &).
+ *   - Returns an empty string when the URL is absent or fails validation.
+ *
+ * The resulting string is passed as the `office_location_html` template variable
+ * and is inserted verbatim by the template engine where {{office_location_html}}
+ * appears. When the variable is empty the block simply disappears.
+ */
+export function buildOfficeLocationHtml(mapUrl: string | undefined): string {
+  if (!mapUrl) return '';
+
+  // Defence-in-depth: only allow http/https regardless of what reached here
+  let parsed: URL;
+  try {
+    parsed = new URL(mapUrl);
+  } catch {
+    return '';
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return '';
+  }
+
+  // Escape characters that are meaningful inside an HTML attribute value
+  const escapedUrl = mapUrl
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return (
+    '<p style="margin:16px 0">' +
+    '<a href="' +
+    escapedUrl +
+    '" ' +
+    'style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;' +
+    'padding:10px 18px;border-radius:8px;font-weight:700" ' +
+    'target="_blank" rel="noopener noreferrer">' +
+    '&#x1F4CD; Ver ubicación en el mapa' +
+    '</a>' +
+    '</p>'
+  );
 }
 
 /**
@@ -223,6 +279,7 @@ export class AppointmentNotificationService {
             meet_link: extra.meetLink ?? '',
             office_address: input.officeAddress ?? '',
             office_name: input.officeName ?? '',
+            office_location_html: buildOfficeLocationHtml(input.officeMapUrl),
             ics_content: icsContent,
           },
           { type: 'patient', id: null },

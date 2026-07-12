@@ -76,6 +76,13 @@ export class OfficeModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: false })
   declare modality: string;
 
+  /**
+   * Optional map URL (http/https) for the office physical location.
+   * Added by migration 20260712000003-add-map-url-to-offices.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'map_url' })
+  declare mapUrl: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

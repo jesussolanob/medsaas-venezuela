@@ -16,6 +16,8 @@ export interface OfficeCreateParams {
   isActive: boolean;
   /** Modality of appointments allowed for this office. Default: 'in_person'. */
   modality: OfficeModality;
+  /** Optional Google Maps or http/https URL for the physical office location. Defaults to null. */
+  mapUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +47,8 @@ export class Office {
   readonly bufferMinutes: number;
   readonly isActive: boolean;
   readonly modality: OfficeModality;
+  /** Optional map URL (http/https) for the office location. Null when not set. */
+  readonly mapUrl: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -60,6 +64,7 @@ export class Office {
     this.bufferMinutes = params.bufferMinutes;
     this.isActive = params.isActive;
     this.modality = params.modality ?? 'in_person';
+    this.mapUrl = params.mapUrl ?? null;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
   }
@@ -131,6 +136,7 @@ export class Office {
       bufferMinutes: this.bufferMinutes,
       isActive: this.isActive,
       modality: this.modality,
+      mapUrl: this.mapUrl,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

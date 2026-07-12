@@ -210,6 +210,30 @@ describe('Office entity', () => {
     });
   });
 
+  describe('mapUrl', () => {
+    it('defaults to null when not provided', () => {
+      const office = makeOffice();
+      expect(office.mapUrl).toBeNull();
+    });
+
+    it('stores a valid https map URL', () => {
+      const office = makeOffice({ mapUrl: 'https://maps.google.com/?q=Caracas' });
+      expect(office.mapUrl).toBe('https://maps.google.com/?q=Caracas');
+    });
+
+    it('stores null when explicitly set to null', () => {
+      const office = makeOffice({ mapUrl: null });
+      expect(office.mapUrl).toBeNull();
+    });
+
+    it('preserves mapUrl through toggleActive (immutable round-trip)', () => {
+      const url = 'https://maps.google.com/?q=Test';
+      const office = makeOffice({ mapUrl: url });
+      const toggled = office.toggleActive();
+      expect(toggled.mapUrl).toBe(url);
+    });
+  });
+
   describe('supportsModality', () => {
     it('in_person office only supports in_person', () => {
       const office = makeOffice({ modality: 'in_person' });

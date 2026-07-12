@@ -62,6 +62,7 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
       bufferMinutes: office.bufferMinutes,
       isActive: office.isActive,
       modality: office.modality,
+      mapUrl: office.mapUrl,
     });
     return this.toDomain(row);
   }
@@ -78,6 +79,7 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
         bufferMinutes: office.bufferMinutes,
         isActive: office.isActive,
         modality: office.modality,
+        mapUrl: office.mapUrl,
       },
       {
         where: { id: office.id, doctorId: office.doctorId } as WhereOptions,
@@ -124,6 +126,7 @@ export class SequelizeOfficeRepository implements IOfficeRepository {
       bufferMinutes: row.bufferMinutes,
       isActive: row.isActive,
       modality,
+      mapUrl: row.mapUrl ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

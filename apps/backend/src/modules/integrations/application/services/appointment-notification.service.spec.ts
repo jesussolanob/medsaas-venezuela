@@ -1,4 +1,7 @@
-import { AppointmentNotificationService } from './appointment-notification.service';
+import {
+  AppointmentNotificationService,
+  buildOfficeLocationHtml,
+} from './appointment-notification.service';
 import { GoogleNotConnectedError } from '../../domain/errors/google-not-connected.error';
 import type { CreateCalendarEventUseCase } from '../use-cases/integrations/create-calendar-event.use-case';
 
@@ -121,5 +124,58 @@ describe('AppointmentNotificationService', () => {
 
       expect(result.googleCalendarEventId).toBeNull();
     });
+  });
+});
+
+describe('buildOfficeLocationHtml', () => {
+  it('returns empty string when mapUrl is undefined', () => {
+    expect(buildOfficeLocationHtml(undefined)).toBe('');
+  });
+
+  it('returns empty string when mapUrl is empty string', () => {
+    expect(buildOfficeLocationHtml('')).toBe('');
+  });
+
+  it('returns HTML with the map URL for a valid https URL', () => {
+    const html = buildOfficeLocationHtml('https://maps.google.com/?q=Caracas');
+    expect(html).toContain('href="https://maps.google.com/?q=Caracas"');
+    expect(html).toContain('Ver ubicación en el mapa');
+    expect(html).toContain('<p');
+    expect(html).toContain('<a ');
+  });
+
+  it('returns HTML for a valid http URL', () => {
+    const html = buildOfficeLocationHtml('http://maps.example.com/loc');
+    expect(html).toContain('href="http://maps.example.com/loc"');
+    expect(html).not.toBe('');
+  });
+
+  it('returns empty string for javascript: URL (security guard)', () => {
+    expect(buildOfficeLocationHtml('javascript:alert(1)')).toBe('');
+  });
+
+  it('returns empty string for data: URL (security guard)', () => {
+    expect(buildOfficeLocationHtml('data:text/html,<h1>xss</h1>')).toBe('');
+  });
+
+  it('returns empty string for a non-parseable value', () => {
+    expect(buildOfficeLocationHtml('not a url')).toBe('');
+  });
+
+  it('HTML-encodes double quotes in the URL', () => {
+    const html = buildOfficeLocationHtml('https://maps.google.com/?q=a"b');
+    expect(html).toContain('&quot;');
+    expect(html).not.toContain('"b"');
+  });
+
+  it('HTML-encodes ampersands in the URL', () => {
+    const html = buildOfficeLocationHtml('https://maps.google.com/?q=a&b=c');
+    expect(html).toContain('&amp;');
+  });
+
+  it('sets target _blank and rel noopener on the anchor', () => {
+    const html = buildOfficeLocationHtml('https://maps.google.com/?q=Test');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
   });
 });

@@ -188,6 +188,7 @@ export class CreateBookingUseCase {
     // --- Step 2b: Validate office modality (if office_id provided) ---
     let officeAddress: string | undefined;
     let officeName: string | undefined;
+    let officeMapUrl: string | undefined;
     let officeDuration = 30;
 
     if (dto.office_id && this.officeRepo) {
@@ -198,6 +199,7 @@ export class CreateBookingUseCase {
         }
         officeAddress = office.address || undefined;
         officeName = office.name;
+        officeMapUrl = office.mapUrl ?? undefined;
         officeDuration = office.slotDuration;
       }
     }
@@ -382,6 +384,7 @@ export class CreateBookingUseCase {
           appointmentMode: dto.appointment_mode,
           officeAddress,
           officeName,
+          officeMapUrl,
         });
         meetLink = notifResult.meetLink;
 

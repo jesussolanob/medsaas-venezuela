@@ -17,6 +17,27 @@ export type OfficeModalityValue = (typeof OfficeMODALITY_VALUES)[number];
 
 export const OfficeModalitySchema = z.enum(OfficeMODALITY_VALUES);
 
+/**
+ * Validates that a map URL uses only http: or https: scheme.
+ * Rejects javascript:, data:, etc. (defence in depth for HTML email injection).
+ */
+const safeUrlSchema = z
+  .string()
+  .trim()
+  .url('URL inválida')
+  .max(500, 'URL debe tener máximo 500 caracteres')
+  .refine(
+    (url) => {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Solo se permiten URLs con esquema http o https' },
+  );
+
 export const CreateOfficeDtoSchema = z.object({
   name: z.string().min(1, 'name is required').max(200),
   address: z.string().max(500).optional().default(''),
@@ -39,6 +60,15 @@ export const CreateOfficeDtoSchema = z.object({
     .default(10),
   /** Modality of appointments accepted by this office. Default: 'in_person'. */
   modality: OfficeModalitySchema.optional().default('in_person'),
+  /**
+   * Optional Google Maps (or any http/https) URL for this office location.
+   * Empty string is normalised to undefined (treated as absent).
+   * Only http/https schemes are accepted — javascript: etc. are rejected.
+   */
+  map_url: z
+    .union([safeUrlSchema, z.literal('')])
+    .transform((v) => (v === '' ? undefined : v))
+    .optional(),
 });
 export type CreateOfficeDto = z.infer<typeof CreateOfficeDtoSchema>;
 
@@ -51,5 +81,13 @@ export const UpdateOfficeDtoSchema = z.object({
   slot_duration: z.number().int().min(5).max(240).optional(),
   buffer_minutes: z.number().int().min(0).max(120).optional(),
   modality: OfficeModalitySchema.optional(),
+  /**
+   * Optional map URL update. Empty string clears the field (sets to null).
+   * Only http/https schemes are accepted.
+   */
+  map_url: z
+    .union([safeUrlSchema, z.literal('')])
+    .transform((v) => (v === '' ? undefined : v))
+    .optional(),
 });
 export type UpdateOfficeDto = z.infer<typeof UpdateOfficeDtoSchema>;
