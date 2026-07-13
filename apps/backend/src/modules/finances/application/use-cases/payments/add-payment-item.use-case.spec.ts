@@ -43,6 +43,7 @@ describe('AddPaymentItemUseCase', () => {
       listItems: jest.fn(),
       create: jest.fn(),
       attachReceiptUrl: jest.fn(),
+      updateDetails: jest.fn(),
     };
     useCase = new AddPaymentItemUseCase(mockRepo);
   });

@@ -411,6 +411,84 @@ export class SequelizePaymentRepository implements IPaymentRepository {
     return this.toDomain(updated);
   }
 
+  async updateDetails(
+    id: string,
+    doctorId: string,
+    patch: {
+      paidAt?: Date | null;
+      methodSnapshot?: string | null;
+      paymentReference?: string | null;
+      bcvRate?: number | null;
+      amountBs?: number | null;
+    },
+  ): Promise<Payment> {
+    return this.sequelize.transaction(async (t) => {
+      const row = await this.paymentModel.findOne({
+        where: { id } as Record<string, unknown>,
+        lock: true,
+        transaction: t,
+      });
+
+      if (!row) throw new PaymentNotFoundError(id);
+      const payment = this.toDomain(row);
+      if (!payment.isOwnedBy(doctorId)) throw new PaymentNotOwnedError();
+
+      // Build the update object — only include defined fields.
+      const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+      if (patch.paidAt !== undefined) updateData.paidAt = patch.paidAt;
+      if (patch.methodSnapshot !== undefined) updateData.methodSnapshot = patch.methodSnapshot;
+      if (patch.paymentReference !== undefined)
+        updateData.paymentReference = patch.paymentReference;
+      if (patch.bcvRate !== undefined) updateData.bcvRate = patch.bcvRate;
+      if (patch.amountBs !== undefined) updateData.amountBs = patch.amountBs;
+
+      await this.paymentModel.update(updateData, {
+        where: { id } as Record<string, unknown>,
+        transaction: t,
+      });
+
+      // Sync the linked consultation if one exists.
+      // Locate via: appointments.payment_id = id → appointments.consultation_id.
+      // SECURITY: AND c.doctor_id = :doctorId ensures the UPDATE is always scoped to the owner.
+      const consultSyncFields: string[] = ['updated_at = now()'];
+      const consultSyncReplacements: Record<string, unknown> = { paymentId: id, doctorId };
+
+      if (patch.methodSnapshot !== undefined) {
+        consultSyncFields.push('payment_method = :paymentMethod');
+        consultSyncReplacements['paymentMethod'] = patch.methodSnapshot;
+      }
+      if (patch.paidAt !== undefined) {
+        consultSyncFields.push('payment_date = :paymentDate');
+        consultSyncReplacements['paymentDate'] = patch.paidAt;
+      }
+      if (patch.paymentReference !== undefined) {
+        consultSyncFields.push('payment_reference = :paymentReference');
+        consultSyncReplacements['paymentReference'] = patch.paymentReference;
+      }
+
+      // Only issue the sync query when there is at least one consultation field to update.
+      if (consultSyncFields.length > 1) {
+        await this.sequelize.query(
+          `UPDATE consultations c
+             SET ${consultSyncFields.join(', ')}
+             FROM appointments ap
+             WHERE ap.payment_id      = :paymentId
+               AND ap.consultation_id = c.id
+               AND c.doctor_id        = :doctorId`,
+          { replacements: consultSyncReplacements, type: QueryTypes.UPDATE, transaction: t },
+        );
+      }
+
+      const updated = await this.paymentModel.findOne({
+        where: { id } as Record<string, unknown>,
+        transaction: t,
+      });
+      if (!updated) throw new PaymentNotFoundError(id);
+      return this.toDomain(updated);
+    });
+  }
+
   async create(params: {
     id: string;
     doctorId: string;

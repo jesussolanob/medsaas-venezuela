@@ -6,17 +6,22 @@ import { AppSettingModel } from './infrastructure/database/models/app-setting.mo
 import { PaymentModel } from './infrastructure/database/models/payment.model';
 import { PaymentItemModel } from './infrastructure/database/models/payment-item.model';
 import { IncomeConceptModel } from './infrastructure/database/models/income-concept.model';
+import { BcvRateHistoryModel } from './infrastructure/database/models/bcv-rate-history.model';
 import { SequelizeFinanceRepository } from './infrastructure/database/repositories/sequelize-finance.repository';
 import { RedisUsdtRateStore } from './infrastructure/database/repositories/redis-usdt-rate.store';
 import { SequelizePaymentRepository } from './infrastructure/database/repositories/sequelize-payment.repository';
 import { SequelizeIncomeConceptRepository } from './infrastructure/database/repositories/sequelize-income-concept.repository';
+import { SequelizeBcvRateHistoryRepository } from './infrastructure/database/repositories/sequelize-bcv-rate-history.repository';
 import { BinanceRateFetcher } from './infrastructure/rate-fetchers/binance-rate.fetcher';
 import { BcvRateFetcher } from './infrastructure/rate-fetchers/bcv-rate.fetcher';
+import { BcvRateHistoryFetcher } from './infrastructure/rate-fetchers/bcv-rate-history.fetcher';
 import { FINANCE_REPOSITORY } from './domain/repositories/finance.repository';
 import { USDT_RATE_STORE } from './domain/repositories/usdt-rate.store';
 import { PAYMENT_REPOSITORY } from './domain/repositories/payment.repository';
 import { INCOME_CONCEPT_REPOSITORY } from './domain/repositories/income-concept.repository';
 import { BINANCE_RATE_FETCHER, BCV_RATE_FETCHER } from './domain/repositories/rate-fetcher.ports';
+import { BCV_RATE_HISTORY_REPOSITORY } from './domain/repositories/bcv-rate-history.repository';
+import { BCV_RATE_HISTORY_FETCHER } from './domain/repositories/bcv-rate-history-fetcher.port';
 
 // Use cases — finances
 import { GetFinancialSummaryUseCase } from './application/use-cases/finances/get-financial-summary.use-case';
@@ -29,6 +34,7 @@ import { SetRateSourceUseCase } from './application/use-cases/finances/set-rate-
 import { GetRatesSummaryUseCase } from './application/use-cases/finances/get-rates-summary.use-case';
 import { DeleteTransactionUseCase } from './application/use-cases/finances/delete-transaction.use-case';
 import { GetLifetimeIncomeUseCase } from './application/use-cases/finances/get-lifetime-income.use-case';
+import { GetBcvRateByDateUseCase } from './application/use-cases/finances/get-bcv-rate-by-date.use-case';
 import { ListIncomeConceptsUseCase } from './application/use-cases/finances/list-income-concepts.use-case';
 import { CreateIncomeConceptUseCase } from './application/use-cases/finances/create-income-concept.use-case';
 import { UpdateIncomeConceptUseCase } from './application/use-cases/finances/update-income-concept.use-case';
@@ -45,6 +51,7 @@ import { AddPaymentItemUseCase } from './application/use-cases/payments/add-paym
 import { RemovePaymentItemUseCase } from './application/use-cases/payments/remove-payment-item.use-case';
 import { ListPaymentItemsUseCase } from './application/use-cases/payments/list-payment-items.use-case';
 import { AttachPaymentReceiptUseCase } from './application/use-cases/payments/attach-payment-receipt.use-case';
+import { UpdatePaymentDetailsUseCase } from './application/use-cases/payments/update-payment-details.use-case';
 
 // Controllers
 import { FinancesController } from './presentation/controllers/finances.controller';
@@ -76,6 +83,7 @@ import { PatientsModule } from '../patients/patients.module';
       PaymentItemModel,
       AppointmentModel,
       IncomeConceptModel,
+      BcvRateHistoryModel,
     ]),
     ConsultationsModule,
     PatientsModule,
@@ -117,6 +125,16 @@ import { PatientsModule } from '../patients/patients.module';
       provide: INCOME_CONCEPT_REPOSITORY,
       useClass: SequelizeIncomeConceptRepository,
     },
+    {
+      provide: BCV_RATE_HISTORY_REPOSITORY,
+      useClass: SequelizeBcvRateHistoryRepository,
+    },
+
+    // Historical BCV rate fetcher: domain port → infrastructure implementation.
+    {
+      provide: BCV_RATE_HISTORY_FETCHER,
+      useClass: BcvRateHistoryFetcher,
+    },
 
     // Guards
     RolesGuard,
@@ -132,6 +150,7 @@ import { PatientsModule } from '../patients/patients.module';
     GetRatesSummaryUseCase,
     DeleteTransactionUseCase,
     GetLifetimeIncomeUseCase,
+    GetBcvRateByDateUseCase,
     ListIncomeConceptsUseCase,
     CreateIncomeConceptUseCase,
     UpdateIncomeConceptUseCase,
@@ -148,6 +167,7 @@ import { PatientsModule } from '../patients/patients.module';
     RemovePaymentItemUseCase,
     ListPaymentItemsUseCase,
     AttachPaymentReceiptUseCase,
+    UpdatePaymentDetailsUseCase,
   ],
   // Export PAYMENT_REPOSITORY so BookingModule can inject it for CreateBookingUseCase.
   // Export USDT_RATE_STORE so DoctorSettingsModule can resolve the effective exchange rate.

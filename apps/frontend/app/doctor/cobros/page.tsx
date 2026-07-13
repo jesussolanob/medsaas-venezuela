@@ -28,6 +28,8 @@ import {
   getDoctorProfileForReceipt,
   getPaymentsForExport,
   saveReceiptUrl,
+  updatePaymentDetails,
+  getBcvRateForDate,
 } from './actions';
 import {
   Receipt,
@@ -40,9 +42,7 @@ import {
   Calendar,
   ArrowRight,
   Loader2,
-  RefreshCw,
   Filter,
-  TrendingUp,
   Banknote,
   X,
   CreditCard,
@@ -51,9 +51,11 @@ import {
   Upload,
   Plus,
   MessageSquare,
+  Save,
 } from 'lucide-react';
 
-type CobrosTab = 'pending' | 'approved';
+// TAREA 5: tercer tab "Todas"
+type CobrosTab = 'pending' | 'approved' | 'all';
 
 type Payment = {
   id: string;
@@ -70,15 +72,23 @@ type Payment = {
   _source?: 'appointment' | 'consultation';
 };
 
-// RONDA 34: PAYMENT_METHOD_LABELS movido a lib/payment-methods.ts y reemplazado
-// por la funcion formatPaymentMethod() para consistencia entre vistas.
+// Opciones estándar de método de pago para el select de edición
+const PAYMENT_METHOD_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'pago_movil', label: 'Pago Móvil' },
+  { value: 'transferencia', label: 'Transferencia' },
+  { value: 'zelle', label: 'Zelle' },
+  { value: 'binance', label: 'Binance' },
+  { value: 'cash_usd', label: 'Efectivo USD' },
+  { value: 'cash_bs', label: 'Efectivo Bs' },
+  { value: 'pos', label: 'POS' },
+];
 
 export default function CobrosPage() {
   const [tab, setTab] = useState<CobrosTab>('pending');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const { rate: bcvRate, loading: bcvLoading, toBs } = useBcvRate();
+  const { rate: bcvRate, loading: bcvLoading } = useBcvRate();
 
   // Date range for export
   const [dateFrom, setDateFrom] = useState(() => {
@@ -95,7 +105,6 @@ export default function CobrosPage() {
     null,
   );
   // RONDA 35: items extra ahora persistidos en payment_items (BD).
-  // El state local solo cachea lo que ya esta en BD para render rapido.
   const [extraItems, setExtraItems] = useState<Array<{ id: string; name: string; amount: number }>>(
     [],
   );
@@ -114,6 +123,16 @@ export default function CobrosPage() {
   >({});
   const [sendingWa, setSendingWa] = useState(false);
 
+  // TAREA 2: estado de edición de detalles del pago
+  const [editPaidAt, setEditPaidAt] = useState('');
+  const [editMethod, setEditMethod] = useState('');
+  const [editReference, setEditReference] = useState('');
+  const [editBcvRate, setEditBcvRate] = useState<string>('');
+  const [editAmountBs, setEditAmountBs] = useState<string>('');
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [loadingBcvForDate, setLoadingBcvForDate] = useState(false);
+  const [bcvDateWarning, setBcvDateWarning] = useState<string | null>(null);
+
   async function handleReceiptUpload(file: File) {
     if (!selectedPayment) return;
     setUploadingReceipt(true);
@@ -130,7 +149,6 @@ export default function CobrosPage() {
       const publicUrl: string = uploadJson.data.url;
 
       // 2. Persist the URL to the backend via PATCH /api/finances/payments/:id/receipt.
-      // selectedPayment.id is the payments.id (populated by getPayments() via the backend).
       const saved = await saveReceiptUrl(selectedPayment.id, publicUrl);
       if (!saved.ok) {
         throw new Error(saved.error ?? 'Error al guardar comprobante en el servidor');
@@ -152,21 +170,13 @@ export default function CobrosPage() {
     }
   }
 
-  // NOTA: la versión completa de generateReceipt() vive más abajo (línea 407+),
-  // implementada en la ronda 34 con soporte de payment_items + PDF.
-
-  // BCV rate now comes from useBcvRate() hook
-
   // FUENTE UNICA (ronda 15): leer de tabla `payments` via helper compartido.
-  // Tab 'approved' = dinero real cobrado. Tab 'pending' = por cobrar.
-  // Antes leia de `appointments.status` (legacy) lo que causaba drift con el dashboard.
   const fetchPayments = useCallback(async () => {
     setLoading(true);
 
-    // ETAPA 1: vía backend (BFF). doctorId lo deriva el backend del dev-stub.
-    const rows = await getPayments({ status: tab }); // 'pending' | 'approved'
+    // TAREA 5: pasar 'all' cuando el tab es 'all'
+    const rows = await getPayments({ status: tab });
 
-    // Adaptar al shape Payment de esta vista
     setPayments(
       rows.map((p) => ({
         id: p.id,
@@ -176,14 +186,12 @@ export default function CobrosPage() {
         payment_method: p.method_snapshot || null,
         status: p.status,
         scheduled_at: p.appointment?.scheduled_at || p.created_at,
-        // Codigo unificado: consultation_code como maestro, appointment_code como fallback
         appointment_code:
           p.consultation?.consultation_code ||
           p.appointment?.appointment_code ||
           p.payment_code ||
           '',
         payment_receipt_url: p.appointment?.payment_receipt_url || null,
-        // 7.10: teléfono del paciente para WhatsApp. Puede ser null.
         patient_phone: p.appointment?.patient_phone ?? null,
         _source: 'appointment' as const,
       })),
@@ -210,9 +218,38 @@ export default function CobrosPage() {
     };
   }, []);
 
-  // NOTE (Etapa 1): Supabase Realtime was removed — no WebSocket layer in Etapa 1.
-  // fetchPayments() is called after every mutation (approve, add item, receipt upload)
-  // so the list stays fresh. Polling-based auto-refresh can be added in Fase 5 if needed.
+  // TAREA 2: inicializar campos de edición cuando se selecciona un pago.
+  // Resetear múltiples campos de formulario al cambiar selectedPayment es
+  // un patrón establecido; el aviso set-state-in-effect no aplica aquí
+  // porque no hay otra fuente de verdad externa que se sincronice.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!selectedPayment) {
+      setEditPaidAt('');
+      setEditMethod('');
+      setEditReference('');
+      setEditBcvRate('');
+      setEditAmountBs('');
+      setBcvDateWarning(null);
+      return;
+    }
+    // Pre-poblar con datos existentes del pago
+    const today = new Date().toISOString().split('T')[0];
+    setEditPaidAt(today);
+    setEditMethod(selectedPayment.payment_method ?? '');
+    setEditReference('');
+    setEditBcvRate(bcvRate ? bcvRate.toFixed(2) : '');
+    setEditAmountBs(
+      bcvRate && selectedPayment.plan_price
+        ? (selectedPayment.plan_price * bcvRate).toFixed(2)
+        : '',
+    );
+    setBcvDateWarning(null);
+    // Solo re-ejecutar cuando cambia el payment seleccionado (id), no con bcvRate
+    // para evitar resetear el formulario mientras el usuario edita.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPayment?.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const filtered = payments.filter((p) => {
     if (!searchQuery.trim()) return true;
@@ -258,7 +295,7 @@ export default function CobrosPage() {
     ]);
 
     const csv = [headers, ...rows].map((row) => row.map((c) => `"${c}"`).join(',')).join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -268,8 +305,8 @@ export default function CobrosPage() {
     setShowExport(false);
   }
 
-  // ETAPA 1: migrado al backend (GET /api/doctor/services).
-  // Reemplaza la lectura directa a Supabase pricing_plans.
+  // TAREA 3: openAddItemModal — verifica que el modal se abra correctamente
+  // getServicesForModal() llama GET /api/doctor/services y filtra is_active=true
   async function openAddItemModal() {
     if (!selectedPayment) return;
     const items = await getServicesForModal();
@@ -287,8 +324,6 @@ export default function CobrosPage() {
     if (!selectedPayment) return;
     setAddingItem(true);
     try {
-      // ETAPA 1: el backend inserta el payment_item, recalcula payments.amount_usd
-      // (base + sum items) y sincroniza appointments.plan_price en una transacción.
       const result = await addPaymentItem(selectedPayment.id, {
         name: item.name,
         amountUsd: item.price_usd,
@@ -314,8 +349,9 @@ export default function CobrosPage() {
       setTimeout(() => setActionToast(null), 2500);
       setShowAddItemModal(false);
       await fetchPayments();
-    } catch (err: any) {
-      setActionToast({ type: 'error', msg: err?.message || 'Error al agregar item' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al agregar item';
+      setActionToast({ type: 'error', msg });
       setTimeout(() => setActionToast(null), 3000);
     } finally {
       setAddingItem(false);
@@ -327,7 +363,6 @@ export default function CobrosPage() {
     if (!selectedPayment) return;
     if (!confirm('¿Eliminar este cargo del cobro?')) return;
     try {
-      // ETAPA 1: el backend borra el item, recalcula el total y sincroniza la cita.
       const result = await removePaymentItem(selectedPayment.id, itemId);
       if (!result.success) throw new Error(result.error);
 
@@ -337,8 +372,9 @@ export default function CobrosPage() {
       setActionToast({ type: 'success', msg: 'Cargo eliminado' });
       setTimeout(() => setActionToast(null), 2000);
       await fetchPayments();
-    } catch (err: any) {
-      setActionToast({ type: 'error', msg: err?.message || 'Error al eliminar' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar';
+      setActionToast({ type: 'error', msg });
       setTimeout(() => setActionToast(null), 3000);
     }
   }
@@ -347,7 +383,6 @@ export default function CobrosPage() {
   async function loadExtraItems(paymentId: string) {
     setLoadingExtras(true);
     try {
-      // ETAPA 1: items vía backend (BFF).
       const data = await getPaymentItems(paymentId);
       setExtraItems(data.map((d) => ({ id: d.id, name: d.name, amount: Number(d.amount_usd) })));
     } catch (err) {
@@ -358,16 +393,87 @@ export default function CobrosPage() {
     }
   }
 
-  // RONDA 34 — ETAPA 1: generar recibo PDF con branding del perfil.
-  // Migrado: profiles → GET /api/doctor/profile (getDoctorProfileForReceipt).
-  //          payment_items → getPaymentItems() via payments-actions (ya migrado).
-  // PENDIENTE (Fase 5): el código de cita (appointment_code) se infiere del
-  //   selectedPayment (snapshot disponible). El join de appointments vía payment_id
-  //   no tiene endpoint backend aún; se usa el appointment_code del snapshot.
+  // TAREA 2: cuando cambia la fecha de pago, consultar tasa BCV de ese día
+  async function handlePaidAtChange(newDate: string) {
+    setEditPaidAt(newDate);
+    if (!newDate) return;
+
+    setLoadingBcvForDate(true);
+    setBcvDateWarning(null);
+    try {
+      const result = await getBcvRateForDate(newDate);
+      if (!result || result.rate === null) {
+        setBcvDateWarning('Tasa no disponible para esa fecha, ingrésala manualmente');
+        setEditBcvRate('');
+        setEditAmountBs('');
+      } else {
+        setBcvDateWarning(null);
+        const rateStr = result.rate.toFixed(2);
+        setEditBcvRate(rateStr);
+        const amountUsd = selectedPayment?.plan_price ?? 0;
+        setEditAmountBs((amountUsd * result.rate).toFixed(2));
+      }
+    } catch {
+      setBcvDateWarning('No se pudo obtener la tasa, ingrésala manualmente');
+      setEditBcvRate('');
+      setEditAmountBs('');
+    } finally {
+      setLoadingBcvForDate(false);
+    }
+  }
+
+  // TAREA 2: recalcular amount_bs cuando el usuario edita la tasa
+  function handleBcvRateChange(val: string) {
+    setEditBcvRate(val);
+    const rate = parseFloat(val);
+    if (!isNaN(rate) && rate > 0 && selectedPayment?.plan_price) {
+      setEditAmountBs((selectedPayment.plan_price * rate).toFixed(2));
+    } else {
+      setEditAmountBs('');
+    }
+  }
+
+  // TAREA 2: guardar detalles del pago
+  async function handleSaveDetails() {
+    if (!selectedPayment) return;
+    setSavingDetails(true);
+    try {
+      const bcvRateNum = editBcvRate ? parseFloat(editBcvRate) : null;
+      const amountBsNum = editAmountBs ? parseFloat(editAmountBs) : null;
+
+      const result = await updatePaymentDetails(selectedPayment.id, {
+        paid_at: editPaidAt || null,
+        method: editMethod || null,
+        reference: editReference || null,
+        bcv_rate: isNaN(bcvRateNum ?? NaN) ? null : bcvRateNum,
+        amount_bs: isNaN(amountBsNum ?? NaN) ? null : amountBsNum,
+      });
+
+      if (!result.ok) throw new Error(result.error);
+
+      // Actualizar estado local del pago (método visible en la lista)
+      if (editMethod) {
+        setSelectedPayment((prev) => (prev ? { ...prev, payment_method: editMethod } : prev));
+        setPayments((prev) =>
+          prev.map((p) => (p.id === selectedPayment.id ? { ...p, payment_method: editMethod } : p)),
+        );
+      }
+
+      showToast({ type: 'success', message: 'Detalles guardados correctamente' });
+      await fetchPayments();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al guardar detalles';
+      showToast({ type: 'error', message: msg });
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
+  // RONDA 34: generar recibo PDF con branding del perfil.
+  // TAREA 4: fallback a blob URL si window.open() está bloqueado.
   async function generateReceipt() {
     if (!selectedPayment) return;
 
-    // ETAPA 1: cargar profile y items en paralelo desde backend.
     const [prof, rawItems] = await Promise.all([
       getDoctorProfileForReceipt(),
       getPaymentItems(selectedPayment.id),
@@ -383,25 +489,24 @@ export default function CobrosPage() {
       amount: Number(i.amount_usd),
     }));
 
-    // consultation_code available from the payment snapshot (appointment.consultation_code
-    // is not yet in the backend response — use selectedPayment.appointment_code fallback).
-    const consCode = null; // pending: requires appointment join in payments response
-
-    // RONDA 35: el monto BASE = total actual - sum(items).
     const totalNow = selectedPayment.plan_price || 0;
     const sumExtras = dbExtras.reduce((s, e) => s + e.amount, 0);
     const baseTotal = Math.max(0, totalNow - sumExtras);
 
+    const effectiveBcvRate = editBcvRate ? parseFloat(editBcvRate) : (bcvRate ?? null);
+    const effectivePaidAt = editPaidAt || new Date().toISOString();
+
     const html = buildReceiptHtml({
       paymentCode: selectedPayment.appointment_code || 'RECIBO',
-      consultationCode: consCode,
+      consultationCode: null,
       patientName: selectedPayment.patient_name || 'Paciente',
       patientCedula: null,
       amountUsd: baseTotal,
-      amountBs: bcvRate ? baseTotal * bcvRate : null,
-      bcvRate: bcvRate ?? null,
+      amountBs: effectiveBcvRate ? baseTotal * effectiveBcvRate : null,
+      bcvRate: effectiveBcvRate,
       paymentMethod: selectedPayment.payment_method,
-      paidAt: new Date().toISOString(),
+      paymentReference: editReference || undefined,
+      paidAt: effectivePaidAt,
       scheduledAt: selectedPayment.scheduled_at,
       planName: selectedPayment.plan_name,
       extraItems: dbExtras,
@@ -415,17 +520,32 @@ export default function CobrosPage() {
       signatureUrl: prof.signature_url,
     });
 
+    // TAREA 4: intentar window.open(); si está bloqueado, usar blob URL
     const w = window.open('', '_blank');
-    if (!w) {
-      showToast({ type: 'error', message: 'Permite ventanas emergentes para generar el PDF' });
-      return;
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    } else {
+      // Popup bloqueado: abrir via blob URL en la misma sesión
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Liberar después de un momento
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      showToast({
+        type: 'info',
+        message: 'Si el recibo no abrió, permite ventanas emergentes en tu navegador',
+      });
     }
-    w.document.write(html);
-    w.document.close();
   }
 
   // RONDA 35: al abrir el modal, cargar los items extra reales desde BD.
-  // Al cerrar, limpiar para que el siguiente payment empiece limpio.
   useEffect(() => {
     if (!selectedPayment) {
       setExtraItems([]);
@@ -435,19 +555,14 @@ export default function CobrosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPayment?.id]);
 
-  // RONDA 16: refactor — ahora `paymentId` es de tabla `payments` (no appointments)
-  // tras la migracion de fuente unica en ronda 15. Update directo en payments y luego
-  // sincronizamos consultations.payment_status para que el resto de modulos vea el cambio.
+  // RONDA 16 / TAREA 1: actualizar estado del pago
   async function updatePaymentStatus(paymentId: string, newStatus: 'pending' | 'approved') {
     setUpdatingStatus(true);
     setActionToast(null);
     try {
-      // ETAPA 1: el backend actualiza payments.status/paid_at Y sincroniza
-      // consultations.payment_status en una transacción (fuente de verdad).
       const result = await updatePaymentStatusAction(paymentId, newStatus);
       if (!result.success) throw new Error(result.error);
 
-      // Toast de exito + refresh
       setActionToast({
         type: 'success',
         msg:
@@ -492,7 +607,6 @@ export default function CobrosPage() {
       ? `*Monto:* ${usdStr} USD (${bsStr}${bcvRate ? ` | Tasa BCV: ${bcvRate.toFixed(2)} Bs/$` : ''})`
       : `*Monto:* ${usdStr} USD`;
 
-    // Formatear métodos de pago del doctor
     const PAYMENT_LABELS: Record<string, string> = {
       pago_movil: 'Pago Móvil',
       transferencia: 'Transferencia Bancaria',
@@ -594,10 +708,11 @@ export default function CobrosPage() {
       hour12: true,
     });
 
-  // Tabs del módulo de Cobros — solo 2 estados de pago
-  const tabs: { key: CobrosTab; label: string; icon: any; color: string }[] = [
+  // TAREA 5: 3 tabs incluyendo "Todas"
+  const tabs: { key: CobrosTab; label: string; icon: React.ElementType; color: string }[] = [
     { key: 'pending', label: 'Pendientes', icon: Clock, color: 'amber' },
     { key: 'approved', label: 'Aprobados', icon: CheckCircle, color: 'emerald' },
+    { key: 'all', label: 'Todas', icon: Filter, color: 'slate' },
   ];
 
   return (
@@ -623,7 +738,7 @@ export default function CobrosPage() {
         </div>
       )}
 
-      {/* Header with totals */}
+      {/* TAREA 5: cajas de resumen reflejan el filtro activo (filtered, no todos) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-2">
@@ -632,7 +747,8 @@ export default function CobrosPage() {
           </div>
           <p className="text-2xl font-bold text-slate-900">{formatUsd(totalUSD)}</p>
           <p className="text-xs text-slate-400 mt-1">
-            {filtered.length} registro{filtered.length !== 1 ? 's' : ''}
+            {filtered.length} registro{filtered.length !== 1 ? 's' : ''}{' '}
+            {tab === 'pending' ? 'pendientes' : tab === 'approved' ? 'aprobados' : 'en total'}
           </p>
         </div>
 
@@ -703,7 +819,7 @@ export default function CobrosPage() {
         </div>
       </div>
 
-      {/* Tabs + Search */}
+      {/* TAREA 5: Tabs (3 tabs) + Search */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
           {tabs.map((t) => (
@@ -745,7 +861,7 @@ export default function CobrosPage() {
             <Receipt className="w-8 h-8 text-slate-300 mx-auto mb-3" />
             <p className="text-sm text-slate-400">
               No hay registros{' '}
-              {tab === 'pending' ? 'pendientes' : tab === 'approved' ? 'aprobados' : 'cancelados'}
+              {tab === 'pending' ? 'pendientes' : tab === 'approved' ? 'aprobados' : ''}
             </p>
           </div>
         ) : (
@@ -798,7 +914,6 @@ export default function CobrosPage() {
                   </span>
                 </div>
                 <div className="col-span-1 text-center">
-                  {/* RONDA 16: badge basado en p.status real ('approved' | 'pending') */}
                   <span
                     className={`text-xs font-medium px-2 py-1 rounded-full ${
                       p.status === 'approved'
@@ -881,19 +996,166 @@ export default function CobrosPage() {
                 </div>
               </div>
 
-              {/* Payment method */}
-              <div className="flex items-center gap-3 py-3 border-b border-slate-100">
-                <CreditCard className="w-4 h-4 text-slate-400" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase">Método de pago</p>
-                  <p className="text-sm font-medium text-slate-700">
-                    {formatPaymentMethod(selectedPayment.payment_method)}
-                  </p>
+              {/* TAREA 1: UN solo botón de cambio de estado (contrario al actual) */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase">Estado del pago</p>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`inline-flex text-sm font-semibold px-3 py-1.5 rounded-full ${
+                      selectedPayment.status === 'approved'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}
+                  >
+                    {selectedPayment.status === 'approved' ? 'Aprobado' : 'Pendiente'}
+                  </span>
+                  {/* Solo un botón: acción contraria */}
+                  {selectedPayment.status === 'approved' ? (
+                    <button
+                      onClick={() => updatePaymentStatus(selectedPayment.id, 'pending')}
+                      disabled={updatingStatus}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-200 text-amber-600 text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-40"
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5" />
+                      )}
+                      Marcar como pendiente
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => updatePaymentStatus(selectedPayment.id, 'approved')}
+                      disabled={updatingStatus}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold transition-colors disabled:opacity-40"
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      )}
+                      Marcar como aprobado
+                    </button>
+                  )}
                 </div>
               </div>
 
+              {/* TAREA 2: campos editables de detalles del pago */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <p className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5" /> Detalles del pago
+                </p>
+
+                {/* Fecha de pago */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-500" htmlFor="edit-paid-at">
+                    Fecha de pago
+                  </label>
+                  <input
+                    id="edit-paid-at"
+                    type="date"
+                    value={editPaidAt}
+                    onChange={(e) => handlePaidAtChange(e.target.value)}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:border-teal-400 focus:ring-1 focus:ring-teal-100 outline-none"
+                  />
+                  {loadingBcvForDate && (
+                    <p className="text-xs text-slate-400 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Consultando tasa BCV...
+                    </p>
+                  )}
+                  {bcvDateWarning && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                      {bcvDateWarning}
+                    </p>
+                  )}
+                </div>
+
+                {/* Tasa BCV */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-500" htmlFor="edit-bcv-rate">
+                      Tasa (Bs/USD)
+                    </label>
+                    <input
+                      id="edit-bcv-rate"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editBcvRate}
+                      onChange={(e) => handleBcvRateChange(e.target.value)}
+                      placeholder="Ej: 46.50"
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:border-teal-400 focus:ring-1 focus:ring-teal-100 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-500" htmlFor="edit-amount-bs">
+                      Monto Bs
+                    </label>
+                    <input
+                      id="edit-amount-bs"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editAmountBs}
+                      onChange={(e) => setEditAmountBs(e.target.value)}
+                      placeholder="Calculado auto."
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:border-teal-400 focus:ring-1 focus:ring-teal-100 outline-none bg-slate-50"
+                    />
+                  </div>
+                </div>
+
+                {/* Método de pago */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-500" htmlFor="edit-method">
+                    Método de pago
+                  </label>
+                  <select
+                    id="edit-method"
+                    value={editMethod}
+                    onChange={(e) => setEditMethod(e.target.value)}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:border-teal-400 focus:ring-1 focus:ring-teal-100 outline-none bg-white"
+                  >
+                    <option value="">— Seleccionar —</option>
+                    {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Referencia */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-500" htmlFor="edit-reference">
+                    Referencia (opcional)
+                  </label>
+                  <input
+                    id="edit-reference"
+                    type="text"
+                    value={editReference}
+                    onChange={(e) => setEditReference(e.target.value)}
+                    placeholder="Nro. de confirmación o referencia"
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:border-teal-400 focus:ring-1 focus:ring-teal-100 outline-none"
+                  />
+                </div>
+
+                {/* Botón guardar detalles */}
+                <button
+                  onClick={handleSaveDetails}
+                  disabled={savingDetails}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold transition-colors disabled:opacity-50"
+                >
+                  {savingDetails ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {savingDetails ? 'Guardando...' : 'Guardar detalles'}
+                </button>
+              </div>
+
               {/* Receipt/comprobante */}
-              <div className="space-y-2">
+              <div className="space-y-2 pt-3 border-t border-slate-100">
                 <p className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5" /> Comprobante
                 </p>
@@ -956,51 +1218,6 @@ export default function CobrosPage() {
                 )}
               </div>
 
-              {/* Current status — solo 2 estados de PAGO */}
-              {/* L4 (2026-04-29): bug fix — comparar contra 'approved' (fuente de verdad
-                  post-RONDA-15), antes comparaba contra 'completed' (legacy) y por eso
-                  el drawer mostraba "Pendiente" aunque el pago estuviera aprobado. */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-400 uppercase">Estado del pago</p>
-                <span
-                  className={`inline-flex text-sm font-semibold px-3 py-1.5 rounded-full ${
-                    selectedPayment.status === 'approved'
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                  }`}
-                >
-                  {selectedPayment.status === 'approved' ? 'Aprobado' : 'Pendiente'}
-                </span>
-              </div>
-
-              {/* Change status — SOLO 2 opciones (el pago no se cancela, o está pendiente o aprobado) */}
-              <div className="space-y-3 pt-2">
-                <p className="text-xs font-semibold text-slate-400 uppercase">
-                  Cambiar estado del pago
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => updatePaymentStatus(selectedPayment.id, 'pending')}
-                    disabled={updatingStatus || selectedPayment.status === 'pending'}
-                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-amber-200 text-amber-600 hover:bg-amber-50"
-                  >
-                    <Clock className="w-3.5 h-3.5" /> Pendiente
-                  </button>
-                  <button
-                    onClick={() => updatePaymentStatus(selectedPayment.id, 'approved')}
-                    disabled={updatingStatus || selectedPayment.status === 'approved'}
-                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all disabled:opacity-40 border-emerald-200 text-emerald-600 hover:bg-emerald-50"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5" /> Aprobar
-                  </button>
-                </div>
-                {updatingStatus && (
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Actualizando...
-                  </div>
-                )}
-              </div>
-
               {/* RONDA 35 — Items extra persistidos en BD (payment_items) */}
               {(extraItems.length > 0 || loadingExtras) && (
                 <div className="space-y-2 pt-3 border-t border-slate-100">
@@ -1048,7 +1265,7 @@ export default function CobrosPage() {
                 </div>
               )}
 
-              {/* RONDA 34 — Botones de acciones extra */}
+              {/* Botones de acciones extra */}
               <div className="space-y-2 pt-3 border-t border-slate-100">
                 {/* 7.10: Cobrar por WhatsApp — solo para pagos pendientes */}
                 {selectedPayment.status === 'pending' && (
@@ -1072,12 +1289,14 @@ export default function CobrosPage() {
                       : 'Sin teléfono registrado'}
                   </button>
                 )}
+                {/* TAREA 3: botón "Añadir paquete / servicio" — llama openAddItemModal */}
                 <button
                   onClick={openAddItemModal}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-sm font-semibold text-slate-600 hover:border-teal-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
                 >
                   <Plus className="w-4 h-4" /> Añadir paquete / servicio
                 </button>
+                {/* TAREA 4: Generar recibo PDF con fallback a blob URL */}
                 <button
                   onClick={generateReceipt}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold transition-colors"
@@ -1090,7 +1309,7 @@ export default function CobrosPage() {
         </div>
       )}
 
-      {/* RONDA 34 — Modal para seleccionar paquete/servicio */}
+      {/* TAREA 3 / RONDA 34: Modal para seleccionar paquete/servicio */}
       {showAddItemModal && (
         <div
           className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"

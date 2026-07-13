@@ -9,18 +9,15 @@ import { appErrorToString } from '@/lib/app-error';
  * ETAPA 1 — thin-proxy to NestJS backend endpoints.
  *
  * Backend endpoints used:
- *   GET  /api/doctor/services    → active pricing plans / services
- *   GET  /api/doctor/profile     → doctor profile for receipt generation
- *   GET  /api/finances/payments  → export: payments with date filter
- *
- * DEFERRED — no backend endpoint / Fase 5:
- *   - Receipt/comprobante upload (storage → GCS, Fase 5).
- *     handleReceiptUpload in the cobros page still uses Supabase storage.
- *     This is intentionally left unchanged pending storage migration.
+ *   GET   /api/doctor/services                        → active pricing plans / services
+ *   GET   /api/doctor/profile                         → doctor profile for receipt generation
+ *   GET   /api/finances/payments                      → export: payments with date filter
+ *   PATCH /api/finances/payments/:id/details          → update paid_at, method, reference, bcv_rate, amount_bs
+ *   GET   /api/settings/bcv-rate?date=YYYY-MM-DD      → BCV rate for a specific date
  */
 
 import { log } from '@/lib/logger';
-import { backendGet, backendPatch, type AppError } from '@/lib/api-client.server';
+import { backendGet, backendPatch } from '@/lib/api-client.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,7 +55,6 @@ export type PaymentExportRow = {
   consultation_code: string | null;
 };
 
-
 // ---------------------------------------------------------------------------
 // Receipt / comprobante URL persistence
 // ---------------------------------------------------------------------------
@@ -85,10 +81,9 @@ export async function saveReceiptUrl(
   paymentId: string,
   receiptUrl: string,
 ): Promise<ReceiptActionResult> {
-  const result = await backendPatch<unknown>(
-    `/api/finances/payments/${paymentId}/receipt`,
-    { receipt_url: receiptUrl },
-  );
+  const result = await backendPatch<unknown>(`/api/finances/payments/${paymentId}/receipt`, {
+    receipt_url: receiptUrl,
+  });
 
   if (!result.ok) {
     log.error('[saveReceiptUrl] backend error', {
@@ -135,14 +130,16 @@ export async function getServicesForModal(): Promise<ServiceForModal[]> {
   return raw
     .filter((r): r is Record<string, unknown> => r !== null && typeof r === 'object')
     .filter((r) => r['isActive'] === true || r['is_active'] === true)
-    .map((r): ServiceForModal => ({
-      id: String(r['id'] ?? ''),
-      name: String(r['name'] ?? ''),
-      // Handle both camelCase (priceUsd) and snake_case (price_usd)
-      price_usd: Number(r['priceUsd'] ?? r['price_usd'] ?? 0),
-      // type: 'plan' | 'service' — default 'plan' for backward compat
-      type: (r['type'] === 'service' ? 'service' : 'plan') as 'plan' | 'service',
-    }));
+    .map(
+      (r): ServiceForModal => ({
+        id: String(r['id'] ?? ''),
+        name: String(r['name'] ?? ''),
+        // Handle both camelCase (priceUsd) and snake_case (price_usd)
+        price_usd: Number(r['priceUsd'] ?? r['price_usd'] ?? 0),
+        // type: 'plan' | 'service' — default 'plan' for backward compat
+        type: (r['type'] === 'service' ? 'service' : 'plan') as 'plan' | 'service',
+      }),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +167,9 @@ export async function getDoctorProfileForReceipt(): Promise<DoctorProfileForRece
   return {
     // Handle camelCase (fullName) and snake_case (full_name) shapes
     full_name: String(d['fullName'] ?? d['full_name'] ?? ''),
-    professional_title: (d['professionalTitle'] ?? d['professional_title'] ?? null) as string | null,
+    professional_title: (d['professionalTitle'] ?? d['professional_title'] ?? null) as
+      | string
+      | null,
     specialty: (d['specialty'] ?? null) as string | null,
     license_number: (d['licenseNumber'] ?? d['license_number'] ?? null) as string | null,
     email: String(d['email'] ?? ''),
@@ -178,6 +177,75 @@ export async function getDoctorProfileForReceipt(): Promise<DoctorProfileForRece
     logo_url: (d['logoUrl'] ?? d['logo_url'] ?? null) as string | null,
     signature_url: (d['signatureUrl'] ?? d['signature_url'] ?? null) as string | null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Update payment details (paid_at, method, reference, bcv_rate, amount_bs)
+// ---------------------------------------------------------------------------
+
+export type PaymentDetailsInput = {
+  paid_at?: string | null;
+  method?: string | null;
+  reference?: string | null;
+  bcv_rate?: number | null;
+  amount_bs?: number | null;
+};
+
+export interface PaymentDetailsResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Updates editable payment details (date, method, reference, BCV rate, amount Bs).
+ * Backend: PATCH /api/finances/payments/:paymentId/details
+ */
+export async function updatePaymentDetails(
+  paymentId: string,
+  input: PaymentDetailsInput,
+): Promise<PaymentDetailsResult> {
+  const result = await backendPatch<unknown>(`/api/finances/payments/${paymentId}/details`, input);
+
+  if (!result.ok) {
+    log.error('[updatePaymentDetails] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: appErrorToString(result.error) };
+  }
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// BCV rate for a specific date
+// ---------------------------------------------------------------------------
+
+export type BcvRateForDateResult = {
+  rate: number | null;
+  date: string;
+  source: string;
+};
+
+/**
+ * Fetches the BCV rate for a specific date.
+ * Backend: GET /api/settings/bcv-rate?date=YYYY-MM-DD
+ * rate=null means rate not available for that date.
+ */
+export async function getBcvRateForDate(date: string): Promise<BcvRateForDateResult | null> {
+  const result = await backendGet<BcvRateForDateResult>(
+    `/api/settings/bcv-rate?date=${encodeURIComponent(date)}`,
+  );
+
+  if (!result.ok) {
+    log.error('[getBcvRateForDate] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return null;
+  }
+
+  return result.value;
 }
 
 // ---------------------------------------------------------------------------

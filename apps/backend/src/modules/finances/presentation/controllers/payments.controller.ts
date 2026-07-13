@@ -24,6 +24,8 @@ import {
   type AddPaymentItemDto,
   AttachPaymentReceiptDtoSchema,
   type AttachPaymentReceiptDto,
+  UpdatePaymentDetailsCobrosSchema,
+  type UpdatePaymentDetailsCobrosDto,
 } from '@delta/shared-types';
 
 import { ListPaymentsUseCase } from '../../application/use-cases/payments/list-payments.use-case';
@@ -33,6 +35,7 @@ import { AddPaymentItemUseCase } from '../../application/use-cases/payments/add-
 import { RemovePaymentItemUseCase } from '../../application/use-cases/payments/remove-payment-item.use-case';
 import { ListPaymentItemsUseCase } from '../../application/use-cases/payments/list-payment-items.use-case';
 import { AttachPaymentReceiptUseCase } from '../../application/use-cases/payments/attach-payment-receipt.use-case';
+import { UpdatePaymentDetailsUseCase } from '../../application/use-cases/payments/update-payment-details.use-case';
 import type {
   PaymentWithRelations,
   PaymentTotals,
@@ -79,6 +82,17 @@ interface PaymentStatusOutput {
   id: string;
   status: string;
   paid_at: string | null;
+}
+
+interface PaymentDetailsOutput {
+  id: string;
+  paid_at: string | null;
+  method_snapshot: string | null;
+  payment_reference: string | null;
+  bcv_rate: number | null;
+  amount_bs: number | null;
+  amount_usd: number;
+  status: string;
 }
 
 interface PaymentItemOutput {
@@ -162,6 +176,7 @@ export class PaymentsController {
     private readonly removePaymentItem: RemovePaymentItemUseCase,
     private readonly listPaymentItems: ListPaymentItemsUseCase,
     private readonly attachReceipt: AttachPaymentReceiptUseCase,
+    private readonly updateDetails: UpdatePaymentDetailsUseCase,
   ) {}
 
   /**
@@ -304,5 +319,50 @@ export class PaymentsController {
       doctorId: user.sub,
     });
     return { success: true, data: { removed: true } };
+  }
+
+  /**
+   * PATCH /api/finances/payments/:id/details
+   * Edits financial detail fields on a payment from the Cobros drawer.
+   *
+   * Updatable fields: paid_at, method, reference, bcv_rate, amount_bs.
+   * All fields are optional (undefined = unchanged, null = cleared).
+   * If a consultation is linked to this payment, it is synced atomically.
+   *
+   * SECURITY:
+   *   - doctorId from authenticated user — anti-IDOR.
+   *   - 404 when payment does not exist.
+   *   - 403 when payment belongs to another doctor.
+   */
+  @Patch(':id/details')
+  async updatePaymentDetails(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(UpdatePaymentDetailsCobrosSchema))
+    dto: UpdatePaymentDetailsCobrosDto,
+  ): Promise<SuccessResponse<PaymentDetailsOutput>> {
+    const payment = await this.updateDetails.execute({
+      paymentId: id,
+      doctorId: user.sub,
+      paidAt: dto.paid_at !== undefined ? (dto.paid_at ? new Date(dto.paid_at) : null) : undefined,
+      methodSnapshot: dto.method,
+      paymentReference: dto.reference,
+      bcvRate: dto.bcv_rate,
+      amountBs: dto.amount_bs,
+    });
+
+    return {
+      success: true,
+      data: {
+        id: payment.id,
+        paid_at: payment.paidAt ? payment.paidAt.toISOString() : null,
+        method_snapshot: payment.methodSnapshot,
+        payment_reference: payment.paymentReference,
+        bcv_rate: payment.bcvRate,
+        amount_bs: payment.amountBs,
+        amount_usd: payment.amountUsd,
+        status: payment.status,
+      },
+    };
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
@@ -10,6 +10,10 @@ import {
   type SetRateSourceDto,
 } from '@delta/shared-types';
 import { GetUsdtRateUseCase } from '../../application/use-cases/finances/get-usdt-rate.use-case';
+import {
+  GetBcvRateByDateUseCase,
+  type GetBcvRateByDateOutput,
+} from '../../application/use-cases/finances/get-bcv-rate-by-date.use-case';
 import { UpdateUsdtRateUseCase } from '../../application/use-cases/finances/update-usdt-rate.use-case';
 import { SetRateSourceUseCase } from '../../application/use-cases/finances/set-rate-source.use-case';
 import { GetRatesSummaryUseCase } from '../../application/use-cases/finances/get-rates-summary.use-case';
@@ -29,7 +33,10 @@ interface SuccessResponse<T> {
  */
 @Controller('settings')
 export class SettingsController {
-  constructor(private readonly getRate: GetUsdtRateUseCase) {}
+  constructor(
+    private readonly getRate: GetUsdtRateUseCase,
+    private readonly getBcvRateByDate: GetBcvRateByDateUseCase,
+  ) {}
 
   /**
    * GET /api/settings/usdt-rate — returns the current USDT/BS rate. Public endpoint.
@@ -40,6 +47,30 @@ export class SettingsController {
   @Get('usdt-rate')
   async getUsdtRate(): Promise<SuccessResponse<GetUsdtRateOutput>> {
     const result = await this.getRate.execute();
+    return { success: true, data: result };
+  }
+
+  /**
+   * GET /api/settings/bcv-rate?date=YYYY-MM-DD
+   * Returns the BCV USD/VES rate for a specific calendar date.
+   * Requires authentication (doctor level) — writes to bcv_rate_history cache.
+   *
+   * Resolution: local cache → pydolarve history API → current BCV rate fallback.
+   * On total failure: { rate: null, source: 'unavailable' } — never returns 500.
+   *
+   * Response: { rate: number | null, date: string, source: 'cache'|'pydolarve'|'current-fallback'|'unavailable' }
+   */
+  @Get('bcv-rate')
+  @UseGuards(AppAuthGuard)
+  async getBcvRate(@Query('date') date?: string): Promise<SuccessResponse<GetBcvRateByDateOutput>> {
+    if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException('date must be in YYYY-MM-DD format');
+    }
+
+    // Default to today when no date is given.
+    const effectiveDate = date ?? new Date().toISOString().slice(0, 10);
+
+    const result = await this.getBcvRateByDate.execute({ date: effectiveDate });
     return { success: true, data: result };
   }
 }

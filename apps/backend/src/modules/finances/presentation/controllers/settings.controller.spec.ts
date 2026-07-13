@@ -1,7 +1,8 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SettingsController, AdminSettingsController } from './settings.controller';
 import { GetUsdtRateUseCase } from '../../application/use-cases/finances/get-usdt-rate.use-case';
+import { GetBcvRateByDateUseCase } from '../../application/use-cases/finances/get-bcv-rate-by-date.use-case';
 import { UpdateUsdtRateUseCase } from '../../application/use-cases/finances/update-usdt-rate.use-case';
 import { SetRateSourceUseCase } from '../../application/use-cases/finances/set-rate-source.use-case';
 import { GetRatesSummaryUseCase } from '../../application/use-cases/finances/get-rates-summary.use-case';
@@ -34,13 +35,20 @@ const defaultSummary: RatesSummary = {
 describe('SettingsController (public)', () => {
   let controller: SettingsController;
   let mockGetRate: jest.Mocked<GetUsdtRateUseCase>;
+  let mockGetBcvByDate: jest.Mocked<GetBcvRateByDateUseCase>;
 
   beforeEach(async () => {
     mockGetRate = { execute: jest.fn() } as unknown as jest.Mocked<GetUsdtRateUseCase>;
+    mockGetBcvByDate = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<GetBcvRateByDateUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SettingsController],
-      providers: [{ provide: GetUsdtRateUseCase, useValue: mockGetRate }],
+      providers: [
+        { provide: GetUsdtRateUseCase, useValue: mockGetRate },
+        { provide: GetBcvRateByDateUseCase, useValue: mockGetBcvByDate },
+      ],
     })
       .overrideGuard(AppAuthGuard)
       .useValue({ canActivate: jest.fn().mockReturnValue(true) })
@@ -66,6 +74,47 @@ describe('SettingsController (public)', () => {
     mockGetRate.execute.mockResolvedValue({ rate: 40.0, source: 'bcv' });
     const result = await controller.getUsdtRate();
     expect(result.data.source).toBe('bcv');
+  });
+
+  it('getBcvRate — returns rate for given date', async () => {
+    mockGetBcvByDate.execute.mockResolvedValue({
+      rate: 36.5,
+      date: '2026-07-10',
+      source: 'pydolarve',
+    });
+    const result = await controller.getBcvRate('2026-07-10');
+    expect(result.success).toBe(true);
+    expect(result.data.rate).toBe(36.5);
+    expect(result.data.date).toBe('2026-07-10');
+    expect(result.data.source).toBe('pydolarve');
+    expect(mockGetBcvByDate.execute).toHaveBeenCalledWith({ date: '2026-07-10' });
+  });
+
+  it('getBcvRate — defaults to today when no date provided', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    mockGetBcvByDate.execute.mockResolvedValue({ rate: 38.0, date: today, source: 'cache' });
+    const result = await controller.getBcvRate(undefined);
+    expect(result.success).toBe(true);
+    expect(mockGetBcvByDate.execute).toHaveBeenCalledWith({ date: today });
+  });
+
+  it('getBcvRate — throws BadRequestException for invalid date format', async () => {
+    await expect(controller.getBcvRate('not-a-date')).rejects.toThrow(BadRequestException);
+    await expect(controller.getBcvRate('2026/07/10')).rejects.toThrow(BadRequestException);
+    await expect(controller.getBcvRate('20260710')).rejects.toThrow(BadRequestException);
+    expect(mockGetBcvByDate.execute).not.toHaveBeenCalled();
+  });
+
+  it('getBcvRate — returns null rate when all sources unavailable', async () => {
+    mockGetBcvByDate.execute.mockResolvedValue({
+      rate: null,
+      date: '2026-07-10',
+      source: 'unavailable',
+    });
+    const result = await controller.getBcvRate('2026-07-10');
+    expect(result.success).toBe(true);
+    expect(result.data.rate).toBeNull();
+    expect(result.data.source).toBe('unavailable');
   });
 });
 

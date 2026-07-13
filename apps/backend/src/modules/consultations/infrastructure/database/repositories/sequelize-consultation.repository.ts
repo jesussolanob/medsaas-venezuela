@@ -352,6 +352,50 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       if (!updated) {
         throw new ConsultationNotFoundError();
       }
+
+      // Sync the linked payments row (if any) so Cobros stays consistent.
+      // The payment is located via: appointments.payment_id WHERE appointments.consultation_id = id.
+      // When no payment row is linked (consultation created directly), this is a no-op.
+      // SECURITY: AND pp.doctor_id = :doctorId ensures the UPDATE is always scoped to the owner.
+      const newStatus = patch.paymentStatus;
+      const syncFields: string[] = ['updated_at = now()'];
+      const syncReplacements: Record<string, unknown> = { consultationId: id, doctorId };
+
+      if (newStatus !== undefined) {
+        syncFields.push('status = :status');
+        syncReplacements['status'] = newStatus;
+        if (newStatus === 'approved') {
+          // Set paid_at only when it was NULL (preserve existing approval timestamp).
+          syncFields.push('paid_at = COALESCE(paid_at, now())');
+        }
+      }
+      if (patch.amount !== undefined && patch.amount !== null) {
+        syncFields.push('amount_usd = :amountUsd');
+        syncReplacements['amountUsd'] = patch.amount;
+      }
+      if (patch.paymentMethod !== undefined) {
+        syncFields.push('method_snapshot = :methodSnapshot');
+        syncReplacements['methodSnapshot'] = patch.paymentMethod;
+      }
+      if (patch.paymentReference !== undefined) {
+        syncFields.push('payment_reference = :paymentReference');
+        syncReplacements['paymentReference'] = patch.paymentReference;
+      }
+      if (patch.paymentReceiptUrl !== undefined) {
+        syncFields.push('payment_receipt_url = :paymentReceiptUrl');
+        syncReplacements['paymentReceiptUrl'] = patch.paymentReceiptUrl;
+      }
+
+      await this.sequelize.query(
+        `UPDATE payments pp
+           SET ${syncFields.join(', ')}
+           FROM appointments ap
+           WHERE ap.payment_id      = pp.id
+             AND ap.consultation_id = :consultationId
+             AND pp.doctor_id       = :doctorId`,
+        { replacements: syncReplacements, type: QueryTypes.UPDATE, transaction: t },
+      );
+
       return this.toDomain(updated);
     });
   }
@@ -560,6 +604,37 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         where: { id, doctorId } as WhereOptions,
         transaction: t,
       });
+
+      // Step 5b — Sync the linked payments row so Cobros stays consistent.
+      // Locate via: appointments.payment_id WHERE appointments.consultation_id = id.
+      // No-op when no linked payment exists (consultation created directly).
+      // SECURITY: AND pp.doctor_id = :doctorId ensures the UPDATE is always scoped to the owner.
+      const paymentSyncFields: string[] = [
+        'status = :approvedStatus',
+        'paid_at = COALESCE(paid_at, now())',
+        'amount_usd = :total',
+        'updated_at = now()',
+      ];
+      const paymentSyncReplacements: Record<string, unknown> = {
+        consultationId: id,
+        doctorId,
+        approvedStatus: 'approved',
+        total,
+      };
+      if (paymentMethod !== undefined) {
+        paymentSyncFields.push('method_snapshot = :methodSnapshot');
+        paymentSyncReplacements['methodSnapshot'] = paymentMethod;
+      }
+
+      await this.sequelize.query(
+        `UPDATE payments pp
+           SET ${paymentSyncFields.join(', ')}
+           FROM appointments ap
+           WHERE ap.payment_id      = pp.id
+             AND ap.consultation_id = :consultationId
+             AND pp.doctor_id       = :doctorId`,
+        { replacements: paymentSyncReplacements, type: QueryTypes.UPDATE, transaction: t },
+      );
 
       // Step 6 — Re-read the updated consultation inside the transaction.
       const updatedRows = await this.sequelize.query<ConsultationEnrichedRow>(

@@ -116,6 +116,32 @@ export interface IPaymentRepository {
   attachReceiptUrl(paymentId: string, doctorId: string, receiptUrl: string): Promise<Payment>;
 
   /**
+   * Partially updates financial detail fields on a payment (Cobros drawer).
+   *
+   * Semantics:
+   *   - undefined → field not included in the UPDATE (left unchanged).
+   *   - null      → field set to NULL.
+   *   - value     → field replaced with the provided value.
+   *
+   * If a linked consultation exists (via appointments.payment_id → consultation_id),
+   * it is synced inside the same transaction for consistency.
+   *
+   * SECURITY: doctorId enforces ownership — cannot modify another doctor's payment.
+   * Throws PaymentNotFoundError (404) or PaymentNotOwnedError (403).
+   */
+  updateDetails(
+    id: string,
+    doctorId: string,
+    patch: {
+      paidAt?: Date | null;
+      methodSnapshot?: string | null;
+      paymentReference?: string | null;
+      bcvRate?: number | null;
+      amountBs?: number | null;
+    },
+  ): Promise<Payment>;
+
+  /**
    * Creates a new payment record. Used by CreateBookingUseCase.
    */
   create(params: {
