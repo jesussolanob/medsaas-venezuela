@@ -330,6 +330,45 @@ de pacientes** (no descifra patient.full_name). Verificado lead: 1311 tests, boo
 Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío manual wa.me/mailto) NO usa este módulo
 → es consultas+citas PII (Fase 2). UI de settings (config 7d/24h) pendiente (Fase 2 doctor/settings).
 
+#### Envío manual de recordatorio por email (2026-07-13) ✅
+
+| Endpoint                           | Método | Auth                  | Notas                                                                                                                                                                                                                                  |
+| ---------------------------------- | ------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/reminders/send-email` | POST   | AppAuthGuard (doctor) | Envía recordatorio branded al paciente de una cita. Body Zod (mínimo 1 campo): `{ appointment_id?: uuid, consultation_id?: uuid }`. `appointment_id` toma precedencia. Respuesta: `{ success: true, data: { sent: true } }`. HTTP 200. |
+
+**Body completo (Zod `SendAppointmentReminderDtoSchema`):**
+
+```jsonc
+{
+  "appointment_id": "uuid", // opcional — usar este si lo tienes
+  "consultation_id": "uuid", // fallback si no tienes appointment_id
+  // al menos uno de los dos es obligatorio
+}
+```
+
+**Errores controlados:**
+
+- `404 REMINDER_APPOINTMENT_NOT_FOUND` — cita no encontrada o pertenece a otro doctor (anti-IDOR: mismo error que not-found).
+- `422 REMINDER_PATIENT_EMAIL_MISSING` — el paciente no tiene correo registrado.
+
+**Flujo interno:**
+
+1. Si viene `appointment_id` → `findByIdForDoctor(id, doctorId)` (anti-IDOR).
+2. Si solo viene `consultation_id` → `findById(consultationId, doctorId)` → extrae `appointmentId` → `findByIdForDoctor`.
+3. Email: `appointment.patientEmail` (plaintext) → fallback `patients.email` (descifrado owner-scoped).
+4. Nombre del doctor: `IDoctorProfileRepository.findByDoctorId(doctorId)` → fallback `"Su médico"`.
+5. Llama `MailerService.sendTemplate('reminder_manual', email, { patient_name, doctor_name, date, time, service, code }, { type:'patient', id })`.
+6. Fechas formateadas en `America/Caracas` (UTC-4), locale `es-VE`.
+
+**Template `reminder_manual`** (mig `20260713000001`):
+
+- Subject: `📅 Recordatorio de tu consulta - {{date}}`
+- Placeholders: `{{patient_name}}`, `{{doctor_name}}`, `{{date}}`, `{{time}}`, `{{service}}`, `{{code}}`
+- `service` = `appointment.planName` o `"Consulta médica"` como fallback
+- `code` = `appointment.appointmentCode` o primeros 8 chars del UUID (mayúsculas) como fallback
+
+**Anti-IDOR:** `doctorId` SIEMPRE de `user.sub` del token, nunca del body. Una cita de otro doctor devuelve el mismo 404.
+
 ## Módulo Doctor "vendible" — Fases 1–8 (2026-06-11 → 06-12)
 
 > Endpoints añadidos al culminar el módulo doctor: planes parametrizables, registro/verificación,

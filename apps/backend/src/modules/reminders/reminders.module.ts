@@ -12,9 +12,17 @@ import { GetRemindersSettingsUseCase } from './application/use-cases/reminders/g
 import { UpsertRemindersSettingsUseCase } from './application/use-cases/reminders/upsert-reminders-settings.use-case';
 import { GetDoctorRemindersQueueUseCase } from './application/use-cases/reminders/get-doctor-reminders-queue.use-case';
 import { GetAdminRemindersQueueUseCase } from './application/use-cases/reminders/get-admin-reminders-queue.use-case';
+import { SendAppointmentReminderEmailUseCase } from './application/use-cases/reminders/send-appointment-reminder-email.use-case';
 
 import { DoctorRemindersController } from './presentation/controllers/doctor-reminders.controller';
 import { AdminRemindersController } from './presentation/controllers/admin-reminders.controller';
+
+// Cross-module dependencies for SendAppointmentReminderEmailUseCase
+import { AppointmentsModule } from '../appointments/appointments.module';
+import { ConsultationsModule } from '../consultations/consultations.module';
+import { PatientsModule } from '../patients/patients.module';
+import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
+import { EmailModule } from '../email/email.module';
 
 /**
  * RemindersModule — Doctor reminder configuration + queue monitoring.
@@ -23,11 +31,22 @@ import { AdminRemindersController } from './presentation/controllers/admin-remin
  * AppModule. Only register the feature models here — never re-declare the Sequelize
  * provider in this module's providers array (that causes a dist boot crash).
  *
- * Sending logic (WhatsApp / email) is deferred to Fase 6.
- * This module only persists / reads config and exposes the queue for monitoring.
+ * SendAppointmentReminderEmailUseCase requires:
+ *   - APPOINTMENT_REPOSITORY  → AppointmentsModule (exported)
+ *   - CONSULTATION_REPOSITORY → ConsultationsModule (exported)
+ *   - PATIENT_REPOSITORY      → PatientsModule (exported)
+ *   - DOCTOR_PROFILE_REPOSITORY → DoctorSettingsModule (exported)
+ *   - MailerService           → EmailModule (exported)
  */
 @Module({
-  imports: [SequelizeModule.forFeature([RemindersSettingsModel, RemindersQueueModel])],
+  imports: [
+    SequelizeModule.forFeature([RemindersSettingsModel, RemindersQueueModel]),
+    AppointmentsModule,
+    ConsultationsModule,
+    PatientsModule,
+    DoctorSettingsModule,
+    EmailModule,
+  ],
   controllers: [DoctorRemindersController, AdminRemindersController],
   providers: [
     // Repository bindings: domain interface → Sequelize implementation
@@ -45,6 +64,7 @@ import { AdminRemindersController } from './presentation/controllers/admin-remin
     UpsertRemindersSettingsUseCase,
     GetDoctorRemindersQueueUseCase,
     GetAdminRemindersQueueUseCase,
+    SendAppointmentReminderEmailUseCase,
   ],
 })
 export class RemindersModule {}

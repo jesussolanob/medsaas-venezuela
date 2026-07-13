@@ -3,6 +3,7 @@ import { DoctorRemindersController } from './doctor-reminders.controller';
 import { GetRemindersSettingsUseCase } from '../../application/use-cases/reminders/get-reminders-settings.use-case';
 import { UpsertRemindersSettingsUseCase } from '../../application/use-cases/reminders/upsert-reminders-settings.use-case';
 import { GetDoctorRemindersQueueUseCase } from '../../application/use-cases/reminders/get-doctor-reminders-queue.use-case';
+import { SendAppointmentReminderEmailUseCase } from '../../application/use-cases/reminders/send-appointment-reminder-email.use-case';
 import {
   ReminderSettings,
   REMINDERS_SETTINGS_DEFAULTS,
@@ -42,6 +43,7 @@ describe('DoctorRemindersController', () => {
   let mockGetSettings: jest.Mocked<GetRemindersSettingsUseCase>;
   let mockUpsertSettings: jest.Mocked<UpsertRemindersSettingsUseCase>;
   let mockGetQueue: jest.Mocked<GetDoctorRemindersQueueUseCase>;
+  let mockSendReminderEmail: jest.Mocked<SendAppointmentReminderEmailUseCase>;
 
   beforeEach(async () => {
     mockGetSettings = { execute: jest.fn() } as unknown as jest.Mocked<GetRemindersSettingsUseCase>;
@@ -49,6 +51,9 @@ describe('DoctorRemindersController', () => {
       execute: jest.fn(),
     } as unknown as jest.Mocked<UpsertRemindersSettingsUseCase>;
     mockGetQueue = { execute: jest.fn() } as unknown as jest.Mocked<GetDoctorRemindersQueueUseCase>;
+    mockSendReminderEmail = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<SendAppointmentReminderEmailUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DoctorRemindersController],
@@ -56,6 +61,7 @@ describe('DoctorRemindersController', () => {
         { provide: GetRemindersSettingsUseCase, useValue: mockGetSettings },
         { provide: UpsertRemindersSettingsUseCase, useValue: mockUpsertSettings },
         { provide: GetDoctorRemindersQueueUseCase, useValue: mockGetQueue },
+        { provide: SendAppointmentReminderEmailUseCase, useValue: mockSendReminderEmail },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -164,6 +170,48 @@ describe('DoctorRemindersController', () => {
       expect(mockGetSettings.execute).toHaveBeenCalledWith('doctor-2');
       // doctor-2 gets their own defaults, not doctor-1's
       expect(mockGetSettings.execute).not.toHaveBeenCalledWith('doctor-1');
+    });
+  });
+
+  describe('sendReminderEmail', () => {
+    it('delegates to SendAppointmentReminderEmailUseCase with doctorId from token', async () => {
+      mockSendReminderEmail.execute.mockResolvedValue({ sent: true });
+
+      const result = await controller.sendReminderEmail({ appointment_id: 'apt-1' }, mockUser);
+
+      expect(result).toEqual({ success: true, data: { sent: true } });
+      expect(mockSendReminderEmail.execute).toHaveBeenCalledWith({
+        doctorId: 'doctor-1',
+        appointmentId: 'apt-1',
+        consultationId: undefined,
+      });
+    });
+
+    it('delegates with consultation_id when appointment_id is absent', async () => {
+      mockSendReminderEmail.execute.mockResolvedValue({ sent: true });
+
+      await controller.sendReminderEmail({ consultation_id: 'con-1' }, mockUser);
+
+      expect(mockSendReminderEmail.execute).toHaveBeenCalledWith({
+        doctorId: 'doctor-1',
+        appointmentId: undefined,
+        consultationId: 'con-1',
+      });
+    });
+
+    it('uses doctorId from token — never from body (anti-IDOR)', async () => {
+      mockSendReminderEmail.execute.mockResolvedValue({ sent: true });
+      const anotherUser: CurrentUserPayload = {
+        sub: 'doctor-2',
+        role: 'doctor',
+        email: 'x@dev.local',
+      };
+
+      await controller.sendReminderEmail({ appointment_id: 'apt-1' }, anotherUser);
+
+      expect(mockSendReminderEmail.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ doctorId: 'doctor-2' }),
+      );
     });
   });
 
