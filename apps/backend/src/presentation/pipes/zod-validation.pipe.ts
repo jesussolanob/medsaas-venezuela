@@ -18,12 +18,11 @@ export class ZodValidationPipe implements PipeTransform {
       }));
       // Surface the first field error as the top-level message so the front-end
       // displays a meaningful hint instead of the generic "Validation failed".
+      // We intentionally omit the field path prefix (e.g. "paid_at: ...") because
+      // the localized (es-VE) messages are already self-describing; the structured
+      // `errors` array below still carries the path for debugging.
       const firstError = errors[0];
-      const topLevelMessage = firstError
-        ? firstError.path
-          ? `${firstError.path}: ${firstError.message}`
-          : firstError.message
-        : 'Validation failed';
+      const topLevelMessage = firstError ? firstError.message : 'Datos inválidos';
       throw new BadRequestException({ message: topLevelMessage, errors });
     }
     return result.data;

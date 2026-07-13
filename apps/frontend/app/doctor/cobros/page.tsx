@@ -474,7 +474,10 @@ export default function CobrosPage() {
       const amountBsNum = editAmountBs ? parseFloat(editAmountBs) : null;
 
       const result = await updatePaymentDetails(selectedPayment.id, {
-        paid_at: editPaidAt || null,
+        // El backend exige ISO 8601 completo (z.datetime()); el input date da
+        // solo YYYY-MM-DD. Usamos mediodía local para que la zona horaria (VE -4)
+        // no corra la fecha de pago al día anterior.
+        paid_at: editPaidAt ? new Date(`${editPaidAt}T12:00:00`).toISOString() : null,
         method: editMethod || null,
         reference: editReference || null,
         bcv_rate: isNaN(bcvRateNum ?? NaN) ? null : bcvRateNum,
