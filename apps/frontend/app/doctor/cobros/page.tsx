@@ -332,7 +332,10 @@ export default function CobrosPage() {
         sourceId: item.id,
       });
       if (!result.success) {
-        setActionToast({ type: 'error', msg: 'No se pudo agregar el servicio al cobro' });
+        setActionToast({
+          type: 'error',
+          msg: result.error || 'No se pudo agregar el servicio al cobro',
+        });
         setTimeout(() => setActionToast(null), 3000);
         return;
       }
@@ -393,7 +396,11 @@ export default function CobrosPage() {
       const data = await getPaymentItems(paymentId);
       setExtraItems(data.map((d) => ({ id: d.id, name: d.name, amount: Number(d.amount_usd) })));
     } catch (err) {
-      reportError('doctor/cobros', 'loadExtraItems', err);
+      // Silencia el 404 de version-skew ("Server Action was not found") en pestañas
+      // abiertas tras un deploy; no es un error real, el próximo intento usa el bundle nuevo.
+      if (!(err instanceof Error && err.message.includes('Server Action was not found'))) {
+        reportError('doctor/cobros', 'loadExtraItems', err);
+      }
       setExtraItems([]);
     } finally {
       setLoadingExtras(false);
@@ -477,7 +484,8 @@ export default function CobrosPage() {
       if (!result.ok) {
         showToast({
           type: 'error',
-          message: 'No se pudieron guardar los detalles del pago. Intenta nuevamente.',
+          message:
+            result.error || 'No se pudieron guardar los detalles del pago. Intenta nuevamente.',
         });
         return;
       }
@@ -637,7 +645,7 @@ export default function CobrosPage() {
         reportError('doctor/cobros', 'updatePaymentStatus', result.error);
         setActionToast({
           type: 'error',
-          msg: 'No se pudo actualizar el estado del pago. Intenta nuevamente.',
+          msg: result.error || 'No se pudo actualizar el estado del pago. Intenta nuevamente.',
         });
         setTimeout(() => setActionToast(null), 3500);
         return;

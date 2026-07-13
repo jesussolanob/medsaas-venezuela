@@ -8,7 +8,7 @@ export class PaymentNotFoundError extends DomainError {
   readonly code = 'PAYMENT_NOT_FOUND';
   override readonly httpStatus = 404;
 
-  constructor(id: string) {
-    super(`Pago no encontrado: ${id}`);
+  constructor(readonly id: string) {
+    super('El pago no existe');
   }
 }

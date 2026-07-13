@@ -27,7 +27,7 @@ describe('Money', () => {
     });
 
     it('throws InvalidAmountError with the offending amount', () => {
-      expect(() => new Money(-50, 'USD')).toThrow('received -50');
+      expect(() => new Money(-50, 'USD')).toThrow('se recibió -50');
     });
   });
 
