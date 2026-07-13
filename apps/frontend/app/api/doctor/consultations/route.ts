@@ -227,13 +227,32 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     if (ALLOWED_PUT_FIELDS.has(k)) putBody[k] = v;
   }
 
-  // The dynamic "report builder" values are persisted in the backend
-  // `blocks_snapshot` (JSONB) column. The legacy UI sends them as `blocks_data`;
-  // map either spelling through so the clinical blocks survive reload.
-  if (fields.blocks_snapshot !== undefined) {
-    putBody.blocks_snapshot = fields.blocks_snapshot;
-  } else if (fields.blocks_data !== undefined) {
+  // Routing rules for the two separate JSONB columns:
+  //
+  //   blocks_structure  — array of block metadata (key/label/content_type/sort_order/…)
+  //   blocks_snapshot   — record of filled values  { [key]: value }
+  //
+  // Field mapping:
+  //   fields.blocks_structure (Array)  → putBody.blocks_structure
+  //   fields.blocks_data      (Record) → putBody.blocks_snapshot  (values)
+  //   fields.blocks_snapshot  (Array)  → putBody.blocks_structure (legacy: array was structure)
+  //   fields.blocks_snapshot  (Record) → putBody.blocks_snapshot  (legacy: record was values)
+
+  if (fields.blocks_structure !== undefined) {
+    putBody.blocks_structure = fields.blocks_structure;
+  }
+
+  if (fields.blocks_data !== undefined) {
     putBody.blocks_snapshot = fields.blocks_data;
+  } else if (fields.blocks_snapshot !== undefined) {
+    // Legacy compat: distinguish by shape
+    if (Array.isArray(fields.blocks_snapshot)) {
+      // Old callers sent the structure array as blocks_snapshot → route to new column
+      putBody.blocks_structure = fields.blocks_snapshot;
+    } else {
+      // Object / record of values → keep in blocks_snapshot
+      putBody.blocks_snapshot = fields.blocks_snapshot;
+    }
   }
 
   if (Object.keys(putBody).length === 0) {

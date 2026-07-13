@@ -36,9 +36,7 @@ import {
   X,
   Check,
   Printer,
-  Droplet,
   AlertTriangle,
-  Heart,
   Sparkles,
   Wand2,
   History,
@@ -135,14 +133,19 @@ type Consultation = {
   base_amount?: number | null;
   /** Servicios adicionales registrados en esta consulta. */
   extra_items?: ExistingExtraItem[] | null;
-  blocks_snapshot?: Array<{
+  /** Block STRUCTURE (metadata): key/label/content_type/sort_order/printable/send_to_patient.
+   *  Routed to backend `blocks_structure` column. */
+  blocks_structure?: Array<{
     key: string;
     label: string;
     content_type: string;
     sort_order: number;
-    printable: boolean;
-    send_to_patient: boolean;
+    printable?: boolean;
+    send_to_patient?: boolean;
   }> | null;
+  /** Block VALUES (filled content): record of { [key]: value }.
+   *  Routed to backend `blocks_snapshot` column. */
+  blocks_snapshot?: Record<string, unknown> | null;
   blocks_data?: Record<string, unknown> | null;
   // AUDIT FIX 2026-04-28 (C-5): contador para optimistic locking del autosave.
   version?: number | null;
@@ -256,7 +259,7 @@ function buildInitialBlocksData(raw: {
 
 type ViewMode = 'list' | 'consultation';
 type TimeFilter = 'all' | 'upcoming' | 'past' | 'today';
-type ConsultationTab = string; // dinámico según blocks_snapshot del doctor
+type ConsultationTab = string; // dinámico según blocks_structure del doctor
 
 /**
  * Keys de bloques del sistema que NO pueden ser renombrados por el doctor.
@@ -350,7 +353,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint');
   // RONDA 39: bloques actualmente ACTIVOS del doctor (config viva en /doctor/settings/consultation-blocks).
-  // Se usa cuando una consulta no tiene blocks_snapshot congelado todavia.
+  // Se usa cuando una consulta no tiene blocks_structure congelada todavía.
   const [doctorActiveBlocks, setDoctorActiveBlocks] = useState<SnapshotBlock[]>([]);
 
   // RONDA 39: helper. Devuelve los bloques EFECTIVOS para una consulta:
@@ -361,8 +364,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const getEffectiveBlocks = useCallback(
     (consultation: Consultation | null): SnapshotBlock[] => {
       if (!consultation) return doctorActiveBlocks;
-      const snap = (consultation as any).blocks_snapshot;
-      if (Array.isArray(snap) && snap.length > 0) return snap as SnapshotBlock[];
+      // blocks_structure holds the metadata array (new column).
+      // blocks_snapshot is now always a record of values — never use it as structure.
+      const struct = consultation.blocks_structure;
+      if (Array.isArray(struct) && struct.length > 0) return struct as SnapshotBlock[];
       return doctorActiveBlocks;
     },
     [doctorActiveBlocks],
@@ -1122,7 +1127,14 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             | ExistingExtraItem[]
             | null
             | undefined,
-          blocks_snapshot: null, // structure resolved separately from the doctor's template
+          // blocks_structure: metadata array (new backend column). Used by getEffectiveBlocks.
+          blocks_structure: Array.isArray((fresh_raw as Record<string, unknown>).blocks_structure)
+            ? ((fresh_raw as Record<string, unknown>)
+                .blocks_structure as Consultation['blocks_structure'])
+            : null,
+          // blocks_snapshot: record of filled values (existing backend column). Read-only here;
+          // buildInitialBlocksData seeds the editor from it.
+          blocks_snapshot: null,
           // Backend persists the filled report VALUES in `blocks_snapshot` (JSONB record);
           // hydrate the editor so saved dynamic blocks survive a reload.
           blocks_data: buildInitialBlocksData(fresh_raw),
@@ -1298,10 +1310,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     setView('consultation');
     setSaved(false);
     // RONDA 38+39: tab inicial = primer bloque EFECTIVO de la consulta.
-    const snap = (c as any).blocks_snapshot;
-    const effective = Array.isArray(snap) && snap.length > 0 ? snap : doctorActiveBlocks;
+    // Reads blocks_structure (not blocks_snapshot which now holds values only).
+    const struct = c.blocks_structure;
+    const effective = Array.isArray(struct) && struct.length > 0 ? struct : doctorActiveBlocks;
     if (Array.isArray(effective) && effective.length > 0) {
-      const sorted = [...effective].sort((a: any, b: any) => a.sort_order - b.sort_order);
+      const sorted = [...effective].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       setConsultationTab(`block:${sorted[0].key}`);
     } else {
       setConsultationTab('block:chief_complaint');
@@ -2473,8 +2486,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const todayCount = consultations.filter((c) => c.consultation_date.startsWith(today)).length;
 
   if (view === 'consultation' && selected) {
-    const cDate = new Date(selected.consultation_date);
-    const isUpcoming = cDate > now;
     const ps = PAYMENT_STATUS[report.payment_status];
 
     return (
@@ -2736,7 +2747,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
 
             {/* Medical Report Form with Safari-style Tabs */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              {/* Safari-style Tab Navigation — DINÁMICAS según blocks_snapshot del doctor.
+              {/* Safari-style Tab Navigation — DINÁMICAS según blocks_structure del doctor.
                   Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas.
                   L1 (2026-04-29): se agrega botón "+" al final para sumar bloques on-the-fly.
                   Flechas ‹ › para desplazar el strip cuando no caben todos los tabs. */}
@@ -2761,7 +2772,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 >
                   {(() => {
                     // RONDA 38+39: tabs 100% dinamicas.
-                    //   - Si la consulta tiene snapshot congelado → usar snapshot (inmutable)
+                    //   - Si la consulta tiene blocks_structure congelada → usarla (inmutable)
                     //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
                     // Fallback ultimo: motivo + diagnostico para que el doctor nunca vea
                     // un informe vacio.
@@ -2866,24 +2877,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                   setAddingBlock(true);
                                   try {
                                     // FIX: agregar un bloque a UNA consulta solo debe afectar
-                                    // el blocks_snapshot de ESA consulta, nunca la config global
+                                    // el blocks_structure de ESA consulta, nunca la config global
                                     // del doctor (PUT /api/doctor/consultation-blocks). La config
                                     // global se gestiona únicamente desde
                                     // /doctor/settings/consultation-blocks.
                                     //
-                                    // Caso A — la consulta ya tiene snapshot congelado:
-                                    //   → agregar el bloque al snapshot existente.
-                                    // Caso B — la consulta aún usa la config viva (sin snapshot):
-                                    //   → materializar el snapshot desde getEffectiveBlocks +
+                                    // Caso A — la consulta ya tiene blocks_structure congelada:
+                                    //   → agregar el bloque a la estructura existente.
+                                    // Caso B — la consulta aún usa la config viva (sin estructura):
+                                    //   → materializar la estructura desde getEffectiveBlocks +
                                     //     el nuevo bloque, congelando así esta consulta con
                                     //     exactamente los bloques actuales del doctor más el extra.
-                                    const rawSnap = selected.blocks_snapshot;
-                                    const currentSnap: SnapshotBlock[] | null =
-                                      Array.isArray(rawSnap) && rawSnap.length > 0
-                                        ? (rawSnap as SnapshotBlock[])
-                                        : null;
+                                    const currentStruct = selected.blocks_structure;
                                     const baseBlocks: SnapshotBlock[] =
-                                      currentSnap ?? getEffectiveBlocks(selected);
+                                      Array.isArray(currentStruct) && currentStruct.length > 0
+                                        ? (currentStruct as SnapshotBlock[])
+                                        : getEffectiveBlocks(selected);
                                     const maxSort = baseBlocks.reduce(
                                       (m, b) => Math.max(m, b.sort_order ?? 0),
                                       0,
@@ -2905,7 +2914,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({
                                         id: selected.id,
-                                        blocks_snapshot: newSnap,
+                                        blocks_structure: newSnap,
                                       }),
                                     });
                                     if (!res.ok) {
@@ -2917,12 +2926,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                       return;
                                     }
                                     // Actualizar estado local para que el tab aparezca de inmediato.
-                                    // newSnap es compatible con Consultation.blocks_snapshot (misma forma;
-                                    // content_type es string en Consultation y unión más estrecha en
-                                    // SnapshotBlock, por lo que la asignación es segura en runtime).
+                                    // newSnap es compatible con Consultation.blocks_structure.
                                     const updated: Consultation = {
                                       ...selected,
-                                      blocks_snapshot: newSnap,
+                                      blocks_structure: newSnap,
                                     };
                                     setSelected(updated);
                                     setConsultations((prev) =>
@@ -4069,23 +4076,27 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             </button>
           )}
 
-          {/* Right Sidebar — Patient + Consultation Info */}
+          {/* Right Sidebar — Slim: patient header + payment */}
           {showRightSidebar && (
-            <div className="lg:w-80 space-y-0 shrink-0">
+            <div className="lg:w-72 space-y-0 shrink-0">
               <div className="bg-white border border-slate-200 rounded-xl p-5 sticky top-20">
-                {/* Header with hide button */}
+                {/* Compact header: patient name + code + ficha link + hide button */}
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center shrink-0">
-                    <User className="w-5 h-5 text-white" />
+                  <div className="w-9 h-9 rounded-xl g-bg flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900">{selected.patient_name}</p>
-                    <p className="text-xs text-slate-400 font-mono">{selected.consultation_code}</p>
+                    <p className="font-bold text-slate-900 text-sm leading-tight truncate">
+                      {selected.patient_name}
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                      {selected.consultation_code}
+                    </p>
                     {selected.patient_id && (
                       <button
                         type="button"
                         onClick={() => setFichaPatientId(selected.patient_id)}
-                        className="inline-flex items-center gap-0.5 mt-1 text-xs font-semibold text-teal-600 hover:text-teal-700"
+                        className="inline-flex items-center gap-0.5 mt-1 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
                       >
                         Ver ficha del paciente <ChevronRight className="w-3 h-3" />
                       </button>
@@ -4093,109 +4104,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   </div>
                   <button
                     onClick={() => setShowRightSidebar(false)}
-                    className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
+                    className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all shrink-0"
                     title="Ocultar panel"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-
-                {/* Consultation info */}
-                <div className="space-y-2.5 text-xs border-t border-slate-100 pt-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Fecha</span>
-                    <span className="font-semibold text-slate-800">
-                      {cDate.toLocaleDateString('es-VE', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Hora</span>
-                    <span className="font-semibold text-slate-800">
-                      {cDate.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Estado</span>
-                    <span
-                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${isUpcoming ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'}`}
-                    >
-                      {isUpcoming ? 'Próxima' : 'Realizada'}
-                    </span>
-                  </div>
-                  {selected.duration_minutes != null && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Duración</span>
-                      <span className="font-semibold text-slate-800 flex items-center gap-1">
-                        <Timer className="w-3 h-3 text-teal-500" />
-                        {selected.duration_minutes} min
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Patient details */}
-                {(() => {
-                  const patientData = patients.find((p) => p.id === selected.patient_id);
-                  const details = [
-                    patientData?.cedula && { label: 'Cédula', value: patientData.cedula },
-                    patientData?.age && { label: 'Edad', value: `${patientData.age} años` },
-                    patientData?.sex && {
-                      label: 'Sexo',
-                      value:
-                        patientData.sex === 'male'
-                          ? 'Masculino'
-                          : patientData.sex === 'female'
-                            ? 'Femenino'
-                            : patientData.sex,
-                    },
-                    selected.patient_phone && { label: 'Teléfono', value: selected.patient_phone },
-                    patientData?.email && { label: 'Email', value: patientData.email },
-                    patientData?.blood_type && { label: 'Sangre', value: patientData.blood_type },
-                  ].filter(Boolean) as { label: string; value: string }[];
-
-                  return details.length > 0 ? (
-                    <div className="space-y-2 text-xs border-t border-slate-100 pt-3 mt-3">
-                      {details.map((d) => (
-                        <div key={d.label} className="flex items-center justify-between">
-                          <span className="text-slate-500">{d.label}</span>
-                          <span className="font-semibold text-slate-800 text-right break-all max-w-[55%]">
-                            {d.value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-
-                {/* Medical alerts */}
-                {(() => {
-                  const patientData = patients.find((p) => p.id === selected.patient_id);
-                  const hasAlerts = patientData?.allergies || patientData?.chronic_conditions;
-                  return hasAlerts ? (
-                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
-                      {patientData.allergies && (
-                        <div className="flex items-start gap-1.5 text-xs text-amber-800">
-                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
-                          <span>
-                            <strong>Alergias:</strong> {patientData.allergies}
-                          </span>
-                        </div>
-                      )}
-                      {patientData.chronic_conditions && (
-                        <div className="flex items-start gap-1.5 text-xs text-amber-800">
-                          <Heart className="w-3 h-3 shrink-0 mt-0.5" />
-                          <span>
-                            <strong>Condiciones:</strong> {patientData.chronic_conditions}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ) : null;
-                })()}
 
                 {/* Payment — collapsible */}
                 <div className="border-t border-slate-100 mt-3 pt-3">

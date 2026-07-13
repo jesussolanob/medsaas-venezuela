@@ -640,6 +640,21 @@ export default function CobrosPage() {
 
   // RONDA 16 / TAREA 1: actualizar estado del pago
   async function updatePaymentStatus(paymentId: string, newStatus: 'pending' | 'approved') {
+    // El método de pago es obligatorio para aprobar un cobro (no se puede marcar
+    // pagado sin registrar cómo se pagó). Editar detalles ya lo exige; aquí se
+    // cierra el atajo de "Marcar como aprobado" sin método.
+    if (newStatus === 'approved') {
+      const effectiveMethod = editMethod || selectedPayment?.payment_method || '';
+      if (!effectiveMethod) {
+        setActionToast({
+          type: 'error',
+          msg: 'Debes registrar un método de pago antes de aprobar el cobro',
+        });
+        setTimeout(() => setActionToast(null), 3500);
+        return;
+      }
+    }
+
     setUpdatingStatus(true);
     setActionToast(null);
     try {
