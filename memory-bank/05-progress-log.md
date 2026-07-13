@@ -1897,3 +1897,36 @@ con slot de 30 min no chocaban). La cita tampoco persistía su duración. Fix:
     inválidos) arreglado a los 4 tipos válidos (informe/recipe/prescripciones/reposo) (`5408b66`, `efad4bd`).
 - **PENDIENTE**: QA visual del usuario del recorrido completo (ver guion D-2026-07-12). Regla del proyecto:
   PASA solo si el efecto se ve en la pantalla siguiente.
+
+## 2026-07-12 — Lote QA PRUEBAS 12-07 + bugs admin/planes
+
+Rama `feature/migracion-backend`. 8 commits (`9611030`..`dc9a21d`). Backend tsc + frontend tsc
+EXIT 0; specs unitarios verdes (los suites `(integration)` fallan solo por falta de Docker).
+Migraciones nuevas verificadas seguras para deploy: 20260712000010..000013.
+
+- **IA (`9611030`)**: `improve_block` con modos improve/formal/shorten/lengthen + `sanitizeImproveBlockOutput`
+  (quita etiqueta entre paréntesis y comillas) + prompts que no repiten el nombre del bloque.
+- **Servicios (`5c49452`)**: se quita el campo Duración del servicio (la duración real vive en
+  `doctor_offices.slot_duration`).
+- **Recordatorios (`d4ab6fb`)**: emojis en el email (antes solo WhatsApp) + filtro por DÍA de consulta.
+- **Admin crear médico (`ac228fe`)**: el Server Action usaba `fetch('/api/admin/doctors')` con URL
+  relativa → "Failed to parse URL". Ahora usa `backendPost` + `requireSuperAdmin`. `DoctorEmailConflictError`
+  en español.
+- **Cobros (`6b65a42`)**: BUG raíz = aprobar/editar pago desde la consulta (`approveWithExtras`/
+  `updatePaymentDetails`) no sincronizaba la fila `payments` → todo salía pendiente y Aprobados vacío.
+  Fix: sync bidireccional scoped por doctor_id + migración de backfill (000010). Nuevo
+  `PATCH /api/finances/payments/:id/details` y `GET /api/settings/bcv-rate?date=` (histórico con caché
+  `bcv_rate_history` 000011, fetch pydolarve, fallback tasa actual o null — nunca 1:1; con guard auth).
+  Frontend: toggle de estatus (una acción), editar detalles con tasa del día, fix "añadir servicio" y
+  "recibo PDF" (Blob URL si popup bloqueado), filtro "Todas" + resumen según filtro.
+- **Planes (`815661d`)**: free_trial carecía de `plan_features['booking']` (booking online, provisionado
+  en vivo, nunca en código). Migración 000012 espeja TODAS las features de delta_plus → free_trial (upsert).
+  El cap de 1 mes ya existía (is_permanent=false + downgrade perezoso).
+- **Finanzas (`19a5a7e` back + `dc9a21d` front)**: `with-patient` ahora trae scheduled_at/appointment_mode/
+  duration_minutes + amount COALESCE (reportería ya no en blanco ni $0). `financial_transactions.expense_concept`
+  (000013, 6 categorías). `GET /api/finances/summary` con incomeBreakdown (cobradas/pendientes/manuales) y
+  expenseBreakdown por concepto. Frontend: 4 tabs reestructuradas (Resumen 3+6 cajas y modal de gasto;
+  Ingresos gráfica por tipo + tabla; Gastos "Registrar gasto" + gráfica por concepto; Reportería con
+  filtros tipo/mes/paginador).
+
+⚠️ PENDIENTE QA VISUAL del usuario de todo el lote (regla: pasa solo si el efecto se ve en pantalla).
