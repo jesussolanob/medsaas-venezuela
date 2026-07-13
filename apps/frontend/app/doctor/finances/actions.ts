@@ -60,6 +60,32 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
+/** Income breakdown from GET /api/finances/summary */
+export type IncomeBreakdown = {
+  consultationsApproved: number;
+  consultationsPending: number;
+  manualIncome: number;
+};
+
+/** Expense breakdown by concept from GET /api/finances/summary */
+export type ExpenseBreakdown = {
+  rent: number;
+  staff: number;
+  supplies: number;
+  services: number;
+  taxes: number;
+  other: number;
+};
+
+/** Summary from GET /api/finances/summary?month=YYYY-MM */
+export type FinanceSummary = {
+  totalIncome: number;
+  totalExpenses: number;
+  balance: number;
+  incomeBreakdown: IncomeBreakdown;
+  expenseBreakdown: ExpenseBreakdown;
+};
+
 /** Shape consumed by the finances page Expense table */
 export type BackendExpense = {
   id: string;
@@ -531,6 +557,86 @@ export async function editTransaction(input: EditTransactionInput): Promise<Edit
   if (!result.ok) {
     return { success: false, error: appErrorToString(result.error) };
   }
+  revalidatePath('/doctor/finances');
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Finance summary (GET /api/finances/summary)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the finance summary for a given month.
+ * Returns incomeBreakdown (consultationsApproved, consultationsPending, manualIncome)
+ * and expenseBreakdown (rent, staff, supplies, services, taxes, other).
+ */
+export async function getFinanceSummary(month: string): Promise<FinanceSummary | null> {
+  const qs = new URLSearchParams({ month });
+  const result = await backendGet<FinanceSummary>(`/api/finances/summary?${qs.toString()}`);
+
+  if (!result.ok) {
+    log.error('[getFinanceSummary] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return null;
+  }
+
+  // Defensive coerce — backend might return partials
+  const raw = result.value as Partial<FinanceSummary>;
+  const ib = (raw.incomeBreakdown ?? {}) as Partial<IncomeBreakdown>;
+  const eb = (raw.expenseBreakdown ?? {}) as Partial<ExpenseBreakdown>;
+
+  return {
+    totalIncome: Number(raw.totalIncome ?? 0),
+    totalExpenses: Number(raw.totalExpenses ?? 0),
+    balance: Number(raw.balance ?? 0),
+    incomeBreakdown: {
+      consultationsApproved: Number(ib.consultationsApproved ?? 0),
+      consultationsPending: Number(ib.consultationsPending ?? 0),
+      manualIncome: Number(ib.manualIncome ?? 0),
+    },
+    expenseBreakdown: {
+      rent: Number(eb.rent ?? 0),
+      staff: Number(eb.staff ?? 0),
+      supplies: Number(eb.supplies ?? 0),
+      services: Number(eb.services ?? 0),
+      taxes: Number(eb.taxes ?? 0),
+      other: Number(eb.other ?? 0),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Add expense with concept (POST /api/finances/expense)
+// ---------------------------------------------------------------------------
+
+export type AddExpenseWithConceptInput = {
+  amount: number;
+  concept: string;
+  description: string;
+  date: string;
+};
+
+/**
+ * Record a manual expense with concept category.
+ * Maps directly to POST /api/finances/expense { amount, currency, description, concept, date }.
+ */
+export async function addExpenseWithConcept(
+  input: AddExpenseWithConceptInput,
+): Promise<AddExpenseResult> {
+  const result = await backendPost<unknown>('/api/finances/expense', {
+    amount: input.amount,
+    currency: 'USD',
+    description: input.description,
+    concept: input.concept,
+    date: `${input.date}T12:00:00.000Z`,
+  });
+
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+
   revalidatePath('/doctor/finances');
   return { success: true };
 }
