@@ -383,6 +383,8 @@ export default function OnboardingForm({
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState(false);
+  const [termsShakeKey, setTermsShakeKey] = useState(0);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
 
   // ---------------------------------------------------------------------------
@@ -411,8 +413,13 @@ export default function OnboardingForm({
       errors.specialty = 'La especialidad es obligatoria';
     }
 
+    if (!termsAccepted) {
+      setTermsError(true);
+      setTermsShakeKey((k) => k + 1);
+    }
+
     setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    return Object.keys(errors).length === 0 && termsAccepted;
   }
 
   // ---------------------------------------------------------------------------
@@ -451,19 +458,10 @@ export default function OnboardingForm({
     router.refresh();
   }
 
-  // ---------------------------------------------------------------------------
-  // Derived state
-  // ---------------------------------------------------------------------------
-
-  const resolvedSpecialty = specialty === OTRO_VALUE ? customSpecialty.trim() : specialty;
-  const cedulaNumberTrimmed = cedulaNumber.trim();
-  const isCedulaValid =
-    cedulaPrefix === 'P'
-      ? /^[A-Za-z0-9]{5,20}$/.test(cedulaNumberTrimmed)
-      : /^\d{6,9}$/.test(cedulaNumberTrimmed);
-
-  const isFormValid =
-    fullName.trim().length > 0 && isCedulaValid && resolvedSpecialty.length > 0 && termsAccepted;
+  // The button stays enabled even when the form is incomplete so a submit attempt
+  // can trigger field-level errors (including the T&C error). Only disable while
+  // the server transition is in flight.
+  const isSubmitDisabled = isPending;
 
   // ---------------------------------------------------------------------------
   // Success screen
@@ -536,6 +534,16 @@ export default function OnboardingForm({
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <style>{`
+        @keyframes terms-shake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-5px); }
+          40% { transform: translateX(5px); }
+          60% { transform: translateX(-4px); }
+          80% { transform: translateX(4px); }
+        }
+        .terms-shake { animation: terms-shake 0.4s ease-in-out; }
+      `}</style>
       {/* Header */}
       <div
         className="px-6 sm:px-8 pt-8 pb-6"
@@ -804,26 +812,45 @@ export default function OnboardingForm({
         </div>
 
         {/* Terms acceptance */}
-        <div>
-          <label className="flex items-start gap-3 cursor-pointer select-none">
+        <div key={termsShakeKey} className={termsError ? 'terms-shake' : ''}>
+          <label
+            className={`flex items-start gap-3 cursor-pointer select-none rounded-xl p-3 -mx-3 transition-colors ${termsError ? 'bg-red-50' : ''}`}
+          >
             <div className="relative shrink-0 mt-0.5">
               <input
                 id="field-terms"
                 type="checkbox"
                 checked={termsAccepted}
-                onChange={(e) => setTermsAccepted(e.target.checked)}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked);
+                  if (e.target.checked) setTermsError(false);
+                }}
                 className="sr-only peer"
-                aria-label="Aceptar Términos y Condiciones"
+                aria-describedby={termsError ? 'err-terms' : undefined}
+                aria-invalid={termsError}
               />
               <div
-                className="w-4.5 h-4.5 rounded border-2 transition-all peer-focus:ring-2 peer-focus:ring-teal-300 flex items-center justify-center"
+                className="rounded border-2 transition-all peer-focus:ring-2 peer-focus:ring-teal-300 flex items-center justify-center"
                 style={{
                   width: 18,
                   height: 18,
-                  borderColor: termsAccepted ? 'var(--dh-turquoise)' : 'var(--dh-gray-300)',
-                  background: termsAccepted ? 'var(--dh-turquoise)' : '#fff',
+                  borderColor: termsError
+                    ? '#ef4444'
+                    : termsAccepted
+                      ? 'var(--dh-turquoise)'
+                      : 'var(--dh-gray-300)',
+                  background: termsAccepted
+                    ? 'var(--dh-turquoise)'
+                    : termsError
+                      ? '#fef2f2'
+                      : '#fff',
                 }}
-                onClick={() => setTermsAccepted((v) => !v)}
+                onClick={() => {
+                  setTermsAccepted((v) => {
+                    if (!v) setTermsError(false);
+                    return !v;
+                  });
+                }}
                 aria-hidden="true"
               >
                 {termsAccepted && (
@@ -839,7 +866,10 @@ export default function OnboardingForm({
                 )}
               </div>
             </div>
-            <span className="text-xs leading-relaxed" style={{ color: 'var(--dh-gray-600)' }}>
+            <span
+              className="text-xs leading-relaxed"
+              style={{ color: termsError ? '#b91c1c' : 'var(--dh-gray-600)' }}
+            >
               He leído y acepto los{' '}
               <button
                 type="button"
@@ -855,8 +885,8 @@ export default function OnboardingForm({
               de Delta Salud.
             </span>
           </label>
-          {!termsAccepted && (
-            <p className="text-xs text-red-500 mt-1 ml-6" role="status" aria-live="polite">
+          {termsError && (
+            <p id="err-terms" role="alert" className="text-xs text-red-500 mt-1 ml-3">
               Debes aceptar los Términos y Condiciones para continuar.
             </p>
           )}
@@ -866,7 +896,7 @@ export default function OnboardingForm({
         <div className="pt-2">
           <button
             type="submit"
-            disabled={isPending || !isFormValid}
+            disabled={isSubmitDisabled}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: 'var(--dh-turquoise)' }}
           >
