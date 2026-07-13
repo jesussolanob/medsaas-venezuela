@@ -32,6 +32,7 @@ import {
   buildDocumentPages,
   INFORME_EXCLUDED_KEYS,
   INFORME_CHECKED_BY_DEFAULT,
+  INFORME_SPECIAL_RENDER_KEYS,
 } from './consultation-documents';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -145,6 +146,12 @@ interface BlockSubSelectorProps {
   onToggle: (key: string) => void;
 }
 
+/**
+ * Sub-selector de bloques del informe.
+ * Muestra todos los bloques con contenido (INFORME_EXCLUDED_KEYS está vacío).
+ * Los bloques con renderizado especial (prescription, rest) muestran un badge
+ * "como sección" para aclarar que no se generan como documento independiente.
+ */
 function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSelectorProps) {
   const eligibleBlocks = informeContent.filter((b) => !INFORME_EXCLUDED_KEYS.has(b.key));
 
@@ -162,7 +169,7 @@ function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSel
         {eligibleBlocks.map((block) => (
           <label
             key={block.key}
-            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+            className={`flex items-start gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
               checkedKeys.has(block.key)
                 ? 'bg-teal-100 border-teal-200 text-teal-800 font-medium'
                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -172,9 +179,14 @@ function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSel
               type="checkbox"
               checked={checkedKeys.has(block.key)}
               onChange={() => onToggle(block.key)}
-              className="w-3 h-3 accent-teal-500 shrink-0"
+              className="w-3 h-3 accent-teal-500 shrink-0 mt-0.5"
             />
-            <span className="truncate">{block.label}</span>
+            <span className="flex-1 min-w-0">
+              <span className="truncate block">{block.label}</span>
+              {INFORME_SPECIAL_RENDER_KEYS.has(block.key) && (
+                <span className="text-[10px] text-slate-400 font-normal">como sección</span>
+              )}
+            </span>
           </label>
         ))}
       </div>

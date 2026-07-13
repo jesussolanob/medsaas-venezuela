@@ -57,23 +57,32 @@ export interface ComputeAvailableDocTypesArgs {
 }
 
 /**
- * Keys de bloque que NO pertenecen al tipo "Informe médico" (van en sus propios tipos).
- * - prescription  → Récipe (diagnóstico + medicamentos en hoja 1; indicaciones en hoja 2)
- * - paraclinical / requested_exams → Paraclínicos
- * - rest → Reposo
+ * Keys de bloque que NO pueden aparecer en el sub-selector del "Informe médico".
+ * Actualmente vacío: todos los bloques con contenido son seleccionables para el informe.
  *
- * NOTA: 'indications' (ahora "Evaluación actual") SÍ va dentro del informe.
- * Ya no existe como documento suelto — su contenido de medicamentos pasó a la hoja 2 del récipe.
+ * Bloques con contenido especial (`prescription`, `rest`, `paraclinical`, `requested_exams`,
+ * `indications`) se renderizan como secciones dentro del informe (ver INFORME_SPECIAL_RENDER_KEYS).
+ * Sus documentos independientes (Récipe 2 hojas, Reposo, Paraclínicos) siguen igual.
  */
-export const INFORME_EXCLUDED_KEYS = new Set<string>([
-  'prescription',
-  'paraclinical',
-  'requested_exams',
-  'rest',
-]);
+export const INFORME_EXCLUDED_KEYS = new Set<string>();
+
+/**
+ * Keys de bloque que, cuando se seleccionan DENTRO del informe, reciben
+ * renderizado especial en `buildDocumentPages` (no se usan como raw ContentBlock):
+ *
+ * - prescription   → lista compacta de medicamentos (nombre + dosis) via savedPrescriptions
+ * - indications    → texto de indicaciones al paciente (bloque raw) — se pasa directamente
+ * - rest           → bloques de reposo estructurados via restBlocks / restContent
+ * - paraclinical   → bloque raw del informe (mismo valor)
+ * - requested_exams→ bloque raw del informe (mismo valor)
+ *
+ * NO afecta la generación de los documentos independientes (Récipe, Reposo, Paraclínicos).
+ */
+export const INFORME_SPECIAL_RENDER_KEYS = new Set<string>(['prescription', 'rest']);
 
 /**
  * Keys de bloque del informe que arrancan marcados por defecto.
+ * prescription / indications / rest arrancan desmarcados (opt-in por el doctor).
  */
 export const INFORME_CHECKED_BY_DEFAULT = new Set<string>([
   'chief_complaint',
@@ -254,6 +263,7 @@ export function computeAvailableDocTypes(
   // Récipe = medicamentos guardados O bloque prescription en blocks_data
   const recipeEnabled = savedPrescriptions.length > 0 || hasPrescriptionBlock;
 
+  // Todos los bloques con contenido son elegibles para el informe (INFORME_EXCLUDED_KEYS vacío).
   const informeBlocks = informeContent.filter((b) => !INFORME_EXCLUDED_KEYS.has(b.key));
   const informeEnabled = informeBlocks.length > 0;
 
@@ -414,9 +424,37 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
   }
 
   if (selectedTypes.includes('informe')) {
-    const informeBlocks = informeContent.filter(
-      (b) => !INFORME_EXCLUDED_KEYS.has(b.key) && informeSelectedBlockKeys.has(b.key),
-    );
+    const informeBlocks: ContentBlock[] = [];
+
+    for (const block of informeContent) {
+      if (!informeSelectedBlockKeys.has(block.key)) continue;
+
+      if (block.key === 'prescription') {
+        const recetasBlocks = buildRecetasContent(savedPrescriptions);
+        if (recetasBlocks.length > 0) {
+          informeBlocks.push(...recetasBlocks);
+        } else if (hasBlockContent(block)) {
+          informeBlocks.push({ ...block });
+        }
+      } else if (block.key === 'rest') {
+        if (restBlocks && restBlocks.length > 0) {
+          informeBlocks.push(...restBlocks);
+        } else if (restContent?.trim()) {
+          informeBlocks.push({
+            key: 'rest-informe',
+            label: block.label || 'Reposo médico',
+            value: restContent.trim(),
+          });
+        } else if (hasBlockContent(block)) {
+          informeBlocks.push({ ...block });
+        }
+      } else {
+        if (hasBlockContent(block)) {
+          informeBlocks.push({ ...block });
+        }
+      }
+    }
+
     if (informeBlocks.length > 0) {
       sections.push({ label: 'Informe médico', blocks: informeBlocks });
     }
@@ -464,9 +502,45 @@ export function buildDocumentPages(args: BuildConsolidatedContentArgs): Document
   const pages: DocumentPage[] = [];
 
   if (selectedTypes.includes('informe')) {
-    const informeBlocks = informeContent.filter(
-      (b) => !INFORME_EXCLUDED_KEYS.has(b.key) && informeSelectedBlockKeys.has(b.key),
-    );
+    // Construir los bloques del informe respetando la selección del doctor.
+    // Los bloques con renderizado especial se reemplazan por su representación
+    // como sección de informe (no como documento independiente).
+    const informeBlocks: ContentBlock[] = [];
+
+    for (const block of informeContent) {
+      if (!informeSelectedBlockKeys.has(block.key)) continue;
+
+      if (block.key === 'prescription') {
+        // Récipe dentro del informe → lista compacta de medicamentos (nombre + dosis).
+        // Si hay prescripciones guardadas en BD, se usan (fuente de verdad).
+        // Fallback: el bloque raw del snapshot (texto libre).
+        const recetasBlocks = buildRecetasContent(savedPrescriptions);
+        if (recetasBlocks.length > 0) {
+          informeBlocks.push(...recetasBlocks);
+        } else if (hasBlockContent(block)) {
+          informeBlocks.push({ ...block });
+        }
+      } else if (block.key === 'rest') {
+        // Reposo dentro del informe → bloques estructurados (si disponibles) o texto resumido.
+        if (restBlocks && restBlocks.length > 0) {
+          informeBlocks.push(...restBlocks);
+        } else if (restContent?.trim()) {
+          informeBlocks.push({
+            key: 'rest-informe',
+            label: block.label || 'Reposo médico',
+            value: restContent.trim(),
+          });
+        } else if (hasBlockContent(block)) {
+          informeBlocks.push({ ...block });
+        }
+      } else {
+        // Bloque regular: se incluye tal cual si tiene contenido.
+        if (hasBlockContent(block)) {
+          informeBlocks.push({ ...block });
+        }
+      }
+    }
+
     if (informeBlocks.length > 0) {
       pages.push({ docType: 'informe', content: informeBlocks });
     }
