@@ -3,6 +3,7 @@ import { SequelizeModule } from '@nestjs/sequelize';
 
 import { ConsultationPaymentModel } from './infrastructure/database/models/consultation-payment.model';
 import { ConsultationModel } from '../consultations/infrastructure/database/models/consultation.model';
+import { ConsultationExtraItemModel } from '../consultations/infrastructure/database/models/consultation-extra-item.model';
 import { SequelizeConsultationPaymentRepository } from './infrastructure/database/repositories/sequelize-consultation-payment.repository';
 import { CONSULTATION_PAYMENT_REPOSITORY } from './domain/repositories/consultation-payment.repository';
 
@@ -25,7 +26,13 @@ import { PaymentsController } from './presentation/controllers/payments.controll
   imports: [
     // Register both models: ConsultationPaymentModel (owned) + ConsultationModel
     // (borrowed for ownership verification and consultation status sync).
-    SequelizeModule.forFeature([ConsultationPaymentModel, ConsultationModel]),
+    SequelizeModule.forFeature([
+      ConsultationPaymentModel,
+      ConsultationModel,
+      // Required because SequelizeConsultationRepository (provided below) injects
+      // ConsultationExtraItemModel; without it Nest fails to boot (deploy-blocking).
+      ConsultationExtraItemModel,
+    ]),
   ],
   controllers: [PaymentsController],
   providers: [

@@ -10,6 +10,7 @@ import { PlanConfigDoctorModel } from '../doctor-settings/infrastructure/databas
 import { PatientModel } from '../patients/infrastructure/database/models/patient.model';
 import { AccessAuditLogModel } from '../patients/infrastructure/database/models/access-audit-log.model';
 import { ConsultationModel } from '../consultations/infrastructure/database/models/consultation.model';
+import { ConsultationExtraItemModel } from '../consultations/infrastructure/database/models/consultation-extra-item.model';
 
 // Repository symbols
 import { AI_REQUEST_LOG_REPOSITORY } from './domain/repositories/ai-request-log.repository';
@@ -66,6 +67,9 @@ import { AiTranscriptionController } from './presentation/controllers/ai-transcr
       PatientModel,
       AccessAuditLogModel,
       ConsultationModel,
+      // Required because SequelizeConsultationRepository (provided below) injects
+      // ConsultationExtraItemModel; without it Nest fails to boot (deploy-blocking).
+      ConsultationExtraItemModel,
     ]),
   ],
   controllers: [AiTranscriptionController],
