@@ -8,8 +8,16 @@ const STATE_COOKIE = 'g_oauth_state';
 export async function GET(req: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  // Priority matches the callback route and deploy.yml:
+  // APP_BASE_URL is set at runtime by Cloud Run (= public FURL).
+  // NEXT_PUBLIC_URL and NEXTAUTH_URL are NOT runtime vars in production.
+  // new URL(req.url).origin resolves to 0.0.0.0:8080 inside Cloud Run containers
+  // and must be the last resort, not relied upon in prod.
   const baseUrl =
-    process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_URL || new URL(req.url).origin;
+    process.env.APP_BASE_URL ||
+    process.env.NEXT_PUBLIC_URL ||
+    process.env.NEXTAUTH_URL ||
+    new URL(req.url).origin;
 
   // AUDIT FIX 2026-04-28 (FASE 5D): redirigir a /auth/error en lugar de
   // devolver HTML inline (UX inconsistente + riesgo de XSS si baseUrl viene
