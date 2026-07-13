@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Consultation } from '../../../domain/entities/consultation.entity';
+import { Consultation, type BlockDefinition } from '../../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
 import {
@@ -34,14 +34,7 @@ export interface UpdateConsultationInput {
    *   - null       → written as NULL (clears the structure)
    *   - array      → replaces the stored structure
    */
-  blocksStructure?: Array<{
-    key: string;
-    label: string;
-    content_type: string;
-    sort_order: number;
-    printable?: boolean;
-    send_to_patient?: boolean;
-  }> | null;
+  blocksStructure?: BlockDefinition[] | null;
 }
 
 /**

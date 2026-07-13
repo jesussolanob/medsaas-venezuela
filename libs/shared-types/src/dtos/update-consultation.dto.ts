@@ -3,19 +3,20 @@ import { z } from 'zod';
 /**
  * Schema for a single block definition in blocks_structure.
  *
- * Intentionally does NOT use .passthrough() because the parent schema uses .strict().
- * Extra properties sent by the client are stripped by Zod at parse time — this is safe
- * because the frontend only sends fields it controls and the backend does not rely on
- * unknown extra fields in block definitions.
+ * blocks_structure is opaque, frontend-managed metadata persisted as JSONB. The block
+ * items arrive with inconsistent field naming depending on their source: the doctor's
+ * resolved config comes in camelCase (contentType/sortOrder/sendToPatient) while the
+ * add-block catalog uses snake_case (content_type/sort_order). The backend only stores
+ * and returns this array verbatim, so it must NOT enforce the internal shape — it only
+ * requires a stable `key` and preserves every other field via .passthrough() so the
+ * round-trip is lossless. (.passthrough() on this item schema does NOT conflict with the
+ * parent's .strict(), which only governs top-level keys.)
  */
-const BlockDefinitionSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  content_type: z.string(),
-  sort_order: z.number(),
-  printable: z.boolean().optional(),
-  send_to_patient: z.boolean().optional(),
-});
+const BlockDefinitionSchema = z
+  .object({
+    key: z.string(),
+  })
+  .passthrough();
 
 // DTO for updating clinical fields on an existing consultation.
 // All fields are optional — partial update semantics.

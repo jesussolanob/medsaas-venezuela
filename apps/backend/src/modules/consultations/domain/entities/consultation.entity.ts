@@ -3,16 +3,17 @@ import type { ConsultationExtraItem } from './consultation-extra-item.entity';
 
 /**
  * A single block definition as stored in blocks_structure.
- * Represents the schema of one clinical data block in the consultation template.
- * Values for each block live in blocksSnapshot (key→value record).
+ *
+ * Opaque, frontend-managed metadata persisted verbatim as JSONB. Items arrive with
+ * inconsistent field naming (camelCase from the doctor's resolved config, snake_case
+ * from the add-block catalog), so only `key` is guaranteed. The backend does not
+ * interpret the remaining fields — it stores and returns them untouched — hence the
+ * index signature instead of a fixed shape. Values for each block live in blocksSnapshot
+ * (key→value record).
  */
 export interface BlockDefinition {
   key: string;
-  label: string;
-  content_type: string;
-  sort_order: number;
-  printable?: boolean;
-  send_to_patient?: boolean;
+  [field: string]: unknown;
 }
 
 export interface ConsultationCreateParams {
