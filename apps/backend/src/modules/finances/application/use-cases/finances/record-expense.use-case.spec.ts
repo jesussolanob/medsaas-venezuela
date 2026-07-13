@@ -8,7 +8,9 @@ describe('RecordExpenseUseCase', () => {
   let useCase: RecordExpenseUseCase;
   let mockRepo: jest.Mocked<IFinanceRepository>;
 
-  const makeSavedTx = (overrides: Record<string, unknown> = {}) =>
+  const makeSavedTx = (
+    overrides: Partial<Parameters<typeof FinancialTransaction.create>[0]> = {},
+  ) =>
     FinancialTransaction.create({
       id: 'saved-tx-id',
       doctorId: 'doc-id-1',
@@ -34,6 +36,8 @@ describe('RecordExpenseUseCase', () => {
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
       listIncomePaginated: jest.fn(),
+      getIncomeBreakdown: jest.fn(),
+      getExpenseBreakdown: jest.fn(),
     };
     useCase = new RecordExpenseUseCase(mockRepo);
   });
@@ -86,5 +90,47 @@ describe('RecordExpenseUseCase', () => {
     });
     const savedArg = mockRepo.save.mock.calls[0]?.[0] as FinancialTransaction;
     expect(savedArg?.type).toBe('expense');
+  });
+
+  it('passes expense_concept to the domain entity when provided', async () => {
+    mockRepo.save.mockResolvedValue(makeSavedTx({ expenseConcept: 'rent' }));
+
+    await useCase.execute({
+      doctorId: 'doc-id-1',
+      amount: 200,
+      currency: 'USD',
+      description: 'Monthly office rent',
+      concept: 'rent',
+    });
+
+    const savedArg = mockRepo.save.mock.calls[0]?.[0] as FinancialTransaction;
+    expect(savedArg?.expenseConcept).toBe('rent');
+  });
+
+  it('returns expense_concept in output DTO', async () => {
+    mockRepo.save.mockResolvedValue(makeSavedTx({ expenseConcept: 'supplies' }));
+
+    const result = await useCase.execute({
+      doctorId: 'doc-id-1',
+      amount: 30,
+      currency: 'USD',
+      description: 'Papel para impresora',
+      concept: 'supplies',
+    });
+
+    expect(result.expense_concept).toBe('supplies');
+  });
+
+  it('returns expense_concept as null when not provided', async () => {
+    mockRepo.save.mockResolvedValue(makeSavedTx({ expenseConcept: null }));
+
+    const result = await useCase.execute({
+      doctorId: 'doc-id-1',
+      amount: 50,
+      currency: 'USD',
+      description: 'Miscellaneous',
+    });
+
+    expect(result.expense_concept).toBeNull();
   });
 });

@@ -16,6 +16,21 @@ describe('GetFinancialSummaryUseCase', () => {
   const defaultManualIncome = { total: 50, count: 1 };
   const defaultExpenses = { total: 80, count: 2 };
 
+  const defaultIncomeBreakdown = {
+    consultationsApproved: 300,
+    consultationsPending: 100,
+    manualIncome: 50,
+  };
+
+  const defaultExpenseBreakdown = {
+    rent: 40,
+    staff: 0,
+    supplies: 20,
+    services: 20,
+    taxes: 0,
+    other: 0,
+  };
+
   beforeEach(() => {
     mockRepo = {
       save: jest.fn(),
@@ -29,6 +44,8 @@ describe('GetFinancialSummaryUseCase', () => {
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
       listIncomePaginated: jest.fn(),
+      getIncomeBreakdown: jest.fn().mockResolvedValue(defaultIncomeBreakdown),
+      getExpenseBreakdown: jest.fn().mockResolvedValue(defaultExpenseBreakdown),
     };
     mockRateStore = {
       getRate: jest.fn().mockResolvedValue(36),
@@ -155,5 +172,68 @@ describe('GetFinancialSummaryUseCase', () => {
     expect(mockRepo.sumManualIncome).toHaveBeenCalledTimes(1);
     expect(mockRepo.sumExpenses).toHaveBeenCalledTimes(1);
     expect(mockRateStore.getRate).toHaveBeenCalledTimes(1);
+    expect(mockRepo.getIncomeBreakdown).toHaveBeenCalledTimes(1);
+    expect(mockRepo.getExpenseBreakdown).toHaveBeenCalledTimes(1);
+  });
+
+  describe('incomeBreakdown', () => {
+    it('returns the income breakdown from the repository', async () => {
+      const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
+      expect(result.incomeBreakdown).toEqual({
+        consultationsApproved: 300,
+        consultationsPending: 100,
+        manualIncome: 50,
+      });
+    });
+
+    it('passes doctorId and month to getIncomeBreakdown', async () => {
+      await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
+      expect(mockRepo.getIncomeBreakdown).toHaveBeenCalledWith('doc-id-1', '2026-06');
+    });
+
+    it('returns zero breakdown for an empty month', async () => {
+      const emptyBreakdown = { consultationsApproved: 0, consultationsPending: 0, manualIncome: 0 };
+      mockRepo.getIncomeBreakdown.mockResolvedValue(emptyBreakdown);
+
+      const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-01' });
+      expect(result.incomeBreakdown.consultationsApproved).toBe(0);
+      expect(result.incomeBreakdown.manualIncome).toBe(0);
+    });
+  });
+
+  describe('expenseBreakdown', () => {
+    it('returns the expense breakdown from the repository', async () => {
+      const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
+      expect(result.expenseBreakdown).toEqual({
+        rent: 40,
+        staff: 0,
+        supplies: 20,
+        services: 20,
+        taxes: 0,
+        other: 0,
+      });
+    });
+
+    it('passes doctorId and month to getExpenseBreakdown', async () => {
+      await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
+      expect(mockRepo.getExpenseBreakdown).toHaveBeenCalledWith('doc-id-1', '2026-06');
+    });
+
+    it('returns all six zero keys for an empty expense month', async () => {
+      const emptyBreakdown = {
+        rent: 0,
+        staff: 0,
+        supplies: 0,
+        services: 0,
+        taxes: 0,
+        other: 0,
+      };
+      mockRepo.getExpenseBreakdown.mockResolvedValue(emptyBreakdown);
+
+      const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-01' });
+      expect(Object.keys(result.expenseBreakdown)).toHaveLength(6);
+      expect(result.expenseBreakdown.rent).toBe(0);
+      expect(result.expenseBreakdown.other).toBe(0);
+    });
   });
 });

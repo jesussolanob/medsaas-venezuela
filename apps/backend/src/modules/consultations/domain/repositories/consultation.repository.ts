@@ -2,6 +2,28 @@ import type { Consultation } from '../entities/consultation.entity';
 import type { ConsultationExtraItem } from '../entities/consultation-extra-item.entity';
 import type { PaymentStatus } from '@delta/shared-types';
 
+/**
+ * Lightweight billing projection returned by listWithAppointment().
+ * Contains the effective amount and appointment enrichment fields needed
+ * for the with-patient billing endpoint.
+ * Not a full Consultation entity — no clinical PHI is included.
+ */
+export interface ConsultationWithAppointmentRow {
+  id: string;
+  consultationCode: string;
+  consultationDate: Date;
+  patientId: string;
+  paymentStatus: PaymentStatus;
+  /** COALESCE(c.amount, a.plan_price, 0) — never null. */
+  amountUsd: number;
+  /** scheduled_at from the linked appointments row; null when no appointment. */
+  scheduledAt: Date | null;
+  /** appointment_mode from appointments; null when no appointment. */
+  appointmentMode: string | null;
+  /** duration_minutes from appointments; null when no appointment or not set. */
+  durationMinutes: number | null;
+}
+
 export const CONSULTATION_REPOSITORY = 'CONSULTATION_REPOSITORY';
 
 export type ConsultationSortField =
@@ -150,6 +172,20 @@ export interface IConsultationRepository {
    * before removing the parent appointment row.
    */
   deleteById(id: string): Promise<void>;
+
+  /**
+   * Billing read: returns consultations for the doctor enriched with appointment
+   * fields (scheduled_at, appointment_mode, duration_minutes) and the effective
+   * amount resolved via COALESCE(c.amount, a.plan_price, 0).
+   *
+   * Used exclusively by ListConsultationsWithPatientUseCase.
+   * Results are sorted by consultation_date DESC.
+   * SECURITY: scoped to doctorId (anti-IDOR).
+   */
+  listWithAppointment(filters: {
+    doctorId: string;
+    limit: number;
+  }): Promise<ConsultationWithAppointmentRow[]>;
 
   /**
    * Atomically approves a consultation payment with extra service items.

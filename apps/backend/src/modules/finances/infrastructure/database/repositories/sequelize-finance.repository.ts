@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, QueryTypes, type WhereOptions } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
-import { FinancialTransaction } from '../../../domain/entities/financial-transaction.entity';
+import {
+  FinancialTransaction,
+  type ExpenseConcept,
+} from '../../../domain/entities/financial-transaction.entity';
 import { Money } from '../../../domain/value-objects/money.vo';
 import type {
   IFinanceRepository,
@@ -14,6 +17,8 @@ import type {
   UnifiedIncomeItem,
   UnifiedIncomeListFilters,
   UnifiedIncomeListResult,
+  IncomeSummaryBreakdown,
+  ExpenseSummaryBreakdown,
 } from '../../../domain/repositories/finance.repository';
 import { FinancialTransactionModel } from '../models/financial-transaction.model';
 import { TransactionNotFoundError } from '../../../domain/errors/transaction-not-found.error';
@@ -97,6 +102,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
       transactionDate: transaction.date,
       conceptId: transaction.conceptId ?? null,
       patientId: transaction.patientId ?? null,
+      expenseConcept: transaction.expenseConcept ?? null,
     });
     return this.toDomain(row);
   }
@@ -473,6 +479,113 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
     return { items, total, page: filters.page, limit: filters.limit };
   }
 
+  /**
+   * Granular income breakdown for the summary endpoint.
+   *
+   * Queries consultations (approved + pending) and financial_transactions
+   * (type='income') separately, then returns three named totals:
+   *   consultationsApproved, consultationsPending, manualIncome.
+   *
+   * This mirrors the logic in getConsultationSummary + sumManualIncome but
+   * returns the three buckets together in one interface.
+   *
+   * SECURITY: doctorId in every WHERE clause — anti-IDOR.
+   */
+  async getIncomeBreakdown(doctorId: string, month: string): Promise<IncomeSummaryBreakdown> {
+    const { start, end } = this.monthBounds(month);
+
+    const [consultationRows, incomeRows] = await Promise.all([
+      this.sequelize.query<{
+        approved_total: string | null;
+        pending_total: string | null;
+      }>(
+        `SELECT
+           COALESCE(SUM(CASE WHEN c.payment_status = 'approved' THEN c.amount ELSE 0 END), 0) AS approved_total,
+           COALESCE(SUM(CASE WHEN c.payment_status = 'pending'  THEN COALESCE(c.amount, a.plan_price, 0) ELSE 0 END), 0) AS pending_total
+         FROM consultations c
+         LEFT JOIN appointments a ON a.id = c.appointment_id
+         WHERE c.doctor_id = :doctorId
+           AND c.consultation_date >= :start
+           AND c.consultation_date <  :end`,
+        {
+          replacements: { doctorId, start: start.toISOString(), end: end.toISOString() },
+          type: QueryTypes.SELECT,
+        },
+      ),
+      this.sequelize.query<{ total: string | null }>(
+        `SELECT COALESCE(SUM(amount), 0) AS total
+         FROM financial_transactions
+         WHERE doctor_id = :doctorId
+           AND type = 'income'
+           AND transaction_date >= :start
+           AND transaction_date <  :end`,
+        {
+          replacements: { doctorId, start: start.toISOString(), end: end.toISOString() },
+          type: QueryTypes.SELECT,
+        },
+      ),
+    ]);
+
+    const cRow = consultationRows[0];
+    const iRow = incomeRows[0];
+
+    return {
+      consultationsApproved: cRow ? parseFloat(cRow.approved_total ?? '0') : 0,
+      consultationsPending: cRow ? parseFloat(cRow.pending_total ?? '0') : 0,
+      manualIncome: iRow ? parseFloat(iRow.total ?? '0') : 0,
+    };
+  }
+
+  /**
+   * Expense breakdown by expense_concept for the summary endpoint.
+   *
+   * Groups expense rows by COALESCE(expense_concept, 'other') so that legacy
+   * rows (NULL concept) and rows explicitly categorised as 'other' are merged.
+   *
+   * Returns a flat object with all six keys always present (zero-filled for
+   * absent categories) so the caller does not need to handle missing keys.
+   *
+   * SECURITY: doctorId in WHERE clause — anti-IDOR.
+   */
+  async getExpenseBreakdown(doctorId: string, month: string): Promise<ExpenseSummaryBreakdown> {
+    const { start, end } = this.monthBounds(month);
+
+    const rows = await this.sequelize.query<{ concept: string; total: string }>(
+      `SELECT
+         COALESCE(expense_concept, 'other') AS concept,
+         COALESCE(SUM(amount), 0)::text     AS total
+       FROM financial_transactions
+       WHERE doctor_id = :doctorId
+         AND type = 'expense'
+         AND transaction_date >= :start
+         AND transaction_date <  :end
+       GROUP BY COALESCE(expense_concept, 'other')`,
+      {
+        replacements: { doctorId, start: start.toISOString(), end: end.toISOString() },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    // Initialise all six categories at zero, then fill from query results.
+    const breakdown: ExpenseSummaryBreakdown = {
+      rent: 0,
+      staff: 0,
+      supplies: 0,
+      services: 0,
+      taxes: 0,
+      other: 0,
+    };
+
+    for (const row of rows) {
+      const key = row.concept as keyof ExpenseSummaryBreakdown;
+      if (Object.prototype.hasOwnProperty.call(breakdown, key)) {
+        breakdown[key] = parseFloat(row.total);
+      }
+    }
+
+    return breakdown;
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
@@ -538,6 +651,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
       createdAt: row.createdAt,
       conceptId: row.conceptId ?? null,
       patientId: row.patientId ?? null,
+      expenseConcept: (row.expenseConcept as ExpenseConcept | null) ?? null,
     });
   }
 }

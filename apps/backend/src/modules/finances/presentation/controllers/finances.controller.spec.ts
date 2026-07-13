@@ -90,6 +90,11 @@ describe('FinancesController', () => {
   });
 
   describe('GET /finances/summary', () => {
+    const emptyBreakdowns = {
+      incomeBreakdown: { consultationsApproved: 0, consultationsPending: 0, manualIncome: 0 },
+      expenseBreakdown: { rent: 0, staff: 0, supplies: 0, services: 0, taxes: 0, other: 0 },
+    };
+
     it('returns summary for current month when no month param provided', async () => {
       const summaryData = {
         totalIncome: 350,
@@ -101,6 +106,7 @@ describe('FinancesController', () => {
         currency: 'USD' as const,
         rateUsed: 36,
         month: '2026-06',
+        ...emptyBreakdowns,
       };
       mockSummary.execute.mockResolvedValue(summaryData);
 
@@ -125,6 +131,7 @@ describe('FinancesController', () => {
         currency: 'USD' as const,
         rateUsed: null,
         month: '2026-05',
+        ...emptyBreakdowns,
       });
 
       await controller.summary(mockUser, '2026-05');
@@ -158,6 +165,7 @@ describe('FinancesController', () => {
         currency: 'USD' as const,
         rateUsed: null,
         month: '2026-06',
+        ...emptyBreakdowns,
       });
 
       await controller.summary(mockUser, undefined);
@@ -273,6 +281,7 @@ describe('FinancesController', () => {
         relatedConsultationId: null,
         date: new Date(),
         createdAt: new Date(),
+        expense_concept: null as null,
       };
       mockExpense.execute.mockResolvedValue(expenseResult);
 

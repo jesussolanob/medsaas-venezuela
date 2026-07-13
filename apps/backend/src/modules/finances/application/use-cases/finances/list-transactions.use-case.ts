@@ -3,7 +3,10 @@ import {
   FINANCE_REPOSITORY,
   type IFinanceRepository,
 } from '../../../domain/repositories/finance.repository';
-import type { FinancialTransaction } from '../../../domain/entities/financial-transaction.entity';
+import type {
+  FinancialTransaction,
+  ExpenseConcept,
+} from '../../../domain/entities/financial-transaction.entity';
 
 export interface ListTransactionsInput {
   doctorId: string;
@@ -21,6 +24,11 @@ export interface TransactionItem {
   relatedConsultationId: string | null;
   date: Date;
   createdAt: Date;
+  /**
+   * Expense category — populated only for expense-type rows.
+   * Null for income rows and legacy expense rows (no concept was set).
+   */
+  expense_concept: ExpenseConcept | null;
 }
 
 export interface ListTransactionsOutput {
@@ -63,6 +71,7 @@ export class ListTransactionsUseCase {
       relatedConsultationId: tx.relatedConsultationId,
       date: tx.date,
       createdAt: tx.createdAt,
+      expense_concept: tx.expenseConcept,
     };
   }
 }

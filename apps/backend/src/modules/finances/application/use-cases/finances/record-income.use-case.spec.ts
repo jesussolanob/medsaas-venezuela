@@ -97,6 +97,8 @@ describe('RecordIncomeUseCase', () => {
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
       listIncomePaginated: jest.fn(),
+      getIncomeBreakdown: jest.fn(),
+      getExpenseBreakdown: jest.fn(),
     };
     mockConceptRepo = {
       findActiveByDoctor: jest.fn(),
@@ -119,6 +121,7 @@ describe('RecordIncomeUseCase', () => {
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),
       deleteById: jest.fn().mockResolvedValue(undefined),
+      listWithAppointment: jest.fn(),
     };
     mockPatientRepo = {
       findById: jest.fn(),

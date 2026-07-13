@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   FINANCE_REPOSITORY,
   type IFinanceRepository,
+  type IncomeSummaryBreakdown,
+  type ExpenseSummaryBreakdown,
 } from '../../../domain/repositories/finance.repository';
 import { USDT_RATE_STORE, type IUsdtRateStore } from '../../../domain/repositories/usdt-rate.store';
 
@@ -27,6 +29,17 @@ export interface GetFinancialSummaryOutput {
   currency: 'USD';
   rateUsed: number | null;
   month: string;
+  /**
+   * Granular income breakdown for chart / table rendering.
+   * All values in USD and always >= 0.
+   */
+  incomeBreakdown: IncomeSummaryBreakdown;
+  /**
+   * Expense breakdown by category.
+   * All six categories are always present (zero-filled when no rows exist).
+   * Legacy rows without a concept are accumulated under 'other'.
+   */
+  expenseBreakdown: ExpenseSummaryBreakdown;
 }
 
 /**
@@ -42,6 +55,9 @@ export interface GetFinancialSummaryOutput {
  * is legitimately negative when a month runs a deficit.
  *
  * All monetary calculations are in USD. BS conversion is informational only.
+ *
+ * CAMBIO 3 (2026-07-12): now also returns incomeBreakdown and expenseBreakdown
+ * so the frontend can render granular charts without a separate endpoint.
  */
 @Injectable()
 export class GetFinancialSummaryUseCase {
@@ -55,12 +71,15 @@ export class GetFinancialSummaryUseCase {
   async execute(input: GetFinancialSummaryInput): Promise<GetFinancialSummaryOutput> {
     const month = input.month ?? this.currentMonth();
 
-    const [consultationSummary, manualIncome, expenses, rate] = await Promise.all([
-      this.financeRepo.getConsultationSummary(input.doctorId, month),
-      this.financeRepo.sumManualIncome(input.doctorId, month),
-      this.financeRepo.sumExpenses(input.doctorId, month),
-      this.rateStore.getRate(),
-    ]);
+    const [consultationSummary, manualIncome, expenses, rate, incomeBreakdown, expenseBreakdown] =
+      await Promise.all([
+        this.financeRepo.getConsultationSummary(input.doctorId, month),
+        this.financeRepo.sumManualIncome(input.doctorId, month),
+        this.financeRepo.sumExpenses(input.doctorId, month),
+        this.rateStore.getRate(),
+        this.financeRepo.getIncomeBreakdown(input.doctorId, month),
+        this.financeRepo.getExpenseBreakdown(input.doctorId, month),
+      ]);
 
     const totalIncome = consultationSummary.approvedTotal + manualIncome.total;
     const totalExpenses = expenses.total;
@@ -78,6 +97,8 @@ export class GetFinancialSummaryUseCase {
       currency: 'USD',
       rateUsed: rate,
       month,
+      incomeBreakdown,
+      expenseBreakdown,
     };
   }
 

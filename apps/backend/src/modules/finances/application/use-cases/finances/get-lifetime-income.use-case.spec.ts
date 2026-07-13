@@ -22,6 +22,8 @@ describe('GetLifetimeIncomeUseCase', () => {
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
       listIncomePaginated: jest.fn(),
+      getIncomeBreakdown: jest.fn(),
+      getExpenseBreakdown: jest.fn(),
     };
     mockRateStore = {
       getRate: jest.fn(),

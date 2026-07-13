@@ -13,6 +13,7 @@ import type {
   IConsultationRepository,
   ConsultationListFilters,
   ConsultationListResult,
+  ConsultationWithAppointmentRow,
 } from '../../../domain/repositories/consultation.repository';
 import { ConsultationModel } from '../models/consultation.model';
 import { ConsultationExtraItemModel } from '../models/consultation-extra-item.model';
@@ -57,6 +58,23 @@ interface ExtraItemRow {
   description: string;
   amount_usd: string;
   created_at: string;
+}
+
+/**
+ * Raw row returned by listWithAppointment() — billing projection
+ * with appointment enrichment fields and COALESCE amount.
+ */
+interface ConsultationWithAppointmentRaw {
+  id: string;
+  consultation_code: string;
+  consultation_date: string;
+  patient_id: string;
+  payment_status: string;
+  /** COALESCE(c.amount, a.plan_price, 0) as text from Postgres DECIMAL. */
+  amount_usd: string;
+  scheduled_at: string | null;
+  appointment_mode: string | null;
+  duration_minutes: string | null;
 }
 
 /**
@@ -677,6 +695,59 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
 
   async findExtraItems(consultationId: string, doctorId: string): Promise<ConsultationExtraItem[]> {
     return this.loadExtraItems(consultationId, doctorId);
+  }
+
+  /**
+   * Billing read for the /consultations/with-patient endpoint.
+   *
+   * Joins appointments to surface scheduled_at, appointment_mode, and
+   * duration_minutes. Uses COALESCE(c.amount, a.plan_price, 0) so that:
+   *   - approved consultations carry their confirmed total (including extras).
+   *   - pending consultations fall back to the booking plan_price.
+   *   - consultations with neither show $0 rather than null.
+   *
+   * Only non-PHI fields are projected here. Patient name/phone/email are
+   * resolved in the use-case layer via the patient repository (owner-scoped).
+   *
+   * SECURITY: scoped to doctorId — anti-IDOR.
+   */
+  async listWithAppointment(filters: {
+    doctorId: string;
+    limit: number;
+  }): Promise<ConsultationWithAppointmentRow[]> {
+    const rows = await this.sequelize.query<ConsultationWithAppointmentRaw>(
+      `SELECT
+         c.id,
+         c.consultation_code,
+         c.consultation_date,
+         c.patient_id,
+         c.payment_status,
+         COALESCE(c.amount, a.plan_price, 0)::text AS amount_usd,
+         a.scheduled_at,
+         a.appointment_mode,
+         a.duration_minutes
+       FROM consultations c
+       LEFT JOIN appointments a ON a.id = c.appointment_id
+       WHERE c.doctor_id = :doctorId
+       ORDER BY c.consultation_date DESC
+       LIMIT :limit`,
+      {
+        replacements: { doctorId: filters.doctorId, limit: filters.limit },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      consultationCode: r.consultation_code,
+      consultationDate: new Date(r.consultation_date),
+      patientId: r.patient_id,
+      paymentStatus: r.payment_status as 'pending' | 'approved',
+      amountUsd: parseFloat(r.amount_usd),
+      scheduledAt: r.scheduled_at ? new Date(r.scheduled_at) : null,
+      appointmentMode: r.appointment_mode,
+      durationMinutes: r.duration_minutes !== null ? parseInt(r.duration_minutes, 10) : null,
+    }));
   }
 
   // ---------------------------------------------------------------------------

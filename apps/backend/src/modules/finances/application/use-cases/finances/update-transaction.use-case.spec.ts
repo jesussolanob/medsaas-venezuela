@@ -68,6 +68,8 @@ describe('UpdateTransactionUseCase', () => {
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
       listIncomePaginated: jest.fn(),
+      getIncomeBreakdown: jest.fn(),
+      getExpenseBreakdown: jest.fn(),
     };
     mockConceptRepo = {
       findActiveByDoctor: jest.fn(),

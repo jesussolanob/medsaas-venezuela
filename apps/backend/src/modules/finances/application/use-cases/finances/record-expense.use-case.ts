@@ -4,7 +4,10 @@ import {
   FINANCE_REPOSITORY,
   type IFinanceRepository,
 } from '../../../domain/repositories/finance.repository';
-import { FinancialTransaction } from '../../../domain/entities/financial-transaction.entity';
+import {
+  FinancialTransaction,
+  type ExpenseConcept,
+} from '../../../domain/entities/financial-transaction.entity';
 import { Money, type Currency } from '../../../domain/value-objects/money.vo';
 import { InvalidAmountError } from '../../../domain/errors/invalid-amount.error';
 
@@ -15,6 +18,12 @@ export interface RecordExpenseInput {
   description: string;
   relatedConsultationId?: string | null;
   date?: Date;
+  /**
+   * Optional expense category for breakdown reporting.
+   * One of: rent | staff | supplies | services | taxes | other.
+   * Expenses without a concept are surfaced as 'other' in summary breakdowns.
+   */
+  concept?: ExpenseConcept | null;
 }
 
 export interface RecordExpenseOutput {
@@ -27,12 +36,15 @@ export interface RecordExpenseOutput {
   relatedConsultationId: string | null;
   date: Date;
   createdAt: Date;
+  /** Null for legacy expense rows or when not provided. */
+  expense_concept: ExpenseConcept | null;
 }
 
 /**
  * Records a manual expense entry for a doctor.
  *
  * Validation: amount > 0 is enforced by the Money value object constructor.
+ * The optional `concept` field classifies the expense for breakdown reporting.
  */
 @Injectable()
 export class RecordExpenseUseCase {
@@ -56,6 +68,7 @@ export class RecordExpenseUseCase {
       relatedConsultationId: input.relatedConsultationId ?? null,
       date: input.date ?? new Date(),
       createdAt: new Date(),
+      expenseConcept: input.concept ?? null,
     });
 
     const saved = await this.financeRepo.save(transaction);
@@ -73,6 +86,7 @@ export class RecordExpenseUseCase {
       relatedConsultationId: tx.relatedConsultationId,
       date: tx.date,
       createdAt: tx.createdAt,
+      expense_concept: tx.expenseConcept,
     };
   }
 }

@@ -85,6 +85,33 @@ export interface ConsultationSummary {
 }
 
 /**
+ * Income breakdown for the summary endpoint.
+ * All values are in USD and always >= 0.
+ */
+export interface IncomeSummaryBreakdown {
+  /** Sum of approved consultation amounts in the period. */
+  consultationsApproved: number;
+  /** Sum of pending consultation amounts in the period. */
+  consultationsPending: number;
+  /** Sum of manual income transactions in the period. */
+  manualIncome: number;
+}
+
+/**
+ * Expense breakdown by category for the summary endpoint.
+ * Keys match the ExpenseConcept enum. Values are always >= 0.
+ * Legacy/uncategorised expense rows are accumulated under 'other'.
+ */
+export interface ExpenseSummaryBreakdown {
+  rent: number;
+  staff: number;
+  supplies: number;
+  services: number;
+  taxes: number;
+  other: number;
+}
+
+/**
  * Contract for financial persistence.
  *
  * The application layer depends only on this interface — never on the
@@ -162,4 +189,22 @@ export interface IFinanceRepository {
    * No patient PII (name, cedula, phone) is returned — only patient_id.
    */
   listIncomePaginated(filters: UnifiedIncomeListFilters): Promise<UnifiedIncomeListResult>;
+
+  /**
+   * Returns a granular income breakdown for the given doctor and month:
+   *   - consultationsApproved: SUM of approved consultation amounts.
+   *   - consultationsPending: SUM of pending consultation amounts (COALESCE plan_price).
+   *   - manualIncome: SUM of manual income transactions.
+   *
+   * SECURITY: scoped to doctorId (anti-IDOR).
+   */
+  getIncomeBreakdown(doctorId: string, month: string): Promise<IncomeSummaryBreakdown>;
+
+  /**
+   * Returns expense totals grouped by expense_concept for the given doctor and month.
+   * Rows with NULL expense_concept are accumulated under 'other'.
+   *
+   * SECURITY: scoped to doctorId (anti-IDOR).
+   */
+  getExpenseBreakdown(doctorId: string, month: string): Promise<ExpenseSummaryBreakdown>;
 }

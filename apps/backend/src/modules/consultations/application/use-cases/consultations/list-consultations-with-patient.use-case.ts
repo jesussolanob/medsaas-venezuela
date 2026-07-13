@@ -16,6 +16,20 @@ export interface ConsultationWithPatientItem {
   patient_name: string;
   patient_phone: string | null;
   patient_email: string | null;
+  payment_status: string;
+  /**
+   * Effective amount in USD.
+   * COALESCE(consultation.amount, appointment.plan_price, 0) so that
+   * consultations approved via approve-payment-with-extras always carry a
+   * non-zero value, and pending consultations fall back to the booking price.
+   */
+  amount_usd: number;
+  /** ISO-8601 timestamp of the linked appointment; null when created directly. */
+  scheduled_at: string | null;
+  /** Modality of the linked appointment ('presencial' | 'teleconsulta' | …). */
+  appointment_mode: string | null;
+  /** Duration of the linked appointment slot in minutes. */
+  duration_minutes: number | null;
 }
 
 export interface ListConsultationsWithPatientInput {
@@ -37,6 +51,11 @@ export interface ListConsultationsWithPatientInput {
  *     NOT exposed to admin or third parties. Do not reuse the default list mapper.
  *   - Patients are looked up once (findAllByDoctor) and joined in-memory by id to
  *     avoid an N+1 query per consultation.
+ *
+ * Appointment enrichment (CAMBIO 1 — 2026-07-12):
+ *   - listWithAppointment() is preferred over list() so that appointment fields
+ *     (scheduled_at, appointment_mode, duration_minutes) and the COALESCE amount
+ *     are resolved server-side in a single query.
  */
 @Injectable()
 export class ListConsultationsWithPatientUseCase {
@@ -49,9 +68,8 @@ export class ListConsultationsWithPatientUseCase {
 
   async execute(input: ListConsultationsWithPatientInput): Promise<ConsultationWithPatientItem[]> {
     const [list, patients] = await Promise.all([
-      this.consultations.list({
+      this.consultations.listWithAppointment({
         doctorId: input.doctorId,
-        page: 1,
         limit: input.limit,
       }),
       this.patients.findAllByDoctor(input.doctorId),
@@ -59,7 +77,7 @@ export class ListConsultationsWithPatientUseCase {
 
     const patientById = new Map(patients.map((p) => [p.id, p]));
 
-    return list.items.map((c) => {
+    return list.map((c) => {
       const patient = patientById.get(c.patientId);
       return {
         id: c.id,
@@ -69,6 +87,11 @@ export class ListConsultationsWithPatientUseCase {
         patient_name: patient?.fullName ?? 'Paciente',
         patient_phone: patient?.phone ?? null,
         patient_email: patient?.email ?? null,
+        payment_status: c.paymentStatus,
+        amount_usd: c.amountUsd,
+        scheduled_at: c.scheduledAt ? c.scheduledAt.toISOString() : null,
+        appointment_mode: c.appointmentMode,
+        duration_minutes: c.durationMinutes,
       };
     });
   }

@@ -123,6 +123,7 @@ function makeConsultationRepo(
     findByPatient: jest.fn(),
     findByAppointmentId: jest.fn().mockResolvedValue(existingConsultation),
     deleteById: jest.fn().mockResolvedValue(undefined),
+    listWithAppointment: jest.fn(),
   } as jest.Mocked<IConsultationRepository>;
 }
 

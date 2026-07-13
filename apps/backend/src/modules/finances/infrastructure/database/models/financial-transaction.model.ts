@@ -65,6 +65,15 @@ export class FinancialTransactionModel extends Model {
   @Column({ type: DataType.UUID, allowNull: true, field: 'patient_id' })
   declare patientId: string | null;
 
+  /**
+   * Expense category — set only for expense-type rows.
+   * One of: rent | staff | supplies | services | taxes | other.
+   * Null for income rows and for legacy expense rows recorded before
+   * migration 20260712000013.
+   */
+  @Column({ type: DataType.STRING(40), allowNull: true, field: 'expense_concept' })
+  declare expenseConcept: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

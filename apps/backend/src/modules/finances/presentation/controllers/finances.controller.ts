@@ -288,6 +288,7 @@ export class FinancesController {
       description: dto.description,
       relatedConsultationId: dto.related_consultation_id ?? null,
       date: dto.date ? new Date(dto.date) : undefined,
+      concept: dto.concept ?? null,
     });
     return { success: true, data: result };
   }

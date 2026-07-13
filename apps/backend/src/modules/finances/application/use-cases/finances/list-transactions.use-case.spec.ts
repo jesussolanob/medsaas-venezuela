@@ -32,6 +32,8 @@ describe('ListTransactionsUseCase', () => {
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
       listIncomePaginated: jest.fn(),
+      getIncomeBreakdown: jest.fn(),
+      getExpenseBreakdown: jest.fn(),
     };
     useCase = new ListTransactionsUseCase(mockRepo);
   });

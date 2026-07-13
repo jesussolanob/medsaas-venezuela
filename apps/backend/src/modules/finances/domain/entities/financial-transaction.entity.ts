@@ -3,6 +3,13 @@ import { Money } from '../value-objects/money.vo';
 export type TransactionType = 'income' | 'expense';
 
 /**
+ * Six fixed expense categories. Income rows always carry null in this field.
+ * Legacy expense rows (recorded before the concept column was added) also have null
+ * and are bucketed into 'other' by the breakdown query.
+ */
+export type ExpenseConcept = 'rent' | 'staff' | 'supplies' | 'services' | 'taxes' | 'other';
+
+/**
  * Domain entity representing a manual financial record (income or expense)
  * registered by a doctor.
  *
@@ -28,6 +35,12 @@ export class FinancialTransaction {
      * Expense: always null.
      */
     public readonly patientId: string | null = null,
+    /**
+     * Expense category (expense rows only).
+     * One of: rent | staff | supplies | services | taxes | other.
+     * Null for income rows and legacy expense rows (bucketed as 'other' in breakdowns).
+     */
+    public readonly expenseConcept: ExpenseConcept | null = null,
   ) {}
 
   /** Factory for constructing a new (unpersisted) transaction. */
@@ -42,6 +55,7 @@ export class FinancialTransaction {
     createdAt: Date;
     conceptId?: string | null;
     patientId?: string | null;
+    expenseConcept?: ExpenseConcept | null;
   }): FinancialTransaction {
     return new FinancialTransaction(
       params.id,
@@ -54,6 +68,7 @@ export class FinancialTransaction {
       params.createdAt,
       params.conceptId ?? null,
       params.patientId ?? null,
+      params.expenseConcept ?? null,
     );
   }
 
@@ -73,6 +88,8 @@ export class FinancialTransaction {
     conceptId?: string | null;
     /** Pass undefined to keep existing patientId; null to unlink. */
     patientId?: string | null;
+    /** Pass undefined to keep existing expenseConcept; null to clear. */
+    expenseConcept?: ExpenseConcept | null;
   }): FinancialTransaction {
     return new FinancialTransaction(
       this.id,
@@ -85,6 +102,7 @@ export class FinancialTransaction {
       this.createdAt,
       fields.conceptId !== undefined ? fields.conceptId : this.conceptId,
       fields.patientId !== undefined ? fields.patientId : this.patientId,
+      fields.expenseConcept !== undefined ? fields.expenseConcept : this.expenseConcept,
     );
   }
 }

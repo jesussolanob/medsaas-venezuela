@@ -46,6 +46,7 @@ describe('UpdatePaymentDetailsUseCase', () => {
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),
       deleteById: jest.fn().mockResolvedValue(undefined),
+      listWithAppointment: jest.fn(),
     };
     useCase = new UpdatePaymentDetailsUseCase(mockRepo);
   });

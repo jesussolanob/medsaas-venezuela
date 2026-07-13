@@ -23,6 +23,8 @@ describe('DeleteTransactionUseCase', () => {
       updateTransaction: jest.fn(),
       listIncomeTransactions: jest.fn(),
       listIncomePaginated: jest.fn(),
+      getIncomeBreakdown: jest.fn(),
+      getExpenseBreakdown: jest.fn(),
     };
     useCase = new DeleteTransactionUseCase(mockRepo);
   });

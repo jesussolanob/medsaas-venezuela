@@ -42,6 +42,7 @@ const mockConsultationRepo = {
   findByPatient: jest.fn(),
   findByAppointmentId: jest.fn(),
   deleteById: jest.fn().mockResolvedValue(undefined),
+  listWithAppointment: jest.fn(),
 } as jest.Mocked<IConsultationRepository>;
 
 const mockPatientRepo = {

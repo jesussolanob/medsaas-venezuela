@@ -1,6 +1,20 @@
 import { z } from 'zod';
 
 /**
+ * Six fixed expense categories for breakdown reporting.
+ * Null / absent = uncategorised (surfaced as 'other' in summary breakdowns).
+ */
+export const EXPENSE_CONCEPTS = [
+  'rent',
+  'staff',
+  'supplies',
+  'services',
+  'taxes',
+  'other',
+] as const;
+export type ExpenseConceptValue = (typeof EXPENSE_CONCEPTS)[number];
+
+/**
  * DTO for POST /finances/income and POST /finances/expense.
  * doctor_id is NOT included — always taken from authenticated user (anti-IDOR).
  */
@@ -21,6 +35,11 @@ export const RecordFinanceEntryDtoSchema = z
      * When absent, the doctor may supply a patientId manually.
      */
     patientId: z.string().uuid().nullable().optional(),
+    /**
+     * Expense category (expense entries only). Validated against the fixed enum.
+     * Income entries must not set this field.
+     */
+    concept: z.enum(EXPENSE_CONCEPTS).nullable().optional(),
   })
   .strict();
 
