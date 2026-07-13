@@ -19,6 +19,33 @@ export interface AiTextOutputDto {
 }
 
 // ---------------------------------------------------------------------------
+// parse_prescription output
+// ---------------------------------------------------------------------------
+
+/**
+ * A single structured medication extracted from a prescription transcript.
+ * All fields are strings. Empty string means the field was not mentioned in the transcript.
+ */
+export interface ParsedMedication {
+  /** Generic or commercial drug name as mentioned by the doctor. */
+  name: string;
+  /** Dose, e.g. "500 mg", "10 mg/ml". */
+  dose: string;
+  /** Route of administration, e.g. "oral", "intravenosa". */
+  route: string;
+  /** Frequency, e.g. "cada 8 horas", "una vez al día". */
+  frequency: string;
+  /** Duration of treatment, e.g. "7 días", "10 días". */
+  duration: string;
+  /** Pharmaceutical presentation, e.g. "cápsulas", "tabletas", "solución". */
+  presentation: string;
+}
+
+export interface ParsePrescriptionOutputDto {
+  medications: ParsedMedication[];
+}
+
+// ---------------------------------------------------------------------------
 // Action-specific input shapes (discriminated union)
 // ---------------------------------------------------------------------------
 
@@ -66,7 +93,22 @@ export interface PatientHistoryInput {
   patientId: string;
 }
 
-export type AiTextActionInput = ImproveBlockInput | SummarizeReportInput | PatientHistoryInput;
+/**
+ * Extracts structured medications from a voice-dictated prescription transcript.
+ * The model returns a JSON array; the use case parses it and returns
+ * `{ medications: ParsedMedication[] }`.
+ */
+export interface ParsePrescriptionInput {
+  action: 'parse_prescription';
+  /** Raw transcript text dictated by the doctor. Must be non-empty. */
+  content: string;
+}
+
+export type AiTextActionInput =
+  | ImproveBlockInput
+  | SummarizeReportInput
+  | PatientHistoryInput
+  | ParsePrescriptionInput;
 
 // ---------------------------------------------------------------------------
 // Use-case input DTO (enriched by the controller from auth context)

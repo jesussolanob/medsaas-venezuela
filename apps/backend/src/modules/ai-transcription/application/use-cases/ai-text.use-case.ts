@@ -34,8 +34,9 @@ import { PatientNotFoundForAiError } from '../../domain/errors/patient-not-found
 import type {
   AiTextInputDto,
   AiTextOutputDto,
-  ImproveBlockInput,
   ImproveBlockMode,
+  ParsedMedication,
+  ParsePrescriptionOutputDto,
   SummarizeReportInput,
 } from '../dtos/ai-text.dto';
 
@@ -57,10 +58,14 @@ const MAX_HISTORY_CONSULTATIONS = 20;
 /**
  * AiTextUseCase
  *
- * Handles three AI text actions: improve_block, summarize_report, patient_history.
+ * Handles four AI text actions:
+ *   - improve_block      → rewrites a clinical block in formal prose.
+ *   - summarize_report   → generates a patient-readable summary of a consultation report.
+ *   - patient_history    → generates an executive summary of a patient's consultation history.
+ *   - parse_prescription → extracts structured medications from a voice-dictated transcript.
  *
  * Plan gating (FAIL-CLOSED):
- *   - improve_block / patient_history → requires `ai_assistant` feature.
+ *   - improve_block / patient_history / parse_prescription → requires `ai_assistant` feature.
  *   - summarize_report → requires `ai_reports` feature.
  *   - super_admin bypasses the gate.
  *
@@ -68,6 +73,7 @@ const MAX_HISTORY_CONSULTATIONS = 20;
  *   - NEVER log clinical content (prompts, responses, diagnosis, treatment, notes).
  *   - Audit log stores only metadata: doctorId, action, status.
  *   - patientId from `patient_history` is NOT logged (anti-IDOR metadata leak).
+ *   - Transcript content from `parse_prescription` is NEVER logged.
  */
 @Injectable()
 export class AiTextUseCase {
@@ -90,7 +96,7 @@ export class AiTextUseCase {
     private readonly consultationRepo: IConsultationRepository,
   ) {}
 
-  async execute(input: AiTextInputDto): Promise<AiTextOutputDto> {
+  async execute(input: AiTextInputDto): Promise<AiTextOutputDto | ParsePrescriptionOutputDto> {
     const { action } = input.actionInput;
 
     // 1. Plan gate — fail-closed; super_admin bypasses.
@@ -100,7 +106,12 @@ export class AiTextUseCase {
       await this.assertPlanFeature(input.doctorId, requiredFeature);
     }
 
-    // 2. Build prompt based on action.
+    // 2. Handle parse_prescription separately — returns structured JSON, not raw text.
+    if (input.actionInput.action === 'parse_prescription') {
+      return this.executeParsePrescription(input.actionInput.content, input.doctorId);
+    }
+
+    // 3. Build prompt for text actions.
     let prompt: string;
     if (input.actionInput.action === 'improve_block') {
       prompt = buildBlockPrompt(
@@ -116,7 +127,7 @@ export class AiTextUseCase {
       prompt = await this.buildPatientHistoryPrompt(input.actionInput.patientId, input.doctorId);
     }
 
-    // 3. Call AI generator and write audit log.
+    // 4. Call AI generator and write audit log.
     let status = 'success';
 
     try {
@@ -130,6 +141,34 @@ export class AiTextUseCase {
     } catch (err) {
       status = 'error';
       await this.writeAuditLog(input.doctorId, action, status);
+      throw err;
+    }
+  }
+
+  /**
+   * Sends a prescription transcript to the AI model and parses the structured
+   * medications from the JSON response.
+   *
+   * Robust parsing rules:
+   *   - Strips ```json … ``` fences before parsing.
+   *   - If the response is not a valid JSON array, returns [] (never throws 500).
+   *   - Each element is sanitized: unknown keys are dropped, all fields coerced to string.
+   */
+  private async executeParsePrescription(
+    content: string,
+    doctorId: string,
+  ): Promise<ParsePrescriptionOutputDto> {
+    const prompt = buildParsePrescriptionPrompt(content);
+    let status = 'success';
+
+    try {
+      const raw = await this.textGenerator.generate(prompt);
+      const medications = parseMedicationsResponse(raw);
+      await this.writeAuditLog(doctorId, 'parse_prescription', status);
+      return { medications };
+    } catch (err) {
+      status = 'error';
+      await this.writeAuditLog(doctorId, 'parse_prescription', status);
       throw err;
     }
   }
@@ -401,6 +440,89 @@ export function buildBlockPrompt(
     `Contenido a mejorar:`,
     cleanContent,
   ].join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// parse_prescription helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the prompt sent to the model for the parse_prescription action.
+ *
+ * Design decisions:
+ *   - Instructs the model to output ONLY a JSON array — no surrounding text.
+ *   - Unknown or unmentioned fields must be empty strings, not invented values.
+ *   - Spanish (Venezuela) as the output language.
+ */
+export function buildParsePrescriptionPrompt(transcript: string): string {
+  return [
+    'Eres un asistente médico. Analiza la siguiente transcripción de una consulta dictada por un médico',
+    'y extrae TODOS los medicamentos mencionados.',
+    '',
+    'Devuelve ÚNICAMENTE un arreglo JSON (sin texto antes ni después, sin bloques de código markdown)',
+    'donde cada elemento tiene exactamente estos campos:',
+    '  name         — nombre del medicamento (genérico o comercial)',
+    '  dose         — dosis (ej: "500 mg", "10 mg/ml")',
+    '  route        — vía de administración (ej: "oral", "intravenosa", "tópica")',
+    '  frequency    — frecuencia (ej: "cada 8 horas", "una vez al día")',
+    '  duration     — duración del tratamiento (ej: "7 días", "10 días")',
+    '  presentation — presentación farmacéutica (ej: "tabletas", "cápsulas", "jarabe")',
+    '',
+    'REGLAS ESTRICTAS:',
+    '• Si un campo no se menciona en la transcripción, devuélvelo como cadena vacía "". NO inventes datos.',
+    '• Responde SOLO el JSON. Ningún texto adicional, ninguna explicación, ningún bloque ```json```.',
+    '• Si no hay medicamentos, devuelve un arreglo vacío: []',
+    '• Responde en español (Venezuela).',
+    '',
+    'Transcripción:',
+    transcript,
+  ].join('\n');
+}
+
+/**
+ * Parses the raw AI response for parse_prescription.
+ *
+ * Strips optional ```json … ``` fences, then JSON.parse the result.
+ * If parsing fails or the result is not an array, returns [].
+ * Each element is coerced: unknown keys are dropped, all required fields
+ * are set to string (defaulting to "" when absent or non-string).
+ *
+ * Exported for unit testing.
+ */
+export function parseMedicationsResponse(raw: string): ParsedMedication[] {
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/u, '')
+    .replace(/\s*```$/u, '')
+    .trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return (parsed as unknown[]).flatMap((item): ParsedMedication[] => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+      return [];
+    }
+    const obj = item as Record<string, unknown>;
+    return [
+      {
+        name: typeof obj['name'] === 'string' ? obj['name'] : '',
+        dose: typeof obj['dose'] === 'string' ? obj['dose'] : '',
+        route: typeof obj['route'] === 'string' ? obj['route'] : '',
+        frequency: typeof obj['frequency'] === 'string' ? obj['frequency'] : '',
+        duration: typeof obj['duration'] === 'string' ? obj['duration'] : '',
+        presentation: typeof obj['presentation'] === 'string' ? obj['presentation'] : '',
+      },
+    ];
+  });
 }
 
 function getBlockInstruction(blockKey: string): string {

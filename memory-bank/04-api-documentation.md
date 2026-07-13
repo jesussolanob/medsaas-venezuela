@@ -485,12 +485,37 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 
 ### IA — Texto (reactivada 2026-06-18 · DESPLEGADA · 🚨 Gemini bloqueado)
 
-| Endpoint       | Método | Roles              | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| -------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/api/ai/text` | POST   | doctor/super_admin | Backend NestJS — reusa infra de `ai-transcription` (adapter Gemini temp 0.3/maxOutput 2048, `ai_request_log`, gating por plan). Acciones: `improve_block` (gating `ai_assistant`), `summarize_report` (gating `ai_reports`), `patient_history` (gating `ai_assistant`). Respuesta `{ success, data:{ result } }`. DESPLEGADO (commit `b25522b`, 103 tests). 🚨 Gemini devuelve 403 "project denied access" → 502 hasta arreglar la key (ver memoria ia-gemini-decision). |
+| Endpoint       | Método | Roles              | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/ai/text` | POST   | doctor/super_admin | Backend NestJS — reusa infra de `ai-transcription` (adapter Gemini temp 0.3/maxOutput 2048, `ai_request_log`, gating por plan). Acciones: `improve_block` (gating `ai_assistant`), `summarize_report` (gating `ai_reports`), `patient_history` (gating `ai_assistant`), **`parse_prescription`** (gating `ai_assistant` — voz→récipe). Respuesta varía por acción (ver tabla abajo). DESPLEGADO (commit `b25522b`, 103 tests). 🚨 Gemini devuelve 403 "project denied access" → 502 hasta arreglar la key (ver memoria ia-gemini-decision). |
+
+#### Acciones de `POST /api/ai/text`
+
+| `action`             | Body requerido                           | Respuesta `data`                      | Feature gate   |
+| -------------------- | ---------------------------------------- | ------------------------------------- | -------------- |
+| `improve_block`      | `content, block_key, block_label, mode?` | `{ result: string }`                  | `ai_assistant` |
+| `summarize_report`   | `legacy, blocks_data, blocks_meta`       | `{ result: string }`                  | `ai_reports`   |
+| `patient_history`    | `patientId`                              | `{ result: string }`                  | `ai_assistant` |
+| `parse_prescription` | `content` (texto de la transcripción)    | `{ medications: ParsedMedication[] }` | `ai_assistant` |
+
+**`parse_prescription` — contrato para el frontend (2026-07-13):**
+
+```jsonc
+// Request
+POST /api/ai/text
+{ "action": "parse_prescription", "content": "Amoxicilina 500 mg vía oral cada 8 horas por 7 días en cápsulas..." }
+
+// Response
+{ "success": true, "data": { "medications": [
+  { "name": "Amoxicilina", "dose": "500 mg", "route": "oral", "frequency": "cada 8 horas", "duration": "7 días", "presentation": "cápsulas" }
+]}}
+```
+
+`ParsedMedication` shape: `{ name, dose, route, frequency, duration, presentation }` — todos `string`, campo no mencionado = `""`. Si el modelo responde JSON inválido o texto libre → `medications: []` (nunca 500). `content` vacío → 400. `super_admin` bypassa el gate.
 
 > **Frontend:** `POST /api/doctor/ai` ya NO es stub 501 — proxea a `/api/ai/text` (valida rol; gating por plan +
-> super_admin bypass se aplican en el backend con el plan efectivo). El frontend (`callAI`) lee `data.result`.
+> super_admin bypass se aplican en el backend con el plan efectivo). El frontend (`callAI`) lee `data.result` para
+> acciones de texto o `data.medications` para `parse_prescription`.
 > Prompts médicos en español. Marcar como **recién reactivado**.
 
 ### Ayuda — Chat asistente por perfil (2026-06-22)

@@ -1,6 +1,8 @@
 import {
   AiTextUseCase,
   buildBlockPrompt,
+  buildParsePrescriptionPrompt,
+  parseMedicationsResponse,
   sanitizeImproveBlockOutput,
   stripHtml,
 } from './ai-text.use-case';
@@ -17,7 +19,15 @@ import { PatientNotFoundForAiError } from '../../domain/errors/patient-not-found
 import { DoctorProfile } from '../../../doctor-settings/domain/entities/doctor-profile.entity';
 import { Patient } from '../../../patients/domain/entities/patient.entity';
 import { Consultation } from '../../../consultations/domain/entities/consultation.entity';
-import type { AiTextInputDto } from '../dtos/ai-text.dto';
+import type { AiTextInputDto, AiTextOutputDto } from '../dtos/ai-text.dto';
+
+/**
+ * Narrows the use-case result to AiTextOutputDto (text-producing actions).
+ * Used to avoid widened union types in existing test assertions.
+ */
+function asTextOutput(result: unknown): AiTextOutputDto {
+  return result as AiTextOutputDto;
+}
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -161,6 +171,16 @@ const basePatientHistoryInput: AiTextInputDto = {
   isSuperAdmin: false,
 };
 
+const baseParsePrescriptionInput: AiTextInputDto = {
+  actionInput: {
+    action: 'parse_prescription',
+    content:
+      'Amoxicilina 500 mg vía oral cada 8 horas por 7 días en cápsulas. Ibuprofeno 400 mg oral cada 6 horas por 5 días en tabletas.',
+  },
+  doctorId: DOCTOR_ID,
+  isSuperAdmin: false,
+};
+
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
@@ -208,6 +228,7 @@ describe('AiTextUseCase', () => {
       approveWithExtras: jest.fn(),
       findExtraItems: jest.fn(),
       list: jest.fn(),
+      listWithAppointment: jest.fn(),
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),
       deleteById: jest.fn().mockResolvedValue(undefined),
@@ -240,7 +261,7 @@ describe('AiTextUseCase', () => {
 
       const result = await useCase.execute(baseImproveBlockInput);
 
-      expect(result.result).toBe('Texto mejorado.');
+      expect(asTextOutput(result).result).toBe('Texto mejorado.');
     });
 
     it('calls text generator with a prompt containing the block-specific instruction', async () => {
@@ -341,7 +362,7 @@ describe('AiTextUseCase', () => {
 
       const result = await useCase.execute(baseImproveBlockInput);
 
-      expect(result.result).toBe('El paciente acude por cefalea.');
+      expect(asTextOutput(result).result).toBe('El paciente acude por cefalea.');
     });
 
     it('strips wrapping quotes from AI output', async () => {
@@ -349,7 +370,7 @@ describe('AiTextUseCase', () => {
 
       const result = await useCase.execute(baseImproveBlockInput);
 
-      expect(result.result).toBe('El paciente acude por cefalea.');
+      expect(asTextOutput(result).result).toBe('El paciente acude por cefalea.');
     });
 
     it('does not strip output for summarize_report action (only improve_block is sanitized)', async () => {
@@ -361,7 +382,7 @@ describe('AiTextUseCase', () => {
       });
 
       // summarize_report output is NOT post-processed.
-      expect(result.result).toBe('(some_field) Resumen del informe.');
+      expect(asTextOutput(result).result).toBe('(some_field) Resumen del informe.');
     });
 
     it('passes mode=shorten to buildBlockPrompt (prompt contains shorten instruction)', async () => {
@@ -454,7 +475,7 @@ describe('AiTextUseCase', () => {
 
       const result = await useCase.execute(baseSummarizeInput);
 
-      expect(result.result).toBe('Resumen del informe.');
+      expect(asTextOutput(result).result).toBe('Resumen del informe.');
     });
 
     it('builds prompt containing legacy field content', async () => {
@@ -529,7 +550,7 @@ describe('AiTextUseCase', () => {
 
       const result = await useCase.execute(baseSummarizeInput);
 
-      expect(result.result).toBeTruthy();
+      expect(asTextOutput(result).result).toBeTruthy();
     });
 
     it('throws AiFeatureDeniedError when ai_reports is disabled', async () => {
@@ -573,7 +594,7 @@ describe('AiTextUseCase', () => {
 
       const result = await useCase.execute(basePatientHistoryInput);
 
-      expect(result.result).toBe('Resumen del historial.');
+      expect(asTextOutput(result).result).toBe('Resumen del historial.');
     });
 
     it('scopes patient lookup to authenticated doctorId (anti-IDOR)', async () => {
@@ -621,7 +642,7 @@ describe('AiTextUseCase', () => {
 
       const result = await useCase.execute(basePatientHistoryInput);
 
-      expect(result.result).toBeTruthy();
+      expect(asTextOutput(result).result).toBeTruthy();
       const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
       expect(prompt).toContain('0 consultas');
     });
@@ -651,6 +672,181 @@ describe('AiTextUseCase', () => {
   });
 
   // =========================================================================
+  // parse_prescription
+  // =========================================================================
+
+  describe('parse_prescription', () => {
+    const VALID_JSON_RESPONSE = JSON.stringify([
+      {
+        name: 'Amoxicilina',
+        dose: '500 mg',
+        route: 'oral',
+        frequency: 'cada 8 horas',
+        duration: '7 días',
+        presentation: 'cápsulas',
+      },
+      {
+        name: 'Ibuprofeno',
+        dose: '400 mg',
+        route: 'oral',
+        frequency: 'cada 6 horas',
+        duration: '5 días',
+        presentation: 'tabletas',
+      },
+    ]);
+
+    beforeEach(() => {
+      mockProfileRepo.findByDoctorId.mockResolvedValue(makeProfile('delta_plus', 'active'));
+      mockPlanConfigRepo.findByKey.mockResolvedValue(PLUS_CONFIG);
+      mockFeaturesRepo.findByPlan.mockResolvedValue(PLUS_FEATURES_ASSISTANT);
+      mockTextGenerator.generate.mockResolvedValue(VALID_JSON_RESPONSE);
+    });
+
+    it('returns structured medications when model responds with valid JSON array', async () => {
+      const result = await useCase.execute(baseParsePrescriptionInput);
+
+      expect(result).toEqual({
+        medications: [
+          {
+            name: 'Amoxicilina',
+            dose: '500 mg',
+            route: 'oral',
+            frequency: 'cada 8 horas',
+            duration: '7 días',
+            presentation: 'cápsulas',
+          },
+          {
+            name: 'Ibuprofeno',
+            dose: '400 mg',
+            route: 'oral',
+            frequency: 'cada 6 horas',
+            duration: '5 días',
+            presentation: 'tabletas',
+          },
+        ],
+      });
+    });
+
+    it('strips ```json fences and parses correctly', async () => {
+      const withFences =
+        '```json\n' +
+        JSON.stringify([
+          {
+            name: 'Paracetamol',
+            dose: '500 mg',
+            route: 'oral',
+            frequency: 'cada 6 horas',
+            duration: '3 días',
+            presentation: 'tabletas',
+          },
+        ]) +
+        '\n```';
+      mockTextGenerator.generate.mockResolvedValue(withFences);
+
+      const result = await useCase.execute(baseParsePrescriptionInput);
+
+      expect(result).toEqual({
+        medications: [
+          {
+            name: 'Paracetamol',
+            dose: '500 mg',
+            route: 'oral',
+            frequency: 'cada 6 horas',
+            duration: '3 días',
+            presentation: 'tabletas',
+          },
+        ],
+      });
+    });
+
+    it('returns empty medications array when model returns invalid JSON', async () => {
+      mockTextGenerator.generate.mockResolvedValue('No encontré medicamentos en la transcripción.');
+
+      const result = await useCase.execute(baseParsePrescriptionInput);
+
+      expect(result).toEqual({ medications: [] });
+    });
+
+    it('returns empty medications array when model returns a JSON object (not array)', async () => {
+      mockTextGenerator.generate.mockResolvedValue(JSON.stringify({ name: 'Amoxicilina' }));
+
+      const result = await useCase.execute(baseParsePrescriptionInput);
+
+      expect(result).toEqual({ medications: [] });
+    });
+
+    it('returns empty medications array when model returns empty JSON array', async () => {
+      mockTextGenerator.generate.mockResolvedValue('[]');
+
+      const result = await useCase.execute(baseParsePrescriptionInput);
+
+      expect(result).toEqual({ medications: [] });
+    });
+
+    it('defaults missing fields to empty string', async () => {
+      mockTextGenerator.generate.mockResolvedValue(JSON.stringify([{ name: 'Atorvastatina' }]));
+
+      const result = await useCase.execute(baseParsePrescriptionInput);
+
+      expect(result).toEqual({
+        medications: [
+          {
+            name: 'Atorvastatina',
+            dose: '',
+            route: '',
+            frequency: '',
+            duration: '',
+            presentation: '',
+          },
+        ],
+      });
+    });
+
+    it('gates on ai_assistant feature (same as improve_block)', async () => {
+      mockFeaturesRepo.findByPlan.mockResolvedValue(FREE_FEATURES);
+      mockPlanConfigRepo.findByKey.mockResolvedValue(FREE_CONFIG);
+
+      await expect(useCase.execute(baseParsePrescriptionInput)).rejects.toBeInstanceOf(
+        AiFeatureDeniedError,
+      );
+    });
+
+    it('writes audit log with feature=text_parse_prescription on success', async () => {
+      await useCase.execute(baseParsePrescriptionInput);
+
+      expect(mockLogRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          doctorId: DOCTOR_ID,
+          feature: 'text_parse_prescription',
+          status: 'success',
+        }),
+      );
+    });
+
+    it('writes error audit log when AI generator throws', async () => {
+      mockTextGenerator.generate.mockRejectedValue(new Error('Gemini 503'));
+
+      await expect(useCase.execute(baseParsePrescriptionInput)).rejects.toThrow('Gemini 503');
+
+      expect(mockLogRepo.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+    });
+
+    it('sends a prompt containing the transcript content', async () => {
+      await useCase.execute(baseParsePrescriptionInput);
+
+      const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
+      expect(prompt).toContain('Amoxicilina 500 mg vía oral cada 8 horas por 7 días');
+    });
+
+    it('prompt instructs model to respond only with JSON (no extra text)', async () => {
+      await useCase.execute(baseParsePrescriptionInput);
+
+      const [prompt] = mockTextGenerator.generate.mock.calls[0]!;
+      expect(prompt).toContain('ÚNICAMENTE un arreglo JSON');
+    });
+  });
+
+  // =========================================================================
   // super_admin bypass
   // =========================================================================
 
@@ -661,7 +857,7 @@ describe('AiTextUseCase', () => {
         isSuperAdmin: true,
       });
 
-      expect(result.result).toBeTruthy();
+      expect(asTextOutput(result).result).toBeTruthy();
       expect(mockProfileRepo.findByDoctorId).not.toHaveBeenCalled();
       expect(mockFeaturesRepo.findByPlan).not.toHaveBeenCalled();
     });
@@ -672,7 +868,7 @@ describe('AiTextUseCase', () => {
         isSuperAdmin: true,
       });
 
-      expect(result.result).toBeTruthy();
+      expect(asTextOutput(result).result).toBeTruthy();
       expect(mockFeaturesRepo.findByPlan).not.toHaveBeenCalled();
     });
 
@@ -690,7 +886,19 @@ describe('AiTextUseCase', () => {
         isSuperAdmin: true,
       });
 
-      expect(result.result).toBeTruthy();
+      expect(asTextOutput(result).result).toBeTruthy();
+      expect(mockFeaturesRepo.findByPlan).not.toHaveBeenCalled();
+    });
+
+    it('allows super_admin without checking plan for parse_prescription', async () => {
+      mockTextGenerator.generate.mockResolvedValue('[]');
+
+      const result = await useCase.execute({
+        ...baseParsePrescriptionInput,
+        isSuperAdmin: true,
+      });
+
+      expect(result).toEqual({ medications: [] });
       expect(mockFeaturesRepo.findByPlan).not.toHaveBeenCalled();
     });
   });
@@ -834,6 +1042,172 @@ describe('buildBlockPrompt', () => {
   it('uses formal instruction when mode=formal', () => {
     const prompt = buildBlockPrompt('treatment', 'Tratamiento', 'contenido', 'formal');
     expect(prompt).toContain('protocolar');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit tests for parseMedicationsResponse
+// ---------------------------------------------------------------------------
+
+describe('parseMedicationsResponse', () => {
+  it('parses a valid JSON array of medications', () => {
+    const raw = JSON.stringify([
+      {
+        name: 'Amoxicilina',
+        dose: '500 mg',
+        route: 'oral',
+        frequency: 'cada 8 horas',
+        duration: '7 días',
+        presentation: 'cápsulas',
+      },
+    ]);
+
+    const result = parseMedicationsResponse(raw);
+
+    expect(result).toEqual([
+      {
+        name: 'Amoxicilina',
+        dose: '500 mg',
+        route: 'oral',
+        frequency: 'cada 8 horas',
+        duration: '7 días',
+        presentation: 'cápsulas',
+      },
+    ]);
+  });
+
+  it('strips ```json fences before parsing', () => {
+    const raw =
+      '```json\n[{"name":"Ibuprofeno","dose":"400 mg","route":"oral","frequency":"cada 6 horas","duration":"5 días","presentation":"tabletas"}]\n```';
+
+    const result = parseMedicationsResponse(raw);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe('Ibuprofeno');
+  });
+
+  it('strips ``` fences without language tag', () => {
+    const raw =
+      '```\n[{"name":"Metformina","dose":"850 mg","route":"oral","frequency":"cada 12 horas","duration":"indefinido","presentation":"tabletas"}]\n```';
+
+    const result = parseMedicationsResponse(raw);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe('Metformina');
+  });
+
+  it('returns [] when model returns non-JSON prose text', () => {
+    const result = parseMedicationsResponse('No encontré medicamentos en el texto proporcionado.');
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] when model returns a JSON object (not array)', () => {
+    const result = parseMedicationsResponse(JSON.stringify({ name: 'Amoxicilina' }));
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] for an empty JSON array', () => {
+    const result = parseMedicationsResponse('[]');
+
+    expect(result).toEqual([]);
+  });
+
+  it('defaults missing fields to empty string', () => {
+    const result = parseMedicationsResponse(JSON.stringify([{ name: 'Atorvastatina' }]));
+
+    expect(result).toEqual([
+      {
+        name: 'Atorvastatina',
+        dose: '',
+        route: '',
+        frequency: '',
+        duration: '',
+        presentation: '',
+      },
+    ]);
+  });
+
+  it('drops non-object array elements gracefully', () => {
+    const raw = JSON.stringify([
+      null,
+      'cadena suelta',
+      42,
+      {
+        name: 'Paracetamol',
+        dose: '500 mg',
+        route: 'oral',
+        frequency: 'cada 6h',
+        duration: '3 días',
+        presentation: 'tabletas',
+      },
+    ]);
+
+    const result = parseMedicationsResponse(raw);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe('Paracetamol');
+  });
+
+  it('coerces non-string fields to empty string', () => {
+    const raw = JSON.stringify([
+      { name: 42, dose: true, route: null, frequency: undefined, duration: [], presentation: {} },
+    ]);
+
+    const result = parseMedicationsResponse(raw);
+
+    expect(result).toEqual([
+      { name: '', dose: '', route: '', frequency: '', duration: '', presentation: '' },
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit tests for buildParsePrescriptionPrompt
+// ---------------------------------------------------------------------------
+
+describe('buildParsePrescriptionPrompt', () => {
+  it('includes the transcript content in the prompt', () => {
+    const transcript = 'Amoxicilina 500 mg cada 8 horas por 7 días';
+    const prompt = buildParsePrescriptionPrompt(transcript);
+
+    expect(prompt).toContain(transcript);
+  });
+
+  it('instructs model to return only JSON (no extra text)', () => {
+    const prompt = buildParsePrescriptionPrompt('texto');
+
+    expect(prompt).toContain('ÚNICAMENTE un arreglo JSON');
+  });
+
+  it('instructs model not to invent missing fields', () => {
+    const prompt = buildParsePrescriptionPrompt('texto');
+
+    expect(prompt).toContain('NO inventes datos');
+  });
+
+  it('instructs model to return [] when no medications are mentioned', () => {
+    const prompt = buildParsePrescriptionPrompt('texto');
+
+    expect(prompt).toContain('arreglo vacío: []');
+  });
+
+  it('specifies all six required fields in the prompt', () => {
+    const prompt = buildParsePrescriptionPrompt('texto');
+
+    expect(prompt).toContain('name');
+    expect(prompt).toContain('dose');
+    expect(prompt).toContain('route');
+    expect(prompt).toContain('frequency');
+    expect(prompt).toContain('duration');
+    expect(prompt).toContain('presentation');
+  });
+
+  it('requires response in Spanish (Venezuela)', () => {
+    const prompt = buildParsePrescriptionPrompt('texto');
+
+    expect(prompt).toContain('español (Venezuela)');
   });
 });
 

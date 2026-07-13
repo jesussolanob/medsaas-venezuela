@@ -26,6 +26,7 @@ import type {
   AiTextOutputDto,
   AiTextActionInput,
   ImproveBlockMode,
+  ParsePrescriptionOutputDto,
 } from '../../application/dtos/ai-text.dto';
 
 /**
@@ -75,7 +76,7 @@ interface TranscribeSuccessResponse {
 
 interface AiTextSuccessResponse {
   success: true;
-  data: AiTextOutputDto;
+  data: AiTextOutputDto | ParsePrescriptionOutputDto;
 }
 
 /**
@@ -94,7 +95,12 @@ interface AiTextSuccessResponse {
  * super_admin bypasses the gate.
  */
 /** Allowed action values for POST /api/ai/text. */
-const ALLOWED_AI_TEXT_ACTIONS = new Set(['improve_block', 'summarize_report', 'patient_history']);
+const ALLOWED_AI_TEXT_ACTIONS = new Set([
+  'improve_block',
+  'summarize_report',
+  'patient_history',
+  'parse_prescription',
+]);
 
 @Controller('ai')
 @UseGuards(AppAuthGuard, RolesGuard)
@@ -184,7 +190,7 @@ export class AiTranscriptionController {
 
     if (typeof action !== 'string' || !ALLOWED_AI_TEXT_ACTIONS.has(action)) {
       throw new BadRequestException(
-        'Campo "action" inválido. Valores permitidos: improve_block, summarize_report, patient_history.',
+        'Campo "action" inválido. Valores permitidos: improve_block, summarize_report, patient_history, parse_prescription.',
       );
     }
 
@@ -277,6 +283,17 @@ export class AiTranscriptionController {
               typeof (m as Record<string, unknown>)['label'] === 'string',
           )
           .slice(0, 50),
+      };
+    }
+
+    if (action === 'parse_prescription') {
+      const content = body['content'];
+      if (typeof content !== 'string' || !content.trim()) {
+        throw new BadRequestException('Campo "content" es requerido para parse_prescription.');
+      }
+      return {
+        action: 'parse_prescription',
+        content: content.slice(0, 20_000),
       };
     }
 
