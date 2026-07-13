@@ -2820,81 +2820,48 @@ function ConsultationsPage() {
                                   if (!selected) return;
                                   setAddingBlock(true);
                                   try {
-                                    // Persist via PUT /api/doctor/consultation-blocks (BFF route)
-                                    // Supabase removed; user context from dev-auth header (server-side).
-                                    const blockUserId = await getDevDoctorId();
-                                    if (!blockUserId) {
-                                      setAddingBlock(false);
-                                      return;
-                                    }
-                                    // PRUEBAS 12-07 FIX: preservar la config COMPLETA del doctor
-                                    // (incluidos los bloques DESHABILITADOS) y solo habilitar/
-                                    // agregar el seleccionado. Antes se reconstruía desde
-                                    // doctorActiveBlocks (solo los enabled), y como el PUT
-                                    // reemplaza toda la config, se borraban las filas
-                                    // enabled=false → esos bloques reaparecían por el default del
-                                    // catálogo ("se agregaban todos y se fijaban").
-                                    const cfgRes = await fetch('/api/doctor/consultation-blocks', {
-                                      cache: 'no-store',
-                                    });
-                                    if (!cfgRes.ok) {
-                                      showToast({
-                                        type: 'error',
-                                        message: 'No se pudo leer la configuración de bloques',
-                                      });
-                                      return;
-                                    }
-                                    const cfgJson = await cfgRes.json();
-                                    type DoctorCfgRow = {
-                                      blockKey: string;
-                                      enabled: boolean;
-                                      sortOrder: number;
-                                      customLabel: string | null;
-                                      customDescription: string | null;
-                                      printable: boolean | null;
-                                      sendToPatient: boolean | null;
-                                    };
-                                    const currentConfig = (cfgJson.doctor_config ??
-                                      []) as DoctorCfgRow[];
-                                    const nextBlocks: Array<{
-                                      block_key: string;
-                                      enabled: boolean;
-                                      sort_order: number;
-                                      custom_label: string | null;
-                                      custom_description: string | null;
-                                      printable: boolean | null;
-                                      send_to_patient: boolean | null;
-                                    }> = currentConfig.map((b) => ({
-                                      block_key: b.blockKey,
-                                      // Habilita SOLO el bloque seleccionado; el resto conserva su
-                                      // estado (los deshabilitados siguen deshabilitados).
-                                      enabled: b.blockKey === c.key ? true : b.enabled,
-                                      sort_order: b.sortOrder,
-                                      custom_label: b.customLabel,
-                                      custom_description: b.customDescription,
-                                      printable: b.printable,
-                                      send_to_patient: b.sendToPatient,
-                                    }));
-                                    // Si el bloque no tenía fila de config, agrégalo al final.
-                                    if (!nextBlocks.some((b) => b.block_key === c.key)) {
-                                      const maxSort = nextBlocks.reduce(
-                                        (m, b) => Math.max(m, b.sort_order ?? 0),
-                                        0,
-                                      );
-                                      nextBlocks.push({
-                                        block_key: c.key,
-                                        enabled: true,
+                                    // FIX: agregar un bloque a UNA consulta solo debe afectar
+                                    // el blocks_snapshot de ESA consulta, nunca la config global
+                                    // del doctor (PUT /api/doctor/consultation-blocks). La config
+                                    // global se gestiona únicamente desde
+                                    // /doctor/settings/consultation-blocks.
+                                    //
+                                    // Caso A — la consulta ya tiene snapshot congelado:
+                                    //   → agregar el bloque al snapshot existente.
+                                    // Caso B — la consulta aún usa la config viva (sin snapshot):
+                                    //   → materializar el snapshot desde getEffectiveBlocks +
+                                    //     el nuevo bloque, congelando así esta consulta con
+                                    //     exactamente los bloques actuales del doctor más el extra.
+                                    const rawSnap = selected.blocks_snapshot;
+                                    const currentSnap: SnapshotBlock[] | null =
+                                      Array.isArray(rawSnap) && rawSnap.length > 0
+                                        ? (rawSnap as SnapshotBlock[])
+                                        : null;
+                                    const baseBlocks: SnapshotBlock[] =
+                                      currentSnap ?? getEffectiveBlocks(selected);
+                                    const maxSort = baseBlocks.reduce(
+                                      (m, b) => Math.max(m, b.sort_order ?? 0),
+                                      0,
+                                    );
+                                    const newSnap: SnapshotBlock[] = [
+                                      ...baseBlocks,
+                                      {
+                                        key: c.key,
+                                        label: c.label,
+                                        content_type:
+                                          c.content_type as SnapshotBlock['content_type'],
                                         sort_order: maxSort + 1,
-                                        custom_label: null,
-                                        custom_description: null,
                                         printable: c.printable,
                                         send_to_patient: c.send_to_patient,
-                                      });
-                                    }
-                                    const res = await fetch('/api/doctor/consultation-blocks', {
-                                      method: 'PUT',
+                                      },
+                                    ];
+                                    const res = await fetch('/api/doctor/consultations', {
+                                      method: 'PATCH',
                                       headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ blocks: nextBlocks }),
+                                      body: JSON.stringify({
+                                        id: selected.id,
+                                        blocks_snapshot: newSnap,
+                                      }),
                                     });
                                     if (!res.ok) {
                                       const e = await res.json().catch(() => ({}));
@@ -2904,46 +2871,18 @@ function ConsultationsPage() {
                                       });
                                       return;
                                     }
-                                    // Refrescar config viva
-                                    const refreshed = await fetch(
-                                      '/api/doctor/consultation-blocks',
-                                      { cache: 'no-store' },
+                                    // Actualizar estado local para que el tab aparezca de inmediato.
+                                    // newSnap es compatible con Consultation.blocks_snapshot (misma forma;
+                                    // content_type es string en Consultation y unión más estrecha en
+                                    // SnapshotBlock, por lo que la asignación es segura en runtime).
+                                    const updated: Consultation = {
+                                      ...selected,
+                                      blocks_snapshot: newSnap,
+                                    };
+                                    setSelected(updated);
+                                    setConsultations((prev) =>
+                                      prev.map((x) => (x.id === selected.id ? updated : x)),
                                     );
-                                    if (refreshed.ok) {
-                                      const j = await refreshed.json();
-                                      const resolved = (j.resolved || []) as SnapshotBlock[];
-                                      setDoctorActiveBlocks(resolved);
-                                      // Extend frozen snapshot if present (blocks_snapshot update
-                                      // via PATCH BFF route — non-blocking, best-effort).
-                                      const currentSnap = (selected as any).blocks_snapshot;
-                                      if (Array.isArray(currentSnap) && currentSnap.length > 0) {
-                                        const newSnap = [
-                                          ...currentSnap,
-                                          {
-                                            key: c.key,
-                                            label: c.label,
-                                            content_type: c.content_type,
-                                            sort_order:
-                                              (currentSnap[currentSnap.length - 1]?.sort_order ??
-                                                0) + 1,
-                                            printable: c.printable,
-                                            send_to_patient: c.send_to_patient,
-                                          },
-                                        ];
-                                        fetch('/api/doctor/consultations', {
-                                          method: 'PATCH',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({
-                                            id: selected.id,
-                                            blocks_snapshot: newSnap,
-                                          }),
-                                        }).catch(() => {});
-                                        setSelected({
-                                          ...selected,
-                                          blocks_snapshot: newSnap as any,
-                                        });
-                                      }
-                                    }
                                     setShowAddBlockMenu(false);
                                     handleTabChange(`block:${c.key}`);
                                   } catch (err) {
