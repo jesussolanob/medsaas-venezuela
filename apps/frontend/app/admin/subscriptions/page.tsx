@@ -159,6 +159,7 @@ export default function AdminSubscriptionsPage() {
 
 // ─── PLAN LABELS ────────────────────────────────────────────────────────────
 const PLAN_OPTIONS = [
+  { value: 'free_trial', label: 'Free Trial' },
   { value: 'delta_free', label: 'Delta Free' },
   { value: 'delta_base', label: 'Delta Base' },
   { value: 'delta_plus', label: 'Delta Plus' },

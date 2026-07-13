@@ -195,5 +195,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/doctor/:path*', '/patient/:path*', '/auth/:path*'],
+  // /post-login is included so auth0.middleware() processes the session cookie
+  // (set by /auth/callback) before PostLoginPage calls getSession(). Without
+  // this, on the first request after Auth0 callback the session may not yet be
+  // readable, causing resolveIdentity() to throw and redirect to /login instead
+  // of the correct role-based portal.
+  matcher: ['/admin/:path*', '/doctor/:path*', '/patient/:path*', '/auth/:path*', '/post-login'],
 };

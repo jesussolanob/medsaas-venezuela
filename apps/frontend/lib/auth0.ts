@@ -55,4 +55,18 @@ export const auth0 = new Auth0Client({
     rolling: false,
     absoluteDuration: SESSION_MAX_AGE_SECONDS,
   },
+  // After the Auth0 callback the SDK redirects to the `returnTo` URL carried in
+  // the OAuth state parameter. If the state is missing or cannot be decoded (e.g.
+  // the first request after a cold Auth0 session, cookie issues, or mismatched
+  // state), the SDK falls back to this URL instead of `/` (the public landing).
+  // `/post-login` resolves the role and redirects to the correct portal, so the
+  // user NEVER ends up on the landing after authenticating.
+  routes: {
+    callback: '/auth/callback',
+  },
+  // Fallback de returnTo cuando el state del callback no trae/decodifica un
+  // returnTo (p.ej. primer request en sesión fría). Por defecto el SDK usa '/'
+  // (la landing pública) → el usuario "aparecía" en la landing tras loguearse.
+  // Con '/post-login' siempre aterriza en el resolver de rol → portal correcto.
+  signInReturnToPath: '/post-login',
 });

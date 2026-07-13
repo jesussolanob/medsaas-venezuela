@@ -8,7 +8,7 @@
  * Request body : { plan: string; status: string; expires_at: string; notes?: string }
  * Response     : { success: true }
  *
- * Valores de plan: delta_free | delta_base | delta_plus
+ * Valores de plan: free_trial | delta_free | delta_base | delta_plus
  * Valores de status: active | trial | past_due | suspended
  *
  * Errores posibles del backend:
@@ -27,7 +27,7 @@ interface SubscriptionRequestBody {
   notes?: string;
 }
 
-const VALID_PLANS = ['delta_free', 'delta_base', 'delta_plus'] as const;
+const VALID_PLANS = ['free_trial', 'delta_free', 'delta_base', 'delta_plus'] as const;
 const VALID_STATUSES = ['active', 'trial', 'past_due', 'suspended'] as const;
 
 export async function PUT(

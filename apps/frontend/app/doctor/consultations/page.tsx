@@ -532,6 +532,9 @@ function ConsultationsPage() {
   const [aiTargetBlockKey, setAiTargetBlockKey] = useState<string>('');
   // Mostrar/ocultar el dropdown de seleccion de bloque
   const [showAiBlockPicker, setShowAiBlockPicker] = useState(false);
+  // Modo de mejora de redacción — se envía como campo `mode` al endpoint improve_block
+  type ImproveMode = 'improve' | 'formal' | 'shorten' | 'lengthen';
+  const [improveMode, setImproveMode] = useState<ImproveMode>('improve');
 
   // Appointment data (for payment receipt, method, price)
   const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null);
@@ -2048,7 +2051,13 @@ function ConsultationsPage() {
           setAiResult(`El bloque "${label}" está vacío. Escribe algo antes de mejorar con IA.`);
           return;
         }
-        payload = { action: 'improve_block', content, block_key: blockKey, block_label: label };
+        payload = {
+          action: 'improve_block',
+          content,
+          block_key: blockKey,
+          block_label: label,
+          mode: improveMode,
+        };
       } else if (mode === 'summarize_report') {
         const effective = getEffectiveBlocks(selected);
         payload = {
@@ -3587,6 +3596,33 @@ function ConsultationsPage() {
                         <p className="text-[11px] font-bold text-violet-700 uppercase tracking-wide">
                           Selecciona un bloque para mejorar
                         </p>
+                        {/* Chips de modo — controlan el tipo de mejora enviado al backend */}
+                        {(() => {
+                          const IMPROVE_CHIPS: { value: ImproveMode; label: string }[] = [
+                            { value: 'improve', label: 'Mejorar' },
+                            { value: 'formal', label: 'Formal' },
+                            { value: 'shorten', label: 'Acortar' },
+                            { value: 'lengthen', label: 'Ampliar' },
+                          ];
+                          return (
+                            <div className="flex flex-wrap gap-1.5">
+                              {IMPROVE_CHIPS.map((chip) => (
+                                <button
+                                  key={chip.value}
+                                  type="button"
+                                  onClick={() => setImproveMode(chip.value)}
+                                  className={`text-[11px] px-2.5 py-1 rounded-full font-semibold border transition-all ${
+                                    improveMode === chip.value
+                                      ? 'bg-teal-500 text-white border-teal-500'
+                                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {chip.label}
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                           {effective.length === 0 && (
                             <p className="text-xs text-slate-400 italic col-span-full">
@@ -3627,7 +3663,15 @@ function ConsultationsPage() {
                               ? 'Historial del paciente'
                               : aiAction === 'summarize_report'
                                 ? 'Resumen del informe'
-                                : `Texto mejorado${aiTargetBlockKey ? ` (${aiTargetBlockKey})` : ''}`}
+                                : (() => {
+                                    const blockLabel =
+                                      aiTargetBlockKey && selected
+                                        ? (getEffectiveBlocks(selected).find(
+                                            (b) => b.key === aiTargetBlockKey,
+                                          )?.label ?? aiTargetBlockKey)
+                                        : null;
+                                    return `Texto mejorado${blockLabel ? ` (${blockLabel})` : ''}`;
+                                  })()}
                           </p>
                           <div className="flex gap-1">
                             {/* Aplicar — solo aplica si el modo soporta escritura.
@@ -4706,6 +4750,31 @@ function ConsultationsPage() {
               </div>
             );
           })()}
+
+        {/* BUG 1/2 FIX: Los modales de ficha y aprobación de pago deben vivir
+            en el árbol del return del EDITOR (view='consultation'), no en el
+            return de la lista. El return temprano de la línea ~2164 hace que
+            React nunca renderice el JSX del segundo return cuando hay una
+            consulta abierta, por lo que estos modales nunca se montaban. */}
+        {fichaPatientId && (
+          <PatientFichaModal
+            patientId={fichaPatientId}
+            patientName={selected?.patient_name}
+            onClose={() => setFichaPatientId(null)}
+          />
+        )}
+
+        {selected && (
+          <ApprovePaymentModal
+            open={showApprovePaymentModal}
+            consultationId={selected.id}
+            baseAmount={selected.base_amount ?? selected.amount ?? 0}
+            existingExtras={selected.extra_items ?? []}
+            paymentMethod={pagoMethod || undefined}
+            onClose={() => setShowApprovePaymentModal(false)}
+            onApproved={handlePaymentApproved}
+          />
+        )}
       </>
     );
   }

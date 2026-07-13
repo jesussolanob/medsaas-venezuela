@@ -41,11 +41,13 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
   // Llama al backend NestJS directamente vía el helper server (URL absoluta + auth
   // reenviada). Antes se hacía `fetch('/api/admin/doctors')` con URL relativa desde
   // este Server Action, lo que rompía en el servidor con "Failed to parse URL".
+  // NOTA: NO enviar `password`. El backend admin (Etapa 1) provisiona el perfil sin
+  // contraseña (el login del médico es por Auth0), y su DTO es `.strict()` → mandar
+  // `password` provoca "Unrecognized key: password" y rompe la creación.
   const result = await backendPost<unknown>('/api/admin/doctors', {
     full_name: input.full_name,
     cedula: input.cedula || null,
     email: input.email,
-    password: input.password,
     specialty: input.specialty || null,
     phone: input.phone || null,
     plan: input.plan,
