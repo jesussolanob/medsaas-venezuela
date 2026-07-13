@@ -32,7 +32,6 @@ import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
 import {
   listAgendaAppointments,
   listPendingAppointments,
-  getAppointmentDetailStatus,
   buildPackageTotalSessionsMap,
 } from './actions'; // MIGRATED: appointments → NestJS backend
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
@@ -366,22 +365,36 @@ export default function AgendaPage() {
     appt: CalendarAppointment;
   } | null>(null);
 
-  // Llama a GET /api/appointments/:id/detail cuando el doctor abre el modal de detalle.
-  // Popula detailStatus.consulta y detailStatus.pago a partir de la respuesta del backend.
-  // Degrada silenciosamente a null si el endpoint falla (el JSX ya muestra "Sin consulta").
+  // Deriva el estado de consulta y pago directamente de detailAppt.
+  // El endpoint GET /api/appointments/:id/detail no existe en el backend (Etapa 1).
+  // Los datos ya vienen en la lista vía LEFT JOIN a consultations:
+  //   - detailAppt.status    → estado clínico (completed = atendida, no_show, cancelled, etc.)
+  //   - detailAppt.payment_status → estado de pago de la consulta vinculada ('pending'|'approved'|null)
+  // No se requiere fetch adicional al abrir el modal.
   useEffect(() => {
     if (!detailAppt) {
       setDetailStatus({ consulta: null, pago: null });
       return;
     }
-    const apptId = detailAppt.appointment_id || detailAppt.id;
-    let cancelled = false;
-    getAppointmentDetailStatus(apptId).then((status) => {
-      if (!cancelled) setDetailStatus(status);
+    // Estado de consulta: se deriva del status de la cita.
+    // Si hay una consulta vinculada (consultation_id presente) Y el status es terminal
+    // (completed / no_show / cancelled), usamos ese valor.
+    // Si hay consulta pero la cita es scheduled/confirmed → la consulta existe pero
+    // aún no está cerrada → mostramos 'pending' (en curso).
+    // Si no hay consultation_id, no hay consulta vinculada → null.
+    let consulta: string | null = null;
+    if (detailAppt.consultation_id) {
+      const terminalStatuses = ['completed', 'no_show', 'cancelled'];
+      if (terminalStatuses.includes(detailAppt.status)) {
+        consulta = detailAppt.status;
+      } else {
+        consulta = 'pending';
+      }
+    }
+    setDetailStatus({
+      consulta,
+      pago: detailAppt.payment_status ?? null,
     });
-    return () => {
-      cancelled = true;
-    };
   }, [detailAppt]);
   const [statusReason, setStatusReason] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
@@ -2123,7 +2136,11 @@ export default function AgendaPage() {
 
                 {(detailAppt.consultation_code || detailAppt.appointment_code) && (
                   <div className="grid grid-cols-2 gap-3">
-                    {detailAppt.consultation_code && (
+                    {/* consultation_code (DLT-YYYYMM-NNNN) toma prioridad visual.
+                        Si no viene en la lista (el backend aún no lo expone en /api/appointments),
+                        se muestra el código de cita. El código completo de consulta
+                        está disponible dentro de «Ir a consulta». */}
+                    {detailAppt.consultation_code ? (
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase">
                           Código consulta
@@ -2132,13 +2149,24 @@ export default function AgendaPage() {
                           {detailAppt.consultation_code}
                         </p>
                       </div>
-                    )}
-                    {detailAppt.appointment_code && (
+                    ) : detailAppt.appointment_code ? (
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase">
                           Código cita
                         </p>
                         <p className="text-sm font-mono text-slate-600 mt-1">
+                          {detailAppt.appointment_code}
+                        </p>
+                      </div>
+                    ) : null}
+                    {/* Mostrar código de cita en columna secundaria solo si
+                        también existe el de consulta (ambos presentes). */}
+                    {detailAppt.consultation_code && detailAppt.appointment_code && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase">
+                          Código cita
+                        </p>
+                        <p className="text-sm font-mono text-slate-400 mt-1">
                           {detailAppt.appointment_code}
                         </p>
                       </div>
