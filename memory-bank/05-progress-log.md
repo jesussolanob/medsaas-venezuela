@@ -1977,23 +1977,39 @@ memoria `qa-prod-url-cloudrun`. El QA reportó "no funciona" varias veces por pr
   (atendida/pagada) derivado de la lista (el endpoint `/detail` no existía → 404 tragado).
 - Calendar: fix de `redirect_uri` (usaba 0.0.0.0:8080 en Cloud Run → mismatch); ahora APP_BASE_URL.
 
-**⏳ PENDIENTE (RETOMAR EN OTRA SESIÓN):**
+**✅ CERRADOS EN SESIÓN 2026-07-13 (continuación):**
 
-1. **`consultation_code` en la agenda** (backend): el query de citas no trae `c.consultation_code`; hay que
-   agregarlo al SELECT + entidad + mapper (frontend ya listo). _(En curso al cierre de esta sesión.)_
-2. **Consultas "lento"**: reportado lentitud — falta PROFILING real en el navegador (no se hizo).
-3. **Barrido backend de mensajes en INGLÉS**: endpoints de pagos que aún pueden devolver inglés en
-   `AppError.message`: `PATCH /api/finances/payments/:id/details`, `PUT :id/status`, `POST/DELETE :id/items`.
-   (El frontend de Cobros ya los envuelve en español, pero el backend debería devolver español.)
-4. **CONFIG de Google Calendar (la hace el USUARIO en consola)** — el "Conectar" no funciona hasta:
-   verificar/recrear el OAuth client `763714620325-823prmk160n99cpve9ustirmbq257c19` (proyecto
-   sodium-shard-499116-r3; podría ser el que se borró = deleted_client); registrar redirect URIs
-   (localhost + `https://delta-frontend-knliodnwza-ue.a.run.app/api/integrations/google/callback`);
-   scope `calendar.events` + doctor como test user; GitHub vars `NEXT_PUBLIC_GOOGLE_CLIENT_ID`/
-   `GOOGLE_CLIENT_ID` + Secret `GOOGLE_CLIENT_SECRET`; habilitar Google Calendar API. NOTA: el evento
-   solo se crea para citas ONLINE (presenciales no, por diseño) y va al calendar del doctor.
+1. **`consultation_code` en la agenda** (backend): ✅ commit `4d139e5` (SELECT + entidad + mapper).
+2. **Consultas "lento"**: ✅ **profiling real hecho** (Playwright/Resource Timing en Cloud Run) + **fix commit
+   `e1ddd5c`**. Diagnóstico: NO era backend/datos (1 sola consulta; endpoint ~520ms) sino **frontend puro** —
+   `page.tsx` era UN único `'use client'` de **6.264 líneas** → ~1,9 MB de JS decodificado (30 chunks); la lista
+   se cargaba con la server action `listConsultationsPaged` DESPUÉS de la hidratación (de ahí "Cargando…" largo).
+   Fix: `page.tsx`→**Server Component** (fetch server-side de la 1ª página=15, initialConsultations como prop, ruta
+   ahora `ƒ`, fallback robusto al fetch cliente); el cliente viejo movido a `ConsultationsClient.tsx`; layout
+   `consultation-blocks`+`schedule` ahora en **paralelo** (Promise.allSettled, antes secuenciales, waterfall ~1,5s);
+   `DoctorNotificationToast` silencia el 404 "Server Action was not found" de **version-skew** post-deploy.
+   ⚠️ **PENDIENTE (pospuesto, riesgo alto):** extraer el EDITOR de consulta como isla `next/dynamic {ssr:false}`
+   (líneas ~2438-5124) — comparte estado React profundo con la lista (`selected`/`report`/`consultations`/
+   `doctorActiveBlocks`); sería el mayor golpe de bundle restante pero requiere refactor de arquitectura de estado.
+   Verificado: `nx build frontend` OK (ruta `ƒ`), tsc 0, eslint limpio en page.tsx+toast. ⏳ falta DEPLOY + QA visual.
+3. **Barrido backend inglés→es-VE en pagos**: ✅ commit `3b9aad1`. 8 domain errors de finances + 3 DTOs Zod
+   (`update-payment-details-cobros`, `payment-status`, `attach-payment-receipt`). Usa `{ error }` de **Zod 4**
+   (no `{ message }` deprecated). code-reviewer + security-agent: 0 CRITICAL/HIGH (anti-IDOR intacto, validación
+   sin cambios semánticos). **Deuda anotada:** `InvalidPaymentTransitionError`/`PaymentNotFoundError` incluyen el
+   UUID interno en el mensaje al cliente (preexistente, no regresión) → follow-up.
+4. **CONFIG de Google Calendar**: ✅ **verificado a nivel INFRA (sin login)** — el OAuth ya funciona en prod: el
+   endpoint `/api/integrations/google/auth` en Cloud Run redirige OK a Google; client `763714620325-823prmk160n99cpve9ustirmbq257c19`
+   **ACTIVO** (no `deleted_client`); `redirect_uri` de Cloud Run **aceptado** (no `redirect_uri_mismatch`); scope
+   `calendar.events` + secrets seteados. ⏳ Solo falta la prueba end-to-end: doctor real → Configuración →
+   Integraciones → "Conectar" → consentimiento de Google (y doctor como _test user_ si la pantalla sigue en Testing).
+   NOTA: el evento solo se crea para citas ONLINE (presenciales no, por diseño) y va al calendar del doctor.
+
+**⏳ PENDIENTE (RETOMAR):**
+
 5. **Verificación VISUAL del usuario** de los PDFs (no automatizables por Playwright): informe con bloques,
    título centrado, plantillas preview por tipo, récipe 2 hojas, recibo branded.
+6. **DEPLOY** de los commits `3b9aad1` (pagos es-VE) + `e1ddd5c` (perf consultas) y QA visual de ambos.
+7. **(Opcional, gran win)** editor de consulta como isla dynamic — ver punto 2.
 
 Datos de prueba en la BD migrada (borrables): paciente "Paciente Prueba QA" (V-30111222) + consulta
 DLT-202607-0027. Doctor de prueba lucas.rivas.55@gmail.com puesto en delta_plus por el usuario.
