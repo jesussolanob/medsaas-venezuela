@@ -453,6 +453,8 @@ function ConsultationsPage() {
   const [pagoDetailsSaving, setPagoDetailsSaving] = useState(false);
   // Modal de aprobación de pago (con monto base + extras)
   const [showApprovePaymentModal, setShowApprovePaymentModal] = useState(false);
+  // Modal de confirmación al salir de una consulta no atendida
+  const [showExitConsultationModal, setShowExitConsultationModal] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   // Cantidad de registros EHR del paciente de la consulta abierta — habilita el tipo
   // "Historia clínica" en generar/compartir (evita PDF vacío / 422 sin EHR).
@@ -2455,13 +2457,19 @@ function ConsultationsPage() {
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <button
                   onClick={() => {
+                    // Si la consulta no está atendida, mostrar modal de confirmación
+                    if (
+                      selected &&
+                      selected.status !== 'completed' &&
+                      selected.status !== 'no_show'
+                    ) {
+                      setShowExitConsultationModal(true);
+                      return;
+                    }
                     flushBlocksSave();
-                    // Cerrar el editor directamente por estado — funciona siempre,
-                    // independientemente de si hay ?open= en el URL.
                     openedConsultationIdRef.current = null;
                     setView('list');
                     setSelected(null);
-                    // Limpiar ?open= del URL si está presente (sin reload de página)
                     if (openId) router.push(pathname, { scroll: false });
                   }}
                   className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors"
@@ -5050,6 +5058,66 @@ function ConsultationsPage() {
             onClose={() => setShowApprovePaymentModal(false)}
             onApproved={handlePaymentApproved}
           />
+        )}
+
+        {/* Modal de confirmación al salir de una consulta no atendida */}
+        {showExitConsultationModal && selected && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setShowExitConsultationModal(false)}
+            />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800">Consulta sin atender</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Esta consulta aún no está marcada como atendida. ¿Deseas marcarla antes de
+                    salir?
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  onClick={async () => {
+                    setShowExitConsultationModal(false);
+                    await updateConsultaStatus(selected.id, 'completed', selected.appointment_id);
+                    flushBlocksSave();
+                    openedConsultationIdRef.current = null;
+                    setView('list');
+                    setSelected(null);
+                    if (openId) router.push(pathname, { scroll: false });
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors"
+                >
+                  <Check className="w-4 h-4" /> Marcar como atendida y salir
+                </button>
+                <button
+                  onClick={() => {
+                    setShowExitConsultationModal(false);
+                    flushBlocksSave();
+                    openedConsultationIdRef.current = null;
+                    setView('list');
+                    setSelected(null);
+                    if (openId) router.push(pathname, { scroll: false });
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Salir sin marcar
+                </button>
+                <button
+                  onClick={() => setShowExitConsultationModal(false)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-slate-400 text-sm font-medium rounded-lg hover:text-slate-600 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </>
     );

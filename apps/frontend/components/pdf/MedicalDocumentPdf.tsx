@@ -151,18 +151,21 @@ function makeStyles(primaryColor: string) {
 
     // -- Header --
     header: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
       paddingBottom: 14,
       borderBottomWidth: 3,
       borderBottomColor: primaryColor,
       marginBottom: 18,
-      gap: 16,
+    },
+    headerTop: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      marginBottom: 10,
     },
     headerLeft: {
       flex: 1,
     },
+    // headerRight kept for API compatibility but no longer used in layout
     headerRight: {
       alignItems: 'flex-end',
       flexShrink: 0,
@@ -185,12 +188,12 @@ function makeStyles(primaryColor: string) {
       marginBottom: 1,
     },
     docTypeLabel: {
-      fontSize: 9,
+      fontSize: 13,
       fontFamily: 'Helvetica-Bold',
       color: primaryColor,
       textTransform: 'uppercase',
-      letterSpacing: 1,
-      marginTop: 4,
+      letterSpacing: 1.2,
+      textAlign: 'center',
     },
 
     // -- Meta row (paciente / fecha / código) --
@@ -376,22 +379,26 @@ function PageContent({
     <>
       {/* ── HEADER ── */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
+        {/* Fila superior: logo (opcional) + datos del médico */}
+        <View style={styles.headerTop}>
           {templateConfig.show_logo && templateConfig.logo_url ? (
             <Image
               src={proxyGcsUrl(templateConfig.logo_url) ?? templateConfig.logo_url}
               style={styles.logo}
             />
           ) : null}
-          <Text style={styles.headerTitle}>{headerTitle}</Text>
-          {doctor.specialty ? <Text style={styles.headerSubtitle}>{doctor.specialty}</Text> : null}
-          {doctor.licenseNumber ? (
-            <Text style={styles.headerSubtitle}>M.P.P.S. {doctor.licenseNumber}</Text>
-          ) : null}
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerTitle}>{headerTitle}</Text>
+            {doctor.specialty ? (
+              <Text style={styles.headerSubtitle}>{doctor.specialty}</Text>
+            ) : null}
+            {doctor.licenseNumber ? (
+              <Text style={styles.headerSubtitle}>M.P.P.S. {doctor.licenseNumber}</Text>
+            ) : null}
+          </View>
         </View>
-        <View style={styles.headerRight}>
-          <Text style={styles.docTypeLabel}>{docLabel}</Text>
-        </View>
+        {/* Título del documento — centrado debajo de los datos del médico */}
+        <Text style={styles.docTypeLabel}>{docLabel}</Text>
       </View>
 
       {/* ── META ROW ── */}
