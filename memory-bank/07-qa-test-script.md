@@ -872,5 +872,68 @@ pantalla siguiente. Agente B verifica en BD en cada punto (sin PII).
 
 ---
 
+## D-2026-07-12b) Lote PRUEBAS 12-07 (Finanzas/Cobros/Servicios/Recordatorios) + admin/planes/bloques + fix de deploy
+
+> Cobertura del lote de la **tarde del 2026-07-12** (correcciones sobre el doc `PRUEBAS 12-07.txt` + bugs
+> reportados en vivo). Todo desplegado tras arreglar un **boot roto de Cloud Run** (ver D-12b.f). Misma regla:
+> un caso PASA solo si el efecto se ve en la **pantalla siguiente**. Commits: `9611030`..`6a56022`
+> (detalle en `05-progress-log.md`, sección 2026-07-12).
+
+### D-12b.a — Servicios y Recordatorios
+
+| Caso    | Precondición                        | Acción                                          | Esperado front                                                                                             | BD / efecto                                              |
+| ------- | ----------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| D-12b.1 | `/doctor/services`, crear/editar    | Ver el formulario del servicio                  | **NO** aparece el campo "Duración (min)"; tampoco en la tarjeta del servicio                               | duración real vive en `doctor_offices.slot_duration`     |
+| D-12b.2 | `/doctor/reminders`, cita con email | Enviar recordatorio por **Email**               | El cuerpo del email trae **emojis** (👋📅🕐📋🔖🏥), igual que el de WhatsApp                               | mailto con emojis codificados                            |
+| D-12b.3 | `/doctor/reminders`, varias citas   | Usar el **selector de fecha** (día de consulta) | La lista filtra a las consultas de **ese día**; "Seleccionar todos" + "Enviar a N" para masivos de ese día | chips Hoy/1d/3d/7d limpian el filtro por día y viceversa |
+
+### D-12b.b — Cobros (drawer de pago)
+
+| Caso     | Precondición                                       | Acción                                      | Esperado front                                                                                              | BD / efecto                                                        |
+| -------- | -------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| D-12b.4  | Consulta cuyo pago se **aprobó desde la consulta** | Abrir Cobros → pestaña **Aprobados**        | La consulta aparece en Aprobados (antes salía todo "pendiente" y Aprobados vacío)                           | `payments.status='approved'` sincronizado desde la consulta        |
+| D-12b.5  | Cobros                                             | Ver los filtros arriba                      | Existe **"Todas"** además de Pendientes/Aprobados; las **cajas de resumen** cambian según el filtro         | —                                                                  |
+| D-12b.6  | Detalle de un pago pendiente                       | Cambiar el estatus                          | **Un solo botón** con la acción contraria (pendiente→aprobado / aprobado→pendiente)                         | `payments.status` toggle                                           |
+| D-12b.7  | Detalle de un pago pendiente                       | Cambiar la **fecha de pago**                | Precarga la **tasa BCV de ese día**; recalcula el monto en Bs; si no hay tasa avisa "ingrésala manualmente" | `GET /api/settings/bcv-rate?date=` (cache `bcv_rate_history`)      |
+| D-12b.8  | Detalle de un pago pendiente                       | Editar método/referencia + guardar detalles | "Guardar detalles" persiste; refresca la lista                                                              | `PATCH /api/finances/payments/:id/details`; sincroniza la consulta |
+| D-12b.9  | Detalle de un pago                                 | "**Añadir paquete/servicio**"               | Abre el modal, agrega el servicio y el **total sube**                                                       | fila en `payment_items`                                            |
+| D-12b.10 | Detalle de un pago                                 | "**Generar recibo PDF**"                    | Genera el recibo (si el popup se bloquea, abre por Blob URL con aviso)                                      | —                                                                  |
+
+### D-12b.c — Finanzas (4 tabs)
+
+| Caso     | Precondición              | Acción                      | Esperado front                                                                                                                                | BD / efecto                                                                                                    |
+| -------- | ------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| D-12b.11 | Finanzas → **Resumen**    | Ver la tab                  | **3 cajas de ingreso** (consultas cobradas / pendientes / manuales) + **6 cajas de gasto por concepto**; SIN "Registrar ingreso"              | `summary.incomeBreakdown` + `summary.expenseBreakdown`                                                         |
+| D-12b.12 | Finanzas → Resumen        | "**Agregar gasto**"         | Abre un **modal** (monto, concepto, descripción, fecha), no campos inline                                                                     | `POST /api/finances/expense` con `concept`; `expense_concept` persistido                                       |
+| D-12b.13 | Finanzas → Resumen        | Descargar **CSV**           | Trae los 3 consolidados de ingreso, los 6 de gasto por concepto y el balance                                                                  | —                                                                                                              |
+| D-12b.14 | Finanzas → **Ingresos**   | Ver la tab                  | Mantiene "Registrar ingreso"; **sin** cajas de resumen; gráfica por **tipo de ingreso**; tabla con TODOS los ingresos del mes + CSV detallado | `GET /api/finances/income` paginado                                                                            |
+| D-12b.15 | Finanzas → **Gastos**     | Ver la tab                  | Botón **"Registrar gasto"** (mismo modal, con concepto); gráfica **por concepto**; tabla de movimientos; sin resumen                          | —                                                                                                              |
+| D-12b.16 | Finanzas → **Reportería** | Ver el detalle por consulta | **Hora, Modalidad y Duración ya NO en blanco**; el **monto** ya no sale $0                                                                    | `with-patient` trae `scheduled_at`/`appointment_mode`/`duration_minutes` + `COALESCE(c.amount,a.plan_price,0)` |
+| D-12b.17 | Finanzas → Reportería     | Usar filtros                | Filtro por **tipo** (ingresos por consulta / manuales / gastos), **mes** y **paginador**; sin botón "Registrar ingreso"                       | —                                                                                                              |
+
+### D-12b.d — Admin y Planes
+
+| Caso     | Precondición                             | Acción                              | Esperado front                                                                             | BD / efecto                                                                 |
+| -------- | ---------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| D-12b.18 | Admin → Especialistas → **Nuevo médico** | Completar y "Crear médico"          | **NO** aparece "Failed to parse URL"; crea el médico correctamente                         | `POST /api/admin/doctors` vía `backendPost` (URL absoluta)                  |
+| D-12b.19 | Admin → Nuevo médico, email ya existente | Crear con un correo ya registrado   | Error **en español**: "Ya existe una cuenta registrada con el correo …"                    | `DoctorEmailConflictError` (409)                                            |
+| D-12b.20 | Registrar/asignar plan **Free Trial**    | Doctor free_trial entra a su cuenta | Funciona **igual que Delta Plus**, incluido el **booking online**; se corta a los ~30 días | mig 000012 espeja `plan_features` de delta_plus; cap por downgrade perezoso |
+
+### D-12b.e — Bloques de consulta (2 bugs)
+
+| Caso     | Precondición                                                          | Acción                                                        | Esperado front                                                                                      | BD / efecto                                                      |
+| -------- | --------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| D-12b.21 | En `/doctor/settings/consultation-blocks` quitar varios y **guardar** | Volver a una consulta y usar el "+" para **agregar 1** bloque | Se agrega **solo el seleccionado**; los que estaban quitados **siguen fuera** (no reaparecen todos) | el PUT preserva `doctor_config` completo (incl. `enabled=false`) |
+| D-12b.22 | Módulo de bloques                                                     | Mirar la esquina superior derecha de cada ítem                | **NO** aparece el nombre interno en inglés (gris) del bloque                                        | —                                                                |
+
+### D-12b.f — IA y fix de despliegue (técnico)
+
+| Caso     | Precondición                     | Acción                                        | Esperado front                                                                                                    | BD / efecto                                                            |
+| -------- | -------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| D-12b.23 | Consulta con un bloque con texto | "Mejorar redacción" (modos)                   | Modos mejorar/formal/acortar/ampliar; la salida **no** repite el nombre del campo ni comillas                     | `sanitizeImproveBlockOutput`                                           |
+| D-12b.24 | **Deploy** (post-push)           | Observar el arranque del backend en Cloud Run | El contenedor **arranca** (antes fallaba "failed to start and listen on PORT" desde el commit de servicios extra) | `ConsultationExtraItemModel` registrado en payments + ai-transcription |
+
+---
+
 > Mantener este guion vivo: cuando aparezca un bug de prod, agregar una fila a la
 > **Sección D** y un caso al módulo correspondiente para que el qa-agent lo cubra siempre.

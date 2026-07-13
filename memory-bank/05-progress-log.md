@@ -1930,3 +1930,19 @@ Migraciones nuevas verificadas seguras para deploy: 20260712000010..000013.
   filtros tipo/mes/paginador).
 
 ⚠️ PENDIENTE QA VISUAL del usuario de todo el lote (regla: pasa solo si el efecto se ve en pantalla).
+
+### Addendum tarde 2026-07-12 (post-cb062e2)
+
+- **Bloques (`f2f6938`)**: (1) al agregar un bloque on-the-fly a la consulta se reconstruía la config del
+  doctor SOLO con los bloques enabled; como el PUT reemplaza toda la config, se borraban las filas
+  `enabled=false` y esos bloques reaparecían por el default del catálogo ("se agregaban todos y se fijaban").
+  Fix: leer `doctor_config` completo y preservar el estado de cada bloque, habilitando solo el seleccionado.
+  (2) Removido el badge gris con el `block_key` interno (nombre en inglés) en el módulo de bloques.
+- **FIX DE DEPLOY (`6a56022`)**: el backend NO arrancaba en Cloud Run desde `aefa79d` ("aprobar pago con
+  servicios extra") → _"failed to start and listen on PORT"_. Causa: `SequelizeConsultationRepository` empezó a
+  inyectar `ConsultationExtraItemModel`, pero solo `ConsultationsModule` lo registró en
+  `SequelizeModule.forFeature`; `PaymentsModule` y `AiTranscriptionModule` también proveen ese repo →
+  `UnknownDependenciesException` en el bootstrap. Reproducido con **boot-test del dist** y verificado que la DI
+  ahora resuelve completa. Registrado el modelo en ambos módulos. **Desbloqueó TODOS los deploys** (venían
+  fallando en "Deploy backend" desde el mediodía).
+- Guion QA de este lote: `07-qa-test-script.md` sección **D-2026-07-12b** (24 casos).
