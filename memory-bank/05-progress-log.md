@@ -2004,12 +2004,24 @@ memoria `qa-prod-url-cloudrun`. El QA reportó "no funciona" varias veces por pr
    Integraciones → "Conectar" → consentimiento de Google (y doctor como _test user_ si la pantalla sigue en Testing).
    NOTA: el evento solo se crea para citas ONLINE (presenciales no, por diseño) y va al calendar del doctor.
 
+**✅ DESPLEGADO Y VERIFICADO EN PROD (2026-07-13, run GA `29280837184` success):**
+Push de los 3 commits → deploy auto de `feature/migracion-backend` OK. Verificación en vivo (Playwright):
+
+- **#2 consultas:** SSR confirmado — el HTML del servidor ya trae `DLT-202607-0027`, **0 "Cargando…"**; el
+  cliente NO refetchea la lista (usa datos SSR); **waterfall PARALELO** (`consultation-blocks`+`schedule`
+  solapan ~175ms, antes secuenciales); console limpio (sin spam version-skew). ⚠️ El gap de hidratación
+  (~1,5s antes de blocks) PERSISTE porque el bundle cliente sigue ~1,9MB (editor no extraído — ver punto 7).
+- **#3 pagos:** verificado a nivel deploy/build/runtime (Zod runtime→español, tsc verde, deploy desde ese
+  source) + Cobros carga sin regresión. NO se disparó el rechazo Zod end-to-end en la UI para no mutar el
+  pago de prueba en prod (los endpoints /details|/status son server actions, no route handlers curleables).
+
 **⏳ PENDIENTE (RETOMAR):**
 
 5. **Verificación VISUAL del usuario** de los PDFs (no automatizables por Playwright): informe con bloques,
    título centrado, plantillas preview por tipo, récipe 2 hojas, recibo branded.
-6. **DEPLOY** de los commits `3b9aad1` (pagos es-VE) + `e1ddd5c` (perf consultas) y QA visual de ambos.
-7. **(Opcional, gran win)** editor de consulta como isla dynamic — ver punto 2.
+6. **QA visual del FLUJO de consulta** post-refactor: abrir/editar/autosave/filtros/paginación/deep-link
+   `?open=` — se verificó carga y estructura, NO el flujo interactivo completo (riesgo residual del split).
+7. **(Opcional, gran win)** editor de consulta como isla dynamic — ver punto 2 (ataca el bundle ~1,9MB restante).
 
 Datos de prueba en la BD migrada (borrables): paciente "Paciente Prueba QA" (V-30111222) + consulta
 DLT-202607-0027. Doctor de prueba lucas.rivas.55@gmail.com puesto en delta_plus por el usuario.
