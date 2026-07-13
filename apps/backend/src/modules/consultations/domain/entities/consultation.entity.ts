@@ -1,6 +1,20 @@
 import type { PaymentStatus } from '@delta/shared-types';
 import type { ConsultationExtraItem } from './consultation-extra-item.entity';
 
+/**
+ * A single block definition as stored in blocks_structure.
+ * Represents the schema of one clinical data block in the consultation template.
+ * Values for each block live in blocksSnapshot (key→value record).
+ */
+export interface BlockDefinition {
+  key: string;
+  label: string;
+  content_type: string;
+  sort_order: number;
+  printable?: boolean;
+  send_to_patient?: boolean;
+}
+
 export interface ConsultationCreateParams {
   id: string;
   doctorId: string;
@@ -25,6 +39,12 @@ export interface ConsultationCreateParams {
   paymentReference?: string | null;
   paymentReceiptUrl?: string | null;
   blocksSnapshot?: Record<string, unknown> | null;
+  /**
+   * Per-consultation block structure definitions (array).
+   * Stored separately from blocksSnapshot (which holds values).
+   * Null until the doctor first saves a structured template for this consultation.
+   */
+  blocksStructure?: BlockDefinition[] | null;
   createdAt: Date;
   updatedAt: Date;
   /**
@@ -73,6 +93,8 @@ export class Consultation {
   readonly paymentReference: string | null;
   readonly paymentReceiptUrl: string | null;
   readonly blocksSnapshot: Record<string, unknown> | null;
+  /** Per-consultation block structure definitions — separate from blocksSnapshot values. */
+  readonly blocksStructure: BlockDefinition[] | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   /** Decrypted patient full name — populated by the enriched list/findById query. */
@@ -101,6 +123,7 @@ export class Consultation {
     this.paymentReference = params.paymentReference ?? null;
     this.paymentReceiptUrl = params.paymentReceiptUrl ?? null;
     this.blocksSnapshot = params.blocksSnapshot ?? null;
+    this.blocksStructure = params.blocksStructure ?? null;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
     this.patientName = params.patientName ?? null;

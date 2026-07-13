@@ -98,12 +98,25 @@ export interface IConsultationRepository {
    *   - undefined  → field not touched (omitted from the UPDATE)
    *   - null       → field cleared (written as NULL)
    *   - object     → field replaced with the new value
+   *
+   * blocksStructure semantics (same pattern):
+   *   - undefined  → field not touched (omitted from the UPDATE)
+   *   - null       → field cleared (written as NULL)
+   *   - array      → field replaced with the new structure
    */
   update(
     id: string,
     doctorId: string,
     fields: Partial<
-      Pick<Consultation, 'chiefComplaint' | 'diagnosis' | 'treatment' | 'notes' | 'blocksSnapshot'>
+      Pick<
+        Consultation,
+        | 'chiefComplaint'
+        | 'diagnosis'
+        | 'treatment'
+        | 'notes'
+        | 'blocksSnapshot'
+        | 'blocksStructure'
+      >
     >,
   ): Promise<Consultation>;
 

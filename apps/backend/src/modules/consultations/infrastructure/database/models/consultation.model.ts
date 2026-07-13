@@ -95,6 +95,14 @@ export class ConsultationModel extends Model {
   @Column({ type: DataType.JSONB, allowNull: true, field: 'blocks_snapshot' })
   declare blocksSnapshot: Record<string, unknown> | null;
 
+  /**
+   * Per-consultation block structure (array of block definitions).
+   * Added by migration 20260713000002.
+   * Values live in blocks_snapshot; structure definitions live here.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true, field: 'blocks_structure' })
+  declare blocksStructure: Record<string, unknown>[] | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

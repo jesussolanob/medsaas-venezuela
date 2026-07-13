@@ -50,6 +50,34 @@ describe('toConsultationResponse', () => {
     expect(result.blocks_snapshot).toBeNull();
   });
 
+  it('includes blocks_structure when the entity has a value', () => {
+    const structure = [
+      { key: 'tension_arterial', label: 'Tensión arterial', content_type: 'text', sort_order: 0 },
+    ];
+    const consultation = makeConsultation({ blocksStructure: structure });
+
+    const result = toConsultationResponse(consultation);
+
+    expect(result.blocks_structure).toEqual(structure);
+  });
+
+  it('includes blocks_structure as null when the entity has null', () => {
+    const consultation = makeConsultation({ blocksStructure: null });
+
+    const result = toConsultationResponse(consultation);
+
+    expect(result.blocks_structure).toBeNull();
+  });
+
+  it('includes blocks_structure as null when not provided (default)', () => {
+    // Entity constructor defaults blocksStructure to null via ?? null
+    const consultation = makeConsultation();
+
+    const result = toConsultationResponse(consultation);
+
+    expect(result.blocks_structure).toBeNull();
+  });
+
   it('maps all standard scalar fields correctly', () => {
     const consultation = makeConsultation({
       chiefComplaint: 'Headache',

@@ -34,6 +34,7 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     payment_reference: consultation.paymentReference,
     payment_receipt_url: consultation.paymentReceiptUrl,
     blocks_snapshot: consultation.blocksSnapshot ?? null,
+    blocks_structure: consultation.blocksStructure ?? null,
     created_at: consultation.createdAt.toISOString(),
     updated_at: consultation.updatedAt.toISOString(),
     /** Enriched read-side fields — null when not populated by a JOIN query. */

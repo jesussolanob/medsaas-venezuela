@@ -298,6 +298,54 @@ describe('ConsultationsController', () => {
         }),
       );
     });
+
+    it('passes blocks_structure to the use case', async () => {
+      const structure = [
+        { key: 'peso', label: 'Peso (kg)', content_type: 'number', sort_order: 0 },
+      ];
+      const consultation = makeConsultation({ blocksStructure: structure });
+      mockUpdate.execute.mockResolvedValue(consultation);
+
+      const result = await controller.update(
+        CONSULTATION_ID,
+        { blocks_structure: structure },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockUpdate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          consultationId: CONSULTATION_ID,
+          doctorId: DOCTOR_ID,
+          blocksStructure: structure,
+        }),
+      );
+    });
+
+    it('passes blocks_snapshot and blocks_structure independently', async () => {
+      const snapshot = { peso: 72 };
+      const structure = [
+        { key: 'peso', label: 'Peso (kg)', content_type: 'number', sort_order: 0 },
+      ];
+      const consultation = makeConsultation({
+        blocksSnapshot: snapshot,
+        blocksStructure: structure,
+      });
+      mockUpdate.execute.mockResolvedValue(consultation);
+
+      await controller.update(
+        CONSULTATION_ID,
+        { blocks_snapshot: snapshot, blocks_structure: structure },
+        mockUser,
+      );
+
+      expect(mockUpdate.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocksSnapshot: snapshot,
+          blocksStructure: structure,
+        }),
+      );
+    });
   });
 
   describe('approvePaymentEndpoint', () => {

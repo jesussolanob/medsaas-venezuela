@@ -5,6 +5,7 @@ import { Op, QueryTypes, UniqueConstraintError, type WhereOptions } from 'sequel
 import { Sequelize } from 'sequelize-typescript';
 import type { PaymentStatus } from '@delta/shared-types';
 import { Consultation } from '../../../domain/entities/consultation.entity';
+import type { BlockDefinition } from '../../../domain/entities/consultation.entity';
 import { ConsultationExtraItem } from '../../../domain/entities/consultation-extra-item.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationCodeConflictError } from '../../../domain/errors/consultation-code-conflict.error';
@@ -42,6 +43,7 @@ interface ConsultationEnrichedRow {
   payment_reference: string | null;
   payment_receipt_url: string | null;
   blocks_snapshot: Record<string, unknown> | null;
+  blocks_structure: BlockDefinition[] | null;
   created_at: string;
   updated_at: string;
   /** Encrypted full_name from the patients table — null when no patient row matched. */
@@ -112,7 +114,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
          c.payment_status, c.payment_method, c.amount, c.base_amount, c.payment_date,
          c.payment_reference, c.payment_receipt_url,
-         c.blocks_snapshot, c.created_at, c.updated_at,
+         c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status
        FROM consultations c
@@ -198,6 +200,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         paymentReference: consultation.paymentReference,
         paymentReceiptUrl: consultation.paymentReceiptUrl,
         blocksSnapshot: consultation.blocksSnapshot,
+        blocksStructure: consultation.blocksStructure,
       });
 
       return this.toDomain(row);
@@ -222,7 +225,15 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     id: string,
     doctorId: string,
     fields: Partial<
-      Pick<Consultation, 'chiefComplaint' | 'diagnosis' | 'treatment' | 'notes' | 'blocksSnapshot'>
+      Pick<
+        Consultation,
+        | 'chiefComplaint'
+        | 'diagnosis'
+        | 'treatment'
+        | 'notes'
+        | 'blocksSnapshot'
+        | 'blocksStructure'
+      >
     >,
   ): Promise<Consultation> {
     const updateData: Record<string, unknown> = {};
@@ -245,6 +256,11 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     // Stored as plain JSONB in Etapa 1 (no encryption applied).
     if (fields.blocksSnapshot !== undefined) {
       updateData.blocksSnapshot = fields.blocksSnapshot;
+    }
+    // blocksStructure: undefined → skip; null → clear; array → replace.
+    // Stored as plain JSONB — block definitions are not PHI.
+    if (fields.blocksStructure !== undefined) {
+      updateData.blocksStructure = fields.blocksStructure;
     }
 
     return this.sequelize.transaction(async (t) => {
@@ -470,7 +486,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
          c.payment_status, c.payment_method, c.amount, c.base_amount, c.payment_date,
          c.payment_reference, c.payment_receipt_url,
-         c.blocks_snapshot, c.created_at, c.updated_at,
+         c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status
        FROM consultations c
@@ -661,7 +677,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
            c.consultation_date, c.chief_complaint, c.diagnosis, c.treatment, c.notes,
            c.payment_status, c.payment_method, c.amount, c.base_amount, c.payment_date,
            c.payment_reference, c.payment_receipt_url,
-           c.blocks_snapshot, c.created_at, c.updated_at,
+           c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
            p.full_name AS patient_full_name_enc,
            a.status    AS appointment_status
          FROM consultations c
@@ -818,6 +834,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       paymentReference: row.paymentReference,
       paymentReceiptUrl: row.paymentReceiptUrl,
       blocksSnapshot: row.blocksSnapshot,
+      blocksStructure: (row.blocksStructure as BlockDefinition[] | null) ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       extraItems: [],
@@ -875,6 +892,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       paymentReference: row.payment_reference,
       paymentReceiptUrl: row.payment_receipt_url,
       blocksSnapshot: row.blocks_snapshot as Record<string, unknown> | null,
+      blocksStructure: (row.blocks_structure as BlockDefinition[] | null) ?? null,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       patientName,

@@ -15,7 +15,7 @@ export interface UpdateConsultationInput {
   treatment?: string | null;
   notes?: string | null;
   /**
-   * Dynamic clinical blocks from the doctor's consultation template.
+   * Dynamic clinical block VALUES from the doctor's consultation template.
    *
    * Partial-update semantics:
    *   - undefined  → not included in the UPDATE (field left untouched)
@@ -25,6 +25,23 @@ export interface UpdateConsultationInput {
    * ETAPA 2: cifrar blocks_snapshot (PHI) — diferido, igual que patient_messages.body
    */
   blocksSnapshot?: Record<string, unknown> | null;
+  /**
+   * Per-consultation block STRUCTURE definitions (array).
+   * Stored in blocks_structure column — separate from blocks_snapshot values.
+   *
+   * Partial-update semantics:
+   *   - undefined  → not included in the UPDATE (field left untouched)
+   *   - null       → written as NULL (clears the structure)
+   *   - array      → replaces the stored structure
+   */
+  blocksStructure?: Array<{
+    key: string;
+    label: string;
+    content_type: string;
+    sort_order: number;
+    printable?: boolean;
+    send_to_patient?: boolean;
+  }> | null;
 }
 
 /**
@@ -58,6 +75,7 @@ export class UpdateConsultationUseCase {
       treatment: input.treatment,
       notes: input.notes,
       blocksSnapshot: input.blocksSnapshot,
+      blocksStructure: input.blocksStructure,
     });
   }
 }

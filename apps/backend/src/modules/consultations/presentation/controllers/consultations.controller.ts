@@ -247,6 +247,7 @@ export class ConsultationsController {
       treatment: dto.treatment,
       notes: dto.notes,
       blocksSnapshot: dto.blocks_snapshot,
+      blocksStructure: dto.blocks_structure,
     });
     return { success: true, data: toConsultationResponse(consultation) };
   }

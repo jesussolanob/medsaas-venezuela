@@ -72,6 +72,7 @@ describe('UpdateConsultationUseCase', () => {
       treatment: 'Rest',
       notes: undefined,
       blocksSnapshot: undefined,
+      blocksStructure: undefined,
     });
   });
 
@@ -95,6 +96,7 @@ describe('UpdateConsultationUseCase', () => {
       treatment: undefined,
       notes: undefined,
       blocksSnapshot: snapshot,
+      blocksStructure: undefined,
     });
   });
 
@@ -117,6 +119,7 @@ describe('UpdateConsultationUseCase', () => {
       treatment: undefined,
       notes: undefined,
       blocksSnapshot: undefined,
+      blocksStructure: undefined,
     });
   });
 
@@ -139,6 +142,111 @@ describe('UpdateConsultationUseCase', () => {
       treatment: undefined,
       notes: undefined,
       blocksSnapshot: null,
+      blocksStructure: undefined,
+    });
+  });
+
+  it('persists blocksStructure when provided', async () => {
+    const structure = [
+      { key: 'tension_arterial', label: 'Tensión arterial', content_type: 'text', sort_order: 0 },
+      { key: 'peso', label: 'Peso (kg)', content_type: 'number', sort_order: 1 },
+    ];
+    const consultation = makeConsultation();
+    const updated = makeConsultation({ blocksStructure: structure });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.update.mockResolvedValue(updated);
+
+    const result = await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      blocksStructure: structure,
+    });
+
+    expect(result.blocksStructure).toEqual(structure);
+    expect(mockRepo.update).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, {
+      chiefComplaint: undefined,
+      diagnosis: undefined,
+      treatment: undefined,
+      notes: undefined,
+      blocksSnapshot: undefined,
+      blocksStructure: structure,
+    });
+  });
+
+  it('does NOT include blocksStructure in the update call when input omits it', async () => {
+    const consultation = makeConsultation();
+    const updated = makeConsultation({ diagnosis: 'Flu' });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.update.mockResolvedValue(updated);
+
+    await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      diagnosis: 'Flu',
+      // blocksStructure intentionally absent
+    });
+
+    expect(mockRepo.update).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, {
+      chiefComplaint: undefined,
+      diagnosis: 'Flu',
+      treatment: undefined,
+      notes: undefined,
+      blocksSnapshot: undefined,
+      blocksStructure: undefined,
+    });
+  });
+
+  it('clears blocksStructure when null is passed', async () => {
+    const consultation = makeConsultation({
+      blocksStructure: [{ key: 'peso', label: 'Peso', content_type: 'number', sort_order: 0 }],
+    });
+    const updated = makeConsultation({ blocksStructure: null });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.update.mockResolvedValue(updated);
+
+    const result = await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      blocksStructure: null,
+    });
+
+    expect(result.blocksStructure).toBeNull();
+    expect(mockRepo.update).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, {
+      chiefComplaint: undefined,
+      diagnosis: undefined,
+      treatment: undefined,
+      notes: undefined,
+      blocksSnapshot: undefined,
+      blocksStructure: null,
+    });
+  });
+
+  it('can update blocksSnapshot and blocksStructure independently in the same call', async () => {
+    const snapshot = { tension_arterial: '120/80' };
+    const structure = [
+      { key: 'tension_arterial', label: 'Tensión arterial', content_type: 'text', sort_order: 0 },
+    ];
+    const consultation = makeConsultation();
+    const updated = makeConsultation({ blocksSnapshot: snapshot, blocksStructure: structure });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.update.mockResolvedValue(updated);
+
+    const result = await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      blocksSnapshot: snapshot,
+      blocksStructure: structure,
+    });
+
+    expect(result.blocksSnapshot).toEqual(snapshot);
+    expect(result.blocksStructure).toEqual(structure);
+    expect(mockRepo.update).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, {
+      chiefComplaint: undefined,
+      diagnosis: undefined,
+      treatment: undefined,
+      notes: undefined,
+      blocksSnapshot: snapshot,
+      blocksStructure: structure,
     });
   });
 
