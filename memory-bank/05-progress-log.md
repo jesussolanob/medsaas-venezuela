@@ -2011,9 +2011,20 @@ Push de los 3 commits → deploy auto de `feature/migracion-backend` OK. Verific
   cliente NO refetchea la lista (usa datos SSR); **waterfall PARALELO** (`consultation-blocks`+`schedule`
   solapan ~175ms, antes secuenciales); console limpio (sin spam version-skew). ⚠️ El gap de hidratación
   (~1,5s antes de blocks) PERSISTE porque el bundle cliente sigue ~1,9MB (editor no extraído — ver punto 7).
-- **#3 pagos:** verificado a nivel deploy/build/runtime (Zod runtime→español, tsc verde, deploy desde ese
-  source) + Cobros carga sin regresión. NO se disparó el rechazo Zod end-to-end en la UI para no mutar el
-  pago de prueba en prod (los endpoints /details|/status son server actions, no route handlers curleables).
+- **#3 pagos:** ✅ verificado **end-to-end en prod** (drawer de Cobros, pago de prueba). Al disparar el rechazo
+  Zod salieron 2 hallazgos que se arreglaron+desplegaron:
+  1. **`fix(cobros)` `d222866`:** el drawer descartaba `result.error` y mostraba un genérico → los 3 handlers
+     (detalles/ítem/estado) ahora muestran el mensaje real del backend con fallback. `loadExtraItems` silencia el
+     404 de version-skew. Backend: se quitó el UUID interno de `PaymentNotFound`/`PaymentItemNotFound`/
+     `InvalidPaymentTransition` (deuda de los reviewers; id queda como propiedad para logs). Fix de test:
+     `money.vo.spec` asertaba el mensaje viejo en inglés (lo rompió el i18n `3b9aad1`; el backend-agent no corrió jest).
+  2. **`fix(cobros)` `2870e39`:** el surface destapó un bug real — el drawer mandaba `paid_at` como `YYYY-MM-DD`
+     pero el DTO exige `z.datetime()` (ISO), así que **"Guardar detalles" fallaba SIEMPRE que había fecha** (el
+     genérico lo ocultaba). Ahora envía ISO a mediodía local (evita corrimiento TZ VE -4). Y el `ZodValidationPipe`
+     ya NO antepone el path del campo en inglés (`paid_at:`) al top-level message (el array `errors` conserva el path).
+     Verificación en vivo: referencia >200 → "La referencia no puede superar los 200 caracteres" (específico, sin
+     prefijo); guardado válido → "Detalles guardados correctamente" + persiste método en la fila. ⚠️ el pago de prueba
+     quedó con método "Efectivo (USD)" + ref "QA-OK-001" (borrable).
 
 **⏳ PENDIENTE (RETOMAR):**
 
