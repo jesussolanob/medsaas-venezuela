@@ -126,6 +126,12 @@ export default function DoctorNotificationToast() {
         }
       } catch (err) {
         // Non-blocking — polling errors do not surface to the user.
+        // Specifically suppress version-skew "Server Action was not found" errors
+        // that fire when Next.js deploys a new bundle mid-session: the next poll
+        // will pick up the updated action automatically.
+        if (err instanceof Error && err.message.includes('Server Action was not found')) {
+          return;
+        }
         reportError('DoctorNotificationToast', 'checkNewBookings', err);
       }
     }
