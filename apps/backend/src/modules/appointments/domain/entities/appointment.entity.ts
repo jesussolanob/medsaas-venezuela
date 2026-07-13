@@ -76,6 +76,13 @@ export class Appointment {
      * Read-side enrichment only — not a domain invariant.
      */
     public readonly paymentStatus: string | null = null,
+    /**
+     * Consultation code (DLT-YYYYMM-NNNN) from the linked consultation.
+     * Populated by enriched list queries via LEFT JOIN to consultations.
+     * Null when no consultation is linked yet.
+     * Read-side enrichment only — not a domain invariant.
+     */
+    public readonly consultationCode: string | null = null,
   ) {}
 
   /**
@@ -134,6 +141,7 @@ export class Appointment {
       params.createdAt,
       params.updatedAt,
       params.paymentStatus ?? null,
+      params.consultationCode ?? null,
     );
   }
 }
@@ -198,4 +206,10 @@ export interface AppointmentCreateParams {
    * Read-side enrichment only — not persisted on the appointments table.
    */
   paymentStatus?: string | null;
+  /**
+   * Consultation code (DLT-YYYYMM-NNNN) from the linked consultation.
+   * Populated by enriched list queries via LEFT JOIN. Null when no consultation exists.
+   * Read-side enrichment only — not persisted on the appointments table.
+   */
+  consultationCode?: string | null;
 }

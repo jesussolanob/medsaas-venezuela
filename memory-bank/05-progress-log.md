@@ -1946,3 +1946,54 @@ Migraciones nuevas verificadas seguras para deploy: 20260712000010..000013.
   ahora resuelve completa. Registrado el modelo en ambos módulos. **Desbloqueó TODOS los deploys** (venían
   fallando en "Deploy backend" desde el mediodía).
 - Guion QA de este lote: `07-qa-test-script.md` sección **D-2026-07-12b** (24 casos).
+
+## 2026-07-13 — Lote QA masivo (post-migración, verificado en app Cloud Run)
+
+**⚠️ REGLA CRÍTICA DE QA:** probar SIEMPRE en la app migrada `https://delta-frontend-knliodnwza-ue.a.run.app`
+(NO en `deltasalud.app`, que es la app LEGACY en Vercel+Supabase sin ninguno de estos cambios). Ver
+memoria `qa-prod-url-cloudrun`. El QA reportó "no funciona" varias veces por probar la app vieja.
+
+**DESPLEGADO Y (mayormente) VERIFICADO en vivo con Playwright:**
+
+- Modales de consulta (ficha, aprobar-pago-con-extras) que NO abrían: causa = se montaban solo en el
+  return de la LISTA, no en el del EDITOR. Corregido (verificado en vivo).
+- IA "Mejorar redacción": chips de modo (Mejorar/Formal/Acortar/Ampliar) + encabezado usa label del
+  bloque (no el key). Sanitizer OK. Récipe/Reposo excluidos del selector.
+- Récipe: validación en español + presentación obligatoria + Indicaciones al final/opcional + botón
+  **"Dictar receta"** (voz→récipe: backend `parse_prescription` en POST /api/ai/text → pre-llena filas).
+- Informe: puede incluir CUALQUIER bloque como sección (récipe/reposo/indicaciones), opt-in.
+- Bloques por-consulta: agregar un bloque a una consulta ya NO toca la config global (solo su blocks_snapshot).
+- Ficha del paciente: drawer lateral derecho + todos los campos (vacíos="Sin registrar") + editable.
+- Modal "¿marcar atendida?" al salir de la consulta. Título de documentos centrado (fontSize mayor).
+- Plantillas: la vista previa usa el render REAL por tipo (informe=bloques habilitados, récipe 2 hojas,
+  reposo/paraclínico/recibo con su formato).
+- Cobros: método de pago obligatorio + barrido de mensajes a español. Servicios: label "Precio USD unitario".
+- Finanzas: refresco parcial (no recarga toda la pantalla) + botón "Crear paciente" en el modal de ingresos.
+- Recordatorios: correo por **Resend** (plantilla branded `reminder_manual`, mig 20260713000001) — ya no mailto/Outlook.
+- Login/Landing: "Delta Salud" (no "Delta"/"Medical CRM"), sin badges de tiendas ni métricas. T&C obligatorio
+  en onboarding (shake+rojo). Settings: tasa de cambio va de primero. Crear médico: no envía `password`
+  (rompía por DTO strict). Plan selector admin incluye Free Trial. Login va directo al portal (no landing).
+- Admin: "Pacientes atendidos" también en /admin/patients. Agenda: el detalle muestra estado real
+  (atendida/pagada) derivado de la lista (el endpoint `/detail` no existía → 404 tragado).
+- Calendar: fix de `redirect_uri` (usaba 0.0.0.0:8080 en Cloud Run → mismatch); ahora APP_BASE_URL.
+
+**⏳ PENDIENTE (RETOMAR EN OTRA SESIÓN):**
+
+1. **`consultation_code` en la agenda** (backend): el query de citas no trae `c.consultation_code`; hay que
+   agregarlo al SELECT + entidad + mapper (frontend ya listo). _(En curso al cierre de esta sesión.)_
+2. **Consultas "lento"**: reportado lentitud — falta PROFILING real en el navegador (no se hizo).
+3. **Barrido backend de mensajes en INGLÉS**: endpoints de pagos que aún pueden devolver inglés en
+   `AppError.message`: `PATCH /api/finances/payments/:id/details`, `PUT :id/status`, `POST/DELETE :id/items`.
+   (El frontend de Cobros ya los envuelve en español, pero el backend debería devolver español.)
+4. **CONFIG de Google Calendar (la hace el USUARIO en consola)** — el "Conectar" no funciona hasta:
+   verificar/recrear el OAuth client `763714620325-823prmk160n99cpve9ustirmbq257c19` (proyecto
+   sodium-shard-499116-r3; podría ser el que se borró = deleted_client); registrar redirect URIs
+   (localhost + `https://delta-frontend-knliodnwza-ue.a.run.app/api/integrations/google/callback`);
+   scope `calendar.events` + doctor como test user; GitHub vars `NEXT_PUBLIC_GOOGLE_CLIENT_ID`/
+   `GOOGLE_CLIENT_ID` + Secret `GOOGLE_CLIENT_SECRET`; habilitar Google Calendar API. NOTA: el evento
+   solo se crea para citas ONLINE (presenciales no, por diseño) y va al calendar del doctor.
+5. **Verificación VISUAL del usuario** de los PDFs (no automatizables por Playwright): informe con bloques,
+   título centrado, plantillas preview por tipo, récipe 2 hojas, recibo branded.
+
+Datos de prueba en la BD migrada (borrables): paciente "Paciente Prueba QA" (V-30111222) + consulta
+DLT-202607-0027. Doctor de prueba lucas.rivas.55@gmail.com puesto en delta_plus por el usuario.

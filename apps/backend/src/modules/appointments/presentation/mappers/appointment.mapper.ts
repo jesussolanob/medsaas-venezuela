@@ -51,6 +51,8 @@ export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
     updatedAt: appt.updatedAt,
     /** Enriched from linked consultation. Null when no consultation is linked. */
     paymentStatus: appt.paymentStatus,
+    /** Consultation code (DLT-YYYYMM-NNNN). Null when no consultation is linked. */
+    consultationCode: appt.consultationCode,
   };
 }
 

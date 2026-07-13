@@ -130,7 +130,7 @@ type CalendarAppointment = {
   chief_complaint?: string;
   status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
   source: 'consultation' | 'appointment';
-  consultation_code?: string;
+  consultation_code?: string | null;
   appointment_code?: string;
   plan_name?: string;
   plan_price?: number;
@@ -638,7 +638,7 @@ export default function AgendaPage() {
         chief_complaint: a.chief_complaint,
         status: a.status,
         source: a.source,
-        consultation_code: undefined, // FASE 5: el backend no retorna consultation_code en lista
+        consultation_code: a.consultation_code ?? null,
         appointment_code: a.appointment_code,
         plan_name: a.plan_name,
         plan_price: a.plan_price,

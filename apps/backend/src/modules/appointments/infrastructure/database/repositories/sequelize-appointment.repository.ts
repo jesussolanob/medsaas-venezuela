@@ -109,6 +109,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       created_at: string;
       updated_at: string;
       consultation_payment_status: string | null;
+      consultation_code: string | null;
     }
 
     const rows = await this.sequelize.query<AppointmentEnrichedRow>(
@@ -120,7 +121,8 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
          a.insurance_name, a.bcv_rate, a.amount_bs, a.package_id, a.session_number,
          a.chief_complaint, a.appointment_code, a.payment_id, a.meet_link, a.office_id,
          a.google_calendar_event_id, a.duration_minutes, a.created_at, a.updated_at,
-         c.payment_status AS consultation_payment_status
+         c.payment_status AS consultation_payment_status,
+         c.consultation_code AS consultation_code
        FROM appointments a
        LEFT JOIN consultations c ON c.id = a.consultation_id
        WHERE ${where}
@@ -168,6 +170,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
           createdAt: new Date(r.created_at),
           updatedAt: new Date(r.updated_at),
           paymentStatus: r.consultation_payment_status ?? null,
+          consultationCode: r.consultation_code ?? null,
         }),
       ),
       total,
