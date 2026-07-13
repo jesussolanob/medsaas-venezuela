@@ -2026,13 +2026,38 @@ Push de los 3 commits → deploy auto de `feature/migracion-backend` OK. Verific
      prefijo); guardado válido → "Detalles guardados correctamente" + persiste método en la fila. ⚠️ el pago de prueba
      quedó con método "Efectivo (USD)" + ref "QA-OK-001" (borrable).
 
+**✅ QA visual (Playwright) del flujo de consulta + PDFs — HECHO (2026-07-13):**
+
+- Flujo consulta post-refactor: lista SSR, filtro estado (re-fetch), búsqueda, **deep-link `?open=`**, editor
+  completo, **autosave** (escribir→persiste tras reload→restaurar) — TODO PASA. Riesgo del split descartado.
+- PDFs: **Informe médico** ✅ (branded, título centrado, bloque renderizado — PDF leído). **Recibo** ✅ branded
+  PERO 🐛 muestra la fecha de pago un día antes (date-only midnight-UTC formateado en local VE-4) — el
+  almacenamiento es correcto, es display del recibo. Récipe-2-hojas/Reposo NO testeables (consulta sin esos bloques).
+
+**✅ LOTE QA "3 observaciones" del usuario — DESPLEGADO Y VERIFICADO EN VIVO (2026-07-13):**
+Commits `f03e9bd` + `d239eae` + `c142844` (deploys success, columna nueva vía migración `20260713000002`).
+
+1. **#1 aprobar sin método** (`cobros/page.tsx` guard en `updatePaymentStatus`): ✅ verificado con un pago
+   method-less real (creado con "Pagar después" → DLT-202607-0030) → "Marcar como aprobado" muestra
+   **"Debes registrar un método de pago antes de aprobar el cobro"** y NO aprueba.
+2. **#2 sidebar slim del editor**: ✅ quita datos del paciente/consulta/alertas (ya viven en la ficha), conserva
+   botón "Ver ficha del paciente" + controles de pago. Verificado en vivo.
+3. **#3 agregar bloque** ("expected record, received array" en inglés): ✅ raíz = `blocks_snapshot` sobrecargado
+   (valores record + estructura array en una columna). Fix: **columna nueva `blocks_structure`** (array) separada
+   de `blocks_snapshot` (valores record); BFF enruta por forma (Array→structure, objeto→snapshot); `getEffectiveBlocks`
+   lee structure. Un 2º bug oculto salió en el QA en vivo: los items llegan con naming inconsistente (camelCase de
+   la config del doctor vs snake_case del catálogo) → se relajó el DTO/entity a metadata opaca (`key` + passthrough,
+   commit `c142844`). Verificado: agregar bloque → PATCH 200, tab aparece y **persiste tras reload**.
+   ⚠️ dato de prueba nuevo creado: consulta **DLT-202607-0030** (Paciente Prueba QA, pago pendiente sin método) — borrable.
+
 **⏳ PENDIENTE (RETOMAR):**
 
-5. **Verificación VISUAL del usuario** de los PDFs (no automatizables por Playwright): informe con bloques,
-   título centrado, plantillas preview por tipo, récipe 2 hojas, recibo branded.
-6. **QA visual del FLUJO de consulta** post-refactor: abrir/editar/autosave/filtros/paginación/deep-link
-   `?open=` — se verificó carga y estructura, NO el flujo interactivo completo (riesgo residual del split).
-7. **(Opcional, gran win)** editor de consulta como isla dynamic — ver punto 2 (ataca el bundle ~1,9MB restante).
+5. **Récipe 2 hojas / Reposo PDF**: verificar con una consulta que tenga esos bloques cargados (la de prueba no los tiene).
+6. **🐛 Fecha del recibo un día antes** (display): formatear `paid_at`/fechas del recibo con `timeZone:'UTC'`.
+   El almacenamiento es correcto; solo el render de `buildReceiptHtml` corre la fecha por TZ. Follow-up chico.
+7. **(Opcional, gran win)** editor de consulta como isla dynamic — ataca el bundle ~1,9MB restante.
+8. **Deuda de naming de bloques**: unificar camelCase/snake_case en los items de estructura (hoy funciona por el
+   passthrough, pero es frágil). Y el `blocks_snapshot:[]` edge en el BFF (heurística por forma) — code-review MEDIUM.
 
 Datos de prueba en la BD migrada (borrables): paciente "Paciente Prueba QA" (V-30111222) + consulta
 DLT-202607-0027. Doctor de prueba lucas.rivas.55@gmail.com puesto en delta_plus por el usuario.
