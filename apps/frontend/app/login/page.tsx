@@ -151,25 +151,9 @@ function LoginInner() {
                   className="font-extrabold text-lg leading-none tracking-tight"
                   style={{ color: 'var(--dh-ink)' }}
                 >
-                  Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
-                </p>
-                <p
-                  className="text-[10px] font-medium tracking-[0.12em] uppercase"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                >
-                  Medical CRM
+                  Delta Salud
                 </p>
               </div>
-              <span
-                className="ml-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                style={{
-                  background: 'var(--dh-turquoise-50)',
-                  color: 'var(--dh-turquoise-700)',
-                  border: '1px solid var(--dh-turquoise-100)',
-                }}
-              >
-                Medical CRM
-              </span>
             </div>
           </div>
 
@@ -196,42 +180,6 @@ function LoginInner() {
             >
               Gestiona pacientes, agenda, historial clínico y finanzas desde un solo lugar.
             </p>
-
-            <div className="flex gap-8 pt-2">
-              <div>
-                <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>
-                  500+
-                </p>
-                <p
-                  className="text-[11px] font-medium uppercase tracking-wider"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                >
-                  Especialistas
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>
-                  12
-                </p>
-                <p
-                  className="text-[11px] font-medium uppercase tracking-wider"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                >
-                  Especialidades
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold" style={{ color: 'var(--dh-ink)' }}>
-                  24/7
-                </p>
-                <p
-                  className="text-[11px] font-medium uppercase tracking-wider"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                >
-                  Disponibilidad
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Bottom: Testimonial + App Stores */}
@@ -261,26 +209,6 @@ function LoginInner() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="store-pill">
-                <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 14, height: 14 }}>
-                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
-                </svg>
-                Pronto en App Store
-              </span>
-              <span className="store-pill">
-                <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 14, height: 14 }}>
-                  <path d="M3.18 23.71c.46.27 1.03.3 1.52.09l.05-.02L17.53 17l-3.72-3.73L3.18 23.71zM.44 1.32c-.28.4-.44.9-.44 1.45v18.46c0 .55.16 1.05.44 1.45L11.5 12 .44 1.32zm21.16 9.37l-3.65-2.04-3.9 3.85 3.9 3.85 3.65-2.04c.68-.38 1.1-1.08 1.1-1.86 0-.78-.42-1.48-1.1-1.76zM4.75.29L17.53 7l-3.72 3.73L3.18.29C3.64.02 4.21-.01 4.7.2l.05.09z" />
-                </svg>
-                Pronto en Google Play
-              </span>
-              <span
-                className="store-pill"
-                style={{ borderColor: 'var(--dh-turquoise-100)', color: 'var(--dh-turquoise-700)' }}
-              >
-                Próximamente planes disponibles
-              </span>
-            </div>
           </div>
         </div>
 
@@ -298,13 +226,7 @@ function LoginInner() {
                   className="font-extrabold text-lg leading-none tracking-tight"
                   style={{ color: 'var(--dh-ink)' }}
                 >
-                  Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
-                </p>
-                <p
-                  className="text-[10px] font-medium tracking-[0.12em] uppercase"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                >
-                  Medical CRM
+                  Delta Salud
                 </p>
               </div>
             </div>
