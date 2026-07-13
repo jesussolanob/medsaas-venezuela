@@ -27,6 +27,8 @@ import { showToast } from '@/components/ui/Toaster';
 
 type Consultation = {
   id: string;
+  /** Discrimina la fuente: 'consultation' → id es UUID de consulta; 'appointment' → id es appt-<uuid> */
+  source: 'consultation' | 'appointment';
   consultation_code: string;
   consultation_date: string;
   chief_complaint: string | null;
@@ -154,22 +156,14 @@ export default function RemindersPage() {
     return encodeURIComponent(msg);
   }
 
-  function buildEmailMessage(consult: Consultation) {
-    const date = formatDate(consult.consultation_date);
-    const time = formatTime(consult.consultation_date);
-    const doc = doctorName || 'su médico';
-    const subject = encodeURIComponent(`📅 Confirmación de consulta - ${date}`);
-    let body = `Estimado/a ${consult.patient_name} 👋\n\n`;
-    body += `Le confirmamos su consulta con ${doc}:\n\n`;
-    body += `📅 Fecha: ${date}\n`;
-    body += `🕐 Hora: ${time}\n`;
-    if (consult.plan_name) body += `📋 Servicio: ${consult.plan_name}\n`;
-    body += `🔖 Código: ${consult.consultation_code}\n\n`;
-    body += `Por favor llegue con 10 minutos de anticipación.\n`;
-    body += `Si necesita reagendar, contáctenos con anticipación.\n\n`;
-    body += `¡Le esperamos! 🏥\n\n`;
-    body += `Saludos,\n${doc}`;
-    return { subject, body: encodeURIComponent(body) };
+  /** Devuelve el body correcto para POST /api/doctor/reminders/send-email */
+  function buildSendEmailPayload(consult: Consultation): Record<string, string> {
+    // Los items de citas tienen id con prefijo "appt-<uuid>"; los de consulta usan el UUID directo.
+    if (consult.source === 'appointment') {
+      const rawId = consult.id.startsWith('appt-') ? consult.id.slice(5) : consult.id;
+      return { appointment_id: rawId };
+    }
+    return { consultation_id: consult.id };
   }
 
   function sendWhatsApp(consult: Consultation) {
@@ -187,13 +181,27 @@ export default function RemindersPage() {
     setTimeout(() => setSending(null), 1000);
   }
 
-  function sendEmail(consult: Consultation) {
+  async function sendEmail(consult: Consultation) {
     if (!consult.patient_email) return;
     setSending(consult.id + '-em');
-    const { subject, body } = buildEmailMessage(consult);
-    window.open(`mailto:${consult.patient_email}?subject=${subject}&body=${body}`, '_blank');
-    markSent(consult.id, 'email');
-    setTimeout(() => setSending(null), 1000);
+    try {
+      const res = await fetch('/api/doctor/reminders/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildSendEmailPayload(consult)),
+      });
+      const json = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !json.success) {
+        showToast({ type: 'error', message: json.error ?? 'Error al enviar el correo' });
+      } else {
+        markSent(consult.id, 'email');
+        showToast({ type: 'success', message: 'Recordatorio enviado por correo' });
+      }
+    } catch {
+      showToast({ type: 'error', message: 'Error de red al enviar el correo' });
+    } finally {
+      setSending(null);
+    }
   }
 
   function markSent(consultId: string, channel: 'whatsapp' | 'email') {
@@ -233,10 +241,28 @@ export default function RemindersPage() {
           await new Promise((r) => setTimeout(r, 500));
         }
       } else if (bulkChannel === 'email' && consult.patient_email) {
-        const { subject, body } = buildEmailMessage(consult);
-        window.open(`mailto:${consult.patient_email}?subject=${subject}&body=${body}`, '_blank');
-        markSent(consult.id, 'email');
-        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const res = await fetch('/api/doctor/reminders/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildSendEmailPayload(consult)),
+          });
+          const json = (await res.json()) as { success?: boolean; error?: string };
+          if (!res.ok || !json.success) {
+            showToast({
+              type: 'error',
+              message: `${consult.patient_name}: ${json.error ?? 'Error al enviar'}`,
+            });
+          } else {
+            markSent(consult.id, 'email');
+          }
+        } catch {
+          showToast({
+            type: 'error',
+            message: `${consult.patient_name}: error de red`,
+          });
+        }
+        await new Promise((r) => setTimeout(r, 300));
       }
     }
     setSelected(new Set());

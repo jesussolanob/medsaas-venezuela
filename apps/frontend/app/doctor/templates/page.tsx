@@ -22,6 +22,8 @@ import {
   EyeOff,
   Type,
   Image as ImageIcon,
+  Receipt,
+  AlertCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
@@ -88,7 +90,22 @@ const ICON_MAP: Record<string, LucideIcon> = {
   internal_notes: FileText,
   next_followup: FileText,
   informe: FileText,
+  // Recibo de pago (Cobros) — tipo configurable en frontend; pendiente soporte backend
+  recibo: Receipt,
 };
+
+/**
+ * Tipos de plantilla que el backend acepta actualmente.
+ * 'recibo' NO está incluido — se almacena en localStorage hasta que el backend lo soporte.
+ *
+ * DEPENDENCIA PENDIENTE: agregar 'recibo' al enum TemplateType del backend
+ * (apps/backend/src/modules/doctor-templates/domain/value-objects/template-type.vo.ts)
+ * para que el recibo de Cobros sea 100% configurable desde el backend.
+ */
+const BACKEND_VALID_TYPES = new Set(['informe', 'recipe', 'prescripciones', 'reposo']);
+
+/** localStorage key for the recibo template config (frontend-only until backend supports it). */
+const RECIBO_LOCALSTORAGE_KEY = 'delta_recibo_template_config';
 
 // Fallback para doctores sin bloques configurados (retrocompat con datos viejos).
 // Tipos estándar de documentos médicos usados en Venezuela.
@@ -117,6 +134,12 @@ const FALLBACK_TABS: TemplateTab[] = [
     label: 'Reposo',
     icon: Bed,
     description: 'Constancia de reposo médico para el paciente',
+  },
+  {
+    key: 'recibo',
+    label: 'Recibo',
+    icon: Receipt,
+    description: 'Recibo de pago (módulo Cobros) — color, encabezado y pie configurables',
   },
 ];
 
@@ -258,8 +281,34 @@ export default function TemplatesPage() {
     // ── 3) Cargar plantillas guardadas desde el backend (NestJS doctor-templates)
     const savedMap = await loadTemplateConfigs();
 
+    // Leer config de 'recibo' desde localStorage (no existe en backend todavía)
+    let reciboLocalConfig: TemplateConfig | null = null;
+    try {
+      const raw = localStorage.getItem(RECIBO_LOCALSTORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<TemplateConfig>;
+        reciboLocalConfig = {
+          logo_url: parsed.logo_url ?? null,
+          signature_url: parsed.signature_url ?? null,
+          font_family: parsed.font_family || 'Inter',
+          header_text: parsed.header_text || '',
+          footer_text: parsed.footer_text || '',
+          show_logo: parsed.show_logo !== false,
+          show_signature: parsed.show_signature !== false,
+          primary_color: parsed.primary_color || '#0891b2',
+        };
+      }
+    } catch {
+      // localStorage no disponible o JSON inválido — usar defaults
+    }
+
     const initialConfigs: Record<string, TemplateConfig> = {};
     for (const t of dynamicTabs) {
+      // 'recibo' se almacena en localStorage hasta que el backend lo soporte
+      if (t.key === 'recibo') {
+        initialConfigs[t.key] = reciboLocalConfig ?? { ...DEFAULT_CONFIG };
+        continue;
+      }
       const saved = savedMap[t.key];
       initialConfigs[t.key] = saved
         ? {
@@ -321,6 +370,25 @@ export default function TemplatesPage() {
   async function saveTemplate() {
     setSaving(true);
     try {
+      // 'recibo' se almacena en localStorage — el backend no soporta este tipo todavía.
+      // DEPENDENCIA PENDIENTE: cuando el backend agregue 'recibo' al enum TemplateType,
+      // remover esta rama y dejar que fluya al bloque normal de abajo.
+      if (activeTab === 'recibo') {
+        try {
+          localStorage.setItem(RECIBO_LOCALSTORAGE_KEY, JSON.stringify(config));
+        } catch {
+          showToast({
+            type: 'error',
+            message: 'No se pudo guardar la config del recibo localmente',
+          });
+          return;
+        }
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+        showToast({ type: 'success', message: 'Plantilla "Recibo" guardada (local).' });
+        return;
+      }
+
       const input: UpsertTemplateInput = {
         logo_url: config.logo_url,
         signature_url: config.signature_url,
@@ -361,12 +429,27 @@ export default function TemplatesPage() {
         primary_color: currentConfig.primary_color,
       };
 
-      // El backend solo acepta estos 4 tipos de plantilla. Antes se iteraban las
-      // keys de las tabs (que incluyen block-keys como 'indications'/'paraclinical'),
-      // provocando INVALID_TEMPLATE_TYPE 400 (Sentry DELTA-FRONTEND-M). Se aplica la
-      // config solo a los tipos válidos.
-      const VALID_TEMPLATE_TYPES = ['informe', 'recipe', 'prescripciones', 'reposo'];
-      const result = await applyTemplateConfigToAll(input, VALID_TEMPLATE_TYPES);
+      // El backend solo acepta los 4 tipos en BACKEND_VALID_TYPES.
+      // 'recibo' se persiste en localStorage; los demás tipos dinámicos que no
+      // son del backend se ignoran en la iteración de applyTemplateConfigToAll.
+      const backendTypes = templateTabs.map((t) => t.key).filter((k) => BACKEND_VALID_TYPES.has(k));
+      const result = await applyTemplateConfigToAll(input, backendTypes);
+
+      // También actualizar 'recibo' en localStorage si hay una tab de recibo
+      if (templateTabs.some((t) => t.key === 'recibo')) {
+        try {
+          localStorage.setItem(
+            RECIBO_LOCALSTORAGE_KEY,
+            JSON.stringify({
+              ...currentConfig,
+              logo_url: null,
+              signature_url: null,
+            }),
+          );
+        } catch {
+          // localStorage no disponible — ignorar silenciosamente
+        }
+      }
 
       if (!result.ok) {
         showToast({
@@ -477,6 +560,28 @@ export default function TemplatesPage() {
             <p className="text-xs text-slate-500 mt-0.5">{tabInfo.description}</p>
           </div>
         </div>
+
+        {/* Aviso especial para el tipo 'recibo': se guarda en localStorage hasta que
+            el backend agregue 'recibo' como tipo válido de plantilla. */}
+        {activeTab === 'recibo' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 text-xs text-amber-800">
+              <p className="font-semibold mb-1">
+                Configuración del recibo guardada localmente (este navegador)
+              </p>
+              <p>
+                El color, encabezado y pie que configures aquí se aplican al recibo de pago del
+                módulo <b>Cobros</b>. La configuración se guarda en este navegador mientras el tipo
+                &quot;recibo&quot; se agrega al servidor.
+              </p>
+              <p className="mt-1 text-amber-700">
+                <b>Fallback:</b> Si no hay configuración guardada, el recibo usa la plantilla{' '}
+                <b>Informe</b> del servidor.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left: Configuration */}

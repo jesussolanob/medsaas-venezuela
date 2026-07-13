@@ -249,6 +249,72 @@ export async function getBcvRateForDate(date: string): Promise<BcvRateForDateRes
 }
 
 // ---------------------------------------------------------------------------
+// Template config for receipt branding
+// ---------------------------------------------------------------------------
+
+/**
+ * Template config fields used when generating the receipt PDF.
+ * The backend only supports 4 template types (informe/recipe/prescripciones/reposo).
+ * Until 'recibo' is added as a backend type, we use the 'informe' config as fallback.
+ *
+ * DEPENDENCIA DE BACKEND PENDIENTE: para que el recibo sea configurable como tipo
+ * propio se necesita agregar 'recibo' al enum TemplateType en el backend
+ * (template-type.vo.ts). Por ahora, se usa la config de 'informe' como fallback.
+ */
+export type ReceiptTemplateConfig = {
+  primary_color: string;
+  header_text: string;
+  footer_text: string;
+  show_logo: boolean;
+  show_signature: boolean;
+};
+
+/**
+ * Fetches the template config to use for the receipt PDF.
+ * Preference order: 'recibo' (future) → 'informe' → hardcoded defaults.
+ */
+export async function getReceiptTemplateConfig(): Promise<ReceiptTemplateConfig> {
+  const defaults: ReceiptTemplateConfig = {
+    primary_color: '#0891b2',
+    header_text: '',
+    footer_text: '',
+    show_logo: true,
+    show_signature: true,
+  };
+
+  const result = await backendGet<unknown[]>('/api/doctor/templates');
+  if (!result.ok) return defaults;
+
+  const templates = Array.isArray(result.value) ? result.value : [];
+  // Priority: recibo (when backend supports it) → informe → first available
+  const priority = ['recibo', 'informe', 'recipe', 'prescripciones', 'reposo'];
+
+  let chosen: Record<string, unknown> | null = null;
+  for (const type of priority) {
+    const found = templates.find(
+      (t): t is Record<string, unknown> =>
+        t !== null &&
+        typeof t === 'object' &&
+        (t as Record<string, unknown>)['templateType'] === type,
+    );
+    if (found) {
+      chosen = found;
+      break;
+    }
+  }
+
+  if (!chosen) return defaults;
+
+  return {
+    primary_color: (chosen['primaryColor'] as string | undefined) ?? defaults.primary_color,
+    header_text: (chosen['headerText'] as string | undefined) ?? defaults.header_text,
+    footer_text: (chosen['footerText'] as string | undefined) ?? defaults.footer_text,
+    show_logo: (chosen['showLogo'] as boolean | undefined) ?? defaults.show_logo,
+    show_signature: (chosen['showSignature'] as boolean | undefined) ?? defaults.show_signature,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Export payments as CSV (replaces Supabase appointments read in exportExcel())
 // ---------------------------------------------------------------------------
 

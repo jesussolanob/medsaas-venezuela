@@ -147,6 +147,34 @@ function getSampleContent(docType: string, doctorName: string): ContentBlock[] {
         },
       ];
 
+    case 'recibo':
+      return [
+        {
+          key: 'concepto',
+          label: 'Concepto',
+          value: 'Consulta médica — Plan Estándar',
+        },
+        {
+          key: 'monto',
+          label: 'Monto',
+          value: 'USD 50.00  (Bs 2.350,00 | Tasa BCV: 47,00 Bs/$)',
+        },
+        {
+          key: 'metodo',
+          label: 'Método de pago',
+          value: 'Pago Móvil — Ref: 12345678',
+        },
+        {
+          key: 'fecha',
+          label: 'Fecha de pago',
+          value: new Intl.DateTimeFormat('es-VE', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          }).format(new Date()),
+        },
+      ];
+
     case 'informe':
     default:
       return [

@@ -30,6 +30,7 @@ import {
   saveReceiptUrl,
   updatePaymentDetails,
   getBcvRateForDate,
+  getReceiptTemplateConfig,
 } from './actions';
 import {
   Receipt,
@@ -482,13 +483,51 @@ export default function CobrosPage() {
 
   // RONDA 34: generar recibo PDF con branding del perfil.
   // TAREA 4: fallback a blob URL si window.open() está bloqueado.
+  // Branded: aplica la config de plantilla del doctor (color, header, footer,
+  // show_logo, show_signature) igual que los documentos de consulta.
+  // Orden de prioridad para la config del recibo:
+  //   1. Config guardada en localStorage (tipo 'recibo' desde /doctor/templates)
+  //   2. Config del servidor para 'informe' (fallback) via getReceiptTemplateConfig()
   async function generateReceipt() {
     if (!selectedPayment) return;
+
+    // 1. Leer config de 'recibo' desde localStorage (guardada en /doctor/templates)
+    type LocalReciboCfg = {
+      primary_color?: string;
+      header_text?: string;
+      footer_text?: string;
+      show_logo?: boolean;
+      show_signature?: boolean;
+    };
+    let localReciboCfg: LocalReciboCfg | null = null;
+    try {
+      const raw = localStorage.getItem('delta_recibo_template_config');
+      if (raw) localReciboCfg = JSON.parse(raw) as LocalReciboCfg;
+    } catch {
+      // localStorage no disponible — continuar con fallback del servidor
+    }
 
     const [prof, rawItems] = await Promise.all([
       getDoctorProfileForReceipt(),
       getPaymentItems(selectedPayment.id),
     ]);
+
+    // Obtener config de plantilla del servidor (fallback a 'informe' si no hay 'recibo')
+    const rawServerCfg = await getReceiptTemplateConfig();
+    const serverColor: string = rawServerCfg.primary_color;
+    const serverHeaderText: string = rawServerCfg.header_text;
+    const serverFooterText: string = rawServerCfg.footer_text;
+    const serverShowLogo: boolean = rawServerCfg.show_logo;
+    const serverShowSignature: boolean = rawServerCfg.show_signature;
+
+    // Merge: config local (localStorage) tiene prioridad sobre la del servidor (informe fallback)
+    const templateCfg = {
+      primary_color: localReciboCfg?.primary_color ?? serverColor,
+      header_text: localReciboCfg?.header_text ?? serverHeaderText,
+      footer_text: localReciboCfg?.footer_text ?? serverFooterText,
+      show_logo: localReciboCfg?.show_logo ?? serverShowLogo,
+      show_signature: localReciboCfg?.show_signature ?? serverShowSignature,
+    };
 
     if (!prof) {
       showToast({ type: 'error', message: 'No se pudo cargar la información del doctor' });
@@ -529,6 +568,12 @@ export default function CobrosPage() {
       doctorPhone: prof.phone,
       logoUrl: prof.logo_url,
       signatureUrl: prof.signature_url,
+      // Template config branded (color, header, footer, visibilidad)
+      primaryColor: templateCfg.primary_color,
+      headerText: templateCfg.header_text || null,
+      footerText: templateCfg.footer_text || null,
+      showLogo: templateCfg.show_logo,
+      showSignature: templateCfg.show_signature,
     });
 
     // TAREA 4: intentar window.open(); si está bloqueado, usar blob URL

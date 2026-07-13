@@ -10,54 +10,75 @@
  * Devuelve HTML listo para abrir en window.open() y disparar window.print().
  */
 
-import { formatPaymentMethod } from './payment-methods'
+import { formatPaymentMethod } from './payment-methods';
 
 export type ReceiptData = {
   // Datos del recibo
-  paymentCode: string                     // P3000XXX o appointment_code como fallback
-  consultationCode?: string | null        // C2000XXX si esta vinculada
-  patientName: string
-  patientCedula?: string | null
-  patientEmail?: string | null
-  patientPhone?: string | null
-  amountUsd: number
-  amountBs?: number | null
-  bcvRate?: number | null
-  paymentMethod: string | null
-  paymentReference?: string | null
-  paidAt: string                          // ISO
-  scheduledAt: string                     // ISO de la cita
-  planName?: string | null
+  paymentCode: string; // P3000XXX o appointment_code como fallback
+  consultationCode?: string | null; // C2000XXX si esta vinculada
+  patientName: string;
+  patientCedula?: string | null;
+  patientEmail?: string | null;
+  patientPhone?: string | null;
+  amountUsd: number;
+  amountBs?: number | null;
+  bcvRate?: number | null;
+  paymentMethod: string | null;
+  paymentReference?: string | null;
+  paidAt: string; // ISO
+  scheduledAt: string; // ISO de la cita
+  planName?: string | null;
   // Items adicionales (RONDA 34: agregar paquete/servicio extra)
-  extraItems?: Array<{ name: string; amount: number }>
+  extraItems?: Array<{ name: string; amount: number }>;
   // Branding del doctor
-  doctorName: string
-  doctorTitle?: string | null
-  doctorSpecialty?: string | null
-  doctorLicense?: string | null
-  doctorEmail?: string | null
-  doctorPhone?: string | null
-  logoUrl?: string | null
-  signatureUrl?: string | null
-  primaryColor?: string                    // default #0891b2
-}
+  doctorName: string;
+  doctorTitle?: string | null;
+  doctorSpecialty?: string | null;
+  doctorLicense?: string | null;
+  doctorEmail?: string | null;
+  doctorPhone?: string | null;
+  logoUrl?: string | null;
+  signatureUrl?: string | null;
+  primaryColor?: string; // default #0891b2
+  // Config de plantilla (opcional) — permite aplicar la config branded del doctor
+  // como si fuera un tipo más de documento. Si no se pasan, se usan los defaults.
+  headerText?: string | null; // texto del encabezado (header_text de la plantilla)
+  footerText?: string | null; // texto del pie (footer_text de la plantilla)
+  showLogo?: boolean; // default true
+  showSignature?: boolean; // default true
+};
 
-const fmtUsd = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n || 0)
-const fmtBs = (n: number) => `Bs ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(n || 0)}`
+const fmtUsd = (n: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  }).format(n || 0);
+const fmtBs = (n: number) =>
+  `Bs ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(n || 0)}`;
 
 export function buildReceiptHtml(data: ReceiptData): string {
-  const color = data.primaryColor || '#0891b2'
+  const color = data.primaryColor || '#0891b2';
+  const showLogo = data.showLogo !== false;
+  const showSignature = data.showSignature !== false;
   const paid = new Date(data.paidAt).toLocaleString('es-VE', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   const sched = new Date(data.scheduledAt).toLocaleDateString('es-VE', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 
   // Total = monto base + items extra
-  const extraTotal = (data.extraItems || []).reduce((s, i) => s + (i.amount || 0), 0)
-  const grandTotal = data.amountUsd + extraTotal
+  const extraTotal = (data.extraItems || []).reduce((s, i) => s + (i.amount || 0), 0);
+  const grandTotal = data.amountUsd + extraTotal;
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -102,9 +123,9 @@ export function buildReceiptHtml(data: ReceiptData): string {
 
   <div class="header">
     <div class="header-left">
-      ${data.logoUrl ? `<div class="header-logo"><img src="${data.logoUrl}" alt="Logo" crossorigin="anonymous" /></div>` : ''}
+      ${showLogo && data.logoUrl ? `<div class="header-logo"><img src="${data.logoUrl}" alt="Logo" crossorigin="anonymous" /></div>` : ''}
       <div class="header-title">
-        <h1>${data.doctorTitle || ''} ${data.doctorName}</h1>
+        <h1>${data.headerText || `${data.doctorTitle || ''} ${data.doctorName}`.trim()}</h1>
         <p>${data.doctorSpecialty || 'Médico especialista'}</p>
         ${data.doctorLicense ? `<p style="font-size:10px;color:#94a3b8">Mat. ${data.doctorLicense}</p>` : ''}
       </div>
@@ -117,10 +138,14 @@ export function buildReceiptHtml(data: ReceiptData): string {
       <p class="label">Código de recibo</p>
       <p class="value"><span class="code">${data.paymentCode}</span></p>
     </div>
-    ${data.consultationCode ? `<div class="meta-item">
+    ${
+      data.consultationCode
+        ? `<div class="meta-item">
       <p class="label">Consulta</p>
       <p class="value"><span class="code">${data.consultationCode}</span></p>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
     <div class="meta-item">
       <p class="label">Paciente</p>
       <p class="value">${data.patientName}</p>
@@ -153,10 +178,14 @@ export function buildReceiptHtml(data: ReceiptData): string {
         <td>${data.planName || 'Consulta médica'}</td>
         <td class="right amount">${fmtUsd(data.amountUsd)}</td>
       </tr>
-      ${(data.extraItems || []).map(it => `<tr>
+      ${(data.extraItems || [])
+        .map(
+          (it) => `<tr>
         <td>${it.name}</td>
         <td class="right amount">${fmtUsd(it.amount)}</td>
-      </tr>`).join('')}
+      </tr>`,
+        )
+        .join('')}
       <tr class="total">
         <td>TOTAL${data.bcvRate ? ` <span class="totals-bs">(tasa BCV ${data.bcvRate.toFixed(2)} Bs/USD)</span>` : ''}</td>
         <td class="right amount">${fmtUsd(grandTotal)}${data.bcvRate ? `<br><span class="totals-bs">${fmtBs(grandTotal * data.bcvRate)}</span>` : ''}</td>
@@ -164,7 +193,9 @@ export function buildReceiptHtml(data: ReceiptData): string {
     </tbody>
   </table>
 
-  <div class="signature-block">
+  ${
+    showSignature
+      ? `<div class="signature-block">
     <div class="signature">
       ${data.signatureUrl ? `<img src="${data.signatureUrl}" alt="Firma" crossorigin="anonymous" />` : '<div style="height:50px"></div>'}
       <div class="signature-line">
@@ -172,14 +203,17 @@ export function buildReceiptHtml(data: ReceiptData): string {
         ${data.doctorLicense ? `<p class="title">Mat. ${data.doctorLicense}</p>` : ''}
       </div>
     </div>
-  </div>
+  </div>`
+      : ''
+  }
 
   <div class="footer">
+    ${data.footerText ? `<p>${data.footerText}</p>` : ''}
     <p>Este recibo es válido como comprobante de pago.</p>
     <p>${data.paymentCode} · Generado el ${new Date().toLocaleDateString('es-VE')}</p>
   </div>
 
   <script>window.onload = function() { window.print(); }</script>
 </body>
-</html>`
+</html>`;
 }
