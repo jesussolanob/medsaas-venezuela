@@ -173,6 +173,8 @@ export default function TemplatesPage() {
   // RONDA 17: source of truth = profile (logo y firma SOLO se cargan desde Settings/Perfil)
   const [profileLogoUrl, setProfileLogoUrl] = useState<string | null>(null);
   const [profileSignatureUrl, setProfileSignatureUrl] = useState<string | null>(null);
+  // Bloques habilitados del doctor (en orden) para la preview del informe
+  const [enabledBlocks, setEnabledBlocks] = useState<Array<{ key: string; label: string }>>([]);
   const logoRef = useRef<HTMLInputElement>(null);
   const signatureRef = useRef<HTMLInputElement>(null);
 
@@ -267,6 +269,11 @@ export default function TemplatesPage() {
           icon,
           description,
         }));
+        // Guardar los bloques habilitados (en orden) para la preview del informe.
+        // Excluimos 'recibo' (tipo local sin bloque de consulta real).
+        setEnabledBlocks(
+          result.filter(({ key }) => key !== 'recibo').map(({ key, label }) => ({ key, label })),
+        );
       }
     } catch (err) {
       console.warn('[Templates] no se pudieron cargar bloques, usando fallback:', err);
@@ -847,6 +854,7 @@ export default function TemplatesPage() {
                   onReady={() => setPreviewLoading(false)}
                   docType={activeTab}
                   docTypeLabel={tabInfo.label}
+                  enabledBlocks={enabledBlocks}
                   templateConfig={{
                     header_text: config.header_text,
                     footer_text: config.footer_text,
