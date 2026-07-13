@@ -14,6 +14,8 @@
  */
 
 import { revalidatePath } from 'next/cache';
+import { requireSuperAdmin } from '@/lib/auth-guards';
+import { backendPost } from '@/lib/api-client.server';
 
 export type DoctorPlan = 'free_trial' | 'delta_free' | 'delta_base' | 'delta_plus';
 
@@ -30,32 +32,31 @@ export type CreateDoctorInput = {
 export type ActionResult = { success: true } | { success: false; error: string };
 
 export async function createDoctor(input: CreateDoctorInput): Promise<ActionResult> {
-  try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BFF_URL ?? ''}/api/admin/doctors`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        full_name: input.full_name,
-        cedula: input.cedula || null,
-        email: input.email,
-        password: input.password,
-        specialty: input.specialty || null,
-        phone: input.phone || null,
-        plan: input.plan,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Error desconocido' }));
-      return { success: false, error: err.error ?? 'Error al crear el médico' };
-    }
-
-    revalidatePath('/admin/doctors');
-    return { success: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Error de conexión';
-    return { success: false, error: message };
+  // Guard: solo super_admin puede provisionar médicos.
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) {
+    return { success: false, error: 'No autorizado. Inicia sesión como administrador.' };
   }
+
+  // Llama al backend NestJS directamente vía el helper server (URL absoluta + auth
+  // reenviada). Antes se hacía `fetch('/api/admin/doctors')` con URL relativa desde
+  // este Server Action, lo que rompía en el servidor con "Failed to parse URL".
+  const result = await backendPost<unknown>('/api/admin/doctors', {
+    full_name: input.full_name,
+    cedula: input.cedula || null,
+    email: input.email,
+    password: input.password,
+    specialty: input.specialty || null,
+    phone: input.phone || null,
+    plan: input.plan,
+  });
+
+  if (!result.ok) {
+    return { success: false, error: result.error.message || 'Error al crear el médico' };
+  }
+
+  revalidatePath('/admin/doctors');
+  return { success: true };
 }
 
 // DEPRECATED 2026-04-22: tabla clinics eliminada en reingeniería MVP.

@@ -9,6 +9,6 @@ export class DoctorEmailConflictError extends DomainError {
   override readonly httpStatus = 409;
 
   constructor(email: string) {
-    super(`A profile with email '${email}' already exists`);
+    super(`Ya existe una cuenta registrada con el correo '${email}'.`);
   }
 }
