@@ -88,7 +88,7 @@ export default function CobrosPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const { rate: bcvRate, loading: bcvLoading } = useBcvRate();
+  const { rate: bcvRate, mode: bcvMode, loading: bcvLoading } = useBcvRate();
 
   // Date range for export
   const [dateFrom, setDateFrom] = useState(() => {
@@ -393,17 +393,28 @@ export default function CobrosPage() {
     }
   }
 
-  // TAREA 2: cuando cambia la fecha de pago, consultar tasa BCV de ese día
+  // TAREA 2: cuando cambia la fecha de pago, consultar tasa BCV de ese día.
+  // Solo se busca la tasa histórica cuando el modo del doctor es 'usd_bcv'.
+  // Para 'eur_bcv' y 'custom' se mantiene la tasa ya configurada del doctor
+  // (bcvRate) para no pisar con la tasa BCV USD que puede ser diferente.
   async function handlePaidAtChange(newDate: string) {
     setEditPaidAt(newDate);
     if (!newDate) return;
+
+    // Para modos distintos a usd_bcv no hay tasa histórica relevante:
+    // eur_bcv → la tasa EUR no está disponible histórica; custom → es fija.
+    // En ambos casos conservamos la tasa del doctor sin modificarla.
+    if (bcvMode !== 'usd_bcv') {
+      setBcvDateWarning(null);
+      return;
+    }
 
     setLoadingBcvForDate(true);
     setBcvDateWarning(null);
     try {
       const result = await getBcvRateForDate(newDate);
       if (!result || result.rate === null) {
-        setBcvDateWarning('Tasa no disponible para esa fecha, ingrésala manualmente');
+        setBcvDateWarning('Tasa BCV USD no disponible para esa fecha, ingrésala manualmente');
         setEditBcvRate('');
         setEditAmountBs('');
       } else {
