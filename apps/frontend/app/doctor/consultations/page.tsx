@@ -2307,6 +2307,17 @@ function ConsultationsPage() {
                           patientConsultationCount={sharedPatientConsultationCount}
                           patientEhrCount={patientEhrCount}
                           restContent={sharedReposoContentStr}
+                          restData={
+                            reposoDays > 0
+                              ? {
+                                  diagnosis: reposoDiagnosis,
+                                  days: reposoDays,
+                                  from: reposoFrom,
+                                  to: reposoTo,
+                                  comments: reposoComments,
+                                }
+                              : null
+                          }
                         />
                       )}
                       <ShareDocumentsModal
@@ -2946,7 +2957,7 @@ function ConsultationsPage() {
                     )}
 
                     {/* Generación on-click del récipe PDF — sin pre-render constante.
-                        Solo medicamentos + diagnóstico en el récipe (indicaciones van aparte). */}
+                        Solo medicamentos en el récipe (el diagnóstico NO va en el récipe). */}
                     <div className="flex gap-2 pt-2">
                       {pdfTemplateConfig && recipe.medications.length > 0 && (
                         <button
@@ -2958,11 +2969,6 @@ function ConsultationsPage() {
                                 await import('@/components/pdf/MedicalDocumentPdf');
                               const { buildRecetasContent, buildRecipeHoja2Content } =
                                 await import('./consultation-documents');
-                              const diagnosisValue =
-                                ((selected.blocks_data as Record<string, unknown> | null)
-                                  ?.diagnosis as string | undefined) ||
-                                report.diagnosis ||
-                                null;
 
                               // Convertir recipe.medications al shape de SavedPrescription
                               const syntheticPrescriptions = [
@@ -2974,17 +2980,8 @@ function ConsultationsPage() {
                                 },
                               ];
 
-                              // Hoja 1: diagnóstico + nombre/dosis
+                              // Hoja 1: solo nombre/dosis (el diagnóstico NO va en el récipe)
                               const hoja1Blocks: ContentBlock[] = [
-                                ...(diagnosisValue
-                                  ? [
-                                      {
-                                        key: 'diagnosis',
-                                        label: 'Diagnóstico',
-                                        value: diagnosisValue,
-                                      },
-                                    ]
-                                  : []),
                                 ...buildRecetasContent(syntheticPrescriptions),
                               ];
 
@@ -3624,24 +3621,32 @@ function ConsultationsPage() {
                           );
                         })()}
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                          {effective.length === 0 && (
+                          {effective.filter(
+                            (b) =>
+                              b.key !== 'prescription' && b.key !== 'rest' && b.key !== 'reposo',
+                          ).length === 0 && (
                             <p className="text-xs text-slate-400 italic col-span-full">
                               No hay bloques activos en esta consulta.
                             </p>
                           )}
-                          {effective.map((b) => (
-                            <button
-                              key={b.key}
-                              onClick={() => {
-                                setAiTargetBlockKey(b.key);
-                                setShowAiBlockPicker(false);
-                                callAI('improve_block', { blockKey: b.key });
-                              }}
-                              className="text-xs px-2 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-lg font-medium text-left truncate"
-                            >
-                              {b.label}
-                            </button>
-                          ))}
+                          {effective
+                            .filter(
+                              (b) =>
+                                b.key !== 'prescription' && b.key !== 'rest' && b.key !== 'reposo',
+                            )
+                            .map((b) => (
+                              <button
+                                key={b.key}
+                                onClick={() => {
+                                  setAiTargetBlockKey(b.key);
+                                  setShowAiBlockPicker(false);
+                                  callAI('improve_block', { blockKey: b.key });
+                                }}
+                                className="text-xs px-2 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 rounded-lg font-medium text-left truncate"
+                              >
+                                {b.label}
+                              </button>
+                            ))}
                         </div>
                       </div>
                     );

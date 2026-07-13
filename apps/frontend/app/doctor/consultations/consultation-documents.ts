@@ -322,8 +322,17 @@ export interface BuildConsolidatedContentArgs {
   savedPrescriptions: SavedPrescription[];
   /** Registros EHR ya fetchados (fetch asíncrono queda en el modal) */
   ehrRecords: EhrRecord[];
-  /** Texto del reposo médico */
+  /**
+   * Texto resumido del reposo médico (para habilitar/deshabilitar el tipo en el selector).
+   * Se usa como fallback cuando `restBlocks` no está disponible.
+   */
   restContent: string | null;
+  /**
+   * Bloques pre-construidos del reposo médico (formato idéntico al botón "Descargar PDF Reposo").
+   * Cuando está presente y no vacío, reemplaza al fallback de `restContent`.
+   * Permite que "Generar documentos" use el mismo formato de 3 bloques que el botón dedicado.
+   */
+  restBlocks?: ContentBlock[];
   /** Diagnóstico de la consulta — se incluye en el récipe */
   diagnosisValue?: string | null;
 }
@@ -349,7 +358,7 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
     savedPrescriptions,
     ehrRecords,
     restContent,
-    diagnosisValue,
+    restBlocks,
   } = args;
 
   const sections: Array<{ label: string; blocks: ContentBlock[] }> = [];
@@ -357,12 +366,7 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
   if (selectedTypes.includes('recipe')) {
     const blocks: ContentBlock[] = [];
 
-    // Diagnóstico al inicio del récipe
-    if (diagnosisValue?.trim()) {
-      blocks.push({ key: 'recipe-diagnosis', label: 'Diagnóstico', value: diagnosisValue.trim() });
-    }
-
-    // Solo nombre + dosis (hoja 1)
+    // Solo nombre + dosis (hoja 1) — el diagnóstico NO va en el récipe
     const recetasBlocks = buildRecetasContent(savedPrescriptions);
     blocks.push(...recetasBlocks);
 
@@ -397,11 +401,15 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
     }
   }
 
-  if (selectedTypes.includes('rest') && restContent?.trim()) {
-    sections.push({
-      label: 'Reposo médico',
-      blocks: [{ key: 'rest-content', label: 'Reposo médico', value: restContent.trim() }],
-    });
+  if (selectedTypes.includes('rest')) {
+    if (restBlocks && restBlocks.length > 0) {
+      sections.push({ label: 'Reposo médico', blocks: restBlocks });
+    } else if (restContent?.trim()) {
+      sections.push({
+        label: 'Reposo médico',
+        blocks: [{ key: 'rest-content', label: 'Reposo médico', value: restContent.trim() }],
+      });
+    }
   }
 
   if (selectedTypes.includes('informe')) {
@@ -432,8 +440,12 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
  * Arma un array de DocumentPage (una página por tipo de documento seleccionado).
  *
  * Cuando el tipo es 'recipe' se generan DOS páginas:
- *   - Hoja 1 "Récipe": diagnóstico + nombre/dosis de medicamentos
+ *   - Hoja 1 "Récipe": nombre/dosis de medicamentos (sin diagnóstico)
  *   - Hoja 2 "Indicaciones": nombre + dosis + frecuencia + duración + presentación + indicación
+ *
+ * Para 'rest', si `restBlocks` está disponible se usan esos bloques directamente
+ * (mismo formato que el botón "Descargar PDF Reposo"). De lo contrario, se cae
+ * al fallback de `restContent` (string plano).
  *
  * Tipos soportados: informe, recipe (2 hojas), paraclinical, history, rest.
  */
@@ -445,7 +457,7 @@ export function buildDocumentPages(args: BuildConsolidatedContentArgs): Document
     savedPrescriptions,
     ehrRecords,
     restContent,
-    diagnosisValue,
+    restBlocks,
   } = args;
 
   const pages: DocumentPage[] = [];
@@ -460,15 +472,8 @@ export function buildDocumentPages(args: BuildConsolidatedContentArgs): Document
   }
 
   if (selectedTypes.includes('recipe')) {
-    // ── Hoja 1: Récipe (diagnóstico + nombre + dosis) ──
+    // ── Hoja 1: Récipe (nombre + dosis) — el diagnóstico NO va en el récipe ──
     const hoja1Blocks: ContentBlock[] = [];
-    if (diagnosisValue?.trim()) {
-      hoja1Blocks.push({
-        key: 'recipe-diagnosis',
-        label: 'Diagnóstico',
-        value: diagnosisValue.trim(),
-      });
-    }
     const recetasBlocks = buildRecetasContent(savedPrescriptions);
     hoja1Blocks.push(...recetasBlocks);
     // Fallback: bloque 'prescription' en blocks_data sin receta guardada en BD
@@ -508,11 +513,17 @@ export function buildDocumentPages(args: BuildConsolidatedContentArgs): Document
     }
   }
 
-  if (selectedTypes.includes('rest') && restContent?.trim()) {
-    pages.push({
-      docType: 'rest',
-      content: [{ key: 'rest-content', label: 'Reposo médico', value: restContent.trim() }],
-    });
+  if (selectedTypes.includes('rest')) {
+    if (restBlocks && restBlocks.length > 0) {
+      // Formato estructurado (idéntico al botón "Descargar PDF Reposo"): 3 bloques separados.
+      pages.push({ docType: 'rest', content: restBlocks });
+    } else if (restContent?.trim()) {
+      // Fallback: string plano (compatibilidad con ShareDocumentsModal y uso heredado).
+      pages.push({
+        docType: 'rest',
+        content: [{ key: 'rest-content', label: 'Reposo médico', value: restContent.trim() }],
+      });
+    }
   }
 
   return pages;

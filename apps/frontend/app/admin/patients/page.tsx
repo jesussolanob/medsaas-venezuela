@@ -1,15 +1,17 @@
 /**
- * /admin/patients — Pacientes (vista global, SOLO estadísticas).
+ * /admin/patients — Pacientes (vista global).
  *
  * ETAPA 1 — lee agregados del módulo NestJS `admin` (`GET /api/admin/patients`) vía el BFF
  * server-only. Sin Supabase. RBAC (super_admin) de /admin lo aplica `proxy.ts` + el backend.
  *
- * DECISIÓN DE PRODUCTO: el admin ve SOLO estadísticas agregadas. El detalle/PII de pacientes
- * es CONFIDENCIAL por médico — el admin nunca lista ni ve datos individuales de pacientes.
+ * DECISIÓN DE PRODUCTO: el admin ve SOLO estadísticas agregadas y, por especialista,
+ * identidad de pacientes auditada (nombre + cédula vía GET /api/admin/doctors/:id/patients).
+ * Nunca se exponen datos médicos ni de contacto de pacientes.
  */
 import { backendGet } from '@/lib/api-client.server';
 import { Users, Heart, Calendar, ClipboardList } from 'lucide-react';
 import { PageHead, StatCard } from '@/components/dh';
+import PatientsAtendidosSection from './PatientsAtendidosSection';
 
 export const revalidate = 30;
 
@@ -73,10 +75,14 @@ export default async function AdminPatientsPage() {
       </div>
 
       {/* Nota de confidencialidad */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-500">
-        El detalle de los pacientes es confidencial de cada médico. La administración solo visualiza
-        estadísticas agregadas.
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-500 mb-6">
+        El detalle clínico de los pacientes es confidencial de cada médico. La administración solo
+        puede consultar identidad (nombre y cédula) agrupada por especialista, con auditoría
+        automática en cada acceso.
       </div>
+
+      {/* Pacientes atendidos por especialista */}
+      <PatientsAtendidosSection />
     </div>
   );
 }

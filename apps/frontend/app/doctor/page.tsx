@@ -8,7 +8,6 @@ import {
   Users,
   Calendar,
   FileText,
-  TrendingUp,
   Bell,
   DollarSign,
   ArrowRight,
@@ -35,8 +34,20 @@ import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow
 // L3 (2026-04-29): quick action "Crear paciente" en el dashboard reusa
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
-import { addPatient } from '@/app/doctor/patients/actions';
-import { addExpense, addIncome } from '@/app/doctor/finances/actions';
+import { addPatient, getPatients } from '@/app/doctor/patients/actions';
+import {
+  addExpense,
+  addIncome,
+  getIncomeConcepts,
+  createIncomeConcept,
+  updateIncomeConcept,
+  deleteIncomeConcept,
+  getConsultationsForReports,
+  type IncomeConcept,
+  type BackendConsultationRow,
+} from '@/app/doctor/finances/actions';
+import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
+import type { Patient } from '@/app/doctor/patients/actions';
 import {
   getPayments,
   updatePaymentStatus as updatePaymentStatusAction,
@@ -160,10 +171,22 @@ export default function DoctorDashboard() {
   const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointment[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // "Registrar ingreso" modal — ingreso manual extraordinario via addIncome.
+  // "Registrar ingreso" modal — reutiliza el mismo IncomeModal de /doctor/finances.
   const [showIncomeModal, setShowIncomeModal] = useState(false);
   const [incomeSaving, setIncomeSaving] = useState(false);
-  const [incomeForm, setIncomeForm] = useState({ description: '', amount: '', date: todayStr });
+  const [incomeError, setIncomeError] = useState('');
+  const [incomeForm, setIncomeForm] = useState<IncomeForm>({
+    description: '',
+    amount: '',
+    conceptId: '',
+    date: todayStr,
+    relatedConsultationId: '',
+    patientId: '',
+  });
+  // Datos auxiliares del modal de ingreso — se cargan al abrir el modal.
+  const [incomeConcepts, setIncomeConcepts] = useState<IncomeConcept[]>([]);
+  const [incomeConsultations, setIncomeConsultations] = useState<BackendConsultationRow[]>([]);
+  const [incomePatients, setIncomePatients] = useState<Patient[]>([]);
 
   // Month filter state (year-month)
   const now = new Date();
@@ -496,35 +519,64 @@ export default function DoctorDashboard() {
     }
   }
 
+  // Abre el modal de ingreso y carga conceptos/consultas/pacientes de forma lazy.
+  async function handleOpenIncomeModal() {
+    setIncomeError('');
+    setShowIncomeModal(true);
+    try {
+      const doctorId = await getDoctorId();
+      const [concepts, consultations, patients] = await Promise.all([
+        getIncomeConcepts(),
+        getConsultationsForReports(50),
+        doctorId ? getPatients(doctorId) : Promise.resolve([]),
+      ]);
+      setIncomeConcepts(concepts);
+      setIncomeConsultations(consultations);
+      setIncomePatients(patients);
+    } catch (err: unknown) {
+      reportError('doctor/page', 'handleOpenIncomeModal', err);
+    }
+  }
+
   // Registra un ingreso manual extraordinario desde el modal de inicio.
-  // Reutiliza addIncome de finances/actions (misma acción que usa /doctor/finances).
+  // Misma lógica que handleAddIncome en /doctor/finances/page.tsx.
   async function handleSaveIncome(e: React.FormEvent) {
     e.preventDefault();
-    const amount = parseFloat(incomeForm.amount);
-    if (!incomeForm.description.trim() || !isFinite(amount) || amount <= 0) {
-      showToast({ type: 'error', message: 'Completa descripción y monto válido' });
+    setIncomeError('');
+    if (!incomeForm.description || !incomeForm.amount) {
+      setIncomeError('Descripción y monto son obligatorios.');
       return;
     }
     setIncomeSaving(true);
     try {
       const res = await addIncome({
-        description: incomeForm.description.trim(),
-        amount,
+        description: incomeForm.description,
+        amount: parseFloat(incomeForm.amount),
         currency: 'USD',
-        date: incomeForm.date,
+        conceptId: incomeForm.conceptId || undefined,
+        date: incomeForm.date || undefined,
+        relatedConsultationId: incomeForm.relatedConsultationId || null,
+        patientId: incomeForm.relatedConsultationId ? null : incomeForm.patientId || null,
       });
-      if (!res.success) throw new Error(res.error);
-      showToast({ type: 'success', message: 'Ingreso registrado' });
-      setShowIncomeModal(false);
-      setIncomeForm({ description: '', amount: '', date: todayStr });
+      if (!res.success) {
+        setIncomeError(res.error);
+      } else {
+        setIncomeForm({
+          description: '',
+          amount: '',
+          conceptId: '',
+          date: todayStr,
+          relatedConsultationId: '',
+          patientId: '',
+        });
+        setShowIncomeModal(false);
+        showToast({ type: 'success', message: 'Ingreso registrado' });
+      }
     } catch (err: unknown) {
-      showToast({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Error al registrar el ingreso',
-      });
-    } finally {
-      setIncomeSaving(false);
+      reportError('doctor/page', 'handleSaveIncome', err);
+      setIncomeError('Ocurrió un error al registrar el ingreso.');
     }
+    setIncomeSaving(false);
   }
 
   if (loading) {
@@ -1197,7 +1249,7 @@ export default function DoctorDashboard() {
                 <>
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     <button
-                      onClick={() => setShowIncomeModal(true)}
+                      onClick={() => void handleOpenIncomeModal()}
                       className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
                       style={{ background: 'var(--dh-turquoise)' }}
                     >
@@ -1492,90 +1544,47 @@ export default function DoctorDashboard() {
         </div>
       )}
 
-      {/* Modal: Registrar ingreso manual (reutiliza addIncome de finances/actions) */}
+      {/* Modal: Registrar ingreso — mismo componente que /doctor/finances */}
       {showIncomeModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl g-bg flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-slate-900">Registrar ingreso</h2>
-                  <p className="text-xs text-slate-400">Ingreso extraordinario o manual</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowIncomeModal(false)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
-              >
-                <X className="w-4 h-4 text-slate-600" />
-              </button>
-            </div>
-            <form onSubmit={(e) => void handleSaveIncome(e)} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Descripción</label>
-                <input
-                  value={incomeForm.description}
-                  onChange={(e) => setIncomeForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="Ej. Honorarios consulta privada"
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600">Monto (USD)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={incomeForm.amount}
-                    onChange={(e) => setIncomeForm((f) => ({ ...f, amount: e.target.value }))}
-                    placeholder="0.00"
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-600">Fecha</label>
-                  <input
-                    type="date"
-                    value={incomeForm.date}
-                    onChange={(e) => setIncomeForm((f) => ({ ...f, date: e.target.value }))}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
-                  />
-                </div>
-              </div>
-              <p className="text-[11px] text-slate-400 pt-1">
-                Para ingresos vinculados a consultas, usa el módulo{' '}
-                <Link
-                  href="/doctor/finances"
-                  className="text-teal-600 underline"
-                  onClick={() => setShowIncomeModal(false)}
-                >
-                  Finanzas
-                </Link>
-                .
-              </p>
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowIncomeModal(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={incomeSaving}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-teal-500 text-white text-sm font-bold hover:bg-teal-600 disabled:opacity-50"
-                >
-                  {incomeSaving ? 'Guardando...' : 'Registrar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <IncomeModal
+          concepts={incomeConcepts}
+          consultations={incomeConsultations}
+          patients={incomePatients}
+          form={incomeForm}
+          saving={incomeSaving}
+          error={incomeError}
+          onChangeForm={setIncomeForm}
+          onSubmit={(e) => void handleSaveIncome(e)}
+          onClose={() => {
+            setShowIncomeModal(false);
+            setIncomeError('');
+          }}
+          onCreateConcept={async (name) => {
+            const res = await createIncomeConcept(name);
+            if (res.success) {
+              setIncomeConcepts((prev) => [...prev, res.data]);
+              setIncomeForm((f) => ({ ...f, conceptId: res.data.id }));
+            }
+            return res;
+          }}
+          onUpdateConcept={async (id, patch) => {
+            const res = await updateIncomeConcept(id, patch);
+            if (res.success) {
+              setIncomeConcepts((prev) => prev.map((c) => (c.id === id ? res.data : c)));
+            }
+            return res;
+          }}
+          onDeleteConcept={async (id) => {
+            const res = await deleteIncomeConcept(id);
+            if (res.success) {
+              setIncomeConcepts((prev) => prev.filter((c) => c.id !== id));
+              if (incomeForm.conceptId === id) {
+                setIncomeForm((f) => ({ ...f, conceptId: '' }));
+              }
+            }
+            return res;
+          }}
+        />
       )}
 
       {/* Modal: Registrar gasto rápido (reusa la action addExpense de finanzas) */}

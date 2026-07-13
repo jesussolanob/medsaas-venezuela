@@ -36,6 +36,15 @@ import {
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+/** Datos estructurados del reposo para construir bloques idénticos al botón "Descargar PDF Reposo". */
+export interface RestData {
+  diagnosis: string;
+  days: number;
+  from: string;
+  to: string;
+  comments: string;
+}
+
 interface GenerateDocumentModalProps {
   consultationCode: string;
   consultationDate: string;
@@ -50,8 +59,17 @@ interface GenerateDocumentModalProps {
   patientConsultationCount: number;
   /** Cantidad de registros EHR del paciente (habilita Historia clínica si > 0). */
   patientEhrCount: number;
-  /** Texto del reposo médico de la consulta actual; null si no hay reposo. */
+  /**
+   * Texto resumido del reposo (usado para habilitar/deshabilitar el tipo en el selector).
+   * null cuando no hay reposo configurado (días = 0).
+   */
   restContent: string | null;
+  /**
+   * Datos estructurados del reposo. Cuando están disponibles, el PDF de reposo usa
+   * 3 bloques separados (diagnóstico, período, comentarios) — idéntico al botón
+   * "Descargar PDF Reposo". Si no se pasa, se cae al fallback de `restContent`.
+   */
+  restData?: RestData | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -179,6 +197,7 @@ export default function GenerateDocumentModal({
   patientConsultationCount,
   patientEhrCount,
   restContent,
+  restData,
 }: GenerateDocumentModalProps) {
   const [open, setOpen] = useState(false);
 
@@ -272,6 +291,28 @@ export default function GenerateDocumentModal({
         // Non-fatal: si el fetch falla, continuamos sin la sección EHR
       }
 
+      // Construir bloques de reposo estructurados (idéntico al botón "Descargar PDF Reposo")
+      // cuando restData está disponible — garantiza el mismo formato en ambos caminos.
+      const builtRestBlocks: ContentBlock[] | undefined =
+        restData && restData.days > 0
+          ? [
+              { key: 'reposo-diag', label: 'Diagnóstico', value: restData.diagnosis },
+              {
+                key: 'reposo-period',
+                label: 'Período de reposo',
+                value:
+                  `${restData.days} día${restData.days !== 1 ? 's' : ''}` +
+                  ` — desde ${new Date(restData.from).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
+                  (restData.to
+                    ? ` hasta ${new Date(restData.to).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                    : ''),
+              },
+              ...(restData.comments
+                ? [{ key: 'reposo-comments', label: 'Comentarios', value: restData.comments }]
+                : []),
+            ]
+          : undefined;
+
       // Armar una página por tipo de documento seleccionado
       const docPages = buildDocumentPages({
         selectedTypes: [...selectedTypes],
@@ -280,6 +321,7 @@ export default function GenerateDocumentModal({
         savedPrescriptions,
         ehrRecords: fetchedEhrRecords,
         restContent,
+        restBlocks: builtRestBlocks,
         diagnosisValue: informeContent.find((b) => b.key === 'diagnosis')?.value as
           | string
           | undefined,
@@ -347,6 +389,7 @@ export default function GenerateDocumentModal({
     informeContent,
     savedPrescriptions,
     restContent,
+    restData,
     patientId,
     templateConfig,
     doctor,
