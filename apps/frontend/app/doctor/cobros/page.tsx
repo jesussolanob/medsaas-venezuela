@@ -331,7 +331,11 @@ export default function CobrosPage() {
         sourceType: item.type,
         sourceId: item.id,
       });
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) {
+        setActionToast({ type: 'error', msg: 'No se pudo agregar el servicio al cobro' });
+        setTimeout(() => setActionToast(null), 3000);
+        return;
+      }
 
       const newTotal = (selectedPayment.plan_price || 0) + item.price_usd;
       if (result.item) {
@@ -350,9 +354,8 @@ export default function CobrosPage() {
       setTimeout(() => setActionToast(null), 2500);
       setShowAddItemModal(false);
       await fetchPayments();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al agregar item';
-      setActionToast({ type: 'error', msg });
+    } catch {
+      setActionToast({ type: 'error', msg: 'No se pudo agregar el servicio al cobro' });
       setTimeout(() => setActionToast(null), 3000);
     } finally {
       setAddingItem(false);
@@ -365,7 +368,11 @@ export default function CobrosPage() {
     if (!confirm('¿Eliminar este cargo del cobro?')) return;
     try {
       const result = await removePaymentItem(selectedPayment.id, itemId);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) {
+        setActionToast({ type: 'error', msg: 'No se pudo eliminar el cargo. Intenta nuevamente.' });
+        setTimeout(() => setActionToast(null), 3000);
+        return;
+      }
 
       const newTotal = Math.max(0, (selectedPayment.plan_price || 0) - amount);
       setExtraItems((prev) => prev.filter((i) => i.id !== itemId));
@@ -373,9 +380,8 @@ export default function CobrosPage() {
       setActionToast({ type: 'success', msg: 'Cargo eliminado' });
       setTimeout(() => setActionToast(null), 2000);
       await fetchPayments();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al eliminar';
-      setActionToast({ type: 'error', msg });
+    } catch {
+      setActionToast({ type: 'error', msg: 'Ocurrió un error inesperado al eliminar el cargo' });
       setTimeout(() => setActionToast(null), 3000);
     }
   }
@@ -448,6 +454,13 @@ export default function CobrosPage() {
   // TAREA 2: guardar detalles del pago
   async function handleSaveDetails() {
     if (!selectedPayment) return;
+
+    // Método de pago obligatorio
+    if (!editMethod) {
+      showToast({ type: 'error', message: 'Debes seleccionar un método de pago antes de guardar' });
+      return;
+    }
+
     setSavingDetails(true);
     try {
       const bcvRateNum = editBcvRate ? parseFloat(editBcvRate) : null;
@@ -461,21 +474,24 @@ export default function CobrosPage() {
         amount_bs: isNaN(amountBsNum ?? NaN) ? null : amountBsNum,
       });
 
-      if (!result.ok) throw new Error(result.error);
+      if (!result.ok) {
+        showToast({
+          type: 'error',
+          message: 'No se pudieron guardar los detalles del pago. Intenta nuevamente.',
+        });
+        return;
+      }
 
       // Actualizar estado local del pago (método visible en la lista)
-      if (editMethod) {
-        setSelectedPayment((prev) => (prev ? { ...prev, payment_method: editMethod } : prev));
-        setPayments((prev) =>
-          prev.map((p) => (p.id === selectedPayment.id ? { ...p, payment_method: editMethod } : p)),
-        );
-      }
+      setSelectedPayment((prev) => (prev ? { ...prev, payment_method: editMethod } : prev));
+      setPayments((prev) =>
+        prev.map((p) => (p.id === selectedPayment.id ? { ...p, payment_method: editMethod } : p)),
+      );
 
       showToast({ type: 'success', message: 'Detalles guardados correctamente' });
       await fetchPayments();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al guardar detalles';
-      showToast({ type: 'error', message: msg });
+    } catch {
+      showToast({ type: 'error', message: 'Ocurrió un error inesperado al guardar los detalles' });
     } finally {
       setSavingDetails(false);
     }
@@ -617,7 +633,15 @@ export default function CobrosPage() {
     setActionToast(null);
     try {
       const result = await updatePaymentStatusAction(paymentId, newStatus);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) {
+        reportError('doctor/cobros', 'updatePaymentStatus', result.error);
+        setActionToast({
+          type: 'error',
+          msg: 'No se pudo actualizar el estado del pago. Intenta nuevamente.',
+        });
+        setTimeout(() => setActionToast(null), 3500);
+        return;
+      }
 
       setActionToast({
         type: 'success',
@@ -631,7 +655,7 @@ export default function CobrosPage() {
       reportError('doctor/cobros', 'updatePaymentStatus', err);
       setActionToast({
         type: 'error',
-        msg: err instanceof Error ? err.message : 'Error al actualizar el pago',
+        msg: 'Ocurrió un error inesperado al actualizar el pago',
       });
       setTimeout(() => setActionToast(null), 3500);
     } finally {
@@ -1160,16 +1184,20 @@ export default function CobrosPage() {
                   </div>
                 </div>
 
-                {/* Método de pago */}
+                {/* Método de pago — obligatorio */}
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-500" htmlFor="edit-method">
-                    Método de pago
+                    Método de pago <span className="text-red-500">*</span>
                   </label>
                   <select
                     id="edit-method"
                     value={editMethod}
                     onChange={(e) => setEditMethod(e.target.value)}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:border-teal-400 focus:ring-1 focus:ring-teal-100 outline-none bg-white"
+                    className={`w-full text-sm border rounded-lg px-3 py-2 focus:ring-1 outline-none bg-white ${
+                      !editMethod
+                        ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
+                        : 'border-slate-200 focus:border-teal-400 focus:ring-teal-100'
+                    }`}
                   >
                     <option value="">— Seleccionar —</option>
                     {PAYMENT_METHOD_OPTIONS.map((opt) => (
@@ -1178,6 +1206,9 @@ export default function CobrosPage() {
                       </option>
                     ))}
                   </select>
+                  {!editMethod && (
+                    <p className="text-xs text-red-500">Selecciona un método de pago</p>
+                  )}
                 </div>
 
                 {/* Referencia */}
@@ -1195,11 +1226,12 @@ export default function CobrosPage() {
                   />
                 </div>
 
-                {/* Botón guardar detalles */}
+                {/* Botón guardar detalles — deshabilitado si no hay método */}
                 <button
                   onClick={handleSaveDetails}
-                  disabled={savingDetails}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold transition-colors disabled:opacity-50"
+                  disabled={savingDetails || !editMethod}
+                  title={!editMethod ? 'Selecciona un método de pago' : undefined}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {savingDetails ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

@@ -598,7 +598,7 @@ export default function ServicesPage() {
                   a nivel de consultorio (doctor_offices.slot_duration), no por servicio. */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  Precio USD <span className="text-red-400">*</span>
+                  Precio USD unitario <span className="text-red-400">*</span>
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

@@ -9,7 +9,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs } from '@/lib/finances';
 import { getPayments } from './payments-actions';
-import { getPatients, getDoctorId, type Patient } from '../patients/actions';
+import { getPatients, getDoctorId, addPatient, type Patient } from '../patients/actions';
+import type { PatientFormData } from '@/components/patient/PatientForm';
 import {
   getExpenses,
   addExpenseWithConcept,
@@ -238,9 +239,19 @@ export default function FinancesPage() {
   // tab/página/mes, evitando que el listado quede stale tras una mutación.
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Estado de recarga silenciosa (sin ocultar la UI completa).
+  // Se activa en mutaciones post-carga inicial para mostrar solo indicadores
+  // localizados en lugar del spinner de pantalla completa.
+  const [refreshing, setRefreshing] = useState(false);
+
   // ETAPA 1: loadData migrado al backend. Supabase eliminado.
-  const loadData = async () => {
-    setLoading(true);
+  // silent=true → usa `refreshing` en lugar de `loading` para no ocultar la UI.
+  const loadData = async (silent = false) => {
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       // Pagos APROBADOS (ingresos reales) + PENDIENTES (cuentas por cobrar) vía backend (BFF).
       // Adicionalmente cargamos: gastos, conceptos de ingreso, consultas, ingresos manuales
@@ -314,7 +325,11 @@ export default function FinancesPage() {
     } catch (err) {
       reportError('doctor/finances', 'loadData', err);
     }
-    setLoading(false);
+    if (silent) {
+      setRefreshing(false);
+    } else {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -875,7 +890,7 @@ export default function FinancesPage() {
           date: new Date().toISOString().split('T')[0],
         });
         setShowExpenseModal(false);
-        loadData();
+        loadData(true);
         setRefreshKey((k) => k + 1);
       }
     } catch (err) {
@@ -926,7 +941,7 @@ export default function FinancesPage() {
           patientId: '',
         });
         setShowIncomeModal(false);
-        loadData();
+        loadData(true);
         setRefreshKey((k) => k + 1);
       }
     } catch (err) {
@@ -958,7 +973,7 @@ export default function FinancesPage() {
         setEditError(result.error);
       } else {
         setEditingTx(null);
-        loadData();
+        loadData(true);
         setRefreshKey((k) => k + 1);
       }
     } catch (err) {
@@ -978,6 +993,14 @@ export default function FinancesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Indicador de recarga silenciosa — visible solo después de una mutación */}
+      {refreshing && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          Actualizando datos...
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="min-w-0">
@@ -2284,6 +2307,46 @@ export default function FinancesPage() {
               }
             }
             return res;
+          }}
+          onCreatePatient={async (data: PatientFormData) => {
+            const doctorId = await getDoctorId();
+            if (!doctorId) return null;
+            const res = await addPatient(doctorId, {
+              full_name: data.full_name,
+              cedula: data.cedula ?? undefined,
+              phone: data.phone ?? undefined,
+              email: data.email ?? undefined,
+              birth_date: data.birth_date ?? undefined,
+              age: data.age ?? undefined,
+              sex: data.sex ?? undefined,
+              blood_type: data.blood_type ?? undefined,
+              address: data.address ?? undefined,
+              city: data.city ?? undefined,
+              allergies: data.allergies ?? undefined,
+              chronic_conditions: data.chronic_conditions ?? undefined,
+              emergency_contact_name: data.emergency_contact_name ?? undefined,
+              emergency_contact_phone: data.emergency_contact_phone ?? undefined,
+              emergency_contact_relationship: data.emergency_contact_relationship ?? undefined,
+              notes: data.notes ?? undefined,
+              source: 'manual',
+            });
+            if (!res.success) return null;
+            // Agregar el nuevo paciente a la lista local para que aparezca en el select
+            const newPatient: Patient = {
+              id: res.patient_id,
+              doctor_id: doctorId,
+              full_name: data.full_name,
+              age: data.age ?? null,
+              phone: data.phone ?? null,
+              cedula: data.cedula ?? null,
+              email: data.email ?? null,
+              sex: data.sex ?? null,
+              notes: data.notes ?? null,
+              source: 'manual',
+              created_at: new Date().toISOString(),
+            };
+            setPatientsList((prev) => [newPatient, ...prev]);
+            return { id: res.patient_id, full_name: data.full_name };
           }}
         />
       )}

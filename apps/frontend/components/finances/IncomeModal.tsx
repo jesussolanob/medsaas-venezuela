@@ -6,10 +6,12 @@
 // pantallas presenten exactamente el mismo flujo y UI.
 
 import { useState } from 'react';
-import { ArrowDownCircle, Check, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDownCircle, Check, Loader2, Pencil, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import type { IncomeConcept } from '@/app/doctor/finances/actions';
 import type { BackendConsultationRow } from '@/app/doctor/finances/actions';
 import type { Patient } from '@/app/doctor/patients/actions';
+import type { PatientFormData } from '@/components/patient/PatientForm';
+import PatientForm from '@/components/patient/PatientForm';
 
 export type IncomeForm = {
   description: string;
@@ -42,6 +44,12 @@ interface IncomeModalProps {
     patch: { name?: string; isActive?: boolean },
   ) => Promise<ConceptManagerResult>;
   onDeleteConcept: (id: string) => Promise<SimpleActionResult>;
+  /**
+   * Callback para crear un paciente nuevo desde el modal de ingreso.
+   * Recibe el PatientFormData y debe devolver { id, full_name } del paciente
+   * creado, o null si falla (mostrará el error por su cuenta).
+   */
+  onCreatePatient?: (data: PatientFormData) => Promise<{ id: string; full_name: string } | null>;
 }
 
 export default function IncomeModal({
@@ -57,6 +65,7 @@ export default function IncomeModal({
   onCreateConcept,
   onUpdateConcept,
   onDeleteConcept,
+  onCreatePatient,
 }: IncomeModalProps) {
   const [showManager, setShowManager] = useState(false);
   const [newConceptName, setNewConceptName] = useState('');
@@ -64,6 +73,32 @@ export default function IncomeModal({
   const [conceptError, setConceptError] = useState('');
   const [editingConceptId, setEditingConceptId] = useState<string | null>(null);
   const [editingConceptName, setEditingConceptName] = useState('');
+
+  // Sub-modal: crear nuevo paciente
+  const [showCreatePatient, setShowCreatePatient] = useState(false);
+  const [savingNewPatient, setSavingNewPatient] = useState(false);
+  const [newPatientError, setNewPatientError] = useState('');
+
+  async function handleCreatePatientSubmit(data: PatientFormData) {
+    if (!onCreatePatient) return;
+    setSavingNewPatient(true);
+    setNewPatientError('');
+    try {
+      const result = await onCreatePatient(data);
+      if (result) {
+        // Auto-seleccionar el paciente recién creado en el formulario de ingreso
+        onChangeForm((f) => ({ ...f, patientId: result.id, relatedConsultationId: '' }));
+        setShowCreatePatient(false);
+      } else {
+        setNewPatientError('No se pudo crear el paciente. Intenta de nuevo.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al crear el paciente.';
+      setNewPatientError(msg);
+    } finally {
+      setSavingNewPatient(false);
+    }
+  }
 
   const handleCreateConcept = async () => {
     if (!newConceptName.trim()) return;
@@ -94,320 +129,404 @@ export default function IncomeModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-3 sm:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
-            >
-              <ArrowDownCircle className="w-4 h-4 text-white" />
-            </div>
-            <h2 className="text-base font-bold text-slate-800">Registrar ingreso</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-slate-100 rounded-lg"
-            aria-label="Cerrar"
+    <>
+      {/* Sub-modal: crear nuevo paciente (z-[70] por encima del modal principal z-[60]) */}
+      {showCreatePatient && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-3 sm:p-4"
+          onClick={() => setShowCreatePatient(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
           >
-            <X className="w-5 h-5 text-slate-500" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <form onSubmit={onSubmit} className="px-6 py-5 space-y-4">
-          {/* Descripción */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Descripción <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Ej. Consulta particular, honorarios, etc."
-              value={form.description}
-              onChange={(e) => onChangeForm((f) => ({ ...f, description: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
-              required
-            />
-          </div>
-
-          {/* Monto */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Monto (USD) <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
-                $
-              </span>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                placeholder="0.00"
-                value={form.amount}
-                onChange={(e) => onChangeForm((f) => ({ ...f, amount: e.target.value }))}
-                className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Fecha */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fecha</label>
-            <input
-              type="date"
-              value={form.date}
-              onChange={(e) => onChangeForm((f) => ({ ...f, date: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
-            />
-          </div>
-
-          {/* Asociación a consulta o paciente (opcional) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Asociar a <span className="text-slate-400 font-normal">(opcional)</span>
-            </label>
-            {consultations.length > 0 && (
-              <div className="mb-2">
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">
-                  Consulta existente
-                </p>
-                <select
-                  value={form.relatedConsultationId}
-                  onChange={(e) =>
-                    onChangeForm((f) => ({
-                      ...f,
-                      relatedConsultationId: e.target.value,
-                      patientId: '',
-                    }))
-                  }
-                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+            {/* Header del sub-modal */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
                 >
-                  <option value="">— Sin consulta —</option>
-                  {consultations
-                    .filter((c) => c.consultation_date)
-                    .slice(0, 50)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.consultation_code ? `[${c.consultation_code}] ` : ''}
-                        {c.patient_name}
-                        {c.consultation_date
-                          ? ` · ${new Date(c.consultation_date).toLocaleDateString('es-VE')}`
-                          : ''}
-                      </option>
-                    ))}
-                </select>
-                {form.relatedConsultationId && (
-                  <p className="text-[10px] text-teal-600 mt-1 font-medium">
-                    Paciente derivado de la consulta seleccionada
-                  </p>
-                )}
+                  <UserPlus className="w-4 h-4 text-white" />
+                </div>
+                <h2 className="text-base font-bold text-slate-800">Crear paciente</h2>
               </div>
-            )}
-            {!form.relatedConsultationId && patients.length > 0 && (
-              <div>
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">
-                  Paciente directo
-                </p>
-                <select
-                  value={form.patientId}
-                  onChange={(e) => onChangeForm((f) => ({ ...f, patientId: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
-                >
-                  <option value="">— Sin paciente —</option>
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.full_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {consultations.length === 0 && patients.length === 0 && (
-              <p className="text-xs text-slate-400 italic">
-                Sin consultas ni pacientes registrados.
-              </p>
-            )}
-          </div>
-
-          {/* Concepto */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold text-slate-600">
-                Concepto (opcional)
-              </label>
               <button
-                type="button"
-                onClick={() => setShowManager((v) => !v)}
-                className="text-[10px] font-bold text-teal-600 hover:text-teal-700"
+                onClick={() => setShowCreatePatient(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg"
+                aria-label="Cerrar"
               >
-                {showManager ? 'Cerrar gestor' : 'Gestionar conceptos'}
+                <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
 
-            <select
-              value={form.conceptId}
-              onChange={(e) => onChangeForm((f) => ({ ...f, conceptId: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+            {/* Formulario de paciente */}
+            <div className="px-6 py-5">
+              {newPatientError && (
+                <div className="mb-4 px-3 py-2 rounded-lg bg-red-50 border border-red-200">
+                  <p className="text-xs text-red-600 font-medium">{newPatientError}</p>
+                </div>
+              )}
+              <PatientForm
+                onSubmit={handleCreatePatientSubmit}
+                onCancel={() => setShowCreatePatient(false)}
+                submitting={savingNewPatient}
+                submitLabel="Crear y asociar"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-3 sm:p-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
+              >
+                <ArrowDownCircle className="w-4 h-4 text-white" />
+              </div>
+              <h2 className="text-base font-bold text-slate-800">Registrar ingreso</h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 hover:bg-slate-100 rounded-lg"
+              aria-label="Cerrar"
             >
-              <option value="">— Sin concepto —</option>
-              {concepts
-                .filter((c) => c.isActive)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-            </select>
+              <X className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
 
-            {showManager && (
-              <div className="mt-3 border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Gestionar conceptos
-                </p>
+          {/* Body */}
+          <form onSubmit={onSubmit} className="px-6 py-5 space-y-4">
+            {/* Descripción */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                Descripción <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. Consulta particular, honorarios, etc."
+                value={form.description}
+                onChange={(e) => onChangeForm((f) => ({ ...f, description: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+                required
+              />
+            </div>
 
-                <div className="space-y-1.5">
-                  {concepts.length === 0 && (
-                    <p className="text-xs text-slate-400 italic">No hay conceptos aún.</p>
-                  )}
-                  {concepts.map((c) => (
-                    <div
-                      key={c.id}
-                      className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-slate-200"
-                    >
-                      {editingConceptId === c.id ? (
-                        <>
-                          <input
-                            type="text"
-                            value={editingConceptName}
-                            onChange={(e) => setEditingConceptName(e.target.value)}
-                            className="flex-1 text-xs px-2 py-1 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-teal-300"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void handleUpdateConcept(c.id)}
-                            disabled={savingConcept}
-                            className="p-1 rounded-md text-teal-600 hover:bg-teal-50"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingConceptId(null)}
-                            className="p-1 rounded-md text-slate-400 hover:bg-slate-100"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span
-                            className={`flex-1 text-xs font-medium ${c.isActive ? 'text-slate-800' : 'text-slate-400 line-through'}`}
-                          >
-                            {c.name}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingConceptId(c.id);
-                              setEditingConceptName(c.name);
-                            }}
-                            className="p-1 rounded-md text-slate-300 hover:text-teal-600 hover:bg-teal-50"
-                            title="Editar"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteConcept(c.id)}
-                            disabled={savingConcept}
-                            className="p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
+            {/* Monto */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                Monto (USD) <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+                  $
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={form.amount}
+                  onChange={(e) => onChangeForm((f) => ({ ...f, amount: e.target.value }))}
+                  className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+                  required
+                />
+              </div>
+            </div>
 
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nuevo concepto..."
-                    value={newConceptName}
-                    onChange={(e) => setNewConceptName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void handleCreateConcept();
-                      }
-                    }}
-                    className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-300"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleCreateConcept()}
-                    disabled={savingConcept || !newConceptName.trim()}
-                    className="px-3 py-2 rounded-lg text-xs font-bold text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-50"
+            {/* Fecha */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fecha</label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) => onChangeForm((f) => ({ ...f, date: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+              />
+            </div>
+
+            {/* Asociación a consulta o paciente (opcional) */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                Asociar a <span className="text-slate-400 font-normal">(opcional)</span>
+              </label>
+              {consultations.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">
+                    Consulta existente
+                  </p>
+                  <select
+                    value={form.relatedConsultationId}
+                    onChange={(e) =>
+                      onChangeForm((f) => ({
+                        ...f,
+                        relatedConsultationId: e.target.value,
+                        patientId: '',
+                      }))
+                    }
+                    className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
                   >
-                    {savingConcept ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Plus className="w-3.5 h-3.5" />
-                    )}
-                  </button>
+                    <option value="">— Sin consulta —</option>
+                    {consultations
+                      .filter((c) => c.consultation_date)
+                      .slice(0, 50)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.consultation_code ? `[${c.consultation_code}] ` : ''}
+                          {c.patient_name}
+                          {c.consultation_date
+                            ? ` · ${new Date(c.consultation_date).toLocaleDateString('es-VE')}`
+                            : ''}
+                        </option>
+                      ))}
+                  </select>
+                  {form.relatedConsultationId && (
+                    <p className="text-[10px] text-teal-600 mt-1 font-medium">
+                      Paciente derivado de la consulta seleccionada
+                    </p>
+                  )}
                 </div>
+              )}
+              {!form.relatedConsultationId && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                      Paciente directo
+                    </p>
+                    {onCreatePatient && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewPatientError('');
+                          setShowCreatePatient(true);
+                        }}
+                        className="flex items-center gap-1 text-[10px] font-bold text-teal-600 hover:text-teal-700"
+                      >
+                        <UserPlus className="w-3 h-3" /> Crear paciente
+                      </button>
+                    )}
+                  </div>
+                  {patients.length > 0 ? (
+                    <select
+                      value={form.patientId}
+                      onChange={(e) => onChangeForm((f) => ({ ...f, patientId: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+                    >
+                      <option value="">— Sin paciente —</option>
+                      {patients.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">
+                      Sin pacientes registrados.{' '}
+                      {onCreatePatient && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewPatientError('');
+                            setShowCreatePatient(true);
+                          }}
+                          className="font-semibold text-teal-600 hover:underline"
+                        >
+                          Crear paciente
+                        </button>
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+              {consultations.length === 0 && patients.length === 0 && !onCreatePatient && (
+                <p className="text-xs text-slate-400 italic">
+                  Sin consultas ni pacientes registrados.
+                </p>
+              )}
+            </div>
 
-                {conceptError && <p className="text-xs text-red-500 font-medium">{conceptError}</p>}
+            {/* Concepto */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-600">
+                  Concepto (opcional)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowManager((v) => !v)}
+                  className="text-[10px] font-bold text-teal-600 hover:text-teal-700"
+                >
+                  {showManager ? 'Cerrar gestor' : 'Gestionar conceptos'}
+                </button>
+              </div>
+
+              <select
+                value={form.conceptId}
+                onChange={(e) => onChangeForm((f) => ({ ...f, conceptId: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-200 focus:border-teal-300"
+              >
+                <option value="">— Sin concepto —</option>
+                {concepts
+                  .filter((c) => c.isActive)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+
+              {showManager && (
+                <div className="mt-3 border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Gestionar conceptos
+                  </p>
+
+                  <div className="space-y-1.5">
+                    {concepts.length === 0 && (
+                      <p className="text-xs text-slate-400 italic">No hay conceptos aún.</p>
+                    )}
+                    {concepts.map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-slate-200"
+                      >
+                        {editingConceptId === c.id ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editingConceptName}
+                              onChange={(e) => setEditingConceptName(e.target.value)}
+                              className="flex-1 text-xs px-2 py-1 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-teal-300"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleUpdateConcept(c.id)}
+                              disabled={savingConcept}
+                              className="p-1 rounded-md text-teal-600 hover:bg-teal-50"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingConceptId(null)}
+                              className="p-1 rounded-md text-slate-400 hover:bg-slate-100"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span
+                              className={`flex-1 text-xs font-medium ${c.isActive ? 'text-slate-800' : 'text-slate-400 line-through'}`}
+                            >
+                              {c.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingConceptId(c.id);
+                                setEditingConceptName(c.name);
+                              }}
+                              className="p-1 rounded-md text-slate-300 hover:text-teal-600 hover:bg-teal-50"
+                              title="Editar"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteConcept(c.id)}
+                              disabled={savingConcept}
+                              className="p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nuevo concepto..."
+                      value={newConceptName}
+                      onChange={(e) => setNewConceptName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void handleCreateConcept();
+                        }
+                      }}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateConcept()}
+                      disabled={savingConcept || !newConceptName.trim()}
+                      className="px-3 py-2 rounded-lg text-xs font-bold text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-50"
+                    >
+                      {savingConcept ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+
+                  {conceptError && (
+                    <p className="text-xs text-red-500 font-medium">{conceptError}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Error general */}
+            {error && (
+              <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-xs text-red-600 font-medium">{error}</p>
               </div>
             )}
-          </div>
 
-          {/* Error general */}
-          {error && (
-            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200">
-              <p className="text-xs text-red-600 font-medium">{error}</p>
+            {/* Acciones */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                Guardar ingreso
+              </button>
             </div>
-          )}
-
-          {/* Acciones */}
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-              style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Check className="w-4 h-4" />
-              )}
-              Guardar ingreso
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
