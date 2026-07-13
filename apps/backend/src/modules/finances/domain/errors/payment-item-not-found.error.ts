@@ -9,6 +9,6 @@ export class PaymentItemNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(id: string) {
-    super(`Payment item not found: ${id}`);
+    super(`Ítem de pago no encontrado: ${id}`);
   }
 }

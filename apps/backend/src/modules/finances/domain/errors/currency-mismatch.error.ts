@@ -7,6 +7,6 @@ export class CurrencyMismatchError extends DomainError {
   readonly code = 'CURRENCY_MISMATCH';
 
   constructor() {
-    super('Cannot add money values with different currencies');
+    super('No se pueden sumar montos en monedas distintas');
   }
 }

@@ -7,6 +7,6 @@ export class InvalidAmountError extends DomainError {
   readonly code = 'INVALID_AMOUNT';
 
   constructor(amount: number) {
-    super(`Amount must be greater than zero; received ${amount}`);
+    super(`El monto debe ser mayor a cero; se recibió ${amount}`);
   }
 }

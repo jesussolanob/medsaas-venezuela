@@ -11,6 +11,6 @@ export class PaymentNotOwnedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('Access denied to this payment');
+    super('No tienes permiso para modificar este pago');
   }
 }

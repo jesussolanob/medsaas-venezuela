@@ -14,6 +14,6 @@ export class RelatedResourceNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Related resource not found');
+    super('Recurso relacionado no encontrado');
   }
 }

@@ -10,7 +10,7 @@ export class InvalidPaymentTransitionError extends DomainError {
 
   constructor(paymentId: string, currentStatus: string, targetStatus: string) {
     super(
-      `Cannot transition payment ${paymentId} from '${currentStatus}' to '${targetStatus}' — already in that state`,
+      `No se puede cambiar el estado del pago ${paymentId} de '${currentStatus}' a '${targetStatus}' — ya está en ese estado`,
     );
   }
 }

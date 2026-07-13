@@ -16,11 +16,33 @@ import { z } from 'zod';
  */
 export const UpdatePaymentDetailsCobrosSchema = z
   .object({
-    paid_at: z.string().datetime().nullable().optional(),
-    method: z.string().min(1).max(100).nullable().optional(),
-    reference: z.string().min(1).max(200).nullable().optional(),
-    bcv_rate: z.number().positive().nullable().optional(),
-    amount_bs: z.number().nonnegative().nullable().optional(),
+    paid_at: z
+      .string()
+      .datetime({ error: 'La fecha de pago no tiene un formato válido' })
+      .nullable()
+      .optional(),
+    method: z
+      .string()
+      .min(1, { error: 'El método de pago no puede estar vacío' })
+      .max(100, { error: 'El método de pago no puede superar los 100 caracteres' })
+      .nullable()
+      .optional(),
+    reference: z
+      .string()
+      .min(1, { error: 'La referencia no puede estar vacía' })
+      .max(200, { error: 'La referencia no puede superar los 200 caracteres' })
+      .nullable()
+      .optional(),
+    bcv_rate: z
+      .number()
+      .positive({ error: 'La tasa BCV debe ser mayor a cero' })
+      .nullable()
+      .optional(),
+    amount_bs: z
+      .number()
+      .nonnegative({ error: 'El monto en bolívares no puede ser negativo' })
+      .nullable()
+      .optional(),
   })
   .strict();
 

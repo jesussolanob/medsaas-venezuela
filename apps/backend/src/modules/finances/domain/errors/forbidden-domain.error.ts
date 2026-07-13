@@ -8,7 +8,7 @@ export class ForbiddenDomainError extends DomainError {
   readonly code = 'FORBIDDEN';
   override readonly httpStatus = 403;
 
-  constructor(message = 'Insufficient permissions') {
+  constructor(message = 'No tienes permisos suficientes para realizar esta acción') {
     super(message);
   }
 }
