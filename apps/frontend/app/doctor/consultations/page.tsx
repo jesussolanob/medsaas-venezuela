@@ -2539,28 +2539,70 @@ function ConsultationsPage() {
                                       setAddingBlock(false);
                                       return;
                                     }
-                                    // Reconstruir config actual desde doctorActiveBlocks + el nuevo
-                                    const newSortOrder =
-                                      (doctorActiveBlocks[doctorActiveBlocks.length - 1]
-                                        ?.sort_order ?? 0) + 1;
-                                    const nextBlocks = [
-                                      ...doctorActiveBlocks.map((b, i) => ({
-                                        block_key: b.key,
-                                        enabled: true,
-                                        sort_order: b.sort_order ?? i,
-                                        custom_label: null,
-                                        printable: b.printable,
-                                        send_to_patient: b.send_to_patient,
-                                      })),
-                                      {
+                                    // PRUEBAS 12-07 FIX: preservar la config COMPLETA del doctor
+                                    // (incluidos los bloques DESHABILITADOS) y solo habilitar/
+                                    // agregar el seleccionado. Antes se reconstruía desde
+                                    // doctorActiveBlocks (solo los enabled), y como el PUT
+                                    // reemplaza toda la config, se borraban las filas
+                                    // enabled=false → esos bloques reaparecían por el default del
+                                    // catálogo ("se agregaban todos y se fijaban").
+                                    const cfgRes = await fetch('/api/doctor/consultation-blocks', {
+                                      cache: 'no-store',
+                                    });
+                                    if (!cfgRes.ok) {
+                                      showToast({
+                                        type: 'error',
+                                        message: 'No se pudo leer la configuración de bloques',
+                                      });
+                                      return;
+                                    }
+                                    const cfgJson = await cfgRes.json();
+                                    type DoctorCfgRow = {
+                                      blockKey: string;
+                                      enabled: boolean;
+                                      sortOrder: number;
+                                      customLabel: string | null;
+                                      customDescription: string | null;
+                                      printable: boolean | null;
+                                      sendToPatient: boolean | null;
+                                    };
+                                    const currentConfig = (cfgJson.doctor_config ??
+                                      []) as DoctorCfgRow[];
+                                    const nextBlocks: Array<{
+                                      block_key: string;
+                                      enabled: boolean;
+                                      sort_order: number;
+                                      custom_label: string | null;
+                                      custom_description: string | null;
+                                      printable: boolean | null;
+                                      send_to_patient: boolean | null;
+                                    }> = currentConfig.map((b) => ({
+                                      block_key: b.blockKey,
+                                      // Habilita SOLO el bloque seleccionado; el resto conserva su
+                                      // estado (los deshabilitados siguen deshabilitados).
+                                      enabled: b.blockKey === c.key ? true : b.enabled,
+                                      sort_order: b.sortOrder,
+                                      custom_label: b.customLabel,
+                                      custom_description: b.customDescription,
+                                      printable: b.printable,
+                                      send_to_patient: b.sendToPatient,
+                                    }));
+                                    // Si el bloque no tenía fila de config, agrégalo al final.
+                                    if (!nextBlocks.some((b) => b.block_key === c.key)) {
+                                      const maxSort = nextBlocks.reduce(
+                                        (m, b) => Math.max(m, b.sort_order ?? 0),
+                                        0,
+                                      );
+                                      nextBlocks.push({
                                         block_key: c.key,
                                         enabled: true,
-                                        sort_order: newSortOrder,
+                                        sort_order: maxSort + 1,
                                         custom_label: null,
+                                        custom_description: null,
                                         printable: c.printable,
                                         send_to_patient: c.send_to_patient,
-                                      },
-                                    ];
+                                      });
+                                    }
                                     const res = await fetch('/api/doctor/consultation-blocks', {
                                       method: 'PUT',
                                       headers: { 'Content-Type': 'application/json' },

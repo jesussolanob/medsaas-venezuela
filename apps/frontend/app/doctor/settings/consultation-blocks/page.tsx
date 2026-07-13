@@ -345,9 +345,9 @@ export default function ConsultationBlocksConfigPage() {
                       className="flex-1 min-w-0 font-semibold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-teal-400 outline-none disabled:opacity-60 py-0.5"
                     />
                   )}
-                  <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                    {r.block_key}
-                  </span>
+                  {/* PRUEBAS 12-07: se removió el badge con el block_key interno (nombre
+                      en inglés) que aparecía en gris; es un identificador interno y no
+                      debe mostrarse al usuario. */}
                 </div>
                 {!LOCKED_BLOCK_KEYS.has(r.block_key) &&
                   r.custom_label &&
