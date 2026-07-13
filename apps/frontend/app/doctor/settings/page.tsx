@@ -1398,6 +1398,11 @@ function SettingsPageInner() {
         {/* ---------------- PAYMENT METHODS ---------------- */}
         {tab === 'payment' && (
           <div className="space-y-4">
+            {/* Tasa de cambio — va de PRIMERO (pedido del usuario) */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <ExchangeRateSection />
+            </div>
+
             {/* Métodos de pago — acordeón colapsable */}
             <div className="bg-white border border-slate-200 rounded-xl p-6">
               <p className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-1">
@@ -1566,11 +1571,6 @@ function SettingsPageInner() {
                   </>
                 )}
               </button>
-            </div>
-
-            {/* Tasa de cambio — sección compacta integrada en el tab de pago */}
-            <div className="bg-white border border-slate-200 rounded-xl p-6">
-              <ExchangeRateSection />
             </div>
           </div>
         )}
