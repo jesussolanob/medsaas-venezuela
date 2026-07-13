@@ -25,10 +25,11 @@ export interface SavedPrescription {
   medications: Array<{
     name: string;
     dose: string;
+    route?: string;
     frequency: string;
     duration: string;
-    indications: string;
     presentation?: string;
+    indications: string;
   }>;
   notes: string | null;
   created_at: string;

@@ -53,6 +53,8 @@ import {
   Lock,
   RefreshCw,
   ArrowUpDown,
+  Mic,
+  Square,
 } from 'lucide-react';
 // Etapa 1: Supabase removed.
 // PLACEHOLDER — following data sources have no backend endpoint yet (Fase 5):
@@ -181,10 +183,11 @@ type Patient = {
 type Medication = {
   name: string;
   dose: string;
+  route: string;
   frequency: string;
   duration: string;
-  indications: string;
   presentation: string;
+  indications: string;
 };
 
 type Recipe = {
@@ -510,6 +513,14 @@ function ConsultationsPage() {
   const [recipe, setRecipe] = useState<Recipe>({ medications: [], notes: '' });
   const [isSavingRecipe, setIsSavingRecipe] = useState(false);
   const [showPrintRecipe, setShowPrintRecipe] = useState(false);
+
+  // Dictado de receta por voz
+  type DictateState = 'idle' | 'recording' | 'transcribing' | 'analyzing' | 'error';
+  const [dictateState, setDictateState] = useState<DictateState>('idle');
+  const [dictateError, setDictateError] = useState<string | null>(null);
+  const dictateRecorderRef = useRef<MediaRecorder | null>(null);
+  const dictateChunksRef = useRef<Blob[]>([]);
+  const dictateStreamRef = useRef<MediaStream | null>(null);
 
   // Prescripciones (exámenes que el médico ordena)
   const [prescripciones, setPrescripciones] = useState<Prescripcion[]>([]);
@@ -1202,10 +1213,11 @@ function ConsultationsPage() {
             {
               name: rx.medication,
               dose: rx.dosage || '',
+              route: '',
               frequency: rx.frequency || '',
               duration: rx.duration || '',
-              indications: rx.notes || '',
               presentation: rx.presentation || '',
+              indications: rx.notes || '',
             },
           ],
           notes: rx.notes,
@@ -1394,6 +1406,29 @@ function ConsultationsPage() {
       return;
     }
 
+    // Validar campos obligatorios de cada medicamento antes de guardar
+    const REQUIRED_FIELDS: Array<{ key: keyof Medication; label: string }> = [
+      { key: 'name', label: 'nombre' },
+      { key: 'dose', label: 'dosis' },
+      { key: 'route', label: 'vía de administración' },
+      { key: 'frequency', label: 'frecuencia' },
+      { key: 'duration', label: 'duración' },
+      { key: 'presentation', label: 'presentación' },
+    ];
+    for (let i = 0; i < recipe.medications.length; i++) {
+      const med = recipe.medications[i];
+      for (const field of REQUIRED_FIELDS) {
+        if (!med[field.key].trim()) {
+          const numero = recipe.medications.length > 1 ? ` ${i + 1}` : '';
+          showToast({
+            type: 'error',
+            message: `Completa la ${field.label} del medicamento${numero}`,
+          });
+          return;
+        }
+      }
+    }
+
     setIsSavingRecipe(true);
     try {
       // MIGRATED: create prescription via backend → POST /api/prescriptions
@@ -1425,10 +1460,11 @@ function ConsultationsPage() {
           {
             name: rx.medication,
             dose: rx.dosage || '',
+            route: '',
             frequency: rx.frequency || '',
             duration: rx.duration || '',
-            indications: rx.notes || '',
             presentation: rx.presentation || '',
+            indications: rx.notes || '',
           },
         ],
         notes: rx.notes,
@@ -1662,7 +1698,15 @@ function ConsultationsPage() {
       ...p,
       medications: [
         ...p.medications,
-        { name: '', dose: '', frequency: '', duration: '', indications: '', presentation: '' },
+        {
+          name: '',
+          dose: '',
+          route: '',
+          frequency: '',
+          duration: '',
+          presentation: '',
+          indications: '',
+        },
       ],
     }));
   }
@@ -1672,6 +1716,230 @@ function ConsultationsPage() {
       ...p,
       medications: p.medications.filter((_, i) => i !== idx),
     }));
+  }
+
+  // Dictado de receta por voz:
+  // 1. Graba el micrófono usando la misma infra que ConsultationRecorder.
+  // 2. Envía el audio a /api/doctor/consultations/transcribe (mismo endpoint).
+  // 3. Con el texto transcrito, llama a /api/doctor/ai con action='parse_prescription'.
+  // 4. Pre-llena las filas del récipe con los medicamentos detectados.
+  async function dictateRecipe() {
+    setDictateError(null);
+
+    // Solicitar permiso al micrófono
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch {
+      setDictateError('No se pudo acceder al micrófono. Verifica los permisos.');
+      setDictateState('error');
+      return;
+    }
+    dictateStreamRef.current = stream;
+    dictateChunksRef.current = [];
+
+    const mimeOptions = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+    ];
+    const mime = mimeOptions.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+    const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    dictateRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) dictateChunksRef.current.push(e.data);
+    };
+
+    recorder.onstop = async () => {
+      // Detener stream
+      if (dictateStreamRef.current) {
+        dictateStreamRef.current.getTracks().forEach((t) => t.stop());
+        dictateStreamRef.current = null;
+      }
+
+      const chunks = dictateChunksRef.current;
+      if (chunks.length === 0) {
+        setDictateError('No se grabó audio. Intenta nuevamente.');
+        setDictateState('error');
+        return;
+      }
+
+      const blob = new Blob(chunks, { type: mime || 'audio/webm' });
+      if (blob.size < 1024) {
+        setDictateError('Grabación muy corta. Habla más despacio y vuelve a intentarlo.');
+        setDictateState('error');
+        return;
+      }
+
+      // Paso 2: Transcribir
+      setDictateState('transcribing');
+      let transcript = '';
+      try {
+        const ext = (mime || '').includes('mp4')
+          ? 'm4a'
+          : (mime || '').includes('ogg')
+            ? 'ogg'
+            : 'webm';
+        const fd = new FormData();
+        fd.append('audio', blob, `receta.${ext}`);
+        fd.append('language', 'es-VE');
+
+        const transRes = await fetch('/api/doctor/consultations/transcribe', {
+          method: 'POST',
+          body: fd,
+        });
+        const transData = (await transRes.json()) as {
+          ok?: boolean;
+          transcript?: string;
+          error?: string;
+        };
+        if (!transRes.ok || !transData.ok) {
+          throw new Error(transData.error ?? `HTTP ${transRes.status}`);
+        }
+        transcript = transData.transcript ?? '';
+        if (!transcript.trim()) {
+          setDictateError('No se detectó voz en la grabación. Intenta nuevamente.');
+          setDictateState('error');
+          return;
+        }
+      } catch (err: unknown) {
+        setDictateError(err instanceof Error ? err.message : 'Error al transcribir el audio');
+        setDictateState('error');
+        return;
+      }
+
+      // Paso 3: Parsear con IA
+      setDictateState('analyzing');
+      try {
+        const aiRes = await fetch('/api/doctor/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'parse_prescription', content: transcript }),
+        });
+        const aiData = (await aiRes.json()) as {
+          result?: string;
+          error?: string;
+        };
+        if (!aiRes.ok || aiData.error) {
+          throw new Error(aiData.error ?? `HTTP ${aiRes.status}`);
+        }
+
+        // Parsear el resultado (puede ser JSON string o ya un objeto)
+        let parsed: {
+          medications?: Array<{
+            name?: string;
+            dose?: string;
+            route?: string;
+            frequency?: string;
+            duration?: string;
+            presentation?: string;
+          }>;
+        } = {};
+        try {
+          parsed =
+            typeof aiData.result === 'string'
+              ? (JSON.parse(aiData.result) as typeof parsed)
+              : (aiData.result as unknown as typeof parsed);
+        } catch {
+          throw new Error('La IA no devolvió un formato válido. Intenta dictando más despacio.');
+        }
+
+        const detected = Array.isArray(parsed.medications) ? parsed.medications : [];
+        if (detected.length === 0) {
+          showToast({
+            type: 'error',
+            message: 'No se detectaron medicamentos en el dictado. Intenta ser más específico.',
+          });
+          setDictateState('idle');
+          return;
+        }
+
+        // Paso 4: Pre-llenar filas del récipe (respeta medicamentos existentes no vacíos)
+        const newMeds: Medication[] = detected.map((m) => ({
+          name: m.name ?? '',
+          dose: m.dose ?? '',
+          route: m.route ?? '',
+          frequency: m.frequency ?? '',
+          duration: m.duration ?? '',
+          presentation: m.presentation ?? '',
+          indications: '',
+        }));
+
+        setRecipe((prev) => {
+          const existingNonEmpty = prev.medications.filter((m) => m.name.trim() !== '');
+          return { ...prev, medications: [...existingNonEmpty, ...newMeds] };
+        });
+
+        // Avisar si quedan campos obligatorios vacíos
+        const REQUIRED: Array<{ key: keyof Medication; label: string }> = [
+          { key: 'dose', label: 'dosis' },
+          { key: 'route', label: 'vía de administración' },
+          { key: 'frequency', label: 'frecuencia' },
+          { key: 'duration', label: 'duración' },
+          { key: 'presentation', label: 'presentación' },
+        ];
+        const missing: string[] = [];
+        for (const med of newMeds) {
+          for (const field of REQUIRED) {
+            if (!med[field.key].trim() && !missing.includes(field.label)) {
+              missing.push(field.label);
+            }
+          }
+        }
+        if (missing.length > 0) {
+          showToast({
+            type: 'error',
+            message: `Completa los campos faltantes: ${missing.join(', ')}`,
+          });
+        } else {
+          showToast({
+            type: 'success',
+            message: `${detected.length} medicamento${detected.length > 1 ? 's' : ''} agregado${detected.length > 1 ? 's' : ''} al récipe`,
+          });
+        }
+
+        setDictateState('idle');
+      } catch (err: unknown) {
+        setDictateError(err instanceof Error ? err.message : 'Error al analizar con IA');
+        setDictateState('error');
+      }
+    };
+
+    // Grabar en chunks de 1s
+    recorder.start(1000);
+    setDictateState('recording');
+
+    // Detener automáticamente tras 30 segundos para evitar grabaciones infinitas
+    setTimeout(() => {
+      if (dictateRecorderRef.current?.state === 'recording') {
+        dictateRecorderRef.current.stop();
+      }
+    }, 30_000);
+  }
+
+  function stopDictateRecording() {
+    if (dictateRecorderRef.current && dictateRecorderRef.current.state === 'recording') {
+      dictateRecorderRef.current.stop();
+    }
+  }
+
+  function cancelDictateRecording() {
+    if (dictateRecorderRef.current) {
+      try {
+        dictateRecorderRef.current.stop();
+      } catch {}
+    }
+    if (dictateStreamRef.current) {
+      dictateStreamRef.current.getTracks().forEach((t) => t.stop());
+      dictateStreamRef.current = null;
+    }
+    dictateChunksRef.current = [];
+    setDictateState('idle');
+    setDictateError(null);
   }
 
   function saveReport() {
@@ -2897,6 +3165,9 @@ function ConsultationsPage() {
                               {med.dose && (
                                 <span className="text-xs text-teal-700">Dosis: {med.dose}</span>
                               )}
+                              {med.route && (
+                                <span className="text-xs text-teal-700">Vía: {med.route}</span>
+                              )}
                               {med.frequency && (
                                 <span className="text-xs text-teal-700">
                                   Frecuencia: {med.frequency}
@@ -2939,10 +3210,11 @@ function ConsultationsPage() {
                                     {
                                       name: q.name,
                                       dose: q.details || '',
+                                      route: '',
                                       frequency: '',
                                       duration: '',
-                                      indications: '',
                                       presentation: '',
+                                      indications: '',
                                     },
                                   ],
                                 }))
@@ -3193,10 +3465,11 @@ function ConsultationsPage() {
                                   {
                                     name: rx.medication,
                                     dose: rx.dosage || '',
+                                    route: '',
                                     frequency: rx.frequency || '',
                                     duration: rx.duration || '',
-                                    indications: rx.notes || '',
                                     presentation: rx.presentation || '',
+                                    indications: rx.notes || '',
                                   },
                                 ],
                                 notes: rx.notes,
@@ -4292,17 +4565,57 @@ function ConsultationsPage() {
         {showRecipe && (
           <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                   <Pill className="w-5 h-5 text-teal-600" />
                   <h2 className="text-lg font-bold text-slate-900">Nueva receta</h2>
                 </div>
-                <button
-                  onClick={() => setShowRecipe(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Botón "Dictar receta" — gating ai_transcription (misma feature que Grabar consulta) */}
+                  {!planLoading && planFeatures.ai_transcription && (
+                    <>
+                      {dictateState === 'idle' && (
+                        <button
+                          onClick={dictateRecipe}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-colors"
+                          style={{ background: 'var(--dh-coral, #FF8A65)' }}
+                          title="Dicta los medicamentos por voz y la IA los pre-llena en la receta"
+                        >
+                          <Mic className="w-3.5 h-3.5" /> Dictar receta
+                        </button>
+                      )}
+                      {dictateState === 'recording' && (
+                        <button
+                          onClick={stopDictateRecording}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-red-500 hover:bg-red-600 transition-colors animate-pulse"
+                        >
+                          <Square className="w-3.5 h-3.5" fill="white" /> Detener
+                        </button>
+                      )}
+                      {(dictateState === 'transcribing' || dictateState === 'analyzing') && (
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          {dictateState === 'transcribing' ? 'Transcribiendo…' : 'Analizando…'}
+                        </span>
+                      )}
+                      {dictateState === 'error' && dictateError && (
+                        <span className="flex items-center gap-1.5 text-xs text-red-600 max-w-xs">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{dictateError}</span>
+                          <button onClick={cancelDictateRecording} className="shrink-0 underline">
+                            cerrar
+                          </button>
+                        </span>
+                      )}
+                    </>
+                  )}
+                  <button
+                    onClick={() => setShowRecipe(false)}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -4311,6 +4624,9 @@ function ConsultationsPage() {
                     key={idx}
                     className="bg-white border border-slate-200 rounded-lg p-4 space-y-3"
                   >
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      Medicamento {idx + 1}
+                    </p>
                     <div className="flex items-start gap-2">
                       <div className="flex-1 space-y-2">
                         <input
@@ -4336,6 +4652,20 @@ function ConsultationsPage() {
                               ...p,
                               medications: p.medications.map((m, i) =>
                                 i === idx ? { ...m, dose: e.target.value } : m,
+                              ),
+                            }))
+                          }
+                          className={fi}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Vía de administración (ej: oral, intramuscular)"
+                          value={med.route}
+                          onChange={(e) =>
+                            setRecipe((p) => ({
+                              ...p,
+                              medications: p.medications.map((m, i) =>
+                                i === idx ? { ...m, route: e.target.value } : m,
                               ),
                             }))
                           }
@@ -4369,21 +4699,7 @@ function ConsultationsPage() {
                           }
                           className={fi}
                         />
-                        <input
-                          type="text"
-                          placeholder="Indicaciones"
-                          value={med.indications}
-                          onChange={(e) =>
-                            setRecipe((p) => ({
-                              ...p,
-                              medications: p.medications.map((m, i) =>
-                                i === idx ? { ...m, indications: e.target.value } : m,
-                              ),
-                            }))
-                          }
-                          className={fi}
-                        />
-                        {/* Selector de presentación farmacéutica */}
+                        {/* Selector de presentación farmacéutica — obligatorio */}
                         <div className="flex gap-2">
                           <select
                             value={
@@ -4418,7 +4734,7 @@ function ConsultationsPage() {
                             }}
                             className={`${fi} flex-1`}
                           >
-                            <option value="">Presentación (opcional)</option>
+                            <option value="">Presentación</option>
                             <option value="Tabletas">Tabletas</option>
                             <option value="Cápsulas">Cápsulas</option>
                             <option value="Gotas">Gotas</option>
@@ -4470,6 +4786,21 @@ function ConsultationsPage() {
                               />
                             )}
                         </div>
+                        {/* Indicaciones — campo opcional, va al final */}
+                        <input
+                          type="text"
+                          placeholder="Indicaciones (opcional)"
+                          value={med.indications}
+                          onChange={(e) =>
+                            setRecipe((p) => ({
+                              ...p,
+                              medications: p.medications.map((m, i) =>
+                                i === idx ? { ...m, indications: e.target.value } : m,
+                              ),
+                            }))
+                          }
+                          className={fi}
+                        />
                       </div>
                       <button
                         onClick={() => removeMedication(idx)}
@@ -4500,10 +4831,11 @@ function ConsultationsPage() {
                               {
                                 name: q.name,
                                 dose: q.details || '',
+                                route: '',
                                 frequency: '',
                                 duration: '',
-                                indications: '',
                                 presentation: '',
+                                indications: '',
                               },
                             ],
                           }))
