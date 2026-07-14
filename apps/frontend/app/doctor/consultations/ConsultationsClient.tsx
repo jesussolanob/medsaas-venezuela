@@ -23,6 +23,7 @@ import {
   ChevronRight,
   ChevronLeft,
   ArrowLeft,
+  ArrowDownCircle,
   Save,
   CheckCircle,
   Clock,
@@ -101,6 +102,15 @@ import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import { showToast } from '@/components/ui/Toaster';
 import ShareDocumentsModal from './ShareDocumentsModal';
 import ApprovePaymentModal, { type ExistingExtraItem } from './ApprovePaymentModal';
+import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
+import {
+  getIncomeConcepts,
+  addIncome,
+  createIncomeConcept,
+  updateIncomeConcept,
+  deleteIncomeConcept,
+  type IncomeConcept,
+} from '../finances/actions';
 
 type Consultation = {
   id: string;
@@ -477,6 +487,20 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const [showApprovePaymentModal, setShowApprovePaymentModal] = useState(false);
   // Modal de confirmación al salir de una consulta no atendida
   const [showExitConsultationModal, setShowExitConsultationModal] = useState(false);
+  // Modal de ingreso adicional (consulta ya pagada)
+  const [showExtraIncomeModal, setShowExtraIncomeModal] = useState(false);
+  const [extraIncomeConcepts, setExtraIncomeConcepts] = useState<IncomeConcept[]>([]);
+  const [extraIncomeConceptsLoading, setExtraIncomeConceptsLoading] = useState(false);
+  const [extraIncomeSaving, setExtraIncomeSaving] = useState(false);
+  const [extraIncomeError, setExtraIncomeError] = useState('');
+  const [extraIncomeForm, setExtraIncomeForm] = useState<IncomeForm>({
+    description: '',
+    amount: '',
+    conceptId: '',
+    date: new Date().toISOString().split('T')[0],
+    relatedConsultationId: '',
+    patientId: '',
+  });
   const [patients, setPatients] = useState<Patient[]>([]);
   // Cantidad de registros EHR del paciente de la consulta abierta — habilita el tipo
   // "Historia clínica" en generar/compartir (evita PDF vacío / 422 sin EHR).
@@ -1083,6 +1107,71 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         x.id === selected.id ? { ...x, payment_status: 'approved', amount: total } : x,
       ),
     );
+  }
+
+  /**
+   * Abre el modal de ingreso adicional para una consulta ya pagada.
+   * Carga los conceptos de ingreso al abrir (si aún no están cargados).
+   */
+  async function openExtraIncomeModal(consultationId: string, patientId: string) {
+    const today = new Date().toISOString().split('T')[0];
+    setExtraIncomeForm({
+      description: '',
+      amount: '',
+      conceptId: '',
+      date: today,
+      relatedConsultationId: consultationId,
+      patientId: patientId,
+    });
+    setExtraIncomeError('');
+    setShowExtraIncomeModal(true);
+
+    if (extraIncomeConcepts.length === 0) {
+      setExtraIncomeConceptsLoading(true);
+      try {
+        const concepts = await getIncomeConcepts();
+        setExtraIncomeConcepts(concepts);
+      } catch (err: unknown) {
+        reportError('doctor/consultations', 'openExtraIncomeModal/getIncomeConcepts', err);
+      } finally {
+        setExtraIncomeConceptsLoading(false);
+      }
+    }
+  }
+
+  /**
+   * Guarda el ingreso adicional asociado a la consulta actual.
+   */
+  async function handleExtraIncomeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setExtraIncomeError('');
+    if (!extraIncomeForm.description.trim() || !extraIncomeForm.amount) {
+      setExtraIncomeError('Descripción y monto son obligatorios.');
+      return;
+    }
+    setExtraIncomeSaving(true);
+    try {
+      const result = await addIncome({
+        description: extraIncomeForm.description.trim(),
+        amount: parseFloat(extraIncomeForm.amount),
+        currency: 'USD',
+        conceptId: extraIncomeForm.conceptId || undefined,
+        date: extraIncomeForm.date || undefined,
+        relatedConsultationId: extraIncomeForm.relatedConsultationId || null,
+        patientId: null,
+      });
+      if (!result.success) {
+        setExtraIncomeError(result.error);
+      } else {
+        setShowExtraIncomeModal(false);
+        showToast({ type: 'success', message: 'Ingreso adicional registrado correctamente' });
+      }
+    } catch (err: unknown) {
+      reportError('doctor/consultations', 'handleExtraIncomeSubmit', err);
+      setExtraIncomeError('Ocurrió un error al registrar el ingreso.');
+    } finally {
+      setExtraIncomeSaving(false);
+    }
   }
 
   /**
@@ -4293,6 +4382,20 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         </div>
                       )}
 
+                      {/* Ingreso adicional — visible solo cuando el pago está aprobado */}
+                      {selected.payment_status === 'approved' && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void openExtraIncomeModal(selected.id, selected.patient_id)
+                          }
+                          className="w-full flex items-center justify-center gap-1.5 border border-teal-300 text-teal-700 bg-teal-50 hover:bg-teal-100 text-xs font-semibold rounded-lg py-2 transition-colors"
+                        >
+                          <ArrowDownCircle className="w-3.5 h-3.5" />
+                          Ingreso adicional
+                        </button>
+                      )}
+
                       {/* Datos de cita (read-only) */}
                       {appointmentData &&
                         (appointmentData.payment_method || appointmentData.plan_price) && (
@@ -4586,6 +4689,57 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             </div>
           )}
         </div>
+
+        {/* Modal: Ingreso adicional (consulta ya pagada) */}
+        {showExtraIncomeModal && selected && (
+          <IncomeModal
+            concepts={extraIncomeConcepts}
+            consultations={[]}
+            patients={patients.map((p) => ({
+              id: p.id,
+              doctor_id: '',
+              full_name: p.full_name,
+              age: p.age ?? null,
+              phone: p.phone ?? null,
+              cedula: p.cedula ?? null,
+              email: p.email ?? null,
+              sex: p.sex ?? null,
+              notes: null,
+              source: null,
+              blood_type: p.blood_type ?? null,
+              allergies: p.allergies ?? null,
+              chronic_conditions: p.chronic_conditions ?? null,
+              created_at: '',
+            }))}
+            form={extraIncomeForm}
+            saving={extraIncomeSaving || extraIncomeConceptsLoading}
+            error={extraIncomeError}
+            onChangeForm={setExtraIncomeForm}
+            onSubmit={(e) => void handleExtraIncomeSubmit(e)}
+            onClose={() => setShowExtraIncomeModal(false)}
+            onCreateConcept={async (name) => {
+              const res = await createIncomeConcept(name);
+              if (res.success) {
+                setExtraIncomeConcepts((prev) => [...prev, res.data]);
+              }
+              return res;
+            }}
+            onUpdateConcept={async (id, patch) => {
+              const res = await updateIncomeConcept(id, patch);
+              if (res.success) {
+                setExtraIncomeConcepts((prev) => prev.map((c) => (c.id === id ? res.data : c)));
+              }
+              return res;
+            }}
+            onDeleteConcept={async (id) => {
+              const res = await deleteIncomeConcept(id);
+              if (res.success) {
+                setExtraIncomeConcepts((prev) => prev.filter((c) => c.id !== id));
+              }
+              return res;
+            }}
+          />
+        )}
 
         {/* Modal: Recipe */}
         {showRecipe && (
