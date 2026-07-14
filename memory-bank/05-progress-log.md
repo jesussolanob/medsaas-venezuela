@@ -1947,6 +1947,44 @@ Migraciones nuevas verificadas seguras para deploy: 20260712000010..000013.
   fallando en "Deploy backend" desde el mediodía).
 - Guion QA de este lote: `07-qa-test-script.md` sección **D-2026-07-12b** (24 casos).
 
+## 2026-07-14 — Lote QA continuo (verificado en vivo en Cloud Run)
+
+Todo en rama `feature/migracion-backend`, deploys success. Verificado en vivo con Playwright salvo lo marcado.
+
+- **Método de pago OBLIGATORIO para aprobar (3ra vuelta, ahora sí):** el guard previo solo cubría el drawer de
+  Cobros; faltaba la ruta del EDITOR (`ApprovePaymentModal`). Candado en BACKEND en las 3 rutas de aprobación
+  (`ApprovePaymentWithExtrasUseCase` PATCH :id/approve-payment, `ApprovePaymentUseCase` PUT :id/payment, finances
+  `UpdatePaymentStatusUseCase`) → `PaymentMethodRequiredError` es-VE. Verificado 422 en vivo. Commit `39e4cda`.
+- **Flujo de pago (pedido del usuario):** el modal "Aprobar pago" ahora SOLO confirma el monto (local, sin BD, sin
+  exigir método); el ÚNICO write a BD es "Guardar pago" del panel, que al estar en "Aprobado" persiste status+extras+
+  método (método obligatorio AHÍ). Verificado en vivo (modal no llama approve-payment; "Guardar pago" sin método
+  bloquea). Commit `030276b`.
+- **"Marcar pagado" ahora guarda el método editado** (antes solo cambiaba estado y cerraba). Commit `d222866`-era.
+- **IA récipe:** aplicar sugerencia de transcripción al bloque Récipe ahora puebla las FILAS estructuradas (antes
+  iba a blocks_data como texto libre → "no aparecía abajo"); rutea por parse_prescription. + prompt anti-invención
+  (NO inventa dosis/frecuencia/"tomar con alimentos" no dictados; marca faltantes "(por especificar)"). Commit `cb038f3`.
+  ⚠️ NO verificado en vivo: la sesión actual es doctor `delta_free` (IA gated → parse_prescription devuelve vacío).
+- **Marca "Delta." → "Delta Salud"** en 6 lugares (sidebars doctor/admin/paciente, onboarding, login paciente, Logo).
+  Verificado en vivo. Commit `030276b`-era.
+- **Fecha del recibo:** formatear paid_at con timeZone UTC (ya no corre un día). Verificado en vivo. Commit `fb9e251`.
+- **Orden default UNIFICADO de 16 bloques** (migración `20260714000001`): 1-7 activos (Motivo, Antecedentes, Examen
+  físico, Evaluación actual, Diagnóstico, Récipe, Paraclínico), 8-16 inactivos; renombres `requested_exams`→**Referencia**
+  y `treatment`→**Tratamiento propuesto** (globales); vacía specialty_default_blocks (unifica). Catálogo ganó columna
+  `default_sort_order`; resolveBlocks cae a ella (antes 99/alfabético). Renombres verificados en vivo. Commit `c22a883`.
+  ⚠️ el ORDEN nuevo solo aplica a doctores SIN config personal (cascada: doctor override > default); doctores
+  existentes con config personal conservan la suya.
+- **#4 Editar nombre de bloque** (`settings/consultation-blocks`): al borrar reaparecía el default y no dejaba espacios.
+  Fix: draft desacoplado del custom_label guardado. Verificado en vivo (borrar→vacío, espacios OK). Commit `cdbfdb7`.
+- **#3 Botón "Ingreso adicional"** en el editor de consultas PAGADAS: abre el IncomeModal pre-asociado a la consulta
+  (relatedConsultationId). Verificado en vivo (aparece solo si approved, modal abre OK). Commit `d3c1735`.
+
+**⏳ PENDIENTE:**
+
+- **#5 Transcripción no sugiere bloques:** investigado — el path recorder→BFF(aplana suggestions)→controller
+  (sanitizeBlocks por regex)→adapter Gemini(maxOutputTokens 8192) está INTACTO y los cambios recientes no lo tocan.
+  NO reproducible sin doctor delta_plus + audio real. Reproducir con el usuario para arreglar con certeza.
+- Verificar récipe-apply/IA-no-inventa en vivo con doctor delta_plus.
+
 ## 2026-07-13 — Lote QA masivo (post-migración, verificado en app Cloud Run)
 
 **⚠️ REGLA CRÍTICA DE QA:** probar SIEMPRE en la app migrada `https://delta-frontend-knliodnwza-ue.a.run.app`
