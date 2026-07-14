@@ -658,6 +658,29 @@ export default function CobrosPage() {
     setUpdatingStatus(true);
     setActionToast(null);
     try {
+      // Al APROBAR, persistir primero los detalles editados en el drawer (método,
+      // referencia, fecha de pago, tasa) para que "Marcar como aprobado" también
+      // guarde los cambios — sin exigir un click extra en "Guardar detalles".
+      if (newStatus === 'approved' && selectedPayment) {
+        const bcvRateNum = editBcvRate ? parseFloat(editBcvRate) : null;
+        const amountBsNum = editAmountBs ? parseFloat(editAmountBs) : null;
+        const detailsResult = await updatePaymentDetails(selectedPayment.id, {
+          paid_at: editPaidAt ? new Date(`${editPaidAt}T12:00:00`).toISOString() : null,
+          method: editMethod || null,
+          reference: editReference || null,
+          bcv_rate: isNaN(bcvRateNum ?? NaN) ? null : bcvRateNum,
+          amount_bs: isNaN(amountBsNum ?? NaN) ? null : amountBsNum,
+        });
+        if (!detailsResult.ok) {
+          setActionToast({
+            type: 'error',
+            msg: detailsResult.error || 'No se pudieron guardar los detalles del pago.',
+          });
+          setTimeout(() => setActionToast(null), 3500);
+          return;
+        }
+      }
+
       const result = await updatePaymentStatusAction(paymentId, newStatus);
       if (!result.success) {
         reportError('doctor/cobros', 'updatePaymentStatus', result.error);

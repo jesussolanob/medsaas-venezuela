@@ -69,7 +69,7 @@ export default async function DoctorOnboardingPage() {
               className="font-extrabold text-lg leading-none"
               style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
             >
-              Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
+              Delta <span style={{ color: 'var(--dh-turquoise)' }}>Salud</span>
             </p>
             <p
               className="text-[10px] font-semibold uppercase tracking-[0.16em]"

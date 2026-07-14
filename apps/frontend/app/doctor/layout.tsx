@@ -480,7 +480,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                   className="text-sm font-extrabold leading-none"
                   style={{ color: 'var(--dh-ink)', letterSpacing: '-0.035em' }}
                 >
-                  Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
+                  Delta <span style={{ color: 'var(--dh-turquoise)' }}>Salud</span>
                 </p>
                 <p
                   className="mt-1"

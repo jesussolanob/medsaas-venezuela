@@ -104,7 +104,7 @@ export function DeltaWordmark({
           textAlign: vertical ? 'center' : 'left',
         }}
       >
-        Delta<span style={{ color: 'var(--dh-turquoise)' }}>.</span>
+        Delta <span style={{ color: 'var(--dh-turquoise)' }}>Salud</span>
         {showSubtitle && (
           <div
             style={{
