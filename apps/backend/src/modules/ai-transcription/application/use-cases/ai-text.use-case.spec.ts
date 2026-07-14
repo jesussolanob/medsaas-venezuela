@@ -996,7 +996,13 @@ describe('buildBlockPrompt', () => {
 
   it('uses known instruction for prescription block', () => {
     const prompt = buildBlockPrompt('prescription', 'Receta', 'Amoxicilina 500mg');
-    expect(prompt).toContain('nombre genérico');
+    expect(prompt).toContain('Prescripción médica');
+  });
+
+  it('instructs the prescription block NOT to invent unstated clinical data', () => {
+    const prompt = buildBlockPrompt('prescription', 'Receta', 'Amoxicilina 500mg');
+    expect(prompt).toContain('NUNCA inventes');
+    expect(prompt).toContain('por especificar');
   });
 
   it('uses default instruction for unknown block key', () => {

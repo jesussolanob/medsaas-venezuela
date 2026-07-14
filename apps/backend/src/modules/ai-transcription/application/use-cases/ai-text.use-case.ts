@@ -538,7 +538,7 @@ function getBlockInstruction(blockKey: string): string {
     case 'treatment':
       return 'Plan terapéutico: estructura el tratamiento (farmacológico, no farmacológico, medidas generales) de forma clara y jerarquizada.';
     case 'prescription':
-      return 'Prescripción médica: asegúrate de que cada medicamento presente nombre genérico, dosis, vía, frecuencia y duración; mantén formato profesional de receta.';
+      return 'Prescripción médica: incluye SOLO los datos que el médico dictó (nombre, dosis, vía, frecuencia, duración). NUNCA inventes ni completes con valores "típicos/habituales" un dato que no se dijo (p. ej. no agregues una frecuencia ni un "tomar con alimentos" si no se mencionó); si falta alguno, márcalo como "(por especificar)" para que el médico lo complete. Mantén formato profesional de receta.';
     case 'rest':
       return 'Reposo indicado: especifica tipo (absoluto/relativo/laboral), duración y motivo clínico de forma profesional.';
     case 'tasks':

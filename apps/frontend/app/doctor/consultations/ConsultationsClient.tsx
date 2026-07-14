@@ -1085,6 +1085,82 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     );
   }
 
+  /**
+   * Convierte texto libre (transcripción/dictado) en filas ESTRUCTURADAS del récipe
+   * vía IA (parse_prescription) y las agrega a `recipe.medications`.
+   *
+   * El bloque Récipe no es texto libre: sus medicamentos viven en el estado `recipe`,
+   * no en `blocks_data`. Sin esto, aplicar la sugerencia de Récipe desde la transcripción
+   * guardaba el texto en blocks_data pero "no aparecía abajo" (las filas no cambiaban).
+   * Reusa el mismo flujo que el botón "Dictar receta". La IA NO inventa: los campos que
+   * el médico no dictó quedan vacíos para que él los complete.
+   */
+  async function parseTextIntoRecipe(text: string): Promise<void> {
+    const clean = text.trim();
+    if (!clean) return;
+    try {
+      const aiRes = await fetch('/api/doctor/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'parse_prescription', content: clean }),
+      });
+      const aiData = (await aiRes.json()) as { result?: string; error?: string };
+      if (!aiRes.ok || aiData.error) {
+        showToast({ type: 'error', message: aiData.error ?? 'No se pudo interpretar la receta' });
+        return;
+      }
+      let parsed: { medications?: Array<Record<string, string>> } = {};
+      try {
+        parsed =
+          typeof aiData.result === 'string'
+            ? (JSON.parse(aiData.result) as typeof parsed)
+            : (aiData.result as unknown as typeof parsed);
+      } catch {
+        showToast({ type: 'error', message: 'La IA no devolvió un formato válido de receta.' });
+        return;
+      }
+      const detected = Array.isArray(parsed.medications) ? parsed.medications : [];
+      if (detected.length === 0) {
+        showToast({
+          type: 'error',
+          message: 'No se detectaron medicamentos en la transcripción.',
+        });
+        return;
+      }
+      const newMeds: Medication[] = detected.map((m) => ({
+        name: m.name ?? '',
+        dose: m.dose ?? '',
+        route: m.route ?? '',
+        frequency: m.frequency ?? '',
+        duration: m.duration ?? '',
+        presentation: m.presentation ?? '',
+        indications: '',
+      }));
+      setRecipe((prev) => {
+        const existingNonEmpty = prev.medications.filter((m) => m.name.trim() !== '');
+        return { ...prev, medications: [...existingNonEmpty, ...newMeds] };
+      });
+      // La IA no inventa: avisa si quedan campos por completar.
+      const hasMissing = newMeds.some(
+        (m) =>
+          !m.dose.trim() ||
+          !m.route.trim() ||
+          !m.frequency.trim() ||
+          !m.duration.trim() ||
+          !m.presentation.trim(),
+      );
+      showToast({
+        type: 'success',
+        message: hasMissing
+          ? 'Receta cargada en el récipe. Completa los datos que faltan (la IA no los inventa).'
+          : 'Receta cargada en el récipe.',
+      });
+    } catch (err: unknown) {
+      reportError('doctor/consultations', 'parseTextIntoRecipe', err);
+      showToast({ type: 'error', message: 'Error al interpretar la receta.' });
+    }
+  }
+
   async function openConsultation(c: Consultation) {
     // Marcar id abierto ANTES del fetch para que el guard del auto-open effect lo vea
     openedConsultationIdRef.current = c.id;
@@ -2705,6 +2781,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                     label: b.label,
                   }))}
                   onApplyToBlock={(blockKey, content, mode) => {
+                    // El Récipe es estructurado (recipe.medications), no texto libre.
+                    // Parsear la sugerencia a filas para que SÍ aparezca abajo.
+                    if (blockKey === 'prescription') {
+                      void parseTextIntoRecipe(content);
+                      return;
+                    }
                     setSelected((prev) => {
                       if (!prev) return prev;
                       const currentData = (prev.blocks_data || {}) as Record<string, unknown>;
