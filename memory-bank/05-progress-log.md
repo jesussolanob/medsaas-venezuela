@@ -2050,11 +2050,17 @@ Commits `f03e9bd` + `d239eae` + `c142844` (deploys success, columna nueva vía m
    commit `c142844`). Verificado: agregar bloque → PATCH 200, tab aparece y **persiste tras reload**.
    ⚠️ dato de prueba nuevo creado: consulta **DLT-202607-0030** (Paciente Prueba QA, pago pendiente sin método) — borrable.
 
+**✅ CERRADO (2026-07-13/14, verificado en prod):**
+
+- **Récipe 2 hojas / Reposo PDF**: ✅ cargué récipe (Amoxicilina, presentación Tabletas — validación es-VE
+  "Completa la presentación") + reposo (3 días) en DLT-0027 y generé doc combinado → **PDF de 3 páginas**
+  branded: Récipe (hoja 1) + **Indicaciones (hoja 2)** + Constancia de Reposo Médico (hoja 3). Leído y OK.
+- **🐛 Fecha del recibo un día antes**: ✅ FIX commit `fb9e251` — `buildReceiptHtml` formateaba `paid_at`
+  con zona local + hora; como se guarda date-only (midnight UTC) corría un día en VE-4. Ahora `timeZone:'UTC'`
+  sin hora. Verificado en prod: drawer `2026-07-14` → recibo "martes 14 de julio" (coinciden; antes daba "13 8pm").
+
 **⏳ PENDIENTE (RETOMAR):**
 
-5. **Récipe 2 hojas / Reposo PDF**: verificar con una consulta que tenga esos bloques cargados (la de prueba no los tiene).
-6. **🐛 Fecha del recibo un día antes** (display): formatear `paid_at`/fechas del recibo con `timeZone:'UTC'`.
-   El almacenamiento es correcto; solo el render de `buildReceiptHtml` corre la fecha por TZ. Follow-up chico.
 7. **(Opcional, gran win)** editor de consulta como isla dynamic — ataca el bundle ~1,9MB restante.
 8. **Deuda de naming de bloques**: unificar camelCase/snake_case en los items de estructura (hoy funciona por el
    passthrough, pero es frágil). Y el `blocks_snapshot:[]` edge en el BFF (heurística por forma) — code-review MEDIUM.
