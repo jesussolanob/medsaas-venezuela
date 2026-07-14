@@ -1978,9 +1978,19 @@ Todo en rama `feature/migracion-backend`, deploys success. Verificado en vivo co
 - **#3 Botón "Ingreso adicional"** en el editor de consultas PAGADAS: abre el IncomeModal pre-asociado a la consulta
   (relatedConsultationId). Verificado en vivo (aparece solo si approved, modal abre OK). Commit `d3c1735`.
 
+- **IA récipe — CAUSA RAÍZ REAL (commit `f0903af`):** con doctor delta_plus el usuario confirmó que la
+  transcripción SÍ sugiere y asocia bloques (el "#5 no sugiere" era solo por estar en delta_free). El bug real era
+  otro: el BFF `/api/doctor/ai` solo reenviaba `data.result`, pero `parse_prescription` devuelve `data.medications`
+  (array) → se perdían los medicamentos → récipe vacío sin aviso. Rompía aplicar-sugerencia Y "Dictar receta".
+  Fix: BFF reenvía `medications`; frontend lo lee directo (fallback compat a JSON en `result`). ⏳ falta QA visual
+  usuario en delta_plus (mismo dictado → paracetamol debe poblar el récipe con aviso de campos faltantes).
+- **Botón "Copiar texto"** del recorder no daba señal (clipboard con `.catch` vacío, sin feedback). Fix: muestra
+  "Copiado" 1.8s + cursor-pointer + fallback execCommand. Mismo commit.
+
 **⏳ PENDIENTE:**
 
-- **#5 Transcripción no sugiere bloques:** investigado — el path recorder→BFF(aplana suggestions)→controller
+- **#5 Transcripción no sugiere bloques:** RESUELTO indirectamente (era delta_free). Ver "IA récipe" arriba: el
+  problema real era el shape del BFF (medications). Path recorder→BFF(aplana suggestions)→controller
   (sanitizeBlocks por regex)→adapter Gemini(maxOutputTokens 8192) está INTACTO y los cambios recientes no lo tocan.
   NO reproducible sin doctor delta_plus + audio real. Reproducir con el usuario para arreglar con certeza.
 - Verificar récipe-apply/IA-no-inventa en vivo con doctor delta_plus.
