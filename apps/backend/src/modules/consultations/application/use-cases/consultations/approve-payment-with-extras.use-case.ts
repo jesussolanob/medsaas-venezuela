@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Consultation } from '../../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
+import { PaymentMethodRequiredError } from '../../../domain/errors/payment-method-required.error';
 import {
   IConsultationRepository,
   CONSULTATION_REPOSITORY,
@@ -62,11 +63,19 @@ export class ApprovePaymentWithExtrasUseCase {
       throw new ConsultationNotOwnedError();
     }
 
+    // INVARIANT: a cobro cannot be approved without a payment method. Accept the method
+    // sent now, or the one already stored (re-approval to edit extras keeps it). If
+    // neither exists, reject — this is the single source of truth for the rule.
+    const effectiveMethod = input.paymentMethod?.trim() || consultation.paymentMethod?.trim();
+    if (!effectiveMethod) {
+      throw new PaymentMethodRequiredError();
+    }
+
     return this.repo.approveWithExtras(
       input.consultationId,
       input.doctorId,
       input.extras,
-      input.paymentMethod,
+      effectiveMethod,
     );
   }
 }

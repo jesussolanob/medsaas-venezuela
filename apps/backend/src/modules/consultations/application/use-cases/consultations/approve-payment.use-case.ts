@@ -3,6 +3,7 @@ import { Consultation } from '../../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
 import { PaymentAlreadyApprovedError } from '../../../domain/errors/payment-already-approved.error';
+import { PaymentMethodRequiredError } from '../../../domain/errors/payment-method-required.error';
 import {
   IConsultationRepository,
   CONSULTATION_REPOSITORY,
@@ -45,9 +46,15 @@ export class ApprovePaymentUseCase {
       throw new PaymentAlreadyApprovedError();
     }
 
+    // INVARIANT: no se puede aprobar un cobro sin método de pago.
+    const effectiveMethod = input.paymentMethod?.trim();
+    if (!effectiveMethod) {
+      throw new PaymentMethodRequiredError();
+    }
+
     return this.repo.updatePayment(input.consultationId, input.doctorId, {
       paymentStatus: 'approved',
-      paymentMethod: input.paymentMethod,
+      paymentMethod: effectiveMethod,
       paymentDate: input.paymentDate ?? new Date(),
       amount: input.amount,
     });

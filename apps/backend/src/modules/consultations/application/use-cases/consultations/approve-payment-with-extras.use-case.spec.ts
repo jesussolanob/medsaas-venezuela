@@ -3,6 +3,7 @@ import type { IConsultationRepository } from '../../../domain/repositories/consu
 import { Consultation } from '../../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
+import { PaymentMethodRequiredError } from '../../../domain/errors/payment-method-required.error';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OTHER_DOCTOR_ID = 'eeeeeeee-0000-0000-0000-000000000002';
@@ -111,21 +112,24 @@ describe('ApprovePaymentWithExtrasUseCase', () => {
     );
   });
 
-  it('allows re-approval (editing extras) when already approved', async () => {
-    // The already-approved consultation has baseAmount set from first approval.
+  it('allows re-approval (editing extras) reusing the already-stored method', async () => {
+    // The already-approved consultation has baseAmount + method set from first approval.
     const alreadyApproved = makeConsultation({
       paymentStatus: 'approved',
       amount: 50,
       baseAmount: 30,
+      paymentMethod: 'zelle',
     });
     const reApproved = makeConsultation({
       paymentStatus: 'approved',
       amount: 45, // base 30 + new extras 15
       baseAmount: 30,
+      paymentMethod: 'zelle',
     });
     mockRepo.findById.mockResolvedValue(alreadyApproved);
     mockRepo.approveWithExtras.mockResolvedValue(reApproved);
 
+    // No paymentMethod passed → falls back to the stored 'zelle'.
     const result = await useCase.execute({
       consultationId: CONSULTATION_ID,
       doctorId: DOCTOR_ID,
@@ -134,6 +138,12 @@ describe('ApprovePaymentWithExtrasUseCase', () => {
 
     expect(result.amount).toBe(45);
     expect(result.baseAmount).toBe(30);
+    expect(mockRepo.approveWithExtras).toHaveBeenCalledWith(
+      CONSULTATION_ID,
+      DOCTOR_ID,
+      [{ description: 'ECG', amountUsd: 15 }],
+      'zelle',
+    );
   });
 
   it('throws ConsultationNotFoundError when consultation does not exist', async () => {
@@ -165,23 +175,34 @@ describe('ApprovePaymentWithExtrasUseCase', () => {
     expect(mockRepo.approveWithExtras).not.toHaveBeenCalled();
   });
 
-  it('passes paymentMethod=undefined when not provided', async () => {
-    const pending = makeConsultation({ paymentStatus: 'pending' });
-    const approved = makeConsultation({ paymentStatus: 'approved', amount: 30, baseAmount: 30 });
+  it('throws PaymentMethodRequiredError when no method is provided nor stored', async () => {
+    const pending = makeConsultation({ paymentStatus: 'pending' }); // no paymentMethod
     mockRepo.findById.mockResolvedValue(pending);
-    mockRepo.approveWithExtras.mockResolvedValue(approved);
 
-    await useCase.execute({
-      consultationId: CONSULTATION_ID,
-      doctorId: DOCTOR_ID,
-      extras: [],
-    });
+    await expect(
+      useCase.execute({
+        consultationId: CONSULTATION_ID,
+        doctorId: DOCTOR_ID,
+        extras: [],
+      }),
+    ).rejects.toThrow(PaymentMethodRequiredError);
 
-    expect(mockRepo.approveWithExtras).toHaveBeenCalledWith(
-      CONSULTATION_ID,
-      DOCTOR_ID,
-      [],
-      undefined,
-    );
+    expect(mockRepo.approveWithExtras).not.toHaveBeenCalled();
+  });
+
+  it('rejects a blank/whitespace payment method', async () => {
+    const pending = makeConsultation({ paymentStatus: 'pending' });
+    mockRepo.findById.mockResolvedValue(pending);
+
+    await expect(
+      useCase.execute({
+        consultationId: CONSULTATION_ID,
+        doctorId: DOCTOR_ID,
+        extras: [],
+        paymentMethod: '   ',
+      }),
+    ).rejects.toThrow(PaymentMethodRequiredError);
+
+    expect(mockRepo.approveWithExtras).not.toHaveBeenCalled();
   });
 });

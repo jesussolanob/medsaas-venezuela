@@ -3,6 +3,7 @@ import type { IPaymentRepository } from '../../../domain/repositories/payment.re
 import { Payment } from '../../../domain/entities/payment.entity';
 import { PaymentNotFoundError } from '../../../domain/errors/payment-not-found.error';
 import { InvalidPaymentTransitionError } from '../../../domain/errors/invalid-payment-transition.error';
+import { PaymentMethodRequiredError } from '../../../domain/errors/payment-method-required.error';
 
 const makePayment = (overrides: Partial<Parameters<typeof Payment.create>[0]> = {}) =>
   Payment.create({
@@ -11,6 +12,7 @@ const makePayment = (overrides: Partial<Parameters<typeof Payment.create>[0]> = 
     patientId: 'pat-001',
     amountUsd: 30,
     status: 'pending',
+    methodSnapshot: 'zelle',
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -85,6 +87,32 @@ describe('UpdatePaymentStatusUseCase', () => {
     ).rejects.toThrow(PaymentNotFoundError);
 
     expect(mockRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('throws PaymentMethodRequiredError when approving a payment without a method', async () => {
+    const noMethod = makePayment({ methodSnapshot: null });
+    mockRepo.findByIdForDoctor.mockResolvedValue(noMethod);
+
+    await expect(
+      useCase.execute({ paymentId: 'pay-001', doctorId: 'doc-001', status: 'approved' }),
+    ).rejects.toThrow(PaymentMethodRequiredError);
+
+    expect(mockRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('allows marking a method-less payment back to pending', async () => {
+    const approvedNoMethod = makePayment({ status: 'approved', methodSnapshot: null });
+    const pending = makePayment({ status: 'pending', methodSnapshot: null });
+    mockRepo.findByIdForDoctor.mockResolvedValue(approvedNoMethod);
+    mockRepo.updateStatus.mockResolvedValue(pending);
+
+    const result = await useCase.execute({
+      paymentId: 'pay-001',
+      doctorId: 'doc-001',
+      status: 'pending',
+    });
+
+    expect(result.status).toBe('pending');
   });
 
   it('propagates InvalidPaymentTransitionError from the domain layer', async () => {

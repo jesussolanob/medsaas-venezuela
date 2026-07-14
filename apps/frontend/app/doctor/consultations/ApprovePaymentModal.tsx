@@ -133,11 +133,20 @@ export default function ApprovePaymentModal({
       return;
     }
 
+    // El método de pago es obligatorio para aprobar el cobro. Se selecciona en el
+    // panel "Detalles del pago"; si está en "Sin especificar" no se puede aprobar.
+    if (!paymentMethod?.trim()) {
+      showToast({
+        type: 'error',
+        message: 'Selecciona el método de pago (en Detalles del pago) antes de aprobar el cobro',
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       const extras = validExtras();
-      const body: Record<string, unknown> = { extras };
-      if (paymentMethod) body.method = paymentMethod;
+      const body: Record<string, unknown> = { extras, method: paymentMethod };
 
       const res = await fetch(`/api/doctor/consultations/${consultationId}/approve-payment`, {
         method: 'PATCH',

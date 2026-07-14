@@ -5,6 +5,7 @@ import {
 } from '../../../domain/repositories/payment.repository';
 import type { Payment, PaymentStatus } from '../../../domain/entities/payment.entity';
 import { PaymentNotFoundError } from '../../../domain/errors/payment-not-found.error';
+import { PaymentMethodRequiredError } from '../../../domain/errors/payment-method-required.error';
 
 export interface UpdatePaymentStatusInput {
   paymentId: string;
@@ -31,6 +32,11 @@ export class UpdatePaymentStatusUseCase {
     // Verify existence first so callers get a clear NOT_FOUND before FORBIDDEN.
     const existing = await this.paymentRepo.findByIdForDoctor(input.paymentId, input.doctorId);
     if (!existing) throw new PaymentNotFoundError(input.paymentId);
+
+    // INVARIANT: no se puede aprobar un cobro sin método de pago registrado.
+    if (input.status === 'approved' && !existing.methodSnapshot?.trim()) {
+      throw new PaymentMethodRequiredError();
+    }
 
     return this.paymentRepo.updateStatus(input.paymentId, input.doctorId, input.status);
   }
