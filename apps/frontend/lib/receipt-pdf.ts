@@ -61,13 +61,15 @@ export function buildReceiptHtml(data: ReceiptData): string {
   const color = data.primaryColor || '#0891b2';
   const showLogo = data.showLogo !== false;
   const showSignature = data.showSignature !== false;
-  const paid = new Date(data.paidAt).toLocaleString('es-VE', {
+  // paid_at se persiste como fecha (sin hora significativa → midnight UTC). Formatearlo
+  // con la zona local corría la fecha un día atrás; se fija timeZone UTC y se omite la
+  // hora (era un artefacto de la conversión de zona, no un dato real).
+  const paid = new Date(data.paidAt).toLocaleDateString('es-VE', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    timeZone: 'UTC',
   });
   const sched = new Date(data.scheduledAt).toLocaleDateString('es-VE', {
     weekday: 'long',
