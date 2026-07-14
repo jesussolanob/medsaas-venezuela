@@ -63,10 +63,8 @@ function buildRows(items: ExistingExtraItem[]): ExtraRow[] {
 
 export default function ApprovePaymentModal({
   open,
-  consultationId,
   baseAmount,
   existingExtras,
-  paymentMethod,
   onClose,
   onApproved,
 }: Props) {
@@ -124,7 +122,7 @@ export default function ApprovePaymentModal({
   const extrasTotal = validExtras().reduce((acc, e) => acc + e.amount_usd, 0);
   const grandTotal = baseAmount + extrasTotal;
 
-  async function handleConfirm() {
+  function handleConfirm() {
     if (hasIncompleteRows()) {
       showToast({
         type: 'error',
@@ -133,55 +131,19 @@ export default function ApprovePaymentModal({
       return;
     }
 
-    // El método de pago es obligatorio para aprobar el cobro. Se selecciona en el
-    // panel "Detalles del pago"; si está en "Sin especificar" no se puede aprobar.
-    if (!paymentMethod?.trim()) {
-      showToast({
-        type: 'error',
-        message: 'Selecciona el método de pago (en Detalles del pago) antes de aprobar el cobro',
-      });
-      return;
-    }
-
+    // Este modal SOLO confirma el MONTO (base + servicios adicionales). NO persiste
+    // a BD ni exige método de pago: el guardado real —y el requisito del método—
+    // ocurre al presionar "Guardar pago" en el panel de detalles.
     setSaving(true);
-    try {
-      const extras = validExtras();
-      const body: Record<string, unknown> = { extras, method: paymentMethod };
-
-      const res = await fetch(`/api/doctor/consultations/${consultationId}/approve-payment`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const json = (await res.json()) as { success?: boolean; error?: string; data?: unknown };
-
-      if (!res.ok || !json.success) {
-        showToast({
-          type: 'error',
-          message: json.error ?? 'Error al aprobar el pago',
-        });
-        return;
-      }
-
-      // Build the updated extra_items list to pass back to the parent
-      const updatedExtras: ExistingExtraItem[] = extras.map((e, idx) => ({
-        id: `local-${idx}`,
-        description: e.description,
-        amount_usd: e.amount_usd,
-      }));
-
-      onApproved(grandTotal, updatedExtras);
-      showToast({ type: 'success', message: 'Pago aprobado correctamente' });
-      onClose();
-    } catch (err: unknown) {
-      showToast({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Error al aprobar el pago',
-      });
-    } finally {
-      setSaving(false);
-    }
+    const extras = validExtras();
+    const updatedExtras: ExistingExtraItem[] = extras.map((e, idx) => ({
+      id: `local-${idx}`,
+      description: e.description,
+      amount_usd: e.amount_usd,
+    }));
+    onApproved(grandTotal, updatedExtras);
+    onClose();
+    setSaving(false);
   }
 
   if (!open) return null;

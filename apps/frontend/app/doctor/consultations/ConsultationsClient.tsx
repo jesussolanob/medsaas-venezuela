@@ -4491,8 +4491,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           type="button"
                           disabled={pagoDetailsSaving || pagoReceiptUploading}
                           onClick={async () => {
+                            // "Guardar pago" es el ÚNICO punto que escribe a BD. Si el
+                            // estado del pago es "Aprobado", aquí se aprueba de verdad
+                            // (status + extras + método) y el método ES OBLIGATORIO.
+                            const isApproving =
+                              normalizePaymentStatus(report.payment_status) === 'approved';
+                            if (isApproving && !pagoMethod.trim()) {
+                              showToast({
+                                type: 'error',
+                                message:
+                                  'Selecciona el método de pago antes de guardar el cobro aprobado',
+                              });
+                              return;
+                            }
                             setPagoDetailsSaving(true);
                             try {
+                              // 1. Guardar detalles (método/referencia/comprobante).
                               const result = await updateConsultationPaymentDetails(selected.id, {
                                 payment_method: pagoMethod || null,
                                 payment_reference: pagoReference || null,
@@ -4505,6 +4519,33 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                 });
                                 return;
                               }
+                              // 2. Si el estado es "Aprobado", persistir la aprobación
+                              //    (status + extras confirmados + método) en la BD.
+                              if (isApproving) {
+                                const extras = (selected.extra_items || []).map((e) => ({
+                                  description: e.description,
+                                  amount_usd: e.amount_usd,
+                                }));
+                                const res = await fetch(
+                                  `/api/doctor/consultations/${selected.id}/approve-payment`,
+                                  {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ extras, method: pagoMethod }),
+                                  },
+                                );
+                                const json = (await res.json()) as {
+                                  success?: boolean;
+                                  error?: string;
+                                };
+                                if (!res.ok || !json.success) {
+                                  showToast({
+                                    type: 'error',
+                                    message: json.error ?? 'No se pudo aprobar el cobro',
+                                  });
+                                  return;
+                                }
+                              }
                               // Actualizar estado local de forma inmutable
                               const updated = {
                                 payment_method: pagoMethod || null,
@@ -4515,7 +4556,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               setConsultations((prev) =>
                                 prev.map((x) => (x.id === selected.id ? { ...x, ...updated } : x)),
                               );
-                              showToast({ type: 'success', message: 'Pago actualizado' });
+                              showToast({
+                                type: 'success',
+                                message: isApproving
+                                  ? 'Cobro aprobado y guardado'
+                                  : 'Pago actualizado',
+                              });
                             } finally {
                               setPagoDetailsSaving(false);
                             }
