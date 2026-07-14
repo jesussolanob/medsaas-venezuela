@@ -1783,7 +1783,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     <div class="header-left">
       ${effectiveLogo ? '<div class="header-logo"><img src="' + effectiveLogo + '" alt="Logo" crossorigin="anonymous" /></div>' : ''}
       <div>
-        <h1>${cfg.header_text ? cfg.header_text.split('\\n')[0] || 'Delta' : 'Delta'}</h1>
+        <h1>${cfg.header_text ? cfg.header_text.split('\\n')[0] || 'Delta Salud' : 'Delta Salud'}</h1>
         <p>${title}</p>
       </div>
     </div>
@@ -1809,7 +1809,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   </div>
 
   <div class="footer">
-    ${cfg.footer_text ? '<p>' + cfg.footer_text + '</p>' : '<p>Documento generado por Delta</p>'}
+    ${cfg.footer_text ? '<p>' + cfg.footer_text + '</p>' : '<p>Documento generado por Delta Salud</p>'}
     <p>${code} · ${new Date().toLocaleDateString('es-VE')}</p>
   </div>
 

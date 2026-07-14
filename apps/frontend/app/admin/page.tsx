@@ -164,7 +164,7 @@ export default async function AdminDashboard() {
             className="font-semibold tracking-tight leading-tight"
             style={{ fontFamily: 'var(--dh-font-display)', fontSize: 'clamp(28px, 4vw, 38px)' }}
           >
-            {greeting}, Delta.
+            {greeting}, Delta Salud.
           </h1>
           <p className="text-base opacity-85 mt-2 mb-6 leading-relaxed">
             {pendingPayments.length > 0 &&

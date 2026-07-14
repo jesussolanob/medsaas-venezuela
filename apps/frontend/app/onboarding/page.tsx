@@ -1,86 +1,111 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Activity, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, User, Clock, LayoutGrid } from 'lucide-react'
-import { getDevIdentityAction } from './identity-action'
-import { reportError } from '@/lib/report-error'
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  Activity,
+  Phone,
+  ArrowRight,
+  Loader2,
+  CheckCircle2,
+  Stethoscope,
+  User,
+  Clock,
+  LayoutGrid,
+} from 'lucide-react';
+import { getDevIdentityAction } from './identity-action';
+import { reportError } from '@/lib/report-error';
 // ETAPA 1: onboarding identity comes from the dev-stub cookie (set at login).
 // ETAPA 2 (Auth0): remove getDevIdentityAction import and use Auth0 session.
 
 // F5 (2026-04-29): bloques mínimos que SIEMPRE quedan pre-marcados (core).
 // Reflejan los del fallback hardcoded de la consulta para que el doctor nunca
 // quede con un set vacío si no tocó las casillas.
-const CORE_BLOCK_KEYS = new Set(['chief_complaint', 'diagnosis', 'treatment', 'prescription'])
+const CORE_BLOCK_KEYS = new Set(['chief_complaint', 'diagnosis', 'treatment', 'prescription']);
 
 // F5 (2026-04-29): tipo del catálogo de bloques.
 type CatalogBlock = {
-  key: string
-  default_label: string
-  default_content_type: string
-  description: string | null
-}
+  key: string;
+  default_label: string;
+  default_content_type: string;
+  description: string | null;
+};
 
 const ESPECIALIDADES = [
-  'Cardiología','Dermatología','Endocrinología','Gastroenterología',
-  'Ginecología y Obstetricia','Medicina General','Medicina Interna',
-  'Nefrología','Neurología','Nutrición','Odontología',
-  'Oftalmología','Ortopedia y Traumatología',
-  'Otorrinolaringología','Pediatría','Psicología','Psiquiatría',
-  'Reumatología','Fisioterapia','Urología','Otra',
-]
+  'Cardiología',
+  'Dermatología',
+  'Endocrinología',
+  'Gastroenterología',
+  'Ginecología y Obstetricia',
+  'Medicina General',
+  'Medicina Interna',
+  'Nefrología',
+  'Neurología',
+  'Nutrición',
+  'Odontología',
+  'Oftalmología',
+  'Ortopedia y Traumatología',
+  'Otorrinolaringología',
+  'Pediatría',
+  'Psicología',
+  'Psiquiatría',
+  'Reumatología',
+  'Fisioterapia',
+  'Urología',
+  'Otra',
+];
 
 const PROFESSIONAL_TITLES = [
-  { value: 'Dr.',  label: 'Doctor (Dr.)' },
+  { value: 'Dr.', label: 'Doctor (Dr.)' },
   { value: 'Dra.', label: 'Doctora (Dra.)' },
   { value: 'Lic.', label: 'Licenciado/a (Lic.)' },
   { value: 'Psic.', label: 'Psicólogo/a (Psic.)' },
   { value: 'Odont.', label: 'Odontólogo/a (Odont.)' },
   { value: 'Nutr.', label: 'Nutricionista (Nutr.)' },
   { value: 'Fisio.', label: 'Fisioterapeuta (Fisio.)' },
-]
+];
 
-type Role = 'doctor' | 'patient'
+type Role = 'doctor' | 'patient';
 
 export default function OnboardingPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [userId, setUserId] = useState<string | null>(null)
-  const [userName, setUserName] = useState('')
-  const [userEmail, setUserEmail] = useState('')
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
 
   // F5 (2026-04-29): Step 1=rol, 2=datos, 3=bloques (solo doctor), 4=pending.
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
-  const [role, setRole] = useState<Role>('doctor')
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [role, setRole] = useState<Role>('doctor');
 
   // Form fields
-  const [phone, setPhone] = useState('')
-  const [specialty, setSpecialty] = useState('')
-  const [professionalTitle, setProfessionalTitle] = useState('Dr.')
-  const [sex, setSex] = useState('')
+  const [phone, setPhone] = useState('');
+  const [specialty, setSpecialty] = useState('');
+  const [professionalTitle, setProfessionalTitle] = useState('Dr.');
+  const [sex, setSex] = useState('');
 
   // F5 (2026-04-29): estado para el paso de bloques de consulta (solo doctor).
-  const [catalog, setCatalog] = useState<CatalogBlock[]>([])
-  const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set())
-  const [blocksLoading, setBlocksLoading] = useState(false)
-  const [savingBlocks, setSavingBlocks] = useState(false)
+  const [catalog, setCatalog] = useState<CatalogBlock[]>([]);
+  const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set());
+  const [blocksLoading, setBlocksLoading] = useState(false);
+  const [savingBlocks, setSavingBlocks] = useState(false);
 
   useEffect(() => {
     // ETAPA 1 dev-stub: resolve identity from cookies via server action.
     // ETAPA 2 (Auth0): replace getDevIdentityAction() with Auth0 session read.
     getDevIdentityAction().then(async (devUser) => {
       if (!devUser.id) {
-        router.push('/login')
-        return
+        router.push('/login');
+        return;
       }
-      setUserId(devUser.id)
+      setUserId(devUser.id);
       // In Etapa 1 we have no user metadata — use placeholder name/email.
       // ETAPA 2: read full_name and email from the Auth0 ID token claims.
-      setUserName('')
-      setUserEmail('')
+      setUserName('');
+      setUserEmail('');
 
       // Check profile completion via backend (GET /api/doctor/profile).
       // Falls back gracefully if the request fails.
@@ -90,64 +115,69 @@ export default function OnboardingPage() {
             'x-dev-user-id': devUser.id,
             'x-dev-user-role': devUser.role,
           },
-        })
+        });
         if (profileRes.ok) {
-          const profileJson = await profileRes.json() as {
-            success: boolean
-            data?: { phone?: string | null; role?: string | null; fullName?: string | null; email?: string | null }
-          }
-          const profile = profileJson.data
-          if (profile?.fullName) setUserName(profile.fullName)
-          if (profile?.email) setUserEmail(profile.email)
+          const profileJson = (await profileRes.json()) as {
+            success: boolean;
+            data?: {
+              phone?: string | null;
+              role?: string | null;
+              fullName?: string | null;
+              email?: string | null;
+            };
+          };
+          const profile = profileJson.data;
+          if (profile?.fullName) setUserName(profile.fullName);
+          if (profile?.email) setUserEmail(profile.email);
 
           if (profile?.phone) {
             // Already onboarded — redirect by role
-            const profileRole = profile.role
+            const profileRole = profile.role;
             if (profileRole === 'super_admin' || profileRole === 'admin') {
-              router.push('/admin')
+              router.push('/admin');
             } else if (profileRole === 'patient') {
-              router.push('/patient/dashboard')
+              router.push('/patient/dashboard');
             } else {
-              router.push('/doctor')
+              router.push('/doctor');
             }
-            return
+            return;
           }
 
           // Pre-select role from the profile
-          if (profile?.role === 'patient') setRole('patient')
-          else if (profile?.role === 'doctor') setRole('doctor')
+          if (profile?.role === 'patient') setRole('patient');
+          else if (profile?.role === 'doctor') setRole('doctor');
           else {
-            if (devUser.role === 'patient') setRole('patient')
-            else setRole('doctor')
+            if (devUser.role === 'patient') setRole('patient');
+            else setRole('doctor');
           }
         } else {
           // Profile not found or error — use role from dev cookie
-          if (devUser.role === 'patient') setRole('patient')
-          else setRole('doctor')
+          if (devUser.role === 'patient') setRole('patient');
+          else setRole('doctor');
         }
       } catch {
         // Network error — fall back to dev cookie role
-        if (devUser.role === 'patient') setRole('patient')
-        else setRole('doctor')
+        if (devUser.role === 'patient') setRole('patient');
+        else setRole('doctor');
       }
 
-      setLoading(false)
-    })
-  }, [router])
+      setLoading(false);
+    });
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     if (!phone.trim()) {
-      setError('El teléfono es obligatorio')
-      return
+      setError('El teléfono es obligatorio');
+      return;
     }
     if (role === 'doctor' && !sex) {
-      setError('Selecciona tu sexo')
-      return
+      setError('Selecciona tu sexo');
+      return;
     }
-    if (!userId) return
-    setError('')
-    setSaving(true)
+    if (!userId) return;
+    setError('');
+    setSaving(true);
 
     try {
       const res = await fetch('/api/onboarding', {
@@ -163,104 +193,113 @@ export default function OnboardingPage() {
           professional_title: role === 'doctor' ? professionalTitle : undefined,
           sex: sex || undefined,
         }),
-      })
+      });
 
-      const result = await res.json()
+      const result = await res.json();
       if (!res.ok) {
-        setError(result.error || 'Error al guardar')
-        setSaving(false)
-        return
+        setError(result.error || 'Error al guardar');
+        setSaving(false);
+        return;
       }
 
       // AUDIT FIX 2026-04-28 (FASE 5D): limpiar el hint del flow de OAuth.
-      try { localStorage.removeItem('pending_role') } catch { /* ignore */ }
+      try {
+        localStorage.removeItem('pending_role');
+      } catch {
+        /* ignore */
+      }
 
       // F5 (2026-04-29): pacientes van directo a su dashboard; doctores pasan
       // primero por el paso 3 (selección de bloques de consulta) antes del
       // mensaje de "pendiente de aprobación".
       if (role === 'patient') {
-        router.push('/patient/dashboard')
+        router.push('/patient/dashboard');
       } else {
-        await loadBlocksCatalog()
-        setStep(3)
-        setSaving(false)
+        await loadBlocksCatalog();
+        setStep(3);
+        setSaving(false);
       }
     } catch (err: any) {
-      setError(err?.message || 'Error al guardar')
-      setSaving(false)
+      setError(err?.message || 'Error al guardar');
+      setSaving(false);
     }
   }
 
   // F5 (2026-04-29): carga el catálogo de bloques desde el backend
   // (GET /api/doctor/consultation-blocks) y pre-marca los core + specialty defaults.
   async function loadBlocksCatalog() {
-    if (!userId) return
-    setBlocksLoading(true)
+    if (!userId) return;
+    setBlocksLoading(true);
     // Pre-mark core blocks immediately so the button is never disabled.
-    setSelectedBlocks(new Set(CORE_BLOCK_KEYS))
+    setSelectedBlocks(new Set(CORE_BLOCK_KEYS));
     try {
       const res = await fetch('/api/doctor/consultation-blocks', {
         headers: {
           'x-dev-user-id': userId,
           'x-dev-user-role': 'doctor',
         },
-      })
-      if (!res.ok) throw new Error(`status ${res.status}`)
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
 
-      const json = await res.json() as {
-        success: boolean
+      const json = (await res.json()) as {
+        success: boolean;
         data?: {
-          catalog?: Array<{ key: string; default_label: string; default_content_type: string; description: string | null }>
-          specialty_defaults?: Array<{ block_key: string; enabled: boolean }>
-        }
-      }
+          catalog?: Array<{
+            key: string;
+            default_label: string;
+            default_content_type: string;
+            description: string | null;
+          }>;
+          specialty_defaults?: Array<{ block_key: string; enabled: boolean }>;
+        };
+      };
 
-      const cat = (json.data?.catalog || []) as CatalogBlock[]
+      const cat = (json.data?.catalog || []) as CatalogBlock[];
       const specialtyDefaults = (json.data?.specialty_defaults || [])
         .filter((s: { block_key: string; enabled: boolean }) => s.enabled)
-        .map((s: { block_key: string; enabled: boolean }) => s.block_key)
+        .map((s: { block_key: string; enabled: boolean }) => s.block_key);
 
-      const preselected = new Set<string>()
-      for (const k of CORE_BLOCK_KEYS) preselected.add(k)
-      for (const k of specialtyDefaults) preselected.add(k)
-      const validKeys = new Set(cat.map(c => c.key))
-      const final = new Set<string>()
-      for (const k of preselected) if (validKeys.has(k)) final.add(k)
+      const preselected = new Set<string>();
+      for (const k of CORE_BLOCK_KEYS) preselected.add(k);
+      for (const k of specialtyDefaults) preselected.add(k);
+      const validKeys = new Set(cat.map((c) => c.key));
+      const final = new Set<string>();
+      for (const k of preselected) if (validKeys.has(k)) final.add(k);
 
-      setCatalog(cat)
-      setSelectedBlocks(final)
+      setCatalog(cat);
+      setSelectedBlocks(final);
     } catch (err) {
       // Fallback: show empty catalog; doctor can continue with core blocks only.
-      reportError('onboarding', 'loadBlockCatalog', err)
+      reportError('onboarding', 'loadBlockCatalog', err);
     } finally {
-      setBlocksLoading(false)
+      setBlocksLoading(false);
     }
   }
 
   // F5 (2026-04-29): toggle de selección.
   function toggleBlock(key: string) {
-    setSelectedBlocks(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+    setSelectedBlocks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   // F5 (2026-04-29): guarda los bloques marcados via PUT /api/doctor/consultation-blocks
   // y avanza al paso 4 (pending).
   async function saveBlocksAndContinue() {
-    if (!userId) return
-    setSavingBlocks(true)
-    setError('')
+    if (!userId) return;
+    setSavingBlocks(true);
+    setError('');
     try {
       const selectedKeys = catalog
-        .filter(c => selectedBlocks.has(c.key))
+        .filter((c) => selectedBlocks.has(c.key))
         .map((c, idx) => ({
           block_key: c.key,
           enabled: true,
           sort_order: idx,
-        }))
+        }));
 
       if (selectedKeys.length > 0) {
         const res = await fetch('/api/doctor/consultation-blocks', {
@@ -271,27 +310,27 @@ export default function OnboardingPage() {
             'x-dev-user-role': 'doctor',
           },
           body: JSON.stringify({ blocks: selectedKeys }),
-        })
+        });
         if (!res.ok) {
-          const errJson = await res.json().catch(() => ({})) as { message?: string }
-          setError(errJson.message || 'Error al guardar bloques')
-          setSavingBlocks(false)
-          return
+          const errJson = (await res.json().catch(() => ({}))) as { message?: string };
+          setError(errJson.message || 'Error al guardar bloques');
+          setSavingBlocks(false);
+          return;
         }
       }
-      setStep(4)
+      setStep(4);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al guardar bloques'
-      setError(msg)
+      const msg = err instanceof Error ? err.message : 'Error al guardar bloques';
+      setError(msg);
     } finally {
-      setSavingBlocks(false)
+      setSavingBlocks(false);
     }
   }
 
   // F5 (2026-04-29): permitir saltar el paso si el doctor no quiere configurarlo
   // ahora. La cascada de resolución cae a defaults de especialidad / catálogo.
   function skipBlocks() {
-    setStep(4)
+    setStep(4);
   }
 
   if (loading) {
@@ -299,13 +338,17 @@ export default function OnboardingPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-teal-500" />
       </div>
-    )
+    );
   }
 
-  const inp = 'w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-200 text-sm font-medium outline-none transition-all focus:border-cyan-400 bg-white'
+  const inp =
+    'w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-200 text-sm font-medium outline-none transition-all focus:border-cyan-400 bg-white';
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6 py-12" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div
+      className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6 py-12"
+      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+    >
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.g-text{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`}</style>
 
       <div className="w-full max-w-md space-y-6">
@@ -316,7 +359,7 @@ export default function OnboardingPage() {
               <Activity className="w-5 h-5 text-white" />
             </div>
             <div className="text-left">
-              <p className="font-bold text-lg text-slate-900 leading-none">Delta</p>
+              <p className="font-bold text-lg text-slate-900 leading-none">Delta Salud</p>
               <p className="text-[10px] text-slate-400 font-semibold">Medical CRM</p>
             </div>
           </div>
@@ -332,8 +375,10 @@ export default function OnboardingPage() {
         {step === 1 && (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 space-y-6">
             <div className="text-center space-y-2">
-              <h1 className="text-xl font-extrabold text-slate-900">¿Cómo usarás Delta?</h1>
-              <p className="text-sm text-slate-500">Selecciona tu rol para personalizar tu experiencia</p>
+              <h1 className="text-xl font-extrabold text-slate-900">¿Cómo usarás Delta Salud?</h1>
+              <p className="text-sm text-slate-500">
+                Selecciona tu rol para personalizar tu experiencia
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -345,8 +390,14 @@ export default function OnboardingPage() {
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
-                <Stethoscope className={`w-8 h-8 mx-auto mb-2 ${role === 'doctor' ? 'text-teal-500' : 'text-slate-400'}`} />
-                <p className={`text-sm font-bold ${role === 'doctor' ? 'text-teal-700' : 'text-slate-700'}`}>Soy Médico</p>
+                <Stethoscope
+                  className={`w-8 h-8 mx-auto mb-2 ${role === 'doctor' ? 'text-teal-500' : 'text-slate-400'}`}
+                />
+                <p
+                  className={`text-sm font-bold ${role === 'doctor' ? 'text-teal-700' : 'text-slate-700'}`}
+                >
+                  Soy Médico
+                </p>
                 <p className="text-xs text-slate-400 mt-1">Gestiona tu consulta</p>
               </button>
 
@@ -358,8 +409,14 @@ export default function OnboardingPage() {
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
-                <User className={`w-8 h-8 mx-auto mb-2 ${role === 'patient' ? 'text-teal-500' : 'text-slate-400'}`} />
-                <p className={`text-sm font-bold ${role === 'patient' ? 'text-teal-700' : 'text-slate-700'}`}>Soy Paciente</p>
+                <User
+                  className={`w-8 h-8 mx-auto mb-2 ${role === 'patient' ? 'text-teal-500' : 'text-slate-400'}`}
+                />
+                <p
+                  className={`text-sm font-bold ${role === 'patient' ? 'text-teal-700' : 'text-slate-700'}`}
+                >
+                  Soy Paciente
+                </p>
                 <p className="text-xs text-slate-400 mt-1">Accede a tus citas</p>
               </button>
             </div>
@@ -405,22 +462,29 @@ export default function OnboardingPage() {
                   <input
                     type="tel"
                     value={phone}
-                    onChange={e => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(e.target.value)}
                     placeholder="+58 412 1234567"
                     className={inp + ' pl-10'}
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-slate-400 mt-1">Usaremos este número para verificación y notificaciones</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Usaremos este número para verificación y notificaciones
+                </p>
               </div>
 
               {/* Doctor-specific fields */}
               {role === 'doctor' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Sexo <span className="text-red-400">*</span></label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Sexo <span className="text-red-400">*</span>
+                    </label>
                     <div className="grid grid-cols-2 gap-3">
-                      {[{ v: 'female', label: 'Femenino' }, { v: 'male', label: 'Masculino' }].map(opt => (
+                      {[
+                        { v: 'female', label: 'Femenino' },
+                        { v: 'male', label: 'Masculino' },
+                      ].map((opt) => (
                         <button
                           key={opt.v}
                           type="button"
@@ -438,17 +502,37 @@ export default function OnboardingPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Título profesional</label>
-                    <select value={professionalTitle} onChange={e => setProfessionalTitle(e.target.value)} className={inp}>
-                      {PROFESSIONAL_TITLES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Título profesional
+                    </label>
+                    <select
+                      value={professionalTitle}
+                      onChange={(e) => setProfessionalTitle(e.target.value)}
+                      className={inp}
+                    >
+                      {PROFESSIONAL_TITLES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Especialidad</label>
-                    <select value={specialty} onChange={e => setSpecialty(e.target.value)} className={inp}>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Especialidad
+                    </label>
+                    <select
+                      value={specialty}
+                      onChange={(e) => setSpecialty(e.target.value)}
+                      className={inp}
+                    >
                       <option value="">Seleccionar...</option>
-                      {ESPECIALIDADES.map(s => <option key={s} value={s}>{s}</option>)}
+                      {ESPECIALIDADES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </>
@@ -468,9 +552,13 @@ export default function OnboardingPage() {
                   className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-50 g-bg"
                 >
                   {saving ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</>
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Guardando...
+                    </>
                   ) : (
-                    <><CheckCircle2 className="w-4 h-4" /> Completar registro</>
+                    <>
+                      <CheckCircle2 className="w-4 h-4" /> Completar registro
+                    </>
                   )}
                 </button>
               </div>
@@ -491,7 +579,9 @@ export default function OnboardingPage() {
               </div>
               <h1 className="text-xl font-extrabold text-slate-900">Bloques de tu consulta</h1>
               <p className="text-sm text-slate-500">
-                Selecciona los bloques que usarás en cada consulta. Los predeterminados están marcados según tu especialidad — puedes ajustarlos cuando quieras desde Configuración.
+                Selecciona los bloques que usarás en cada consulta. Los predeterminados están
+                marcados según tu especialidad — puedes ajustarlos cuando quieras desde
+                Configuración.
               </p>
             </div>
 
@@ -508,9 +598,9 @@ export default function OnboardingPage() {
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto pr-1">
-                  {catalog.map(block => {
-                    const checked = selectedBlocks.has(block.key)
-                    const isCore = CORE_BLOCK_KEYS.has(block.key)
+                  {catalog.map((block) => {
+                    const checked = selectedBlocks.has(block.key);
+                    const isCore = CORE_BLOCK_KEYS.has(block.key);
                     return (
                       <label
                         key={block.key}
@@ -542,7 +632,7 @@ export default function OnboardingPage() {
                           )}
                         </div>
                       </label>
-                    )
+                    );
                   })}
                 </div>
 
@@ -554,9 +644,13 @@ export default function OnboardingPage() {
                     className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-50 g-bg"
                   >
                     {savingBlocks ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</>
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Guardando...
+                      </>
                     ) : (
-                      <>Continuar <ArrowRight className="w-4 h-4" /></>
+                      <>
+                        Continuar <ArrowRight className="w-4 h-4" />
+                      </>
                     )}
                   </button>
                   <button
@@ -583,20 +677,28 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <h1 className="text-xl font-extrabold text-slate-900">¡Registro completado!</h1>
               <p className="text-sm text-slate-500">
-                Tu cuenta ha sido creada exitosamente. Cuando el administrador de Delta apruebe tu solicitud, tendrás acceso completo a la beta.
+                Tu cuenta ha sido creada exitosamente. Cuando el administrador de Delta Salud
+                apruebe tu solicitud, tendrás acceso completo a la beta.
               </p>
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2 text-left">
-              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">¿Qué sigue?</p>
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">
+                ¿Qué sigue?
+              </p>
               <p className="text-sm text-amber-800">
-                El equipo de Delta revisará tu solicitud y te notificará cuando tu acceso esté activo. Este proceso suele tomar menos de 24 horas.
+                El equipo de Delta Salud revisará tu solicitud y te notificará cuando tu acceso esté
+                activo. Este proceso suele tomar menos de 24 horas.
               </p>
             </div>
 
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-left">
-              <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-1">Tu información</p>
-              <p className="text-sm text-teal-800">{userName} · {userEmail}</p>
+              <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-1">
+                Tu información
+              </p>
+              <p className="text-sm text-teal-800">
+                {userName} · {userEmail}
+              </p>
               <p className="text-sm text-teal-800">{phone}</p>
               {specialty && <p className="text-sm text-teal-800">{specialty}</p>}
             </div>
@@ -611,5 +713,5 @@ export default function OnboardingPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -21,7 +21,7 @@ export default function HelpPage() {
       content: [
         'Ingresa a /register desde la página principal.',
         'Llena tu nombre, cédula, email y especialidad.',
-        'Recibirás un correo de verificación. Confírmalo y ya estás dentro de Delta.',
+        'Recibirás un correo de verificación. Confírmalo y ya estás dentro de Delta Salud.',
         'Tu cuenta tiene 1 año de prueba gratis.',
       ],
     },
@@ -85,7 +85,7 @@ export default function HelpPage() {
           </Link>
           <h1 className="text-3xl sm:text-4xl font-bold">Centro de ayuda</h1>
           <p className="text-white/90 mt-3 max-w-2xl text-lg">
-            Aprende a usar Delta en 5 pasos simples. Tiempo total: ~15 minutos.
+            Aprende a usar Delta Salud en 5 pasos simples. Tiempo total: ~15 minutos.
           </p>
         </div>
       </div>

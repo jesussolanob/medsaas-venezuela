@@ -189,8 +189,8 @@ function LoginInner() {
               style={{ background: 'rgba(255,255,255,0.7)', borderColor: 'var(--dh-gray-100)' }}
             >
               <p className="text-sm leading-relaxed italic" style={{ color: 'var(--dh-gray-600)' }}>
-                &ldquo;Delta transformó mi consulta. Ahora tengo todo bajo control y mis pacientes
-                están más satisfechos.&rdquo;
+                &ldquo;Delta Salud transformó mi consulta. Ahora tengo todo bajo control y mis
+                pacientes están más satisfechos.&rdquo;
               </p>
               <div className="flex items-center gap-3 mt-3">
                 <div
@@ -259,7 +259,7 @@ function LoginInner() {
                   className="text-2xl font-bold tracking-tight"
                   style={{ color: 'var(--dh-ink)' }}
                 >
-                  Bienvenido a Delta
+                  Bienvenido a Delta Salud
                 </h2>
                 <p className="text-sm mt-2" style={{ color: 'var(--dh-gray-400)' }}>
                   Inicia sesión o crea tu cuenta

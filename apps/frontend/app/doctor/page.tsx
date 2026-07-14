@@ -779,7 +779,7 @@ export default function DoctorDashboard() {
                 className="text-white/80 text-[11px] font-semibold uppercase tracking-[0.12em]"
                 style={{ fontFamily: 'var(--dh-font-mono)' }}
               >
-                Delta
+                Delta Salud
               </span>
             </div>
             <h2
