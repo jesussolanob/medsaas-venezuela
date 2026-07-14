@@ -28,7 +28,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 });
   }
 
-  const result = await backendPost<{ result: string }>('/api/ai/text', body);
+  // El backend devuelve `{ result }` para las acciones de texto y `{ medications }`
+  // para parse_prescription. Reenviamos AMBOS para no perder los medicamentos.
+  const result = await backendPost<{ result?: string; medications?: unknown[] }>(
+    '/api/ai/text',
+    body,
+  );
 
   if (!result.ok) {
     return NextResponse.json(
@@ -37,6 +42,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // El frontend (callAI) lee `data.result`.
-  return NextResponse.json({ result: result.value?.result ?? '' });
+  // callAI lee `data.result`; parseTextIntoRecipe/Dictar receta leen `data.medications`.
+  return NextResponse.json({
+    result: result.value?.result ?? '',
+    medications: Array.isArray(result.value?.medications) ? result.value.medications : [],
+  });
 }

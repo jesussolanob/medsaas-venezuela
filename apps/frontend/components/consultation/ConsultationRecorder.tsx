@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 /**
  * ConsultationRecorder — graba la consulta con el micrófono y la transcribe.
@@ -18,77 +18,99 @@
  * blocks_data si el doctor lo decide.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react';
 import {
-  Mic, Square, Pause, Play, Loader2, Trash2, Sparkles,
-  CheckCircle2, AlertCircle, X, FileText, Copy,
-} from 'lucide-react'
-import { reportError } from '@/lib/report-error'
+  Mic,
+  Square,
+  Pause,
+  Play,
+  Loader2,
+  Trash2,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  X,
+  FileText,
+  Copy,
+} from 'lucide-react';
+import { reportError } from '@/lib/report-error';
 
 type AvailableBlock = {
-  key: string
-  label: string
-}
+  key: string;
+  label: string;
+};
 
 type Suggestion = {
-  block_key: string
-  content: string
-}
+  block_key: string;
+  content: string;
+};
 
 type Props = {
   /** Bloques disponibles en la plantilla del doctor (para sugerencias) */
-  availableBlocks: AvailableBlock[]
+  availableBlocks: AvailableBlock[];
   /** Callback cuando el doctor aplica el texto a un bloque */
-  onApplyToBlock: (blockKey: string, content: string, mode: 'replace' | 'append') => void
+  onApplyToBlock: (blockKey: string, content: string, mode: 'replace' | 'append') => void;
   /** Locale del audio — default 'es-VE' */
-  language?: string
-}
+  language?: string;
+};
 
-type RecorderState = 'idle' | 'recording' | 'paused' | 'processing' | 'review' | 'error'
+type RecorderState = 'idle' | 'recording' | 'paused' | 'processing' | 'review' | 'error';
 
 function fmtTime(seconds: number): string {
-  const m = Math.floor(seconds / 60).toString().padStart(2, '0')
-  const s = Math.floor(seconds % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
+  const m = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const s = Math.floor(seconds % 60)
+    .toString()
+    .padStart(2, '0');
+  return `${m}:${s}`;
 }
 
-export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, language = 'es-VE' }: Props) {
-  const [state, setState] = useState<RecorderState>('idle')
-  const [elapsed, setElapsed] = useState(0)
-  const [transcript, setTranscript] = useState('')
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [appliedKeys, setAppliedKeys] = useState<Set<string>>(new Set())
-  const [showPanel, setShowPanel] = useState(false)
+export default function ConsultationRecorder({
+  availableBlocks,
+  onApplyToBlock,
+  language = 'es-VE',
+}: Props) {
+  const [state, setState] = useState<RecorderState>('idle');
+  const [elapsed, setElapsed] = useState(0);
+  const [transcript, setTranscript] = useState('');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [appliedKeys, setAppliedKeys] = useState<Set<string>>(new Set());
+  const [showPanel, setShowPanel] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const streamRef = useRef<MediaStream | null>(null)
-  const tickerRef = useRef<NodeJS.Timeout | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const tickerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup al desmontar
   useEffect(() => {
     return () => {
-      if (tickerRef.current) clearInterval(tickerRef.current)
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
-    }
-  }, [])
+      if (tickerRef.current) clearInterval(tickerRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   function startTicker() {
-    if (tickerRef.current) clearInterval(tickerRef.current)
-    tickerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+    if (tickerRef.current) clearInterval(tickerRef.current);
+    tickerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
   }
   function stopTicker() {
-    if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null }
+    if (tickerRef.current) {
+      clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    }
   }
 
   async function startRecording() {
-    setError(null)
-    setTranscript('')
-    setSuggestions([])
-    setAppliedKeys(new Set())
-    setElapsed(0)
-    chunksRef.current = []
+    setError(null);
+    setTranscript('');
+    setSuggestions([]);
+    setAppliedKeys(new Set());
+    setElapsed(0);
+    chunksRef.current = [];
 
     try {
       // 1. Pedir permiso
@@ -98,140 +120,180 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
           noiseSuppression: true,
           autoGainControl: true,
         },
-      })
-      streamRef.current = stream
+      });
+      streamRef.current = stream;
 
       // 2. Detectar mimeType soportado (Safari prefiere mp4, Chrome webm)
-      const mimeOptions = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
-      const mime = mimeOptions.find(m => MediaRecorder.isTypeSupported(m)) || ''
-      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
-      recorderRef.current = recorder
+      const mimeOptions = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+      ];
+      const mime = mimeOptions.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data)
-      }
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
       recorder.onstop = () => {
         // El stop dispara el flow de transcripción
-        stopTicker()
+        stopTicker();
         if (streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop())
-          streamRef.current = null
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
         }
-        finishAndTranscribe()
-      }
+        finishAndTranscribe();
+      };
 
       // 3. Empezar a grabar — chunks cada 1s para evitar pérdidas
-      recorder.start(1000)
-      setState('recording')
-      setShowPanel(true)
-      startTicker()
+      recorder.start(1000);
+      setState('recording');
+      setShowPanel(true);
+      startTicker();
     } catch (err: unknown) {
-      reportError('ConsultationRecorder', 'startRecording', err)
-      const isPermissionErr = err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
+      reportError('ConsultationRecorder', 'startRecording', err);
+      const isPermissionErr =
+        err instanceof Error &&
+        (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
       setError(
         isPermissionErr
           ? 'Permite el acceso al micrófono para poder grabar.'
           : 'No pude acceder al micrófono. Verifica que esté conectado.',
-      )
-      setState('error')
+      );
+      setState('error');
     }
   }
 
   function pauseRecording() {
     if (recorderRef.current?.state === 'recording') {
-      recorderRef.current.pause()
-      stopTicker()
-      setState('paused')
+      recorderRef.current.pause();
+      stopTicker();
+      setState('paused');
     }
   }
 
   function resumeRecording() {
     if (recorderRef.current?.state === 'paused') {
-      recorderRef.current.resume()
-      startTicker()
-      setState('recording')
+      recorderRef.current.resume();
+      startTicker();
+      setState('recording');
     }
   }
 
   function stopRecording() {
-    if (recorderRef.current && (recorderRef.current.state === 'recording' || recorderRef.current.state === 'paused')) {
-      recorderRef.current.stop()
-      setState('processing')
+    if (
+      recorderRef.current &&
+      (recorderRef.current.state === 'recording' || recorderRef.current.state === 'paused')
+    ) {
+      recorderRef.current.stop();
+      setState('processing');
     }
   }
 
   function discardRecording() {
     if (recorderRef.current) {
-      try { recorderRef.current.stop() } catch {}
+      try {
+        recorderRef.current.stop();
+      } catch {}
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     }
-    stopTicker()
-    chunksRef.current = []
-    setTranscript('')
-    setSuggestions([])
-    setAppliedKeys(new Set())
-    setElapsed(0)
-    setError(null)
-    setState('idle')
-    setShowPanel(false)
+    stopTicker();
+    chunksRef.current = [];
+    setTranscript('');
+    setSuggestions([]);
+    setAppliedKeys(new Set());
+    setElapsed(0);
+    setError(null);
+    setState('idle');
+    setShowPanel(false);
   }
 
   async function finishAndTranscribe() {
     if (chunksRef.current.length === 0) {
-      setError('No se grabó audio.')
-      setState('error')
-      return
+      setError('No se grabó audio.');
+      setState('error');
+      return;
     }
 
-    const mime = recorderRef.current?.mimeType || 'audio/webm'
-    const blob = new Blob(chunksRef.current, { type: mime })
+    const mime = recorderRef.current?.mimeType || 'audio/webm';
+    const blob = new Blob(chunksRef.current, { type: mime });
     if (blob.size < 1024) {
-      setError('Grabación demasiado corta (menos de 1 segundo).')
-      setState('error')
-      return
+      setError('Grabación demasiado corta (menos de 1 segundo).');
+      setState('error');
+      return;
     }
 
     try {
-      const fd = new FormData()
-      const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm'
-      fd.append('audio', blob, `consulta.${ext}`)
-      fd.append('language', language)
+      const fd = new FormData();
+      const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
+      fd.append('audio', blob, `consulta.${ext}`);
+      fd.append('language', language);
       if (availableBlocks.length > 0) {
-        fd.append('available_blocks', JSON.stringify(availableBlocks))
+        fd.append('available_blocks', JSON.stringify(availableBlocks));
       }
 
       const res = await fetch('/api/doctor/consultations/transcribe', {
         method: 'POST',
         body: fd,
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`)
+        throw new Error(data.error || `HTTP ${res.status}`);
       }
-      setTranscript(data.transcript || '')
-      setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
-      setState('review')
+      setTranscript(data.transcript || '');
+      setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
+      setState('review');
     } catch (err: unknown) {
-      reportError('ConsultationRecorder', 'sendForTranscription', err)
-      setError(err instanceof Error ? err.message : 'No se pudo transcribir el audio')
-      setState('error')
+      reportError('ConsultationRecorder', 'sendForTranscription', err);
+      setError(err instanceof Error ? err.message : 'No se pudo transcribir el audio');
+      setState('error');
     }
   }
 
   function applySuggestion(s: Suggestion, mode: 'replace' | 'append' = 'append') {
-    onApplyToBlock(s.block_key, s.content, mode)
-    setAppliedKeys(prev => new Set(prev).add(s.block_key))
+    onApplyToBlock(s.block_key, s.content, mode);
+    setAppliedKeys((prev) => new Set(prev).add(s.block_key));
   }
 
   function applyAllSuggestions() {
-    suggestions.forEach(s => applySuggestion(s, 'append'))
+    suggestions.forEach((s) => applySuggestion(s, 'append'));
   }
 
-  function copyTranscript() {
-    navigator.clipboard?.writeText(transcript).catch(() => {})
+  async function copyTranscript() {
+    if (!transcript) return;
+    const flash = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    };
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(transcript);
+        flash();
+        return;
+      }
+    } catch {
+      // Clipboard API bloqueada/insegura → fallback con execCommand abajo.
+    }
+    // Fallback para contextos sin Clipboard API.
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = transcript;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      flash();
+    } catch {
+      // Si todo falla, no romper la UI.
+    }
   }
 
   // ── Render: botón compacto cuando está idle, panel expandido cuando active
@@ -244,13 +306,17 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
           background: 'var(--dh-coral)',
           boxShadow: '0 6px 18px rgba(255,138,101,0.25)',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-coral-600)' }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'var(--dh-coral)' }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--dh-coral-600)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'var(--dh-coral)';
+        }}
       >
         <Mic className="w-4 h-4" />
         Grabar consulta
       </button>
-    )
+    );
   }
 
   return (
@@ -276,14 +342,17 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
           </div>
           <div>
             <p className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
-              {state === 'recording'  && 'Grabando consulta…'}
-              {state === 'paused'     && 'Grabación pausada'}
+              {state === 'recording' && 'Grabando consulta…'}
+              {state === 'paused' && 'Grabación pausada'}
               {state === 'processing' && 'Transcribiendo audio…'}
-              {state === 'review'     && 'Transcripción lista'}
-              {state === 'error'      && 'Error en la grabación'}
-              {state === 'idle'       && 'Grabador de consulta'}
+              {state === 'review' && 'Transcripción lista'}
+              {state === 'error' && 'Error en la grabación'}
+              {state === 'idle' && 'Grabador de consulta'}
             </p>
-            <p className="text-xs" style={{ color: 'var(--dh-gray-400)', fontFamily: 'var(--dh-font-mono)' }}>
+            <p
+              className="text-xs"
+              style={{ color: 'var(--dh-gray-400)', fontFamily: 'var(--dh-font-mono)' }}
+            >
               {(state === 'recording' || state === 'paused') && `${fmtTime(elapsed)}`}
               {state === 'processing' && 'Esto puede tardar 10-30 segundos…'}
               {state === 'review' && `${fmtTime(elapsed)} grabados`}
@@ -295,8 +364,14 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
           onClick={discardRecording}
           className="p-1.5 rounded-md transition-colors"
           style={{ color: 'var(--dh-gray-400)' }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-gray-50)'; e.currentTarget.style.color = 'var(--dh-ink)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--dh-gray-400)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--dh-gray-50)';
+            e.currentTarget.style.color = 'var(--dh-ink)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--dh-gray-400)';
+          }}
           aria-label="Cerrar grabador"
           title="Cerrar"
         >
@@ -330,7 +405,9 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
             </div>
           )}
           <span className="text-sm" style={{ color: 'var(--dh-coral-600)' }}>
-            {state === 'recording' ? 'Tu micrófono está activo' : 'Pausado — clic en ▶ para reanudar'}
+            {state === 'recording'
+              ? 'Tu micrófono está activo'
+              : 'Pausado — clic en ▶ para reanudar'}
           </span>
         </div>
       )}
@@ -425,11 +502,22 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
                 Transcripción
               </p>
               <button
+                type="button"
                 onClick={copyTranscript}
-                className="text-xs font-semibold inline-flex items-center gap-1"
-                style={{ color: 'var(--dh-turquoise-700)' }}
+                className="text-xs font-semibold inline-flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity"
+                style={{
+                  color: copied ? 'var(--dh-green-600, #16a34a)' : 'var(--dh-turquoise-700)',
+                }}
               >
-                <Copy className="w-3 h-3" /> Copiar texto
+                {copied ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3" /> Copiado
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" /> Copiar texto
+                  </>
+                )}
               </button>
             </div>
             <div
@@ -466,8 +554,9 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
               </div>
               <div className="space-y-2">
                 {suggestions.map((s) => {
-                  const blockLabel = availableBlocks.find(b => b.key === s.block_key)?.label || s.block_key
-                  const applied = appliedKeys.has(s.block_key)
+                  const blockLabel =
+                    availableBlocks.find((b) => b.key === s.block_key)?.label || s.block_key;
+                  const applied = appliedKeys.has(s.block_key);
                   return (
                     <div
                       key={s.block_key}
@@ -494,7 +583,11 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
                             <button
                               onClick={() => applySuggestion(s, 'append')}
                               className="text-[11px] font-bold px-2.5 py-1 rounded-full transition-colors"
-                              style={{ background: '#fff', color: 'var(--dh-turquoise-700)', border: '1px solid var(--dh-turquoise-100)' }}
+                              style={{
+                                background: '#fff',
+                                color: 'var(--dh-turquoise-700)',
+                                border: '1px solid var(--dh-turquoise-100)',
+                              }}
                             >
                               + Agregar
                             </button>
@@ -515,7 +608,7 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
                         {s.content}
                       </p>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -538,7 +631,7 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
                 <FileText className="w-3 h-3" /> O pegar la transcripción completa en…
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {availableBlocks.map(b => (
+                {availableBlocks.map((b) => (
                   <button
                     key={b.key}
                     onClick={() => onApplyToBlock(b.key, transcript, 'append')}
@@ -548,8 +641,14 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
                       color: 'var(--dh-gray-800)',
                       border: '1px solid var(--dh-gray-200)',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--dh-turquoise-50)'; e.currentTarget.style.color = 'var(--dh-turquoise-700)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = 'var(--dh-gray-800)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--dh-turquoise-50)';
+                      e.currentTarget.style.color = 'var(--dh-turquoise-700)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fff';
+                      e.currentTarget.style.color = 'var(--dh-gray-800)';
+                    }}
                   >
                     {b.label}
                   </button>
@@ -559,7 +658,10 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
           )}
 
           {/* Acciones finales */}
-          <div className="flex items-center gap-2 pt-2" style={{ borderTop: '1px solid var(--dh-gray-100)' }}>
+          <div
+            className="flex items-center gap-2 pt-2"
+            style={{ borderTop: '1px solid var(--dh-gray-100)' }}
+          >
             <button
               onClick={discardRecording}
               className="text-xs font-semibold px-3 py-2 rounded-full"
@@ -578,5 +680,5 @@ export default function ConsultationRecorder({ availableBlocks, onApplyToBlock, 
         </div>
       )}
     </div>
-  )
+  );
 }

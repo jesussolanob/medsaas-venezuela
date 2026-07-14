@@ -1193,22 +1193,30 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'parse_prescription', content: clean }),
       });
-      const aiData = (await aiRes.json()) as { result?: string; error?: string };
+      const aiData = (await aiRes.json()) as {
+        result?: string;
+        medications?: Array<Record<string, string>>;
+        error?: string;
+      };
       if (!aiRes.ok || aiData.error) {
         showToast({ type: 'error', message: aiData.error ?? 'No se pudo interpretar la receta' });
         return;
       }
-      let parsed: { medications?: Array<Record<string, string>> } = {};
-      try {
-        parsed =
-          typeof aiData.result === 'string'
-            ? (JSON.parse(aiData.result) as typeof parsed)
-            : (aiData.result as unknown as typeof parsed);
-      } catch {
-        showToast({ type: 'error', message: 'La IA no devolvió un formato válido de receta.' });
-        return;
+      // El BFF reenvía los medicamentos en `medications`. Fallback: algunos modelos
+      // devuelven el JSON dentro de `result` (compat).
+      let detected: Array<Record<string, string>> = Array.isArray(aiData.medications)
+        ? aiData.medications
+        : [];
+      if (detected.length === 0 && typeof aiData.result === 'string' && aiData.result.trim()) {
+        try {
+          const parsed = JSON.parse(aiData.result) as {
+            medications?: Array<Record<string, string>>;
+          };
+          if (Array.isArray(parsed.medications)) detected = parsed.medications;
+        } catch {
+          // Ignorar: se maneja abajo con el mensaje de "no se detectaron medicamentos".
+        }
       }
-      const detected = Array.isArray(parsed.medications) ? parsed.medications : [];
       if (detected.length === 0) {
         showToast({
           type: 'error',
@@ -2037,35 +2045,33 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'parse_prescription', content: transcript }),
         });
+        type ParsedMed = {
+          name?: string;
+          dose?: string;
+          route?: string;
+          frequency?: string;
+          duration?: string;
+          presentation?: string;
+        };
         const aiData = (await aiRes.json()) as {
           result?: string;
+          medications?: ParsedMed[];
           error?: string;
         };
         if (!aiRes.ok || aiData.error) {
           throw new Error(aiData.error ?? `HTTP ${aiRes.status}`);
         }
 
-        // Parsear el resultado (puede ser JSON string o ya un objeto)
-        let parsed: {
-          medications?: Array<{
-            name?: string;
-            dose?: string;
-            route?: string;
-            frequency?: string;
-            duration?: string;
-            presentation?: string;
-          }>;
-        } = {};
-        try {
-          parsed =
-            typeof aiData.result === 'string'
-              ? (JSON.parse(aiData.result) as typeof parsed)
-              : (aiData.result as unknown as typeof parsed);
-        } catch {
-          throw new Error('La IA no devolvió un formato válido. Intenta dictando más despacio.');
+        // El BFF reenvía los medicamentos en `medications`. Fallback compat: JSON en `result`.
+        let detected: ParsedMed[] = Array.isArray(aiData.medications) ? aiData.medications : [];
+        if (detected.length === 0 && typeof aiData.result === 'string' && aiData.result.trim()) {
+          try {
+            const parsed = JSON.parse(aiData.result) as { medications?: ParsedMed[] };
+            if (Array.isArray(parsed.medications)) detected = parsed.medications;
+          } catch {
+            throw new Error('La IA no devolvió un formato válido. Intenta dictando más despacio.');
+          }
         }
-
-        const detected = Array.isArray(parsed.medications) ? parsed.medications : [];
         if (detected.length === 0) {
           showToast({
             type: 'error',
