@@ -56,6 +56,7 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
       defaultPrintable: r.defaultPrintable,
       defaultSendToPatient: r.defaultSendToPatient,
       defaultEnabled: r.defaultEnabled,
+      defaultSortOrder: r.defaultSortOrder,
       description: r.description,
     }));
   }
@@ -204,7 +205,9 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
         cat.defaultContentType) as ConsultationBlock['contentType'];
 
       // Cascade: sort_order
-      const sortOrder = doctorEntry?.sortOrder ?? specialtyEntry?.sortOrder ?? 99;
+      // Falls back to catalog's default_sort_order (set per migration 20260714000001)
+      // instead of a hardcoded 99, so doctors with no override get the canonical order.
+      const sortOrder = doctorEntry?.sortOrder ?? specialtyEntry?.sortOrder ?? cat.defaultSortOrder;
 
       // Cascade: printable
       const printable = doctorEntry?.printable ?? cat.defaultPrintable;

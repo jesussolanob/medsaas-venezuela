@@ -48,6 +48,14 @@ export class ConsultationBlockCatalogModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'default_enabled' })
   declare defaultEnabled: boolean;
 
+  /**
+   * Default display order for this block when no doctor or specialty override exists.
+   * Set per migration 20260714000001. Falls back to 99 at the DB level.
+   */
+  @Default(99)
+  @Column({ type: DataType.INTEGER, allowNull: false, field: 'default_sort_order' })
+  declare defaultSortOrder: number;
+
   @Column({ type: DataType.TEXT, allowNull: true })
   declare description: string | null;
 

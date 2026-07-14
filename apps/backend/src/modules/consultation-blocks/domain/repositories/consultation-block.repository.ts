@@ -11,6 +11,11 @@ export interface CatalogRow {
   defaultPrintable: boolean;
   defaultSendToPatient: boolean;
   defaultEnabled: boolean;
+  /**
+   * Default display order for this block when no doctor or specialty override exists.
+   * Set via migration 20260714000001 (range 0-15, fallback DB default = 99).
+   */
+  defaultSortOrder: number;
   /** Catalog-level description. Null when the catalog entry has no description. */
   description: string | null;
 }

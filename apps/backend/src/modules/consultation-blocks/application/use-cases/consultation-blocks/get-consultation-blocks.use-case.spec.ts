@@ -47,6 +47,7 @@ describe('GetConsultationBlocksUseCase', () => {
       defaultPrintable: true,
       defaultSendToPatient: true,
       defaultEnabled: true,
+      defaultSortOrder: 0,
       description: 'Descripción del catálogo',
     };
     const doctorBlock = {
