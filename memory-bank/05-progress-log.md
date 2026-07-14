@@ -1964,8 +1964,15 @@ Todo en rama `feature/migracion-backend`, deploys success. Verificado en vivo co
   iba a blocks_data como texto libre → "no aparecía abajo"); rutea por parse_prescription. + prompt anti-invención
   (NO inventa dosis/frecuencia/"tomar con alimentos" no dictados; marca faltantes "(por especificar)"). Commit `cb038f3`.
   ⚠️ NO verificado en vivo: la sesión actual es doctor `delta_free` (IA gated → parse_prescription devuelve vacío).
-- **Marca "Delta." → "Delta Salud"** en 6 lugares (sidebars doctor/admin/paciente, onboarding, login paciente, Logo).
-  Verificado en vivo. Commit `030276b`-era.
+- **Marca "Delta" → "Delta Salud" — BARRIDO COMPLETO** (2 tandas): 1ª tanda 6 wordmarks (sidebars doctor/admin/
+  paciente, onboarding, login paciente, Logo); 2ª tanda (commit `a2608c6`) TODO el texto restante: login
+  ("Bienvenido a Delta Salud" + testimonial), onboarding (¿cómo usarás? + mensajes de aprobación), ayuda, upgrade,
+  sugerencias, dashboards doctor/admin ("{saludo}, Delta Salud"), portal paciente, y PDFs (factura header/footer +
+  documento de consulta "generado por Delta Salud"). Login verificado en vivo. **NO tocados** (a propósito):
+  planes "Delta Free/Base/Plus", "Torre Delta" (edificio del domicilio fiscal), comentarios. ⚠️ PENDIENTE decisión
+  usuario: razón social legal de la factura sigue `Delta, C.A.` (¿es "Delta Salud, C.A."?).
+- **Botón "Copiar texto"** del recorder: no daba señal (clipboard `.catch` vacío). Fix: "Copiado" 1.8s + cursor +
+  fallback execCommand. Commit `f0903af`. ⏳ QA visual usuario.
 - **Fecha del recibo:** formatear paid_at con timeZone UTC (ya no corre un día). Verificado en vivo. Commit `fb9e251`.
 - **Orden default UNIFICADO de 16 bloques** (migración `20260714000001`): 1-7 activos (Motivo, Antecedentes, Examen
   físico, Evaluación actual, Diagnóstico, Récipe, Paraclínico), 8-16 inactivos; renombres `requested_exams`→**Referencia**

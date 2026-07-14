@@ -935,5 +935,68 @@ pantalla siguiente. Agente B verifica en BD en cada punto (sin PII).
 
 ---
 
+## D-2026-07-13/14) Lote QA masivo (pagos / bloques / IA récipe / marca / recibo)
+
+> Verificado en vivo en Cloud Run salvo lo marcado ⏳ (requiere doctor **delta_plus** con IA activa,
+> o mutaría data real). ⚠️ Probar SIEMPRE en `delta-frontend-knliodnwza-ue.a.run.app`.
+
+### D-14.a — Método de pago obligatorio para APROBAR (candado backend, 3 vueltas)
+
+| Caso   | Precondición                                  | Acción                                                                         | Esperado front                                                                       | BD / efecto                                                   |
+| ------ | --------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| D-14.1 | Cobros: pago pendiente **sin** método         | Drawer → "Marcar como aprobado"                                                | Toast "Debes registrar un método de pago antes de aprobar el cobro"; NO aprueba      | `UpdatePaymentStatusUseCase` 422 `PaymentMethodRequiredError` |
+| D-14.2 | Editor de consulta: pago pendiente sin método | Estado del pago → "Aprobado" → **Guardar pago** sin método                     | Toast "Selecciona el método de pago antes de guardar el cobro aprobado"; NO persiste | `ApprovePaymentWithExtrasUseCase` exige método (422)          |
+| D-14.3 | API directa (defensa en profundidad)          | PATCH `/api/doctor/consultations/:id/approve-payment` `{extras:[]}` sin método | HTTP **422** + mensaje es-VE; la consulta queda `pending`                            | los 3 use-cases de aprobación exigen método                   |
+
+### D-14.b — Flujo de pago: modal confirma monto / "Guardar pago" persiste
+
+| Caso   | Precondición                                           | Acción                                                                    | Esperado front                                                                               | BD / efecto                   |
+| ------ | ------------------------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------- |
+| D-14.4 | Editor, pago pendiente                                 | Estado→"Aprobado" → modal "Aprobar pago" → **Confirmar cobro** SIN método | El modal **solo confirma el monto local**; **NO** llama a `/approve-payment` (no BD); cierra | ninguno (local)               |
+| D-14.5 | Tras D-14.4, con método seleccionado                   | **Guardar pago**                                                          | "Cobro aprobado y guardado"; ahora sí persiste status+extras+método                          | único write a BD              |
+| D-14.6 | Cobros: cambiar método sin "Guardar" → "Marcar pagado" | —                                                                         | "Marcar pagado" **guarda también el método editado** (no lo pierde)                          | updatePaymentDetails + status |
+
+### D-14.c — Orden default de bloques + renombres (migración `20260714000001`)
+
+| Caso   | Precondición                   | Acción                             | Esperado front                                                                                                                          | BD / efecto                                                                 |
+| ------ | ------------------------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| D-14.7 | Doctor **nuevo** (sin config)  | Abrir consulta / config de bloques | Orden: 1 Motivo, 2 Antecedentes, 3 Examen físico, 4 Evaluación actual, 5 Diagnóstico, 6 Récipe, 7 Paraclínico (activos); 8-16 inactivos | catálogo `default_sort_order` + `default_enabled`; `resolveBlocks` cae a él |
+| D-14.8 | Cualquiera                     | Ver catálogo de bloques            | "Exámenes solicitados" ahora = **Referencia**; "Tratamiento" = **Tratamiento propuesto** (globales)                                     | `UPDATE consultation_block_catalog default_label`                           |
+| D-14.9 | Doctor **con config personal** | Abrir consulta                     | Conserva SU orden (la cascada doctor override > default; el orden nuevo NO lo pisa)                                                     | `doctor_consultation_blocks` gana                                           |
+
+### D-14.d — Editar nombre de bloque (bug espacios/borrar)
+
+| Caso    | Precondición                           | Acción                                                    | Esperado front                                            | BD / efecto                         |
+| ------- | -------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------- |
+| D-14.10 | `/doctor/settings/consultation-blocks` | Borrar TODO el nombre de un bloque editable               | Queda **vacío** (NO reaparece el default automáticamente) | draft desacoplado de `custom_label` |
+| D-14.11 | idem                                   | Escribir un nombre con **espacios** (intermedios y final) | Los espacios **se conservan** (antes revertía al default) | —                                   |
+
+### D-14.e — Ingreso adicional en consulta pagada
+
+| Caso    | Precondición                   | Acción                                 | Esperado front                                                              | BD / efecto                                                    |
+| ------- | ------------------------------ | -------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| D-14.12 | Consulta **pagada** (approved) | Abrir editor → panel de pago           | Aparece botón **"Ingreso adicional"** (NO aparece si está pendiente)        | render condicional `payment_status==='approved'`               |
+| D-14.13 | idem                           | Clic → llenar concepto/monto → guardar | Modal IncomeModal abre pre-asociado; el ingreso queda ligado a esa consulta | POST `/api/doctor/finances/income` con `relatedConsultationId` |
+
+### D-14.f — IA récipe + transcripción (⏳ requiere delta_plus)
+
+| Caso    | Precondición                                  | Acción                                                                     | Esperado front                                                                                               | BD / efecto                                                        |
+| ------- | --------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| D-14.14 | Doctor delta_plus, editor                     | Grabar consulta dictando un medicamento → aplicar sugerencia de **Récipe** | La receta **puebla las FILAS** del récipe (antes "decía aplicado pero no aparecía abajo")                    | BFF `/api/doctor/ai` reenvía `medications` (no solo `result`)      |
+| D-14.15 | idem, dictar solo "paracetamol 500mg cada 8h" | Aplicar récipe                                                             | Solo carga lo dictado; toast "Completa los datos que faltan (la IA no los inventa)"; NO inventa vía/duración | prompt anti-invención en `parse_prescription` + block prescription |
+| D-14.16 | Recorder con transcripción lista              | Clic en **"Copiar texto"**                                                 | Botón muestra **"Copiado"** 1.8s + cursor-pointer (antes no daba señal)                                      | clipboard + fallback execCommand                                   |
+
+### D-14.g — Recibo + Marca "Delta Salud"
+
+| Caso    | Precondición               | Acción                        | Esperado front                                                                                               | BD / efecto                                     |
+| ------- | -------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| D-14.17 | Pago con fecha (`paid_at`) | Generar recibo PDF            | La **fecha de pago** coincide con la guardada (NO se corre un día atrás)                                     | formateo `timeZone:'UTC'` en `buildReceiptHtml` |
+| D-14.18 | Login / cualquier pantalla | Buscar la marca "Delta"       | Dice **"Delta Salud"** en todos lados (login, onboarding, ayuda, upgrade, dashboards, portal paciente, PDFs) | barrido completo commit `a2608c6`               |
+| D-14.19 | —                          | Verificar que NO se rompieron | "Delta Free/Base/Plus" (planes) intactos; "Torre Delta" (edificio) intacto                                   | —                                               |
+
+> ⚠️ PENDIENTE de decisión del usuario: la **razón social** de la factura PDF sigue `Delta, C.A.` (nombre legal).
+
+---
+
 > Mantener este guion vivo: cuando aparezca un bug de prod, agregar una fila a la
 > **Sección D** y un caso al módulo correspondiente para que el qa-agent lo cubra siempre.
