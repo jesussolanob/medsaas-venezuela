@@ -90,6 +90,11 @@ export default function ConsultationBlocksConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rows, setRows] = useState<BlockRow[]>([]);
+  // Borrador del texto del input de nombre por bloque. Desacopla lo que el usuario
+  // ESCRIBE (permite espacios y vacío) de custom_label (el override que se guarda,
+  // que colapsa a '' cuando el texto queda vacío o igual al default). Sin esto, al
+  // borrar el nombre reaparecía el default y no se podían escribir espacios.
+  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
   const [specialty, setSpecialty] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -338,8 +343,11 @@ export default function ConsultationBlocksConfigPage() {
                   ) : (
                     <input
                       type="text"
-                      value={r.custom_label || r.default_label}
-                      onChange={(e) => setLabel(r.block_key, e.target.value)}
+                      value={labelDrafts[r.block_key] ?? (r.custom_label || r.default_label)}
+                      onChange={(e) => {
+                        setLabelDrafts((d) => ({ ...d, [r.block_key]: e.target.value }));
+                        setLabel(r.block_key, e.target.value);
+                      }}
                       disabled={!r.enabled}
                       title="Nombre del bloque (editable). Borralo para volver al nombre por defecto."
                       className="flex-1 min-w-0 font-semibold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-teal-400 outline-none disabled:opacity-60 py-0.5"
