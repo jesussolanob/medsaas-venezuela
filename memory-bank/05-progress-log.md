@@ -20,6 +20,15 @@ Dos observaciones del usuario, ambas frontend-only en `app/doctor/consultations/
   "Sin consulta" (antes quedaba huérfano). En `/doctor/finances` el selector ya funcionaba (ahí sí se cargan
   las consultas); esto solo afectaba al "Ingreso adicional" abierto desde una consulta pagada.
 - ⚠️ **Falta QA VISUAL del usuario** en `delta-frontend-knliodnwza-ue.a.run.app`.
+- **Swap bloques Referencia ↔ Paraclínico** (commit `53b73ff`, frontend-only): **Referencia** (key
+  `requested_exams`) ahora es **texto libre** (textarea, override `content_type: 'rich_text'`) y **Paraclínico**
+  (key `paraclinical`) toma la **UI estructurada de exámenes** (nombre+indicaciones, exámenes frecuentes, guarda
+  en tabla `prescriptions`). Swap por block key en el editor: `SPECIAL_BLOCKS`, tab de la UI de exámenes
+  (`block:paraclinical`), `generateBlockHtml` y la lista de tabs especiales. Etiquetas/posiciones intactas.
+  **Sin migración** → consistente también en consultas viejas (el comportamiento va por key). El PDF
+  (`consultation-documents.ts`) ya trataba ambas keys como equivalentes para "exámenes". ⚠️ Datos: exámenes
+  viejos (en `prescriptions`) ahora se ven bajo "Paraclínico"; texto libre viejo en el ex-"Paraclínico"
+  (`blocks_data.paraclinical`) queda oculto en el editor (sigue en BD).
 
 ## 2026-07-11 — Lote QA "doctor real" (22 observaciones) — commits `c704b2f`+`e81889c`, DESPLEGADO ⏳ QA usuario
 
