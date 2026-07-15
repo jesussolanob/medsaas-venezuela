@@ -1883,7 +1883,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               '</div>',
           )
           .join('');
-      } else if (blockKey === 'requested_exams' && prescripciones.length > 0) {
+      } else if (blockKey === 'paraclinical' && prescripciones.length > 0) {
         const valid = prescripciones.filter((p) => p.exam_name.trim());
         if (valid.length > 0)
           content =
@@ -3163,9 +3163,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 (() => {
                   const blockKey = consultationTab.replace('block:', '');
                   // Bloques con UI especial — NO usar DynamicBlocks aquí
+                  // 'paraclinical' pasa a ser el bloque estructurado de exámenes (antes 'requested_exams').
                   const SPECIAL_BLOCKS = new Set([
                     'prescription',
-                    'requested_exams',
+                    'paraclinical',
                     'rest',
                     'internal_notes',
                   ]);
@@ -3174,6 +3175,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   // RONDA 39: usar bloques EFECTIVOS (snapshot si existe, config viva si no)
                   const effective = getEffectiveBlocks(selected as Consultation);
                   let oneBlock = effective.filter((b) => b.key === blockKey);
+                  // "Referencia" (requested_exams) ahora es texto libre (antes lista/UI de exámenes).
+                  if (blockKey === 'requested_exams') {
+                    oneBlock = oneBlock.map((b) => ({ ...b, content_type: 'rich_text' as const }));
+                  }
 
                   // Fallback: snapshot vacío + el doctor está en motivo/diagnóstico → bloque fake
                   if (
@@ -3292,7 +3297,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 className={`p-6 space-y-4 ${
                   [
                     'block:prescription',
-                    'block:requested_exams',
+                    'block:paraclinical',
                     'block:rest',
                     'block:internal_notes',
                   ].includes(consultationTab)
@@ -3480,8 +3485,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   </div>
                 )}
 
-                {/* Prescripciones Tab — block:requested_exams (exámenes médicos) */}
-                {consultationTab === 'block:requested_exams' && (
+                {/* Exámenes Tab — block:paraclinical (exámenes médicos estructurados) */}
+                {consultationTab === 'block:paraclinical' && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2">
