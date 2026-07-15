@@ -1158,7 +1158,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         conceptId: extraIncomeForm.conceptId || undefined,
         date: extraIncomeForm.date || undefined,
         relatedConsultationId: extraIncomeForm.relatedConsultationId || null,
-        patientId: null,
+        patientId: extraIncomeForm.relatedConsultationId ? null : extraIncomeForm.patientId || null,
       });
       if (!result.success) {
         setExtraIncomeError(result.error);
@@ -4314,94 +4314,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   </button>
                   {showPaymentDetails && (
                     <div className="mt-3 space-y-2">
-                      {/* === Estado del pago (auto-save) === */}
-                      <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                          Estado del pago
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={normalizePaymentStatus(report.payment_status)}
-                            disabled={pagoSaving}
-                            onChange={(e) => {
-                              const next = e.target.value as 'pending' | 'approved';
-                              if (next === normalizePaymentStatus(report.payment_status)) return;
-                              updatePagoStatus(selected.id, next, selected.appointment_id);
-                            }}
-                            className={`w-full text-xs font-semibold border-2 rounded-lg py-2 pl-3 pr-9 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none bg-white ${
-                              pagoSaving
-                                ? 'border-slate-200 text-slate-400 cursor-wait'
-                                : 'border-slate-200 text-slate-700 hover:border-teal-300 cursor-pointer'
-                            }`}
-                          >
-                            {(['pending', 'approved'] as const).map((key) => (
-                              <option key={key} value={key}>
-                                {PAYMENT_STATUS[key].label}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                            {pagoSaving ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                            )}
-                          </div>
-                        </div>
-                        {pagoSaving && (
-                          <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Guardando…
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Total cobrado (visible cuando el pago está aprobado) */}
-                      {selected.payment_status === 'approved' && selected.amount != null && (
-                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-1">
-                          <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
-                            Total cobrado
-                          </p>
-                          <p className="text-sm font-extrabold text-emerald-700">
-                            ${Number(selected.amount).toFixed(2)}
-                          </p>
-                          {selected.extra_items && selected.extra_items.length > 0 && (
-                            <div className="pt-1 space-y-0.5">
-                              {selected.base_amount != null && (
-                                <div className="flex justify-between text-[10px] text-emerald-600">
-                                  <span>Consulta base</span>
-                                  <span>${Number(selected.base_amount).toFixed(2)}</span>
-                                </div>
-                              )}
-                              {selected.extra_items.map((ei, idx) => (
-                                <div
-                                  key={ei.id ?? idx}
-                                  className="flex justify-between text-[10px] text-emerald-600"
-                                >
-                                  <span className="truncate mr-2">{ei.description}</span>
-                                  <span className="shrink-0">
-                                    ${Number(ei.amount_usd).toFixed(2)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Ingreso adicional — visible solo cuando el pago está aprobado */}
-                      {selected.payment_status === 'approved' && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void openExtraIncomeModal(selected.id, selected.patient_id)
-                          }
-                          className="w-full flex items-center justify-center gap-1.5 border border-teal-300 text-teal-700 bg-teal-50 hover:bg-teal-100 text-xs font-semibold rounded-lg py-2 transition-colors"
-                        >
-                          <ArrowDownCircle className="w-3.5 h-3.5" />
-                          Ingreso adicional
-                        </button>
-                      )}
-
                       {/* Datos de cita (read-only) */}
                       {appointmentData &&
                         (appointmentData.payment_method || appointmentData.plan_price) && (
@@ -4440,7 +4352,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           </div>
                         )}
 
-                      {/* === Detalles del pago (editables) === */}
+                      {/* === Detalles del pago (editables) — método PRIMERO para no dejarlo en blanco === */}
                       <div className="pt-2 border-t border-slate-100 space-y-2">
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
                           Detalles del pago
@@ -4594,100 +4506,197 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             </label>
                           )}
                         </div>
+                      </div>
 
-                        {/* Botón Guardar pago */}
-                        <button
-                          type="button"
-                          disabled={pagoDetailsSaving || pagoReceiptUploading}
-                          onClick={async () => {
-                            // "Guardar pago" es el ÚNICO punto que escribe a BD. Si el
-                            // estado del pago es "Aprobado", aquí se aprueba de verdad
-                            // (status + extras + método) y el método ES OBLIGATORIO.
-                            const isApproving =
-                              normalizePaymentStatus(report.payment_status) === 'approved';
-                            if (isApproving && !pagoMethod.trim()) {
-                              showToast({
-                                type: 'error',
-                                message:
-                                  'Selecciona el método de pago antes de guardar el cobro aprobado',
-                              });
-                              return;
-                            }
-                            setPagoDetailsSaving(true);
-                            try {
-                              // 1. Guardar detalles (método/referencia/comprobante).
-                              const result = await updateConsultationPaymentDetails(selected.id, {
-                                payment_method: pagoMethod || null,
-                                payment_reference: pagoReference || null,
-                                payment_receipt_url: pagoReceiptPath,
-                              });
-                              if (!result.success) {
+                      {/* === Estado del pago (marcar pagado) — ÚLTIMO: exige método elegido === */}
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Estado del pago
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={normalizePaymentStatus(report.payment_status)}
+                            disabled={pagoSaving}
+                            onChange={(e) => {
+                              const next = e.target.value as 'pending' | 'approved';
+                              if (next === normalizePaymentStatus(report.payment_status)) return;
+                              // Candado: no se puede marcar "Aprobado" sin método de pago.
+                              if (next === 'approved' && !pagoMethod.trim()) {
                                 showToast({
                                   type: 'error',
-                                  message: result.error ?? 'Error al guardar el pago',
+                                  message:
+                                    'Selecciona el método de pago antes de marcar el cobro como aprobado',
                                 });
                                 return;
                               }
-                              // 2. Si el estado es "Aprobado", persistir la aprobación
-                              //    (status + extras confirmados + método) en la BD.
-                              if (isApproving) {
-                                const extras = (selected.extra_items || []).map((e) => ({
-                                  description: e.description,
-                                  amount_usd: e.amount_usd,
-                                }));
-                                const res = await fetch(
-                                  `/api/doctor/consultations/${selected.id}/approve-payment`,
-                                  {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ extras, method: pagoMethod }),
-                                  },
-                                );
-                                const json = (await res.json()) as {
-                                  success?: boolean;
-                                  error?: string;
-                                };
-                                if (!res.ok || !json.success) {
-                                  showToast({
-                                    type: 'error',
-                                    message: json.error ?? 'No se pudo aprobar el cobro',
-                                  });
-                                  return;
-                                }
-                              }
-                              // Actualizar estado local de forma inmutable
-                              const updated = {
-                                payment_method: pagoMethod || null,
-                                payment_reference: pagoReference || null,
-                                payment_receipt_url: pagoReceiptPath,
-                              };
-                              setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
-                              setConsultations((prev) =>
-                                prev.map((x) => (x.id === selected.id ? { ...x, ...updated } : x)),
-                              );
-                              showToast({
-                                type: 'success',
-                                message: isApproving
-                                  ? 'Cobro aprobado y guardado'
-                                  : 'Pago actualizado',
-                              });
-                            } finally {
-                              setPagoDetailsSaving(false);
-                            }
-                          }}
-                          className="w-full flex items-center justify-center gap-1.5 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-wait text-white text-xs font-semibold rounded-lg py-2 transition-colors"
-                        >
-                          {pagoDetailsSaving ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin" /> Guardando…
-                            </>
-                          ) : (
-                            <>
-                              <Save className="w-3 h-3" /> Guardar pago
-                            </>
-                          )}
-                        </button>
+                              updatePagoStatus(selected.id, next, selected.appointment_id);
+                            }}
+                            className={`w-full text-xs font-semibold border-2 rounded-lg py-2 pl-3 pr-9 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none bg-white ${
+                              pagoSaving
+                                ? 'border-slate-200 text-slate-400 cursor-wait'
+                                : 'border-slate-200 text-slate-700 hover:border-teal-300 cursor-pointer'
+                            }`}
+                          >
+                            {(['pending', 'approved'] as const).map((key) => (
+                              <option key={key} value={key}>
+                                {PAYMENT_STATUS[key].label}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            {pagoSaving ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                          </div>
+                        </div>
+                        {pagoSaving && (
+                          <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Guardando…
+                          </p>
+                        )}
                       </div>
+
+                      {/* Total cobrado (visible cuando el pago está aprobado) */}
+                      {selected.payment_status === 'approved' && selected.amount != null && (
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-1">
+                          <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
+                            Total cobrado
+                          </p>
+                          <p className="text-sm font-extrabold text-emerald-700">
+                            ${Number(selected.amount).toFixed(2)}
+                          </p>
+                          {selected.extra_items && selected.extra_items.length > 0 && (
+                            <div className="pt-1 space-y-0.5">
+                              {selected.base_amount != null && (
+                                <div className="flex justify-between text-[10px] text-emerald-600">
+                                  <span>Consulta base</span>
+                                  <span>${Number(selected.base_amount).toFixed(2)}</span>
+                                </div>
+                              )}
+                              {selected.extra_items.map((ei, idx) => (
+                                <div
+                                  key={ei.id ?? idx}
+                                  className="flex justify-between text-[10px] text-emerald-600"
+                                >
+                                  <span className="truncate mr-2">{ei.description}</span>
+                                  <span className="shrink-0">
+                                    ${Number(ei.amount_usd).toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Ingreso adicional — visible solo cuando el pago está aprobado */}
+                      {selected.payment_status === 'approved' && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void openExtraIncomeModal(selected.id, selected.patient_id)
+                          }
+                          className="w-full flex items-center justify-center gap-1.5 border border-teal-300 text-teal-700 bg-teal-50 hover:bg-teal-100 text-xs font-semibold rounded-lg py-2 transition-colors"
+                        >
+                          <ArrowDownCircle className="w-3.5 h-3.5" />
+                          Ingreso adicional
+                        </button>
+                      )}
+
+                      {/* Botón Guardar pago — write final (persiste método/referencia/comprobante y aprueba) */}
+                      <button
+                        type="button"
+                        disabled={pagoDetailsSaving || pagoReceiptUploading}
+                        onClick={async () => {
+                          // "Guardar pago" es el ÚNICO punto que escribe a BD. Si el
+                          // estado del pago es "Aprobado", aquí se aprueba de verdad
+                          // (status + extras + método) y el método ES OBLIGATORIO.
+                          const isApproving =
+                            normalizePaymentStatus(report.payment_status) === 'approved';
+                          if (isApproving && !pagoMethod.trim()) {
+                            showToast({
+                              type: 'error',
+                              message:
+                                'Selecciona el método de pago antes de guardar el cobro aprobado',
+                            });
+                            return;
+                          }
+                          setPagoDetailsSaving(true);
+                          try {
+                            // 1. Guardar detalles (método/referencia/comprobante).
+                            const result = await updateConsultationPaymentDetails(selected.id, {
+                              payment_method: pagoMethod || null,
+                              payment_reference: pagoReference || null,
+                              payment_receipt_url: pagoReceiptPath,
+                            });
+                            if (!result.success) {
+                              showToast({
+                                type: 'error',
+                                message: result.error ?? 'Error al guardar el pago',
+                              });
+                              return;
+                            }
+                            // 2. Si el estado es "Aprobado", persistir la aprobación
+                            //    (status + extras confirmados + método) en la BD.
+                            if (isApproving) {
+                              const extras = (selected.extra_items || []).map((e) => ({
+                                description: e.description,
+                                amount_usd: e.amount_usd,
+                              }));
+                              const res = await fetch(
+                                `/api/doctor/consultations/${selected.id}/approve-payment`,
+                                {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ extras, method: pagoMethod }),
+                                },
+                              );
+                              const json = (await res.json()) as {
+                                success?: boolean;
+                                error?: string;
+                              };
+                              if (!res.ok || !json.success) {
+                                showToast({
+                                  type: 'error',
+                                  message: json.error ?? 'No se pudo aprobar el cobro',
+                                });
+                                return;
+                              }
+                            }
+                            // Actualizar estado local de forma inmutable
+                            const updated = {
+                              payment_method: pagoMethod || null,
+                              payment_reference: pagoReference || null,
+                              payment_receipt_url: pagoReceiptPath,
+                            };
+                            setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
+                            setConsultations((prev) =>
+                              prev.map((x) => (x.id === selected.id ? { ...x, ...updated } : x)),
+                            );
+                            showToast({
+                              type: 'success',
+                              message: isApproving
+                                ? 'Cobro aprobado y guardado'
+                                : 'Pago actualizado',
+                            });
+                          } finally {
+                            setPagoDetailsSaving(false);
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-wait text-white text-xs font-semibold rounded-lg py-2 transition-colors"
+                      >
+                        {pagoDetailsSaving ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" /> Guardando…
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-3 h-3" /> Guardar pago
+                          </>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -4700,7 +4709,33 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         {showExtraIncomeModal && selected && (
           <IncomeModal
             concepts={extraIncomeConcepts}
-            consultations={[]}
+            consultations={[
+              {
+                id: selected.id,
+                consultation_code: selected.consultation_code ?? null,
+                consultation_date: selected.consultation_date ?? null,
+                patient_name: selected.patient_name,
+                patient_email: selected.patient_email ?? null,
+                patient_phone: selected.patient_phone ?? null,
+                patient_cedula: null,
+                appointment_status: selected.appointment_status ?? null,
+                consultation_status: null,
+                payment_status: selected.payment_status ?? null,
+                duration_minutes: selected.duration_minutes ?? null,
+                diagnosis: selected.diagnosis ?? null,
+                amount_usd: selected.amount ?? null,
+                plan_name: null,
+                chief_complaint: selected.chief_complaint ?? null,
+                treatment: selected.treatment ?? null,
+                notes: selected.notes ?? null,
+                blocks_data: null,
+                blocks_snapshot: null,
+                scheduled_at: null,
+                appointment_mode: null,
+                payment_method: selected.payment_method ?? null,
+                payment_reference: selected.payment_reference ?? null,
+              },
+            ]}
             patients={patients.map((p) => ({
               id: p.id,
               doctor_id: '',
