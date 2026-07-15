@@ -2,6 +2,25 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-15 — Fix QA pagos: orden del panel + candado, y consulta visible en ingreso adicional — commit `ee8488f`, DESPLEGADO ✅ (run success) ⏳ QA usuario
+
+Dos observaciones del usuario, ambas frontend-only en `app/doctor/consultations/ConsultationsClient.tsx`
+(cableo liviano por el lead, sin backend). tsc front 0 + lint-staged/prettier OK; deploy Cloud Run test success.
+
+- **Bug 1 — orden del panel de pago (sidebar de la consulta) + candado.** El "Estado del pago" (marcar
+  pagado) estaba ARRIBA y el "Método de pago" abajo → se podía aprobar dejando el método en blanco. Nuevo
+  orden top→bottom: **Datos de cita → Método/Referencia/Comprobante → Estado del pago (marcar pagado) → Total
+  cobrado → Ingreso adicional → Guardar pago (write final)**. **Candado nuevo:** cambiar el estado a
+  "Aprobado" con `pagoMethod` vacío muestra toast y no procede (se suma a la validación de "Guardar pago" y al
+  candado backend `PaymentMethodRequiredError`; triple defensa).
+- **Bug 2 — modal "Ingreso adicional" no mostraba la consulta.** Recibía `consultations={[]}` (vacío) y la
+  consulta iba precargada en `relatedConsultationId` pero **invisible** (no era error de guardado — sí quedaba
+  asociada). Fix: se pasa la consulta actual como opción única → aparece el selector "Consulta existente"
+  **preseleccionado** + nota "Paciente derivado…". El submit ahora manda `patientId` si el doctor cambia a
+  "Sin consulta" (antes quedaba huérfano). En `/doctor/finances` el selector ya funcionaba (ahí sí se cargan
+  las consultas); esto solo afectaba al "Ingreso adicional" abierto desde una consulta pagada.
+- ⚠️ **Falta QA VISUAL del usuario** en `delta-frontend-knliodnwza-ue.a.run.app`.
+
 ## 2026-07-11 — Lote QA "doctor real" (22 observaciones) — commits `c704b2f`+`e81889c`, DESPLEGADO ⏳ QA usuario
 
 Origen: el usuario reportó 22 bugs encadenados de un recorrido real (crear paciente→cita→consultas→
