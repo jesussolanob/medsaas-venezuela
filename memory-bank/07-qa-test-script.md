@@ -996,6 +996,37 @@ pantalla siguiente. Agente B verifica en BD en cada punto (sin PII).
 
 > ⚠️ PENDIENTE de decisión del usuario: la **razón social** de la factura PDF sigue `Delta, C.A.` (nombre legal).
 
+## D-2026-07-15/16) Fixes QA: orden del panel de pago + candado, ingreso adicional visible, swap bloques Referencia/Paraclínico
+
+> Todo **frontend-only** (commits `ee8488f` + `53b73ff`, sin migración). Probar en `delta-frontend-knliodnwza-ue.a.run.app`.
+> ⏳ QA visual del usuario pendiente. Estos casos **complementan/refinan** D-14.b (el flujo de pago no cambió, solo el ORDEN visual y un candado nuevo en el selector de estado).
+
+### D-15.a — Panel de pago de la consulta: nuevo orden + candado en el selector de estado
+
+| Caso   | Precondición                                | Acción                                       | Esperado front                                                                                                                                                                                     | BD / efecto                          |
+| ------ | ------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| D-15.1 | Editor de consulta, panel de pago expandido | Observar el orden vertical de los controles  | Orden top→bottom: **Datos de cita → Método de pago → Referencia/Comprobante → Estado del pago (marcar pagado) → Total cobrado → Ingreso adicional → Guardar pago** (método ANTES de marcar pagado) | — (solo layout)                      |
+| D-15.2 | Pago **pendiente sin** método               | Estado del pago → seleccionar **"Aprobado"** | Toast "Selecciona el método de pago antes de marcar el cobro como aprobado"; **NO** abre el modal "Aprobar pago"; el estado **queda en Pendiente**                                                 | ninguno (bloqueado en el `onChange`) |
+| D-15.3 | Pago pendiente **con** método elegido       | Estado del pago → "Aprobado"                 | Abre el modal "Aprobar pago" normal (confirma monto); luego **Guardar pago** persiste (igual que D-14.5)                                                                                           | write al Guardar pago                |
+
+### D-15.b — Modal "Ingreso adicional" ahora muestra la consulta asociada
+
+| Caso   | Precondición                              | Acción                                                                   | Esperado front                                                                                                                                                                          | BD / efecto                                                                   |
+| ------ | ----------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| D-15.4 | Consulta **pagada** → "Ingreso adicional" | Abrir el modal                                                           | Muestra el selector **"Consulta existente" con la consulta actual PRESELECCIONADA** + nota "Paciente derivado de la consulta seleccionada" (antes no aparecía ningún campo de consulta) | —                                                                             |
+| D-15.5 | idem, sin tocar el selector               | Llenar monto/concepto → Guardar ingreso                                  | Ingreso registrado, ligado a esa consulta                                                                                                                                               | POST income con `relatedConsultationId` = id de la consulta; `patientId` null |
+| D-15.6 | idem                                      | Cambiar selector a **"— Sin consulta —"** → elegir un paciente → guardar | Aparece "Paciente directo"; el ingreso queda ligado al paciente (ya **no** queda huérfano)                                                                                              | income con `patientId` (sin `relatedConsultationId`)                          |
+
+### D-15.c — Swap de comportamiento: bloques Referencia ↔ Paraclínico
+
+| Caso    | Precondición                                                                     | Acción                    | Esperado front                                                                                                                                        | BD / efecto                                                                                                                  |
+| ------- | -------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| D-15.7  | Editor de consulta                                                               | Abrir tab **Referencia**  | **Textarea de texto libre** en blanco (antes era la UI estructurada de exámenes). Escribir + cambiar de tab → autosave                                | `consultations.blocks_data.requested_exams` = string                                                                         |
+| D-15.8  | Editor de consulta                                                               | Abrir tab **Paraclínico** | **UI estructurada de exámenes**: campos "Nombre del examen" + "Indicaciones", "Exámenes frecuentes", "+ Agregar examen", guardar (antes era textarea) | Guardar → filas en tabla `prescriptions` (por `consultation_id`)                                                             |
+| D-15.9  | Consulta con exámenes cargados en Paraclínico                                    | Generar informe / PDF     | Los exámenes salen en el informe bajo Paraclínico                                                                                                     | `generateBlockHtml('paraclinical')` usa `prescripciones`; `consultation-documents.ts` toma `paraclinical ?? requested_exams` |
+| D-15.10 | **Datos viejos:** consulta con exámenes creados en "Referencia" antes del cambio | Abrir el editor           | Los exámenes ahora se ven bajo el tab **Paraclínico** (la UI estructurada se movió allí)                                                              | sin cambio de datos (siguen en `prescriptions`)                                                                              |
+| D-15.11 | **Datos viejos:** texto libre viejo en el ex-"Paraclínico"                       | Abrir tab Paraclínico     | Ese texto queda **oculto** en el editor (Paraclínico ahora es estructurado); sigue en BD (aceptado en QA)                                             | `blocks_data.paraclinical` intacto en BD, no se muestra                                                                      |
+
 ---
 
 > Mantener este guion vivo: cuando aparezca un bug de prod, agregar una fila a la
